@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   captureSceneAttendance,
   sceneZoneOccupants,
 } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
-import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
-import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
 import { currentScenePrompt } from "./fixtures/villages-scene-writing.fixture.js";
 
 async function main() {
@@ -54,8 +54,8 @@ async function main() {
     },
     addedAt: stamp,
     ingestSchedule: false,
+    wishes: [],
     agenda: {
-      wishes: [],
       routineSummary: "Owned day",
       source: "village",
       generatedAt: stamp,
@@ -70,7 +70,7 @@ async function main() {
     },
   });
   const world = coerceVillageState({
-    version: 5,
+    version: 6,
     ...defaultVillageState(),
     seed: "attendance-fixture",
     foundedAt: stamp,

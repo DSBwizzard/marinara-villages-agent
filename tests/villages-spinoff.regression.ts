@@ -1,23 +1,24 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { createSpinoffs, type SpinoffPorts } from "../packages/villages/src/server/features/scenes/spinoff-service.js";
-import { createSceneRepository } from "../packages/villages/src/server/adapters/storage/scene-repository.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import { createSceneRepository } from "../packages/villages/src/server/adapters/storage/scene-repository.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { recallMemories } from "../packages/villages/src/server/domain/rules/memory-recall.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { readSpinoffReview } from "../packages/villages/src/server/domain/rules/spinoff-memory.js";
-import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
+import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
+import { createSpinoffs, type SpinoffPorts } from "../packages/villages/src/server/features/scenes/spinoff-service.js";
 import type { SceneView } from "../packages/villages/src/shared/contracts/village.js";
 import type {
   CapabilityDocumentStore,
-  CapabilityPersistenceHost,
   CapabilityLanguageModelHost,
+  CapabilityPersistenceHost,
 } from "../sources/package-shared.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 const stamp = "2026-10-15T23:30:00.000Z";
 function fixture() {
@@ -38,8 +39,8 @@ function fixture() {
         revision: 1,
         sourceStatus: "available",
       },
+      wishes: [fixtureWish({ wish: "NEVER EXPORT" })],
       agenda: {
-        wishes: [{ secret: "NEVER EXPORT" }],
         day: [{ startMinute: 1080, endMinute: 1200, activity: "PRIVATE AGENDA", venueId: "hidden" }],
       },
     },

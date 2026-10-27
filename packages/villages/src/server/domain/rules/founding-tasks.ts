@@ -1,13 +1,13 @@
-import { foundingIdentity } from "./founding-requests.js";
 import type {
   FoundingResidentTasks,
   FoundingTask,
   FoundingTaskKind,
 } from "../../../shared/contracts/founding-tasks.js";
 import type { VillageState } from "../models/world.js";
-import { asRecord } from "./coerce.js";
-import { backgroundRevision } from "./background-revision.js";
 import { agendaRevision } from "./agenda-revision.js";
+import { backgroundRevision } from "./background-revision.js";
+import { asRecord } from "./coerce.js";
+import { foundingIdentity } from "./founding-requests.js";
 export function foundingTaskRevision(state: VillageState, id: string, kind: FoundingTaskKind): string {
   const resident = state.villagers.find((row) => row.characterId === id);
   return backgroundRevision([
@@ -23,18 +23,12 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
     foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
     resident?.scheduleInfluence,
     state.venues.map((venue) => [venue.id, venue.state.condition, venue.state.publicFacts.slice(0, 2)]),
-    kind === "wish" ? [resident?.agenda?.wishes, resident?.wishLifecycle?.needs] : null,
+    kind === "wish" ? resident?.wishes : null,
   ]);
 }
 export const foundingSlot = (kind: FoundingTaskKind, id: string) =>
   "villages-background-" + backgroundRevision([kind === "routine" ? "agenda" : "wish", id]);
-export function ownsFoundingTask(
-  state: VillageState,
-  id: string,
-  kind: FoundingTaskKind,
-  revision: string,
-  allowanceId?: string,
-): boolean {
+export function ownsFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): boolean {
   const marker = state.foundingPreparation,
     task = marker?.tasks?.[id]?.[kind];
   return (
@@ -43,10 +37,7 @@ export function ownsFoundingTask(
     marker.status !== "ready" &&
     task.status !== "completed" &&
     task.revision === revision &&
-    foundingTaskRevision(state, id, kind) === revision &&
-    (kind !== "wish" ||
-      (task.allowanceId === allowanceId &&
-        state.villagers.find((row) => row.characterId === id)?.wishLifecycle?.attempt?.id === allowanceId))
+    foundingTaskRevision(state, id, kind) === revision
   );
 }
 export function completeFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): void {

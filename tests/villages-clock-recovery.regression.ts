@@ -1,27 +1,27 @@
-import { runCase } from "../scripts/test-cases.mjs";
-import {
-  applyRelationshipReview,
-  defaultRelationshipState,
-  relationshipFor,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import assert from "node:assert/strict";
-import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import {
   configureVillageClock,
   guardedClockGeneration,
   withVillageClockCommit,
   withVillageClockWork,
 } from "../packages/villages/src/server/adapters/time/clock-gate.js";
+import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { calendarReplay } from "../packages/villages/src/server/domain/rules/clock-recovery.js";
-import { ZonedDate, calendarDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import type { VillageRepository } from "../packages/villages/src/server/domain/models/world-repository.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { calendarReplay } from "../packages/villages/src/server/domain/rules/clock-recovery.js";
+import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import {
+  applyRelationshipReview,
+  defaultRelationshipState,
+  relationshipFor,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { ZonedDate, calendarDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
+import { runCase } from "../scripts/test-cases.mjs";
 // Test cases: village-clock-recovery, village-time-advance, founding-timezone
 const DAY = 86_400_000;
 function fixture() {
@@ -391,7 +391,7 @@ async function verify() {
     const repeat = calendarDate(summer, 2026, 10, 1, 1, 30);
     assert.equal(repeat.toISOString(), "2026-11-01T08:30:00.000Z");
     assert.throws(
-      () => coerceVillageState({ version: 5, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
+      () => coerceVillageState({ version: 6, ...defaultVillageState(), clock: { revision: 1, recovery: {} } }),
       /saved village clock/,
     );
     assert.equal(winter.getTimezoneOffset(), 480);
@@ -399,7 +399,7 @@ async function verify() {
     assert.equal(new ZonedDate("2026-11-01T08:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(new ZonedDate("2026-11-01T09:30:00Z", "America/Los_Angeles").getHours(), 1);
     assert.equal(
-      coerceVillageState({ version: 5, ...defaultVillageState(), clock: fixture().state.clock }).clock,
+      coerceVillageState({ version: 6, ...defaultVillageState(), clock: fixture().state.clock }).clock,
       null,
     );
 

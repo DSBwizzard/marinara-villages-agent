@@ -1,28 +1,28 @@
-import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
-import {
-  draftNewVenueProject,
-  draftRenovationProject,
-} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
 import assert from "node:assert/strict";
+import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import {
+  readResidentPlanningProposal,
+  type ResidentPlanningContext,
+} from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import {
   readConversationVenueRequest,
   readVenueRequestCore,
   venueRequestDraft,
 } from "../packages/villages/src/server/domain/rules/venue-requests.js";
 import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+  draftNewVenueProject,
+  draftRenovationProject,
+} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
+import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
 import { queueVillageVenueRequest } from "../packages/villages/src/server/features/venues/venue-requests.js";
-import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
-import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import {
-  readResidentPlanningProposal,
-  type ResidentPlanningContext,
-} from "../packages/villages/src/server/domain/rules/resident-planning.js";
-import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
-import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 
 const { applyVillageVenueDecision } = createVenueRequests({
   async mutateVillageState() {
@@ -59,7 +59,7 @@ state.villagers.push({
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
   agenda: null,
   addedAt: at,
-  completedWishes: [],
+  wishes: [],
 } as VillageVillager);
 state.noticeboard.push({ author: "Rosa", text: "Could we have somewhere to grow herbs?" });
 
@@ -174,7 +174,7 @@ competing.villagers.push({
   cardSnapshot: { id: "rosa", revision: 1, sourceStatus: "available", name: "Rosa", capturedAt: at },
   agenda: null,
   addedAt: at,
-  completedWishes: [],
+  wishes: [],
 } as VillageVillager);
 queueVillageVenueRequest(competing, core, "rosa", "chat", "chat-competing", at);
 addVillageVenue(competing, venue(core.name));

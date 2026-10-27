@@ -1,27 +1,26 @@
-import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
 import assert from "node:assert/strict";
-import { normalizeSparseSceneReply } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { buildVenueResponseContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import { normalizeSparseSceneReply } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { buildVenueResponseContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import {
-  zoneEventScene,
-  zoneEventReply,
   routeZoneEvents,
   ZONE_EVENT_CONTRACT,
   zoneEventHearingContext,
+  zoneEventReply,
+  zoneEventScene,
 } from "../packages/villages/src/server/domain/rules/zone-events.js";
-import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
-import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
-import { liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
 
 const at = "2026-10-15T12:00:00Z";
@@ -51,7 +50,7 @@ world.villagers = ["local", "near", "far"].map((id) => ({
     sourceStatus: "available",
   },
   addedAt: at,
-  completedWishes: [],
+  wishes: [],
 })) as typeof world.villagers;
 const village = coerceVillageState(world);
 const venue = village.venues[0];

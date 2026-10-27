@@ -1,19 +1,19 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
-  findVillagerCard,
   findPlayerPersona,
+  findVillagerCard,
   readVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { readLinkedPersona } from "../packages/villages/src/server/features/settings/personas.js";
-import { refreshPlayerPersona } from "../packages/villages/src/server/features/settings/persona-cache.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
-  previewVillagerRefresh,
   applyVillagerRefresh,
+  previewVillagerRefresh,
 } from "../packages/villages/src/server/features/residents/resident-cards.js";
+import { refreshPlayerPersona } from "../packages/villages/src/server/features/settings/persona-cache.js";
+import { readLinkedPersona } from "../packages/villages/src/server/features/settings/personas.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 const unrelatedCharacter = {
   id: "other",
@@ -111,7 +111,7 @@ try {
         agenda: null,
         remap: null,
         remapFailure: null,
-        completedWishes: [],
+        wishes: [],
       },
     ];
   });

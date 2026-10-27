@@ -1,38 +1,38 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import sharp from "sharp";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import {
-  readSpriteManager,
-  importSpriteArtwork,
-  adoptSpriteArtwork,
-  listSpriteLibrary,
-  saveSpriteArtwork,
-  setSpriteDefault,
-  setSpriteFraming,
-  removeSpriteArtwork,
-  removeSpriteAssignment,
-  decodeSpriteImage,
-} from "../packages/villages/src/server/features/media/sprite-manager.js";
-import { coerceSpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
-import { renderSpritePixels, initialSpriteFrame } from "../packages/villages/src/shared/helpers/sprite-framing.js";
 import {
   describeSpriteExpressions,
   validateSpriteExpression,
 } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
+import { coerceSpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import {
+  adoptSpriteArtwork,
+  decodeSpriteImage,
+  importSpriteArtwork,
+  listSpriteLibrary,
+  readSpriteManager,
+  removeSpriteArtwork,
+  removeSpriteAssignment,
+  saveSpriteArtwork,
+  setSpriteDefault,
+  setSpriteFraming,
+} from "../packages/villages/src/server/features/media/sprite-manager.js";
+import { readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { initialSpriteFrame, renderSpritePixels } from "../packages/villages/src/shared/helpers/sprite-framing.js";
 
 const records = new Map<string, any>(),
   files = new Map<string, string>();
 const now = new Date().toISOString();
 const village = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   wishSystemVersion: 3,
   name: "Preserved village",
   foundedAt: now,

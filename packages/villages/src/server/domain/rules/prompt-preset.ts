@@ -1,6 +1,4 @@
-import { promptMemoryCandidates } from "./memory-recall.js";
-import { readWishGoalJournal } from "./wish-journal.js";
-import { readSemanticWishCriteria } from "./wish-criteria.js";
+import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import type {
   TownMapFit,
   VillageAgenda,
@@ -12,13 +10,13 @@ import type {
   VillageVenue,
   VillageWish,
 } from "../models/world.js";
-import { asInstant, asRecord, asTrimmedString } from "./coerce.js";
-import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
+import { asTrimmedString } from "./coerce.js";
+import { promptMemoryCandidates } from "./memory-recall.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { agendaPromptDay } from "./owned-routine.js";
+import { wishWritingContext } from "./social-wishes.js";
 import { hasVenueClass } from "./venue-model.js";
-import { hashString, type VillageMoment } from "./village-clock.js";
-import { sizedWishLifetime, wishSize } from "./wish-definition.js";
+import { type VillageMoment } from "./village-clock.js";
 
 // Villages — the village's own half of a villager's prompt.
 //
@@ -92,33 +90,6 @@ export const MAX_CHAT_LOG_SESSIONS = 20;
 export const MAX_SUBMISSIONS = 8;
 /** Matches the Engine generate schema's bounded submissionId field. */
 export const MAX_SUBMISSION_ID_LENGTH = 100;
-/**
- * How many things one villager may wish for at once, and how long each may be.
- *
- * Three rather than "as many as it likes" because a person with five ambitions
- * is a plot device and a person with one is a character. It is also the number
- * that keeps a village of sixty from turning every part of the day into a
- * hundred and eighty small intentions the writer has to account for.
- *
- * `MAX_WISH_LENGTH` bounds the wish and `MAX_WISH_TELL_LENGTH` bounds the
- * surface, which is a separate and shorter cap on purpose: the tell is what
- * somebody standing nearby notices, and a notice that runs to a paragraph has
- * stopped being something you would see and become something you were told.
- */
-export const MAX_VILLAGER_WISHES = 3;
-export const MAX_WISH_LENGTH = 200;
-export const MAX_WISH_TELL_LENGTH = 160;
-/**
- * How long a claim the player makes about a wish may be, and how long the
- * judge's answer about it may be.
- *
- * The claim is one line of ordinary speech — "I mended your fence" — and the
- * cap is only here so a pasted wall of text cannot be judged as a claim, which
- * would be a way of arguing past the judge rather than with it. The reason is
- * one sentence the player reads under the villager's answer, so it is short for
- * the ordinary reason a label is short.
- */
-export const MAX_WISH_CLAIM_LENGTH = 600;
 /** How long the village's fallback line about an ordinary day may be. */
 export const MAX_ROUTINE_SUMMARY_LENGTH = 240;
 /**
@@ -930,62 +901,12 @@ function blockEnd(time: string): string {
  * which is deliberate — it is the default the model is asked to reach for, and
  * the ordinary case should be the quiet one.
  */
-function wishWeightNote(intensity: number): string {
-  if (intensity >= 3) return " — this is on your mind most of the day";
-  if (intensity <= 1) return " — this sits at the back of your mind";
-  return "";
-}
-
-/**
- * What the villager themselves wishes for, from the villager's own side.
- *
- * The one block in the preset that is about them rather than about the place,
- * and the only one written to be read as motivation rather than as information.
- * Two things are therefore said out loud. The heading calls the list private and
- * unspoken, and the closing lines say what it is — theirs, and nobody's errand —
- * because the alternative, a bare list of things somebody wishes for sitting in a
- * chat prompt, is a character who opens the conversation with their shopping
- * list.
- *
- * The closing lines are written to say what a wish IS rather than to forbid
- * things about it, and that is a correction rather than a preference. The
- * earlier wording guarded the failure by naming it over and over — not a plan,
- * not a task, not information you owe anybody, do not hand it over, rather than
- * naming it — and every one of those is a fresh instruction to think about the
- * wish. The guard was also the most repetitious part of the block, which is how
- * a block that was supposed to be background became the loudest thing in the
- * prompt. What it has to do instead is two things and only two: say the wish
- * belongs to them, and give explicit permission for a reply to have nothing to
- * do with it. The second one is the whole fix and cannot be implied.
- *
- * The closing lines must also not deny the feature, and one of them used to: it
- * said outright that nothing in the list was waiting to be settled, and a wish is
- * exactly the kind of thing the player may settle. What a wish is, and what it is
- * not, is said instead, and whether one is ever answered is left to the judge.
- *
- * Wishes are ordered heaviest first and carry their weight as words, so a wish
- * that is barely on their mind reads as lighter than one that is not — see
- * `wishWeightNote`. The tell travels in brackets rather than on a line of its
- * own so that a wish and its surface are read together as one fact. A wish the
- * village could not find a surface for renders on its own instead of being
- * dropped: it is still what they wish for, and it still colours how they answer.
- */
-export function renderWishesBlock(agenda: VillageAgenda | null): string {
-  if (!agenda || agenda.wishes.length === 0) return "";
-  // Heaviest first, and stable within a tier, so the order the village wrote
-  // them in survives and the loudest thing is the first thing read.
-  const wishes = [...agenda.wishes].sort((left, right) => right.intensity - left.intensity);
-  return [
-    "## What you wish for",
-    "What is on your mind at the moment, and the small ordinary thing about you that gives it away:",
-    ...wishes.map((wish) => {
-      const surface = wish.tell.length > 0 ? ` (it shows: ${wish.tell})` : "";
-      return `- ${wish.wish}${surface}${wishWeightNote(wish.intensity)}`;
-    }),
-    "They belong to you and to nobody else. Nobody has handed you a task, and none of them is an errand you are running for anybody.",
-    "What you wish for is the colour of your mood: the conversation itself is about whatever the two of you make it about, and most of what you say will have nothing to do with any of it.",
-    "It comes out the way a wish always comes out — in what you notice, what you are short of, how patient you are, and in the small ordinary sign written beside it. Somebody blunt says it outright; somebody private lets the symptom speak. Both are who you are.",
-  ].join("\n");
+export function renderWishesBlock(wishes: VillageWish[], query = ""): string {
+  const relevant = wishWritingContext(wishes, query);
+  return relevant.length
+    ? "Private desires that may be relevant; the whole character and actual conversation govern attention. Most speech need not concern a Wish.\n" +
+        JSON.stringify(relevant)
+    : "";
 }
 
 /** `labels` arrive already formatted, e.g. "Hana — apiarist", and exclude the speaker. */
@@ -1283,7 +1204,7 @@ export function buildPromptValues(input: {
     time: input.time,
     weather: input.weather,
     doing: renderDoingBlock(input.doing),
-    wishes: renderWishesBlock(input.agenda),
+    wishes: renderWishesBlock([], ""),
     player: renderPlayerBlock(input.playerName, input.playerDescription),
     roster: renderRosterBlock(input.roster),
     present: renderPresentBlock(input.present),
@@ -1299,115 +1220,4 @@ export function buildPromptValues(input: {
 /** Trim a player-supplied value to its cap, so the tab and the route agree. */
 export function boundText(value: unknown, maxLength: number): string {
   return asTrimmedString(value).slice(0, maxLength);
-}
-
-/**
- * How many days a wish lasts: one to a week, three parts in four of them inside
- * three days.
- *
- * Rolled from the wish's OWN id rather than from a counter or a call to
- * `Math.random`, and that is the whole design rather than an implementation
- * detail. A random lifetime would be a fact about the moment the village asked,
- * which nothing can check and no test can pin; a lifetime that is a pure
- * function of the id can be asserted for one id and reasoned about for all of
- * them, and it stays put if the wish is ever read and written back. It also
- * means the roll needs no stored copy of itself: one date, and the id it came
- * from.
- *
- * The weighting is the day-to-day shape of the feature. Most wishes are small
- * things somebody notices this week, so the mass sits on one to three days; the
- * tail runs out to a week so that a heavier wish can genuinely sit there, and so
- * that a village whose list holds three wishes is not a village that turns the
- * whole list over every other day. Nothing here is a deadline the villager knows
- * about — see `VillageWish.expiresAt`.
- */
-export function wishLifetimeDays(id: string): number {
-  // Sixteen slots, so every entry is exactly a sixteenth of the rolls: five for
-  // one day, four for two, three for three, and one each for four through seven.
-  const table = [1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 5, 6, 7];
-  return table[hashString(id) % table.length] ?? 1;
-}
-
-/**
- * `days` days after an instant that has already been read and normalised, as ISO.
- *
- * Calendar days, said through `setUTCDate`, so the intent survives being read: a
- * wish written on a Tuesday evening was written on a Tuesday evening, and its
- * deadline is the same time of day some number of days later. UTC rather than
- * local time for the same reason the village's own day number is built from the
- * local calendar date — an hour that does not exist cannot move a deadline.
- *
- * It takes a normalised instant and not an arbitrary string, because deciding
- * whether the string names a moment at all is `asInstant`'s job and doing it
- * twice is how two answers to one question happen. The one caller checks that
- * the instant is not empty before calling.
- */
-function wishExpiresAt(at: string, days: number): string {
-  const expiry = new Date(at);
-  expiry.setUTCDate(expiry.getUTCDate() + days);
-  return expiry.toISOString();
-}
-
-/**
- * Bound one wish to what the village will store, or drop it.
- *
- * The one thing it refuses is a wish with no text: a wish nobody can read
- * renders as a bullet point and nothing else, and worse, it would occupy one of
- * the three slots a villager has. The one thing it repairs is the intensity — a
- * model that answered with a word, a string, or a number out of range still
- * wrote a wish, and the wish is worth more than the number is.
- *
- * The id is MINTED by the caller rather than here, and that is deliberate on
- * two counts. It keeps this function pure, so the proof can call it with a
- * literal id and assert on the result; and it keeps the id from being derived
- * from the text, which would be wrong in a way that is easy to miss — two
- * villagers may wish for the same thing, and one villager may be given the same
- * wish again after it has been answered, and neither should collide.
- *
- * The dates are stamped HERE rather than by the two callers, and the moment is
- * taken as an argument rather than read off the clock, because a roll that
- * cannot be pinned to one id and one instant cannot be asserted at all. Both
- * writers pass the moment their own answer arrived: the agenda at move-in, and
- * `proposeNextWish` when a wish has just been settled.
- */
-export function coerceWish(entry: unknown, id: string, at: string): VillageWish | null {
-  const raw = asRecord(entry);
-  const wish = boundText(raw.wish, MAX_WISH_LENGTH);
-  if (wish.length === 0) return null;
-  const intensity = typeof raw.intensity === "number" && Number.isFinite(raw.intensity) ? Math.round(raw.intensity) : 2;
-  // A wish that arrived with no readable moment is stored the way the read-back
-  // would hand it back — no birth date, and therefore no deadline — so that
-  // writing it and reading it after a restart cannot produce two answers. Both
-  // dates come off the one normalising read of `at`, so they can never disagree
-  // about which instant the wish was born at.
-  const born = asInstant(at);
-  const need = asRecord(raw.need);
-  return {
-    id,
-    wish,
-    ...(asRecord(raw.semanticCriteria).semanticVersion === 2 && asRecord(raw.semanticCriteria).goal === wish
-      ? { semanticCriteria: readSemanticWishCriteria(raw.semanticCriteria, wish) }
-      : {}),
-    size: wishSize(raw.size),
-    goalJournal: readWishGoalJournal(raw.goalJournal),
-    conditionRevision:
-      Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0
-        ? (raw.conditionRevision as number)
-        : 0,
-    intensity: Math.min(3, Math.max(1, intensity)),
-    tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
-    addedAt: born,
-    expiresAt:
-      born.length === 0 ? "" : wishExpiresAt(born, sizedWishLifetime(id, wishSize(raw.size), wishLifetimeDays(id))),
-    ...(need.subject || need.action || need.policy
-      ? {
-          need: {
-            id: boundText(need.id, 100),
-            subject: boundText(need.subject, 80),
-            action: boundText(need.action, 80),
-            policy: need.policy === "lasting" || need.policy === "recurring" ? need.policy : "unknown",
-          } as NonNullable<VillageWish["need"]>,
-        }
-      : {}),
-  };
 }

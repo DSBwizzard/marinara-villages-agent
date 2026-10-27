@@ -22,50 +22,23 @@ try {
     ];
     const wish = {
       wishId: "swim",
-      text: "Feddy wants to experience swimming.",
-      learnedAt: now,
-      status: "active",
+      text: "Go swimming with Roxie.",
+      at: now,
+      status: "open",
+      followed: true,
       facts: [
-        {
-          id: "concern",
-          kind: "concern",
-          quote: "Deep water makes me nervous.",
-          at: now,
-          sceneId: "first",
-          lineIds: ["heard-1"],
-        },
-        {
-          id: "lead",
-          kind: "possibility",
-          quote: "I like the idea of lessons.",
-          at: now,
-          sceneId: "first",
-          lineIds: ["heard-2"],
-        },
-        {
-          id: "old",
-          kind: "preference",
-          quote: "I would prefer the lake.",
-          at: now,
-          sceneId: "first",
-          lineIds: ["heard-3"],
-          supersededBy: "new",
-        },
-        {
-          id: "new",
-          kind: "preference",
-          quote: "Actually, the shallow beach sounds better.",
-          at: now,
-          sceneId: "second",
-          lineIds: ["heard-4"],
-        },
+        { id: "concern", text: "Deep water makes me nervous.", at: now },
+        { id: "lead", text: "I like the idea of lessons.", at: now },
+        { id: "old", text: "I would prefer the lake.", at: now },
+        { id: "new", text: "Actually, the shallow beach sounds better.", at: now },
       ],
     };
     const profiles = [
       { characterId: "feddy", knownWishes: [wish] },
       { characterId: "roxie", knownWishes: [] },
     ];
-    let retirements = 0,
+    let follows = 0,
+      privateReads = 0,
       writes = 0,
       session = null;
     const notice = {
@@ -82,12 +55,28 @@ try {
       const path = new URL(route.request().url()).pathname;
       let value = village;
       if (path.endsWith("/relationships")) value = { profiles };
-      else if (path.endsWith("/wishes/swim/retire")) {
-        retirements++;
+      else if (path.endsWith("/wishes/swim/follow")) {
+        follows++;
         writes++;
-        assert.equal(route.request().method(), "POST");
-        wish.status = "retired";
+        assert.equal(route.request().method(), "PATCH");
+        wish.followed = JSON.parse(route.request().postData()).followed;
         value = { profiles };
+      } else if (path.endsWith("/wishes/inspect")) {
+        privateReads++;
+        value = {
+          wishes: [
+            {
+              id: "private",
+              wish: "PRIVATE SOCIAL DESIRE",
+              reason: "PRIVATE REASON",
+              status: "open",
+              attention: { state: "background", reason: "Quietly retained" },
+              approach: "",
+              addedAt: now,
+              conditions: [],
+            },
+          ],
+        };
       } else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/active")) value = { session };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
@@ -164,31 +153,38 @@ try {
       .getByRole("navigation", { name: "Villager profile sections" })
       .getByRole("button", { name: "Wishes", exact: true })
       .click();
-    await expect(profile.getByRole("heading", { name: "What you’ve learned" })).toBeVisible();
+    await expect(profile.getByRole("region", { name: "Known wishes" })).toBeVisible();
+    assert.equal(privateReads, 0);
+    await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
+    await expect(profile.locator("time")).toHaveCount(5);
     await expect(profile.getByText("Deep water makes me nervous.", { exact: true })).toBeVisible();
     await expect(profile.getByText("I like the idea of lessons.", { exact: true })).toBeVisible();
-    await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeHidden();
+    await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
     await expect(profile.getByRole("checkbox")).toHaveCount(0);
     await expect(profile.getByRole("progressbar")).toHaveCount(0);
     assert.equal(writes, 0, "Browsing People and wishes makes no mutation or generation request");
-    await profile.getByText("Earlier information", { exact: true }).click();
     await expect(profile.getByText("I would prefer the lake.", { exact: true })).toBeVisible();
     await page.screenshot({ path: resolve(`.build-tmp/wish-journal/profile-${width}.png`), fullPage: true });
     assert.ok(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       "Profile fits the viewport",
     );
-    await profile.getByRole("button", { name: "Retire wish" }).click();
-    await expect(profile.getByText("retired", { exact: true })).toBeVisible();
-    await expect(profile.getByRole("button", { name: "Retire wish" })).toHaveCount(0);
-    assert.equal(retirements, 1);
+    await profile.getByRole("button", { name: "Following", exact: true }).click();
+    await expect(profile.getByRole("button", { name: "Follow", exact: true })).toHaveAttribute("aria-pressed", "false");
+    assert.equal(wish.status, "open");
+    assert.equal(follows, 1);
+    await profile.getByRole("button", { name: "Inspect", exact: true }).click();
+    await expect(profile.getByText("PRIVATE SOCIAL DESIRE", { exact: true })).toBeVisible();
+    assert.equal(privateReads, 1);
+    await profile.getByRole("button", { name: "Leave Inspect", exact: true }).click();
+    await expect(profile.getByText("PRIVATE SOCIAL DESIRE")).toHaveCount(0);
     await profile.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Open Roxie profile" }).click();
     await page
       .getByRole("navigation", { name: "Villager profile sections" })
       .getByRole("button", { name: "Wishes", exact: true })
       .click();
-    await expect(page.getByText("No wishes shared yet.", { exact: true })).toBeVisible();
+    await expect(page.getByText("No Wishes shared yet.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Open Feddy profile" }).click();
     await page
@@ -225,12 +221,12 @@ try {
     while (await page.getByRole("button", { name: "Next paragraph", exact: true }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toHaveValue("Unsaved Scene draft");
-    assert.equal(writes, 2, "The only writes are explicit retirement and Scene entry");
+    assert.equal(writes, 2, "The only writes are explicit following and Scene entry");
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
-    "Wish journal browser: mobile/desktop profiles, discovered facts, correction history, retirement, privacy, and Wish notice navigation passed without generation requests.",
+    "Wish journal browser: mobile/desktop profiles, timestamped statements, following, deliberate inspection, privacy, and Wish notice navigation passed without generation requests.",
   );
 } finally {
   await browser.close();

@@ -1,6 +1,5 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
+import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -24,6 +23,7 @@ import {
   settleBackgroundWork,
   startBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -67,7 +67,7 @@ function fixture(label: string) {
           backstory: "",
           tags: [],
         },
-        completedWishes: [],
+        wishes: [],
         agenda: null,
       }) as any,
   );

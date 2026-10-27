@@ -1,12 +1,12 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { townMapImageProblem } from "../packages/villages/src/shared/helpers/town-map-upload.js";
-import { villageRouteSource } from "./route-source.js";
-import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
+import { townMapImageProblem } from "../packages/villages/src/shared/helpers/town-map-upload.js";
+import { clientImplementation } from "./client-source.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageRouteSource } from "./route-source.js";
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -113,7 +113,7 @@ async function main() {
   );
   const legacy = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     wishSystemVersion: 3,
     setting: "Misty cliffs",
     foundingReason: "rebuild",

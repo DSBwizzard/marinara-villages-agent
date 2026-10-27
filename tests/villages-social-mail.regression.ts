@@ -1,25 +1,26 @@
-import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
-import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
-import {
-  correctVillageMemory,
-  forgetVillageMemory,
-} from "../packages/villages/src/server/domain/rules/village-memories.js";
 import assert from "node:assert/strict";
-import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
+import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
+import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   defaultRelationshipState,
   relationshipFor,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
-import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
-import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+import {
+  claimVisitPermission,
+  evaluateZoneAccess,
+  initializeVenueAccess,
+} from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
-  initializeVenueAccess,
-  evaluateZoneAccess,
-  claimVisitPermission,
-} from "../packages/villages/src/server/domain/rules/venue-access.js";
+  correctVillageMemory,
+  forgetVillageMemory,
+} from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
+import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
 const village = defaultVillageState();
 village.seed = "mail";
 village.foundedAt = new Date().toISOString();
@@ -27,7 +28,7 @@ village.villagers = [
   {
     characterId: "ada",
     cardSnapshot: { name: "Ada", capturedAt: "card-1", personality: "Candid" },
-    completedWishes: [],
+    wishes: [],
   },
 ] as any;
 let social = defaultRelationshipState(village.seed);
@@ -41,6 +42,7 @@ let calls = 0,
   truncateMeaning = false,
   sourceOnlyReply = false;
 let failNativeWrite = "";
+let afterSocialCommit: (() => Promise<void>) | undefined;
 let failInvitationWrite = false,
   failMemoryWrite = false;
 const snapshot = async () => ({ ...structuredClone(village), relationshipContext: structuredClone(social) });
@@ -90,6 +92,9 @@ const service = createSocialMail({
       throw Error("Reply write unavailable");
     }
     social = next;
+    const callback = afterSocialCommit;
+    afterSocialCommit = undefined;
+    if (callback) await callback();
     return structuredClone(social);
   },
   mutateVillageState: async (mutate: any) => {
@@ -696,6 +701,74 @@ assert(
   "A replaced correspondent rejects optional old learning locally",
 );
 assert.equal(village.socialMailOutbox!.length, 0, "Obsolete learning does not permanently block resident activity");
+
+// Reading after delivery but before Wish facts attach must converge without another model call.
+for (const failPublication of [false, true]) {
+  const id = failPublication ? "wish-race-recovery" : "wish-race";
+  const words = "I would like to talk about the river " + id + ".";
+  const entry = service.automaticOutbox(
+    await snapshot(),
+    social,
+    {
+      senderId: "ada",
+      text: words,
+      relationshipReview: emptyRelationshipReview(),
+      wishChanges: [
+        {
+          actorId: "ada",
+          wishId: "new:" + id,
+          intent: "create",
+          desire: { wish: "Talk about the river " + id, reason: "Ada wants company." },
+          quote: words,
+          evidence: [0],
+          reason: "Ada communicates this current desire.",
+        },
+      ],
+    },
+    id,
+    new Date().toISOString(),
+  );
+  village.socialMailOutbox = [entry];
+  let readAt = "";
+  let reading: Promise<unknown> | undefined;
+  afterSocialCommit = async function onDelivered() {
+    if (!social.mailDeliveries[entry.id]) {
+      afterSocialCommit = onDelivered;
+      return;
+    }
+    reading = service.readThread(entry.input.threadId);
+    for (
+      let i = 0;
+      i < 30 && !social.mailThreads[entry.input.threadId].messages.find((m) => m.id === entry.id)?.readAt;
+      i++
+    )
+      await new Promise((resolve) => setImmediate(resolve));
+    readAt = social.mailThreads[entry.input.threadId].messages.find((m) => m.id === entry.id)!.readAt!;
+    assert.equal(
+      knownSocialWishes(village, "ada").some((w) => w.text === words),
+      false,
+      "Undelivered facts have no player knowledge",
+    );
+    if (failPublication) {
+      afterSocialCommit = async () => {
+        failMemoryWrite = true;
+      };
+    }
+  };
+  const before = calls;
+  await service.processOutbox(await snapshot());
+  if (failPublication) {
+    assert(village.socialMailOutbox?.[0]?.error, "Failed publication retains local recovery");
+    await service.retry(entry.input.threadId, entry.id, id + "-retry");
+  }
+  await reading;
+  const known = knownSocialWishes(village, "ada").find((w) => w.text === words)!;
+  assert(known, "A letter read during delivery still teaches its frozen disclosure");
+  assert.equal(known.at, readAt);
+  assert.equal(village.socialMailOutbox?.length, 0);
+  assert.equal(calls, before, "Publication and recovery are provider-free");
+}
+
 console.log(
   "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
 );

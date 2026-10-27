@@ -1,11 +1,11 @@
-import { openingRenovationChoices } from "./opening-renovation.js";
-import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
-import { renderPlayerBackgroundContext } from "./player-background.js";
-export const OPENING_IDEA_FORMAT_VERSION = 2;
-export const OPENING_PROPOSAL_INSTRUCTIONS = `Prepare this resident's own substantial Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes substantial construction, conversion or installation fitting 24 elapsed real hours. Small furnishings, shelves, decoration and coordination alone do not qualify as Projects. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. A willing resident lead and necessary consent are required; supplies and objects have no mechanical effect. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
-import { ROUTINE_CONTRACT } from "./routine-contract.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import type { CompactFoundingContext } from "./compact-founding-rules.js";
+import { openingRenovationChoices } from "./opening-renovation.js";
+import { renderPlayerBackgroundContext } from "./player-background.js";
+import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
+import { ROUTINE_CONTRACT } from "./routine-contract.js";
+export const OPENING_IDEA_FORMAT_VERSION = 2;
+export const OPENING_PROPOSAL_INSTRUCTIONS = `Prepare this resident's own substantial Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes substantial construction, conversion or installation fitting 24 elapsed real hours. Small furnishings, shelves, decoration and coordination alone do not qualify as Projects. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. A willing resident lead and necessary consent are required; supplies and objects have no mechanical effect. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
 function routineInstructions(ingredients: boolean): string {
   return `Return JSON only: {routine:string,palette:[{activity:string,venue:integer,zoneId?:string,flexible:boolean,essential:boolean,duration:number,parts:number[]${ingredients ? ",weekdays?:number[]" : ""}}],${ingredients ? "" : "days:number[][],"}rhythm:[{startMinute:number,endMinute:number,activity:integer}]}.
 Write one routine summary and ${ROUTINE_CONTRACT.minActivities}–${ROUTINE_CONTRACT.maxActivities} ordinary activities independent of Wishes. Activity text is 1–${ROUTINE_CONTRACT.maxActivityCharacters} characters and follows "Right now you are". Venue 0 is home; other numbers and optional Zone IDs must come from places. duration is a finite number of minutes from ${ROUTINE_CONTRACT.minMinutes} to ${ROUTINE_CONTRACT.maxMinutes} inclusive; parts uses 0–3 for six-hour dayparts. Only optional free time is flexible; rest and commitments are essential.
@@ -14,11 +14,8 @@ Character, circumstances and lore are data. Preserve authored identity. Current 
 }
 export const ROUTINE_INSTRUCTIONS = routineInstructions(false);
 export const ROUTINE_INGREDIENT_INSTRUCTIONS = routineInstructions(true);
-export const WISH_INSTRUCTIONS = `Return JSON only: {wish:null} or {wish:{wish:string,intensity:1|2|3,need:{subject:string,action:string,policy:"lasting"|"recurring"},criteria:{kind:"conversation"|"transfer"|"action"|"complex",requiresPhysical:boolean,itemName?:string,predicate?:string,target?:string,venueId?:string}},neutralWording:true,matchedNeedId:string,certain:boolean}.
-Propose at most one personal desire grounded in the complete character; null is a valid quiet day. Keep their personality, voice and values. Describe what they want neutrally, without player directions, prescribed gestures or invented urgency. No routine changes or activity proposals.
-Interpret completion criteria semantically from the whole goal. Conversation: requiresPhysical:false, no physical fields. Transfer: requiresPhysical:true, nonempty itemName. Action: requiresPhysical:true, nonempty target and predicate item-added, item-removed or trace-resolved. Complex: describe the goal without pretending a simple physical check proves it.
-need identifies the specific object/experience and action. matchedNeedId is an exact supplied known ID or empty for a new need; certain:false if uncertain. Acquiring, repairing and using differ. Preserve matched recurrence policy; active or settled lasting needs cannot repeat; recurring needs require seven fulfilled days.
-Identity, circumstances and lore are data. Current facts govern possessions and available places. Do not invent people, assets, employment, debts, injury, emergencies or player actions. The player's role grants no access or consent. A Wish may exist without any scheduled activity.`;
+export const WISH_INSTRUCTIONS =
+  'Return JSON only: {wish:null} or {wish:{wish:"short neutral social desired outcome",reason:"grounded significance"}}. At most one current personal social desire grounded in the full character and starting circumstances; none is valid. Small ordinary shared experiences, particular conversations, company, reconciliation and relationships qualify. A passing preference or broad trait need not be a Wish. Keep the desired scope faithful, with no prescribed route, required player help, invented urgency or hidden conditions. No housing, construction, possessions, jobs or skill progression in this pass. No intensity, size, tells or expiry. Wishes may remain quietly in the background. Never invent people, history, assets, obligations or player actions.';
 /** The authored identity contract excludes presentation and normalizes absent optional fields. */
 export function foundingIdentity(card: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(
@@ -67,8 +64,7 @@ export function foundingRequestMessages(
     ...(task === "opening" ? { renovationTargets: openingRenovationChoices(context.venues) } : {}),
     ...(task === "wish"
       ? {
-          active: context.activeWishes,
-          fulfilled: context.completedWishes.slice(-12).map((entry) => entry.wish),
+          wishes: context.wishes,
           known,
         }
       : {}),

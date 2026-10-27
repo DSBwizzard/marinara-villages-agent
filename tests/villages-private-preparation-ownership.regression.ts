@@ -1,16 +1,18 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { preparePrivateSpaces } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   createPrivateSpacePreparation,
   type PrivateSpacePreparationPorts,
 } from "../packages/villages/src/server/jobs/private-space-service.js";
-import { preparePrivateSpaces } from "../packages/villages/src/server/jobs/private-space-preparation.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -31,7 +33,7 @@ function world(name: string) {
   const stamp = new Date().toISOString();
   return coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     seed: "same-seed",
     name,
     setting: name,

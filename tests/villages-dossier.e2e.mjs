@@ -1,3 +1,4 @@
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
@@ -150,17 +151,17 @@ try {
         weekUnreadable: false,
         ingestSchedule: false,
         nativeSchedule: null,
-        agenda: {
-          wishes: [
+        wishes: [
+          fixtureWish(
             {
-              id: characterId + "-private",
               wish: characterId === "mara" ? "PRIVATE MARA WISH" : "PRIVATE ELI WISH",
-              tell: "",
-              intensity: 2,
-              addedAt: now,
-              expiresAt: now,
+              reason: "Grounded social fixture desire",
             },
-          ],
+            characterId + "-private",
+            now,
+          ),
+        ],
+        agenda: {
           routineSummary: "PRIVATE ROUTINE",
           generatedAt: now,
           activeDay: { blocks: [] },

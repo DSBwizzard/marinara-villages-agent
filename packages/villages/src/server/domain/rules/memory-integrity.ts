@@ -64,10 +64,7 @@ export function validateMemorySource(value: unknown) {
 }
 export function validateMemoryDomain(value: unknown) {
   object(value, ["kind", "id", "characterId"]);
-  memoryRequire(
-    ["wish", "project", "pursuit", "relationship", "physical"].includes(value.kind),
-    "invalid domain reference",
-  );
+  memoryRequire(["wish", "project", "relationship", "physical"].includes(value.kind), "invalid domain reference");
   memoryString(value.id, 160);
   if (value.characterId !== undefined) memoryString(value.characterId, 160);
 }

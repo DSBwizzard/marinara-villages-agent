@@ -1,25 +1,25 @@
 import assert from "node:assert/strict";
-import { withSettingsOwners } from "./villages-settings-owner.fixture.js";
 import { createActivationScope } from "../../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { readVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
 import type { Job } from "../../packages/villages/src/server/domain/models/background-model.js";
-import { readVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
+import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
+import { backgroundRevision } from "../../packages/villages/src/server/domain/rules/background-revision.js";
 import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { queueVillageVenueRequest } from "../../packages/villages/src/server/domain/rules/venue-request-state.js";
 import {
-  respondDueVenueMail,
   queueVenueCounteroffer,
+  respondDueVenueMail,
   venueMailbox,
 } from "../../packages/villages/src/server/features/venues/venue-mailbox.js";
 import {
   recoverBackgroundWork,
   settleBackgroundWork,
 } from "../../packages/villages/src/server/jobs/background-work.js";
-import { backgroundRevision } from "../../packages/villages/src/server/domain/rules/background-revision.js";
+import { withSettingsOwners } from "./villages-settings-owner.fixture.js";
 
 const now = new Date("2026-10-07T12:00:00.000Z"),
   created = new Date("2026-10-04T12:00:00.000Z");
@@ -43,7 +43,7 @@ function world(label: string) {
     cardSnapshot: snapshot,
     addedAt: snapshot.capturedAt,
     agenda: null,
-    completedWishes: [],
+    wishes: [],
     remap: null,
     remapFailure: null,
   });

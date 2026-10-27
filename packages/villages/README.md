@@ -112,9 +112,11 @@ The Memories page starts with your Persona and loads entries in batches. **Inspe
 
 ## Wishes and Projects
 
-**Wishes** are outcomes a resident wants. You learn about them through conversation and discovery. The journal records what you have learned; it does not show hidden progress percentages. A Wish is fulfilled by its actual outcome and expressed conditions, rather than by a promise or a Project proposal alone.
+**Wishes** are concrete personal social desires. They can arise through conversation, correspondence, resident encounters and occasional private reflection. Residents can act on them, reconsider an approach, keep them quietly in the background, fulfill them or withdraw them. Invitations and plans establish arrangements; the desired interaction must actually happen. NPCs can satisfy Wishes without player involvement.
 
-Each resident can have up to two active Wishes. New attempts have a daily allowance and at least 24 hours between them. Returning after an absence does not generate a backlog of missed Wishes.
+The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
+
+This refactor requires a fresh Village (format 6); earlier saves are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 

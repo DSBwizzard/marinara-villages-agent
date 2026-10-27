@@ -1,19 +1,18 @@
-import { inspectDevelopment, setDevelopment, reconcileDevelopment } from "./development.js";
-import { observeVillageClock, resolveVillageClock } from "../../adapters/time/clock-gate.js";
+import type { FastifyInstance } from "fastify";
 import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
+import { fail } from "../../adapters/http/route-support.js";
+import { observeVillageClock, resolveVillageClock } from "../../adapters/time/clock-gate.js";
+import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageCatalog } from "../residents/resident-cards.js";
 import { addNotice, removeNoticeAt } from "../settings/village-settings.js";
-import { fail } from "../../adapters/http/route-support.js";
-import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageSnapshot } from "./snapshot.js";
 import {
   buildVillageMemories,
-  reconcileVillage,
-  readVillageMemoryEvidence,
-  forgetMemory,
   correctMemory,
+  forgetMemory,
+  readVillageMemoryEvidence,
+  reconcileVillage,
 } from "./village.js";
-import type { FastifyInstance } from "fastify";
 
 export function registerSnapshotCatalogRoutes(engine: FastifyInstance) {
   const app = engine;
@@ -48,30 +47,6 @@ export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
       return await reconcileVillage({ advanceTime: request.body });
     } catch (error) {
       return fail(reply, error, "advancing Village time");
-    }
-  });
-  app.get("/development", async (_request, reply) => {
-    try {
-      return await inspectDevelopment();
-    } catch (error) {
-      return fail(reply, error, "reading resident development");
-    }
-  });
-  app.patch<{ Body: { enabled: unknown } }>("/development", async (request, reply) => {
-    try {
-      return await setDevelopment(request.body?.enabled);
-    } catch (error) {
-      return fail(reply, error, "saving resident development");
-    }
-  });
-  app.post<{ Body: { actionId?: unknown } }>("/development/review", async (_request, reply) => {
-    try {
-      if (typeof _request.body?.actionId !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(_request.body.actionId))
-        throw badRequest("Choose a review request identity.");
-      await reconcileDevelopment(undefined, _request.body.actionId);
-      return await inspectDevelopment();
-    } catch (error) {
-      return fail(reply, error, "reviewing resident development");
     }
   });
   app.post<{ Body: { revision?: unknown; choice?: unknown } }>("/clock/recover", async (request, reply) => {

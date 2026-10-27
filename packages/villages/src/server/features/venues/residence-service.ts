@@ -1,19 +1,18 @@
-import { villageNow } from "../../adapters/time/clock-gate.js";
-import type { Handler } from "../../domain/models/background-model.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
+import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageResidence, VillageSnapshot, VillageVenue } from "../../domain/models/world.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { completeResidenceMove } from "../../domain/rules/residence-move.js";
-import { finishDevelopmentMove } from "../../domain/rules/resident-development.js";
 import { personalDestinationSpace } from "../../domain/rules/venue-authoring.js";
 import { assertResidencePrivateDestination } from "../../domain/rules/venue-layout.js";
 import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { residenceCharacterId, residenceVenueId } from "../../domain/rules/world-input.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import type { queueBackgroundJob } from "../../jobs/background-work.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
@@ -173,7 +172,6 @@ export function createResidences(ports: ResidencePorts) {
       // Only the winning mutation attempt can authorize post-save preparation.
       moved = false;
       moved = completeResidenceMove(state, characterId, force, now);
-      if (moved) finishDevelopmentMove(state, characterId, now.toISOString());
     });
     if (moved && queueAdaptation) {
       await retryResidencePrivateSpaceAdaptation(characterId);

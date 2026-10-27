@@ -1,27 +1,28 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
-  readVillagerCard,
   readEffectiveVillagerCard,
+  readVillagerCard,
   villagerCardFromSnapshot,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
-import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import {
-  previewVillagerRefresh,
-  applyVillagerRefresh,
-} from "../packages/villages/src/server/features/residents/resident-cards.js";
 import {
   fitVenueWritingMessages,
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import {
+  applyVillagerRefresh,
+  previewVillagerRefresh,
+} from "../packages/villages/src/server/features/residents/resident-cards.js";
+import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 
 const stamp = new Date().toISOString();
 const source = {
@@ -52,10 +53,9 @@ state.villagers = [
     },
     cardSnapshot: snapshot,
     addedAt: stamp,
-    completedWishes: [],
+    wishes: [fixtureWish({ wish: "See a concert" }, "concert", stamp)],
     ingestSchedule: false,
     agenda: {
-      wishes: [{ id: "wish", wish: "See a concert", tell: "SCRIPTED TELL SECRET", intensity: 1 }],
       day: [],
       week: {},
       routineSummary: "",
@@ -193,6 +193,7 @@ async function run() {
           summary: "",
           doing: "Talking",
           agenda: state.villagers[0].agenda,
+          wishes: state.villagers[0].wishes,
         },
       ],
       venues: [],
@@ -207,7 +208,7 @@ async function run() {
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],

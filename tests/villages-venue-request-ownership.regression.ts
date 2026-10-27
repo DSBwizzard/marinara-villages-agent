@@ -1,25 +1,27 @@
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import assert from "node:assert/strict";
-import { assertMailboxOwnership } from "./fixtures/villages-mailbox-owner.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
-import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
-import {
-  configureVenueRequests,
-  queueVillageVenueRequest,
-  decideVillageVenueRequest,
-} from "../packages/villages/src/server/features/venues/venue-requests.js";
 import {
   draftNewVenueProject,
   draftRenovationProject,
 } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
+import {
+  configureVenueRequests,
+  decideVillageVenueRequest,
+  queueVillageVenueRequest,
+} from "../packages/villages/src/server/features/venues/venue-requests.js";
+import { assertMailboxOwnership } from "./fixtures/villages-mailbox-owner.fixture.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
 const core = { name: "Glasshouse", classes: ["community"] as ["community"] };
@@ -33,7 +35,7 @@ function deferred() {
 function fixture(name: string) {
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 5,
+    version: 6,
     name,
     setupAt: stamp,
     foundedAt: stamp,

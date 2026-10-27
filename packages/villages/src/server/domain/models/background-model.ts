@@ -8,11 +8,9 @@ export type BackgroundKind =
   | "starting-ties"
   | "story" // Read-only compatibility for retired prose jobs.
   | "resident-planning"
-  | "development"
   | "agenda"
   | "translation"
   | "wish"
-  | "wish-check"
   | "mail"
   | "personal-mail"
   | "social-recovery"

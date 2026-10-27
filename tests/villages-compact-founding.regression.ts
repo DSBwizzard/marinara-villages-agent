@@ -1,16 +1,16 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { routineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import assert from "node:assert/strict";
 import {
   foundingNativeActivities,
   parseCompactFounding,
   parseCompactFoundingCompletion,
 } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
+import { routineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
 import { createCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact-service.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 
 const card = {
   id: "a",
@@ -60,7 +60,7 @@ const context = (native: ReturnType<typeof schedule> | null) => ({
   card,
   venues: [],
   lore: ["Bridge: The bridge is old."],
-  completedWishes: [],
+  wishes: [],
   activeWishes: [],
   schedule: native,
 });
@@ -179,7 +179,7 @@ async function openingIdeaShapes() {
 async function main() {
   await openingIdeaShapes();
   const unscheduled = parseCompactFounding(payload(0), context(null) as any);
-  assert.equal(unscheduled.agenda.wishes.length, 1);
+  assert.equal(Object.hasOwn(unscheduled, "wishes"), false, "Routine output cannot establish a desire");
   assert.equal(Object.keys(unscheduled.agenda.week ?? {}).length, 7);
   for (const weekday of VILLAGE_WEEKDAYS) {
     const blocks = unscheduled.agenda.week![weekday]!;
@@ -207,7 +207,6 @@ async function main() {
     Array.from({ length: 7 }, () => [0, 0, 1, 1, 2, 2, 3, 3]),
     "one supplied option per daypart normalizes without inventing an activity or changing its daypart",
   );
-  assert.equal(recovered.wishes[0]!.semanticCriteria!.target, "engraved keepsake");
   assert.deepEqual(
     JSON.parse(savedResponse.content),
     compactDayparts,
@@ -244,20 +243,7 @@ async function main() {
     assert.equal(result.moves.length, 0, "native schedules are not translated");
   }
   assert.throws(() => parseCompactFounding({ ...payload(0), days: [] }, context(null) as any), /seven-day/);
-  assert.equal(
-    parseCompactFounding({ ...payload(0), wishes: [] }, context(null) as any).agenda.wishes.length,
-    0,
-    "a quiet founding day needs no wish",
-  );
-  assert.equal(
-    parseCompactFounding(payload(0), { ...context(null), allowInitialWish: false } as any).agenda.wishes.length,
-    0,
-    "an interrupted preparation retry cannot replenish its initial wish",
-  );
   assert.throws(() => parseCompactFounding({ ...payload(0), rhythm: undefined }, context(null) as any), /rest windows/);
-
-  for (const wish of ["You want company", "Repair my chair"])
-    assert.throws(() => parseCompactFounding({ ...payload(0), wishes: [{ wish }] }, context(null) as any), /neutrally/);
 
   let calls = 0;
   let capturedPrompt = "";

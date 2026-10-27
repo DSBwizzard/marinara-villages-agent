@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
+import type { VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+import { queueVillageVenueRequest } from "../packages/villages/src/server/domain/rules/venue-request-state.js";
 import {
   draftNewVenueProject,
   draftRenovationProject,
 } from "../packages/villages/src/server/features/projects/project-drafts.js";
-import { createVenueMailbox } from "../packages/villages/src/server/features/venues/venue-mailbox-service.js";
 import { createVenueMailRules } from "../packages/villages/src/server/features/venues/venue-mail-rules-service.js";
-import { queueVillageVenueRequest } from "../packages/villages/src/server/domain/rules/venue-request-state.js";
-import type { VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
+import { createVenueMailbox } from "../packages/villages/src/server/features/venues/venue-mailbox-service.js";
+import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 
 const at = "2026-10-07T12:00:00.000Z";
 let world = defaultVillageState();
@@ -20,7 +20,7 @@ world.villagers.push({
   cardSnapshot: { id: "resident", name: "Resident", capturedAt: at },
   addedAt: at,
   agenda: null,
-  completedWishes: [],
+  wishes: [],
 } as VillageVillager);
 queueVillageVenueRequest(world, { name: "Garden", classes: ["community"] }, "resident", "chat", "request", at);
 const rules = createVenueMailRules({ draftNewVenueProject, draftRenovationProject });

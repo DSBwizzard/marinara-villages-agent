@@ -1,32 +1,48 @@
-import { coerceSession } from "../../domain/decoding/scene-codec.js";
-import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
-import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
-import { recallMemories } from "../../domain/rules/memory-recall.js";
-import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
-import { socialContextState } from "../../domain/rules/social-context.js";
 import { z } from "zod";
-import type { Handler } from "../../domain/models/background-model.js";
-import type { VillageState } from "../../domain/models/world.js";
-import type { SocialMailInterpretation, SocialMailInput, SocialMailOutbox } from "../../domain/models/social-mail.js";
-import type { RelationshipEvidenceLine, RelationshipReview } from "../../domain/models/relationship-types.js";
 import type { MailboxView } from "../../../shared/contracts/mailbox.js";
+import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
+import type { Handler } from "../../domain/models/background-model.js";
+import type { RelationshipEvidenceLine, RelationshipReview } from "../../domain/models/relationship-types.js";
+import type { SocialMailInput, SocialMailInterpretation, SocialMailOutbox } from "../../domain/models/social-mail.js";
+import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
-import { semanticHash } from "../../domain/rules/semantic-contract.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { bindLiveProposals } from "../../domain/rules/live-exchange.js";
+import { recallMemories } from "../../domain/rules/memory-recall.js";
+import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
 import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
-import {
-  defaultRelationshipState,
-  applyRelationshipReview,
-  SocialRevisionConflict,
-} from "../../domain/rules/relationship-rules.js";
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
   RELATIONSHIP_REVIEW_INSTRUCTION,
 } from "../../domain/rules/relationship-review.js";
-import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
+import {
+  applyRelationshipReview,
+  defaultRelationshipState,
+  SocialRevisionConflict,
+} from "../../domain/rules/relationship-rules.js";
+import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
+import { semanticHash } from "../../domain/rules/semantic-contract.js";
+import { socialContextState } from "../../domain/rules/social-context.js";
+import {
+  beginMailDelivery,
+  cancelPersonalMessage,
+  completeMailDelivery,
+  personalThreadId,
+  queuePersonalMessage,
+  readPersonalThread,
+  requireMailSource,
+  respondSocialInvitation,
+  withoutMailDisclosures,
+} from "../../domain/rules/social-mail.js";
+import {
+  applyWishSource,
+  publishWishDisclosure,
+  SOCIAL_WISH_INSTRUCTION,
+  wishWritingContext,
+} from "../../domain/rules/social-wishes.js";
 import {
   accessChangedAfter,
   applyAccessCommand,
@@ -34,17 +50,6 @@ import {
   settleStandingAccess,
 } from "../../domain/rules/venue-access.js";
 import { canInviteToZone, resolveVenueZone, zoneClosed, zoneControllerIds } from "../../domain/rules/venue-zones.js";
-import {
-  queuePersonalMessage,
-  personalThreadId,
-  requireMailSource,
-  cancelPersonalMessage,
-  beginMailDelivery,
-  completeMailDelivery,
-  readPersonalThread,
-  respondSocialInvitation,
-  withoutMailDisclosures,
-} from "../../domain/rules/social-mail.js";
 
 export interface SocialMailPorts {
   processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
@@ -152,6 +157,7 @@ export function createSocialMail(ports: SocialMailPorts) {
                       character: resident.cardSnapshot,
                       admission: resident.admission,
                       ownContext,
+                      wishes: wishWritingContext(resident.wishes, input.sourceText),
                       memories: JSON.parse(input.narrationMemories ?? '{"memories":[]}'),
                       incoming: { text: input.sourceText, at: input.sourceAt },
                       now: input.admittedAt ?? input.sourceAt,
@@ -192,6 +198,9 @@ export function createSocialMail(ports: SocialMailPorts) {
             RELATIONSHIP_REVIEW_INSTRUCTION +
             " " +
             SCENE_MEMORY_INSTRUCTION +
+            " " +
+            SOCIAL_WISH_INSTRUCTION +
+            " Return sourceWishChanges:[] and replyWishChanges:[] for the respective incoming/reply source. Use exact supplied message IDs as evidence. Source effects cite incoming.id only. Reply effects require reply.id as new evidence; they can cite incoming.id as earlier context. No source Wish effects when sourceDelivered is true. Mail establishes written social interactions, not completed meetings or physical acts. All retained owner Wishes and conditions are supplied. " +
             " Additionally return sourceMemoryChanges:[] and replyMemoryChanges:[] under that native Memory schema, grounded in incoming and reply respectively. These arrays teach ONLY the corresponding resident, never player or another resident. All player learning uses disclosures when read. sourceMemoryChanges cites incoming.id only; replyMemoryChanges must include reply.id as new evidence. Reports name the actual speaker; claims establish no physical outcome. Use the supplied memory.administrative screening fingerprint. Empty arrays are valid for filler, repeated or unimportant correspondence. When sourceDelivered is true, sourceMemoryChanges must be empty. " +
             " Every invitation must include visitAccess: either {accompanied:boolean,outsideHours:boolean} or null. An explicit invitation to enter the resident's authorized non-exterior Zone (for example, 'come on in' in response to a request to visit that room) REQUIRES the visitAccess object when the supplied controllers include the resident. It grants one visit on player acceptance, never standing access. Preserve explicit accompaniment and visitor-hour conditions. Use null for a general meeting suggestion, lack of invitation authority, or unsupported conditions; never infer a ban exception. " +
             " Interpret this correspondence as two separate source bundles. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview,invitation?:{title,detail,venueId,zoneId,dueAt?,visitAccess:null|{accompanied:boolean,outsideHours:boolean}}}. sourceReview may cite ONLY incoming.id; it establishes the effects of delivering the player's exact text before any reply. replyReview may cite incoming.id and reply.id. Its revisions include sourceReview\'s effects. If mode is resident, incoming is the resident\'s already written message: interpret only sourceReview, return empty replyReview and allow an invitation grounded in incoming instead of a reply. When sourceDelivered is true, sourceReview must be empty and replyReview uses the supplied current live state. sceneAfter and liveAfter coincide for mail. Private stances remain private. Disclosures are saved for local notebook application only when the player opens the delivered reply. Spoken/written physical claims are attributed claims, never verified deeds. A resident invitation must be explicitly communicated in this reply, use an existing Venue and Zone, and remain proposed until a separate explicit player choice. A deadline must be an explicitly proposed future real-time ISO instant; no retroactive appointments. In player mode an empty reply means empty replyReview and no invitation. Only exact supplied source IDs are evidence.",
@@ -201,6 +210,7 @@ export function createSocialMail(ports: SocialMailPorts) {
           content: JSON.stringify({
             memory: input.systemMemory?.envelope,
             sourceDelivered: input.sourceDelivered,
+            wishes: resident.wishes,
             mode: input.mode ?? "player",
             incoming: sourceLine,
             reply: replyLine,
@@ -271,6 +281,8 @@ export function createSocialMail(ports: SocialMailPorts) {
       replyText: text,
       invitation: invitation as SocialMailInterpretation["invitation"],
       sourceMemoryChanges: input.sourceDelivered ? [] : memories(raw.sourceMemoryChanges),
+      sourceWishChanges: input.sourceDelivered ? [] : memories(raw.sourceWishChanges),
+      replyWishChanges: text ? memories(raw.replyWishChanges) : [],
       replyMemoryChanges: text ? memories(raw.replyMemoryChanges) : [],
     };
   }
@@ -384,6 +396,85 @@ export function createSocialMail(ports: SocialMailPorts) {
     if (outcome.status === "failed" || outcome.status === "pending")
       throw new Error(outcome.reason || "Correspondence Memory settlement needs recovery.");
   }
+  async function publishReadWishMail(seed: string, threadId: string) {
+    const social = await ports.readRelationshipState(seed);
+    const messages =
+      social.mailThreads[threadId]?.messages.filter(
+        (m) => m.toId === "player" && m.readAt && social.mailDeliveries[m.id] && m.wishDisclosures?.length,
+      ) ?? [];
+    if (!messages.length) return;
+    await ports.mutateVillageState(
+      (state) => {
+        if (state.seed !== seed) throw conflict("Village identity changed.");
+        for (const message of messages)
+          for (const fact of message.wishDisclosures ?? []) publishWishDisclosure(state, fact, message.readAt!);
+      },
+      { memories: true },
+    );
+  }
+  async function settleWishMail(input: SocialMailInput, result: SocialMailInterpretation, bundle: "source" | "reply") {
+    const sourceId = input.messageId,
+      replyId = input.messageId + ":reply";
+    const rows = (bundle === "source" ? result.sourceWishChanges : result.replyWishChanges) ?? [];
+    let facts: import("../../../shared/contracts/wishes.js").WishDisclosure[] = [];
+    await ports.mutateVillageState((state) => {
+      if (state.seed !== input.seed) throw conflict("Village identity changed.");
+      const captured = structuredClone(input.admitted.villagers);
+      if (bundle === "reply")
+        for (const original of captured) {
+          for (const receipt of Object.values(state.exchangeReceipts)) {
+            if (
+              receipt.sceneId !== "mail:" + sourceId + ":source" ||
+              receipt.actorId !== original.characterId ||
+              !receipt.sceneFacts?.wish?.value
+            )
+              continue;
+            const value = receipt.sceneFacts.wish.value;
+            original.wishes = [...original.wishes.filter((w) => w.id !== value.id), structuredClone(value)];
+          }
+        }
+      const lines = [
+        {
+          id: sourceId,
+          speakerId: input.mode === "resident" ? input.residentId : "player",
+          content: input.sourceText,
+          heardBy: [input.residentId, "player"],
+          playerHeard: true,
+          kind: "mail",
+        },
+        ...(bundle === "reply"
+          ? [
+              {
+                id: replyId,
+                speakerId: input.residentId,
+                content: result.replyText,
+                heardBy: [input.residentId, "player"],
+                playerHeard: true,
+                kind: "mail",
+              },
+            ]
+          : []),
+      ];
+      facts = applyWishSource(state, {
+        id: "mail:" + sourceId + ":" + bundle,
+        kind: "mail",
+        at: input.sourceAt,
+        recordedAt: new Date().toISOString(),
+        lines,
+        currentLineIds: bundle === "reply" ? [replyId] : [sourceId],
+        changes: rows,
+        residents: captured,
+        learn: false,
+      }).disclosures;
+    });
+    await ports.mutateRelationships(input.seed, (state) => {
+      const message = state.mailThreads[input.threadId]?.messages.find(
+        (m) => m.id === (bundle === "reply" ? replyId : sourceId),
+      );
+      if (message && message.toId === "player") message.wishDisclosures = facts;
+    });
+    await publishReadWishMail(input.seed, input.threadId);
+  }
   async function settlePermissions(input: SocialMailInput, review: RelationshipReview, at: string) {
     await ports.mutateVillageState((state) => {
       if (state.seed !== input.seed) throw conflict("Village identity changed.");
@@ -486,6 +577,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         }
       });
     }
+    await settleWishMail(input, result, "source");
     await rememberResidentMail(input, result, "source");
     current = await ports.readRelationshipState(input.seed);
     const replyId = input.messageId + ":reply";
@@ -540,6 +632,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         message.replyStatus = "complete";
         message.error = undefined;
       });
+    await settleWishMail(input, result, "reply");
     await rememberResidentMail(input, result, "reply");
     await ports.mutateVillageState((state) => {
       if (state.seed === input.seed) {
@@ -776,6 +869,8 @@ export function createSocialMail(ports: SocialMailPorts) {
       await ports.mutateVillageState(
         (state) => {
           if (state.seed !== village.seed) throw conflict("Village identity changed.");
+          for (const fact of message.wishDisclosures ?? [])
+            publishWishDisclosure(state, fact, new Date().toISOString());
           publishRelationshipDisclosures(
             state,
             message.disclosures ?? [],
@@ -791,6 +886,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     await ports.mutateRelationships(village.seed, (state) =>
       readPersonalThread(state, threadId, new Date().toISOString(), readIds),
     );
+    await publishReadWishMail(village.seed, threadId);
     return readMailbox();
   }
   async function cancel(threadId: string, messageId: string) {
@@ -1021,6 +1117,15 @@ export function createSocialMail(ports: SocialMailPorts) {
       input,
       result: {
         source,
+        sourceWishChanges: Array.isArray(asRecord(value).wishChanges)
+          ? (asRecord(value).wishChanges as unknown[]).map((raw) => {
+              const c = asRecord(raw);
+              return {
+                ...c,
+                evidence: Array.isArray(c.evidence) ? c.evidence.map((id) => (id === 0 ? messageId : id)) : [],
+              };
+            })
+          : [],
         reply: emptyRelationshipReview(),
         replyText: "",
         invitation,

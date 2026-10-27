@@ -1,30 +1,29 @@
-import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
-import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
-import {
-  configureSceneQueries,
-  readProjectTurnEvidence,
-  progressBacklog,
-  type SceneQueries,
-} from "../packages/villages/src/server/features/scenes/services.js";
+import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { SESSION_KIND, SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import type {
   VenueLine,
   VenueScene,
   VenueSubmission,
 } from "../packages/villages/src/server/domain/models/scene-model.js";
-import { SESSION_KIND, SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
+import {
+  configureSceneQueries,
+  progressBacklog,
+  readProjectTurnEvidence,
+  type SceneQueries,
+} from "../packages/villages/src/server/features/scenes/services.js";
 type Document = Awaited<ReturnType<CapabilityDocumentStore["list"]>>[number];
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
@@ -89,7 +88,7 @@ function ownedScene(owner: string): VenueScene {
 }
 function fixture(name: string) {
   const world = coerceVillageState({
-    version: 5,
+    version: 6,
     ...defaultVillageState(),
     seed: name,
     foundedAt: stamp,
@@ -186,157 +185,8 @@ function fixture(name: string) {
     },
   };
 }
-async function wishEvidenceGuards() {
-  const world = defaultVillageState();
-  world.seed = "wish-history";
-  const wish = { id: "wish", wish: "Talk about gardening and agree on a day", addedAt: stamp } as any;
-  const fingerprint = wishFingerprint(wish);
-  world.villagers = [{ characterId: "mara", agenda: { wishes: [wish] } }] as any;
-  const saved = coerceSession({
-    version: 2,
-    ...scene("prior"),
-    processingVersion: 1,
-    villageSeed: world.seed,
-    lines: [
-      line("player-proof", {
-        role: "user",
-        speakerId: "",
-        content: "We grow roses together.",
-        contactHidden: true,
-        attentionEvidence: true,
-      }),
-      line("resident-proof"),
-    ],
-    submissions: [
-      turn("proof", {
-        replyLineIds: ["player-proof", "resident-proof"],
-        wishProposals: [
-          {
-            actorId: "mara",
-            wishId: "wish",
-            fingerprint,
-            intent: "progress",
-            lineIds: ["player-proof", "resident-proof"],
-          },
-        ],
-      }),
-    ],
-  });
-  const receiptId = "wish-change:prior:proof:wish:progress";
-  const receipt = {
-    id: receiptId,
-    domain: "wishes",
-    status: "applied",
-    actorId: "mara",
-    wishId: "wish",
-    sceneId: saved.id,
-    submissionId: "proof",
-    at: stamp,
-    evidenceIds: ["player-proof", "resident-proof"],
-    reason: "New Wish evidence accepted",
-  } as const;
-  world.exchangeReceipts[receiptId] = structuredClone(receipt) as any;
-  const failure = { missing: undefined as Error | undefined };
-  let sourceReads = 0;
-  const queries = createSceneQueryService({
-    readVillageState: async () => structuredClone(world),
-    readSession: async (id) => {
-      sourceReads++;
-      assert.equal(id, saved.id);
-      if (failure.missing) throw failure.missing;
-      return structuredClone(saved);
-    },
-    villagesDocuments: () => {
-      throw Error("Never scan archives");
-    },
-  });
-  const input = { receiptId, seed: world.seed, actorId: "mara", wishId: "wish", fingerprint, at: stamp };
-  const before = JSON.stringify({ world, saved });
-  const valid = await queries.readWishTurnEvidence(input);
-  assert.deepEqual(
-    valid.map((row) => [row.id, row.speakerId, row.current]),
-    [
-      ["player-proof", "player", false],
-      ["resident-proof", "mara", false],
-    ],
-  );
-  assert.equal(
-    JSON.stringify({ world, saved }),
-    before,
-    "Private evidence retrieval mutates neither journal nor saved source",
-  );
-  assert.equal(sourceReads, 1);
-  for (const extra of [
-    { seed: "foreign" },
-    { actorId: "other" },
-    { wishId: "other" },
-    { fingerprint: "stale" },
-    { at: "2026-10-06T12:00:00.000Z" },
-  ])
-    assert.deepEqual(await queries.readWishTurnEvidence({ ...input, ...extra }), []);
-  assert.equal(sourceReads, 1, "Invalid current identity is refused before source reads");
-  for (const extra of [
-    { status: "rejected" },
-    { domain: "memories" },
-    { actorId: "other" },
-    { wishId: "other" },
-    { at: "2026-10-08T12:00:00.000Z" },
-    { id: "wrong" },
-    { evidenceIds: Array(17).fill("resident-proof") },
-  ]) {
-    world.exchangeReceipts[receiptId] = { ...receipt, ...extra } as any;
-    assert.deepEqual(await queries.readWishTurnEvidence(input), []);
-  }
-  world.exchangeReceipts[receiptId] = structuredClone(receipt) as any;
-  const seed = saved.villageSeed;
-  saved.villageSeed = "foreign";
-  assert.deepEqual(await queries.readWishTurnEvidence(input), []);
-  saved.villageSeed = seed;
-  const sourceTurn = saved.submissions[0];
-  sourceTurn.wishProposals![0].fingerprint = "stale";
-  assert.deepEqual(await queries.readWishTurnEvidence(input), []);
-  sourceTurn.wishProposals![0].fingerprint = fingerprint;
-  sourceTurn.id = "other";
-  assert.deepEqual(await queries.readWishTurnEvidence(input), []);
-  sourceTurn.id = "proof";
-  for (const extra of [
-    { heardBy: ["other"] },
-    { contactReport: true },
-    { kind: "side" },
-    { contactHidden: true },
-    { at: "2026-10-08T12:00:00.000Z" },
-    { id: "not-the-receipt" },
-  ]) {
-    const original = saved.lines[1];
-    saved.lines[1] = { ...original, ...extra } as any;
-    assert.deepEqual(
-      (await queries.readWishTurnEvidence(input)).map((row) => row.id),
-      ["player-proof"],
-    );
-    saved.lines[1] = original;
-  }
-  sourceTurn.replyLineIds = ["resident-proof"];
-  assert.deepEqual(
-    (await queries.readWishTurnEvidence(input)).map((row) => row.id),
-    ["resident-proof"],
-    "A receipt cannot import a line outside its exact source turn",
-  );
-  sourceTurn.replyLineIds = ["player-proof", "resident-proof"];
-  saved.lines[0].attentionEvidence = false;
-  assert.deepEqual(
-    (await queries.readWishTurnEvidence(input)).map((row) => row.id),
-    ["resident-proof"],
-  );
-  saved.lines[0].attentionEvidence = true;
-  saved.lines[1].content = "x".repeat(12001);
-  await assert.rejects(queries.readWishTurnEvidence(input), /allowance/);
-  saved.lines[1].content = "resident-proof";
-  failure.missing = Error("Exact source storage failure");
-  await assert.rejects(queries.readWishTurnEvidence(input), (error) => error === failure.missing);
-}
 
 async function main() {
-  await wishEvidenceGuards();
   const f = fixture("A");
   assert.deepEqual(f.calls, [], "construction is inert");
   const saved = scene();

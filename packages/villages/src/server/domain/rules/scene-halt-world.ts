@@ -1,13 +1,13 @@
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { asRecord } from "./coerce.js";
-import { sceneContinuityView } from "./scene-continuity.js";
 import { shape } from "./project-structure.js";
-import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
-import { applyVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
-import { venueResidentIds, venueAssignedCount, venueCapacity, hasVenueClass } from "./venue-model.js";
+import { sceneContinuityView } from "./scene-continuity.js";
+import { wishFingerprint } from "./social-wishes.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
-import { wishFingerprint } from "./wish-interpretation-rules.js";
+import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
+import { applyVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
+import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -18,23 +18,34 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
   const captured = sceneContinuityView(current, scene, false);
   const liveVenue = current.venues.find((row) => row.id === scene.placeId);
   const oldVenue = captured.venues.find((row) => row.id === scene.placeId);
+  const created = new Set<string>();
   for (const value of Array.isArray(reply.wishChanges) ? reply.wishChanges : []) {
     const row = asRecord(value);
+    const local = JSON.stringify([row.actorId, row.wishId]);
+    if (row.intent === "create" && String(row.wishId).startsWith("new:")) {
+      const old = captured.villagers.find((r) => r.characterId === row.actorId);
+      const live = current.villagers.find((r) => r.characterId === row.actorId);
+      if (
+        !old ||
+        !live ||
+        old.cardSnapshot.capturedAt !== live.cardSnapshot.capturedAt ||
+        !same(old.wishes, live.wishes)
+      )
+        return true;
+      created.add(local);
+      continue;
+    }
+    if (created.has(local)) continue;
     // Talking about an old Wish is allowed. New fulfillment/progress cannot revive it.
-    if (row.intent !== "progress" && row.intent !== "check") continue;
+    if (!["progress", "fulfilled", "clarify", "approach", "attention", "withdrawn"].includes(String(row.intent)))
+      continue;
     const find = (state: VillageState) =>
       state.villagers
         .find((person) => person.characterId === row.actorId)
-        ?.agenda?.wishes.find((wish) => wish.id === row.wishId);
+        ?.wishes.find((wish) => wish.id === row.wishId);
     const old = find(captured),
       live = find(current);
-    if (
-      !old ||
-      !live ||
-      wishFingerprint(old) !== wishFingerprint(live) ||
-      (old.conditionRevision ?? 0) !== (live.conditionRevision ?? 0)
-    )
-      return true;
+    if (!old || !live || wishFingerprint(old) !== wishFingerprint(live)) return true;
   }
   if (reply.sceneChange) {
     const change = reply.sceneChange as VenueSceneChange;
@@ -182,10 +193,6 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
     )
       return true;
   }
-  for (const value of Array.isArray(reply.developmentChanges) ? reply.developmentChanges : []) {
-    const row = asRecord(value);
-    const id = String(row.characterId ?? row.actorId ?? "");
-    if (!id || !same(current.development?.residents[id], captured.development?.residents[id])) return true;
-  }
+
   return false;
 }

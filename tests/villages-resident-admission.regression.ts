@@ -1,36 +1,35 @@
-import assert from "node:assert/strict";
 import Fastify from "fastify";
+import assert from "node:assert/strict";
 import {
+  readEffectiveVillagerCard,
+  readVillagerCard,
+} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
+import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { readFoundingResidentAdmissions } from "../packages/villages/src/server/domain/rules/resident-admission.js";
+import { sceneryImageKey, sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import {
+  fitVenueWritingMessages,
+  venueCardProfile,
+} from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
+import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
+import { registerResidentRoutes } from "../packages/villages/src/server/features/residents/routes.js";
+import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-service.js";
+import {
+  admissionLoreContext,
   EMPTY_RESIDENT_ADMISSION,
   readResidentAdmission,
   readWorldName,
+  renderResidentAdmission,
   sameWorld,
   sharedWorldContext,
-  renderResidentAdmission,
-  admissionLoreContext,
 } from "../packages/villages/src/shared/helpers/resident-admission.js";
-import { readFoundingResidentAdmissions } from "../packages/villages/src/server/domain/rules/resident-admission.js";
-import {
-  defaultVillageState,
-  coerceVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  readVillagerCard,
-  readEffectiveVillagerCard,
-} from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
-import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
-import { registerResidentRoutes } from "../packages/villages/src/server/features/residents/routes.js";
-import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
-import {
-  venueCardProfile,
-  fitVenueWritingMessages,
-} from "../packages/villages/src/server/domain/rules/venue-writing.js";
-import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
-import { wishRevision } from "../packages/villages/src/server/domain/rules/wish-policy.js";
-import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-service.js";
-import { sceneryPrompt, sceneryImageKey } from "../packages/villages/src/server/domain/rules/scenery-context.js";
-import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 
 assert.deepEqual(readResidentAdmission({ homeworld: " Koront ", startingSituation: " Already living here. " }), {
   homeworld: "Koront",
@@ -133,15 +132,11 @@ const projected = projectVillager(state.villagers[0], "Buster", "", [], "", "", 
 assert.ok(!JSON.stringify(projected).includes("Visiting the Village"));
 assert.ok(!Object.hasOwn(projected, "admission"));
 const before = agendaRevision(state, "buster");
-const beforeWish = wishRevision(state.villagers[0], state);
 state.worldName = "Othiras revised";
 assert.notEqual(agendaRevision(state, "buster"), before);
-assert.notEqual(wishRevision(state.villagers[0], state), beforeWish);
 const contextBefore = agendaRevision(state, "buster");
-const wishContextBefore = wishRevision(state.villagers[0], state);
 state.villagers[0].admission.startingSituation = "Settled here.";
 assert.notEqual(agendaRevision(state, "buster"), contextBefore);
-assert.notEqual(wishRevision(state.villagers[0], state), wishContextBefore);
 const venue = parsePlace(
   {
     id: "home",

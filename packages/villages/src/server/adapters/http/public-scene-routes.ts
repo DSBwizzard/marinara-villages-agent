@@ -1,14 +1,13 @@
-import { withVillageClockWork } from "../time/clock-gate.js";
-import { operationSummary } from "../operations/operation-context.js";
-import { publicSceneResponse } from "../../domain/rules/scene-public.js";
-import type { VillageRouteHandler } from "./route-support.js";
 import type { FastifyInstance } from "fastify";
+import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import { activationScope } from "../engine/activation-scope.js";
+import { operationSummary } from "../operations/operation-context.js";
+import { withVillageClockWork } from "../time/clock-gate.js";
+import type { VillageRouteHandler } from "./route-support.js";
 
 export function publicSceneRoutes(
   engine: FastifyInstance,
   guard?: (method: string, path: string, body: unknown) => Promise<string | null>,
-  present?: (request: Parameters<VillageRouteHandler>[0], result: unknown) => Promise<unknown>,
   clockIndependentRoutes: readonly string[] = [],
 ): FastifyInstance {
   const owner = activationScope();
@@ -22,8 +21,9 @@ export function publicSceneRoutes(
           if (blocked) return reply.code(409).send({ error: blocked });
           return handler(request, reply);
         };
-        let result = await (clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work));
-        if (present) result = await present(request, result);
+        const result = await (clockIndependentRoutes.includes(`${method} ${path}`)
+          ? work()
+          : withVillageClockWork(work));
         if (result && typeof result === "object") {
           const payload = result as Record<string, unknown>;
           for (const key of ["session", "visit"]) {

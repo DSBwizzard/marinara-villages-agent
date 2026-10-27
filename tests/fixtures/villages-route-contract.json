@@ -16,6 +16,14 @@
     },
     {
       "method": "get",
+      "path": "/villagers/:characterId/wishes/inspect"
+    },
+    {
+      "method": "patch",
+      "path": "/villagers/:characterId/wishes/:wishId/follow"
+    },
+    {
+      "method": "get",
       "path": "/mailbox"
     },
     {
@@ -53,10 +61,6 @@
     {
       "method": "get",
       "path": "/relationships"
-    },
-    {
-      "method": "post",
-      "path": "/villagers/:characterId/wishes/:wishId/retire"
     },
     {
       "method": "get",
@@ -579,18 +583,6 @@
       "path": "/clock/advance"
     },
     {
-      "method": "get",
-      "path": "/development"
-    },
-    {
-      "method": "patch",
-      "path": "/development"
-    },
-    {
-      "method": "post",
-      "path": "/development/review"
-    },
-    {
       "method": "post",
       "path": "/clock/recover"
     },
@@ -640,19 +632,11 @@
     },
     {
       "method": "get",
-      "path": "/agendas/:characterId/history"
-    },
-    {
-      "method": "get",
       "path": "/agendas"
     },
     {
       "method": "post",
       "path": "/agendas/:characterId/regenerate"
-    },
-    {
-      "method": "post",
-      "path": "/agendas/:characterId/completed/:wishId/correct"
     },
     {
       "method": "patch",

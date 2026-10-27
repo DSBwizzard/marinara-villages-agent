@@ -1,14 +1,13 @@
-import { useFocusRevision, useVillageActivity } from "../../shared/activity.js";
-import { PeopleBook } from "./PeopleBook.js";
-import { PursuitsPanel } from "./PursuitsPanel.js";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { ResidentSignature, ResidentSignatureImage } from "../../../shared/helpers/resident-signature.js";
+import { useFocusRevision, useVillageActivity } from "../../shared/activity.js";
 import { VenuePolaroid } from "../exploration/villages-venue-polaroid.js";
+import { PeopleBook } from "./PeopleBook.js";
 import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
 import { VillagerSignature } from "./villages-signature.js";
 import { VillagerWishJournal } from "./villages-wish-journal.js";
-import { type ReactNode, useEffect, useRef, useState } from "react";
 
-export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues" | "pursuits";
+export type DossierSection = "overview" | "relationships" | "wishes" | "memories" | "agenda" | "venues";
 export type DossierNavigation = {
   actorId: string;
   wishId?: string;
@@ -25,7 +24,6 @@ const titles: Record<DossierSection, string> = {
   memories: "Memories",
   agenda: "Agenda",
   venues: "Venues",
-  pursuits: "Pursuits",
 };
 export type DossierVenue = {
   id: string;
@@ -38,11 +36,6 @@ export type DossierLink = { id: string; title: string; detail: string; onOpen: (
 
 export function DossierIcon({ name }: { name: DossierSection | "inspect" }) {
   const paths = {
-    pursuits: (
-      <>
-        <path d="M5 21V3m0 0h13l-3 5 3 5H5" />
-      </>
-    ),
     overview: (
       <>
         <path d="m3 11 9-8 9 8M5 10v11h14V10M9 21v-8h6v8" />
@@ -198,7 +191,7 @@ export function VillagerDossier({
   }, [inspect, section, onInspectSection]);
   const choose = (next: DossierSection, inspection = inspect) => {
     if (next !== section) {
-      const order = [...sections, "pursuits"];
+      const order = sections;
       setTurn((current) => ({ id: current.id + 1, backwards: order.indexOf(next) < order.indexOf(section) }));
     }
     setSection(next);
@@ -271,11 +264,6 @@ export function VillagerDossier({
             </button>
             {section !== "overview" || !villager ? <h1>{name}</h1> : null}
             <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
-              {villager ? (
-                <button type="button" aria-pressed={section === "pursuits"} onClick={() => choose("pursuits")}>
-                  Pursuits
-                </button>
-              ) : null}
               {villager ? (
                 <details className={`${P}-dossier-management`} open={manageOpen}>
                   <summary
@@ -381,14 +369,7 @@ export function VillagerDossier({
               </Sheet>
             ) : (
               <>
-                {section === "overview" ? null : section === "pursuits" ? (
-                  <PursuitsPanel
-                    characterId={navigation.actorId}
-                    known={relationships ? (profile?.knownDevelopment ?? []) : null}
-                    inspect={inspect}
-                    request={request}
-                  />
-                ) : section === "relationships" ? (
+                {section === "overview" ? null : section === "relationships" ? (
                   <VillagesRelationships
                     request={request}
                     prefix={P}
@@ -404,6 +385,7 @@ export function VillagerDossier({
                   ) : (
                     <Sheet title="Shared wishes" icon="wishes">
                       <VillagerWishJournal
+                        inspect={inspect}
                         request={request}
                         characterId={navigation.actorId}
                         prefix={P}

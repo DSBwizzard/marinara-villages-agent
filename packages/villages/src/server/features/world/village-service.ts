@@ -1,58 +1,48 @@
-import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
+import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import type {
-  MemoryLibrary,
-  MemoryInspection,
-  MemoryListEntry,
-  MemoryForgetRequest,
   MemoryCorrectRequest,
+  MemoryForgetRequest,
+  MemoryInspection,
+  MemoryLibrary,
+  MemoryListEntry,
 } from "../../../shared/contracts/village.js";
-import type { MemoryCandidate } from "../../domain/models/memories.js";
-import { inspectMemoryCandidates, projectMemories } from "../../domain/rules/memory-views.js";
-import {
-  forgetVillageMemory as applyForget,
-  correctVillageMemory as applyCorrection,
-} from "../../domain/rules/village-memories.js";
-import { memoryTerms } from "../../domain/rules/memory-protection.js";
-import { MEMORY_TEXT_LIMIT } from "../../domain/rules/memory-integrity.js";
-import { calendarReplay } from "../../domain/rules/clock-recovery.js";
+import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
+import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import {
   advanceVillageClock,
   assertVillageClockWrite,
   villageNow,
   villageTimeAdvanceSettled,
 } from "../../adapters/time/clock-gate.js";
-import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
+import type { MemoryCandidate } from "../../domain/models/memories.js";
 import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
-import { badRequest, notFound, conflict } from "../../domain/rules/errors.js";
+import { calendarReplay } from "../../domain/rules/clock-recovery.js";
+import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
+import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { MEMORY_TEXT_LIMIT } from "../../domain/rules/memory-integrity.js";
+import { memoryTerms } from "../../domain/rules/memory-protection.js";
+import { inspectMemoryCandidates, projectMemories } from "../../domain/rules/memory-views.js";
+import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import {
+  correctVillageMemory as applyCorrection,
+  forgetVillageMemory as applyForget,
+} from "../../domain/rules/village-memories.js";
 import { villagerPlaceView } from "../../domain/rules/village-projections.js";
-import { wishExpired } from "../../domain/rules/wish-definition.js";
-import { asRecord } from "../../domain/rules/coerce.js";
-import { sceneWishProtected, sceneWishProtectionFinished } from "../../domain/rules/scene-wish-protection.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
-import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
-import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
-import type { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
-import type { backfillAgendas, refreshVillagerRemaps } from "../residents/resident-agendas.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
-import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
-import type { rollActiveAgendas } from "../residents/resident-agendas.js";
-import type { expireResidentWishes } from "../../domain/rules/wish-lifecycle-rules.js";
-import type { reconcileWishLifecycle } from "../residents/wishes/wish-lifecycle.js";
+import type { backfillAgendas, refreshVillagerRemaps, rollActiveAgendas } from "../residents/resident-agendas.js";
+import type { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
 import type { respondDueVenueMail } from "../venues/venue-mailbox.js";
 import type { buildVillageSnapshot } from "./snapshot.js";
-import type { readVillageState, mutateVillageState } from "./village-store.js";
+import type { mutateVillageState, readVillageState } from "./village-store.js";
 
 export interface WorldCoordinationPorts {
   readVillageAuthority: typeof import("./village-store.js").readVillageAuthority;
   mutateMemoryAuthority: (update: (state: VillageState) => void) => Promise<void>;
-  reconcileDevelopment?: (now: Date) => Promise<void>;
   reconcileResidentPlanning?: (now: Date) => Promise<void>;
-  processProjectWishOutbox?: typeof import("../residents/wishes/wish-progress.js").processProjectWishOutbox;
-  readScene?: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
@@ -65,8 +55,6 @@ export interface WorldCoordinationPorts {
   preparePrivateSpaces: typeof preparePrivateSpaces;
   reconcileProjectLifecycles: typeof reconcileProjectLifecycles;
   rollActiveAgendas: typeof rollActiveAgendas;
-  expireResidentWishes: typeof expireResidentWishes;
-  reconcileWishLifecycle: typeof reconcileWishLifecycle;
   respondDueVenueMail: typeof respondDueVenueMail;
 }
 
@@ -74,10 +62,7 @@ export interface WorldCoordinationPorts {
 export function createWorldCoordination({
   readVillageAuthority,
   mutateMemoryAuthority,
-  reconcileDevelopment,
   reconcileResidentPlanning,
-  processProjectWishOutbox,
-  readScene,
   readVillageState,
   mutateVillageState,
   buildVillageSnapshot,
@@ -90,8 +75,6 @@ export function createWorldCoordination({
   preparePrivateSpaces,
   reconcileProjectLifecycles,
   rollActiveAgendas,
-  expireResidentWishes,
-  reconcileWishLifecycle,
   respondDueVenueMail,
 }: WorldCoordinationPorts) {
   /**
@@ -138,28 +121,6 @@ export function createWorldCoordination({
     if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
     if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
       return buildVillageSnapshot(now);
-    // Recover a crash between Scene closure/removal and release of its hold.
-    // Unknown read failures preserve the hold for a later pass.
-    if (readScene) {
-      const releasable: string[] = [];
-      for (const [id, protection] of Object.entries(recorded.sceneWishProtections ?? {})) {
-        if (protection.seed !== recorded.seed) {
-          releasable.push(id);
-          continue;
-        }
-        try {
-          const scene = await readScene(id);
-          if (scene.villageSeed !== recorded.seed || sceneWishProtectionFinished(scene, recorded.foundedAt))
-            releasable.push(id);
-        } catch (error) {
-          if (asRecord(error).statusCode === 404) releasable.push(id);
-        }
-      }
-      if (releasable.length)
-        await mutateVillageState((state) => {
-          if (state.seed === recorded.seed) for (const id of releasable) delete state.sceneWishProtections?.[id];
-        });
-    }
     let completedMove = false;
     for (const residence of recorded.residences) {
       if (residence.status !== "moving" || Date.parse(residence.completesAt ?? "") > now.getTime()) continue;
@@ -184,7 +145,6 @@ export function createWorldCoordination({
           ),
       },
     );
-    await processProjectWishOutbox?.();
     recorded = await readVillageState();
     const moment = deriveVillageMoment({
       foundedAt: recorded.foundedAt,
@@ -195,20 +155,6 @@ export function createWorldCoordination({
     const currentMs = Date.parse(moment.instant);
     // These are deterministic reconciliation rules. They run for both the live
     // timer and restart catch-up, irrespective of background pace.
-    await mutateVillageState((state) => {
-      for (const resident of state.villagers) {
-        const expired =
-          resident.agenda?.wishes.filter(
-            (wish) => wishExpired(wish, now.getTime()) && !sceneWishProtected(state, resident.characterId, wish),
-          ) ?? [];
-        if (expired.length)
-          state.wishRefillIntents[resident.characterId] = {
-            id: backgroundRevision(expired.map((wish) => wish.id)),
-            settled: expired.map((wish) => wish.wish).join("; "),
-          };
-        expireResidentWishes(resident, now, state);
-      }
-    });
     await rollActiveAgendas(now);
     await mutateVillageState(
       (state) => {
@@ -270,7 +216,6 @@ export function createWorldCoordination({
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
-    await reconcileDevelopment?.(now);
     await respondDueVenueMail(now);
     // Initial space preparation retains the founding generation path; begin it only after local advancement.
     outsideVenueOperation(() => {
@@ -282,7 +227,6 @@ export function createWorldCoordination({
     for (const characterId of new Set(pendingRooms)) await retryResidencePrivateSpaceAdaptation(characterId);
     const withAgendas = await backfillAgendas(await readVillageState(), now);
     await refreshVillagerRemaps(withAgendas, now);
-    await reconcileWishLifecycle(now);
     await reconcileResidentPlanning?.(now);
     return buildVillageSnapshot(now);
   }

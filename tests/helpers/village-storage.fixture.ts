@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
+import { createHash } from "node:crypto";
 import { emptyMemoryPayload } from "../../packages/villages/src/server/adapters/storage/memory-payload-store.js";
+import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 const wrappers = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 const wrapped = new WeakSet<CapabilityDocumentStore>();
 /** Native fixture authorship is projected into the current saved layout without
@@ -38,7 +38,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
-      if (raw?.version !== 5) return metadata;
+      if (raw?.version !== 6) return metadata;
       if (Object.hasOwn(raw, "memoryHead")) return { ...metadata, data: { ...strip(raw), memoryHead: raw.memoryHead } };
       if (!raw.memories) return metadata;
       const state = coerceVillageState(raw),

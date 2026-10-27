@@ -13,6 +13,7 @@ export type SocialMailMessage = {
   replyTo?: string;
   replyStatus?: "pending" | "complete";
   disclosures?: RelationshipDisclosure[];
+  wishDisclosures?: import("../../../shared/contracts/wishes.js").WishDisclosure[];
   error?: string;
 };
 export type SocialMailThread = {
@@ -54,6 +55,8 @@ export type SocialMailInterpretation = {
   reply: RelationshipReview;
   replyText: string;
   sourceMemoryChanges?: unknown[];
+  sourceWishChanges?: unknown[];
+  replyWishChanges?: unknown[];
   replyMemoryChanges?: unknown[];
   invitation?: SocialInvitation["terms"];
 };

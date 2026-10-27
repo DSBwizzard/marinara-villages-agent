@@ -1,46 +1,42 @@
-import { addMemory } from "./helpers/memories-fixture.js";
 import assert from "node:assert/strict";
-import { developmentFixture } from "./fixtures/villages-development.fixture.js";
-import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
-import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import { configureVillageClock, villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
-import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
-import { createResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
-import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
-import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
+import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createDevelopment } from "../packages/villages/src/server/features/world/development-service.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { reconcileProjectLifecycles } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
-import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
-import { initializeDevelopment } from "../packages/villages/src/server/domain/rules/resident-development.js";
-import { expireResidentWishes } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
-import {
-  captureSceneContinuity,
-  sceneContinuityView,
-} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
   reconcileRelationships,
   relationshipKey,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
+import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
+import {
+  captureSceneContinuity,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { readEncounter } from "../packages/villages/src/server/domain/rules/social-encounter.js";
 import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
+import { createResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
+import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
+import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
+import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
 import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
-import type { VillageState, VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { socialWorldFixture } from "./fixtures/social-world.fixture.js";
+import { fixture as projectFixture } from "./fixtures/villages-projects.fixture.js";
+import { addMemory } from "./helpers/memories-fixture.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 
 const day = 86_400_000;
 const start = Date.parse("2026-10-24T12:00:00Z");
 
 async function fixture() {
-  const state = developmentFixture();
+  const state = socialWorldFixture();
   state.simulatedThrough = new Date(start).toISOString();
   state.backgroundPace = "off";
-  initializeDevelopment(state, false, state.simulatedThrough);
-  initializeDevelopment(state, true, state.simulatedThrough);
   const projects = projectFixture();
   const id = await projects.newProject();
   await projects.service.startProjectConstruction(id, projects.body(id), new Date(start));
@@ -50,16 +46,7 @@ async function fixture() {
     resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, new Date(start));
     resident.agenda.personalizationPending = false;
   }
-  state.villagers[0]!.agenda!.wishes = [
-    {
-      id: "wish",
-      wish: "Take a walk",
-      tell: "Boots ready",
-      intensity: 1,
-      addedAt: state.simulatedThrough,
-      expiresAt: new Date(start + 3_600_000 * 3).toISOString(),
-    },
-  ];
+  state.villagers[0]!.wishes = [fixtureWish({ wish: "Take a walk together" }, "walk", state.simulatedThrough)];
   state.residences = [
     {
       characterId: "a",
@@ -116,15 +103,6 @@ async function fixture() {
     return structuredClone(state);
   };
   const agendas = createResidentAgendas({ readVillageState, mutateVillageState } as any);
-  const reviews: any[] = [];
-  const development = createDevelopment({
-    readVillageState,
-    mutateVillageState,
-    backgroundJobSnapshot: async () => null,
-    queueBackgroundJob: async (job: unknown) => {
-      reviews.push(job);
-    },
-  } as any);
   const world = createWorldCoordination({
     readVillageAuthority: async () => structuredClone(state),
     readVillageState,
@@ -137,16 +115,13 @@ async function fixture() {
       return {} as VillageSnapshot;
     },
     reconcileProjectLifecycles,
-    expireResidentWishes,
     rollActiveAgendas: agendas.rollActiveAgendas,
-    reconcileDevelopment: development.reconcileDevelopment,
     respondDueVenueMail: async () => {},
     outsideVenueOperation: (work: () => void) => work(),
     preparePrivateSpaces: async () => {},
     retryResidencePrivateSpaceAdaptation: async () => {},
     backfillAgendas: async (value: VillageState) => value,
     refreshVillagerRemaps: async () => {},
-    reconcileWishLifecycle: async () => {},
     listVillagerCards: async () => [],
   } as any);
   return {
@@ -158,7 +133,6 @@ async function fixture() {
     originalScene,
     agendas,
     world,
-    reviews,
     readVillageState,
     mutateVillageState,
     wall: (at: number) => {
@@ -205,21 +179,15 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
       );
       assert.equal(state.villagers[0]!.agenda!.activeDay!.dateKey, agendaDateKey(new Date(start + duration)));
       assert.equal(state.residences[0]!.status, duration >= day ? "current" : "moving");
-      assert.equal(state.villagers[0]!.agenda!.wishes.length, duration >= 3 * 3_600_000 ? 0 : 1);
+      assert.equal(state.villagers[0]!.wishes.length, 1, "Retained Wishes have no time expiry");
       assert.equal(memories.total, 1, "Meaningful memory never expires during catch-up");
-      assert.equal(
-        f.reviews.length,
-        duration >= day ? 1 : 0,
-        "Normal due Pursuits admission runs during general catch-up.",
-      );
       results.push({
         move: state.residences[0],
-        wishes: state.villagers[0]!.agenda!.wishes,
+        wishes: state.villagers[0]!.wishes,
         memories: memories.entries,
         project: state.projects.map((p) => [p.status, p.lifecycle?.phase, p.lifecycle?.completedAt]),
         npcWarmth: state.relationshipContext!.edges[relationshipKey("a", "b")]!.warmth,
         date: state.villagers[0]!.agenda!.activeDay!.dateKey,
-        reviewThrough: f.reviews[0]?.input.review.through,
       });
     } finally {
       f.release();
@@ -344,5 +312,5 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
   }
 }
 console.log(
-  "Village time matches ordinary absence across moves, construction, Wishes, memories, relationships, agendas, Pursuits and Scene continuity; concurrent snapshots and resets retain coherent time.",
+  "Village time matches ordinary absence across moves, construction, Wishes, memories, relationships, agendas and Scene continuity; concurrent snapshots and resets retain coherent time.",
 );

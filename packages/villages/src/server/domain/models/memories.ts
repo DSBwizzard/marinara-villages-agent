@@ -31,7 +31,7 @@ export type MemoryKnower = MemoryLearning & {
   repair?: { text: string; at: string; operationId: string; repairs: { id: string; revision: number } };
 };
 export type MemoryDomainRef = {
-  kind: "wish" | "project" | "pursuit" | "relationship" | "physical";
+  kind: "wish" | "project" | "relationship" | "physical";
   id: string;
   characterId?: string;
 };

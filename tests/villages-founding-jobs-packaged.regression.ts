@@ -1,13 +1,15 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import AdmZip from "adm-zip";
+import Fastify from "fastify";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import AdmZip from "adm-zip";
-import Fastify from "fastify";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8")),
   zip = new AdmZip(receipt.retainedArchivePath ?? receipt.archivePath ?? receipt.archive);
 assert.deepEqual(
@@ -21,7 +23,7 @@ const { activate } = await import(pathToFileURL(resolve("packages/villages/serve
 const now = new Date().toISOString();
 const world = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   seed: "founding-http",
   name: "Synthetic place",
   setting: "Shared converted rooms",

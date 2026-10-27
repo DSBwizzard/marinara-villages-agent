@@ -1,5 +1,4 @@
-import { sceneNavigationScreen } from "./navigation.js";
-import { useSettingsDraftSession } from "../features/settings/draft-session.js";
+import { useLayoutEffect, useRef, useState } from "react";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
 import { BackgroundWorkPanel } from "../features/background/BackgroundPanel.js";
@@ -71,18 +70,17 @@ import {
   createFoundingWithSetupImage,
   useFoundingGenerateSetupTownMap,
 } from "../features/founding/image-controller.js";
-import { useFoundingState } from "../features/founding/useFoundingState.js";
 import {
   createFoundingGotoSetupStep,
   createFoundingSuggestSetupVenues,
   useFoundingStartOver,
 } from "../features/founding/setup-controller.js";
+import { useFoundingState } from "../features/founding/useFoundingState.js";
 import { useProjectsController } from "../features/projects/useProjectsController.js";
 import { useProjectsState } from "../features/projects/useProjectsState.js";
 import {
   useAddVillager,
   useApplyVillagerRefresh,
-  useCorrectCompletedWish,
   useForgetMemory,
   useLoadAgendas,
   useLoadMemoryLibrary,
@@ -141,14 +139,15 @@ import {
   useAddNotice,
   useInsertMacro,
   useRemoveNotice,
+  useSaveBackgroundPace,
   useSaveCharacterSpeechColors,
   useSaveScenerySettings,
   useSaveSendOnEnter,
   useSaveSettings,
   useSaveSpriteCardFlip,
-  useSaveBackgroundPace,
   useSaveVisitRetention,
 } from "../features/settings/actions.js";
+import { useSettingsDraftSession } from "../features/settings/draft-session.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
 import { useKnowledgeCaret } from "../features/settings/workflow-controller.js";
 import {
@@ -159,10 +158,11 @@ import {
   useSaveVenue,
 } from "../features/venues/actions.js";
 import { useVenueRequestFocus } from "../features/venues/controller-hooks.js";
-import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenueRequestCommands } from "../features/venues/request-commands.js";
+import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
 import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
+import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
 import {
   useInitialVillageLoad,
   useLoadLorebooks,
@@ -173,12 +173,10 @@ import {
   useVillagePresence,
   useVillageSnapshot,
 } from "../shared/data-controller.js";
-import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
 import type { MapFrameShape, MapPin, MenuPage } from "../shared/types.js";
 import { useScenesOpenMenu } from "./navigation-actions.js";
 import { useNavigationGoHome, useNavigationOpenPerson } from "./navigation-controller.js";
-import { menuCategory } from "./navigation.js";
-import { useLayoutEffect, useRef, useState } from "react";
+import { menuCategory, sceneNavigationScreen } from "./navigation.js";
 
 export function useVillageController({ element }: { element: HTMLElement }) {
   const visible = useCapabilityVisibility(element);
@@ -347,12 +345,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     if (requestedScreen !== screen) setScreen(screen);
   }, [requestedScreen, screen]);
 
-  useLayoutEffect(() => {
-    element.dataset.housingView = ["home", "venue", "person"].includes(screen) ? "current" : "none";
-    return () => {
-      delete element.dataset.housingView;
-    };
-  }, [element, screen]);
   useSceneViewport(element, screen === "room");
   const projectsController = useProjectsController({
     snapshot,
@@ -1001,8 +993,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setBusy,
     setError,
   });
-
-  const correctCompletedWish = useCorrectCompletedWish({ setAgendas, setBusy, setError });
 
   const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({ setAgendas, setBusy, setError });
 
@@ -2093,7 +2083,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     composerEditVersionRef,
     connectionSetupProblem,
     continueRoomWithoutGreeting,
-    correctCompletedWish,
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,

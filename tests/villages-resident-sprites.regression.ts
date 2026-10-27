@@ -1,27 +1,26 @@
 import assert from "node:assert/strict";
 
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
-import {
-  describeSpriteExpressions,
-  validateSpriteExpression,
-} from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dirname } from "node:path";
 import { villagesWalk } from "../packages/villages/src/client/features/scenes/villages-chat-paragraphs.ts";
 import {
   selectSpriteImage,
   spriteFacing,
 } from "../packages/villages/src/client/features/scenes/villages-sprite-stage.ts";
 import {
-  parseVillagesTurnBeats,
-  renderVillagesTurnBeats,
-} from "../packages/villages/src/server/domain/rules/turn-beats.js";
-import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import {
+  describeSpriteExpressions,
+  validateSpriteExpression,
+} from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
+import {
+  parseVillagesTurnBeats,
+  renderVillagesTurnBeats,
+} from "../packages/villages/src/server/domain/rules/turn-beats.js";
 const answer = `[expression:happy] "Welcome home."\n\n[expression:unknown] "Maybe."\n\n[side] "Quiet now."`;
 const beats = parseVillagesTurnBeats(answer);
 assert.ok(beats);
@@ -134,20 +133,20 @@ assert.equal(staged.lines[2]?.gazeAt, "resident-b", "whispers face their target 
 const now = new Date().toISOString();
 assert.equal(defaultVillageState().spriteCardFlipEnabled, true, "new Villages start with flips on");
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 5 }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 6 }).spriteCardFlipEnabled,
   true,
   "legacy Villages without a choice default to flips on",
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 5, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 6, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
   true,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 5, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 6, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
   false,
   "saved Off stays Off",
 );
-const flipVillage = coerceVillageState({ ...defaultVillageState(), version: 5, spriteCardFlipEnabled: true });
+const flipVillage = coerceVillageState({ ...defaultVillageState(), version: 6, spriteCardFlipEnabled: true });
 assert.equal(
   coerceVillageState(JSON.parse(JSON.stringify(flipVillage))).spriteCardFlipEnabled,
   true,
@@ -160,7 +159,7 @@ const resident = {
   sprite: semanticSprite,
 };
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, villagers: [resident] }).villagers[0]
+  coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, villagers: [resident] }).villagers[0]
     ?.sprite,
   null,
   "retired unversioned assignments are ignored",

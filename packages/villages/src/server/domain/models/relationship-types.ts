@@ -147,6 +147,7 @@ export type SocialPlan = {
   status: "planned" | "completed" | "cancelled";
 };
 export type SocialEncounter = {
+  wishChanges?: unknown[];
   semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   memoryChanges?: unknown;
   memoryContexts?: Record<string, import("../rules/scene-memories.js").SceneMemoryContext>;

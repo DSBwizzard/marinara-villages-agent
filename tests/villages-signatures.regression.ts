@@ -1,36 +1,36 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createHash } from "node:crypto";
-import {
-  previousSignaturePrompt,
-  legacySignaturePrompt,
-} from "../packages/villages/src/server/domain/rules/resident-signature-prompt.js";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { PNG } from "pngjs";
 import sharp from "sharp";
-import { residentSignature } from "../packages/villages/src/shared/helpers/resident-signature.js";
-
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
-  mutateVillageState,
-  readVillageAuthority,
-} from "../packages/villages/src/server/features/world/village-store.js";
+  legacySignaturePrompt,
+  previousSignaturePrompt,
+} from "../packages/villages/src/server/domain/rules/resident-signature-prompt.js";
+import { residentSignature } from "../packages/villages/src/shared/helpers/resident-signature.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   generateResidentSignature,
   readResidentSignature,
   signaturePrompt,
 } from "../packages/villages/src/server/features/residents/resident-signature.js";
 import {
-  trimSignaturePixels,
-  trimSignatureImage,
   prepareSignatureImage,
+  trimSignatureImage,
+  trimSignaturePixels,
 } from "../packages/villages/src/server/features/residents/signature-image.js";
+import {
+  mutateVillageState,
+  readVillageAuthority,
+} from "../packages/villages/src/server/features/world/village-store.js";
 
 const now = "2026-10-04T12:00:00.000Z";
 const village = coerceVillageState({
   ...defaultVillageState(),
-  version: 5,
+  version: 6,
   wishSystemVersion: 3,
   seed: "signature-fixture",
   name: "Signature Village",

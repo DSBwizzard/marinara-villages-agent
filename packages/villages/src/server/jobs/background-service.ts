@@ -1,23 +1,20 @@
-import { localDateKey } from "../domain/rules/resident-planning.js";
-import { ZonedDate } from "../../shared/helpers/zoned-date.js";
-import { villageNow } from "../adapters/time/clock-gate.js";
-import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
-import { createDocumentMutator } from "../adapters/storage/document-store.js";
-import { connectionFailureKind } from "../domain/rules/connection-failure.js";
-import {
-  withVillageClockWork,
-  assertVillageClockWrite,
-  isVillageClockError,
-  clockAdministration,
-} from "../adapters/time/clock-gate.js";
-import { backgroundRevision } from "../domain/rules/background-revision.js";
-import { reserveEventAttempt } from "../domain/rules/event-attempts.js";
-import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
+import { randomUUID } from "node:crypto";
+import { ZonedDate } from "../../shared/helpers/zoned-date.js";
+import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
+import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import type { withUsagePurpose } from "../adapters/models/usage-ledger.js";
 import type { measurePipeline } from "../adapters/observability/pipeline-metrics.js";
 import type { runtimeDebug } from "../adapters/observability/runtime-debug.js";
 import type { BackgroundContext } from "../adapters/operations/background-context-service.js";
+import { createDocumentMutator } from "../adapters/storage/document-store.js";
+import {
+  assertVillageClockWrite,
+  clockAdministration,
+  isVillageClockError,
+  villageNow,
+  withVillageClockWork,
+} from "../adapters/time/clock-gate.js";
 import type { BackgroundCompletion } from "../domain/models/background-completion-model.js";
 import type {
   BackgroundInput,
@@ -29,14 +26,17 @@ import type {
   Ticket,
 } from "../domain/models/background-model.js";
 import type { VillageState } from "../domain/models/world.js";
+import { backgroundRevision } from "../domain/rules/background-revision.js";
 import { asRecord } from "../domain/rules/coerce.js";
+import { connectionFailureKind } from "../domain/rules/connection-failure.js";
 import { badRequest, conflict } from "../domain/rules/errors.js";
+import { reserveEventAttempt } from "../domain/rules/event-attempts.js";
 import { agendaRequestCount, remainingRequests } from "../domain/rules/generation-budgets.js";
+import { localDateKey } from "../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { VILLAGE_WEEKDAYS } from "../domain/rules/village-clock.js";
 import { type WorkFailure, WorkFailureError } from "../domain/rules/work-failure.js";
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
-import { randomUUID } from "node:crypto";
 const KIND = "background-work";
 const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
   "villages-background-" + backgroundRevision([work.kind, work.subjectId]);
@@ -44,7 +44,6 @@ const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kin
 export function retireBackgroundResident(state: VillageState, characterId: string): void {
   for (const kind of ["agenda", "translation", "wish", "adaptation"] as const)
     delete state.backgroundReceipts[slotId({ kind, subjectId: characterId })];
-  delete state.wishRefillIntents[characterId];
 }
 export interface BackgroundWorkPorts {
   villagesDocuments(): CapabilityDocumentStore;
@@ -388,15 +387,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
-    if (
-      job.kind === "development" &&
-      job.requests > 0 &&
-      state.seed === job.seed &&
-      !handlers.get(job.kind)!.valid(state, job.input)
-    )
-      throw conflict(
-        "Resident development changed while the review was running. Its response is retained; review again deliberately.",
-      );
     if (superseded.has(job.id) || state.seed !== job.seed || !handlers.get(job.kind)!.valid(state, job.input))
       throw new Obsolete("This work is no longer needed.");
   }
@@ -429,14 +419,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       ) {
         await retainFoundingJob(previous);
       }
-      if (
-        work.kind === "development" &&
-        work.retryActionId &&
-        previous &&
-        previous.status !== "completed" &&
-        previous.id !== jobId(work)
-      )
-        await retainFoundingJob(previous);
       await changeJob(id, (previous) => {
         if (previous?.id === jobId(work)) {
           if (work.finite && !previous.finite) previous.finite = true;
@@ -633,18 +615,16 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         const hostTiming = { ...timing, hostStartedAt: new Date().toISOString() };
         let response: Awaited<ReturnType<BackgroundCompletion>>;
         try {
-          response = await withUsagePurpose(
-            options.usagePurpose ?? (job.kind === "wish-check" ? "checks" : "background"),
-            () =>
-              model.chatComplete(messages, {
-                ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
-                ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-                ...(options.verbosity ? { verbosity: options.verbosity } : {}),
-                ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
-                maxTokens,
-                debugMode: false,
-                signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
-              }),
+          response = await withUsagePurpose(options.usagePurpose ?? "background", () =>
+            model.chatComplete(messages, {
+              ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
+              ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+              ...(options.verbosity ? { verbosity: options.verbosity } : {}),
+              ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
+              maxTokens,
+              debugMode: false,
+              signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
+            }),
           );
         } catch (error) {
           const receiptId = lateResponseId(job!, index);
@@ -1049,33 +1029,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     // Apply a saved partial response before discarding its bad rows. A lost effect
     // acknowledgement must not cause valid, purchased answers to be regenerated.
-    const prior = await readJob(id);
-    if (
-      prior?.kind === "wish-check" &&
-      prior.hasResult &&
-      !running.has(id) &&
-      prior.attempt === expectedAttempt &&
-      !prior.retryActions.includes(actionId) &&
-      ["failed", "interrupted", "paused"].includes(prior.status)
-    ) {
-      let remaining: WorkFailure | undefined;
-      await mutateVillageState((state) => {
-        if (state.backgroundReceipts[id] === prior.id) return;
-        if (state.seed !== prior.seed) throw conflict("This Wish check belongs to another village.");
-        remaining = handlers.get(prior.kind)!.apply(state, prior.input, prior.result, { retrying: true }) || undefined;
-        if (!remaining) state.backgroundReceipts[id] = prior.id;
-      });
-      if (remaining)
-        await changeJob(id, (current) => {
-          if (current?.id !== prior.id || current.attempt !== expectedAttempt)
-            throw conflict("That job changed during saved-response recovery.");
-          return {
-            ...current,
-            partialResult: true,
-            failedStep: current.steps.length ? current.steps.length - 1 : null,
-          };
-        });
-    }
     await changeJob(id, (job) => {
       if (!job) throw new Error("That background job no longer exists.");
       if (job.retryActions.includes(actionId)) return job;
@@ -1152,90 +1105,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         }));
         continue;
       }
-      // Recovery applies only already prepared responses. It never enters generate
-      // or permits a replacement model request for failures or uncertain outcomes.
-      if (
-        job.kind === "wish-check" &&
-        job.hasResult &&
-        !running.has(record.id) &&
-        ["failed", "paused", "interrupted"].includes(job.status)
-      ) {
-        try {
-          let remaining: WorkFailure | undefined;
-          await mutateVillageState((state) => {
-            if (state.backgroundReceipts[record.id] === job.id) return;
-            checkCurrent(job, state);
-            remaining =
-              handlers.get(job.kind)!.apply(state, job.input, job.result, { retrying: job.retrying }) || undefined;
-            if (!remaining) state.backgroundReceipts[record.id] = job.id;
-          });
-          await changeJob(record.id, (current) => {
-            if (current?.id !== job.id || current.attempt !== job.attempt || running.has(record.id))
-              throw conflict("That job changed during local recovery.");
-            if (remaining)
-              return {
-                ...current,
-                partialResult: true,
-                failure: remaining,
-                failedStep: current.steps.length ? current.steps.length - 1 : null,
-              };
-            return {
-              ...current,
-              status: "completed",
-              error: "",
-              failure: undefined,
-              failedAt: undefined,
-              completedCount: current.steps.length,
-              steps: [],
-              optionalAttempts: {},
-              settings: {},
-              input: null,
-              result: undefined,
-              hasResult: false,
-              partialResult: false,
-              retrying: false,
-            };
-          });
-          if (!remaining) {
-            await handlers.get(job.kind)?.afterApply?.(job.input, job.finite);
-            continue;
-          }
-        } catch (error) {
-          villagesLogger().warn("[villages] local Wish recovery remains unfinished: %s", String(error));
-        }
-      }
-      const input = asRecord(job.input);
-      if (
-        !running.has(record.id) &&
-        !["completed", "obsolete"].includes(job.status) &&
-        ((job.kind === "wish-check" && (Array.isArray(input.items) || asRecord(input.proposal).wishId)) ||
-          (job.kind === "wish" && input.characterId && input.id && input.revision))
-      ) {
-        const state = await readVillageState();
-        if (job.seed !== state.seed || !handlers.get(job.kind)!.valid(state, job.input)) {
-          const retiredInput = job.input;
-          await changeJob(record.id, (current) => ({
-            ...current!,
-            status: "obsolete",
-            error: "This Wish work no longer applies.",
-            failure: undefined,
-            steps: [],
-            optionalAttempts: {},
-            settings: {},
-            input: null,
-            result: undefined,
-            hasResult: false,
-            replacement: undefined,
-          }));
-          await handlers
-            .get(job.kind)
-            ?.afterFailure?.(retiredInput)
-            .catch((error) =>
-              villagesLogger().warn("[villages] could not settle retired Wish check: %s", String(error)),
-            );
-          continue;
-        }
-      }
       if (job.connectionPaused) pausedConnections.add(job.connectionId);
       if (
         job.owner !== owner &&
@@ -1280,18 +1149,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     for (const record of records) {
       const job = record.data as Job;
       const retired =
-        job?.kind === "wish-check"
-          ? job.seed !== state.seed ||
-            !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
-          : job?.kind === "mail"
-            ? !state.venueMail.some((mail) => mail.id === job.subjectId)
-            : job?.kind !== "development" &&
-              job?.kind !== "resident-planning" &&
-              job?.kind !== "story" &&
-              job?.kind !== "starting-ties" &&
-              job?.kind !== "personal-mail" &&
-              job?.kind !== "social-recovery" &&
-              !state.villagers.some((resident) => resident.characterId === job?.subjectId);
+        job?.kind === "mail"
+          ? !state.venueMail.some((mail) => mail.id === job.subjectId)
+          : job?.kind !== "resident-planning" &&
+            job?.kind !== "story" &&
+            job?.kind !== "starting-ties" &&
+            job?.kind !== "personal-mail" &&
+            job?.kind !== "social-recovery" &&
+            !state.villagers.some((resident) => resident.characterId === job?.subjectId);
       if (
         !job ||
         retired ||
@@ -1301,16 +1166,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (removed++ < 8 && !running.has(record.id))
           if (await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
             const subjectGone =
-              job?.kind === "wish-check"
-                ? !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
-                : job?.kind === "mail"
-                  ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
-                  : job?.kind !== "development" &&
-                    job?.kind !== "resident-planning" &&
-                    job?.kind !== "story" &&
-                    job?.kind !== "personal-mail" &&
-                    job?.kind !== "social-recovery" &&
-                    !state.villagers.some((resident) => resident.characterId === job?.subjectId);
+              job?.kind === "mail"
+                ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
+                : job?.kind !== "resident-planning" &&
+                  job?.kind !== "story" &&
+                  job?.kind !== "personal-mail" &&
+                  job?.kind !== "social-recovery" &&
+                  !state.villagers.some((resident) => resident.characterId === job?.subjectId);
             if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
           }
         continue;
@@ -1341,9 +1203,6 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           if (current.backgroundReceipts[id] === state.backgroundReceipts[id]) delete current.backgroundReceipts[id];
       });
     return summaries;
-  }
-  function asWishCheckActors(job: Job): string[] {
-    return job.residentIds ?? [job.residentId ?? ""];
   }
   function startBackgroundWork(options: { now?: () => number } = {}): () => void {
     presenceNow = options.now ?? (() => performance.now());

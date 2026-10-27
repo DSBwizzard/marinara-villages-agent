@@ -1,8 +1,8 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
+import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { clientImplementation } from "./client-source.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 // Villages — proof for the pictures a place can have.
 //
 // A place's picture spends the player's image tokens, so these tests cover:
@@ -32,31 +32,31 @@ import { clientImplementation } from "./client-source.js";
 //   * A gallery folder is an ornament. A lookup that fails has to cost the
 //     player nothing at all, which is asserted by making the first lookup fail
 //     and watching the picture land anyway.
+import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
-import { PNG } from "pngjs";
 import { readFile, readdir } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { PNG } from "pngjs";
+import {
+  activationScope,
+  createActivationScope,
+  installDefaultActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import type { Ledger } from "../packages/villages/src/server/domain/models/usage-model.js";
+import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   generateVillageImage,
   resolveVillageImageConnectionId,
 } from "../packages/villages/src/server/features/media/image-generation.js";
-import { generateVillageTownMap } from "../packages/villages/src/server/features/media/town-map-image.js";
 import {
-  generateVillageLocationImage,
   generateFirstPrivateSpaceImage,
+  generateVillageLocationImage,
   storeVillageVenueImage,
 } from "../packages/villages/src/server/features/media/location-image.js";
-import {
-  createActivationScope,
-  activationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { generateVillageTownMap } from "../packages/villages/src/server/features/media/town-map-image.js";
 
 /**
  * The path the Engine draws a character's picture on, written out rather than
@@ -197,12 +197,12 @@ async function main() {
     nextTransitionAt: "2026-09-11T16:31:00.000Z",
   };
   const setting = "A mill town at the foot of a ridge.";
-  const village = coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, setting });
+  const village = coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, setting });
   const exteriorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
     }).venues[0]!,
@@ -216,7 +216,7 @@ async function main() {
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
     }).venues[0]!,
@@ -241,7 +241,7 @@ async function main() {
       village,
       coerceVillageState({
         ...defaultVillageState(),
-        version: 5,
+        version: 6,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "" }],
       }).venues[0]!,
@@ -254,7 +254,7 @@ async function main() {
   const factual = buildLocationPrompt(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       setting,
       foundingDetails: "Built beside the ridge",
@@ -262,7 +262,7 @@ async function main() {
     }),
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       venues: [
         {
@@ -301,7 +301,7 @@ async function main() {
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       venues: [
         {
@@ -328,7 +328,7 @@ async function main() {
       village,
       coerceVillageState({
         ...defaultVillageState(),
-        version: 5,
+        version: 6,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "   " }],
       }).venues[0]!,
@@ -340,13 +340,13 @@ async function main() {
   const chatty = buildLocationPrompt(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       setting: "y".repeat(MAX_SETTING_LENGTH + 200),
     }),
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "" }],
     }).venues[0]!,
@@ -367,7 +367,7 @@ async function main() {
   const venuesWith = (image: unknown) =>
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", presentation: { image } }],
     }).venues;
@@ -413,7 +413,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 5,
+      version: 6,
       wishSystemVersion: 3,
       venues: [{ name: "  ", presentation: { image: picture } }],
     }).venues,
@@ -429,7 +429,7 @@ async function main() {
   // name is not a place at all — its name is the whole of what the translation
   // list can say about it.
   const placesOf = (entries: unknown[]) =>
-    coerceVillageState({ ...defaultVillageState(), version: 5, wishSystemVersion: 3, venues: entries }).venues;
+    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: entries }).venues;
   const house = (id: string, characterId: string | null, extra: Record<string, unknown> = {}) => ({
     id,
     name: "",
@@ -1242,8 +1242,7 @@ async function main() {
     "domain/rules/native-remap.ts",
     "adapters/engine/native-schedules.ts",
     "features/scenes/writing-service.ts",
-    "features/residents/wishes/wish-progress-service.ts",
-    "features/residents/wishes/wish-lifecycle-service.ts",
+    "features/residents/wishes/service.ts",
     "adapters/engine/catalog.ts",
   ]) {
     const source = await readFile(join(repoRoot, services, silent), "utf8");
@@ -1461,7 +1460,7 @@ async function mediaConnectionOwnership() {
       let held = false;
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 5,
+        version: 6,
         wishSystemVersion: 3,
         seed: "equal-media-seed",
         timeZone: "UTC",

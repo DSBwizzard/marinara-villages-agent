@@ -7,8 +7,6 @@ import type { ResidentsState } from "./useResidentsState.js";
 
 import type { useApplyVillagerRefresh } from "./actions.js";
 
-import type { useCorrectCompletedWish } from "./actions.js";
-
 import type { useForgetMemory } from "./actions.js";
 
 import type { useLoadMemoryLibrary } from "./actions.js";
@@ -29,7 +27,6 @@ export type ResidentsScreenController = {
   readonly agendas: ResidentsState["agendas"];
   readonly applyVillagerRefresh: ReturnType<typeof useApplyVillagerRefresh>;
   readonly busy: boolean;
-  readonly correctCompletedWish: ReturnType<typeof useCorrectCompletedWish>;
   readonly element: HTMLElement;
   readonly error: string;
   readonly explorationReturnTab: React.RefObject<ExplorationTab>;

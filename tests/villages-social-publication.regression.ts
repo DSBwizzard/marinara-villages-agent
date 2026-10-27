@@ -1,34 +1,25 @@
-import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import assert from "node:assert/strict";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
-import assert from "node:assert/strict";
-import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
-import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
-import { developmentFixture, elapsed, moveProposal } from "./fixtures/villages-development.fixture.js";
-import {
-  applyDevelopmentReview,
-  developmentReview,
-  knownDevelopment,
-} from "../packages/villages/src/server/domain/rules/resident-development.js";
-import { applyDevelopmentScene } from "../packages/villages/src/server/domain/rules/development-scene.js";
-import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { completeResidenceMove } from "../packages/villages/src/server/domain/rules/residence-move.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { sceneAccessState } from "../packages/villages/src/server/domain/rules/scene-layout.js";
-import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import {
   evaluateZoneAccess,
   initializeVenueAccess,
   settleStandingAccess,
 } from "../packages/villages/src/server/domain/rules/venue-access.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-const village = developmentFixture();
+import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
+import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
+import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
+import { createSceneCommands } from "../packages/villages/src/server/features/scenes/command-service.js";
+import { elapsed, socialWorldFixture } from "./fixtures/social-world.fixture.js";
+const village = socialWorldFixture();
 village.seed = "publication";
-applyDevelopmentReview(village, developmentReview(village, elapsed(1.25))!, moveProposal(elapsed(1.25)), elapsed(1.25));
-const pursuit = village.development!.residents.a!.pursuits[0]!;
-assert.equal(pursuit.status, "arranged");
 let scene = coerceSession({
   id: "scene",
   villageSeed: village.seed,
@@ -78,7 +69,6 @@ turn.liveProposals = bindLiveProposals(
             },
           },
         },
-        domainRef: { kind: "pursuit", id: pursuit.id, characterId: "a" },
         screening: { disposition: "clear", protectedRoots: [], fingerprint: native.saved.protection.fingerprint },
       },
     ],
@@ -94,27 +84,6 @@ turn.liveProposals = bindLiveProposals(
   scene.lines.map((l) => l.id),
   scene.lines,
 );
-turn.developmentChanges = [
-  {
-    pursuitId: pursuit.id,
-    characterId: "a",
-    expectedRevision: village.development!.residents.a!.revision,
-    kind: "disclose",
-    actorId: "a",
-    citations: [{ segment: 0, quote: scene.lines[0]!.content }],
-    lineIds: ["disclose"],
-  },
-  {
-    pursuitId: pursuit.id,
-    characterId: "a",
-    expectedRevision: village.development!.residents.a!.revision,
-    kind: "consent",
-    actorId: "b",
-    decision: "refuse",
-    citations: [{ segment: 1, quote: scene.lines[1]!.content }],
-    lineIds: ["refuse"],
-  },
-];
 turn.processing = createExchangeProcessing({
   seed: village.seed,
   sceneId: scene.id,
@@ -125,10 +94,6 @@ turn.processing = createExchangeProcessing({
 });
 for (const domain of Object.values(turn.processing.domains)) domain.status = "applied";
 turn.processing.domains.relationships.status = "failed";
-applyDevelopmentScene(village, scene, turn, elapsed(1.3));
-assert.equal(pursuit.consents.b!.decision, "refuse", "Private authority settles before publication");
-assert.equal(pursuit.status, "stalled");
-assert.deepEqual(knownDevelopment(village, "a"), [], "A held source cannot disclose Pursuits through the notebook");
 let failScene = true,
   failWorld = false,
   failMemoryAck = false,
@@ -184,12 +149,10 @@ await assert.rejects(() => commands.finishSemanticScene(scene.id), /Scene acknow
 assert.equal(village.socialPublications?.["scene:source"], undefined);
 assert.equal(worldWrites, 0);
 assert(!scene.submissions[0]!.semanticReady, "Failed transcript publication cannot reveal notebook knowledge");
-assert.deepEqual(knownDevelopment(village, "a"), []);
 failWorld = true;
 await assert.rejects(() => commands.finishSemanticScene(scene.id), /World publication write failed/);
 assert.equal(scene.submissions[0]!.semanticReady, true);
 assert.equal(village.socialPublications?.["scene:source"], undefined);
-assert.deepEqual(knownDevelopment(village, "a"), [], "Lost publication acknowledgement keeps Pursuits private");
 assert.throws(() => completeResidenceMove(village, "a", false, new Date(elapsed(4))), /not moving/);
 const changes = createSceneChanges({
   readSession,
@@ -224,16 +187,11 @@ assert.equal(
   1,
   "Acknowledgment publishes the source into native Memories",
 );
-assert.equal(
-  knownDevelopment(village, "a")[0]!.status,
-  "stalled",
-  "Native Pursuit learning publishes atomically with the accepted source",
-);
 const after = worldWrites;
 await changes.replaySceneChanges(scene.id);
 assert.equal(worldWrites, after, "Published source replay is a read-only no-op");
 {
-  let world = developmentFixture(),
+  let world = socialWorldFixture(),
     social = defaultRelationshipState(world.seed);
   const home = world.venues[1]!;
   home.zones = venueZones(home);
