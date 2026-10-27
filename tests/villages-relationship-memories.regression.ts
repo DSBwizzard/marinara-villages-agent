@@ -3,6 +3,12 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { publishRelationshipDisclosures } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
 import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
+import {
+  emptyRelationshipReview,
+  parseRelationshipReview,
+} from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { applyMemoryProposal } from "../packages/villages/src/server/domain/rules/memory-application.js";
+import { memoryProposal, targetOf } from "./helpers/memories-fixture.js";
 import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import {
   correctVillageMemory,
@@ -149,3 +155,138 @@ assert.equal(Object.values(attribution.memoryReceipts)[0]!.status, "rejected");
 console.log(
   "Relationship Memories: witnessed attribution, sparse Scene continuity, Forget/Correct, publication replay and UTF-8 limits passed.",
 );
+
+// Home and work are player-heard, self-attributed claims, not live occupancy.
+const places = fixture();
+const home = { ...row, id: "home", fromId: "a", toId: "a", kind: "home" as const, text: "I live at the Mill." };
+const homeLine = { ...lines[0]!, content: home.text };
+publishRelationshipDisclosures(places, [home], source, [homeLine], at, readAt);
+assert.deepEqual(projectRelationshipProfiles(places.relationshipContext!, places)[0]!.knownPlaces, [
+  { kind: "home", text: home.text, at },
+]);
+assert.deepEqual(projectRelationshipProfiles(places.relationshipContext!, places)[1]!.knownPlaces, []);
+const otherHome = { ...home, id: "other-home", text: "I live at the Harbor." };
+publishRelationshipDisclosures(
+  places,
+  [otherHome],
+  { ...source, id: "another-turn" },
+  [{ ...homeLine, content: otherHome.text }],
+  readAt,
+  readAt,
+);
+assert.equal(
+  projectRelationshipProfiles(places.relationshipContext!, places)[0]!.knownPlaces!.length,
+  2,
+  "Independent claims do not silently overwrite each other",
+);
+const homeRecord = places.memories.records[0]!;
+correctVillageMemory(
+  places,
+  {
+    operationId: "correct-home",
+    action: "repair",
+    expectedCollectionRevision: places.memories.revision,
+    target: { id: homeRecord.id, revision: homeRecord.revision, rootRevision: homeRecord.revision },
+    knowers: ["player"],
+    text: "I used to live at the Mill.",
+  },
+  readAt,
+);
+assert.deepEqual(
+  projectRelationshipProfiles(places.relationshipContext!, places)[0]!.knownPlaces!.map((item) => item.text),
+  [otherHome.text],
+  "A manual correction cannot reuse the old category",
+);
+assert.ok(
+  projectRelationshipProfiles(places.relationshipContext!, places)[0]!.learned.some(
+    (item) => item.text === "I used to live at the Mill.",
+  ),
+);
+const otherRecord = places.memories.records[1]!;
+forgetVillageMemory(
+  places,
+  {
+    operationId: "forget-home",
+    action: "forget",
+    expectedCollectionRevision: places.memories.revision,
+    target: { id: otherRecord.id, revision: otherRecord.revision, rootRevision: otherRecord.revision },
+    knowers: ["player"],
+  },
+  readAt,
+);
+assert.deepEqual(projectRelationshipProfiles(places.relationshipContext!, places)[0]!.knownPlaces, []);
+publishRelationshipDisclosures(
+  places,
+  [otherHome],
+  { ...source, id: "another-turn" },
+  [{ ...homeLine, content: otherHome.text }],
+  readAt,
+  readAt,
+);
+assert.deepEqual(
+  projectRelationshipProfiles(places.relationshipContext!, places)[0]!.knownPlaces,
+  [],
+  "Replay does not restore forgotten information",
+);
+const privatePlace = fixture();
+assert.throws(() =>
+  publishRelationshipDisclosures(
+    privatePlace,
+    [home],
+    source,
+    [{ ...homeLine, playerHeard: false, heardBy: ["a"] }],
+    at,
+    readAt,
+  ),
+);
+assert.deepEqual(projectRelationshipProfiles(privatePlace.relationshipContext!, privatePlace)[0]!.knownPlaces, []);
+const thirdParty = { ...home, toId: "b" };
+assert.throws(() =>
+  parseRelationshipReview(
+    { ...emptyRelationshipReview(), disclosures: [thirdParty] },
+    source.id,
+    [homeLine],
+    privatePlace,
+  ),
+);
+publishRelationshipDisclosures(privatePlace, [thirdParty], source, [homeLine], at, readAt);
+assert.equal(
+  privatePlace.memories.records.length,
+  0,
+  "Stored or direct third-party disclosures cannot bypass the self-subject rule",
+);
+
+const spoofed = fixture();
+publishRelationshipDisclosures(spoofed, [home], source, [homeLine], at, readAt);
+spoofed.memories.records[0]!.knowers.player!.basis = "observation";
+delete spoofed.memories.records[0]!.knowers.player!.attributedTo;
+assert.deepEqual(
+  projectRelationshipProfiles(spoofed.relationshipContext!, spoofed)[0]!.knownPlaces,
+  [],
+  "Generic observations cannot impersonate a self-report",
+);
+
+for (const keepCategory of [true, false]) {
+  const linked = fixture();
+  publishRelationshipDisclosures(linked, [home], source, [homeLine], at, readAt);
+  const root = linked.memories.records[0]!;
+  const correction = memoryProposal(linked.memories, {
+    audience: ["player"],
+    text: "I moved to the Harbor.",
+    patch: {
+      action: "correct",
+      target: targetOf(linked.memories),
+      kind: "information",
+      subjects: ["a"],
+      domainRef: root.domainRef,
+    },
+  });
+  correction.proposal.learners.player!.attributedTo = "a";
+  if (keepCategory) correction.proposal.learners.player!.disclosed = { kind: "home", toId: "a" };
+  linked.memories = applyMemoryProposal(linked.memories, correction.proposal, correction.context).collection;
+  assert.deepEqual(
+    projectRelationshipProfiles(linked.relationshipContext!, linked)[0]!.knownPlaces!.map((item) => item.text),
+    keepCategory ? ["I moved to the Harbor."] : [],
+    "Linked corrections replace the old root and use only their own category",
+  );
+}

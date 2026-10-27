@@ -5,6 +5,7 @@ export type RelationshipProfile = {
   summary: string;
   knownAt: string;
   routine: string[];
+  knownPlaces?: { kind: "home" | "work"; text: string; at: string }[];
   interests: string;
   wishes: string[];
   knownDevelopment?: import("./pursuits.js").KnownPursuit[];

@@ -110,6 +110,8 @@ Residents follow routines, and their availability changes through the day. Found
 
 Memories keep meaningful experiences, information, and open matters. Each belongs to the people who learned it. Mentioning a character does not give that character the information.
 
+The People overview shows dated home and work statements a resident has shared about their own location. These are remembered claims, which may become outdated; private assignments and schedules do not fill gaps. Older unclassified Memories and other ways of learning a location are not automatically categorized. Forget removes the statement from this view; a manual correction remains in Memories but is no longer categorized.
+
 The Memories page starts with your Persona and loads entries in batches. **Inspect** can show retained evidence and another person's memories. **Forget** suppresses a selected person's existing memory; **Correct** changes its wording for selected people who already know it. These actions do not change physical gameplay facts, teach new people, or rewrite an active Scene's captured history.
 
 ## Repair your world

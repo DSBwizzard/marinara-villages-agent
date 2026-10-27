@@ -592,6 +592,10 @@ try {
     await expect(overview.getByText("Mara: move to Mill : stalled.")).toBeVisible();
     await expect(overview.getByText("Often reads at the Mill")).toBeVisible();
     await expect(overview.getByText("No known home or work location.")).toBeVisible();
+    relationships.profiles[0].knownPlaces = [{ kind: "home", text: "Mara says she lives at the Mill.", at: now }];
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(overview.getByText(/Mara says she lives at the Mill/)).toBeVisible();
+    await expect(overview.getByText("No known home or work location.")).toHaveCount(0);
     await expect(overview.getByText(/PRIVATE/)).toHaveCount(0);
     const savedProfiles = structuredClone(relationships.profiles);
     relationships.profiles = [];

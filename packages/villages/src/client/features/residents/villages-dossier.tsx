@@ -393,6 +393,8 @@ export function VillagerDossier({
                               (entry) =>
                                 entry.kind !== "routine" &&
                                 entry.kind !== "preference" &&
+                                entry.kind !== "home" &&
+                                entry.kind !== "work" &&
                                 entry.text !== profile.summary,
                             )
                             .map((entry, index) => (
@@ -431,7 +433,18 @@ export function VillagerDossier({
                           )}
                         </Sheet>
                         <Sheet title="Home and work" icon="venues">
-                          <p>No known home or work location.</p>
+                          {profile.knownPlaces?.length ? (
+                            <ul>
+                              {profile.knownPlaces.map((place, index) => (
+                                <li key={index}>
+                                  {place.kind === "home" ? "Home" : "Work"} · Shared{" "}
+                                  {new Date(place.at).toLocaleDateString()} · {place.text}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p>No known home or work location.</p>
+                          )}
                         </Sheet>
                       </>
                     )}

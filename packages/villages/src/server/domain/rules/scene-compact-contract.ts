@@ -11,7 +11,7 @@ import type { VenueResponseContext } from "./venue-response-contract.js";
 
 // System owns the complete social interpretation; writing metadata is only a nomination.
 const SOCIAL_WRITING_CONTRACT =
-  'relationshipChanges:{changes:[{fromId,toId,expectedRevision,sceneAfter:{connection,stance,expectations:[],concerns:[],records:[]},liveAfter:{connection,stance,expectations:[],concerns:[],records:[]},reason,lineIds:[]}],disclosures:[{fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection",lineIds:[]}],permissions:[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}],intentions:[]}. Resident perspectives only; never player feelings. Preserve Scene/live history separately. Disclosures need player-heard speech; standing permissions need exact visitor/Zone authority. System reviews.';
+  'relationshipChanges:{changes:[{fromId,toId,expectedRevision,sceneAfter:{connection,stance,expectations:[],concerns:[],records:[]},liveAfter:{connection,stance,expectations:[],concerns:[],records:[]},reason,lineIds:[]}],disclosures:[{fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection|home|work",lineIds:[]}],permissions:[{controllerId,visitorId,venueId,zoneId,action:"grant|revoke",lineIds:[]}],intentions:[]}. Resident perspectives only; never player feelings. Preserve Scene/live history separately. Disclosures need player-heard speech; standing permissions need exact visitor/Zone authority. System reviews.';
 export type SceneWritingCapabilities = {
   management: boolean;
   movement: boolean;
