@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { PNG } from "pngjs";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base, mapImage, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -30,6 +30,13 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const village = structuredClone(base);
     village.villagers = village.villagers.slice(0, 2);
+    village.villagers[0].letterFontId = "caveat";
+    await page.route("**/api/capability-packages/villages/assets/letter-fonts/caveat.json", (route) =>
+      fulfill(route, {
+        contentType: "application/json",
+        body: readFileSync("packages/villages/letter-fonts/caveat.json", "utf8"),
+      }),
+    );
     village.villagers[0].summary = "A curious explorer who enjoys meeting people and sharing stories.";
     if (width === 390) village.villagers[0].summary = village.villagers[0].summary.repeat(12);
     village.villagers[0].identityDescription = { text: village.villagers[0].summary, revision: "description-1" };
@@ -879,6 +886,24 @@ try {
     if (width === 390) failMailRead = true;
     await letterRows.first().click();
     await expect(mail.getByLabel("Personal mail").getByText("A first letter from Mara.")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          Array.from(document.fonts).some(
+            (face) => face.family === "village-letter-caveat" && face.status === "loaded",
+          ),
+        ),
+      )
+      .toBe(true);
+    const readingMode = mail.getByRole("button", { name: "Simple text" });
+    await expect(readingMode).toHaveAttribute("aria-pressed", "false");
+    await readingMode.click();
+    await expect(readingMode).toHaveAttribute("aria-pressed", "true");
+    assert.equal(await page.evaluate(() => localStorage.getItem("villages-letter-simple")), "true");
+    assert.match(
+      await mail.locator(".villages-letter-text").evaluate((node) => getComputedStyle(node).fontFamily),
+      /system-ui/,
+    );
     const letterSignature = mail.getByRole("img", { name: "Mara's signature" });
     await expect(letterSignature).toBeVisible();
     const placement = await letterSignature.evaluate((node) => {

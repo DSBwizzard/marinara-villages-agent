@@ -1,3 +1,4 @@
+import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { randomUUID } from "node:crypto";
@@ -197,6 +198,7 @@ export function createFoundingSetup({
     ];
     const cardsById = new Map(cards.map((card) => [card.id, card]));
     const initialResidents = initialResidentIds.map((characterId) => cardsById.get(characterId)!);
+    const letterFonts = new Map(initialResidents.map((card) => [card.id, chooseLetterFont(randomUUID())]));
     const preparedSprites = new Map(
       await Promise.all(
         initialResidentIds
@@ -373,6 +375,10 @@ export function createFoundingSetup({
         if (state.villagers.some((villager) => villager.characterId === card.id)) continue;
         state.villagers.push({
           characterId: card.id,
+          letterFontId:
+            (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, card.id)
+              ? state.formerLetterFonts[card.id]
+              : undefined) ?? letterFonts.get(card.id),
           spriteManager: preparedSprites.get(card.id),
           identityDescription: initialIdentityDescription(),
           admission: admissions[card.id] ?? { homeworld: "", startingSituation: "" },

@@ -392,6 +392,7 @@ export type VillageRemapFailure = {
 
 /** One library card the village has adopted. */
 export type VillageVillager = {
+  letterFontId?: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription & {
     initialGenerationComplete: boolean;
   };
@@ -1149,6 +1150,8 @@ export type VillageState = {
   /** Finite resident source yields already transferred into a project. */
   pendingDecisions: VillagePendingDecision[];
   villagers: VillageVillager[];
+  /** Writing styles retained when residents leave, keyed by character ID. */
+  formerLetterFonts?: Record<string, string>;
   /**
    * The village's one prompt box: what a villager here knows.
    *
@@ -1415,6 +1418,7 @@ export type VillagePlayerIdentity = {
 
 /** A villager as the tab renders it: live card fields where they exist, cached name otherwise. */
 export type VillageVillagerView = {
+  letterFontId?: string;
   identityDescription?: import("../../../shared/contracts/resident-description.js").ResidentIdentityDescription;
   signature?: import("../../../shared/helpers/resident-signature.js").ResidentSignatureImage;
   signatureFallback?: import("../../../shared/helpers/resident-signature.js").ResidentSignature;

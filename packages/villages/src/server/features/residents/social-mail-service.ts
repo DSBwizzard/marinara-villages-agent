@@ -12,6 +12,7 @@ import {
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { z } from "zod";
 import type { Handler } from "../../domain/models/background-model.js";
+import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import type { VillageState } from "../../domain/models/world.js";
 import type { SocialMailInterpretation, SocialMailInput, SocialMailOutbox } from "../../domain/models/social-mail.js";
 import type { RelationshipEvidenceLine, RelationshipReview } from "../../domain/models/relationship-types.js";
@@ -853,6 +854,12 @@ export function createSocialMail(ports: SocialMailPorts) {
             id: thread.id,
             residentId,
             residentName: name(residentId),
+            letterFontId:
+              village.villagers.find((row) => row.characterId === residentId)?.letterFontId ??
+              (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
+                ? village.formerLetterFonts[residentId]
+                : undefined) ??
+              legacyLetterFont(residentId),
             revision: thread.revision,
             messages: thread.messages
               .filter((row) => row.fromId === "player" || !!state.mailDeliveries[row.id])

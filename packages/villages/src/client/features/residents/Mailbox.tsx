@@ -4,6 +4,7 @@ import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { SignatureArt } from "./villages-signature.js";
+import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import type { PortraitMap } from "../../shared/types.js";
 
@@ -23,6 +24,13 @@ export function Mailbox({
   initialResidentId?: string;
   portraits: PortraitMap;
 }) {
+  const [simpleText, setSimpleText] = useState(() => {
+    try {
+      return localStorage.getItem("villages-letter-simple") === "true";
+    } catch {
+      return false;
+    }
+  });
   const [view, setView] = useState<MailboxView | null>(null);
   const [folder, setFolder] = useState<"inbox" | "sent">("inbox");
   const [selection, setSelection] = useState<Selection>(null);
@@ -125,6 +133,12 @@ export function Mailbox({
       setBusy(false);
     }
   };
+  const sender = selected && snapshot.villagers.find((person) => person.characterId === selected.message.fromId);
+  const fontId =
+    open && !simpleText && selected?.message.fromId !== "player"
+      ? (selected?.thread.letterFontId ?? sender?.letterFontId)
+      : undefined;
+  useLetterFont(fontId);
   if (!open || !snapshot) return null;
   const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
   const shown = letters
@@ -165,7 +179,6 @@ export function Mailbox({
     }
   };
   const detail = !!selected || composing;
-  const sender = selected && snapshot.villagers.find((person) => person.characterId === selected.message.fromId);
   const retryPath = (threadId: string, messageId: string) =>
     `/mailbox/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/retry`;
   return (
@@ -212,6 +225,7 @@ export function Mailbox({
         .villages-letter-paper{position:relative;display:flex;flex-direction:column;overflow:auto;padding:clamp(1.2rem,3vw,2.5rem);box-shadow:4px 5px 0 #d1bb98,0 4px 12px #26140799,inset 0 0 35px #a4763a20}
         .villages-letter-heading{display:flex;align-items:flex-start;gap:1rem;border-bottom:1px solid #c7ad89;padding-bottom:1rem}.villages-letter-heading h2{margin:0;font-size:clamp(1.8rem,3vw,2.7rem);color:#241a13}.villages-letter-heading small{display:block;margin-top:.25rem;font-size:1rem;color:#6c5640}
         .villages-letter-heading .villages-letter-face{width:7rem;height:7rem;margin-left:auto;border-radius:.2rem;background:transparent;font-size:3rem}
+        .villages-letter-reading{margin-left:auto;min-height:44px;border:1px solid #b18f69;background:#efdbb9;color:#302116;border-radius:.35rem;padding:.45rem .7rem}
         .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:1.5rem 0;flex:1}
         .villages-letter-signature{align-self:flex-end;width:min(14rem,60%);margin:0 0 1rem;color:#59434c;text-align:right}
         .villages-letter-signature .marinara-capability-villages-signature-art{width:100%;max-width:100%}
@@ -375,13 +389,36 @@ export function Mailbox({
                     <h2>{selected.thread.residentName}</h2>
                     <small>{selected.message.fromId === "player" ? "Your letter" : "Personal letter"}</small>
                   </div>
+                  <button
+                    type="button"
+                    className="villages-letter-reading"
+                    aria-pressed={simpleText}
+                    onClick={() => {
+                      const next = !simpleText;
+                      setSimpleText(next);
+                      try {
+                        localStorage.setItem("villages-letter-simple", String(next));
+                      } catch {
+                        /* Keep session preference. */
+                      }
+                    }}
+                  >
+                    Simple text
+                  </button>
                   <AvatarFace
                     portrait={portraits[selected.thread.residentId]}
                     name={selected.thread.residentName}
                     className="villages-letter-face"
                   />
                 </div>
-                <p className="villages-letter-text">{selected.message.text}</p>
+                <p
+                  className="villages-letter-text"
+                  style={{
+                    fontFamily: fontId ? letterFontFamily(fontId) : simpleText ? "system-ui, sans-serif" : undefined,
+                  }}
+                >
+                  {selected.message.text}
+                </p>
                 {selected.message.fromId !== "player" && sender ? (
                   <div className="villages-letter-signature">
                     <SignatureArt name={sender.name} signature={sender.signatureFallback} saved={sender.signature} />
