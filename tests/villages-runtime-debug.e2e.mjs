@@ -14,6 +14,7 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     let verbose = false,
       engineEnabled = false,
+      progressReads = 0,
       patchCount = 0,
       failPatch = false;
     await page.route("http://villages.test/", (route) =>
@@ -29,7 +30,10 @@ try {
       if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
-      else if (path.endsWith("/debug/runtime")) {
+      else if (path.endsWith("/progress/debug")) {
+        progressReads++;
+        return fulfill(route, { status: 404, json: { error: "Debug disabled" } });
+      } else if (path.endsWith("/debug/runtime")) {
         if (route.request().method() === "PATCH") {
           if (failPatch) {
             await fulfill(route, {
@@ -49,7 +53,8 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     const toggle = page.getByRole("checkbox", { name: "Verbose runtime logging", exact: true });
     await expect(toggle).toBeEnabled();
     await expect(toggle).not.toBeChecked();
@@ -59,7 +64,8 @@ try {
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     await expect(toggle).toBeChecked();
     failPatch = true;
     await toggle.click();
@@ -72,11 +78,13 @@ try {
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     await expect(toggle).not.toBeChecked();
     await expect(page.getByText("Terminal logging: on (also enabled by DEBUG_AGENTS).", { exact: true })).toBeVisible();
     const box = await toggle.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
+    assert.equal(progressReads, 0, "Debug without developer access never requests gated Progress diagnostics");
     assert.deepEqual(errors, []);
     await page.close();
   }

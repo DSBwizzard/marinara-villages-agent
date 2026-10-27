@@ -1,21 +1,19 @@
-import { recordTurnTiming } from "../../shared/turn-timing.js";
-import { useCallback, useState, useRef } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   isSceneTurnOutcome,
   isSceneTurnOutcomeMessage,
   sceneTurnOutcomeMessage,
 } from "../../../shared/contracts/scene-turn-outcome.js";
-import type { RoomOperation } from "../../../shared/contracts/village.js";
-import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
+import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
-import type { SceneScreenController } from "./screen-contracts.js";
+import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
-import { RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
-import { useContext, useEffect } from "react";
 import type { SceneErrorItem } from "./scene-errors.js";
+import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
+import type { SceneScreenController } from "./screen-contracts.js";
 import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
@@ -32,6 +30,21 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     { sceneId: string; id: string; title: string; message: string }[]
   >([]);
   const sceneId = controller.room?.id;
+  const sceneLifetime = useRef<string | undefined>(sceneId);
+  const [legacyReviewBusy, setLegacyReviewBusy] = useState(false);
+  const legacyReviewPending = useRef(false);
+  const legacyReviewGeneration = useRef(0);
+  const heldRecovery = useRef(controller.legacyRecovery);
+  heldRecovery.current = controller.legacyRecovery;
+  useEffect(() => {
+    sceneLifetime.current = sceneId;
+    legacyReviewPending.current = false;
+    legacyReviewGeneration.current++;
+    setLegacyReviewBusy(false);
+    return () => {
+      sceneLifetime.current = undefined;
+    };
+  }, [sceneId]);
   const sceneVenues =
     controller.snapshot?.sceneVenue && controller.snapshot.sceneVenue.sceneId === sceneId
       ? [controller.snapshot.sceneVenue.venue]
@@ -98,7 +111,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     room,
     roomBusy,
     roomChangeStatus,
-    roomContactBoundary,
     roomDraft,
     roomEnded,
     roomError,
@@ -106,24 +118,21 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomGreetingNotice,
     roomLeaveSubmissionIdRef,
     roomMode,
+    legacyRecovery,
+    setLegacyRecovery,
     roomNotices,
     roomOpen,
     roomRuling,
-    setRoomRuling,
     roomSubmissionIdRef,
-    roomTargetId,
     roomUnresolvedChanges,
     saveSpriteCardFlip,
     sendRoom,
     setMailboxOpen,
     setRoom,
     setRoomBusy,
-    setRoomContactBoundary,
-    setRoomContactKind,
     setRoomDraft,
     setRoomError,
     setRoomMode,
-    setRoomTargetId,
     openVenue,
     snapshot,
     spriteFlipDraft,
@@ -153,7 +162,17 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                     : ""),
                 actions:
                   room.operation?.status === "interrupted" && room.status !== "opening" ? (
-                    <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
+                    <button
+                      type="button"
+                      disabled={roomBusy || legacyReviewBusy}
+                      onClick={() =>
+                        void retrySavedScene(
+                          room.operation?.kind === "turn" && legacyRecovery?.sceneId === room.id
+                            ? legacyRecovery
+                            : undefined,
+                        )
+                      }
+                    >
                       {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
                     </button>
                   ) : undefined,
@@ -200,22 +219,94 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           picture={venuePictureOf(sceneVenues, room)}
           draft={roomDraft}
           mode={roomMode}
-          targetId={roomTargetId}
-          contactDoors={(() => {
-            const zones = sceneVenues.find((venue) => venue.id === room.placeId)?.zones ?? [];
-            return contactNeighborIds(room.connectionMap ?? zones, room.zoneId ?? "exterior").map((id) => {
-              const zone = zones.find((entry) => entry.id === id);
-              return {
-                id,
-                label: zone ? sceneZoneLabel(zone) : "Interior entrance",
-              };
-            });
+          legacyRecovery={legacyRecovery?.sceneId === room.id ? legacyRecovery : null}
+          legacyDestination={(() => {
+            const input = legacyRecovery?.sceneId === room.id ? legacyRecovery.operation.input : undefined;
+            const recipient = input?.targetId
+              ? (room.participants.find((person) => person.characterId === input.targetId)?.name ?? "saved recipient")
+              : "";
+            if (input?.mode !== "contact") return recipient || "saved recipient";
+            const zone = sceneVenues
+              .find((venue) => venue.id === room.placeId)
+              ?.zones?.find((entry) => entry.id === input.contact?.boundaryZoneId);
+            return [zone ? sceneZoneLabel(zone) : "saved Zone", recipient].filter(Boolean).join(" · ");
           })()}
-          contactBoundary={roomContactBoundary}
-          onContactBoundary={(id) => {
-            composerEditVersionRef.current++;
-            roomSubmissionIdRef.current = null;
-            setRoomContactBoundary(id);
+          onRetryLegacy={() => {
+            if (legacyRecovery?.sceneId === room.id) void retrySavedScene(legacyRecovery);
+          }}
+          onReplaceLegacy={() => {
+            if (legacyRecovery?.sceneId === room.id) void sendRoom(undefined, legacyRecovery);
+          }}
+          onReviewLegacy={() => {
+            if (legacyReviewPending.current || roomBusy || !legacyRecovery) return;
+            const id = room.id;
+            const held = legacyRecovery;
+            legacyReviewPending.current = true;
+            const generation = ++legacyReviewGeneration.current;
+            setLegacyReviewBusy(true);
+            void (async () => {
+              try {
+                const { session } = await request<{ session: SceneView | null }>("/rooms/active");
+                if (
+                  sceneLifetime.current !== id ||
+                  heldRecovery.current !== held ||
+                  legacyReviewGeneration.current !== generation
+                )
+                  return;
+                if (!session || session.id !== id) throw new Error("This Scene changed. Reopen it before continuing.");
+                const summary = session.operation;
+                if (summary?.status === "running")
+                  throw new Error("The saved action is still processing. Check again before continuing.");
+                let latest: RoomOperation | null = null;
+                if (
+                  summary &&
+                  (summary.status === "interrupted" || summary.error) &&
+                  !session.submissions?.some((entry) => entry.id === summary.id)
+                ) {
+                  latest = (
+                    await request<{ operation: RoomOperation | null }>(
+                      `/rooms/${encodeURIComponent(id)}/operations/${encodeURIComponent(summary.id)}`,
+                    )
+                  ).operation;
+                  if (
+                    sceneLifetime.current !== id ||
+                    heldRecovery.current !== held ||
+                    legacyReviewGeneration.current !== generation
+                  )
+                    return;
+                  if (
+                    !latest ||
+                    latest.id !== summary.id ||
+                    latest.attemptId !== summary.attemptId ||
+                    latest.status !== summary.status
+                  )
+                    throw new Error("The saved action changed again. Review it before continuing.");
+                }
+                if (latest && !["contact", "fulfill"].includes(latest.input?.mode ?? ""))
+                  throw new Error(
+                    "A different saved action needs attention. Review its Scene error before continuing.",
+                  );
+                setRoom(currentRoom(session));
+                setLegacyRecovery(
+                  latest && ["contact", "fulfill"].includes(latest.input?.mode ?? "")
+                    ? { sceneId: id, operation: latest }
+                    : null,
+                );
+                setRoomError("");
+              } catch (cause) {
+                if (
+                  sceneLifetime.current === id &&
+                  heldRecovery.current === held &&
+                  legacyReviewGeneration.current === generation
+                )
+                  setRoomError(messageFrom(cause, "The saved action could not be checked."));
+              } finally {
+                if (legacyReviewGeneration.current === generation) {
+                  legacyReviewPending.current = false;
+                  if (sceneLifetime.current === id) setLegacyReviewBusy(false);
+                }
+              }
+            })();
           }}
           movementZones={(() => {
             const venue = sceneVenues.find((entry) => entry.id === room.placeId);
@@ -243,7 +334,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           currentZoneLabel={sceneZoneLabel(
             sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}
-          busy={roomBusy || controller.replyPending || room.operation?.status === "running"}
+          busy={roomBusy || legacyReviewBusy || controller.replyPending || room.operation?.status === "running"}
           error={
             roomError ||
             room.operation?.error ||
@@ -272,16 +363,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             setRoomMode(value);
-            if (value === "contact") {
-              setRoomTargetId("");
-              setRoomContactKind("call");
-            }
-          }}
-          onTarget={(value) => {
-            composerEditVersionRef.current++;
-            if (isSceneTurnOutcomeMessage(roomRuling)) setRoomRuling("");
-            roomSubmissionIdRef.current = null;
-            setRoomTargetId(value);
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}

@@ -187,7 +187,10 @@ try {
       .click();
     await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
     await page.getByRole("main", { name: "Projects" }).getByRole("button", { name: "Close ×", exact: true }).click();
-    await page.getByRole("button", { name: "Back to the village", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
@@ -369,13 +372,46 @@ try {
     await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
     assert.equal(writes.length, beforeName + 1, "planning does not submit a Project");
     await page.getByRole("button", { name: /^Close/, exact: false }).click();
-    await page.getByRole("button", { name: "Back to the village", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Map", exact: true })
+      .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
     await expect(page.getByText("Housing requests · Renamed warehouse", { exact: true })).toBeVisible();
     await expect(page.locator('[data-villager-request="residence:mara"]')).toBeVisible();
     await expect(page.locator('[data-villager-request="residence:eli"]')).toHaveCount(0);
+    if (width === 1366) {
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "People", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
+      const person = page.getByRole("region", { name: "Mara profile", exact: true });
+      await person
+        .getByRole("navigation", { name: "Villager profile sections" })
+        .getByRole("button", { name: "Venues", exact: true })
+        .click();
+      await person.getByRole("button", { name: /Projects Open Projects/ }).click();
+      await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: /^Close/ }).click();
+      await page.getByRole("button", { name: "People", exact: true }).click();
+      await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
+      await person
+        .getByRole("navigation", { name: "Villager profile sections" })
+        .getByRole("button", { name: "Venues", exact: true })
+        .click();
+      await person.getByRole("button", { name: /Venue Requests Open Venue Requests/ }).click();
+      await expect(page.getByRole("button", { name: "Show all requests", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("main").locator('[data-villager-request="residence:eli"]')).toBeVisible();
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "Places", exact: true })
+        .click();
+      await tabs.getByRole("button", { name: "Manage", exact: true }).click();
+      await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
+    }
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     await expect(profile).toBeVisible();
     for (const section of ["About", "Zones", "Manage"]) {
@@ -403,7 +439,8 @@ try {
       .getByRole("navigation", { name: "Village navigation" })
       .getByRole("button", { name: "More", exact: true })
       .click();
-    await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("village");
+    else await page.getByRole("button", { name: "World Configuration", exact: true }).click();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village navigation" })

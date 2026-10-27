@@ -1,8 +1,8 @@
-import type { ResidentsState } from "./useResidentsState.js";
+import { useCallback, useEffect } from "react";
 import type { CatalogResponse } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { readPersonaPortrait, readPortraits } from "./ResidentPanels.js";
-import { useCallback, useEffect } from "react";
+import type { ResidentsState } from "./useResidentsState.js";
 
 export function useResidentsLoadCatalog(ports: {
   readonly setCatalog: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village").CatalogEntry[]>>;
@@ -25,29 +25,12 @@ export function useResidentsLoadCatalog(ports: {
   );
 }
 
-export function useResidentPickerLoad(ports: {
-  readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  readonly pickerOpen: boolean;
-}) {
-  const { loadCatalog, pickerOpen } = ports;
-
-  useEffect(() => {
-    if (!pickerOpen) return;
-    const controller = new AbortController();
-    void loadCatalog(controller.signal);
-    return () => controller.abort();
-  }, [pickerOpen, loadCatalog]);
-}
-
 /**
  * The faces behind everybody the tab can draw.
  *
  * One call for the whole list rather than one per villager: the Engine's
  * summary route takes ids in a batch, and a village of twelve asking twelve
- * times is twelve chances to be slow for nothing. Only ids nobody has asked
- * about travel, so opening the picker over a list already on screen costs no
- * call at all, and a search that narrows it costs one small call for whoever
- * has just become visible.
+ * times is twelve chances to be slow for nothing. Only ids nobody has asked about travel.
  *
  * Nothing here fails loudly. A picture that could not be read is a villager
  * wearing their initial, which is what they wore before any of this existed —

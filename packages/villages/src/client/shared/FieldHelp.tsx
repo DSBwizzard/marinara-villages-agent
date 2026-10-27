@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useId, useRef, useState, useEffect } from "react";
+import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
 
 function HelpPopup({
   label,
@@ -121,6 +121,7 @@ export function FieldHelp({ label, children }: { label: string; children: ReactN
       <button
         ref={button}
         type="button"
+        className="villages-founding-help-button"
         aria-label={"Help: " + label}
         aria-expanded={open}
         onClick={() => {

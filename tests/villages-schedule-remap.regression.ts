@@ -50,14 +50,8 @@ async function main() {
     translateRoutine,
     VILLAGE_UNTRANSLATED_ACTIVITY,
   } = await import("../packages/villages/src/server/domain/rules/native-remap.js");
-  const {
-    renderDoingBlock,
-    MAX_REMAP_HERE_LENGTH,
-    MAX_REMAP_SLOT_LENGTH,
-    MAX_ROUTINE_SUMMARY_LENGTH,
-    MAX_VENUES,
-    remapVenues,
-  } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
+  const { MAX_REMAP_HERE_LENGTH, MAX_REMAP_SLOT_LENGTH, MAX_ROUTINE_SUMMARY_LENGTH, MAX_VENUES, remapVenues } =
+    await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
   const { agendaAt, agendaDayPlan } = await import("../packages/villages/src/server/domain/rules/agenda-plan.js");
   const { buildResidentPlanningMessages } = await import("./fixtures/resident-planning.fixture.js");
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
@@ -1159,13 +1153,6 @@ async function main() {
   assert.equal(pilotDoing.routineSummary, "An ordinary village day.");
   assert.equal(pilotDoing.today.length, 4, "the Village agenda retains its complete active day");
   assert.ok(!("reason" in pilotDoing.today[1]!), "agenda projections omit legacy reasons");
-  const currentSceneDoing = renderDoingBlock(pilotDoing);
-  assert.ok(currentSceneDoing.includes("at home"));
-  assert.ok(!currentSceneDoing.includes("Halcyon"), "current Scene writing receives Village-owned activity");
-  assert.ok(
-    !currentSceneDoing.includes("To prepare for the day"),
-    "current Scene recurring activity omits routine reasons",
-  );
   function eventsPrompt(
     doing: string,
     agenda: Parameters<typeof buildResidentPlanningMessages>[0]["residents"][number]["agenda"],

@@ -1,27 +1,38 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { VillageWritingView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { VillageWritingView } from "../../../shared/contracts/village.js";
-import { useCallback, useEffect, useState } from "react";
 /** Per-village writing controls. Each save returns the server's effective settings. */
-function useVillageWriting() {
+export function useVillageWriting(enabled: boolean) {
   const [view, setView] = useState<VillageWritingView | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const generation = useRef(0);
 
   useEffect(() => {
+    const current = ++generation.current;
     let cancelled = false;
+    if (!enabled) {
+      setView(null);
+      setError("");
+      setSaved(false);
+      setBusy(false);
+      return;
+    }
     void request<VillageWritingView>("/narration")
       .then((next) => {
-        if (!cancelled) setView(next);
+        if (!cancelled && generation.current === current) setView(next);
       })
       .catch((cause) => {
-        if (!cancelled) setError(messageFrom(cause, "Village writing settings could not be read."));
+        if (!cancelled && generation.current === current)
+          setError(messageFrom(cause, "Village writing settings could not be read."));
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled, readAttempt]);
 
   const save = useCallback(
     async (patch: {
@@ -30,29 +41,37 @@ function useVillageWriting() {
       rating?: VillageWritingView["rating"];
       writingGuidance?: string;
     }): Promise<VillageWritingView | null> => {
+      const current = generation.current;
       setBusy(true);
       setSaved(false);
       setError("");
       try {
         const next = await request<VillageWritingView>("/narration", { method: "PUT", body: JSON.stringify(patch) });
-        setView(next);
-        setSaved(true);
+        if (generation.current === current) {
+          setView(next);
+          setSaved(true);
+        }
         return next;
       } catch (cause) {
-        setError(messageFrom(cause, "That writing change could not be saved."));
+        if (generation.current === current) setError(messageFrom(cause, "That writing change could not be saved."));
         return null;
       } finally {
-        setBusy(false);
+        if (generation.current === current) setBusy(false);
       }
     },
     [],
   );
 
-  return { view, error, busy, saved, save };
+  const retryRead = useCallback(() => {
+    setError("");
+    setReadAttempt((attempt) => attempt + 1);
+  }, []);
+
+  return { view, error, busy, saved, save, retryRead };
 }
 
-export function VillageWritingSettings() {
-  const { view, error, busy, saved, save } = useVillageWriting();
+export function VillageWritingSettings({ writing }: { writing: ReturnType<typeof useVillageWriting> }) {
+  const { view, error, busy, saved, save, retryRead } = writing;
 
   return (
     <div className={ELEMENT_TAG + "-field"}>
@@ -108,6 +127,11 @@ export function VillageWritingSettings() {
       {error ? (
         <p className={ELEMENT_TAG + "-error"} role="alert">
           {error}
+          {!view ? (
+            <button type="button" onClick={retryRead}>
+              Retry
+            </button>
+          ) : null}
         </p>
       ) : null}
     </div>

@@ -1221,7 +1221,7 @@ export type VillageChatRole = "user" | "assistant";
  * let a wish show as its tell, and may change the subject. `ask` is a question
  * being put to them, which they answer directly and briefly. `fulfill` is the
  * player saying they have done something for them, which the villager values
- * rather than judges — see `renderModeBlock`.
+ * rather than judges.
  *
  * Venue submissions store the mode for replay. Fulfill can be requested by
  * the player, but the server judges the claim before generating the reply.

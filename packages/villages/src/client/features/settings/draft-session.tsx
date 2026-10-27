@@ -21,7 +21,7 @@ type Setters = {
 };
 export type SavedSettingsDraft = Pick<
   SettingsDraftValues,
-  "knowledgeDraft" | "personaDraft" | "settingDraft" | "lorebookDraft" | "loreTokenBudgetDraft"
+  "knowledgeDraft" | "personaDraft" | "settingDraft" | "lorebookDraft" | "loreTokenBudgetDraft" | "visualLoreDefault"
 >;
 function savedValues(snapshot: NonNullable<VillageSnapshot>): SettingsDraftValues {
   return {
@@ -81,6 +81,7 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
       accept("settingDraft", ports.setSettingDraft);
       accept("lorebookDraft", ports.setLorebookDraft);
       accept("loreTokenBudgetDraft", ports.setLoreTokenBudgetDraft);
+      accept("visualLoreDefault", ports.setVisualLoreDefault);
       // Other editable sections keep their own drafts and saving commands.
       baseline.current = baseline.current
         ? {
@@ -90,6 +91,7 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
             settingDraft: next.settingDraft,
             lorebookDraft: next.lorebookDraft,
             loreTokenBudgetDraft: next.loreTokenBudgetDraft,
+            visualLoreDefault: next.visualLoreDefault,
           }
         : next;
     },

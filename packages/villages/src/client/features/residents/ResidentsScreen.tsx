@@ -2,7 +2,6 @@ import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
-import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
 import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
 import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
 import { AvatarFace } from "./ResidentPanels.js";
@@ -38,14 +37,13 @@ export function ResidentsScreen({
     profileOrigin,
     refreshBusyId,
     refreshPreviews,
-    removeVillager,
-    retryWork,
     rewriteAgenda,
     screen,
     setAgendaScheduleIngestion,
     setExploreSheet,
     setFocusedProjectId,
     setFocusedRequestId,
+    setHousingVenueId,
     setMenuPage,
     setPersonProfile,
     setProfileInspection,
@@ -102,6 +100,25 @@ export function ResidentsScreen({
       detail: "Mailbox",
       onOpen: () => controller.setMailboxOpen(true),
     });
+    relatedLinks.push(
+      {
+        id: "projects-all",
+        title: "Projects",
+        detail: "Open Projects",
+        playerVisible: true,
+        onOpen: () => openMenu("projects"),
+      },
+      {
+        id: "requests-all",
+        title: "Venue Requests",
+        detail: "Open Venue Requests",
+        playerVisible: true,
+        onOpen: () => {
+          setHousingVenueId("");
+          openMenu("venueRequests");
+        },
+      },
+    );
     for (const project of snapshot?.projects ?? []) {
       const flow = project.lifecycle;
       if (
@@ -390,12 +407,6 @@ export function ResidentsScreen({
             ) : undefined
           }
           inspectors={{
-            overview: (
-              <BackgroundWorkPanel
-                jobs={(snapshot?.backgroundWork ?? []).filter((job) => job.subjectId === personProfile.actorId)}
-                onRetry={retryWork}
-              />
-            ),
             wishes: wishInspection,
             agenda: agendaInspection,
             memories: (
@@ -434,16 +445,6 @@ export function ResidentsScreen({
               >
                 Compare card
               </button>
-              <details>
-                <summary>Actions</summary>
-                <button
-                  type="button"
-                  disabled={busy || !!refreshBusyId}
-                  onClick={() => void removeVillager(personProfile.actorId)}
-                >
-                  Move out
-                </button>
-              </details>
               {refreshPreviews[personProfile.actorId] ? (
                 <div className={`${ELEMENT_TAG}-dossier-refresh`}>
                   <p>

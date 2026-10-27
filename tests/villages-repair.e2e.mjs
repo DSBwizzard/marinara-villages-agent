@@ -196,9 +196,13 @@ try {
       await page.goto("http://repair.test/");
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect.poll(() => page.evaluate(() => window.repairController?.room?.id)).toBe(session.id);
+      const openRepair = async () => {
+        if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("repair");
+        else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+      };
       await page.getByRole("textbox", { name: "Scene draft", exact: true }).fill("My unfinished Scene draft.");
       await page.getByRole("button", { name: "Open main menu", exact: true }).click();
-      await page.getByRole("button", { name: "REPAIR", exact: true }).first().click();
+      await openRepair();
       await expect(page.getByRole("heading", { name: "REPAIR", exact: true })).toBeVisible();
       const repair = page.locator(".villages-repair");
       await repair.screenshot({ path: `.build-tmp/repair-ui/${name}-hub.png` });
@@ -257,7 +261,7 @@ try {
         "My unfinished Scene draft.",
       );
       await page.getByRole("button", { name: "Open main menu", exact: true }).click();
-      await page.getByRole("button", { name: "REPAIR", exact: true }).first().click();
+      await openRepair();
       await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(
         "Nora lent you her workshop key until Friday.",
       );
@@ -289,7 +293,7 @@ try {
         "My unfinished Scene draft.",
       );
       await page.getByRole("button", { name: "Open main menu", exact: true }).click();
-      await page.getByRole("button", { name: "REPAIR", exact: true }).first().click();
+      await openRepair();
       await page.getByRole("button", { name: "REPAIR", exact: true }).click();
       await page.getByRole("button", { name: "Memories Edit, add, or forget a memory.", exact: true }).click();
       await page.getByRole("button", { name: "Add memory", exact: true }).click();
@@ -309,6 +313,10 @@ try {
       await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(addedText);
       await repair.getByRole("button", { name: "Review changes", exact: true }).click();
       await repair.getByRole("button", { name: "Add memory", exact: true }).click();
+      await expect(repair.getByRole("heading", { name: "Memory added", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Main menu", exact: true }).click();
+      await page.evaluate(() => window.repairController.setSnapshot(null));
+      await openRepair();
       await expect(repair.getByRole("heading", { name: "Memory added", exact: true })).toBeVisible();
       await page.close();
     });

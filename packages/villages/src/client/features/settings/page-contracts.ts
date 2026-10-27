@@ -1,14 +1,14 @@
 import type {
+  VillageBackgroundPace,
   VillageLorebookOption,
   VillageSettings,
   VillageSnapshot,
-  VillageBackgroundPace,
 } from "../../../shared/contracts/village.js";
-import type { MenuPage } from "../../shared/types.js";
 
 /** Inputs consumed by renderGeneralSettingsPage; assembled by the shell. */
 export type GeneralSettingsPagePorts = {
-  readonly backgroundPanel: React.JSX.Element;
+  readonly category: "general" | "advanced";
+  readonly writing: ReturnType<typeof import("./WritingSettings.js").useVillageWriting>;
   readonly busy: boolean;
   readonly resetArmed: boolean;
   readonly saveCharacterSpeechColors: (characterSpeechColors: boolean) => Promise<void>;
@@ -21,19 +21,11 @@ export type GeneralSettingsPagePorts = {
   readonly startOver: () => Promise<void>;
 };
 
-/** Inputs consumed by renderMenuIndexPage; assembled by the shell. */
-export type MenuIndexPagePorts = {
-  readonly backgroundPanel: React.JSX.Element;
-  readonly busy: boolean;
-  readonly openMenu: (tab: MenuPage) => void;
-  readonly snapshot: VillageSnapshot | null;
-};
-
 /** Inputs consumed by renderVillageSettingsPage; assembled by the shell. */
 export type VillageSettingsPagePorts = {
+  readonly category: "world" | "visual";
   readonly reportLocalDraftStatus: import("./local-draft-status.js").ReportLocalDraftStatus;
   readonly setSnapshot: React.Dispatch<React.SetStateAction<VillageSnapshot>>;
-  readonly backgroundPanel: React.JSX.Element;
   readonly busy: boolean;
   readonly loreTokenBudgetDraft: number;
   readonly lorebookDraft: string[];

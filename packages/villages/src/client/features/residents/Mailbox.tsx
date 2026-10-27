@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { MailboxView, PersonalMailThread } from "../../../shared/contracts/mailbox.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
-import { ModalDialog } from "../../shared/ModalDialog.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { PortraitMap } from "../../shared/types.js";
 import { AvatarFace } from "./ResidentPanels.js";
+import { SignatureArt } from "./villages-signature.js";
 
 type Letter = { thread: PersonalMailThread; message: PersonalMailThread["messages"][number] };
 type Selection = { threadId: string; messageId: string } | null;
@@ -34,6 +34,16 @@ export function Mailbox({
   const [loadError, setLoadError] = useState("");
   const [readError, setReadError] = useState("");
   const [readAttempt, setReadAttempt] = useState(0);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const root = closeButton.current?.getRootNode();
+    const opener = root instanceof ShadowRoot ? root.activeElement : document.activeElement;
+    closeButton.current?.focus();
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
+    };
+  }, [open]);
   const retryIdentity = useRef<Record<string, string>>({});
   const sendIdentities = useRef(new Map<string, string>());
   const refresh = useCallback(async (signal?: AbortSignal) => {
@@ -155,13 +165,33 @@ export function Mailbox({
     }
   };
   const detail = !!selected || composing;
+  const sender = selected && snapshot.villagers.find((person) => person.characterId === selected.message.fromId);
   const retryPath = (threadId: string, messageId: string) =>
     `/mailbox/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/retry`;
   return (
-    <ModalDialog title="Mailbox" onClose={onClose} scrollBody>
-      <style>{`
-        .villages-founding-dialog:has(.villages-letter-layout){width:min(76rem,96vw);max-width:96vw;height:min(46rem,94vh);max-height:94vh;padding:0;background:#53341f url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;color:#34271c;border:1px solid #806044;box-shadow:0 14px 50px #0009;font-family:Georgia,"Times New Roman",serif}
-        .villages-founding-dialog:has(.villages-letter-layout)>header{background:transparent;color:#fff7eb;border:0;padding:1.25rem 1.8rem .7rem}
+    <div
+      className="villages-mailbox-overlay"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <div className="villages-founding-dialog villages-mailbox-dialog" role="dialog" aria-label="Mailbox">
+        <header>
+          <h3>Mailbox</h3>
+          <button ref={closeButton} type="button" aria-label="Close Mailbox" onClick={onClose}>
+            ×
+          </button>
+        </header>
+        <style>{`
+        .villages-mailbox-overlay{position:absolute;inset:0;z-index:1000;display:grid;place-items:center;overflow:hidden;background:#0009;padding:1rem;box-sizing:border-box}
+        .villages-founding-dialog:has(.villages-letter-layout){width:min(76rem,100%);max-width:100%;height:min(46rem,100%);max-height:100%;margin:0;padding:0;background:#53341f url('/api/capability-packages/villages/assets/menu-desk.jpg') center/cover;color:#34271c;border:1px solid #806044;box-shadow:0 14px 50px #0009;font-family:Georgia,"Times New Roman",serif}
+        .villages-founding-dialog:has(.villages-letter-layout)>header{display:flex;align-items:center;justify-content:space-between;background:transparent;color:#fff7eb;border:0;padding:1.25rem 1.8rem .7rem}
         .villages-founding-dialog:has(.villages-letter-layout)>header h3{font:700 clamp(1.8rem,3.2vw,2.8rem) Georgia,serif;color:#fff7eb;text-shadow:0 2px 3px #261407}
         .villages-founding-dialog:has(.villages-letter-layout)>header>button{background:transparent;border:0;color:#fff7eb;font:1.4rem Georgia,serif;min-width:44px;min-height:44px}
         .villages-letter-layout{display:grid;grid-template-columns:minmax(15rem,36%) minmax(0,1fr);gap:1rem;padding:.5rem 1.8rem 1.6rem;min-height:0;flex:1;overflow:hidden;box-sizing:border-box}
@@ -183,193 +213,205 @@ export function Mailbox({
         .villages-letter-heading{display:flex;align-items:flex-start;gap:1rem;border-bottom:1px solid #c7ad89;padding-bottom:1rem}.villages-letter-heading h2{margin:0;font-size:clamp(1.8rem,3vw,2.7rem);color:#241a13}.villages-letter-heading small{display:block;margin-top:.25rem;font-size:1rem;color:#6c5640}
         .villages-letter-heading .villages-letter-face{width:7rem;height:7rem;margin-left:auto;border-radius:.2rem;background:transparent;font-size:3rem}
         .villages-letter-text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:clamp(1.05rem,1.6vw,1.4rem);line-height:1.55;margin:1.5rem 0;flex:1}
+        .villages-letter-signature{align-self:flex-end;width:min(14rem,60%);margin:0 0 1rem;color:#59434c;text-align:right}
+        .villages-letter-signature .marinara-capability-villages-signature-art{width:100%;max-width:100%}
+        .villages-letter-signature .marinara-capability-villages-signature-image{display:block;margin-left:auto;max-width:100%;max-height:7rem;object-fit:contain;mix-blend-mode:multiply}
+        .villages-letter-signature .marinara-capability-villages-signature-name{display:block;font:italic 2rem/1.4 var(--notebook-hand, cursive);overflow-wrap:anywhere}
+        .villages-letter-signature .marinara-capability-villages-signature-name[data-hand="bold"]{font-weight:700}
+        .villages-letter-signature .marinara-capability-villages-signature-flourish{display:block;width:100%;height:1rem;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
         .villages-letter-actions{display:flex;gap:.65rem;flex-wrap:wrap;margin-top:auto}.villages-founding-dialog .villages-letter-actions button{min-height:44px;padding:.65rem 1.25rem;border:1px solid #b18f69;border-radius:.35rem;background:#efdbb9;color:#302116;box-shadow:0 2px 4px #7b56352e;font-size:1.05rem}
         .villages-letter-compose-fields{display:grid;gap:1rem;flex:1;margin-top:1.2rem}.villages-letter-compose-fields label{display:grid;gap:.4rem;font-size:1.1rem}.villages-founding-dialog .villages-letter-compose-fields :is(select,textarea){width:100%;box-sizing:border-box;background:#fff9ed;color:#302116;border:1px solid #b99a72;border-radius:.25rem;padding:.65rem;font:1.05rem Georgia,serif}.villages-letter-compose-fields textarea{min-height:10rem;resize:vertical}
         .villages-letter-empty{font-size:1.1rem;line-height:1.5}.villages-letter-back{display:none}.villages-letter-error{color:#6d261b;background:#f9e9d5;padding:.6rem 1rem;margin:0 1.8rem}
         .villages-letter-layout :is(button,select,textarea):focus-visible{outline:3px solid #385c6b;outline-offset:2px}.villages-letter-layout button:disabled{opacity:.55;cursor:default}
-        @media(max-width:704px){.villages-founding-dialog:has(.villages-letter-layout){width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;border:0;border-radius:0}.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.7rem 1rem .35rem}.villages-letter-layout{display:flex;padding:.4rem .8rem .8rem;gap:0}.villages-letter-list,.villages-letter-paper{flex:1}.villages-letter-layout[data-detail=true] .villages-letter-list{display:none}.villages-letter-layout[data-detail=false] .villages-letter-paper{display:none}.villages-letter-paper{padding:1.2rem}.villages-letter-heading .villages-letter-face{width:5rem;height:5rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{display:block;align-self:flex-start;margin:0 0 .7rem;border:0;background:transparent;color:#59442f;padding:.4rem 0;font:1rem Georgia,serif;box-shadow:none}.villages-letter-error{margin:0 .8rem}}
+        @media(max-width:704px){.villages-mailbox-overlay{padding:0}.villages-founding-dialog:has(.villages-letter-layout){width:100%;max-width:100%;height:100%;max-height:100%;border:0;border-radius:0}.villages-founding-dialog:has(.villages-letter-layout)>header{padding:.7rem 1rem .35rem}.villages-letter-layout{display:flex;padding:.4rem .8rem .8rem;gap:0}.villages-letter-list,.villages-letter-paper{flex:1}.villages-letter-layout[data-detail=true] .villages-letter-list{display:none}.villages-letter-layout[data-detail=false] .villages-letter-paper{display:none}.villages-letter-paper{padding:1.2rem}.villages-letter-heading .villages-letter-face{width:5rem;height:5rem}.villages-founding-dialog .villages-letter-paper .villages-letter-back{display:block;align-self:flex-start;margin:0 0 .7rem;border:0;background:transparent;color:#59442f;padding:.4rem 0;font:1rem Georgia,serif;box-shadow:none}.villages-letter-error{margin:0 .8rem}}
       `}</style>
-      {error || loadError ? (
-        <p className="villages-letter-error" role="alert">
-          {error || loadError}
-        </p>
-      ) : null}
-      <div className="villages-letter-layout" data-detail={detail}>
-        <nav className="villages-letter-list" aria-label="Letters">
-          <div className="villages-letter-list-head">
-            <div className="villages-letter-folders" aria-label="Mailbox folders">
-              <button
-                type="button"
-                aria-pressed={folder === "inbox"}
-                onClick={() => {
-                  setFolder("inbox");
-                  setSelection(null);
-                  setComposing(false);
-                }}
-              >
-                Inbox
-              </button>
-              <button
-                type="button"
-                aria-pressed={folder === "sent"}
-                onClick={() => {
-                  setFolder("sent");
-                  setSelection(null);
-                  setComposing(false);
-                }}
-              >
-                Sent
+        {error || loadError ? (
+          <p className="villages-letter-error" role="alert">
+            {error || loadError}
+          </p>
+        ) : null}
+        <div className="villages-letter-layout" data-detail={detail}>
+          <nav className="villages-letter-list" aria-label="Letters">
+            <div className="villages-letter-list-head">
+              <div className="villages-letter-folders" aria-label="Mailbox folders">
+                <button
+                  type="button"
+                  aria-pressed={folder === "inbox"}
+                  onClick={() => {
+                    setFolder("inbox");
+                    setSelection(null);
+                    setComposing(false);
+                  }}
+                >
+                  Inbox
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={folder === "sent"}
+                  onClick={() => {
+                    setFolder("sent");
+                    setSelection(null);
+                    setComposing(false);
+                  }}
+                >
+                  Sent
+                </button>
+              </div>
+              <button className="villages-letter-compose" type="button" onClick={() => write()}>
+                Write a letter
               </button>
             </div>
-            <button className="villages-letter-compose" type="button" onClick={() => write()}>
-              Write a letter
+            <div className="villages-letter-rows">
+              {(view?.recovery ?? [])
+                .filter((row) => !letters.some(({ message }) => message.id === row.messageId))
+                .map((row) => (
+                  <article key={row.messageId}>
+                    <p>{row.label}</p>
+                    <div className="villages-letter-actions">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void action(retryPath(row.threadId, row.messageId))}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              {shown.length === 0 ? (
+                <p className="villages-letter-empty">{folder === "inbox" ? "No letters yet." : "No sent letters."}</p>
+              ) : null}
+              {shown.map(({ thread, message }) => (
+                <button
+                  className="villages-letter-row"
+                  type="button"
+                  key={thread.id + message.id}
+                  aria-pressed={selection?.threadId === thread.id && selection.messageId === message.id && !composing}
+                  onClick={() => {
+                    setSelection({ threadId: thread.id, messageId: message.id });
+                    setComposing(false);
+                  }}
+                >
+                  <AvatarFace
+                    portrait={portraits[thread.residentId]}
+                    name={thread.residentName}
+                    className="villages-letter-face"
+                  />
+                  <span>
+                    <strong>{thread.residentName}</strong>
+                    <small>
+                      {message.fromId !== "player" && !message.read
+                        ? `New · ${new Date(message.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+                        : message.text}
+                    </small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </nav>
+          <section className="villages-letter-paper" aria-label="Personal mail">
+            <button
+              type="button"
+              className="villages-letter-back"
+              onClick={() => {
+                setSelection(null);
+                setComposing(false);
+              }}
+            >
+              ‹ Back to letters
             </button>
-          </div>
-          <div className="villages-letter-rows">
-            {(view?.recovery ?? [])
-              .filter((row) => !letters.some(({ message }) => message.id === row.messageId))
-              .map((row) => (
-                <article key={row.messageId}>
-                  <p>{row.label}</p>
-                  <div className="villages-letter-actions">
+            {readError ? (
+              <div role="alert">
+                <p>{readError}</p>
+                <div className="villages-letter-actions">
+                  <button type="button" onClick={() => setReadAttempt((attempt) => attempt + 1)}>
+                    Retry reading
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {composing ? (
+              <>
+                <div className="villages-letter-heading">
+                  <h2>Write a letter</h2>
+                </div>
+                <div className="villages-letter-compose-fields">
+                  <label>
+                    To
+                    <select
+                      aria-label="Recipient"
+                      value={recipient}
+                      onChange={(event) => setRecipient(event.target.value)}
+                    >
+                      <option value="">Choose a resident</option>
+                      {people.map((person) => (
+                        <option key={person.id} value={person.id}>
+                          {person.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Message
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Personal message"
+                      maxLength={4000}
+                      value={draft}
+                      onChange={(event) => setDrafts((current) => ({ ...current, [recipient]: event.target.value }))}
+                    />
+                  </label>
+                </div>
+                <div className="villages-letter-actions">
+                  <button type="button" disabled={busy || !recipient || !draft.trim()} onClick={() => void send()}>
+                    Send letter
+                  </button>
+                </div>
+              </>
+            ) : selected ? (
+              <>
+                <div className="villages-letter-heading">
+                  <div>
+                    <h2>{selected.thread.residentName}</h2>
+                    <small>{selected.message.fromId === "player" ? "Your letter" : "Personal letter"}</small>
+                  </div>
+                  <AvatarFace
+                    portrait={portraits[selected.thread.residentId]}
+                    name={selected.thread.residentName}
+                    className="villages-letter-face"
+                  />
+                </div>
+                <p className="villages-letter-text">{selected.message.text}</p>
+                {selected.message.fromId !== "player" && sender ? (
+                  <div className="villages-letter-signature">
+                    <SignatureArt name={sender.name} signature={sender.signatureFallback} saved={sender.signature} />
+                  </div>
+                ) : null}
+                {selected.message.error ? <p role="status">{selected.message.error}</p> : null}
+                <div className="villages-letter-actions">
+                  {selected.message.fromId !== "player" &&
+                  people.some((person) => person.id === selected.thread.residentId) ? (
+                    <button type="button" onClick={() => write(selected.thread.residentId)}>
+                      Write back
+                    </button>
+                  ) : null}
+                  {selected.message.retryAvailable ? (
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void action(retryPath(row.threadId, row.messageId))}
+                      onClick={() => void action(retryPath(selected.thread.id, selected.message.id))}
                     >
                       Retry
                     </button>
-                  </div>
-                </article>
-              ))}
-            {shown.length === 0 ? (
-              <p className="villages-letter-empty">{folder === "inbox" ? "No letters yet." : "No sent letters."}</p>
-            ) : null}
-            {shown.map(({ thread, message }) => (
-              <button
-                className="villages-letter-row"
-                type="button"
-                key={thread.id + message.id}
-                aria-pressed={selection?.threadId === thread.id && selection.messageId === message.id && !composing}
-                onClick={() => {
-                  setSelection({ threadId: thread.id, messageId: message.id });
-                  setComposing(false);
-                }}
-              >
-                <AvatarFace
-                  portrait={portraits[thread.residentId]}
-                  name={thread.residentName}
-                  className="villages-letter-face"
-                />
-                <span>
-                  <strong>{thread.residentName}</strong>
-                  <small>
-                    {message.fromId !== "player" && !message.read
-                      ? `New · ${new Date(message.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
-                      : message.text}
-                  </small>
-                </span>
-              </button>
-            ))}
-          </div>
-        </nav>
-        <section className="villages-letter-paper" aria-label="Personal mail">
-          <button
-            type="button"
-            className="villages-letter-back"
-            onClick={() => {
-              setSelection(null);
-              setComposing(false);
-            }}
-          >
-            ‹ Back to letters
-          </button>
-          {readError ? (
-            <div role="alert">
-              <p>{readError}</p>
-              <div className="villages-letter-actions">
-                <button type="button" onClick={() => setReadAttempt((attempt) => attempt + 1)}>
-                  Retry reading
-                </button>
-              </div>
-            </div>
-          ) : null}
-          {composing ? (
-            <>
-              <div className="villages-letter-heading">
-                <h2>Write a letter</h2>
-              </div>
-              <div className="villages-letter-compose-fields">
-                <label>
-                  To
-                  <select
-                    aria-label="Recipient"
-                    value={recipient}
-                    onChange={(event) => setRecipient(event.target.value)}
-                  >
-                    <option value="">Choose a resident</option>
-                    {people.map((person) => (
-                      <option key={person.id} value={person.id}>
-                        {person.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Message
-                  <textarea
-                    autoComplete="off"
-                    aria-label="Personal message"
-                    maxLength={4000}
-                    value={draft}
-                    onChange={(event) => setDrafts((current) => ({ ...current, [recipient]: event.target.value }))}
-                  />
-                </label>
-              </div>
-              <div className="villages-letter-actions">
-                <button type="button" disabled={busy || !recipient || !draft.trim()} onClick={() => void send()}>
-                  Send letter
-                </button>
-              </div>
-            </>
-          ) : selected ? (
-            <>
-              <div className="villages-letter-heading">
-                <div>
-                  <h2>{selected.thread.residentName}</h2>
-                  <small>{selected.message.fromId === "player" ? "Your letter" : "Personal letter"}</small>
+                  ) : null}
                 </div>
-                <AvatarFace
-                  portrait={portraits[selected.thread.residentId]}
-                  name={selected.thread.residentName}
-                  className="villages-letter-face"
-                />
-              </div>
-              <p className="villages-letter-text">{selected.message.text}</p>
-              {selected.message.error ? <p role="status">{selected.message.error}</p> : null}
-              <div className="villages-letter-actions">
-                {selected.message.fromId !== "player" &&
-                people.some((person) => person.id === selected.thread.residentId) ? (
-                  <button type="button" onClick={() => write(selected.thread.residentId)}>
-                    Write back
-                  </button>
-                ) : null}
-                {selected.message.retryAvailable ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void action(retryPath(selected.thread.id, selected.message.id))}
-                  >
-                    Retry
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : (
-            <p className="villages-letter-empty">Choose a letter to read.</p>
-          )}
-        </section>
+              </>
+            ) : (
+              <p className="villages-letter-empty">Choose a letter to read.</p>
+            )}
+          </section>
+        </div>
       </div>
-    </ModalDialog>
+    </div>
   );
 }

@@ -21,7 +21,7 @@ const bundle = await build({
       const draftRevision=useRef(9),draftSaveQueue=useRef(Promise.resolve());
       const openSetup=useCallback(()=>setOpened(true),[]);
       const startOver=useFoundingStartOver({draftRevision,draftSaveQueue,openSetup,setBusy,setCatalog:()=>{},setDraftReady,setResetArmed,setSavedSetupDraft,setSettingsError,setSnapshot});
-      return <>{renderGeneralSettingsPage({backgroundPanel:null,busy,resetArmed,setResetArmed,settingsError,snapshot,startOver,
+      return <>{renderGeneralSettingsPage({category:'advanced',writing:{busy:false},busy,resetArmed,setResetArmed,settingsError,snapshot,startOver,
         saveCharacterSpeechColors:async()=>{},saveSendOnEnter:async()=>{},saveBackgroundPace:async()=>{},saveVisitRetention:async()=>{}})}
         <pre id='state'>{JSON.stringify({founded:snapshot.isFounded,busy,opened,draftReady,savedDraft,revision:draftRevision.current})}</pre></>;
     }
@@ -111,14 +111,14 @@ try {
         db.close();
         return record;
       }, name);
-    const reset = page.getByRole("button", { name: "Reset the village and start over", exact: true });
+    const reset = page.getByRole("button", { name: "Erase Village", exact: true });
     await reset.click();
     assert.equal(resets, 0, "Arming reset never deletes data");
-    await page.getByRole("button", { name: "Keep it", exact: true }).click();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.equal(resets, 0);
     for (let attempt = 1; attempt <= 3; attempt++) {
       await reset.click();
-      await page.getByRole("button", { name: "Yes, empty the village", exact: true }).click();
+      await page.getByRole("button", { name: "Erase Village permanently", exact: true }).click();
       await expect.poll(async () => !(await state()).busy).toBe(true);
       assert.equal(resets, attempt, "No automatic reset retry");
       if (attempt < 3) {

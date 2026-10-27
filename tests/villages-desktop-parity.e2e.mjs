@@ -312,10 +312,10 @@ try {
 
     await expect(page.getByRole("button", { name: /Notices \(/u })).toHaveCount(0);
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /^Villagers \(/u }).click();
+    await expect(page.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByText("Manage", { exact: true }).click();
+    await page.getByText("Character tools", { exact: true }).click();
     const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
     await managerButton.focus();
     await page.keyboard.press("Enter");
@@ -325,17 +325,16 @@ try {
     await expect(managerButton).toBeFocused();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
     await page.getByRole("button", { name: "Close ×" }).click();
-    await page.getByRole("button", { name: "Village Settings" }).click();
+    const section = async (key, label) => {
+      if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
+      else await page.getByRole("button", { name: label, exact: true }).click();
+    };
+    await section("village", "World Configuration");
     await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "DEBUG Settings" }).click();
-    await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: "More" }).click();
-    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to the village" }).click();
+    await section("chatlogs", "Scene History");
+    await expect(page.getByRole("heading", { name: "Scene History", level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
 
     await page.getByRole("button", { name: "Show places", exact: true }).click();
     const navigator = page.getByRole("complementary", { name: "Places navigator" });
@@ -477,7 +476,7 @@ try {
     await expect(modeButton()).toHaveAttribute("title", "Say / Do");
     await modeButton().click();
     await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toHaveCount(0);
     await page.getByRole("menuitemradio", { name: "Say / Do" }).click();
     await expect(modeButton()).toHaveAttribute("title", "Say / Do");
     assert.equal(lastTurn, null, "changing modes does not send the draft");

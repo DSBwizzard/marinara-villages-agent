@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
-import type { ReportLocalDraftStatus } from "./local-draft-status.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { useEffect, useLayoutEffect, useState } from "react";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
+import type { ReportLocalDraftStatus } from "./local-draft-status.js";
 export function WorldNameSettings({
   initial,
   onSnapshot,
@@ -14,7 +14,7 @@ export function WorldNameSettings({
   const [value, setValue] = useState(initial),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  useEffect(() => {
+  useLayoutEffect(() => {
     reportLocalDraftStatus("world", { dirty: value.trim() !== initial, busy });
   }, [value, initial, busy, reportLocalDraftStatus]);
   useEffect(() => () => reportLocalDraftStatus("world", null), [reportLocalDraftStatus]);

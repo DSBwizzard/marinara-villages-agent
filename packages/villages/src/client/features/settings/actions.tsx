@@ -1,13 +1,14 @@
-import type { SavedSettingsDraft } from "./draft-session.js";
-import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
-import type { VillageSettings, VillageSnapshot, VillageBackgroundPace } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
 import { type SetStateAction, useCallback } from "react";
+import type { VillageBackgroundPace, VillageSettings, VillageSnapshot } from "../../../shared/contracts/village.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
+import type { SavedSettingsDraft } from "./draft-session.js";
 
 export function useSaveSettings(ports: {
   knowledgeDraft: string;
   lorebookDraft: string[];
   loreTokenBudgetDraft: number;
+  visualLoreDefault: boolean;
   personaDraft: string;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
@@ -22,6 +23,7 @@ export function useSaveSettings(ports: {
     knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
+    visualLoreDefault,
     personaDraft,
     setBusy,
     setSettingsError,
@@ -41,11 +43,19 @@ export function useSaveSettings(ports: {
         body: JSON.stringify({
           selectedLorebookIds: lorebookDraft,
           loreTokenBudget: loreTokenBudgetDraft,
+          useVisualLoreByDefault: visualLoreDefault,
         }),
       });
       if (!lifetime.owns(claim)) return;
       setSnapshot(saved);
-      acceptSavedSettings(saved, { knowledgeDraft, personaDraft, settingDraft, lorebookDraft, loreTokenBudgetDraft });
+      acceptSavedSettings(saved, {
+        knowledgeDraft,
+        personaDraft,
+        settingDraft,
+        lorebookDraft,
+        loreTokenBudgetDraft,
+        visualLoreDefault,
+      });
     } catch (cause) {
       if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Those settings could not be saved."));
     } finally {
@@ -60,6 +70,7 @@ export function useSaveSettings(ports: {
     settingDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
+    visualLoreDefault,
     setSnapshot,
     acceptSavedSettings,
   ]);
@@ -69,21 +80,12 @@ export function useSaveScenerySettings(ports: {
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
   personalizeHomes: boolean;
-  visualLoreDefault: boolean;
   snapshot: VillageSnapshot | null;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
-  const {
-    sceneryStyle,
-    sceneryStyleProfileId,
-    personalizeHomes,
-    visualLoreDefault,
-    setBusy,
-    setSettingsError,
-    setSnapshot,
-  } = ports;
+  const { sceneryStyle, sceneryStyleProfileId, personalizeHomes, setBusy, setSettingsError, setSnapshot } = ports;
   const lifetime = useVillageMutationLifetime(ports.snapshot?.isFounded, setBusy);
   return useCallback(
     async (automaticZonePictures?: boolean) => {
@@ -100,7 +102,6 @@ export function useSaveScenerySettings(ports: {
                   sceneryArtStyle: sceneryStyle,
                   sceneryStyleProfileId,
                   personalizeVenueImagesByDefault: personalizeHomes,
-                  useVisualLoreByDefault: visualLoreDefault,
                 }
               : { automaticZonePictures }),
           }),
@@ -112,16 +113,7 @@ export function useSaveScenerySettings(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [
-      sceneryStyle,
-      sceneryStyleProfileId,
-      personalizeHomes,
-      visualLoreDefault,
-      setBusy,
-      setSettingsError,
-      setSnapshot,
-      lifetime,
-    ],
+    [sceneryStyle, sceneryStyleProfileId, personalizeHomes, setBusy, setSettingsError, setSnapshot, lifetime],
   );
 }
 

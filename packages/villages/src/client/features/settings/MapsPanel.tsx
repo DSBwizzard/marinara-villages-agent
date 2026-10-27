@@ -1,12 +1,12 @@
-import type { VillageMap, VillageSnapshot, TownMapView } from "../../../shared/contracts/village.js";
-import { useEffect, useRef, useState } from "react";
-import { messageFrom, request, VillageApiError } from "../../shared/api.js";
-import { createVillagesClientId } from "../../shared/request-id.js";
-import { readFileAsDataUrl, measureImage } from "../../shared/presentation.js";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { TownMapView, VillageMap, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
-import { readDeviceDraft, saveDeviceDraft, removeDeviceDraft } from "../../shared/device-drafts.js";
-import { MapStage, defaultView, TOWN_MAP_FITS } from "../exploration/MapStage.js";
+import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
+import { readDeviceDraft, removeDeviceDraft, saveDeviceDraft } from "../../shared/device-drafts.js";
+import { measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
+import { defaultView, MapStage, TOWN_MAP_FITS } from "../exploration/MapStage.js";
 import type { ReportLocalDraftStatus } from "./local-draft-status.js";
 
 type Draft = {
@@ -135,7 +135,7 @@ function MapEditor({
       ? (snapshot.projects.find((project) => project.id === id.slice(8))?.title ?? "")
       : (snapshot.settings.venues.find((venue) => venue.id === id)?.name ?? "");
   const [placing, setPlacing] = useState("");
-  useEffect(() => {
+  useLayoutEffect(() => {
     reportLocalDraftStatus("map", {
       dirty: JSON.stringify(draft) !== JSON.stringify(original.current),
       busy: busy || !ready,

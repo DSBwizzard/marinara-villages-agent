@@ -70,7 +70,8 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     const panel = page.getByRole("region", { name: "Development time", exact: true });
     const advance = panel.getByRole("button", { name: "Advance time", exact: true });
     await expect(advance).toBeEnabled();

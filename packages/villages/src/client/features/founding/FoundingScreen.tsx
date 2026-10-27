@@ -1,25 +1,25 @@
-import { FoundingAdmissions } from "./FoundingAdmissions.js";
-import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
-import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { useEffect, useRef, useState } from "react";
+import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
+import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
-import type { FoundingScreenController } from "./screen-contracts.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
+import { FoundingAdmissions } from "./FoundingAdmissions.js";
+import { CircumstanceInput, FoundingField } from "./FoundingField.js";
 import {
   FoundingPersonaSelector,
   FoundingVillagerPicker,
+  LoreTokenBudgetField,
   SETUP_STEPS,
   VillageLorebookPicker,
-  LoreTokenBudgetField,
 } from "./FoundingPanels.js";
-import { FoundingField, CircumstanceInput } from "./FoundingField.js";
-import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
-import { FoundingWorkspace } from "./villages-founding-workspace";
 import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
+import type { FoundingScreenController } from "./screen-contracts.js";
+import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
+import { FoundingWorkspace } from "./villages-founding-workspace";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
-import { PlayerBackgroundSummary, playerBackgroundProblem } from "./villages-player-background.js";
+import { playerBackgroundProblem, PlayerBackgroundSummary } from "./villages-player-background.js";
 
 const MAP_EXAMPLES = [
   "An inn beside the river, with homes around a central square.",
@@ -517,7 +517,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               <h3 aria-label="Map">Map</h3>
               {snapshot?.isFounded ? (
                 <p>
-                  Change artwork and Venue photographs in Village Settings → Village Map. Existing locations are
+                  Change artwork and Venue photographs in More → World Configuration → Maps. Existing locations are
                   retained.
                 </p>
               ) : (

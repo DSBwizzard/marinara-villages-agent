@@ -1,6 +1,6 @@
 import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/contracts/village.js";
-import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
 import type { SpeechDelivery } from "../../shared/helpers/scene-speech.js";
+import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
 export type SetupMapSource = "existing" | "generate" | "upload";
@@ -50,7 +50,7 @@ export type PersonaPreview = {
  */
 export type VillageBeatRegister = "speech" | "narration";
 
-export type SceneComposerMode = "chat" | "fulfill" | "move" | "conclude" | "contact";
+export type SceneComposerMode = "chat" | "move" | "conclude";
 
 /**
  * What a connection is for, in the Engine's own terms.
@@ -312,6 +312,7 @@ export type RoomStep = {
 /**
  * Pages reachable from the village menu.
  */
-type MenuTab = "villagers" | "venueRequests" | "projects" | "village" | "general" | "chatlogs" | "progress";
+type MenuTab =
+  "villagers" | "venueRequests" | "projects" | "village" | "visual" | "general" | "advanced" | "chatlogs" | "progress";
 
 export type MenuPage = "index" | "repair" | MenuTab;

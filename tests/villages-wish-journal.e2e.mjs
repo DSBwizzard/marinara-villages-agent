@@ -17,8 +17,14 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const village = structuredClone(snapshot);
     village.villagers = [
-      { ...village.villagers[0], characterId: "feddy", name: "Feddy", place: { id: "mill", name: "The Mill" } },
-      { ...village.villagers[1], characterId: "roxie", name: "Roxie" },
+      {
+        ...village.villagers[0],
+        characterId: "feddy",
+        name: "Feddy",
+        place: { id: "mill", name: "The Mill" },
+        agenda: null,
+      },
+      { ...village.villagers[1], characterId: "roxie", name: "Roxie", agenda: null },
     ];
     const wish = {
       wishId: "swim",
@@ -191,7 +197,12 @@ try {
       .getByRole("navigation", { name: "Villager profile sections" })
       .getByRole("button", { name: "Venues", exact: true })
       .click();
-    await page.getByRole("button", { name: "View Venue", exact: true }).click();
+    await expect(page.getByRole("button", { name: "View Venue", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Close ×", exact: true }).click();
+    await page.getByRole("button", { name: "Show places", exact: true }).click();
+    const places = page.getByRole("complementary", { name: "Places navigator" });
+    await places.getByRole("button", { name: /^The Mill/ }).click();
+    await places.getByRole("button", { name: "View venue", exact: true }).click();
     await page.getByRole("button", { name: "Visit venue", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Message at The Mill" })).toBeVisible();
     const notices = page.getByRole("button", { name: "1 World change" });
