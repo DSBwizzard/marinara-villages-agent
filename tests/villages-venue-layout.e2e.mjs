@@ -90,24 +90,35 @@ try {
       await page.getByRole("button", { name: "Projects (1)", exact: true }).click();
       await page.getByRole("button", { name: /Canvas Tent/ }).click();
       const editor = page.locator("main article");
-      await page.getByRole("tab", { name: "Design", exact: true }).click();
+      await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
       await editor.getByLabel("Physical design", { exact: true }).fill("A tent, or a mat beneath a tree");
+      await page.getByRole("button", { name: "Zones", exact: true }).click();
+      if (width < 700)
+        await editor
+          .getByRole("navigation", { name: "Project Zones" })
+          .getByRole("button", { name: /Entrance/ })
+          .click();
       await editor.getByLabel("Entrance", { exact: true }).fill("A sheltered patch beneath a tree.");
-      await page.getByRole("tab", { name: "Zones", exact: true }).click();
+      if (width < 700) await editor.getByRole("button", { name: "‹ Zones", exact: true }).click();
       if (layout === "common" || layout === "both") {
         await editor.getByRole("button", { name: "Add Zone", exact: true }).click();
         await editor.getByLabel("Zone Name", { exact: true }).first().fill("Workshop");
         await editor.getByLabel("Zone Used For", { exact: true }).first().fill("Making things");
+        if (width < 700) await editor.getByRole("button", { name: "Appearance", exact: true }).click();
         await editor.getByLabel("Zone Appearance", { exact: true }).first().fill("A canvas workshop.");
+        if (width < 700) await editor.getByRole("button", { name: "Options", exact: true }).click();
         await editor
           .getByRole("group", { name: "Zone Class" })
           .getByRole("button", { name: "Workplace", exact: true })
           .click();
       }
       if (layout === "private" || layout === "both") {
+        if (width < 700 && layout === "both")
+          await editor.getByRole("button", { name: "‹ Zones", exact: true }).click();
         await editor.getByRole("button", { name: "Add private Zone", exact: true }).click();
         await editor.getByLabel("Zone Name", { exact: true }).last().fill("Sleeping alcove");
         await editor.getByLabel("Zone Used For", { exact: true }).last().fill("Sleeping");
+        if (width < 700) await editor.getByRole("button", { name: "Appearance", exact: true }).click();
         await editor.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas sleeping alcove.");
         await expect(editor.getByText(/Private contents stay hidden/)).toBeVisible();
       }
