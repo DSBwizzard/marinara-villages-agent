@@ -90,8 +90,7 @@ try {
         let value = fixture;
         if (path.endsWith("/connections"))
           value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
-        else if (path.endsWith("/mailbox"))
-          value = { threads: [], invitations: [], recovery: [], venueMail: fixture.venueMail ?? [] };
+        else if (path.endsWith("/mailbox")) value = { threads: [], recovery: [] };
         else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
         else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (
@@ -227,8 +226,7 @@ try {
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "View Mailbox" }).click();
         const mailbox = page.getByRole("dialog", { name: "Mailbox", exact: true });
-        await mailbox.getByText("Venue decisions", { exact: true }).click();
-        await expect(mailbox.getByRole("button", { name: "Review request" })).toBeEnabled();
+        await expect(mailbox.getByText("Venue decisions", { exact: true })).toHaveCount(0);
         await mailbox.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       }
 

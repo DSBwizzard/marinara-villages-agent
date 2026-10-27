@@ -7,21 +7,18 @@ import { readVenueRequestCore, type VenueRequestCore } from "../../domain/rules/
 import { queueVillageVenueRequest } from "../../domain/rules/venue-request-state.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import type { draftNewVenueProject } from "../projects/project-lifecycle.js";
-import type { queueVenueCounteroffer } from "./venue-mailbox.js";
 
 export interface VenueRequestPorts {
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
   draftNewVenueProject: typeof draftNewVenueProject;
-  queueVenueCounteroffer: typeof queueVenueCounteroffer;
 }
 
-/** Request review owns its saved-world, Project planning and counteroffer connections. Construction is inert. */
+/** Request review owns its saved-world and Project planning connections. Construction is inert. */
 export function createVenueRequests({
   mutateVillageState,
   buildVillageSnapshot,
   draftNewVenueProject,
-  queueVenueCounteroffer,
 }: VenueRequestPorts) {
   async function recordVillageVenueRequest(
     core: VenueRequestCore,
@@ -68,8 +65,7 @@ export function createVenueRequests({
       (edits.name !== decision.venueDraft.name ||
         JSON.stringify(edits.classes) !== JSON.stringify(decision.venueDraft.classes))
     ) {
-      queueVenueCounteroffer(state, requestId, edits, description, now);
-      return;
+      throw badRequest("Changing the requested name or Classes is not available yet.");
     }
     if (approved) {
       draftNewVenueProject(

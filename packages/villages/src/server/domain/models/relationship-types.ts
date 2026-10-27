@@ -193,7 +193,6 @@ export type RelationshipState = {
   initializationConflicts: { actorIds: string[]; question: string; sourceIds: string[] }[];
   mailThreads: Record<string, import("./social-mail.js").SocialMailThread>;
   mailDeliveries: Record<string, { messageId: string; at: string; sourceHash: string }>;
-  invitations: Record<string, import("./social-mail.js").SocialInvitation>;
   socialPlans: SocialPlan[];
   socialEncounters: SocialEncounter[];
 };

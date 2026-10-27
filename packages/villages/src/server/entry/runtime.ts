@@ -55,7 +55,6 @@ import { createProjectLifecycle } from "../features/projects/project-lifecycle-s
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { applyResidenceEditApproval } from "../features/venues/zone-edits.js";
 import { queueVillageVenueRequest } from "../features/venues/venue-requests.js";
-import { recordVillagerVenueImprovement } from "../features/venues/venue-mailbox.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wish-progress-rules.js";
 import { bindWishProposals } from "../domain/rules/wish-progress-rules.js";
 import { projectProposals } from "../domain/rules/project-check-rules.js";
@@ -160,7 +159,6 @@ import { configureTownMapReview } from "../features/media/town-map-review.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
 import { configureVenueRequests } from "../features/venues/venue-requests.js";
 import {
-  createRenovationProject,
   draftNewVenueProject,
   draftRenovationProject,
   configureProjectLifecycle,
@@ -173,11 +171,6 @@ import {
   completeVillageResidence,
   retryResidencePrivateSpaceAdaptation,
 } from "../features/venues/residences.js";
-import {
-  queueSharedMoveConsent,
-  queueVenueCounteroffer,
-  respondDueVenueMail,
-} from "../features/venues/venue-mailbox.js";
 import { createResidentAgendas } from "../features/residents/resident-agenda-service.js";
 import { createScheduleInfluence } from "../features/residents/schedule-influence-service.js";
 import {
@@ -304,8 +297,6 @@ import { configureWorldCoordination } from "../features/world/village.js";
 import { createDevelopment } from "../features/world/development-service.js";
 import { configureDevelopment, reconcileDevelopment } from "../features/world/development.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
-import { configureVenueMailbox, venueMailbox } from "../features/venues/venue-mailbox.js";
-import { createVenueMailbox } from "../features/venues/venue-mailbox-service.js";
 import {
   configureWishAttemptClocks,
   createWishAttemptClocks,
@@ -604,6 +595,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const personalMail = createSocialMail({
     processLiveMemories,
+    withVillageSceneAcceptance,
     readVillageSnapshot: readVillageMemorySnapshot,
     mutateVillageState: mutateVillageMemoryState,
     mutateRelationships,
@@ -708,19 +700,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       outsideVenueOperation: operations.outsideVenueOperation,
       preparePrivateSpaces,
       loadProjectWishProgress: () => import("../features/residents/wishes/wish-progress.js"),
-      draftNewVenueProject,
-      draftRenovationProject,
-    }),
-  );
-  const releaseMailbox = configureVenueMailbox(
-    createVenueMailbox({
-      readVillageState,
-      mutateVillageState,
-      queueBackgroundJob,
-      villagesConnectionIdFor,
-      villagesLanguageModels,
-      completeWithRoom,
-      createRenovationProject,
       draftNewVenueProject,
       draftRenovationProject,
     }),
@@ -830,7 +809,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       bindWishProposals,
       WISH_PROPOSAL_INSTRUCTION,
       villagesConnectionIdFor,
-      recordVillagerVenueImprovement,
       mutateVillageState: mutateVillageMemoryState,
       readVillageSnapshot: readVillageMemorySnapshot,
       readVillageState: readVillageMemoryState,
@@ -952,7 +930,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
-    queueSharedMoveConsent,
     outsideVenueOperation: operations.outsideVenueOperation,
     preparePrivateSpaces,
     readVillageLore,
@@ -991,7 +968,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,
       draftNewVenueProject,
-      queueVenueCounteroffer,
     }),
   );
   const releaseTownMapReview = configureTownMapReview(
@@ -1161,7 +1137,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     rollActiveAgendas,
     expireResidentWishes,
     reconcileWishLifecycle,
-    respondDueVenueMail,
   });
   const releaseWorldCoordination = configureWorldCoordination(worldCoordination);
   const releaseRepairs = configureRepairs(
@@ -1190,7 +1165,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["schedule-influence", scheduleInfluence.handler],
         ["wish", wishLifecycle().wishBackgroundHandler],
         ["wish-check", wishProgress().wishCheckBackgroundHandler],
-        ["mail", venueMailbox().mailBackgroundHandler],
         ["personal-mail", personalMail.handler],
         ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
@@ -1260,7 +1234,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releasePersonaCache();
     releaseResidences();
     releaseSceneCommands();
-    releaseMailbox();
     releaseProjectLifecycle();
     releasePrivateSpaces();
     releaseSceneWriting();

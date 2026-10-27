@@ -801,15 +801,6 @@ export function ProjectsPanel({
                             </button>
                           </div>
                         ) : null}
-                        {missing.length && (editable || resumable) ? (
-                          <button
-                            type="button"
-                            disabled={draft.busy || draft.dirty}
-                            onClick={() => void c.action("request-approval")}
-                          >
-                            Request agreement
-                          </button>
-                        ) : null}
                       </section>
                     ) : null}
                   </div>

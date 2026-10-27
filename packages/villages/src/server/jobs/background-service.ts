@@ -419,7 +419,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (existing) return existing.then(() => queueBackgroundJob(work));
     // Reserve before the first read or write: all callers share one admission.
     const task = (async () => {
-      if (stopped) return;
+      if (stopped) {
+        if (work.kind === "personal-mail")
+          throw new Error("Letter processing is unavailable. Try again when Villages is running.");
+        return;
+      }
       const previous = await readJob(id);
       if (
         previous &&
@@ -1283,15 +1287,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         job?.kind === "wish-check"
           ? job.seed !== state.seed ||
             !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
-          : job?.kind === "mail"
-            ? !state.venueMail.some((mail) => mail.id === job.subjectId)
-            : job?.kind !== "development" &&
-              job?.kind !== "resident-planning" &&
-              job?.kind !== "story" &&
-              job?.kind !== "starting-ties" &&
-              job?.kind !== "personal-mail" &&
-              job?.kind !== "social-recovery" &&
-              !state.villagers.some((resident) => resident.characterId === job?.subjectId);
+          : job?.kind !== "development" &&
+            job?.kind !== "resident-planning" &&
+            job?.kind !== "story" &&
+            job?.kind !== "starting-ties" &&
+            job?.kind !== "personal-mail" &&
+            job?.kind !== "social-recovery" &&
+            !state.villagers.some((resident) => resident.characterId === job?.subjectId);
       if (
         !job ||
         retired ||
@@ -1303,14 +1305,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             const subjectGone =
               job?.kind === "wish-check"
                 ? !state.villagers.some((resident) => asWishCheckActors(job).includes(resident.characterId))
-                : job?.kind === "mail"
-                  ? !state.venueMail.some((mail) => mail.id === job.subjectId && mail.status === "awaiting-villagers")
-                  : job?.kind !== "development" &&
-                    job?.kind !== "resident-planning" &&
-                    job?.kind !== "story" &&
-                    job?.kind !== "personal-mail" &&
-                    job?.kind !== "social-recovery" &&
-                    !state.villagers.some((resident) => resident.characterId === job?.subjectId);
+                : job?.kind !== "development" &&
+                  job?.kind !== "resident-planning" &&
+                  job?.kind !== "story" &&
+                  job?.kind !== "personal-mail" &&
+                  job?.kind !== "social-recovery" &&
+                  !state.villagers.some((resident) => resident.characterId === job?.subjectId);
             if (subjectGone || job?.seed !== state.seed) discardedReceipts.push(record.id);
           }
         continue;

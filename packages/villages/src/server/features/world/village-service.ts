@@ -42,7 +42,6 @@ import type { reconcileProjectLifecycles } from "../../domain/rules/project-life
 import type { rollActiveAgendas } from "../residents/resident-agendas.js";
 import type { expireResidentWishes } from "../../domain/rules/wish-lifecycle-rules.js";
 import type { reconcileWishLifecycle } from "../residents/wishes/wish-lifecycle.js";
-import type { respondDueVenueMail } from "../venues/venue-mailbox.js";
 import type { buildVillageSnapshot } from "./snapshot.js";
 import type { readVillageState, mutateVillageState } from "./village-store.js";
 
@@ -67,7 +66,6 @@ export interface WorldCoordinationPorts {
   rollActiveAgendas: typeof rollActiveAgendas;
   expireResidentWishes: typeof expireResidentWishes;
   reconcileWishLifecycle: typeof reconcileWishLifecycle;
-  respondDueVenueMail: typeof respondDueVenueMail;
 }
 
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
@@ -92,7 +90,6 @@ export function createWorldCoordination({
   rollActiveAgendas,
   expireResidentWishes,
   reconcileWishLifecycle,
-  respondDueVenueMail,
 }: WorldCoordinationPorts) {
   /**
    * Put the village back to how it was before it was founded.
@@ -271,7 +268,6 @@ export function createWorldCoordination({
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
     await reconcileDevelopment?.(now);
-    await respondDueVenueMail(now);
     // Initial space preparation retains the founding generation path; begin it only after local advancement.
     outsideVenueOperation(() => {
       void preparePrivateSpaces().catch(() => {});

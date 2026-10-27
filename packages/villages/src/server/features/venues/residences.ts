@@ -4,6 +4,9 @@ const binding = createActivationBinding<Residences>("Residence commands are not 
 export function configureResidences(service: Residences): () => void {
   return binding.configure(bindActivationService(service));
 }
+export async function movePlayerToResidence(...args: Parameters<Residences["movePlayerToResidence"]>) {
+  return binding.get().movePlayerToResidence(...args);
+}
 export async function proposeVillageResidence(...args: Parameters<Residences["proposeVillageResidence"]>) {
   return binding.get().proposeVillageResidence(...args);
 }

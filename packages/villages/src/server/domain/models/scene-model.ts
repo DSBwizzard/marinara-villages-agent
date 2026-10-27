@@ -96,7 +96,6 @@ export type VenueSubmission = {
   physicalContext?: { zoneId: string; witnessIds: string[]; segment: number };
   developmentChanges?: import("../rules/development-scene.js").SavedDevelopmentChange[];
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
-  renovationSignal?: { characterId: string; venueId: string; quote: string };
   venueRequestSignal?: {
     characterId: string;
     name: string;

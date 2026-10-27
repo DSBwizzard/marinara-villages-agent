@@ -12,7 +12,7 @@ export function BackgroundWorkPanel({
 }) {
   const [pending, setPending] = useState("");
   const [problem, setProblem] = useState("");
-  const visible = jobs.filter((job) => job.status !== "obsolete");
+  const visible = jobs.filter((job) => job.kind !== "personal-mail" && job.status !== "obsolete");
   const active = visible.filter((job) => ["queued", "running"].includes(job.status));
   const paused = visible.filter((job) => job.status === "paused");
   const attention = visible.filter((job) => ["failed", "interrupted"].includes(job.status));

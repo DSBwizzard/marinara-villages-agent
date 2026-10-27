@@ -132,9 +132,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
       <Mailbox
         open={controller.mailboxOpen}
         snapshot={controller.snapshot}
-        setSnapshot={controller.setSnapshot}
         onClose={() => controller.setMailboxOpen(false)}
-        openMenu={controller.openMenu}
+        portraits={controller.portraits}
         initialResidentId={controller.screen === "person" ? controller.personProfile?.actorId : ""}
       />
       <div hidden={showing} inert={showing} style={{ height: "100%" }}>

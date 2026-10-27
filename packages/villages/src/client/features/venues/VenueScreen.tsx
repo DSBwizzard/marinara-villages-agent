@@ -274,12 +274,14 @@ function AssignedVillagers({
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
+                disabled={venueAssignedCountFor(place) > 0}
                 onClick={() => setHousing((open) => !open)}
                 aria-expanded={housing}
               >
-                Request to live here
+                Move here
               </button>
-              {housing ? (
+              {venueAssignedCountFor(place) > 0 ? <p>Moving into a shared Residence is not available yet.</p> : null}
+              {housing && venueAssignedCountFor(place) === 0 ? (
                 <div className={`${ELEMENT_TAG}-venue-section`}>
                   <label className={`${ELEMENT_TAG}-label`}>
                     Your destination Private Space
@@ -314,7 +316,7 @@ function AssignedVillagers({
                     disabled={busy}
                     onClick={() => void requestPlayerMove(place.id, playerMovePrivateZoneId)}
                   >
-                    Send housing request
+                    Move in
                   </button>
                 </div>
               ) : null}

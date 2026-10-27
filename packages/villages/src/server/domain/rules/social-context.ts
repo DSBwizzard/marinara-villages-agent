@@ -41,14 +41,6 @@ export function socialContextState(
         actors.some((actor) => row.participants.includes(actor) && !["fulfilled", "cancelled"].includes(row.status)),
     ),
   );
-  packet.invitations = Object.fromEntries(
-    Object.entries(state.invitations).filter(
-      ([, row]) =>
-        row.participantIds.some((id) => actors.includes(id)) &&
-        (row.status === "proposed" ||
-          (row.status === "accepted" && state.sharedRecords[row.id]?.status === "accepted")),
-    ),
-  );
   for (const actor of actors) {
     packet.intentions[actor] = structuredClone(state.intentions[actor] ?? []);
     packet.intentionRevisions[actor] = state.intentionRevisions[actor] ?? 0;

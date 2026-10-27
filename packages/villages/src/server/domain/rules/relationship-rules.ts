@@ -51,7 +51,6 @@ export function defaultRelationshipState(seed: string): RelationshipState {
     initializationConflicts: [],
     mailThreads: {},
     mailDeliveries: {},
-    invitations: {},
     socialPlans: [],
     socialEncounters: [],
   };

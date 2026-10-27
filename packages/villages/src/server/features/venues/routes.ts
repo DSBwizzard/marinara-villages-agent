@@ -3,6 +3,7 @@ import {
   completeVillageResidence,
   decideVillageResidence,
   proposeVillageResidence,
+  movePlayerToResidence,
   retryResidencePrivateSpaceAdaptation,
 } from "../venues/residences.js";
 import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
@@ -17,7 +18,7 @@ import {
   previewVillageVenueDeletion,
   updateVillageVenue,
 } from "./services.js";
-import { decideVillagerVenueImprovement, proposePlayerMove, proposeVenueChange } from "./venue-mailbox.js";
+import { createRenovationProject } from "../projects/project-lifecycle.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerVenueAccessRoutes(engine: FastifyInstance) {
@@ -135,7 +136,7 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
     "/locations/venue/:venueId/proposals",
     async (request, reply) => {
       try {
-        await proposeVenueChange(readVenueId(request.params.venueId), request.body);
+        await createRenovationProject(readVenueId(request.params.venueId), request.body);
         return await buildVillageSnapshot();
       } catch (error) {
         return fail(reply, error, "proposing a Venue change");
@@ -146,7 +147,7 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
     "/locations/venue/:venueId/player-move",
     async (request, reply) => {
       try {
-        await proposePlayerMove(
+        await movePlayerToResidence(
           readVenueId(request.params.venueId),
           typeof request.body?.privateZoneId === "string" ? request.body.privateZoneId : "",
         );
@@ -156,21 +157,6 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{
-    Params: { mailId: string };
-    Body: { approved?: unknown; title?: unknown; description?: unknown };
-  }>("/venue-mail/:mailId/decision", async (request, reply) => {
-    try {
-      await decideVillagerVenueImprovement(
-        readVenueId(request.params.mailId),
-        request.body?.approved === true,
-        request.body,
-      );
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "deciding a Venue improvement");
-    }
-  });
   app.post<{ Body: { characterId?: unknown } }>("/residences/approvals", async (request, reply) => {
     try {
       return await approveVillageResidence(request.body?.characterId);

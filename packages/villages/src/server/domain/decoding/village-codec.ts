@@ -39,7 +39,6 @@ import type {
   VillageVenueEvent,
   VillageVenueFeature,
   VillageVenueImage,
-  VillageVenueMail,
   VillageVenueTrace,
   VillageVenueZone,
   VillageVillager,
@@ -192,7 +191,6 @@ export function defaultVillageState(): VillageState {
     projects: [],
     progressTasks: [],
     pendingDecisions: [],
-    venueMail: [],
     villagers: [],
     // Empty rather than the default text: the default lives in `prompt-preset.ts`
     // and is applied at render time, so improving it reaches villages that never
@@ -1371,7 +1369,8 @@ function coerceProjects(value: unknown): VillageProject[] {
       !Array.isArray(flow.evidenceIds)
     )
       throw new Error("Invalid Project record.");
-    const rows = [...flow.approvals, ...flow.candidates];
+    const approvals = flow.approvals.filter((value) => asRecord(value).source !== "mailbox");
+    const rows = [...approvals, ...flow.candidates];
     if (
       rows.some((value) => {
         const row = asRecord(value);
@@ -1382,7 +1381,7 @@ function coerceProjects(value: unknown): VillageProject[] {
           !asIsoString(row.at)
         );
       }) ||
-      flow.approvals.some((value) => !["conversation", "mailbox"].includes(String(asRecord(value).source))) ||
+      approvals.some((value) => asRecord(value).source !== "conversation") ||
       flow.spokenProofs.some((value) => {
         const row = asRecord(value);
         return (
@@ -1479,7 +1478,7 @@ function coerceProjects(value: unknown): VillageProject[] {
               detail: asTrimmedString(asRecord(flow.change).detail),
             },
       affectedIds: asStringArray(flow.affectedIds),
-      approvals: structuredClone(flow.approvals) as NonNullable<VillageProject["lifecycle"]>["approvals"],
+      approvals: structuredClone(approvals) as NonNullable<VillageProject["lifecycle"]>["approvals"],
       candidates: structuredClone(flow.candidates) as NonNullable<VillageProject["lifecycle"]>["candidates"],
       baseDesignHash: asTrimmedString(flow.baseDesignHash),
       changedZoneIds: asStringArray(flow.changedZoneIds),
@@ -1567,74 +1566,6 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       ];
     })
     .slice(-MAX_SIMULATION_RECORDS);
-}
-function coerceVenueMail(value: unknown): VillageVenueMail[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const row = savedVenueClassRecord(entry);
-      if (!asTrimmedString(row.id) || !asTrimmedString(row.venueId)) return [];
-      if (
-        row.kind !== "change" &&
-        row.kind !== "player-move" &&
-        row.kind !== "counteroffer" &&
-        row.kind !== "villager-change" &&
-        row.kind !== "villager-move" &&
-        row.kind !== "project-approval"
-      )
-        return [];
-      const proposedClasses = validVenueClasses(row.proposedClasses) ? row.proposedClasses : undefined;
-      const proposedCapacity =
-        Number.isInteger(row.proposedCapacity) && Number(row.proposedCapacity) >= 1 && Number(row.proposedCapacity) <= 4
-          ? Number(row.proposedCapacity)
-          : undefined;
-      return [
-        {
-          id: asTrimmedString(row.id),
-          venueId: asTrimmedString(row.venueId),
-          title: boundText(row.title, MAX_VENUE_NOTE_LENGTH),
-          detail: boundText(row.detail, MAX_VENUE_DESCRIPTION_LENGTH),
-          kind: row.kind,
-          projectId: asTrimmedString(row.projectId) || undefined,
-          projectRevision: Number.isInteger(row.projectRevision) ? Number(row.projectRevision) : undefined,
-          status:
-            row.status === "approved" || row.status === "declined" || row.status === "pending-player"
-              ? row.status
-              : "awaiting-villagers",
-          createdAt: asIsoString(row.createdAt) ?? "",
-          dueAt: asIsoString(row.dueAt) ?? "",
-          resolvedAt: asIsoString(row.resolvedAt) ?? "",
-          requesterCharacterId: asTrimmedString(row.requesterCharacterId),
-          movingCharacterId: asTrimmedString(row.movingCharacterId) || undefined,
-          proposedPrivateZoneId: asTrimmedString(row.proposedPrivateZoneId) || undefined,
-          counterofferRequestId: asTrimmedString(row.counterofferRequestId) || undefined,
-          counterofferDraft: (() => {
-            const draft = savedVenueClassRecord(row.counterofferDraft);
-            return asTrimmedString(draft.name) && asTrimmedString(draft.description)
-              ? {
-                  name: boundText(draft.name, MAX_VENUE_NAME_LENGTH),
-                  classes: validVenueClasses(draft.classes) ? draft.classes : ["community"],
-                  description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
-                }
-              : undefined;
-          })(),
-          ...(proposedClasses ? { proposedClasses } : {}),
-          ...(proposedCapacity ? { proposedCapacity } : {}),
-          affectedIds: coerceVenueIds(row.affectedIds),
-          decisions: Array.isArray(row.decisions)
-            ? row.decisions
-                .map((decision) => ({
-                  characterId: asTrimmedString(asRecord(decision).characterId),
-                  accepted: asRecord(decision).accepted === true,
-                  reply: boundText(asRecord(decision).reply, MAX_VENUE_NOTE_LENGTH),
-                }))
-                .filter((decision) => decision.characterId)
-            : [],
-          error: boundText(row.error, MAX_VENUE_NOTE_LENGTH),
-        } satisfies VillageVenueMail,
-      ];
-    })
-    .slice(-256);
 }
 /** Native runtime values and their exact JSON storage representation share one strict schema. */
 function memoryField(value: unknown): unknown {
@@ -1856,7 +1787,6 @@ export function coerceVillageState(value: unknown): VillageState {
     projects: coerceProjects(raw.projects ?? []),
     progressTasks: coerceProgressTasks(raw.progressTasks),
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
-    venueMail: coerceVenueMail(raw.venueMail),
     villagers: villagers
       .filter((entry) => {
         if (seen.has(entry.characterId)) return false;

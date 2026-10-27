@@ -1,4 +1,5 @@
 import { recallMemories } from "../../domain/rules/memory-recall.js";
+import { assertPersonalLetter, hasPersonalLetterAction } from "../../domain/rules/personal-letter.js";
 import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
@@ -15,6 +16,7 @@ import {
   residentPlanningOpportunity,
   type ResidentPlanningContext,
 } from "../../domain/rules/resident-planning.js";
+import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { socialContinuationValid, socialPlanCandidates } from "../../domain/rules/social-rules.js";
@@ -219,6 +221,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         String((mail as Record<string, unknown>).text).length > 2000)
     )
       throw new Error("Invalid automatic correspondent or message.");
+    if (mail) {
+      const row = mail as { senderId: string; text: string };
+      assertPersonalLetter(row.text, context.residents.find((resident) => resident.characterId === row.senderId)?.name);
+    }
     for (const raw of [encounter, mail])
       if (raw && typeof raw === "object")
         for (const key of [
@@ -243,7 +249,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             "Independently interpret these exact automatic social lines. Return one complete JSON object. " +
             RELATIONSHIP_REVIEW_INSTRUCTION +
             (mail
-              ? " The recipient is player; disclosures wait for reading. An explicit invitation may return invitation:{title,detail,venueId,zoneId,dueAt?,visitAccess:null|{accompanied:boolean,outsideHours:boolean}} using current authorized Zones only. A visit is not standing access or accepted commitment."
+              ? " The recipient is player; disclosures wait for reading. Mail cannot grant access or create actionable invitations. Return permissions:[] for mail."
               : " The player is absent: disclosures must be empty.") +
             " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return memoryChanges:[] under the native Memory contract. " +
             SCENE_MEMORY_INSTRUCTION,
@@ -282,7 +288,6 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
       record.relationshipReview = review;
-      if (mail) record.invitation = interpreted?.invitation;
       record.semanticVersion = 2;
       record.memoryChanges = interpreted!.memoryChanges;
       record.memoryContexts = { [nativeMemory.saved.protection.fingerprint]: nativeMemory.saved };
@@ -309,7 +314,18 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       const { dateKey, opportunity } = input;
       if (state.backgroundPace === "off" || state.processedActionIds.includes(opportunity.id)) return;
       const used = state.planningUsage.dateKey === dateKey ? state.planningUsage.count : 0;
-      if (proposal.social?.mail) {
+      const savedMail = proposal.social?.mail as { senderId?: string; text?: string } | undefined;
+      // A result saved by an older writer may contain a stage direction. Omit only
+      // that unseen letter; other already-generated choices still apply normally.
+      const invalidSavedMail =
+        typeof savedMail?.text === "string" &&
+        hasPersonalLetterAction(
+          savedMail.text,
+          input.context.residents.find(
+            (resident: { characterId: string }) => resident.characterId === savedMail.senderId,
+          )?.name ?? state.villagers.find((resident) => resident.characterId === savedMail.senderId)?.cardSnapshot.name,
+        );
+      if (proposal.social?.mail && !invalidSavedMail) {
         if (!ports.automaticMail) throw new Error("Automatic personal mail unavailable.");
         const entry = ports.automaticMail(
           { ...state, ...input.admitted },
@@ -350,8 +366,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         if (
           !resident ||
           !venue ||
+          !hasVenueClass(venue, "residence") ||
+          venue.constructionStatus === "worksite" ||
           venue.occupancy.playerHome ||
-          venue.occupancy.residentCharacterId ||
+          venueResidentIds(venue).length > 0 ||
           state.residences.some(
             (r) =>
               (r.characterId === request.characterId && r.status !== "current") ||
@@ -361,7 +379,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           continue;
         const next: VillageResidence = {
           proposedPrivateZoneId: "",
-          venueId: state.venues.find((v) => v.occupancy.residentCharacterId === request.characterId)?.id ?? "",
+          venueId: state.venues.find((v) => venueResidentIds(v).includes(request.characterId))?.id ?? "",
           characterId: request.characterId,
           status: "pending",
           proposedVenueId: venue.id,

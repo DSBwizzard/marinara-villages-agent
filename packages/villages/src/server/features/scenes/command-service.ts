@@ -206,7 +206,6 @@ export interface SceneCommandPorts {
   bindWishProposals: typeof import("../../domain/rules/wish-progress-rules.js").bindWishProposals;
   WISH_PROPOSAL_INSTRUCTION: typeof import("../../domain/rules/wish-progress-rules.js").WISH_PROPOSAL_INSTRUCTION;
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
-  recordVillagerVenueImprovement: typeof import("../venues/venue-mailbox.js").recordVillagerVenueImprovement;
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
@@ -270,7 +269,6 @@ export function createSceneCommands({
   bindWishProposals,
   WISH_PROPOSAL_INSTRUCTION,
   villagesConnectionIdFor,
-  recordVillagerVenueImprovement,
   mutateVillageState,
   readVillageSnapshot,
   readVillageState,
@@ -1480,7 +1478,6 @@ export function createSceneCommands({
                 editApprovalSignal: reply.editApprovalSignal ?? undefined,
                 developmentChanges: bindDevelopmentChanges(reply.developmentChanges, savedLineIds),
                 residenceSignal: reply.residenceSignal ?? undefined,
-                renovationSignal: reply.renovationSignal ?? undefined,
                 venueRequestSignal: reply.venueRequestSignal ?? undefined,
               }
             : {}),
@@ -2808,7 +2805,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             : {}),
           developmentChanges: bindDevelopmentChanges(reply.developmentChanges, replyLineIds),
           ...(reply.residenceSignal ? { residenceSignal: reply.residenceSignal } : {}),
-          ...(reply.renovationSignal ? { renovationSignal: reply.renovationSignal } : {}),
           ...(reply.venueRequestSignal
             ? {
                 venueRequestSignal: {
@@ -3388,19 +3384,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         }
       }
     }
-    if (submission.renovationSignal) {
-      try {
-        await recordVillagerVenueImprovement(
-          submission.renovationSignal.characterId,
-          submission.renovationSignal.venueId,
-          submission.renovationSignal.quote,
-          `venue-renovation:${submission.id}`,
-        );
-      } catch (error) {
-        if (submission.semanticProvenance?.version === 2) throw error;
-        villagesLogger().warn("[villages] Renovation request was no longer valid: %s", String(error));
-      }
-    }
   }
 
   async function recoverProjectMetadata(scene: VenueScene, turn: VenueSubmission): Promise<void> {
@@ -3881,16 +3864,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       const name =
         session.participants.find((person) => person.characterId === request.characterId)?.name ?? "A villager";
       events.push({ id: `venue-move:${submission.id}`, kind: "request", text: `${name} asked to move.` });
-    }
-    if (submission.renovationSignal && village.processedActionIds.includes(`venue-renovation:${submission.id}`)) {
-      const name =
-        session.participants.find((person) => person.characterId === submission.renovationSignal!.characterId)?.name ??
-        "A villager";
-      events.push({
-        id: `venue-renovation:${submission.id}`,
-        kind: "request",
-        text: `${name} suggested a Venue improvement.`,
-      });
     }
     const combined = [...new Map([...events, ...cached].map((event) => [event.id, event])).values()];
     if (persist && JSON.stringify(combined) !== JSON.stringify(submission.recordEvents ?? []))
