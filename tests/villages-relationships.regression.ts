@@ -368,7 +368,7 @@ assert.deepEqual(state.mailDeliveries, once, "A later write cannot replace deliv
 mail.replyStatus = "complete";
 const cancelled = queuePersonalMessage(state, "ada", "request-2", "Earlier retained work", mail.at);
 cancelled.status = "cancelled";
-assert.throws(() => beginMailDelivery(state, thread.id, cancelled.id), /cancelled/);
+assert.throws(() => beginMailDelivery(state, thread.id, cancelled.id), /no longer be delivered/);
 const incoming = {
   id: "incoming",
   requestId: "incoming",
