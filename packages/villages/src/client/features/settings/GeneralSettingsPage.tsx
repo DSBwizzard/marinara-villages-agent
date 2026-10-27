@@ -23,6 +23,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
     <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
       {category === "general" ? (
         <>
+          {backgroundPanel}
           {snapshot?.isFounded ? <VillageWritingSettings /> : null}
 
           {snapshot ? (
@@ -79,7 +80,6 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
         </>
       ) : (
         <>
-          {backgroundPanel}
           <AgentConnections />
           {snapshot ? (
             <div className={`${ELEMENT_TAG}-field`}>

@@ -49,7 +49,8 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     const toggle = page.getByRole("checkbox", { name: "Verbose runtime logging", exact: true });
     await expect(toggle).toBeEnabled();
     await expect(toggle).not.toBeChecked();
@@ -59,7 +60,8 @@ try {
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     await expect(toggle).toBeChecked();
     failPatch = true;
     await toggle.click();
@@ -72,7 +74,8 @@ try {
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     await expect(toggle).not.toBeChecked();
     await expect(page.getByText("Terminal logging: on (also enabled by DEBUG_AGENTS).", { exact: true })).toBeVisible();
     const box = await toggle.boundingBox();

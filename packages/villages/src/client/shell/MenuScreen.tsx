@@ -308,7 +308,9 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                   })
                 : null}
 
-              {menuPage === "progress" ? renderProgressDebugPage({ error, progressDebug, loadProgressDebug }) : null}
+              {menuPage === "progress" && debugDiscardEnabled
+                ? renderProgressDebugPage({ error, progressDebug, loadProgressDebug })
+                : null}
 
               {menuPage === "chatlogs"
                 ? renderSceneArchivePage({
