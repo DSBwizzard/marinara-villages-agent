@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import { activationScope } from "../engine/activation-scope.js";
 import { operationSummary } from "../operations/operation-context.js";
+import { withRepairWork } from "../storage/repair-gate.js";
 import { withVillageClockWork } from "../time/clock-gate.js";
 import type { VillageRouteHandler } from "./route-support.js";
 
@@ -21,9 +22,9 @@ export function publicSceneRoutes(
           if (blocked) return reply.code(409).send({ error: blocked });
           return handler(request, reply);
         };
-        const result = await (clockIndependentRoutes.includes(`${method} ${path}`)
-          ? work()
-          : withVillageClockWork(work));
+        const result = await withRepairWork(() =>
+          clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work),
+        );
         if (result && typeof result === "object") {
           const payload = result as Record<string, unknown>;
           for (const key of ["session", "visit"]) {

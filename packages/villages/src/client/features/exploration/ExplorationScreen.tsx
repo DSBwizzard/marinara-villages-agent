@@ -1,7 +1,7 @@
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { MapStage } from "./MapStage.js";
-import { ExplorationNavigation, LocationNavigator, MapIcon, NoticesButton } from "./villages-exploration.js";
+import { ExplorationNavigation, LocationNavigator, MapIcon } from "./villages-exploration.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
@@ -126,13 +126,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => controller.setMailboxOpen(true)}>
             Mailbox
           </button>
-          {!placingProjectId ? (
-            <NoticesButton
-              count={snapshot?.noticeboard.length ?? 0}
-              disabled={!snapshot || busy}
-              onSelect={() => openMenu("noticeboard")}
-            />
-          ) : null}
           {placingProjectId ? (
             <button
               type="button"

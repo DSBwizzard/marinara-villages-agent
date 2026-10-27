@@ -80,6 +80,7 @@ import {
   venueRequestMetrics,
 } from "../adapters/operations/operation-context.js";
 import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
+import { repairGate } from "../adapters/storage/repair-gate.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
 import {
   changeSession,
@@ -180,11 +181,15 @@ import { createProjectEvidence } from "../features/projects/project-evidence-ser
 import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
 import {
+  cancelProject,
   configureProjectLifecycle,
   createRenovationProject,
   draftNewVenueProject,
   draftRenovationProject,
+  resumeProject,
 } from "../features/projects/project-lifecycle.js";
+import { createRepairService } from "../features/repair/repair-service.js";
+import { configureRepairs } from "../features/repair/repair.js";
 import { createLiveMemory } from "../features/residents/live-memory-service.js";
 import {
   configureLiveMemory,
@@ -232,7 +237,12 @@ import {
 import { createSceneArchive } from "../features/scenes/archive-service.js";
 import { configureSceneArchive, listVenueVisits, pruneVenueVisits } from "../features/scenes/archive.js";
 import { createSceneChanges } from "../features/scenes/changes-service.js";
-import { configureSceneChanges, readSceneChanges } from "../features/scenes/changes.js";
+import {
+  configureSceneChanges,
+  continueSceneChange,
+  readSceneChanges,
+  replaySceneChanges,
+} from "../features/scenes/changes.js";
 import { createSceneCommands } from "../features/scenes/command-service.js";
 import { dispatchExchange } from "../features/scenes/exchange-processing.js";
 import { createLiveScenes } from "../features/scenes/live-session-service.js";
@@ -1075,6 +1085,16 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     respondDueVenueMail,
   });
   const releaseWorldCoordination = configureWorldCoordination(worldCoordination);
+  const releaseRepairs = configureRepairs(
+    createRepairService({
+      gate: repairGate(),
+      repository: villageRepository,
+      resumeProject,
+      cancelProject,
+      replaySaved: replaySceneChanges,
+      continueSaved: continueSceneChange,
+    }),
+  );
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       villagesDocuments,
@@ -1131,6 +1151,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseGraph = () => {
+    releaseRepairs();
     releaseSettings();
     releaseFoundingSetup();
     releaseWorldCoordination();

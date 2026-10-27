@@ -588,14 +588,6 @@
     },
     {
       "method": "post",
-      "path": "/noticeboard"
-    },
-    {
-      "method": "delete",
-      "path": "/noticeboard/:index"
-    },
-    {
-      "method": "post",
       "path": "/reconcile"
     },
     {
@@ -641,6 +633,38 @@
     {
       "method": "patch",
       "path": "/agendas/:characterId/influence"
+    },
+    {
+      "method": "get",
+      "path": "/repair"
+    },
+    {
+      "method": "get",
+      "path": "/repair/records"
+    },
+    {
+      "method": "get",
+      "path": "/repair/record"
+    },
+    {
+      "method": "post",
+      "path": "/repair/review"
+    },
+    {
+      "method": "post",
+      "path": "/repair/apply"
+    },
+    {
+      "method": "post",
+      "path": "/repair/undo"
+    },
+    {
+      "method": "post",
+      "path": "/repair/checkpoints"
+    },
+    {
+      "method": "post",
+      "path": "/repair/restore"
     }
   ],
   "freshStartChanges": [

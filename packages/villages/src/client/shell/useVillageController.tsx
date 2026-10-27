@@ -1,3 +1,4 @@
+import { useSaveBackgroundPace } from "../features/settings/actions.js";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
@@ -78,6 +79,7 @@ import {
 import { useFoundingState } from "../features/founding/useFoundingState.js";
 import { useProjectsController } from "../features/projects/useProjectsController.js";
 import { useProjectsState } from "../features/projects/useProjectsState.js";
+import { useRepairController } from "../features/repair/useRepairController.js";
 import {
   useAddVillager,
   useApplyVillagerRefresh,
@@ -136,10 +138,6 @@ import { useSceneRecord } from "../features/scenes/useSceneRecord.js";
 import { useScenesState } from "../features/scenes/useScenesState.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
 import {
-  useAddNotice,
-  useInsertMacro,
-  useRemoveNotice,
-  useSaveBackgroundPace,
   useSaveCharacterSpeechColors,
   useSaveScenerySettings,
   useSaveSendOnEnter,
@@ -149,7 +147,6 @@ import {
 } from "../features/settings/actions.js";
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
-import { useKnowledgeCaret } from "../features/settings/workflow-controller.js";
 import {
   useDecideVenueRequest,
   useLeaveVenue,
@@ -163,6 +160,7 @@ import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
 import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
 import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
+import { request } from "../shared/api.js";
 import {
   useInitialVillageLoad,
   useLoadLorebooks,
@@ -452,7 +450,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const {
     resetArmed,
     setResetArmed,
-    pendingCaretRef,
     requestEdits,
     setRequestEdits,
     knowledgeDraft,
@@ -465,11 +462,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setLorebookDraft,
     loreTokenBudgetDraft,
     setLoreTokenBudgetDraft,
-    noticeDraft,
-    setNoticeDraft,
     settingsError,
     setSettingsError,
-    knowledgeRef,
   } = useSettingsState();
 
   const {
@@ -919,8 +913,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRoomError,
     setRoomNotices,
   });
-
-  useKnowledgeCaret({ knowledgeDraft, knowledgeRef, pendingCaretRef });
 
   const currentSnapshotRef = useRef(snapshot);
 
@@ -1930,19 +1922,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setPlaceProblem,
   });
 
-  /**
-   * Drop a macro in at the caret of the prompt box, then put the caret back
-   * where it was.
-   *
-   * It used to choose between two boxes on the strength of which one was last
-   * focused. There is one box left, and the choice went with the box.
-   */
-  const insertMacro = useInsertMacro({ knowledgeDraft, knowledgeRef, pendingCaretRef, setKnowledgeDraft });
-
-  const addNotice = useAddNotice({ noticeDraft, setBusy, setNoticeDraft, setSettingsError, setSnapshot, snapshot });
-
-  const removeNotice = useRemoveNotice({ setBusy, setSettingsError, setSnapshot, snapshot });
-
   const needle = calculateNeedle({ search });
 
   const visibleCatalog = calculateVisibleCatalog({ catalog, needle });
@@ -2052,7 +2031,36 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupVenues,
     setupZoneDrafts,
   });
+  const repairController = useRepairController(screen === "menu" && menuPage === "repair", async (kind) => {
+    setMemoryLibrary(null);
+    setAgendas([]);
+    await loadSnapshot();
+    if (kind === "restore") {
+      const { session } = await request<{ session: import("../../shared/contracts/village.js").SceneView | null }>(
+        "/rooms/active",
+      );
+      if (session) {
+        const kept =
+          room?.id !== session.id && roomDraft ? { title: room?.placeName ?? "Previous Scene", text: roomDraft } : null;
+        if (room?.id !== session.id) setRoomDraft("");
+        roomCompletionRef.current = null;
+        observedRoomIdRef.current = "";
+        setRoom(session);
+        setRoomEnded(false);
+        setRoomOpen(true);
+        setRoomMode("chat");
+        return kept;
+      }
+    } else if (roomOpen && room) {
+      const { session } = await request<{ session: import("../../shared/contracts/village.js").SceneView | null }>(
+        "/rooms/active",
+      );
+      if (session?.id === room.id) setRoom(session);
+    }
+    return null;
+  });
   return {
+    repairController,
     selectedMap,
     setSelectedMapId,
     showAllMaps,
@@ -2064,7 +2072,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     ...venueScreenCommands,
     element,
     visible,
-    addNotice,
     addVenue,
     addVillager,
     agendas,
@@ -2113,10 +2120,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     gotoSetupStep,
     greetRoom,
     homeBuildings,
-    insertMacro,
     keepPlaceImage,
     knowledgeDraft,
-    knowledgeRef,
     lastSceneEnding,
     leaveRoom,
     leaveVenue,
@@ -2139,7 +2144,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     nameOfCharacter,
     navigationView,
     newSetupDraft,
-    noticeDraft,
     openArchivedVisit,
     openMenu,
     openPerson,
@@ -2170,7 +2174,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     progressDebug,
     refreshBusyId,
     refreshPreviews,
-    removeNotice,
     removeVenue,
     removeVillager,
     requestEdits,
@@ -2247,7 +2250,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setMoveTargetId,
     setMovingSetupVenueId,
     setNavigationView,
-    setNoticeDraft,
     setOpenArchivedVisit,
     setOpenPlaceId,
     setPersonProfile,

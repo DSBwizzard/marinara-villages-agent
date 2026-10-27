@@ -405,7 +405,10 @@ try {
       .click();
     await page.getByRole("button", { name: "Village Settings", exact: true }).click();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "View Venue", exact: true }).first().click();
+    await page
+      .getByRole("navigation", { name: "Village navigation" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
     await expect(profile).toBeVisible();
     await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     await profile.getByRole("button", { name: "Visit venue", exact: true }).click();

@@ -4,7 +4,7 @@ Villages is a life sim about sharing a place with characters from your Marinara 
 
 **This is an unreleased prototype.** This guide describes the current test build. Features and save compatibility can change between test builds.
 
-[Setup](#installation-and-setup) · [Founding](#found-your-village) · [Scenes](#have-a-scene) · [Projects](#wishes-and-projects) · [Troubleshooting](#if-something-goes-wrong)
+[Setup](#installation-and-setup) · [Founding](#found-your-village) · [Scenes](#have-a-scene) · [Projects](#wishes-and-projects) · [REPAIR](#repair-your-world) · [Troubleshooting](#if-something-goes-wrong)
 
 ## Installation and setup
 
@@ -102,6 +102,8 @@ Starting history honors the resident cards, your backstory, and selected lore. C
 
 **Mailbox** keeps personal correspondence and invitations. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. A proposed meeting stays optional until you accept; an explicit authorized invitation can grant one visit when accepted. It does not move your Persona or create standing access. Failed processing retains recovery controls even when the original message was already delivered.
 
+The old Noticeboard is retired. Existing notes remain in saved Village data and snapshots, but are no longer displayed or editable in the game.
+
 Residents follow routines, and their availability changes through the day. You can admit more library characters later through **Move in**. Canceling setup leaves the roster unchanged; accepted sprite copies and your original library cards stay separate.
 
 ### Memories
@@ -109,6 +111,16 @@ Residents follow routines, and their availability changes through the day. You c
 Memories keep meaningful experiences, information, and open matters. Each belongs to the people who learned it. Mentioning a character does not give that character the information.
 
 The Memories page starts with your Persona and loads entries in batches. **Inspect** can show retained evidence and another person's memories. **Forget** suppresses a selected person's existing memory; **Correct** changes its wording for selected people who already know it. These actions do not change physical gameplay facts, teach new people, or rewrite an active Scene's captured history.
+
+## Repair your world
+
+Open **REPAIR** from the main menu. Choose **Memories**, **People**, **Places**, **World & history**, **Progress**, or **Backups & repairs**. **People** lists the villagers; choose someone to see their **Memories** or **Details**. REPAIR is an administrative view: saved records, private memories, sources, history, and repair tools are available by default. Browsing does not teach your Persona or any villager anything.
+
+Edit a record, then use **Review changes** to check **Before / After** and **Affected records** before saving. **Modify** edits a memory's text. **Forget** shows the saved memory as read-only text and lets you select who forgets it; **Review forgetting** shows the effect before saving. Switching back to Modify keeps your unfinished edit. Memory changes apply only to selected people who already know the detail; the review shows each person's current wording. A memory about someone does not give that person knowledge of it. **Add memory** shows the new text and who will remember it, with the source recorded as **Added by you**. Physical facts, access, character context, relationships and authoritative progress have separate editors. Historical Scene corrections are annotations; the original transcript remains available. Saved-effect recovery replays retained work without requesting new model responses.
+
+**Repair history** keeps the changes and offers **Review undo** where a safe inverse is available. Undo refuses to overwrite later changes to affected records. Consequential repairs save a checkpoint automatically; you can also name a manual checkpoint. Checkpoints retain independent copies of saved world data. Restoration has its own review and saves the current world first. Current time, spending and replay protection remain current, so elapsed Projects may complete when play resumes.
+
+Opening REPAIR and applying ordinary corrections preserve your unfinished Scene, captured context, and drafts. Whole-world restoration requires the current Scene and pending recovery work to be settled. A restored checkpoint can reopen its saved idle Scene with its frozen context; a draft from another Scene remains available to copy.
 
 ## Wishes and Projects
 

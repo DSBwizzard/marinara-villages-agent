@@ -316,11 +316,11 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
   async function resumeProject(id: string, value: unknown, now = villageNow()) {
     await command(id, value, "resume", (state, project, row) => begin(state, project, row, true, now));
   }
-  async function cancelProject(id: string, value: unknown) {
+  async function cancelProject(id: string, value: unknown, now = villageNow()) {
     await command(id, value, "cancel", (state, project) => {
       if (["complete", "cancelled"].includes(project.status)) throw conflict("This Project is already finished.");
       project.status = project.lifecycle.phase = "cancelled";
-      project.updatedAt = villageNow().toISOString();
+      project.updatedAt = now.toISOString();
       project.lifecycle.blockedReason = "";
       if (project.kind === "new-venue") state.venues = state.venues.filter((venue) => venue.buildProjectId !== id);
       for (const mail of state.venueMail.filter(

@@ -14,6 +14,7 @@ import {
   readMemoryHead,
   type MemoryHead,
 } from "./memory-payload-store.js";
+import { withRepairWork } from "./repair-gate.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["memories", "memoryScenes", "memoryReceipts"] as const;
@@ -110,71 +111,73 @@ export function createVillageRepository(
       return (await load(documents(), options?.memories)).state;
     },
     async mutateAuthority(update, options) {
-      return withAuthorityLock(async () => {
-        const store = documents(),
-          payloads = createMemoryPayloadStore(store);
-        for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
-          const { record, head, state, loaded } = await load(store, options?.memories);
-          const identity = JSON.stringify([state.seed, state.setupAt]);
-          const changed = await update(state);
-          assertVenueOwnership();
-          if (changed === false) return;
-          memoryRequire(state.version === 6, "invalid Village mutation format");
-          memoryRequire(
-            loaded || identity === JSON.stringify([state.seed, state.setupAt]),
-            "world reset requires Memories",
-          );
-          memoryRequire(
-            Object.values(state.exchangeReceipts).every((row) => row.domain !== "memories"),
-            "memory receipt outside history",
-          );
-          const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
-          const stamp = new Date().toISOString(),
-            data = encodeRoot(state, nextHead);
-          let committed = false;
-          try {
-            if (record)
-              committed = !!(await store.update({
-                id: VILLAGE_DOC_ID,
-                packageId: VILLAGES_PACKAGE_ID,
-                expectedRevision: record.revision,
-                name: state.name || "Village record",
-                description: "Current Village authority and committed history reference",
-                data,
-                updatedAt: stamp,
-              }));
-            else {
-              await store.create({
-                id: VILLAGE_DOC_ID,
-                packageId: VILLAGES_PACKAGE_ID,
-                kind: "village",
-                name: state.name || "Village record",
-                description: "Current Village authority and committed history reference",
-                data,
-                createdAt: stamp,
-                updatedAt: stamp,
-              });
-              committed = true;
+      return withRepairWork(() =>
+        withAuthorityLock(async () => {
+          const store = documents(),
+            payloads = createMemoryPayloadStore(store);
+          for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
+            const { record, head, state, loaded } = await load(store, options?.memories);
+            const identity = JSON.stringify([state.seed, state.setupAt]);
+            const changed = await update(state);
+            assertVenueOwnership();
+            if (changed === false) return;
+            memoryRequire(state.version === 6, "invalid Village mutation format");
+            memoryRequire(
+              loaded || identity === JSON.stringify([state.seed, state.setupAt]),
+              "world reset requires Memories",
+            );
+            memoryRequire(
+              Object.values(state.exchangeReceipts).every((row) => row.domain !== "memories"),
+              "memory receipt outside history",
+            );
+            const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
+            const stamp = new Date().toISOString(),
+              data = encodeRoot(state, nextHead);
+            let committed = false;
+            try {
+              if (record)
+                committed = !!(await store.update({
+                  id: VILLAGE_DOC_ID,
+                  packageId: VILLAGES_PACKAGE_ID,
+                  expectedRevision: record.revision,
+                  name: state.name || "Village record",
+                  description: "Current Village authority and committed history reference",
+                  data,
+                  updatedAt: stamp,
+                }));
+              else {
+                await store.create({
+                  id: VILLAGE_DOC_ID,
+                  packageId: VILLAGES_PACKAGE_ID,
+                  kind: "village",
+                  name: state.name || "Village record",
+                  description: "Current Village authority and committed history reference",
+                  data,
+                  createdAt: stamp,
+                  updatedAt: stamp,
+                });
+                committed = true;
+              }
+            } catch (error) {
+              // Ambiguous publication retains its intent. Recovery replays saved
+              // operation receipts, never provider requests.
+              if (record || !(await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID))) throw error;
             }
-          } catch (error) {
-            // Ambiguous publication retains its intent. Recovery replays saved
-            // operation receipts, never provider requests.
-            if (record || !(await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID))) throw error;
+            try {
+              await payloads.cleanup(async () => {
+                const current = await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID),
+                  raw = rootData(current);
+                return { revision: current?.revision ?? 0, head: raw ? readMemoryHead(raw.memoryHead) : null };
+              });
+            } catch {
+              warn("Memory payload housekeeping remains pending; committed progress is retained.");
+            }
+            if (!committed) continue;
+            return;
           }
-          try {
-            await payloads.cleanup(async () => {
-              const current = await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID),
-                raw = rootData(current);
-              return { revision: current?.revision ?? 0, head: raw ? readMemoryHead(raw.memoryHead) : null };
-            });
-          } catch {
-            warn("Memory payload housekeeping remains pending; committed progress is retained.");
-          }
-          if (!committed) continue;
-          return;
-        }
-        throw new Error("The village kept changing while it was being saved. Please try again.");
-      });
+          throw new Error("The village kept changing while it was being saved. Please try again.");
+        }),
+      );
     },
   };
 }

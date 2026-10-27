@@ -4,12 +4,12 @@ import { renderProgressDebugPage } from "../features/background/ProgressDebugPag
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
 import { renderSceneArchivePage } from "../features/scenes/SceneArchivePage.js";
 import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js";
-import { renderNoticeboardPage } from "../features/world/NoticeboardPage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
 import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
 import type { MenuScreenController } from "./menu-contracts.js";
 import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
 import { VillageTimeControl } from "../features/settings/TimeControl.js";
+import { RepairPage } from "../features/repair/RepairPage.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
 import { WorkspaceShell, type WorkspaceDestination } from "../shared/WorkspaceShell.js";
 import { useCallback, useState } from "react";
@@ -17,8 +17,6 @@ import type { LocalDraftStatus, ReportLocalDraftStatus } from "../features/setti
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
   const {
-    addNotice,
-    addVenue,
     archiveError,
     archiveOffset,
     archiveTotal,
@@ -35,9 +33,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     error,
     projectsController,
     goHome: rawGoHome,
-    insertMacro,
-    knowledgeDraft,
-    knowledgeRef,
     loreTokenBudgetDraft,
     lorebookDraft,
     lorebooks,
@@ -46,21 +41,14 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     menuSection,
     mobile,
     nameOfCharacter,
-    noticeDraft,
     openArchivedVisit,
     openMenu: rawOpenMenu,
     openPlace: rawOpenPlace,
     housingVenueId,
     setHousingVenueId,
-    openSetup: rawOpenSetup,
     openVisit,
-    personaDraft,
     personalizeHomes,
-    personas,
-    placeCount,
     progressDebug,
-    removeNotice,
-    removeVenue,
     requestEdits,
     resetArmed,
     room,
@@ -69,7 +57,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     saveSendOnEnter,
     saveSettings,
     saveBackgroundPace,
-    saveVenue,
     saveVisitRetention,
     sceneryStyle,
     sceneryStyleProfileId,
@@ -78,13 +65,10 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setArchiveVenueId,
     setArchiveVillagerId,
     setFocusedProjectId,
-    setKnowledgeDraft,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
     setMenuPage: rawSetMenuPage,
-    setNoticeDraft,
     setOpenArchivedVisit,
-    setPersonaDraft,
     setPersonalizeHomes,
     setPlacingProjectId,
     loadProgressDebug,
@@ -93,22 +77,14 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setSceneryStyle,
     setSceneryStyleProfileId,
     setScreen,
-    setSettingDraft,
     setSiteProjectId,
     setSnapshot,
-    setVenueEditDraft,
-    setVenueSearch,
     setVisualLoreDefault,
-    settingDraft,
     settingsError,
     siteProjectId,
     snapshot,
     startOver,
-    suggestPlaces,
-    venueEditDraft,
-    venueSearch,
     venueVisits,
-    venuesDraft,
     visualLoreDefault,
   } = controller;
   const [localDrafts, setLocalDrafts] = useState<Partial<Record<"world" | "map", NonNullable<LocalDraftStatus>>>>({});
@@ -134,9 +110,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
   };
   const openPlace: typeof rawOpenPlace = (place) => {
     if (canLeave()) rawOpenPlace(place);
-  };
-  const openSetup: typeof rawOpenSetup = (fresh, village) => {
-    if (canLeave()) rawOpenSetup(fresh, village);
   };
   const setMenuPage: typeof rawSetMenuPage = (next) => {
     if (canLeave()) rawSetMenuPage(next);
@@ -169,6 +142,14 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
   // everything you can change lives here behind one button that was already on
   // the map. It is written as two groups rather than one list because the split
   // is real: Village Management is the village, General settings is the tab.
+  if (screen === "menu" && menuPage === "repair")
+    return (
+      <RepairPage
+        controller={controller.repairController}
+        onBack={() => setMenuPage("index")}
+        onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
+      />
+    );
   if (screen === "menu") {
     const navigate = (destination: WorkspaceDestination) => {
       if (destination === "map") goHome();
@@ -220,6 +201,15 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             <div className={`${ELEMENT_TAG}-menu-group`}>
               <h2 className={`${ELEMENT_TAG}-panel-title`}>Village Management</h2>
               <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  onClick={() => openMenu("repair")}
+                  disabled={!snapshot || busy}
+                >
+                  REPAIR
+                </button>
+
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-button`}
@@ -328,48 +318,26 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             renderVillageSettingsPage({
               reportLocalDraftStatus,
               setSnapshot,
-              addVenue,
               backgroundPanel,
               busy: busy,
-              insertMacro,
-              knowledgeDraft,
-              knowledgeRef,
               loreTokenBudgetDraft,
               lorebookDraft,
               lorebooks,
               lorebooksError,
               mobile,
-              nameOfCharacter,
-              openPlace,
-              openSetup,
-              personaDraft,
               personalizeHomes,
-              personas,
-              placeCount,
-              removeVenue,
               saveScenerySettings,
               saveSettings,
-              saveVenue,
               sceneryStyle,
               sceneryStyleProfileId,
-              setKnowledgeDraft,
               setLoreTokenBudgetDraft,
               setLorebookDraft,
-              setPersonaDraft,
               setPersonalizeHomes,
               setSceneryStyle,
               setSceneryStyleProfileId,
-              setSettingDraft,
-              setVenueEditDraft,
-              setVenueSearch,
               setVisualLoreDefault,
-              settingDraft,
               settingsError,
               snapshot,
-              suggestPlaces,
-              venueEditDraft,
-              venueSearch,
-              venuesDraft,
               visualLoreDefault,
             })
           ) : (
@@ -381,17 +349,6 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               {backgroundPanel}
               {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
               {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
-              {menuPage === "noticeboard" && snapshot
-                ? renderNoticeboardPage({
-                    addNotice,
-                    busy: busy,
-                    noticeDraft,
-                    removeNotice,
-                    setNoticeDraft,
-                    snapshot,
-                  })
-                : null}
-
               {menuPage === "venueRequests" && snapshot
                 ? renderVenueRequestsPage({
                     housingVenueId,
