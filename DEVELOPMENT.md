@@ -14,6 +14,15 @@ Before any audit, review, investigation or implementation that depends on curren
 4. Present significant new behavior in an independent working preview and obtain acceptance of that package before merging. Routine corrections follow the standing authorization in AGENTS.md. CI validates the combined merge candidate. Resolve failures and conflicts, then merge after required checks and any applicable acceptance. Use a final summary for the merge commit rather than a list of intermediate commit titles. Main promotion is a separate explicit decision.
 5. Confirm the PR is merged and the review targets the owned checkout before reporting source delivery. Complete each independent change without waiting for other work in the request. Report deployment separately, including any deferral; verify the installed package before claiming deployment. Release and housekeeping remain separate outcomes.
 
+### Staging turns
+
+Use the GitHub PR label `staging-turn` to coordinate final validation and merging across sessions. This is an advisory convention; the strict current-base ruleset and required checks remain the final merge safeguards.
+
+- Development, review and preliminary CI can proceed in parallel. Before taking a turn, inspect all open staging PRs for the label and enabled auto-merge. Wait while another turn or competing auto-merge is active; do not initiate a competing merge or enable auto-merge. Only a PR ready for final validation and merging may claim the label.
+- Add the label to the chosen PR, then recheck all open staging PRs before updating the branch or merging. If simultaneous claims produce multiple labels, the lowest PR number keeps its claim; all other claimants remove theirs and wait. Recheck immediately before merging, and stop if ownership is unclear or staging has moved. Update to current staging and obtain all required checks on the current candidate before merging. Never bypass protection.
+- Remove the label promptly after merge or when checks fail, changes are needed, the PR is blocked, or preview acceptance is pending. Do not hold a turn while waiting for review or acceptance. A closed PR does not own a turn.
+- To recover a stale turn, inspect the labeled PR, its checks and recent activity. If it is clearly closed, blocked, failed or abandoned, remove the label and proceed; if active ownership is uncertain, leave it in place and ask the user to resolve it. Do not interrupt or message another session to recover a turn.
+
 On resume inspect the owned checkout and PR, and read current tracked guidance before edits. Preserve other branches and unrelated work when updating checkouts. Do not interrupt or move another task without explicit user authorization.
 
 Task scratch files belong in `.build-tmp/`; generated conversation assets belong in ignored `output/`. Technical review is proportional to risk as described in AGENTS.md. Routine copy/layout corrections need no separate preview acceptance; significant new behavior does.
