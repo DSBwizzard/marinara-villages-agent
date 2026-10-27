@@ -38,7 +38,6 @@ export function ResidentsScreen({
     profileOrigin,
     refreshBusyId,
     refreshPreviews,
-    removeVillager,
     retryWork,
     rewriteAgenda,
     screen,
@@ -46,6 +45,7 @@ export function ResidentsScreen({
     setExploreSheet,
     setFocusedProjectId,
     setFocusedRequestId,
+    setHousingVenueId,
     setMenuPage,
     setPersonProfile,
     setProfileInspection,
@@ -102,6 +102,25 @@ export function ResidentsScreen({
       detail: "Mailbox",
       onOpen: () => controller.setMailboxOpen(true),
     });
+    relatedLinks.push(
+      {
+        id: "projects-all",
+        title: "Projects",
+        detail: "Open Projects",
+        playerVisible: true,
+        onOpen: () => openMenu("projects"),
+      },
+      {
+        id: "requests-all",
+        title: "Venue Requests",
+        detail: "Open Venue Requests",
+        playerVisible: true,
+        onOpen: () => {
+          setHousingVenueId("");
+          openMenu("venueRequests");
+        },
+      },
+    );
     for (const project of snapshot?.projects ?? []) {
       const flow = project.lifecycle;
       if (
@@ -505,16 +524,6 @@ export function ResidentsScreen({
               >
                 Compare card
               </button>
-              <details>
-                <summary>Actions</summary>
-                <button
-                  type="button"
-                  disabled={busy || !!refreshBusyId}
-                  onClick={() => void removeVillager(personProfile.actorId)}
-                >
-                  Move out
-                </button>
-              </details>
               {refreshPreviews[personProfile.actorId] ? (
                 <div className={`${ELEMENT_TAG}-dossier-refresh`}>
                   <p>

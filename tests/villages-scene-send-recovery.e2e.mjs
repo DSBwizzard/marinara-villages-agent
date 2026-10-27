@@ -307,6 +307,12 @@ try {
             assert.deepEqual(sent.contact, original.contact);
           }
           const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+          await expect
+            .poll(
+              async () =>
+                (await next.isEnabled()) || ((await composer.isVisible()) && (await composer.inputValue()) === ""),
+            )
+            .toBe(true);
           while (await next.isEnabled()) await next.click();
           await expect(composer).toHaveValue("");
         }

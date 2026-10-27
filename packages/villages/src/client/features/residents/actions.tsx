@@ -1,7 +1,6 @@
 import type {
   AgendaListResponse,
   BackgroundWork,
-  CatalogEntry,
   MemoryLibrary,
   MemoryListEntry,
   MemoryCursor,
@@ -187,68 +186,6 @@ export function useSetAgendaScheduleIngestion(ports: {
       }
     },
     [setAgendas, setBusy, setError],
-  );
-}
-
-export function useAddVillager(ports: {
-  loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-}) {
-  const { loadCatalog, setBusy, setError, setSnapshot } = ports;
-  return useCallback(
-    async (
-      characterId: string,
-      spriteSetupRevision?: number,
-      admission?: import("../../../shared/helpers/resident-admission.js").ResidentAdmission,
-    ) => {
-      setBusy(true);
-      try {
-        setSnapshot(
-          await request<VillageSnapshot>("/villagers", {
-            method: "POST",
-            body: JSON.stringify({ characterId, admission, spriteSetupRevision }),
-          }),
-        );
-        setError("");
-        await loadCatalog();
-        return true;
-      } catch (cause) {
-        setError(messageFrom(cause, "That character could not move in."));
-        throw cause;
-      } finally {
-        setBusy(false);
-      }
-    },
-    [loadCatalog, setBusy, setError, setSnapshot],
-  );
-}
-
-export function useRemoveVillager(ports: {
-  catalog: CatalogEntry[];
-  loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-}) {
-  const { catalog, loadCatalog, setBusy, setError, setSnapshot } = ports;
-  return useCallback(
-    async (characterId: string) => {
-      setBusy(true);
-      try {
-        setSnapshot(
-          await request<VillageSnapshot>(`/villagers/${encodeURIComponent(characterId)}`, { method: "DELETE" }),
-        );
-        setError("");
-        if (catalog) await loadCatalog();
-      } catch (cause) {
-        setError(messageFrom(cause, "That villager could not leave."));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [catalog, loadCatalog, setBusy, setError, setSnapshot],
   );
 }
 

@@ -315,7 +315,7 @@ try {
     await expect(page.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByText("Manage", { exact: true }).click();
+    await page.getByText("Character tools", { exact: true }).click();
     const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
     await managerButton.focus();
     await page.keyboard.press("Enter");

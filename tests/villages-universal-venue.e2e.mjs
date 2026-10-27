@@ -382,6 +382,36 @@ try {
     await expect(page.getByText("Housing requests · Renamed warehouse", { exact: true })).toBeVisible();
     await expect(page.locator('[data-villager-request="residence:mara"]')).toBeVisible();
     await expect(page.locator('[data-villager-request="residence:eli"]')).toHaveCount(0);
+    if (width === 1366) {
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "People", exact: true })
+        .click();
+      await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
+      const person = page.getByRole("region", { name: "Mara profile", exact: true });
+      await person
+        .getByRole("navigation", { name: "Villager profile sections" })
+        .getByRole("button", { name: "Venues", exact: true })
+        .click();
+      await person.getByRole("button", { name: /Projects Open Projects/ }).click();
+      await expect(page.getByRole("heading", { name: "Projects", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: /^Close/ }).click();
+      await page.getByRole("button", { name: "People", exact: true }).click();
+      await page.getByRole("button", { name: "Open Mara profile", exact: true }).click();
+      await person
+        .getByRole("navigation", { name: "Villager profile sections" })
+        .getByRole("button", { name: "Venues", exact: true })
+        .click();
+      await person.getByRole("button", { name: /Venue Requests Open Venue Requests/ }).click();
+      await expect(page.getByRole("button", { name: "Show all requests", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("main").locator('[data-villager-request="residence:eli"]')).toBeVisible();
+      await page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "Places", exact: true })
+        .click();
+      await tabs.getByRole("button", { name: "Manage", exact: true }).click();
+      await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
+    }
     await page.getByRole("button", { name: "View Venue", exact: true }).click();
     await expect(profile).toBeVisible();
     for (const section of ["About", "Zones", "Manage"]) {
