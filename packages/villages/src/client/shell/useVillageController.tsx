@@ -1,3 +1,4 @@
+import { useAgentConnections } from "../features/settings/AgentConnections.js";
 import { sceneNavigationScreen } from "./navigation.js";
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
 import { useVillageWriting } from "../features/settings/WritingSettings.js";
@@ -433,6 +434,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useRemovedVenueNavigation({ closeExploration, openPlaceId, snapshot });
 
   const [menuPage, setMenuPage] = useState<MenuPage>("index");
+  const advancedOpen = screen === "menu" && menuPage === "advanced";
+  const connections = useAgentConnections(snapshot?.isFounded === true || advancedOpen, advancedOpen);
 
   useVenueRequestFocus({ element, focusedRequestId, menuPage, screen });
 
@@ -2127,6 +2130,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     memoryLibrary,
     menuPage,
     menuSection,
+    connections,
     mobile,
     movePrivateZoneId,
     moveRoom,

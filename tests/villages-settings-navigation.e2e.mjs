@@ -313,9 +313,31 @@ async function checkPackage(width) {
   };
   let narrationReads = 0;
   let holdWriting = false;
+  let connectionReads = 0;
+  let holdConnectionRead = width === 390;
+  let heldConnectionRead = null;
+  let heldConnectionSave = null;
+  let heldReset = null;
+  const connections = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
   await page.clock.install();
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/setup/reset")) {
+      heldReset = route;
+      return;
+    }
+    if (path.endsWith("/connections")) {
+      if (route.request().method() === "PUT") {
+        heldConnectionSave = route;
+        return;
+      }
+      connectionReads++;
+      if (holdConnectionRead) {
+        heldConnectionRead = route;
+        return;
+      }
+      return fulfill(route, { json: connections });
+    }
     if (path.endsWith("/narration")) {
       if (route.request().method() === "PUT") {
         Object.assign(narration, route.request().postDataJSON());
@@ -394,6 +416,7 @@ async function checkPackage(width) {
   await page.goto("http://settings-package.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect.poll(() => narrationReads).toBe(1);
+  await expect.poll(() => connectionReads).toBe(1);
   await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
   if (width === 1366) {
     await expect(page.getByRole("alert")).toContainText("Writing unavailable");
@@ -405,6 +428,18 @@ async function checkPackage(width) {
     if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
     else await page.getByRole("button", { name: label, exact: true }).click();
   };
+  if (width === 390) {
+    await expect.poll(() => heldConnectionRead !== null).toBe(true);
+    await section("advanced", "Advanced");
+    await expect.poll(() => connectionReads).toBe(2);
+    connections.systemConnectionId = "";
+    holdConnectionRead = false;
+    await fulfill(heldConnectionRead, { json: connections });
+    await expect(page.getByLabel("System", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("System", { exact: true })).toBeEnabled();
+    connections.systemConnectionId = "talk";
+    heldConnectionRead = null;
+  }
   await section("village", "World Configuration");
   await page.clock.fastForward(350);
   assert.equal(usagePreviews.length, 0, "public Settings never request the private cost preview");
@@ -494,7 +529,30 @@ async function checkPackage(width) {
   holdWriting = true;
   await page.getByRole("combobox", { name: "Person", exact: true }).selectOption("first");
   await expect.poll(() => writingSaves.length).toBe(1);
+  holdConnectionRead = true;
   await section("advanced", "Advanced");
+  await expect.poll(() => heldConnectionRead !== null).toBe(true);
+  const systemConnection = page.getByLabel("System", { exact: true });
+  await expect(systemConnection).toBeVisible();
+  await expect(systemConnection).toHaveValue(width === 390 ? "" : "talk");
+  await expect(systemConnection).toBeDisabled();
+  holdConnectionRead = false;
+  await fulfill(heldConnectionRead, { json: connections });
+  heldConnectionRead = null;
+  await expect(systemConnection).toBeEnabled();
+  await systemConnection.selectOption(width === 390 ? "talk" : "");
+  await expect.poll(() => heldConnectionSave !== null).toBe(true);
+  await expect(page.getByRole("button", { name: "Erase Village", exact: true })).toBeDisabled();
+  await section("general", "General Preferences");
+  const readsBeforeReopen = connectionReads;
+  await section("advanced", "Advanced");
+  assert.equal(connectionReads, readsBeforeReopen, "reopening waits for a connection save before refreshing");
+  await expect(page.getByLabel("System", { exact: true })).toBeDisabled();
+  connections.systemConnectionId = width === 390 ? "talk" : "";
+  await fulfill(heldConnectionSave, { json: connections });
+  await expect.poll(() => connectionReads).toBe(readsBeforeReopen + 1);
+  await expect(page.getByLabel("System", { exact: true })).toHaveValue(connections.systemConnectionId);
+  await expect(page.getByLabel("System", { exact: true })).toBeEnabled();
   await expect(page.getByText("Permanently erase this Village and its progress. This cannot be undone.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Erase Village", exact: true })).toBeDisabled();
   await fulfill(writingSaves[0], { status: 200, json: narration });
@@ -510,6 +568,13 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "More", exact: true }).click();
   await section("advanced", "Advanced");
   await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("System", { exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Erase Village", exact: true }).click();
+  await page.getByRole("button", { name: "Erase Village permanently", exact: true }).click();
+  await expect.poll(() => heldReset !== null).toBe(true);
+  for (const label of ["System", "Narration", "Images"]) {
+    await expect(page.getByLabel(label, { exact: true })).toBeDisabled();
+  }
   assert.equal(narration.writingGuidance, "Saved writing guidance", "Writing preferences preserve saved guidance");
   if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
     await page.screenshot({
