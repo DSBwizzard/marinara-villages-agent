@@ -93,10 +93,8 @@ const resumed = resumeFoundingVenue(old, {});
 assert.deepEqual(resumed.inactive.private, residence.privateSpaces);
 assert.equal(resumed.venue.privateSpaces?.length, 0);
 assert.equal(resumed.venue.spaces?.length, 1);
-assert.ok(
-  foundingVenueIssues([resumed.venue]).some((issue) => issue.field === "zone-purpose"),
-  "new mandatory details need completion",
-);
+assert.equal(resumed.venue.spaces?.[0].purpose, "Community gatherings");
+assert.equal(foundingVenueIssues([resumed.venue]).length, 0, "a missing community space has usable defaults");
 const suggestion = {
   id: "home",
   name: "Home",

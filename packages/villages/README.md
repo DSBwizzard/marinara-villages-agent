@@ -24,7 +24,7 @@ The current package requires **Engine 2.5.0 or later, before 4.0.0**, plus its d
 
 Have a Persona and **one to three characters** ready in your Engine library. Your Persona represents you; the characters become the first residents. Villages keeps its own captured copies of their cards and does not rewrite your originals.
 
-Create or check your model connections in Engine before founding. In the founding screen's **Place** step, open the connection controls and choose:
+Create or check your model connections in Engine before founding. Choose them on the founding screen's **Place** step:
 
 | Connection    | What it does                                                              |
 | ------------- | ------------------------------------------------------------------------- |
@@ -34,7 +34,7 @@ Create or check your model connections in Engine before founding. In the foundin
 
 Choose a specific language connection for **both System and Narration** before continuing. You can use the same one for both. Later, change these choices in Villages' **General Settings**.
 
-An image connection is optional, but your Village needs map artwork. If Images is disabled, upload a map. Sprite analysis separately needs a vision-capable language connection, selected in its own editor.
+An image connection is optional. You can start with a simple map or upload one if Images is disabled. Sprite analysis separately needs a vision-capable language connection, selected in its own editor.
 
 **Requests may cost money.** Founding, Scene replies, artwork, and enabled resident activity use your configured providers. Model choice affects writing quality and reliability; a successful connection is not a guarantee that every response will be usable.
 
@@ -44,8 +44,8 @@ The setup steps are **Place → People → Map → Venues → Review**.
 
 1. **Place:** Name the Village and describe the location, world, and current situation. It can be an established place in good condition; you do not have to begin by rebuilding a ruin.
 2. **People:** Choose your Persona and one to three residents. Write **Your backstory** for your own situation. Optional **Homeworld** and **Add starting note** fields explain each resident's connection to the setting. The **Village world** label can help distinguish shared and different origins.
-3. **Map:** Upload artwork or deliberately generate it. The first map uses the Village's name. Describe the area actually shown, whether it is a building interior or a neighborhood.
-4. **Venues:** Prepare homes and the initial Community Venue. Give each place a physical form, an Exterior, and the spaces people will use. **Quick Start** can suggest Venues; review and edit those suggestions and their map placements.
+3. **Map:** Use the simple starting map, upload artwork, or deliberately generate it. The first map uses the Village's name. For generated artwork, describe the area actually shown, whether it is a building interior or a neighborhood.
+4. **Venues:** Review the automatically placed homes and Community Venue. Edit their physical forms, Zones, artwork, and placements yourself, or request optional suggestions. Residents' private interiors stay hidden until authorized entry.
 5. **Review:** Resolve the listed setup problems and found the Village. Preparation creates the needed interiors, resident routines, and initial Wish attempts. A resident having no initial Wish is a valid result.
 
 Map uploads need at least **768 pixels on the shorter side** and **1024 on the longer side**, with proportions between **2:3 and 2:1**. Generation requests an overhead map at 2560 × 1440; providers may return other dimensions.

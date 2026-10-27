@@ -94,11 +94,8 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const root = page.locator(".villages-forging-preparing");
     await expect(root.getByRole("heading", { name: "Station Fields is settling in" })).toBeVisible();
-    const details = root
-      .locator("details")
-      .filter({ has: page.locator("summary", { hasText: "Preparation details" }) })
-      .first();
-    await details.locator("summary").click();
+    const details = root.getByRole("region", { name: "Preparation details" });
+    await expect(details).toBeVisible();
     await expect(details).toContainText("Waiting for Fixture System to write starting venue details");
     await expect(details).toContainText("Attempt 1");
     await expect(details).not.toContainText("of 3");

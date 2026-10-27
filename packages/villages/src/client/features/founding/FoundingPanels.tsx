@@ -36,14 +36,14 @@ export function newSetupVenue(
   const venue: SetupVenueDraft = {
     id,
     name,
-    form: "",
+    form: venueClass === "community" ? "Community place" : "Residence",
     classes: [venueClass],
     layoutVersion: 1,
     spaces: [],
     residenceCapacity: 1,
     residentIds: [],
 
-    description: "",
+    description: venueClass === "community" ? "A place where the community gathers." : "A residence in the Village.",
     category: venueClass === "community" ? "public-center" : "",
     presentation: { mapId: "", image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },

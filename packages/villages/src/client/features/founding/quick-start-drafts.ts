@@ -49,9 +49,14 @@ export function mergeQuickStartSpaces(
     const zone = { ...startingZone(current, personal), ...existing };
     for (const field of ["name", "purpose", "description"] as const) {
       if (existing && (!original || existing[field] !== original[field])) continue;
+      const prefix = `zone:${key}:`;
+      const detailed = authored.some((entry) => entry.startsWith(prefix));
+      if (existing && authored.includes(`${prefix}legacy`)) continue;
+      if (existing && authored.includes(key) && !detailed) continue;
+      if (existing && authored.includes(`${prefix}${existing.id}:${field}`)) continue;
       if (
         existing &&
-        (authored.includes(key) || existing.image || !["common:base", "private:base"].includes(existing.id)) &&
+        (existing.image || !["common:base", "private:base"].includes(existing.id)) &&
         existing[field]?.trim()
       )
         continue;

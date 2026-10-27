@@ -6,6 +6,8 @@ import { arrangeQuickStartVenues } from "../packages/villages/src/client/feature
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { calculateSetupBeginningSourceKey } from "../packages/villages/src/client/features/founding/calculations.js";
 import { mergeQuickStartSpaces } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
+import { foundingZoneProblem } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { extractFoundingVenueReply } from "../packages/villages/src/server/domain/rules/founding-venue-reply.js";
@@ -48,15 +50,33 @@ draft.name = parsed[0].name;
 draft.form = parsed[0].form;
 draft.description = parsed[0].description;
 draft.spaces![0].name = "My authored cabin";
-const complete = mergeQuickStartSpaces(draft, structuredClone(draft), parsed[0], ["spaces"]);
+const complete = mergeQuickStartSpaces(draft, structuredClone(draft), parsed[0], [
+  "spaces",
+  "zone:spaces:common:base:name",
+]);
 assert.equal(complete.spaces![0].name, "My authored cabin");
 assert.equal(
   complete.spaces![0].description,
   parsed[0].commonDescription,
   "generation fills missing fields even after another field is authored",
 );
+const legacyAuthored = mergeQuickStartSpaces(draft, structuredClone(draft), parsed[0], ["spaces"]);
+assert.equal(legacyAuthored.spaces![0].description, draft.spaces![0].description, "legacy edits stay intact");
+const cleared = structuredClone(draft);
+cleared.spaces![0].description = "";
+assert.equal(
+  mergeQuickStartSpaces(cleared, structuredClone(cleared), parsed[0], ["spaces", "zone:spaces:common:base:description"])
+    .spaces![0].description,
+  "",
+  "a deliberate cleared field stays empty",
+);
 assert.deepEqual(foundingVenueIssues([complete], false, true), []);
 assert.doesNotThrow(() => parsePlace(complete, true), "Quick Start produces a server-valid founding Residence");
+for (const personal of [false, true]) {
+  const added = addFoundingZone(draft, personal, "zone:new");
+  assert.equal(foundingZoneProblem(added), "", "adding a Zone preserves existing connection routes");
+  assert.doesNotThrow(() => parsePlace(added, true), "the added Zone remains valid for founding");
+}
 const singleSpace = { ...draft, layout: "common" as const, privateSpaces: [] };
 assert.equal(
   mergeQuickStartSpaces(singleSpace, structuredClone(singleSpace), parsed[0], ["layout"]).privateSpaces?.length,
