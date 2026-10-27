@@ -4,7 +4,7 @@ Use Node 24 with Corepack (CI pins Node 24.21.0 with npm 11.19.0). The checked-i
 
 ## Ordinary work
 
-When asked to look at the latest 8500, consult the isolated runtime guide, resolve the designated 8500 and inspect its current runtime and installed package identity along with its deployment record and source revision. Verify that the records and running package correspond before using the revision for source analysis; report the identity and any mismatch or unverifiable correspondence. A staging fetch, a Local checkout, a preview, or a version number alone does not establish what is running on 8500. Use read-only inspection and preserve runtime and saved-data boundaries.
+When inspecting a deployed environment, verify its installed package identity and deployed revision against its deployment records before using matching source for analysis. Report the identity and any mismatch or unverifiable correspondence. A branch, checkout, preview or version number alone does not establish what is deployed. Use read-only inspection and preserve runtime and saved-data boundaries.
 
 Before any audit, review, investigation or implementation that depends on current staging, run `git fetch origin staging` and require success, then record the verified revision with `git rev-parse --verify origin/staging`. For read-only work, inspect that commit (for example, `git show <commit>:<path>`) rather than assuming shared Local is current, and identify the inspected commit when reporting findings. If fetching fails, explicitly report that staging freshness could not be verified and do not present cached code as current.
 
