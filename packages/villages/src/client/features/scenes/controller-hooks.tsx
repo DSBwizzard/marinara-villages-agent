@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
-import type {
-  ArchiveVisitSummary,
-  RoomOperation,
-  RoomRecordEvent,
-  SceneChangeIssue,
-  SceneView,
-} from "../../../shared/contracts/village.js";
+import type { RoomOperation, RoomRecordEvent, SceneChangeIssue, SceneView } from "../../../shared/contracts/village.js";
 import { useFocusRevision } from "../../shared/activity.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { request } from "../../shared/api.js";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import {
   completedGreetingAfterFailure,
@@ -190,9 +184,7 @@ export function useSceneSelectionReset(ports: {
       setRoomNotices([]);
       seenRoomEventIdsRef.current.clear();
       setLastSceneEnding(
-        reason === "inactivity"
-          ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
-          : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
+        reason === "inactivity" ? "Interrupted: Inactivity." : "This Scene ended while you were away.",
       );
       setScreen("home");
       void loadSnapshot();
@@ -206,7 +198,7 @@ export function useSceneSelectionReset(ports: {
             setRoom(currentRoom(session));
             return;
           }
-          const archived = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(room.id)}`).catch(
+          const archived = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(room.id)}/recovery`).catch(
             () => null,
           );
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
@@ -514,64 +506,4 @@ export function useActiveSceneRestoration(ports: {
     setAttempt((current) => current + 1);
   }, []);
   return { status, retry };
-}
-
-export function useSceneArchive(ports: {
-  archiveOffset: number;
-  archiveVenueId: string;
-  archiveVersion: number;
-  archiveVillagerId: string;
-  menuPage: import("../../shared/types.js").MenuPage;
-  setArchiveError: React.Dispatch<React.SetStateAction<string>>;
-  setArchiveTotal: React.Dispatch<React.SetStateAction<number>>;
-  setVenueVisits: React.Dispatch<
-    React.SetStateAction<import("../../../shared/contracts/village.js").ArchiveVisitSummary[]>
-  >;
-  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
-}) {
-  const {
-    archiveOffset,
-    archiveVenueId,
-    archiveVersion,
-    archiveVillagerId,
-    menuPage,
-    setArchiveError,
-    setArchiveTotal,
-    setVenueVisits,
-    snapshot,
-  } = ports;
-  useEffect(() => {
-    if (menuPage !== "chatlogs" || !snapshot?.isFounded) return;
-    const controller = new AbortController();
-    const query = new URLSearchParams();
-    if (archiveVenueId) query.set("venueId", archiveVenueId);
-    if (archiveVillagerId) query.set("characterId", archiveVillagerId);
-    query.set("offset", String(archiveOffset));
-    query.set("limit", "20");
-    setVenueVisits(null);
-    void request<{ visits: ArchiveVisitSummary[]; total: number }>(`/rooms/archive?${query.toString()}`, {
-      signal: controller.signal,
-    })
-      .then(({ visits, total }) => {
-        if (!controller.signal.aborted) {
-          setVenueVisits(visits);
-          setArchiveTotal(total);
-          setArchiveError("");
-        }
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted) setArchiveError(messageFrom(cause, "Scenes could not be read."));
-      });
-    return () => controller.abort();
-  }, [
-    archiveVenueId,
-    archiveVillagerId,
-    archiveOffset,
-    archiveVersion,
-    menuPage,
-    snapshot?.isFounded,
-    setVenueVisits,
-    setArchiveTotal,
-    setArchiveError,
-  ]);
 }

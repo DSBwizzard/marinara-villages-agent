@@ -422,9 +422,7 @@ async function main() {
   assert.equal(calls.length, 2, "saved identical stage results replay without dispatch");
   assert.equal(loreReads, 2, "Each principal packet freezes selected lore once; replay fetches no new lore");
   assert(lastPacket.input.context.lore.includes("Selected lore establishes the setting's supported capabilities."));
-  const intentKey = [...checkpoints.keys()].find(
-    (key) => key.startsWith("semantic-v2:intent:") && !key.endsWith(":input"),
-  )!;
+  const intentKey = [...checkpoints.keys()].find((key) => /^semantic-v2:intent:[a-f0-9]{64}$/.test(key))!;
   checkpoints.delete(intentKey);
   state.seed = "Changed after the request was saved";
   const resumed = await service.intent(scene, "We can discuss it.");
@@ -635,6 +633,47 @@ async function main() {
     interpretRoomReply: () => assert.fail("The legacy room/Decisions call must be replaced"),
   } as unknown as SceneWritingPorts;
   const generated = await createSceneWriting(writerPorts).generate(scene, "Ordinary conversation", "chat", "", null);
+  let replayLoreReads = 0;
+  const capturedWriting = {
+    fitted: {
+      messages: [{ role: "system", content: "Exact captured request with purchased lore" }],
+      loreEntries: [],
+      maxTokens: 4096,
+    },
+  };
+  const replayWriting = createSceneWriting({
+    ...writerPorts,
+    venueOperationInput: () => ({
+      writingContractVersion: 3,
+      writingCapabilities: {
+        management: false,
+        movement: false,
+        residences: false,
+        residenceDecision: false,
+        editApproval: false,
+      },
+    }),
+    venueSavedCheckpoint: () => capturedWriting as any,
+    readVillageLore: async () => {
+      replayLoreReads++;
+      throw new Error("Engine lore is offline");
+    },
+  });
+  const capturedPrompt = await replayWriting.prepareVenueTurnMessages(scene, "Retained message", "chat", "", null);
+  assert.deepEqual(capturedPrompt.fitted, capturedWriting.fitted);
+  assert.equal(replayLoreReads, 0, "Captured writing reuses its exact prompt before any fresh lore I/O");
+  const beforeOutage = calls.length;
+  await assert.rejects(
+    createSceneWriting({
+      ...writerPorts,
+      venueOperationInput: () => ({ semanticPipelineVersion: 3 }),
+      readVillageLore: async () => {
+        throw new Error("Selected lorebooks are unavailable. Restore them and retry.");
+      },
+    }).generate(scene, "New message during an outage", "chat", "", null),
+    /Selected lorebooks are unavailable/,
+  );
+  assert.equal(calls.length, beforeOutage, "A fresh lore failure stops Narration before any completion");
   assert.equal(generated.lines[0].content, "The room is quiet.");
   assert.equal(generated.semanticProvenance?.version, 2);
   assert.deepEqual(

@@ -1,11 +1,12 @@
 import type { FastifyInstance } from "fastify";
 import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
-import { listVillageLorebooks } from "../../adapters/engine/lorebooks.js";
+import { listVillageLorebooks, readVillageLore } from "../../adapters/engine/lorebooks.js";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { fail, readCharacterId, SETTINGS_BODY_LIMIT } from "../../adapters/http/route-support.js";
-import { readRuntimeDebug, saveRuntimeDebug } from "../../adapters/observability/runtime-debug.js";
+import { readRuntimeDebug, saveRuntimeDebug, readLoreInspections } from "../../adapters/observability/runtime-debug.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
-import { setVenueVisitRetention } from "../scenes/archive.js";
+import { readVillageAuthority } from "../world/village-store.js";
 import { setVillageHomeBuildingNames, setVillageVenues } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "./connections.js";
@@ -139,6 +140,39 @@ export function registerUsageRoutes(engine: FastifyInstance) {
 }
 export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get("/debug/lore", async (_request, reply) => {
+    try {
+      return await readLoreInspections();
+    } catch (error) {
+      return fail(reply, error, "inspecting lorebooks");
+    }
+  });
+  app.post<{ Body: { query?: unknown } }>("/debug/lore", { bodyLimit: 12000 }, async (request, reply) => {
+    try {
+      await readLoreInspections(); // Explicit creator switch; no ordinary Scene endpoint exposes these records.
+      const query = request.body?.query;
+      if (typeof query !== "string" || query.length > 2000) throw badRequest("Use a query within 2,000 characters.");
+      const state = await readVillageAuthority();
+      let report: LoreInspection | undefined;
+      await readVillageLore(
+        state.selectedLorebookIds,
+        [state.setting, state.worldName, ...state.worldFacts].join("\n"),
+        undefined,
+        state.loreTokenBudget,
+        {
+          current: query,
+          purpose: "Key test",
+          inspect: (inspection) => {
+            report = inspection;
+          },
+        },
+      );
+      await readLoreInspections(); // The creator may have switched inspection off while Engine was being read.
+      return { report };
+    } catch (error) {
+      return fail(reply, error, "testing lorebook keys");
+    }
+  });
   app.get("/debug/runtime", async (_request, reply) => {
     try {
       return await readRuntimeDebug();
@@ -188,7 +222,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
       spriteCardFlipEnabled?: unknown;
-      visitRetention?: unknown;
     };
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
     try {
@@ -225,10 +258,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
         snapshot = await setVillageSpriteCardFlipEnabled(body.spriteCardFlipEnabled);
       if (body.characterSpeechColors !== undefined)
         snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
-      if (body.visitRetention !== undefined) {
-        await setVenueVisitRetention(body.visitRetention);
-        snapshot = await buildVillageSnapshot();
-      }
       if (body.homeBuildingNames !== undefined) snapshot = await setVillageHomeBuildingNames(body.homeBuildingNames);
       // Every place in the village in one list, the houses included: what the
       // panel edits and what the map places are the same records, so there is

@@ -300,19 +300,7 @@
     },
     {
       "method": "get",
-      "path": "/rooms/archive"
-    },
-    {
-      "method": "get",
-      "path": "/rooms/archive/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/rooms/archive/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/rooms/archive"
+      "path": "/rooms/:id/recovery"
     },
     {
       "method": "get",
@@ -333,6 +321,15 @@
     {
       "method": "patch",
       "path": "/usage/pricing"
+    },
+    {
+      "method": "get",
+      "path": "/debug/lore"
+    },
+    {
+      "method": "post",
+      "path": "/debug/lore",
+      "bodyLimit": 12000
     },
     {
       "method": "get",

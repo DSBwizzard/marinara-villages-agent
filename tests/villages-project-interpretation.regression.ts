@@ -6,6 +6,10 @@ import { readRenovationChange } from "../packages/villages/src/server/domain/rul
 import { projectSpeechPrompt } from "../packages/villages/src/server/domain/rules/project-interpretation.js";
 import { projectDesignKey } from "../packages/villages/src/server/domain/rules/project-terms.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { projectSceneEvidence } from "../packages/villages/src/server/domain/rules/project-scene-evidence.js";
+import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
+import { notFound } from "../packages/villages/src/server/domain/rules/errors.js";
 const f = fixture(),
   id = await renovation(f);
 const line = {
@@ -86,6 +90,7 @@ for (const extra of [
   { contactHidden: true },
   { contactReport: true },
   { soundOnly: { player: true, text: "A muffled voice." } },
+  { delivery: "whisper", targetId: "another-resident" },
 ]) {
   visit = { ...visit, lines: [{ ...line, ...extra }] };
   assert.deepEqual(await evidence.listProjectEvidenceCandidates(id), []);
@@ -133,6 +138,60 @@ assert.doesNotMatch(
   /Hidden private/,
 );
 console.log("Independent agreements, shared citations, stale revisions and Project privacy passed.");
+
+const retiredWorld = fixture(),
+  retiredId = await renovation(retiredWorld);
+const retiredScene = coerceSession({
+  ...visit,
+  status: "closed",
+  villageSeed: retiredWorld.state().seed,
+  lines: [line],
+  submissions: [
+    {
+      ...visit.submissions[0],
+      projectContexts: [{ projectId: retiredId, revision: 1, phase: "planning" }],
+      projectSpeech: [
+        {
+          version: 1,
+          projectId: retiredId,
+          revision: 1,
+          phase: "planning",
+          kind: "builder",
+          speakerId: "a",
+          citations: [{ lineId: "spoken", quote: line.content }],
+        },
+      ],
+    },
+  ],
+});
+const compact = projectSceneEvidence(retiredScene);
+const queries = createSceneQueryService({
+  readSession: async () => {
+    throw notFound("Scene retired");
+  },
+  readVillageState: async () => retiredWorld.state(),
+  villagesDocuments: () => ({ list: async () => [] }),
+  readRetiredProjectScenes: async () => [compact],
+});
+const retiredEvidence = createProjectEvidence({
+  readVillageState: async () => retiredWorld.state(),
+  mutateVillageState: retiredWorld.mutate,
+  sceneQueries: () => ({
+    ...queries,
+    activeVenueSession: async () => null,
+    listVenueVisits: async () => [],
+    listRetiredProjectScenes: async () => [compact],
+  }),
+});
+assert.equal((await retiredEvidence.listProjectEvidenceCandidates(retiredId))[0].quote, line.content);
+await retiredEvidence.recordProjectSpokenEvidence(retiredId, {
+  sessionId: "visit",
+  submissionId: "turn",
+  kind: "builder",
+  interpretationIndex: 0,
+});
+assert.equal(retiredWorld.get(retiredId).lifecycle!.candidates[0].residentId, "a");
+assert.equal(retiredWorld.get(retiredId).lifecycle!.spokenProofs[0].quote, line.content);
 
 // Recovering a withdrawal spoken before Start cannot manufacture extra work time.
 const delayed = fixture(),

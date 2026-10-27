@@ -101,7 +101,7 @@ export async function refreshSceneAfterFailure(
     });
     if (!owns()) return null;
     if (session?.id === sessionId) return session;
-    const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+    const { visit } = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(sessionId)}/recovery`, {
       signal: AbortSignal.timeout(5_000),
     });
     if (!owns()) return null;
@@ -118,7 +118,7 @@ export async function completedRoomAfterFailure(
 ): Promise<SceneView | null> {
   try {
     if (!owns()) return null;
-    const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+    const { visit } = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(sessionId)}/recovery`, {
       signal: AbortSignal.timeout(5_000),
     });
     if (!owns()) return null;

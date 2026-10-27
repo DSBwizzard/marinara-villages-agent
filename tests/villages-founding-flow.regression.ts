@@ -96,7 +96,8 @@ async function reviewNavigation() {
   ports.setupStep = 0;
   ports.connectionSetupProblem = "Choose a System connection.";
   goto(1);
-  assert.equal(step, 1, "cast selection does not require configured model connections");
+  assert.equal(step, 0, "Place requires connections before proceeding");
+  assert.equal(problem, ports.connectionSetupProblem);
   ports.setupStep = 1;
   goto(2);
   assert.equal(step, 0, "connection errors return to their first-page controls");

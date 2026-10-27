@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import {
   initialStaging,
@@ -85,7 +86,7 @@ import {
   normalizeSceneEffectReferences,
   normalizeSparseSceneReply,
 } from "../../domain/rules/scene-writing-contract.js";
-import { sceneWritingHistory } from "../../domain/rules/scene-writing-history.js";
+import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
 import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { wishWritingContext } from "../../domain/rules/social-wishes.js";
@@ -136,6 +137,7 @@ import {
 export interface SceneWritingPorts {
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   venueCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
+  venueSavedCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueSavedCheckpoint;
   venueExplicitRetry?: () => boolean;
   refreshZoneParticipants: typeof import("./live-session.js").refreshZoneParticipants;
   readEffectiveVillagerCard: typeof import("../../adapters/engine/catalog.js").readEffectiveVillagerCard;
@@ -163,6 +165,7 @@ const VENUE_REPLY_TEMPERATURE = 0.85;
 /** Inert Scene prompt fitting, response validation and room interpretation with originating connections. */
 export function createSceneWriting({
   venueCheckpoint = async (_stage, work) => work(),
+  venueSavedCheckpoint,
   venueExplicitRetry = () => false,
   refreshZoneParticipants,
   readEffectiveVillagerCard,
@@ -229,6 +232,16 @@ export function createSceneWriting({
     actionOutcome?: string,
   ) {
     const writingVersion = venueOperationInput()?.writingContractVersion;
+    const requestKey = createHash("sha256")
+      .update(JSON.stringify([session.id, mode, message]))
+      .digest("hex");
+    const captured =
+      writingVersion === 3
+        ? venueSavedCheckpoint?.<{
+            fitted: ReturnType<typeof fitVenueWritingMessages>;
+            loreInspection?: LoreInspection;
+          }>("writing-request:" + requestKey)
+        : undefined;
     if (writingVersion !== undefined && writingVersion !== 1 && writingVersion !== 2 && writingVersion !== 3)
       throw conflict("This saved request uses an unsupported writing contract. Its history is preserved.");
     const sparse = writingVersion === 2 || writingVersion === 3;
@@ -361,22 +374,34 @@ export function createSceneWriting({
       )
       .slice(0, 4);
     const loreStarted = performance.now();
-    const lorePromise = readVillageLore(
-      village.selectedLorebookIds,
-      [
-        villageCurrentSetting(village),
-        session.placeName,
-        admissionLoreContext(
-          village.worldName,
-          active.map(
-            (person) => village.villagers.find((entry) => entry.characterId === person.characterId)?.admission,
-          ),
-        ),
-        active.map((person) => person.name).join(", "),
-        message,
-      ].join("\n"),
-      signal,
-      village.loreTokenBudget,
+    let loreInspection: LoreInspection | undefined;
+    const lorePromise = (
+      captured
+        ? Promise.resolve([] as string[])
+        : readVillageLore(
+            village.selectedLorebookIds,
+            [
+              villageCurrentSetting(village),
+              session.placeName,
+              admissionLoreContext(
+                village.worldName,
+                active.map(
+                  (person) => village.villagers.find((entry) => entry.characterId === person.characterId)?.admission,
+                ),
+              ),
+              active.map((person) => person.name).join(", "),
+              message,
+            ].join("\n"),
+            signal,
+            village.loreTokenBudget,
+            {
+              current: message,
+              recent: sharedLoreHistory(session, earlierEvidence, audibleIds),
+              inspect: (report) => {
+                loreInspection = report;
+              },
+            },
+          )
     ).then((value) => {
       trace?.("lore", performance.now() - loreStarted);
       return value;
@@ -640,7 +665,7 @@ export function createSceneWriting({
         `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
       ]),
       conversation: blocksFor([
-        `Relevant world lore: ${lore.join("\n") || "none"}`,
+        ...lore.map((entry) => `Relevant world lore: ${entry}`),
         ...optionalKnowledge.map((block) => block.text),
         `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
         "",
@@ -773,7 +798,23 @@ export function createSceneWriting({
     blocks.push({
       text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
     });
-    const fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
+    const fitted = captured?.fitted ?? fitVenueWritingMessages(model, blocks, input, maxTokens);
+    if (captured) loreInspection = captured.loreInspection;
+    else if (loreInspection) {
+      let index = 0;
+      const remaining = [...fitted.loreEntries];
+      loreInspection = {
+        ...loreInspection,
+        purpose: "Scene Narration",
+        stage: "prompt",
+        entries: loreInspection.entries.map((entry) => {
+          if (entry.status !== "included") return entry;
+          const at = remaining.indexOf(`Relevant world lore: ${lore[index++]}`);
+          if (at >= 0) remaining.splice(at, 1);
+          return { ...entry, status: at >= 0 ? "included" : "context-limit" };
+        }),
+      };
+    }
     trace?.("context fit", performance.now() - fitStarted);
     const memoryIncluded = fitted.messages.some((message) => message.content.includes(memoryContext));
     runtimeDebug("memory retrieval", {
@@ -785,6 +826,7 @@ export function createSceneWriting({
     });
     return {
       fitted,
+      loreInspection,
       sparse: sparse && session.contactGeneration?.zoneEvents === true,
       writingVersion,
       writingCapabilities: capabilities,
@@ -824,7 +866,7 @@ export function createSceneWriting({
     const signal = args[5];
     const trace = args[6];
     const prepared = await prepareVenueTurnMessages(...args);
-    let { fitted, earlierEvidence, promptMemories } = prepared;
+    let { fitted, earlierEvidence, promptMemories, loreInspection } = prepared;
     const {
       sparse,
       writingVersion,
@@ -847,9 +889,11 @@ export function createSceneWriting({
         fitted,
         earlierEvidence,
         promptMemories,
+        loreInspection,
       }));
-      ({ fitted, earlierEvidence, promptMemories } = saved);
+      ({ fitted, earlierEvidence, promptMemories, loreInspection } = saved);
     }
+    if (loreInspection) runtimeDebug("lore inspection", loreInspection);
     trace?.("model request", 0, `${model.model} (${model.connectionId})`);
     let attempts = 0;
     const requestCompletion = () =>

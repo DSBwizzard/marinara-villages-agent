@@ -1,6 +1,29 @@
 import { createHash } from "node:crypto";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 
+/** Retrieval cannot widen witnessed knowledge through a keyword in private or offstage text. */
+export function sharedLoreHistory(scene: VenueScene, retained: readonly VenueLine[], actors: readonly string[]) {
+  if (!scene.zoneId) return [];
+  const result: string[] = [];
+  let size = 0;
+  for (const line of retained.toReversed()) {
+    if (
+      line.contactHidden ||
+      line.contactReport ||
+      !["dialogue", "side", "whisper"].includes(line.kind ?? "") ||
+      (line.role === "user" && line.speechSource?.version !== 3) ||
+      line.zoneId !== scene.zoneId ||
+      !actors.every((id) => line.heardBy.includes(id) || line.speakerId === id)
+    )
+      continue;
+    if (size + line.content.length > 4000) continue;
+    result.unshift(line.content);
+    size += line.content.length;
+    if (result.length === 6) break;
+  }
+  return result;
+}
+
 /** One copy of each exact line, with narrator visibility distinct from resident evidence. */
 export function legacySceneWritingHistory(scene: VenueScene, eligible: readonly VenueLine[]) {
   const citable = new Set(eligible.map((line) => line.id));

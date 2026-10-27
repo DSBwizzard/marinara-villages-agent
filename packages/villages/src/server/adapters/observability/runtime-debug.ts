@@ -28,6 +28,9 @@ export function readRuntimeDebug() {
 export function saveRuntimeDebug(value: unknown, meter?: unknown) {
   return diagnostics().saveRuntimeDebug(value, meter);
 }
+export function readLoreInspections() {
+  return diagnostics().readLoreInspections();
+}
 /** Missing/disposed diagnostics must never replace an operation's result. */
 export function runtimeDebug(event: string, detail: unknown): void {
   try {

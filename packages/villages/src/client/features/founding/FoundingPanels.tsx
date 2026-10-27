@@ -36,14 +36,14 @@ export function newSetupVenue(
   const venue: SetupVenueDraft = {
     id,
     name,
-    form: "",
+    form: venueClass === "community" ? "Community place" : "Residence",
     classes: [venueClass],
     layoutVersion: 1,
     spaces: [],
     residenceCapacity: 1,
     residentIds: [],
 
-    description: "",
+    description: venueClass === "community" ? "A place where the community gathers." : "A residence in the Village.",
     category: venueClass === "community" ? "public-center" : "",
     presentation: { mapId: "", image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
@@ -658,8 +658,9 @@ export function LoreTokenBudgetField({
       <div className="villages-lorebook-budget-heading">
         <label htmlFor={id}>Lorebook Token Budget</label>
         <FoundingHelp label="Lorebook Token Budget">
-          Maximum tokens lorebooks can use in any lorebook-enabled prompt. Entries are always injected if set to
-          Constant mode, otherwise injection is based on primary keys only (other lorebook entry settings are ignored).
+          Estimated token allowance per prompt. Constant entries need no keyword match but still need space. Current and
+          recent shared dialogue matches take priority. Primary keys, secondary conditions, case, whole-word matching
+          and entry order are supported. Regex keys are unsupported.
         </FoundingHelp>
       </div>
       <input

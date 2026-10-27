@@ -21,8 +21,7 @@ for (const path of [
   "/rooms/turn",
   "/rooms/end",
   "/rooms/leave",
-  "/rooms/archive",
-  "/rooms/archive/:id",
+  "/rooms/:id/recovery",
   "/locations/venue",
   "/locations/venue/:venueId",
   "/locations/venue/image",
@@ -40,6 +39,8 @@ for (const retired of [
   "/venue-mail/:mailId/decision",
   "/rooms/debug-presence",
   "/rooms/leave-pending",
+  "/rooms/archive",
+  "/rooms/archive/:id",
   "/rooms/archive/:id/retry-memory",
   "/venues/act",
   "/rooms/say",
@@ -81,7 +82,7 @@ assert.match(
   /readSubmissionId\(request.body.replaceOfOperationId\)/u,
   "Conclude forwards validated edited-send authorization",
 );
-assert.match(ui, /Open transcript/u);
+assert.doesNotMatch(ui, /Open transcript/u);
 assert.match(sceneStore, /const ACTIVE_ID = "villages-active-venue"/u);
 assert.match(sceneModel, /heardHistory: \{ characterId: string; lineIds: string\[\] \}\[\]/u);
 

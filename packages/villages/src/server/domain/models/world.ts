@@ -788,19 +788,6 @@ export function resolveCurrentVenue(venues: readonly VillageVenue[], venueId: un
 }
 
 /**
- * One note pinned to the village noticeboard, and who wrote it.
- *
- * An empty author is an unsigned note, which is what the player's own pins are:
- * a real board is mostly handwriting with no name on it. The villagers' notes
- * carry their name, because the whole point of the board is that it is written
- * in someone's voice rather than in the narrator's.
- */
-export type VillageNotice = {
-  author: string;
-  text: string;
-};
-
-/**
  * Someone the village's memory is about.
  *
  * Name AND id, unlike every other name the village holds, because the two do
@@ -1066,8 +1053,6 @@ export type VillageState = {
   foundedAt: string;
   /** Weather flavour. Random at founding so two villages of the same age differ. */
   seed: string;
-  /** Legacy Noticeboard notes, retained for saved-world compatibility and snapshot access. */
-  noticeboard: VillageNotice[];
   /** Durable high-water mark for deterministic reconciliation. */
   simulatedThrough: string;
   /** Device timezone observed by the last reconciliation. */
@@ -1096,7 +1081,7 @@ export type VillageState = {
    *
    * Where the village is, who lives here and what has been happening lately,
    * written as the macros that render those blocks. Editable — a village may want
-   * its roster and its noticeboard in a different order, or not at all — and
+   * its context in a different order, or not at all — and
    * empty means "use the shipped default", so a stored value is never mistaken
    * for "they know nothing".
    *
@@ -1455,8 +1440,6 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   venueRequests: VillagePendingDecision[];
   projects: import("../../../shared/contracts/village.js").BuildProject[];
   residences: VillageResidence[];
-  /** Newest last, so the board reads the way a board fills up. */
-  noticeboard: VillageNotice[];
   /** Newest first, so the window on the map opens on what just happened. */
   villagers: VillageVillagerView[];
   /**

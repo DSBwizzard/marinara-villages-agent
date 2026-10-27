@@ -564,6 +564,56 @@ async function main() {
     } finally {
       mock.timers.reset();
     }
+    seed("late-retry-timeout");
+    const starts = [deferred<void>(), deferred<void>()];
+    const results = [deferred<string>(), deferred<string>()];
+    let retryCalls = 0;
+    const twiceLate = () =>
+      venueCheckpoint("reply", async () => {
+        const value = await coordinatedCompletion("same-provider", () =>
+          withProviderDeadline(async () => {
+            const n = retryCalls++;
+            starts[n].resolve();
+            return results[n].promise;
+          }),
+        );
+        if (value === "invalid") {
+          await rejectVenueCompletion();
+          throw Error("invalid response");
+        }
+        return value;
+      });
+    mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      const first = coordinateVenue("late-retry-timeout", "same", "turn", {}, 0, undefined, twiceLate);
+      const firstFailure = assert.rejects(first, /timed out/);
+      await starts[0].promise;
+      mock.timers.tick(120_000);
+      await firstFailure;
+      results[0].resolve("invalid");
+      await new Promise((resolve) => setImmediate(resolve));
+      await assert.rejects(
+        coordinateVenue("late-retry-timeout", "same", "turn", {}, undefined, undefined, twiceLate, { recovery: true }),
+        /invalid response/,
+      );
+      const prior = (await readVenueOperation("late-retry-timeout"))!;
+      const second = coordinateVenue("late-retry-timeout", "same", "turn", {}, undefined, prior.attemptId, twiceLate);
+      const secondFailure = assert.rejects(second, /timed out/);
+      await starts[1].promise;
+      mock.timers.tick(120_000);
+      await secondFailure;
+      results[1].resolve("recovered retry");
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(
+        await coordinateVenue("late-retry-timeout", "same", "turn", {}, undefined, undefined, twiceLate, {
+          recovery: true,
+        }),
+        "recovered retry",
+      );
+      assert.equal(retryCalls, 2);
+    } finally {
+      mock.timers.reset();
+    }
     for (const legacyComplete of [false, true]) {
       const sceneId = "rejected-replay-" + legacyComplete;
       seed(sceneId);

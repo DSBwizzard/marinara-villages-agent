@@ -32,6 +32,12 @@ export interface VenueCoordinatorPorts {
   villagesLogger(): CapabilityRuntimeLogger;
   runtimeDebug: typeof runtimeDebug;
   readInterpretationSettings: typeof readInterpretationSettings;
+  readTerminal?(sceneId: string): Promise<import("../domain/models/scene-terminal-model.js").SceneTerminal | null>;
+  withSceneWork?<T>(sceneId: string, work: () => Promise<T>): Promise<T>;
+  sceneWorkBusy?(sceneId: string): boolean;
+  withLateResponseWork?<T>(sceneId: string, work: () => Promise<T>): Promise<T>;
+  withRepairWork?<T>(work: () => Promise<T>): Promise<T>;
+  onSettled?(sceneId: string): void;
 }
 /** Each application owns its live Scene operations and shutdown admission. */
 export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
@@ -50,7 +56,14 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   const { context, assertVenueOwnership, venueRefusal } = ports.operations;
   const live = new Map<
     string,
-    { id: string; input: string; task: Promise<unknown>; drained: Promise<void>; controller: AbortController }
+    {
+      id: string;
+      input: string;
+      task: Promise<unknown>;
+      drained: Promise<void>;
+      controller: AbortController;
+      token(): string | undefined;
+    }
   >();
   const prefix = "villages-venue-visit-";
   let accepting = true;
@@ -314,27 +327,48 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       result = await work(current.controller.signal);
     } catch (error) {
       retainLateProviderResponse(error, (value) =>
-        ports.operations.outsideVenueOperation(() =>
-          createDocumentMutator(villagesDocuments)(
-            lateId,
-            {
-              kind: "generation-response",
-              name: "Saved late response",
-              description: "Private provider response; no effects applied",
-              coerce: (raw) => asRecord(raw),
-              label: () => "Saved late response",
-            },
-            (saved) => {
-              if (saved.status === "complete") return false;
-              Object.assign(saved, {
-                signature,
-                status: "complete",
-                result: structuredClone(value),
-                attemptId: current.operation.attemptId,
-              });
-            },
-          ),
-        ),
+        ports.operations.outsideVenueOperation(() => {
+          const retain = async () => {
+            const savedScene = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + current.sessionId);
+            const operation = asRecord(asRecord(savedScene?.data).operation);
+            if (
+              operation.id !== current.operation.id ||
+              operation.sceneRevision !== current.operation.sceneRevision ||
+              JSON.stringify(operation.input) !== JSON.stringify(current.operation.input) ||
+              operation.status === "complete" ||
+              asRecord(asRecord(operation.attempts)[key]).status === "rejected"
+            )
+              return;
+            await createDocumentMutator(villagesDocuments)(
+              lateId,
+              {
+                kind: "generation-response",
+                name: "Saved late response",
+                description: "Private provider response; no effects applied",
+                coerce: (raw) => asRecord(raw),
+                label: () => "Saved late response",
+              },
+              (saved) => {
+                if (saved.status === "complete") return false;
+                if (
+                  saved.status === "rejected" &&
+                  (saved.attemptId === current.operation.attemptId ||
+                    operation.attemptId !== current.operation.attemptId)
+                )
+                  return false;
+                Object.assign(saved, {
+                  signature,
+                  status: "complete",
+                  result: structuredClone(value),
+                  attemptId: current.operation.attemptId,
+                });
+              },
+            );
+          };
+          const fenced = () =>
+            ports.withLateResponseWork ? ports.withLateResponseWork(current.sessionId, retain) : retain();
+          return ports.withRepairWork ? ports.withRepairWork(fenced) : fenced();
+        }),
       );
       throw error;
     }
@@ -365,21 +399,27 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       key,
     ]);
     const id = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
-    if (!(await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id))) return;
-    await createDocumentMutator(villagesDocuments)(
-      id,
-      {
-        kind: "generation-response",
-        name: "Saved late response",
-        description: "Private rejected provider evidence",
-        coerce: (raw) => asRecord(raw),
-        label: () => "Saved late response",
-      },
-      (saved) => {
-        if (saved.signature !== signature || saved.status === "rejected") return false;
-        saved.status = "rejected";
-      },
-    );
+    const reject = () =>
+      createDocumentMutator(villagesDocuments)(
+        id,
+        {
+          kind: "generation-response",
+          name: "Saved late response",
+          description: "Private rejected provider evidence",
+          coerce: (raw) => asRecord(raw),
+          label: () => "Saved late response",
+        },
+        (saved) => {
+          if (saved.signature && saved.signature !== signature)
+            throw new Error("Saved late response identity changed.");
+          if (saved.status === "rejected" && saved.attemptId === current.operation.attemptId) return false;
+          saved.signature = signature;
+          saved.attemptId = current.operation.attemptId;
+          saved.status = "rejected";
+        },
+      );
+    if (ports.withLateResponseWork) await ports.withLateResponseWork(current.sessionId, reject);
+    else await reject();
   }
 
   async function retainRejectedCompletion(
@@ -525,6 +565,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       );
     }
     const controller = new AbortController();
+    let admittedToken: string | undefined;
     const deadline = setTimeout(
       () =>
         controller.abort(
@@ -535,287 +576,307 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         ),
       300_000,
     );
-    const task = Promise.resolve().then(async () => {
-      const runStarted = performance.now();
-      const runStartedAt = new Date().toISOString();
-      const capturedInterpretationSettings = await readInterpretationSettings();
-      let operation!: VenueOperation;
-      let authorizedRetry = false;
-      await update(sessionId, (data) => {
-        controller.signal.throwIfAborted();
-        if (spinoffLocksScene(data.spinoff as import("../domain/models/spinoff-model.js").VillageSpinoff | undefined))
-          throw venueRefusal("SCENE_BUSY", "Finish or discard your spinoff before continuing in Villages.");
-        const prior = data.operation as VenueOperation | undefined;
-        // A durable business result survives a crash before coordinator cleanup.
-        // It cannot keep a later edited submission behind an interrupted request.
-        if (
-          prior &&
-          prior.id !== id &&
-          (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.some((receipt) => receipt.id === prior.id)
-        ) {
-          prior.status = "complete";
-          prior.error = "";
-          prior.turnOutcome = (data.rejectedSubmissions as NonNullable<VenueScene["rejectedSubmissions"]>).find(
-            (receipt) => receipt.id === prior.id,
-          )!.turnOutcome;
-        }
-        if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
-          throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
-        let abandoned: VenueOperation | undefined;
-        if (options.abandonOfOperationId) {
-          if (
-            kind !== "close" ||
-            id !== "close" ||
-            options.recovery ||
-            expected === undefined ||
-            !prior ||
-            prior.status !== "interrupted" ||
-            prior.id !== options.abandonOfOperationId ||
-            prior.attemptId !== retryOfAttemptId ||
-            semanticBlocker({ submissions: (data.submissions ?? []) as VenueScene["submissions"] }) ||
-            (data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === prior.id)
-          )
-            throw venueRefusal(
-              "OPERATION_INTERRUPTED",
-              "The failed request changed. Review the Scene before ending it.",
-            );
-          abandoned = structuredClone(prior);
-          acknowledgeUnknownAttempts(data, prior);
-        }
-        if (options.replaceOfOperationId) {
-          const committed = (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === prior?.id);
-          if (
-            !prior ||
-            prior.id !== options.replaceOfOperationId ||
-            prior.id === id ||
-            prior.attemptId !== retryOfAttemptId ||
-            prior.status === "running"
-          )
-            throw venueRefusal(
-              "OPERATION_INTERRUPTED",
-              "The failed request changed. Review the updated Scene before resending.",
-            );
-          if (
-            kind !== "turn" ||
-            prior.kind !== "turn" ||
-            (!prior.error && prior.status === "complete") ||
-            committed ||
-            (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === prior.id) ||
-            semanticBlocker({ submissions: (data.submissions ?? []) as VenueScene["submissions"] }) ||
-            sceneRevision(data) !== prior.sceneRevision
-          )
-            throw venueRefusal(
-              "OPERATION_INTERRUPTED",
-              "The Scene changed after that message. Review the updated Scene and send again. Your draft is preserved.",
-            );
-          // Generated/checkpointed content is not a committed turn. An explicit edited Send
-          // abandons it; the new token fences late results without replaying rejected output.
-          acknowledgeUnknownAttempts(data, prior);
-        }
-        if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId && !abandoned)
-          throw venueRefusal(
-            "OPERATION_INTERRUPTED",
-            "Recover or explicitly retry the interrupted scene before starting another operation.",
-          );
-        if (!options.replay && expected !== undefined && expected !== sceneRevision(data))
-          throw venueRefusal(
-            "SCENE_STALE",
-            "The scene changed in another tab. Your draft is preserved; review the updated scene before sending again.",
-          );
-        const rejectedTerminal =
-          prior?.status === "complete" &&
-          !!prior.error &&
-          Object.values(prior.attempts).some((attempt) => attempt.status === "rejected");
-        if (
-          (options.recovery || rejectedTerminal) &&
-          prior?.id === id &&
-          (prior.status !== "complete" || rejectedTerminal) &&
-          prior.sceneRevision !== sceneRevision(data) &&
-          !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === id) &&
-          !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id) &&
-          !(data.rejectedSubmissions as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
-        )
-          throw venueRefusal("SCENE_STALE", "The Scene changed after generation. Saved results are preserved.");
-        if (prior?.id === id && (prior.status !== "complete" || rejectedTerminal)) {
-          authorizedRetry = retryOfAttemptId === prior.attemptId;
-          if (!options.recovery && !options.replay && retryOfAttemptId !== prior.attemptId)
-            throw venueRefusal(
-              "OPERATION_INTERRUPTED",
-              "The previous request may have been billed. Review your draft and explicitly retry to authorize another request.",
-            );
-          if (authorizedRetry) acknowledgeUnknownAttempts(data, prior);
-          operation = {
-            ...prior,
-            token: randomUUID(),
-            attemptId: options.recovery ? prior.attemptId : randomUUID(),
-            status: "running",
-            error: "",
-          };
-        } else {
-          const { operation: _old, ...snapshot } = data;
-          const reuseAttention =
-            prior?.id === id &&
-            prior.status === "complete" &&
-            prior.sceneRevision === sceneRevision(data) &&
-            Object.entries(prior.attempts).some(
-              ([stage, attempt]) => stage.startsWith("turn-reply:") && attempt.status === "rejected",
-            );
-          operation = {
-            id,
-            interpretationSettings: reuseAttention ? prior.interpretationSettings : capturedInterpretationSettings,
-            kind,
-            input,
-            token: randomUUID(),
-            attemptId: randomUUID(),
-            status: "running",
-            stage: "admission",
-            startedAt: new Date().toISOString(),
-            sceneRevision: sceneRevision(data),
-            snapshot,
-            checkpoints: abandoned
-              ? { "abandoned-request": abandoned }
-              : reuseAttention
-                ? Object.fromEntries(
-                    Object.entries(prior.checkpoints).filter(([stage]) => attentionStages(prior).includes(stage)),
-                  )
-                : {},
-            attempts: {},
-            error: "",
-          };
-        }
-        operation.timing = { attemptId: operation.attemptId, startedAt: runStartedAt, stages: [] };
-        data.operation = operation;
-        if (!options.replay && data.status !== "closed") data.lastActivityAt = villageNow().toISOString();
-      });
-      const current: Context = {
-        sessionId,
-        operation,
-        controller,
-        allowPaid:
-          !operation.checkpoints["abandoned-request"] &&
-          !options.abandonOfOperationId &&
-          !options.recovery &&
-          (!options.replay || authorizedRetry),
-        scope: kind,
-        explicitRetry: authorizedRetry,
-        counts: new Map(),
-        usedAttemptKeys: new Map(),
-        blocked: new Set(),
-      };
-      return withVillageClockWork(() =>
-        context.run(current, async () => {
-          try {
-            const result = await work();
-            assertVenueOwnership();
-            const outcome = asRecord(result).turnOutcome;
-            if (isSceneTurnOutcome(outcome)) operation.turnOutcome = outcome;
-            if (current.blocked.size)
-              throw venueRefusal(
-                "OPERATION_INTERRUPTED",
-                "The saved request still needs explicit authorization for unfinished provider work.",
-              );
-            operation.status = Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching")
-              ? "interrupted"
-              : "complete";
-            operation.stage = operation.status;
-            operation.timing!.completedAt = new Date().toISOString();
-            operation.timing!.elapsedMs = Math.round(performance.now() - runStarted);
-            await update(sessionId, (data) => {
-              assertVenueOwnership(data);
-              const turn = (data.submissions as { id: string; timing?: VenueOperation["timing"] }[] | undefined)?.find(
-                (turn) => turn.id === id,
-              );
-              if (turn && !turn.timing) turn.timing = structuredClone(operation.timing);
-            });
-            villagesLogger().info(
-              "[villages] operation %s serverElapsedMs=%d stages=%s",
-              id,
-              operation.timing!.elapsedMs!,
-              JSON.stringify(operation.timing!.stages),
-            );
-            if (operation.status === "complete") {
-              operation.snapshot = null;
-              operation.checkpoints = operation.checkpoints["abandoned-request"]
-                ? { "abandoned-request": operation.checkpoints["abandoned-request"] }
-                : {};
-              operation.attempts = {};
-            } else operation.error = "The previous request may have been billed. No automatic retry was made.";
-            await persist(current).catch((error) => {
-              if (error?.statusCode !== 404) throw error;
-            });
-            if (result && typeof result === "object") {
-              const payload = result as Record<string, unknown>;
-              const session = (payload.session ?? payload) as Record<string, unknown>;
-              if ((session.operation as VenueOperation | undefined)?.id === operation.id) session.operation = operation;
-            }
-            return result;
-          } catch (error) {
-            try {
-              villagesLogger().warn(
-                "[villages] scene=%s stage=%s failed: %s",
-                sessionId,
-                operation.stage,
-                safeFailureMessage(error),
-              );
-            } catch {
-              /* Diagnostics cannot replace the request failure. */
-            }
-            // Revoked owners cannot overwrite a successor or resurrect a discarded visit.
-            await update(sessionId, (data) => {
-              if ((data.operation as VenueOperation | undefined)?.token !== operation.token) return;
-              operation.status =
-                Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
-                Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
-                operation.checkpoints["turn-reply"] ||
-                ((attentionStages(operation).some((stage) => Object.hasOwn(operation.checkpoints, stage)) ||
-                  Object.entries(operation.attempts).some(
-                    ([stage, attempt]) => attentionAttempt(operation, stage) && attempt.status === "complete",
-                  ) ||
-                  (attentionStages(operation).includes(operation.stage) &&
-                    Object.keys(operation.optionalAttempts ?? {}).length > 0)) &&
-                  !Object.entries(operation.attempts).some(
-                    ([stage, attempt]) => stage.startsWith("turn-reply:") && attempt.status === "rejected",
-                  )) ||
-                operation.checkpoints["contact-response"] ||
-                operation.checkpoints["contact-relay-response"] ||
-                operation.checkpoints["action-reply"] ||
-                operation.checkpoints["greeting-reply"] ||
-                operation.checkpoints["move-invitation"] ||
-                (operation.kind === "close" &&
-                  (Object.keys(operation.attempts).length > 0 || !!operation.checkpoints["abandoned-request"])) ||
-                (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id) ||
-                (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
-                  ? "interrupted"
-                  : "complete";
-              operation.error = safeFailureMessage(error);
-              operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
-              data.operation = operation;
-            }).catch(() => {});
-            throw error;
-          }
-        }),
-      );
-    });
     let onAbort: () => void = () => {};
     const aborted = new Promise<never>((_resolve, reject) => {
       onAbort = () => reject(controller.signal.reason);
       controller.signal.addEventListener("abort", onAbort, { once: true });
+    });
+    const task = Promise.resolve().then(async () => {
+      // Another activation may own this Scene even though this coordinator has no local live entry.
+      // Refuse promptly instead of queueing behind a potentially long provider call.
+      const saved = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + sessionId);
+      if (asRecord(asRecord(saved?.data).operation).status === "running")
+        throw venueRefusal(
+          "OPERATION_INTERRUPTED",
+          "A Scene request is already running. Recover or retry it after it finishes.",
+        );
+      const run = async () => {
+        const runStarted = performance.now();
+        const runStartedAt = new Date().toISOString();
+        const capturedInterpretationSettings = await readInterpretationSettings();
+        let operation!: VenueOperation;
+        let authorizedRetry = false;
+        await update(sessionId, (data) => {
+          controller.signal.throwIfAborted();
+          if (spinoffLocksScene(data.spinoff as import("../domain/models/spinoff-model.js").VillageSpinoff | undefined))
+            throw venueRefusal("SCENE_BUSY", "Finish or discard your spinoff before continuing in Villages.");
+          const prior = data.operation as VenueOperation | undefined;
+          // A durable business result survives a crash before coordinator cleanup.
+          // It cannot keep a later edited submission behind an interrupted request.
+          if (
+            prior &&
+            prior.id !== id &&
+            (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.some((receipt) => receipt.id === prior.id)
+          ) {
+            prior.status = "complete";
+            prior.error = "";
+            prior.turnOutcome = (data.rejectedSubmissions as NonNullable<VenueScene["rejectedSubmissions"]>).find(
+              (receipt) => receipt.id === prior.id,
+            )!.turnOutcome;
+          }
+          if (prior?.id === id && JSON.stringify(prior.input) !== fingerprint)
+            throw venueRefusal("SUBMISSION_MISMATCH", "That submission ID belongs to a different line.");
+          let abandoned: VenueOperation | undefined;
+          if (options.abandonOfOperationId) {
+            if (
+              kind !== "close" ||
+              id !== "close" ||
+              options.recovery ||
+              expected === undefined ||
+              !prior ||
+              prior.status !== "interrupted" ||
+              prior.id !== options.abandonOfOperationId ||
+              prior.attemptId !== retryOfAttemptId ||
+              semanticBlocker({ submissions: (data.submissions ?? []) as VenueScene["submissions"] }) ||
+              (data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === prior.id)
+            )
+              throw venueRefusal(
+                "OPERATION_INTERRUPTED",
+                "The failed request changed. Review the Scene before ending it.",
+              );
+            abandoned = structuredClone(prior);
+            acknowledgeUnknownAttempts(data, prior);
+          }
+          if (options.replaceOfOperationId) {
+            const committed = (data.submissions as { id: string }[] | undefined)?.some(
+              (entry) => entry.id === prior?.id,
+            );
+            if (
+              !prior ||
+              prior.id !== options.replaceOfOperationId ||
+              prior.id === id ||
+              prior.attemptId !== retryOfAttemptId ||
+              prior.status === "running"
+            )
+              throw venueRefusal(
+                "OPERATION_INTERRUPTED",
+                "The failed request changed. Review the updated Scene before resending.",
+              );
+            if (
+              kind !== "turn" ||
+              prior.kind !== "turn" ||
+              (!prior.error && prior.status === "complete") ||
+              committed ||
+              (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === prior.id) ||
+              semanticBlocker({ submissions: (data.submissions ?? []) as VenueScene["submissions"] }) ||
+              sceneRevision(data) !== prior.sceneRevision
+            )
+              throw venueRefusal(
+                "OPERATION_INTERRUPTED",
+                "The Scene changed after that message. Review the updated Scene and send again. Your draft is preserved.",
+              );
+            // Generated/checkpointed content is not a committed turn. An explicit edited Send
+            // abandons it; the new token fences late results without replaying rejected output.
+            acknowledgeUnknownAttempts(data, prior);
+          }
+          if (prior && prior.status !== "complete" && prior.id !== id && !options.replaceOfOperationId && !abandoned)
+            throw venueRefusal(
+              "OPERATION_INTERRUPTED",
+              "Recover or explicitly retry the interrupted scene before starting another operation.",
+            );
+          if (!options.replay && expected !== undefined && expected !== sceneRevision(data))
+            throw venueRefusal(
+              "SCENE_STALE",
+              "The scene changed in another tab. Your draft is preserved; review the updated scene before sending again.",
+            );
+          const rejectedTerminal =
+            prior?.status === "complete" &&
+            !!prior.error &&
+            Object.values(prior.attempts).some((attempt) => attempt.status === "rejected");
+          if (
+            (options.recovery || rejectedTerminal) &&
+            prior?.id === id &&
+            (prior.status !== "complete" || rejectedTerminal) &&
+            prior.sceneRevision !== sceneRevision(data) &&
+            !(data.submissions as { id: string }[] | undefined)?.some((turn) => turn.id === id) &&
+            !(data.navigationReceipts as { id: string }[] | undefined)?.some((receipt) => receipt.id === id) &&
+            !(data.rejectedSubmissions as { id: string }[] | undefined)?.some((receipt) => receipt.id === id)
+          )
+            throw venueRefusal("SCENE_STALE", "The Scene changed after generation. Saved results are preserved.");
+          if (prior?.id === id && (prior.status !== "complete" || rejectedTerminal)) {
+            authorizedRetry = retryOfAttemptId === prior.attemptId;
+            if (!options.recovery && !options.replay && retryOfAttemptId !== prior.attemptId)
+              throw venueRefusal(
+                "OPERATION_INTERRUPTED",
+                "The previous request may have been billed. Review your draft and explicitly retry to authorize another request.",
+              );
+            if (authorizedRetry) acknowledgeUnknownAttempts(data, prior);
+            operation = {
+              ...prior,
+              token: randomUUID(),
+              attemptId: options.recovery ? prior.attemptId : randomUUID(),
+              status: "running",
+              error: "",
+            };
+          } else {
+            const { operation: _old, ...snapshot } = data;
+            const reuseAttention =
+              prior?.id === id &&
+              prior.status === "complete" &&
+              prior.sceneRevision === sceneRevision(data) &&
+              Object.entries(prior.attempts).some(
+                ([stage, attempt]) => stage.startsWith("turn-reply:") && attempt.status === "rejected",
+              );
+            operation = {
+              id,
+              interpretationSettings: reuseAttention ? prior.interpretationSettings : capturedInterpretationSettings,
+              kind,
+              input,
+              token: randomUUID(),
+              attemptId: randomUUID(),
+              status: "running",
+              stage: "admission",
+              startedAt: new Date().toISOString(),
+              sceneRevision: sceneRevision(data),
+              snapshot,
+              checkpoints: abandoned
+                ? { "abandoned-request": abandoned }
+                : reuseAttention
+                  ? Object.fromEntries(
+                      Object.entries(prior.checkpoints).filter(([stage]) => attentionStages(prior).includes(stage)),
+                    )
+                  : {},
+              attempts: {},
+              error: "",
+            };
+          }
+          operation.timing = { attemptId: operation.attemptId, startedAt: runStartedAt, stages: [] };
+          data.operation = operation;
+          if (!options.replay && data.status !== "closed") data.lastActivityAt = villageNow().toISOString();
+        });
+        admittedToken = operation.token;
+        const current: Context = {
+          sessionId,
+          operation,
+          controller,
+          allowPaid:
+            !operation.checkpoints["abandoned-request"] &&
+            !options.abandonOfOperationId &&
+            !options.recovery &&
+            (!options.replay || authorizedRetry),
+          scope: kind,
+          explicitRetry: authorizedRetry,
+          counts: new Map(),
+          usedAttemptKeys: new Map(),
+          blocked: new Set(),
+        };
+        return withVillageClockWork(() =>
+          context.run(current, async () => {
+            try {
+              const result = await work();
+              assertVenueOwnership();
+              const outcome = asRecord(result).turnOutcome;
+              if (isSceneTurnOutcome(outcome)) operation.turnOutcome = outcome;
+              if (current.blocked.size)
+                throw venueRefusal(
+                  "OPERATION_INTERRUPTED",
+                  "The saved request still needs explicit authorization for unfinished provider work.",
+                );
+              operation.status = Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching")
+                ? "interrupted"
+                : "complete";
+              operation.stage = operation.status;
+              operation.timing!.completedAt = new Date().toISOString();
+              operation.timing!.elapsedMs = Math.round(performance.now() - runStarted);
+              await update(sessionId, (data) => {
+                assertVenueOwnership(data);
+                const turn = (
+                  data.submissions as { id: string; timing?: VenueOperation["timing"] }[] | undefined
+                )?.find((turn) => turn.id === id);
+                if (turn && !turn.timing) turn.timing = structuredClone(operation.timing);
+              });
+              villagesLogger().info(
+                "[villages] operation %s serverElapsedMs=%d stages=%s",
+                id,
+                operation.timing!.elapsedMs!,
+                JSON.stringify(operation.timing!.stages),
+              );
+              if (operation.status === "complete") {
+                operation.snapshot = null;
+                operation.checkpoints = operation.checkpoints["abandoned-request"]
+                  ? { "abandoned-request": operation.checkpoints["abandoned-request"] }
+                  : {};
+                operation.attempts = {};
+              } else operation.error = "The previous request may have been billed. No automatic retry was made.";
+              await persist(current).catch((error) => {
+                if (error?.statusCode !== 404) throw error;
+              });
+              if (result && typeof result === "object") {
+                const payload = result as Record<string, unknown>;
+                const session = (payload.session ?? payload) as Record<string, unknown>;
+                if ((session.operation as VenueOperation | undefined)?.id === operation.id)
+                  session.operation = operation;
+              }
+              return result;
+            } catch (error) {
+              try {
+                villagesLogger().warn(
+                  "[villages] scene=%s stage=%s failed: %s",
+                  sessionId,
+                  operation.stage,
+                  safeFailureMessage(error),
+                );
+              } catch {
+                /* Diagnostics cannot replace the request failure. */
+              }
+              // Revoked owners cannot overwrite a successor or resurrect a discarded visit.
+              await update(sessionId, (data) => {
+                if ((data.operation as VenueOperation | undefined)?.token !== operation.token) return;
+                operation.status =
+                  Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
+                  Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
+                  operation.checkpoints["turn-reply"] ||
+                  ((attentionStages(operation).some((stage) => Object.hasOwn(operation.checkpoints, stage)) ||
+                    Object.entries(operation.attempts).some(
+                      ([stage, attempt]) => attentionAttempt(operation, stage) && attempt.status === "complete",
+                    ) ||
+                    (attentionStages(operation).includes(operation.stage) &&
+                      Object.keys(operation.optionalAttempts ?? {}).length > 0)) &&
+                    !Object.entries(operation.attempts).some(
+                      ([stage, attempt]) => stage.startsWith("turn-reply:") && attempt.status === "rejected",
+                    )) ||
+                  operation.checkpoints["contact-response"] ||
+                  operation.checkpoints["contact-relay-response"] ||
+                  operation.checkpoints["action-reply"] ||
+                  operation.checkpoints["greeting-reply"] ||
+                  operation.checkpoints["move-invitation"] ||
+                  (operation.kind === "close" &&
+                    (Object.keys(operation.attempts).length > 0 || !!operation.checkpoints["abandoned-request"])) ||
+                  (data.submissions as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id) ||
+                  (data.navigationReceipts as { id: string }[] | undefined)?.some((entry) => entry.id === operation.id)
+                    ? "interrupted"
+                    : "complete";
+                operation.error = safeFailureMessage(error);
+                operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
+                data.operation = operation;
+              }).catch(() => {});
+              throw error;
+            }
+          }),
+        );
+      };
+      return ports.withSceneWork ? ports.withSceneWork(sessionId, () => Promise.race([run(), aborted])) : run();
     });
     const settled = Promise.race([task, aborted]);
     let drain!: () => void;
     const drained = new Promise<void>((resolve) => {
       drain = resolve;
     });
-    live.set(sessionId, { id, input: fingerprint, task: settled, drained, controller });
+    live.set(sessionId, { id, input: fingerprint, task: settled, drained, controller, token: () => admittedToken });
     try {
       return await settled;
     } finally {
       clearTimeout(deadline);
       controller.signal.removeEventListener("abort", onAbort);
-      if (controller.signal.aborted)
+      if (controller.signal.aborted && admittedToken)
         await update(sessionId, (data) => {
           const operation = data.operation as VenueOperation | undefined;
-          if (operation?.status === "running" && live.get(sessionId)?.task === settled) {
+          if (
+            admittedToken &&
+            operation?.token === admittedToken &&
+            operation.status === "running" &&
+            live.get(sessionId)?.task === settled
+          ) {
             operation.token = randomUUID();
             operation.status = "interrupted";
             operation.error = "The previous request may have been billed. No automatic retry was made.";
@@ -823,15 +884,23 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         }).catch(() => {});
       if (live.get(sessionId)?.task === settled) live.delete(sessionId);
       drain();
+      ports.onSettled?.(sessionId);
     }
   }
 
   async function cancelVenueOperation(id: string) {
-    live.get(id)?.controller.abort(venueRefusal("OPERATION_INTERRUPTED", "The scene operation was cancelled."));
+    const running = live.get(id);
+    const token = running?.token();
+    running?.controller.abort(venueRefusal("OPERATION_INTERRUPTED", "The scene operation was cancelled."));
     live.delete(id);
+    if (running && !token) return;
     await update(id, (data) => {
       const operation = data.operation as VenueOperation | undefined;
-      if (operation && operation.status !== "complete") {
+      if (
+        operation &&
+        operation.status !== "complete" &&
+        (running ? !!token && operation.token === token : operation.status === "interrupted")
+      ) {
         const uncertain = Object.entries(operation.attempts).filter(([, attempt]) => attempt.status === "dispatching");
         const receipts = (data.generationReceipts ?? []) as { attemptId: string }[];
         if (uncertain.length && !receipts.some((receipt) => receipt.attemptId === operation.attemptId))
@@ -855,7 +924,44 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   }
   async function readVenueOperation(id: string, operationId?: string) {
     const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + id);
-    if (!record) throw new VillagesRequestError(404, "That Scene is no longer available.");
+    if (!record) {
+      const terminal = await ports.readTerminal?.(id);
+      if (!terminal) throw new VillagesRequestError(404, "That Scene is no longer available.");
+      const requested = operationId ?? terminal.operation?.id;
+      if (!requested) return null;
+      const rejected = terminal.rejectedSubmissions.find((row) => row.id === requested);
+      if (rejected)
+        return {
+          id: requested,
+          status: "complete" as const,
+          kind: "turn",
+          attemptId: "",
+          terminal: true,
+          turnOutcome: rejected.turnOutcome,
+        };
+      const committed =
+        terminal.submissions.some((row) => row.id === requested) ||
+        terminal.navigationReceipts.some((row) => row.id === requested);
+      if (committed)
+        return {
+          id: requested,
+          status: "complete" as const,
+          kind: "turn",
+          attemptId: "",
+          terminal: true,
+          recordEvents: terminal.recordEvents,
+        };
+      if (terminal.operation?.id === requested)
+        return { ...terminal.operation, terminal: true, recordEvents: terminal.recordEvents };
+      return {
+        id: requested,
+        kind: "turn",
+        attemptId: "",
+        status: "interrupted" as const,
+        terminal: true,
+        error: "The Scene ended; this request's outcome is unavailable.",
+      };
+    }
     const data = record.data as Record<string, unknown>;
     const operation = data.operation as VenueOperation | undefined;
     const rejected = (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.find(
@@ -893,7 +999,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     for (const record of records) {
       const data = record.data as Record<string, unknown>;
       const operation = data.operation as VenueOperation | undefined;
-      if (!operation || operation.status === "complete" || live.has(String(data.id))) continue;
+      const sceneId = String(data.id);
+      if (!operation || operation.status === "complete" || live.has(sceneId) || ports.sceneWorkBusy?.(sceneId))
+        continue;
       // Expired, uncommitted generation is archived evidence, not work to resume at startup.
       if (
         data.status === "closed" &&
@@ -905,14 +1013,22 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         !Object.hasOwn(operation.checkpoints, "greeting-reply")
       )
         continue;
-      await update(String(data.id), (saved) => {
-        const op = saved.operation as VenueOperation;
-        op.status = "interrupted";
-        op.error = "The generation was interrupted. Its outcome may be unknown. No automatic retry was made.";
-      });
-      await recover(String(data.id), operation).catch((error) =>
-        villagesLogger().warn("[villages] operation recovery deferred %s: %s", operation.id, String(error)),
-      );
+      const resume = async () => {
+        const latest = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + sceneId);
+        const current = asRecord(latest?.data).operation as VenueOperation | undefined;
+        if (!current || current.status === "complete" || current.token !== operation.token) return;
+        await update(sceneId, (saved) => {
+          const op = saved.operation as VenueOperation | undefined;
+          if (!op || op.token !== current.token || op.status === "complete") return;
+          op.status = "interrupted";
+          op.error = "The generation was interrupted. Its outcome may be unknown. No automatic retry was made.";
+        });
+        await recover(sceneId, current).catch((error) =>
+          villagesLogger().warn("[villages] operation recovery deferred %s: %s", current.id, String(error)),
+        );
+      };
+      if (ports.withSceneWork) await ports.withSceneWork(sceneId, resume);
+      else await resume();
     }
   }
   async function stopVenueCoordinator() {

@@ -8,6 +8,7 @@ import { badGateway } from "./errors.js";
 import { openingSemanticContext } from "./opening-context.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
+import { sharedLoreHistory } from "./scene-writing-history.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
 import { socialContextState } from "./social-context.js";
@@ -87,6 +88,7 @@ export function semanticContext(
     loreSelection: {
       bookIds: state.selectedLorebookIds,
       tokenBudget: compact ? Math.min(state.loreTokenBudget ?? 1200, 1200) : state.loreTokenBudget,
+      recent: sharedLoreHistory(scene, history, actors),
     },
     worldFacts: state.worldFacts,
     sceneId: scene.id,

@@ -4,13 +4,17 @@ import { conflict } from "../../domain/rules/errors.js";
 import { projectFor, pauseProject } from "../../domain/rules/project-lifecycle-rules.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "../../domain/rules/project-terms.js";
 import { validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
+import { sceneEvidencePerception } from "../../domain/rules/scene-evidence-perception.js";
 import type { SceneQueries } from "../scenes/services.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 
 export interface ProjectEvidencePorts {
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
-  sceneQueries(): Pick<SceneQueries, "readProjectTurnEvidence" | "activeVenueSession" | "listVenueVisits">;
+  sceneQueries(): Pick<
+    SceneQueries,
+    "readProjectTurnEvidence" | "activeVenueSession" | "listVenueVisits" | "listRetiredProjectScenes"
+  >;
 }
 export function createProjectEvidence({ readVillageState, mutateVillageState, sceneQueries }: ProjectEvidencePorts) {
   async function recordProjectSpokenEvidence(projectId: string, value: unknown): Promise<void> {
@@ -127,11 +131,15 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
   async function listProjectEvidenceCandidates(projectId: string) {
     const state = await readVillageState();
     projectFor(state, projectId);
-    const { listVenueVisits, activeVenueSession } = sceneQueries();
+    const { listVenueVisits, activeVenueSession, listRetiredProjectScenes } = sceneQueries();
     const active = await activeVenueSession();
-    const visits = [...(active ? [active] : []), ...(await listVenueVisits()).slice(0, 20)].filter(
-      (visit) => visit.villageSeed === state.seed,
-    );
+    const original = await listVenueVisits();
+    const originalIds = new Set(original.map((scene) => scene.id));
+    const compact = (await listRetiredProjectScenes?.(state.seed)) ?? [];
+    const closed = [...original, ...compact.filter((scene) => !originalIds.has(scene.id))]
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.id.localeCompare(b.id))
+      .slice(0, 20);
+    const visits = [...(active ? [active] : []), ...closed].filter((visit) => visit.villageSeed === state.seed);
     return visits
       .flatMap((visit) =>
         visit.submissions.flatMap((submission) => {
@@ -144,7 +152,11 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
           return lines
             .filter(
               (line) =>
-                line.kind === "dialogue" && !line.contactHidden && !line.contactReport && !line.soundOnly?.player,
+                line.kind === "dialogue" &&
+                !line.contactHidden &&
+                !line.contactReport &&
+                !line.soundOnly?.player &&
+                sceneEvidencePerception(line).playerPerception === "full",
             )
             .map((line) => ({
               sessionId: visit.id,
