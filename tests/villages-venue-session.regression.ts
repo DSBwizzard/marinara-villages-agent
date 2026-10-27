@@ -15,16 +15,8 @@ import {
 } from "../packages/villages/src/server/domain/rules/venue-turn-integrity.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
-import { requestProjectMailbox as requestProjectMailboxRaw } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
-import {
-  decideVillagerVenueImprovement,
-  proposeVenueChange as proposeVenueChangeRaw,
-  queueVenueCounteroffer,
-  recordVillagerVenueImprovement,
-  respondDueVenueMail,
-} from "../packages/villages/src/server/features/venues/venue-mailbox.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
 import { proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
 import { fixtureAcousticModel, fixtureLocalAttention } from "./fixtures/villages-attention.fixture.js";
@@ -247,7 +239,6 @@ let featureProposal: Record<string, string> | null = null;
 let creativeActorIds = ["bob", "tina"];
 let lastVenueSystem = "";
 let lastEventsSystem = "";
-let lastMailboxSystem = "";
 let _lastJudgeSystem = "";
 let venueReplyCalls = 0;
 let concurrencyStarted: (() => void) | null = null;
@@ -258,7 +249,6 @@ let acceptEcho = false,
   acceptRepeatedQuestion = false;
 let exhaustEcho = false;
 let _wishJudgeCalls = 0;
-let mailboxAccept = true;
 const memoryEvidence: any[] = [];
 const costMeasurements: any[] = [];
 const modelPayloadBytes: number[] = [];
@@ -533,20 +523,6 @@ const release = configureVillagesRuntime({
                   heardPlayerBy: [speakerId],
                   segments: [{ kind: "dialogue", speakerId, text: quote, heardBy: [speakerId] }],
                   editApproval: { speakerId, proposalId, approved: true, quote },
-                }),
-                finishReason: "stop",
-              };
-            }
-            if (system.includes("Answer as each affected villager")) {
-              lastMailboxSystem = system;
-              const people = JSON.parse(user).people as Array<{ id: string }>;
-              return {
-                content: fixtureJson({
-                  decisions: people.map((person) => ({
-                    characterId: person.id,
-                    accepted: mailboxAccept,
-                    reply: mailboxAccept ? "That works for me." : "I would rather keep it as it is.",
-                  })),
                 }),
                 finishReason: "stop",
               };
@@ -3125,107 +3101,6 @@ async function main() {
       "DEBUG discard preserves committed continuity",
     );
     assert.equal(reviewCalls, reviewsBeforeDebugDiscard, "DEBUG discard intentionally performs no durable review");
-    await proposeVenueChange("park", {
-      classes: ["workplace", "community"],
-      title: "Open the workshop for gatherings",
-      detail: "Add a shared table.",
-    });
-    const firstRenovation = (await readVillageState({ memories: true })).projects.find(
-      (entry) => entry.kind === "renovation",
-    )!;
-    assert.equal(firstRenovation.lifecycle?.phase, "planning");
-    await requestProjectMailbox(firstRenovation.id);
-    let mail = (await readVillageState({ memories: true })).venueMail.at(-1)!;
-    assert.equal(mail.status, "awaiting-villagers");
-    assert.ok(Date.parse(mail.dueAt) > Date.parse(mail.createdAt));
-    assert.deepEqual(
-      (await readVillageState({ memories: true })).venues[0]!.classes,
-      ["workplace"],
-      "a proposal waits for consent",
-    );
-    await mutateVillageState((state) => {
-      state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1000).toISOString();
-    });
-    await respondDueVenueMail();
-    await settleBackgroundWork();
-    mail = (await readVillageState({ memories: true })).venueMail.at(-1)!;
-    assert.equal(mail.status, "approved");
-    assert.ok(
-      lastMailboxSystem.includes(renderPlayerBackgroundContext(await readVillageState({ memories: true }))),
-      "Mailbox replies receive the same narrative framing",
-    );
-    assert.equal(
-      (await readVillageState({ memories: true })).projects.find((entry) => entry.id === firstRenovation.id)?.lifecycle
-        ?.phase,
-      "planning",
-    );
-    assert.deepEqual(
-      (await readVillageState({ memories: true })).venues[0]!.classes,
-      ["workplace"],
-      "approval does not perform construction",
-    );
-    await mutateVillageState((state) => {
-      state.projects = state.projects.filter((entry) => entry.id !== firstRenovation.id);
-    });
-    await mutateVillageState((state) => {
-      const request = state.pendingDecisions.find((entry) => entry.venueDraft?.name === "Power Plant")!;
-      queueVenueCounteroffer(
-        state,
-        request.id,
-        { name: "Hydro Station", classes: ["workplace"] },
-        "A river station that brings light to the village.",
-        new Date(),
-      );
-      state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1_000).toISOString();
-    });
-    await respondDueVenueMail();
-    await settleBackgroundWork();
-    const acceptedCounteroffer = await readVillageState({ memories: true });
-    assert.equal(acceptedCounteroffer.venueMail.at(-1)?.status, "approved");
-    assert.equal(
-      acceptedCounteroffer.projects.find((entry) => entry.venueDraft?.name === "Hydro Station")?.status,
-      "planning",
-    );
-    assert.equal(
-      acceptedCounteroffer.venues.some((venue) => venue.name === "Hydro Station"),
-      false,
-    );
-    mailboxAccept = false;
-    await proposeVenueChange("park", {
-      capacity: 2,
-      title: "Make more room",
-      detail: "A larger work room.",
-      zones: (await readVillageState({ memories: true })).venues[0]!.zones!.filter(
-        (zone) => zone.kind !== "exterior",
-      ).map((zone) => ({
-        ...zone,
-        description: "A larger work room.",
-      })),
-    });
-    const secondRenovation = (await readVillageState({ memories: true })).projects.find(
-      (entry) => entry.kind === "renovation",
-    )!;
-    await requestProjectMailbox(secondRenovation.id);
-    await mutateVillageState((state) => {
-      state.venueMail.at(-1)!.dueAt = new Date(Date.now() - 1000).toISOString();
-    });
-    await respondDueVenueMail();
-    await settleBackgroundWork();
-    assert.equal((await readVillageState({ memories: true })).venueMail.at(-1)!.status, "declined");
-    assert.equal((await readVillageState({ memories: true })).venues[0]!.residenceCapacity, 1);
-    await mutateVillageState((state) => {
-      state.projects = state.projects.filter((entry) => entry.id !== secondRenovation.id);
-    });
-    await recordVillagerVenueImprovement("bob", "park", "I could add a sturdy workbench.", "fixture-improvement");
-    mail = (await readVillageState({ memories: true })).venueMail.at(-1)!;
-    assert.equal(mail.status, "pending-player");
-    await decideVillagerVenueImprovement(mail.id, true, {});
-    assert.equal((await readVillageState({ memories: true })).venueMail.at(-1)!.status, "approved");
-    assert.match(
-      (await readVillageState({ memories: true })).projects.find((entry) => entry.kind === "renovation")?.lifecycle
-        ?.change?.detail ?? "",
-      /sturdy workbench/u,
-    );
     await mutateVillageState((state) => {
       state.venues.push({
         ...venue("home"),
@@ -3766,14 +3641,3 @@ async function main() {
 }
 
 void main();
-
-async function proposeVenueChange(venueId: string, value: any) {
-  return proposeVenueChangeRaw(venueId, { ...value, requestId: crypto.randomUUID() });
-}
-async function requestProjectMailbox(id: string) {
-  const project = (await readVillageState({ memories: true })).projects.find((project) => project.id === id)!;
-  return requestProjectMailboxRaw(id, {
-    requestId: crypto.randomUUID(),
-    expectedRevision: project.lifecycle!.revision,
-  });
-}

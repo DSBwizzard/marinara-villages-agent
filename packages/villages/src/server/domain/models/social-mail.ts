@@ -6,7 +6,7 @@ export type SocialMailMessage = {
   toId: string;
   text: string;
   at: string;
-  status: "pending" | "applying" | "delivered" | "cancelled";
+  status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
   sourceHash?: string;
   incarnation?: string;
   readAt?: string;
@@ -15,40 +15,14 @@ export type SocialMailMessage = {
   disclosures?: RelationshipDisclosure[];
   wishDisclosures?: import("../../../shared/contracts/wishes.js").WishDisclosure[];
   error?: string;
+  admissionFailed?: boolean;
+  replyUnavailable?: boolean;
 };
 export type SocialMailThread = {
   id: string;
   participantIds: string[];
   revision: number;
   messages: SocialMailMessage[];
-};
-export type SocialInvitation = {
-  id: string;
-  threadId: string;
-  messageId: string;
-  proposerId: string;
-  participantIds: string[];
-  revision: number;
-  terms: {
-    title: string;
-    detail: string;
-    venueId: string;
-    zoneId: string;
-    dueAt?: string;
-    visitAccess?: { accompanied: boolean; outsideHours: boolean };
-  };
-  status: "proposed" | "accepted" | "declined" | "cancelled" | "fulfilled";
-  respondedAt?: string;
-  response?: {
-    id: string;
-    actorId: "player";
-    expectedRevision: number;
-    accepted: boolean;
-    at: string;
-    messageId: string;
-    sourceHash: string;
-    terms: SocialInvitation["terms"];
-  };
 };
 export type SocialMailInterpretation = {
   source: RelationshipReview;
@@ -58,7 +32,6 @@ export type SocialMailInterpretation = {
   sourceWishChanges?: unknown[];
   replyWishChanges?: unknown[];
   replyMemoryChanges?: unknown[];
-  invitation?: SocialInvitation["terms"];
 };
 export type SocialMailInput = {
   mode?: "player" | "resident";
@@ -83,4 +56,6 @@ export type SocialMailOutbox = {
   result: SocialMailInterpretation;
   error?: string;
   reinterpretRequired?: boolean;
+  retryClaim?: string;
+  retryAdmitted?: string;
 };

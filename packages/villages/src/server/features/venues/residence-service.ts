@@ -12,19 +12,18 @@ import { completeResidenceMove } from "../../domain/rules/residence-move.js";
 import { personalDestinationSpace } from "../../domain/rules/venue-authoring.js";
 import { assertResidencePrivateDestination } from "../../domain/rules/venue-layout.js";
 import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { venueZones } from "../../domain/rules/venue-zones.js";
 import { residenceCharacterId, residenceVenueId } from "../../domain/rules/world-input.js";
 import type { queueBackgroundJob } from "../../jobs/background-work.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
-import type { queueSharedMoveConsent } from "../venues/venue-mailbox.js";
 import type { buildVillageSnapshot } from "../world/snapshot.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 export interface ResidencePorts {
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
-  queueSharedMoveConsent: typeof queueSharedMoveConsent;
   outsideVenueOperation: typeof outsideVenueOperation;
   preparePrivateSpaces: typeof preparePrivateSpaces;
   readVillageLore: typeof readVillageLore;
@@ -39,7 +38,6 @@ export function createResidences(ports: ResidencePorts) {
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
-    queueSharedMoveConsent,
     outsideVenueOperation,
     preparePrivateSpaces,
     readVillageLore,
@@ -48,6 +46,53 @@ export function createResidences(ports: ResidencePorts) {
     villagesConnectionIdFor,
     completeWithRoom,
   } = ports;
+  async function movePlayerToResidence(venueId: string, privateZoneId = ""): Promise<void> {
+    const at = villageNow().toISOString();
+    await mutateVillageState((state) => {
+      const venue = state.venues.find((entry) => entry.id === venueId);
+      if (!venue) throw notFound("That Residence no longer exists.");
+      if (venue.constructionStatus === "worksite") throw conflict("The build project governs this unfinished site.");
+      if (!hasVenueClass(venue, "residence")) throw conflict("The destination is not a Residence.");
+      if (venue.occupancy.playerHome) throw conflict("You already live here.");
+      if (venueResidentIds(venue).length) throw conflict("Moves into a shared Residence are not available yet.");
+      const reserved = state.residences.filter(
+        (entry) => entry.proposedVenueId === venue.id && entry.status === "moving",
+      ).length;
+      if (venueAssignedCount(venue) + reserved >= venueCapacity(venue))
+        throw conflict("This Residence has no available resident slot.");
+      assertResidencePrivateDestination(state, venue, "player", privateZoneId);
+      for (const current of state.venues) {
+        if (!current.occupancy.playerHome && current.id !== venue.id) continue;
+        current.zones ??= venueZones(current);
+        current.layoutVersion = 1;
+        const personal = current.zones.find((zone) => zone.kind === "private-residence" && zone.ownerId === "player");
+        if (personal) {
+          current.archivedZones = [
+            ...(current.archivedZones ?? []),
+            { zone: structuredClone(personal), archivedAt: at },
+          ].slice(-64);
+          personal.ownerId = undefined;
+          personal.seen = false;
+          personal.image = null;
+          personal.preparation = undefined;
+          personal.adaptationPending = false;
+          personal.description = personal.purpose || "Vacant residential Private Space.";
+          personal.state.publicFacts = [];
+          personal.state.traces = [];
+          current.playerInvitations = current.playerInvitations?.filter((invite) => invite.zoneId !== personal.id);
+          current.editProposals = current.editProposals?.filter((proposal) => proposal.zoneId !== personal.id);
+        }
+        current.occupancy.playerHome = false;
+      }
+      venue.occupancy.playerHome = true;
+      if (privateZoneId) {
+        const personal = venue.zones!.find((zone) => zone.id === privateZoneId)!;
+        personal.ownerId = "player";
+        personal.seen = true;
+        personal.preparation = undefined;
+      }
+    });
+  }
   async function proposeVillageResidence(
     characterValue: unknown,
     venueValue: unknown,
@@ -65,6 +110,7 @@ export function createResidences(ports: ResidencePorts) {
       const destination = state.venues.find((venue) => venue.id === proposedVenueId);
       if (!destination) throw notFound("That place is no longer in the village.");
       if (!hasVenueClass(destination, "residence")) throw badRequest("Choose a Residence for this move.");
+      if (destination.constructionStatus === "worksite") throw conflict("This Residence is still under construction.");
       const current = state.residences.find((residence) => residence.characterId === characterId);
       const currentVenueId = state.venues.find((venue) => venueResidentIds(venue).includes(characterId))?.id ?? "";
       if (currentVenueId === proposedVenueId) throw badRequest("That villager already lives there.");
@@ -77,6 +123,8 @@ export function createResidences(ports: ResidencePorts) {
       if (venueAssignedCount(destination) + reserved >= venueCapacity(destination))
         throw conflict("This Residence has no available bed.");
       assertResidencePrivateDestination(state, destination, characterId, privateZoneId);
+      if (venueResidentIds(destination).some((id) => id !== characterId))
+        throw conflict("Moves into a shared Residence are not available yet.");
       const next: VillageResidence = {
         proposedPrivateZoneId: privateZoneId,
         venueId: currentVenueId,
@@ -120,16 +168,6 @@ export function createResidences(ports: ResidencePorts) {
         throw badRequest("That villager has no pending residence change.");
       }
       if (residence.requestedBy === actor) throw badRequest("The requester cannot approve their own move request.");
-      if (
-        residence.villagerDecision === "approved" &&
-        state.venueMail.some(
-          (entry) =>
-            entry.kind === "villager-move" &&
-            entry.movingCharacterId === characterId &&
-            entry.status === "awaiting-villagers",
-        )
-      )
-        throw conflict("The household is already considering this move.");
       if (!approved) {
         if (actor === "villager") residence.villagerDecision = "denied";
         state.residences = state.residences.filter((entry) => entry.characterId !== characterId);
@@ -138,6 +176,7 @@ export function createResidences(ports: ResidencePorts) {
       const nextVenue = state.venues.find((venue) => venue.id === residence.proposedVenueId);
       if (!nextVenue) throw notFound("The proposed residence is no longer in the village.");
       if (!hasVenueClass(nextVenue, "residence")) throw conflict("The destination is no longer a Residence.");
+      if (nextVenue.constructionStatus === "worksite") throw conflict("This Residence is still under construction.");
       const reserved = state.residences.filter(
         (entry) =>
           entry.characterId !== characterId && entry.proposedVenueId === nextVenue.id && entry.status === "moving",
@@ -147,9 +186,7 @@ export function createResidences(ports: ResidencePorts) {
       assertResidencePrivateDestination(state, nextVenue, characterId, residence.proposedPrivateZoneId);
       const now = villageNow().getTime();
       if (venueResidentIds(nextVenue).some((id) => id !== characterId)) {
-        residence.villagerDecision = "approved";
-        queueSharedMoveConsent(state, residence, new Date(now));
-        return;
+        throw conflict("Moves into a shared Residence are not available yet.");
       }
       residence.status = "moving";
       residence.villagerDecision = "approved";
@@ -316,6 +353,7 @@ export function createResidences(ports: ResidencePorts) {
     },
   };
   return {
+    movePlayerToResidence,
     proposeVillageResidence,
     approveVillageResidence,
     decideVillageResidence,

@@ -1,12 +1,12 @@
-import { createVillagesClientId } from "../../shared/request-id.js";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import type { VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import type { AccessCommand } from "../../../shared/helpers/venue-access.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { venueSpaceFor } from "../../shared/venue.js";
 import { editableVenueFields } from "./edit-fields.js";
 import type { VenuesState } from "./useVenuesState.js";
-import { useLayoutEffect, useMemo, useRef } from "react";
 
 function editorDraftKey(draft: VillageVenue, classes: readonly VenueClass[]) {
   return JSON.stringify([
@@ -301,7 +301,7 @@ export function useVenueScreenCommands(ports: {
       });
       if (player.owns(claim)) setSnapshot(next);
     } catch (cause) {
-      if (player.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be requested."));
+      if (player.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be completed."));
     } finally {
       player.finish(claim);
     }
@@ -378,7 +378,7 @@ export function useVenueScreenCommands(ports: {
       });
       if (editor.owns(claim)) setSnapshot(next);
     } catch (cause) {
-      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be requested."));
+      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The move could not be completed."));
     } finally {
       if (editor.finish(claim)) setVenueEditBusy(false);
     }

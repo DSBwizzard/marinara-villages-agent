@@ -133,7 +133,7 @@ try {
         wishes: characterId === "mara" ? ["Learn to swim"] : [],
         knownWishes:
           characterId === "mara"
-            ? [{ wishId: "swim", text: "Learn to swim", learnedAt: now, status: "active", facts: [] }]
+            ? [{ wishId: "swim", text: "Learn to swim", at: now, status: "open", followed: true, facts: [] }]
             : [],
         ties: [],
         learned: [],
@@ -141,7 +141,40 @@ try {
       })),
       starting: { pending: false },
     };
-    const mailbox = { threads: [], invitations: [], recovery: [], venueMail: [] };
+    let failMailRead = false;
+    let failMailResponse = false;
+    const mailbox = {
+      threads: [
+        {
+          id: "personal:mara",
+          residentId: "mara",
+          residentName: "Mara",
+          revision: 1,
+          messages: [
+            {
+              id: "first-letter",
+              fromId: "mara",
+              text: "A first letter from Mara.",
+              at: now,
+              status: "delivered",
+              read: false,
+              replyPending: false,
+              retryAvailable: false,
+            },
+            {
+              id: "second-letter",
+              fromId: "mara",
+              text: "A second letter from Mara.",
+              at: now,
+              status: "delivered",
+              read: false,
+              replyPending: false,
+            },
+          ],
+        },
+      ],
+      recovery: [],
+    };
     let historyRetried = false;
     const agendas = {
       villagers: ["mara", "eli"].map((characterId) => ({
@@ -175,15 +208,13 @@ try {
         wishHistoryCount: 0,
       })),
     };
-    relationships.profiles[0].knownDevelopment = [
-      { id: "move", text: "Mara: move to Mill : stalled.", at: now, status: "stalled" },
-    ];
     relationships.profiles[0].knownWishes.push(
       ...Array.from({ length: 12 }, (_, index) => ({
         wishId: `shared-${index}`,
         text: `Shared wish ${index + 1}`,
-        learnedAt: now,
-        status: "active",
+        at: now,
+        followed: true,
+        status: "open",
         facts: [],
       })),
     );
@@ -208,32 +239,45 @@ try {
       } else if (path.includes("/mailbox")) {
         if (path.endsWith("/mailbox/threads") && request.method() === "POST") {
           const body = request.postDataJSON();
-          mailbox.threads = [
-            {
-              id: "personal:mara",
-              residentId: "mara",
-              residentName: "Mara",
+          let thread = mailbox.threads.find((row) => row.residentId === body.residentId);
+          if (!thread) {
+            thread = {
+              id: "personal:" + body.residentId,
+              residentId: body.residentId,
+              residentName: person(body.residentId).name,
               revision: 1,
-              messages: [
-                {
-                  id: body.requestId,
-                  fromId: "player",
-                  text: body.text,
-                  at: now,
-                  status: "pending",
-                  read: false,
-                  replyPending: false,
-                },
-              ],
-            },
-          ];
+              messages: [],
+            };
+            mailbox.threads.push(thread);
+          }
+          if (!thread.messages.some((message) => message.id === body.requestId))
+            thread.messages.push({
+              id: body.requestId,
+              fromId: "player",
+              text: body.text,
+              at: now,
+              status: "pending",
+              read: false,
+              replyPending: false,
+            });
+          if (failMailResponse) {
+            failMailResponse = false;
+            return fulfill(route, { status: 503, json: { error: "Reply lost" } });
+          }
         }
-        if (path.endsWith("/cancel")) mailbox.threads[0].messages[0].status = "cancelled";
-        if (path.endsWith("/invitations/recover-visit/response")) {
-          assert.equal(request.postDataJSON().expectedRevision, 1);
-          assert.equal(request.postDataJSON().accepted, true);
-          delete mailbox.invitations[0].accessRecovery;
+        if (path.endsWith("/retry")) {
+          const failed = mailbox.threads.flatMap((thread) => thread.messages).find((message) => message.retryAvailable);
+          if (failed) {
+            failed.retryAvailable = false;
+            delete failed.error;
+          }
         }
+        if (path.endsWith("/read") && failMailRead) {
+          failMailRead = false;
+          return fulfill(route, { status: 503, json: { error: "Read failed" } });
+        }
+        if (path.endsWith("/read"))
+          mailbox.threads[0].messages.find((message) => message.id === request.postDataJSON().messageId).read = true;
         value = mailbox;
       } else if (path.endsWith("/villagers/mara/description")) {
         if (failDescription)
@@ -438,22 +482,6 @@ try {
     await expect(selector.getByText("No villagers match your search.")).toBeVisible();
     await selector.getByRole("searchbox").fill("");
     await selector.getByRole("button", { name: "Open Mara profile" }).click();
-    await page.getByRole("button", { name: "Pursuits", exact: true }).click();
-    const development = page
-      .getByRole("region", { name: "Known pursuits", exact: true })
-      .getByText("Mara: move to Mill : stalled.", { exact: false });
-    await expect(development).toBeVisible();
-    await development.scrollIntoViewIfNeeded();
-    assert.equal(
-      await development.evaluate((element) => {
-        const box = element.getBoundingClientRect();
-        const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-        return hit === element || element.contains(hit);
-      }),
-      true,
-      "Known pursuits must be readable without the portrait covering them.",
-    );
-
     assert.deepEqual(
       await page.locator(`.${P}-dossier-book`).boundingBox(),
       bookBox,
@@ -715,7 +743,7 @@ try {
     await tabs.getByRole("button", { name: "Overview", exact: true }).click();
     await profile.getByText("Message", { exact: true }).click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
-    await expect(mail.getByRole("combobox", { name: "Mail recipient" })).toHaveValue("mara");
+    await expect(mail.getByLabel("Recipient")).toHaveValue("mara");
     const draft = mail.getByRole("textbox", { name: "Personal message" });
     const exactMessage = "Let's talk later.\n  Exact text";
     await draft.fill(exactMessage);
@@ -723,44 +751,84 @@ try {
     await expect(profile.getByRole("button", { name: "Message", exact: true })).toBeFocused();
     await profile.getByText("Message", { exact: true }).click();
     await expect(draft).toHaveValue(exactMessage);
-    await mail.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(draft).toHaveValue("");
+    await mail.getByRole("button", { name: "Send letter", exact: true }).click();
     assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
-    await expect(mail.getByText(exactMessage, { exact: true })).toBeVisible();
-    mailbox.invitations = [
-      {
-        id: "recover-visit",
-        threadId: "personal:mara",
-        messageId: "source",
-        proposerName: "Mara",
-        revision: 2,
-        status: "accepted",
-        terms: { title: "Tea at Mara's", detail: "Come over for tea", venueId: "mill", zoneId: "common:base" },
-        accessRecovery: { expectedRevision: 1 },
-      },
-    ];
-    await mail.getByRole("button", { name: "Close Mailbox" }).click();
-    await profile.getByText("Message", { exact: true }).click();
-    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toBeVisible();
-    await mail.getByRole("button", { name: "Retry visit access", exact: true }).click();
-    await expect(mail.getByRole("button", { name: "Retry visit access", exact: true })).toHaveCount(0);
+    await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
     assert.equal(
       await mail.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
       false,
       "Mailbox fits desktop and phone",
     );
+    if (width <= 704) {
+      await expect(mail.getByRole("navigation", { name: "Letters" })).toBeHidden();
+      await expect(mail.getByRole("button", { name: "Back to letters" })).toBeVisible();
+    }
     await page.screenshot({ path: resolve(output, `mailbox-${width}-${height}.png`) });
-    await mail.getByRole("button", { name: "Cancel message" }).click();
-    await expect(mail.getByText("cancelled", { exact: false })).toBeVisible();
+    await expect(mail.getByRole("button", { name: /Cancel letter|Retry/ })).toHaveCount(0);
+    await expect(mail.getByText("pending", { exact: true })).toHaveCount(0);
+    if (width === 390) {
+      const outgoing = mailbox.threads[0].messages.findLast((message) => message.fromId === "player");
+      outgoing.retryAvailable = true;
+      outgoing.error = "Letter processing needs attention.";
+      await expect(mail.getByRole("button", { name: "Retry", exact: true })).toBeVisible({ timeout: 10000 });
+      await mail.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(mail.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+      assert.equal(outgoing.text, exactMessage, "Recovery retains the sent letter");
+    }
     const firstMailId = writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId;
+    if (width <= 704) await mail.getByRole("button", { name: "Back to letters" }).click();
+    await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+    await mail.getByLabel("Recipient").selectOption("mara");
     await draft.fill(exactMessage);
-    await mail.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(draft).toHaveValue("");
+    await mail.getByRole("button", { name: "Send letter", exact: true }).click();
     assert.notEqual(
       writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId,
       firstMailId,
       "A distinct acknowledged send can repeat the same words",
     );
+    if (width <= 704) await mail.getByRole("button", { name: "Back to letters" }).click();
+    await mail.getByRole("button", { name: "Inbox", exact: true }).click();
+    const letterRows = mail.getByRole("navigation", { name: "Letters" }).getByRole("button", { name: /Mara/ });
+    await expect(letterRows).toHaveCount(2);
+    await page.screenshot({ path: resolve(output, `mailbox-inbox-${width}-${height}.png`) });
+    if (width === 390) failMailRead = true;
+    await letterRows.first().click();
+    await expect(mail.getByLabel("Personal mail").getByText("A first letter from Mara.")).toBeVisible();
+    await expect(mail.getByLabel("Personal mail").getByText("A second letter from Mara.")).toHaveCount(0);
+    await page.screenshot({ path: resolve(output, `mailbox-letter-${width}-${height}.png`) });
+    if (width === 390) {
+      await expect(mail.getByRole("button", { name: "Retry reading" })).toBeVisible();
+      assert.equal(mailbox.threads[0].messages.find((message) => message.id === "first-letter").read, false);
+      await mail.getByRole("button", { name: "Retry reading" }).click();
+      await expect
+        .poll(() => mailbox.threads[0].messages.find((message) => message.id === "first-letter").read)
+        .toBe(true);
+    }
+    await expect.poll(() => writes.findLast((row) => row.path.endsWith("/read"))?.body.messageId).toBe("first-letter");
+    assert.equal(mailbox.threads[0].messages.find((message) => message.id === "second-letter").read, false);
+    if (width === 390) {
+      await mail.getByRole("button", { name: "Back to letters" }).click();
+      await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+      await mail.getByLabel("Recipient").selectOption("mara");
+      await draft.fill("A letter with a lost response.");
+      failMailResponse = true;
+      await mail.getByRole("button", { name: "Send letter" }).click();
+      await expect(mail.getByRole("alert")).toBeVisible();
+      const firstAttempt = writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.requestId;
+      await mail.getByLabel("Recipient").selectOption("eli");
+      await draft.fill("A note for Eli.");
+      await mail.getByRole("button", { name: "Send letter" }).click();
+      await expect(mail.getByLabel("Personal mail").getByText("A note for Eli.")).toBeVisible();
+      await mail.getByRole("button", { name: "Back to letters" }).click();
+      await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+      await mail.getByLabel("Recipient").selectOption("mara");
+      await expect(draft).toHaveValue("A letter with a lost response.");
+      await mail.getByRole("button", { name: "Send letter" }).click();
+      await expect
+        .poll(() => writes.filter((row) => row.path.endsWith("/mailbox/threads")).at(-1).body.requestId)
+        .toBe(firstAttempt);
+      assert.equal(mailbox.threads[0].messages.filter((message) => message.id === firstAttempt).length, 1);
+    }
     await mail.getByRole("button", { name: "Close Mailbox" }).click();
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();

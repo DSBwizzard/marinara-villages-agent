@@ -472,9 +472,6 @@ export function coerceSession(value: unknown): VenueScene {
               ...(row.residenceSignal
                 ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
                 : {}),
-              ...(row.renovationSignal
-                ? { renovationSignal: row.renovationSignal as VenueSubmission["renovationSignal"] }
-                : {}),
               ...(row.venueRequestSignal
                 ? { venueRequestSignal: row.venueRequestSignal as VenueSubmission["venueRequestSignal"] }
                 : {}),

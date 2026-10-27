@@ -1,7 +1,7 @@
+import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import type { VillagerCard } from "../models/catalog-model.js";
 import { badRequest } from "./errors.js";
 import { renderResidentAdmission } from "./resident-admission.js";
-import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(
@@ -61,7 +61,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 }
 
 export const VENUE_RESIDENT_REQUESTS =
-  "Capture spontaneous resident proposals only when they actually occur in spoken dialogue, using speakerId and an exact quote. residenceRequest also needs an available venueId for a requested move; residenceDecision needs approved for acceptance/refusal of a pending player move request. renovationRequest identifies one concrete structural improvement to this Venue. venueRequest needs name and classes (one or two of workplace, community, other) for a NEW public venue, for a Renovation here. If a required resident approves or declines a listed exact edit proposal, editApproval needs proposalId and approved. Omit unused fields. Player requests, hypothetical speech, silence, or a different speaker are never resident consent. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.";
+  "Capture spontaneous resident proposals only when they actually occur in spoken dialogue, using speakerId and an exact quote. residenceRequest also needs an available venueId for a requested move; residenceDecision needs approved for acceptance/refusal of a pending player move request. venueRequest needs name and classes (one or two of workplace, community, other) for a NEW public venue. If a required resident approves or declines a listed exact edit proposal, editApproval needs proposalId and approved. Omit unused fields. Player requests, hypothetical speech, silence, or a different speaker are never resident consent. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.";
 
 export const VENUE_DEPARTURE_METADATA =
   'For an explicitly departing resident return departures:[{speakerId,quote:"exact spoken departure"}]. Return sceneEnded:{speakerId,quote:"exact spoken ending"} only when dialogue ends the whole encounter, never for player silence or ordinary company.';

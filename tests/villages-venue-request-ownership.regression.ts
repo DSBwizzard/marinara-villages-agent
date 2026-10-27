@@ -10,18 +10,13 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
-import {
-  draftNewVenueProject,
-  draftRenovationProject,
-} from "../packages/villages/src/server/features/projects/project-lifecycle.js";
-import { queueVenueCounteroffer } from "../packages/villages/src/server/features/venues/venue-mailbox.js";
+import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
 import {
   configureVenueRequests,
   decideVillageVenueRequest,
   queueVillageVenueRequest,
 } from "../packages/villages/src/server/features/venues/venue-requests.js";
-import { assertMailboxOwnership } from "./fixtures/villages-mailbox-owner.fixture.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
 const core = { name: "Glasshouse", classes: ["community"] as ["community"] };
@@ -103,14 +98,6 @@ function fixture(name: string) {
       note("new-project");
       return draftNewVenueProject(...args);
     },
-    draftRenovationProject(...args) {
-      note("renovation");
-      return draftRenovationProject(...args);
-    },
-    queueVenueCounteroffer(...args) {
-      note("counteroffer");
-      return queueVenueCounteroffer(...args);
-    },
   });
   assert.deepEqual(calls, [], "Constructing request review does not admit storage, Projects or models.");
   return {
@@ -170,16 +157,16 @@ assert.equal(recorded.state.projects.length, 1);
 
 const countered = fixture("Countered");
 const counter = request(countered);
-await countered.service.decideVillageVenueRequest(counter.id, true, {
-  ...core,
-  name: "Greenhouse",
-  description: "A different plan.",
-});
-assert.equal(countered.state.pendingDecisions[0]!.status, "countered");
-assert.equal(countered.state.venueMail[0]!.kind, "counteroffer");
-assert.equal(countered.state.venueMail[0]!.counterofferRequestId, counter.id);
+await assert.rejects(
+  countered.service.decideVillageVenueRequest(counter.id, true, {
+    ...core,
+    name: "Greenhouse",
+    description: "A different plan.",
+  }),
+  /not available yet/,
+);
+assert.equal(countered.state.pendingDecisions[0]!.status, "pending");
 assert.equal(countered.state.projects.length, 0);
-assert.deepEqual(countered.calls, ["mutate", "counteroffer", "snapshot"]);
 const denied = fixture("Denied");
 const deniedRequest = request(denied);
 await denied.service.decideVillageVenueRequest(deniedRequest.id, false, null);
@@ -224,4 +211,3 @@ await assert.rejects(
 console.log(
   "Venue request ownership: inert ports, grounded deduplication, decision/counteroffer and Project planning, originating activation and cleanup passed (mocked storage/projection; no model connections).",
 );
-await assertMailboxOwnership();

@@ -29,10 +29,7 @@ function localMinuteDeadline(now: Date, minute: number): number {
  * calculation is exact to the stored minute and never replays every minute in
  * between.
  */
-export function villageSchedulerDelayMs(
-  now: Date,
-  village?: Pick<VillageState, "villagers" | "residences" | "venueMail">,
-): number {
+export function villageSchedulerDelayMs(now: Date, village?: Pick<VillageState, "villagers" | "residences">): number {
   if (!Number.isFinite(now.getTime())) return REFRESH_MAX_DELAY_MS;
   const deadlines = [nextClockChangeAt(now).getTime()];
   for (const villager of village?.villagers ?? []) {
@@ -44,11 +41,6 @@ export function villageSchedulerDelayMs(
     if (residence.status !== "moving") continue;
     const completesAt = Date.parse(residence.completesAt ?? "");
     if (Number.isFinite(completesAt) && completesAt > now.getTime()) deadlines.push(completesAt);
-  }
-  for (const mail of village?.venueMail ?? []) {
-    if (mail.status !== "awaiting-villagers") continue;
-    const dueAt = Date.parse(mail.dueAt);
-    if (Number.isFinite(dueAt) && dueAt > now.getTime()) deadlines.push(dueAt);
   }
   const next = Math.min(...deadlines);
   const delay = next - now.getTime() + REFRESH_SETTLE_MS;

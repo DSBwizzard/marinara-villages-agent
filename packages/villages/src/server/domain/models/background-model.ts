@@ -11,7 +11,6 @@ export type BackgroundKind =
   | "agenda"
   | "translation"
   | "wish"
-  | "mail"
   | "personal-mail"
   | "social-recovery"
   | "adaptation";

@@ -201,14 +201,7 @@ export function semanticImmediate(value: unknown, lines: readonly VenueReplyLine
     contactEnd: raw.contactEnd.map((row) => source(row)),
     semanticPlayerMoves: raw.playerMoves ?? [],
   };
-  for (const key of [
-    "residenceRequest",
-    "residenceDecision",
-    "renovationRequest",
-    "venueRequest",
-    "editApproval",
-    "sceneEnded",
-  ])
+  for (const key of ["residenceRequest", "residenceDecision", "venueRequest", "editApproval", "sceneEnded"])
     if (raw[key] !== undefined && raw[key] !== null) result[key] = source(raw[key]);
   if (raw.moves.length > 16 || raw.departures.length > 16 || raw.contactEnd.length > 16)
     throw badGateway("System event limit exceeded.");

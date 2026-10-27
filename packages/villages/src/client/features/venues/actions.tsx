@@ -1,3 +1,4 @@
+import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
 import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
@@ -5,7 +6,6 @@ import { destinationPlaces, freshRowKey } from "../../shared/presentation.js";
 import type { MenuPage } from "../../shared/types.js";
 import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
-import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
 
 export function useOpenVenue(ports: {
   openPlace: (place: VillageVenue) => void;
@@ -248,25 +248,17 @@ export function useRemoveVenue(ports: {
           residentCharacterIds: string[];
           playerHome: boolean;
           workerCharacterIds: string[];
-          pendingMailCount: number;
           pendingResidenceCharacterIds: string[];
           remapCount: number;
           roomPresent: boolean;
           eventCount: number;
         }>(`/locations/venue/${encodeURIComponent(id)}/dependencies`);
         if (!lifetime.owns(claim)) return;
-        if (
-          dependencies.roomPresent ||
-          dependencies.playerHome ||
-          dependencies.residentCharacterIds.length ||
-          dependencies.pendingMailCount
-        ) {
+        if (dependencies.roomPresent || dependencies.playerHome || dependencies.residentCharacterIds.length) {
           setSettingsError(
             dependencies.roomPresent
               ? "End the active Scene before deleting this Venue."
-              : dependencies.pendingMailCount
-                ? "Resolve pending Venue decisions before deleting this Venue."
-                : "Move every resident, including yourself, before deleting this Residence.",
+              : "Move every resident, including yourself, before deleting this Residence.",
           );
           return;
         }

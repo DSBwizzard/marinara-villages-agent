@@ -157,10 +157,6 @@ function fixture(name: string) {
       note(`relationship:${id}`);
       return `${name} relationship`;
     },
-    async respondDueVenueMail(now) {
-      note("mail");
-      if (now) times.push(now);
-    },
   });
   return {
     state,
@@ -216,9 +212,8 @@ assert(!weatherOnly.calls.some((call) => call.startsWith("story:")), "Weather-on
 assert.equal(weatherOnly.state.eventAttempts?.attempts.length ?? 0, 0, "Skipped weather consumes no Events allowance");
 weatherOwner.release();
 weatherOwner.scope.dispose();
-assert(a.calls.indexOf("projects") < a.calls.indexOf("mail"));
-assert(a.calls.indexOf("roll") < a.calls.indexOf("mail"));
-assert(a.calls.indexOf("mail") < a.calls.indexOf("prepare"));
+assert(a.calls.indexOf("projects") < a.calls.indexOf("prepare"));
+assert(a.calls.indexOf("roll") < a.calls.indexOf("prepare"));
 assert(
   a.times.every((value) => value === now),
   "the caller's exact clock reaches every clocked connection",

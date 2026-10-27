@@ -1,13 +1,13 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../shared/venue.js";
+import { WorkspaceShell, type WorkspaceDestination } from "../../shared/WorkspaceShell.js";
 import type { VenueScreenController } from "./screen-contracts.js";
-import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayout, ZoneAccessLabels } from "./VenueLayout.js";
-import { WorkspaceShell, type WorkspaceDestination } from "../../shared/WorkspaceShell.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const { venueEditDraft, setVenueEditDraft, venueEditBusy, saveVenueName } = controller;
@@ -274,12 +274,14 @@ function AssignedVillagers({
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
+                disabled={venueAssignedCountFor(place) > 0}
                 onClick={() => setHousing((open) => !open)}
                 aria-expanded={housing}
               >
-                Request to live here
+                Move here
               </button>
-              {housing ? (
+              {venueAssignedCountFor(place) > 0 ? <p>Moving into a shared Residence is not available yet.</p> : null}
+              {housing && venueAssignedCountFor(place) === 0 ? (
                 <div className={`${ELEMENT_TAG}-venue-section`}>
                   <label className={`${ELEMENT_TAG}-label`}>
                     Your destination Private Space
@@ -314,7 +316,7 @@ function AssignedVillagers({
                     disabled={busy}
                     onClick={() => void requestPlayerMove(place.id, playerMovePrivateZoneId)}
                   >
-                    Send housing request
+                    Move in
                   </button>
                 </div>
               ) : null}

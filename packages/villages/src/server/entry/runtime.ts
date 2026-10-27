@@ -183,7 +183,6 @@ import { createProjectLifecycle } from "../features/projects/project-lifecycle-s
 import {
   cancelProject,
   configureProjectLifecycle,
-  createRenovationProject,
   draftNewVenueProject,
   draftRenovationProject,
   resumeProject,
@@ -309,15 +308,6 @@ import {
   retryResidencePrivateSpaceAdaptation,
 } from "../features/venues/residences.js";
 import { assertVenueImageAccess, configureVenueCommands, setVillageVenueImage } from "../features/venues/services.js";
-import { createVenueMailbox } from "../features/venues/venue-mailbox-service.js";
-import {
-  configureVenueMailbox,
-  queueSharedMoveConsent,
-  queueVenueCounteroffer,
-  recordVillagerVenueImprovement,
-  respondDueVenueMail,
-  venueMailbox,
-} from "../features/venues/venue-mailbox.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
 import { configureVenueRequests, queueVillageVenueRequest } from "../features/venues/venue-requests.js";
 import { createVenueCommands } from "../features/venues/venue-service.js";
@@ -589,6 +579,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const personalMail = createSocialMail({
     processLiveMemories,
+    withVillageSceneAcceptance,
     readVillageSnapshot: readVillageMemorySnapshot,
     mutateVillageState: mutateVillageMemoryState,
     mutateRelationships,
@@ -652,19 +643,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDebugAgentsEnabled,
       outsideVenueOperation: operations.outsideVenueOperation,
       preparePrivateSpaces,
-      draftNewVenueProject,
-      draftRenovationProject,
-    }),
-  );
-  const releaseMailbox = configureVenueMailbox(
-    createVenueMailbox({
-      readVillageState,
-      mutateVillageState,
-      queueBackgroundJob,
-      villagesConnectionIdFor,
-      villagesLanguageModels,
-      completeWithRoom,
-      createRenovationProject,
       draftNewVenueProject,
       draftRenovationProject,
     }),
@@ -771,7 +749,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       bindWishProposals,
       WISH_PROPOSAL_INSTRUCTION,
       villagesConnectionIdFor,
-      recordVillagerVenueImprovement,
       mutateVillageState: mutateVillageMemoryState,
       readVillageSnapshot: readVillageMemorySnapshot,
       readVillageState: readVillageMemoryState,
@@ -889,7 +866,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
-    queueSharedMoveConsent,
     outsideVenueOperation: operations.outsideVenueOperation,
     preparePrivateSpaces,
     readVillageLore,
@@ -928,7 +904,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,
       draftNewVenueProject,
-      queueVenueCounteroffer,
     }),
   );
   const releaseTownMapReview = configureTownMapReview(
@@ -1082,7 +1057,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     preparePrivateSpaces,
     reconcileProjectLifecycles,
     rollActiveAgendas,
-    respondDueVenueMail,
   });
   const releaseWorldCoordination = configureWorldCoordination(worldCoordination);
   const releaseRepairs = configureRepairs(
@@ -1109,7 +1083,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["starting-ties", startingTies.handler],
         ["schedule-influence", scheduleInfluence.handler],
         ["wish", wishService.handler],
-        ["mail", venueMailbox().mailBackgroundHandler],
         ["personal-mail", personalMail.handler],
         ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
@@ -1174,7 +1147,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releasePersonaCache();
     releaseResidences();
     releaseSceneCommands();
-    releaseMailbox();
     releaseProjectLifecycle();
     releasePrivateSpaces();
     releaseSceneWriting();

@@ -689,32 +689,6 @@ export type VillageVenue = {
   };
 };
 
-/** A durable Venue decision shown in the player's Mailbox. */
-export type VillageVenueMail = {
-  proposedPrivateZoneId?: string;
-  id: string;
-  venueId: string;
-  title: string;
-  detail: string;
-  kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move" | "project-approval";
-  projectId?: string;
-  projectRevision?: number;
-  status: "pending-player" | "awaiting-villagers" | "approved" | "declined";
-  createdAt: string;
-  dueAt: string;
-  resolvedAt: string;
-  requesterCharacterId: string;
-  movingCharacterId?: string;
-  counterofferRequestId?: string;
-  counterofferDraft?: { name: string; classes: VillageVenueClass[]; description: string };
-  /** Exact reviewed terms; retained alongside the outcome for future relationship use. */
-  proposedClasses?: VillageVenueClass[];
-  proposedCapacity?: number;
-  affectedIds: string[];
-  decisions: { characterId: string; accepted: boolean; reply: string }[];
-  error: string;
-};
-
 /** A compact reference used anywhere a current literal location is required. */
 export type VillageVenueReference = {
   venueId: string;
@@ -863,7 +837,7 @@ export type VillageProjectLifecycle = {
   affectedIds: string[];
   approvals: {
     residentId: string;
-    source: "conversation" | "mailbox";
+    source: "conversation";
     evidenceId: string;
     scope: string;
     at: string;
@@ -1113,7 +1087,6 @@ export type VillageState = {
   /** Ordinary scene props are visible but cannot become project stock. */
   /** Finite resident source yields already transferred into a project. */
   pendingDecisions: VillagePendingDecision[];
-  venueMail: VillageVenueMail[];
   villagers: VillageVillager[];
   /**
    * The village's one prompt box: what a villager here knows.
@@ -1478,7 +1451,6 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   venueRequests: VillagePendingDecision[];
   projects: import("../../../shared/contracts/village.js").BuildProject[];
   residences: VillageResidence[];
-  venueMail: VillageVenueMail[];
   /** Newest last, so the board reads the way a board fills up. */
   noticeboard: VillageNotice[];
   /** Newest first, so the window on the map opens on what just happened. */

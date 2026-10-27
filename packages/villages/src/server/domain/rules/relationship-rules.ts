@@ -5,8 +5,8 @@ import type {
   RelationshipState,
   RelationshipUpdate,
 } from "../models/relationship-types.js";
-import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import type { VenueScene } from "../models/scene-model.js";
+import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { asRecord } from "./coerce.js";
 import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
@@ -51,7 +51,6 @@ export function defaultRelationshipState(seed: string): RelationshipState {
     initializationConflicts: [],
     mailThreads: {},
     mailDeliveries: {},
-    invitations: {},
     socialPlans: [],
     socialEncounters: [],
   };

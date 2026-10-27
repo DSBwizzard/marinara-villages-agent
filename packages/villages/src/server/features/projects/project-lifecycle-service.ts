@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageProject, VillageState } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
@@ -19,7 +18,7 @@ import {
   projectFor,
 } from "../../domain/rules/project-lifecycle-rules.js";
 import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
-import { approvalScope, projectDesignKey, renovationTerms } from "../../domain/rules/project-terms.js";
+import { approvalScope, projectDesignKey } from "../../domain/rules/project-terms.js";
 import { assertCanAddVillageVenue } from "../../domain/rules/venue-capacity.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
@@ -167,12 +166,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       project.lifecycle.revision++;
       renew(state, project);
       project.updatedAt = villageNow().toISOString();
-      for (const mail of state.venueMail.filter(
-        (mail) => mail.projectId === id && mail.status === "awaiting-villagers",
-      )) {
-        mail.status = "declined";
-        mail.resolvedAt = project.updatedAt;
-      }
     });
   }
   async function lockProjectBuilder(id: string, value: unknown) {
@@ -186,40 +179,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       )
         throw conflict("Ask this resident to lead the current design.");
       project.lifecycle.builderId = residentId;
-    });
-  }
-  async function requestProjectMailbox(id: string, value: unknown) {
-    await command(id, value, "request-approval", (state, project) => {
-      if (!["planning", "paused"].includes(project.status)) throw conflict("This Project is already underway.");
-      const pending = missingProjectAgreements(state, project);
-      if (!pending.length) return;
-      if (
-        state.venueMail.some(
-          (mail) =>
-            mail.projectId === id &&
-            mail.projectRevision === project.lifecycle.revision &&
-            mail.status === "awaiting-villagers",
-        )
-      )
-        return;
-      const now = villageNow();
-      state.venueMail.push({
-        id: randomUUID(),
-        projectId: id,
-        projectRevision: project.lifecycle.revision,
-        venueId: project.venueId,
-        kind: "project-approval",
-        title: project.title,
-        detail: renovationTerms(project.lifecycle.change!),
-        status: "awaiting-villagers",
-        createdAt: now.toISOString(),
-        dueAt: new Date(now.getTime() + 60 * 60_000).toISOString(),
-        resolvedAt: "",
-        requesterCharacterId: "",
-        affectedIds: pending,
-        decisions: [],
-        error: "",
-      });
     });
   }
   function begin(
@@ -323,12 +282,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       project.updatedAt = now.toISOString();
       project.lifecycle.blockedReason = "";
       if (project.kind === "new-venue") state.venues = state.venues.filter((venue) => venue.buildProjectId !== id);
-      for (const mail of state.venueMail.filter(
-        (mail) => mail.projectId === id && mail.status === "awaiting-villagers",
-      )) {
-        mail.status = "declined";
-        mail.resolvedAt = project.updatedAt;
-      }
     });
   }
   async function debugCompleteProjectConstruction(id: string, value: unknown) {
@@ -404,7 +357,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     placeNewVenueProject,
     reviseRenovationProject,
     lockProjectBuilder,
-    requestProjectMailbox,
     startProjectConstruction,
     resumeProject,
     cancelProject,

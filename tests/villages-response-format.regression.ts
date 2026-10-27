@@ -409,7 +409,15 @@ async function main() {
     const social = { planId: "offered-plan" };
     const supportedContext = {
       ...context,
-      venues: [{ id: "destination", name: "Open home", occupancy: { playerHome: false, residentCharacterId: null } }],
+      venues: [
+        {
+          id: "destination",
+          name: "Open home",
+          classes: ["residence"],
+          residentIds: [],
+          occupancy: { playerHome: false, residentCharacterId: null },
+        },
+      ],
       social: { candidates: [{ id: "offered-plan" }], relationships: [] },
     };
     output = JSON.stringify({

@@ -35,7 +35,6 @@ import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import type { backfillAgendas, refreshVillagerRemaps, rollActiveAgendas } from "../residents/resident-agendas.js";
 import type { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
-import type { respondDueVenueMail } from "../venues/venue-mailbox.js";
 import type { buildVillageSnapshot } from "./snapshot.js";
 import type { mutateVillageState, readVillageState } from "./village-store.js";
 
@@ -55,7 +54,6 @@ export interface WorldCoordinationPorts {
   preparePrivateSpaces: typeof preparePrivateSpaces;
   reconcileProjectLifecycles: typeof reconcileProjectLifecycles;
   rollActiveAgendas: typeof rollActiveAgendas;
-  respondDueVenueMail: typeof respondDueVenueMail;
 }
 
 /** Owns world advancement and history connections. Construction never reads, writes or dispatches work. */
@@ -75,7 +73,6 @@ export function createWorldCoordination({
   preparePrivateSpaces,
   reconcileProjectLifecycles,
   rollActiveAgendas,
-  respondDueVenueMail,
 }: WorldCoordinationPorts) {
   /**
    * Put the village back to how it was before it was founded.
@@ -216,7 +213,6 @@ export function createWorldCoordination({
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
-    await respondDueVenueMail(now);
     // Initial space preparation retains the founding generation path; begin it only after local advancement.
     outsideVenueOperation(() => {
       void preparePrivateSpaces().catch(() => {});

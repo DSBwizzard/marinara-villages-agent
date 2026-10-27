@@ -124,7 +124,6 @@ export function quietContactReply(text: string, localIds: string[]) {
     sceneChange: null,
     movementIntent: null as MovementIntent | null,
     residenceSignal: null,
-    renovationSignal: null,
     venueRequestSignal: null,
     invitationSignal: null,
     editApprovalSignal: null,

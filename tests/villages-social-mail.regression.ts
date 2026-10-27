@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
 import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
+import { assertPersonalLetter } from "../packages/villages/src/server/domain/rules/personal-letter.js";
 import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   defaultRelationshipState,
@@ -9,11 +11,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-import {
-  claimVisitPermission,
-  evaluateZoneAccess,
-  initializeVenueAccess,
-} from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   correctVillageMemory,
@@ -41,10 +39,19 @@ let calls = 0,
   failCleanup = false,
   truncateMeaning = false,
   sourceOnlyReply = false;
+let narrationReply = "I'd like to stay friends.";
+let failFirstIncoming = false;
 let failNativeWrite = "";
 let afterSocialCommit: (() => Promise<void>) | undefined;
-let failInvitationWrite = false,
-  failMemoryWrite = false;
+let failMemoryWrite = false;
+let failAdmission = false;
+let failInputRead = false;
+let changeBeforeReply = false;
+let conflictClaimId = "";
+let conflictRetirementId = "";
+let competeAtReply: (() => void) | undefined;
+const authorityGate = createVillageRepository(() => ({}) as any);
+const retries: string[] = [];
 const snapshot = async () => ({ ...structuredClone(village), relationshipContext: structuredClone(social) });
 const projection = (connection: string) => ({
   connection,
@@ -65,6 +72,7 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
 let active: SocialMailInput;
 const promptHistory: string[] = [];
 const service = createSocialMail({
+  withVillageSceneAcceptance: async (work: any) => authorityGate.withAuthorityLock!(async () => work(await snapshot())),
   processLiveMemories: async (scene: any, id: string, evidence: any, incarnations: any) => {
     if (failNativeWrite === (scene.lines.length === 1 ? "source" : "reply")) {
       failNativeWrite = "";
@@ -78,10 +86,55 @@ const service = createSocialMail({
     } as any).processLiveMemories(scene, id, evidence, incarnations);
   },
   readVillageSnapshot: snapshot,
-  readRelationshipState: async () => structuredClone(social),
+  readRelationshipState: async () => {
+    if (failInputRead) {
+      failInputRead = false;
+      throw Error("Input storage unavailable");
+    }
+    return structuredClone(social);
+  },
   mutateRelationships: async (_seed: string, mutate: (state: RelationshipState) => void) => {
-    const next = structuredClone(social);
+    if (
+      changeBeforeReply &&
+      active &&
+      social.mailDeliveries[active.messageId] &&
+      !social.mailDeliveries[active.messageId + ":reply"]
+    ) {
+      changeBeforeReply = false;
+      village.villagers[0]!.cardSnapshot.capturedAt = "card-during-reply";
+      const source = social.mailThreads[active.threadId]!.messages.find((row) => row.id === active.messageId)!;
+      source.replyUnavailable = true;
+      source.replyStatus = "complete";
+    }
+    let next = structuredClone(social);
     await mutate(next);
+    if (
+      conflictRetirementId &&
+      Object.values(next.mailThreads).some((thread) =>
+        thread.messages.some((message) => message.id === conflictRetirementId && message.status === "cancelled"),
+      )
+    ) {
+      const id = conflictRetirementId;
+      conflictRetirementId = "";
+      social.mailDeliveries[id] = { messageId: id, sourceHash: "concurrent-receipt", at: new Date().toISOString() };
+      next = structuredClone(social);
+      await mutate(next);
+    }
+    if (
+      competeAtReply &&
+      active &&
+      !social.mailDeliveries[active.messageId + ":reply"] &&
+      next.mailDeliveries[active.messageId + ":reply"]
+    ) {
+      competeAtReply();
+      competeAtReply = undefined;
+      await Promise.resolve();
+      assert.equal(
+        village.villagers[0]!.cardSnapshot.capturedAt,
+        active.incarnation,
+        "A concurrent resident update cannot pass the authority gate before the reply commits",
+      );
+    }
     if (
       failReplyWrite &&
       Object.values(next.mailThreads).some((thread) =>
@@ -91,6 +144,10 @@ const service = createSocialMail({
       failReplyWrite = false;
       throw Error("Reply write unavailable");
     }
+    if (failFirstIncoming && next.mailThreads["personal:bea"] && !social.mailThreads["personal:bea"]) {
+      failFirstIncoming = false;
+      throw Error("Incoming thread write unavailable");
+    }
     social = next;
     const callback = afterSocialCommit;
     afterSocialCommit = undefined;
@@ -98,15 +155,18 @@ const service = createSocialMail({
     return structuredClone(social);
   },
   mutateVillageState: async (mutate: any) => {
-    const next = { ...structuredClone(village), relationshipContext: structuredClone(social) };
+    let next = { ...structuredClone(village), relationshipContext: structuredClone(social) };
     mutate(next);
+    if (conflictClaimId && next.socialMailOutbox?.some((row: any) => row.id === conflictClaimId && row.retryClaim)) {
+      const id = conflictClaimId;
+      conflictClaimId = "";
+      village.socialMailOutbox = village.socialMailOutbox?.filter((row) => row.id !== id);
+      next = { ...structuredClone(village), relationshipContext: structuredClone(social) };
+      mutate(next);
+    }
     if (failMemoryWrite && next.memories.records.length > village.memories.records.length) {
       failMemoryWrite = false;
       throw Error("Memory publication unavailable");
-    }
-    if (failInvitationWrite && next.venues.some((venue) => venue.access?.permissions.length)) {
-      failInvitationWrite = false;
-      throw Error("Invitation permission storage unavailable");
     }
     if (failCleanup && (next.socialMailOutbox?.length ?? 0) < (village.socialMailOutbox?.length ?? 0)) {
       failCleanup = false;
@@ -117,9 +177,18 @@ const service = createSocialMail({
     return snapshot();
   },
   queueBackgroundJob: async (job: any) => {
-    queued.push(structuredClone(job));
+    if (failAdmission) {
+      failAdmission = false;
+      throw Error("Admission unavailable");
+    }
+    if (!queued.some((row) => row.subjectId === job.subjectId && row.revision === job.revision))
+      queued.push(structuredClone(job));
   },
-  retryBackgroundJob: async () => assert.fail("No provider job recovery in this fixture"),
+  retryBackgroundJob: async (id: string) => {
+    retries.push(id);
+    const job = backgroundStatuses.find((row) => row.id === id);
+    if (job) job.status = "queued";
+  },
   backgroundWorkSummaries: async () => backgroundStatuses,
   villagesConnectionIdFor: async (role: string) => role,
   villagesLanguageModels: () => ({
@@ -141,7 +210,7 @@ const service = createSocialMail({
     calls++;
     if (model.connectionId === "system") assert.equal(options.reasoningEffort, "low");
     if (model.connectionId === "narration")
-      return { content: JSON.stringify({ text: "I'd like to stay friends." }), finishReason: "stop" };
+      return { content: JSON.stringify({ text: narrationReply }), finishReason: "stop" };
     if (failMeaning) throw Error("Meaning provider unavailable");
     if (truncateMeaning) return { content: "", finishReason: "length", usage: { completionReasoningTokens: 4096 } };
     const replyChange = change(active, 0, true);
@@ -235,11 +304,76 @@ async function generateAndSave() {
   service.handler.apply(village, job.input, result, { retrying: false });
   await service.processOutbox(await snapshot());
 }
+// Isolate synthetic cases without pretending that sent letters can be cancelled.
+function resetFixtureWork(input: SocialMailInput) {
+  const thread = social.mailThreads[input.threadId];
+  if (thread) thread.messages = thread.messages.filter((message) => message.id !== input.messageId);
+  village.socialMailOutbox = village.socialMailOutbox?.filter((entry) => entry.id !== input.messageId);
+  backgroundStatuses = [];
+}
+assert.equal("cancel" in service, false, "Sent letters cannot be cancelled");
+assert.throws(
+  () => assertPersonalLetter("Hello! *Pip dusts his paws and grins.* How are you?", "Pip"),
+  /roleplay action/,
+);
+assert.throws(() => assertPersonalLetter("Hello!\n*waves*", "Pip"), /roleplay action/);
+assert.throws(() => assertPersonalLetter("Hello! *waves* How are you?", "Pip"), /roleplay action/);
+assert.throws(
+  () => assertPersonalLetter("Hello! Pip dusts his paws and grins. How are you?", "Pip"),
+  /roleplay action/,
+);
+assert.doesNotThrow(() => assertPersonalLetter("I walked home yesterday. It was *very* lovely (and quiet).", "Pip"));
+assert.doesNotThrow(() => assertPersonalLetter("I love the *smiles* you draw and your *looks* are wonderful.", "Pip"));
+assert.doesNotThrow(() => assertPersonalLetter("I love the *waves* you draw.", "Pip"));
+await service.send({ residentId: "ada", requestId: "player-authored", text: "I wrote *waves* on the page." });
+assert.equal(social.mailThreads["personal:ada"]!.messages[0]!.text, "I wrote *waves* on the page.");
+resetFixtureWork(queued.at(-1).input);
 await service.readMailbox();
 assert.equal(calls, 0);
+failAdmission = true;
+await assert.rejects(
+  () => service.send({ residentId: "ada", requestId: "admission", text: "A saved letter." }),
+  /Admission unavailable/,
+);
+const admissionView = await service.readMailbox();
+assert.equal(admissionView.threads[0]!.messages[0]!.retryAvailable, true, "A known admission failure is recoverable");
+await service.retry("personal:ada", "personal:ada:admission", "admission-retry");
+assert.equal(queued.at(-1).input.sourceText, "A saved letter.");
+assert.equal((await service.readMailbox()).threads[0]!.messages[0]!.retryAvailable, false);
+resetFixtureWork(queued.at(-1).input);
+failInputRead = true;
+await assert.rejects(
+  () => service.send({ residentId: "ada", requestId: "input-read", text: "Retain this letter." }),
+  /Input storage unavailable/,
+);
+assert.equal(
+  (await service.readMailbox()).threads[0]!.messages[0]!.retryAvailable,
+  true,
+  "A failed input read is recoverable",
+);
+await service.retry("personal:ada", "personal:ada:input-read", "input-retry");
+assert.equal(queued.at(-1).input.sourceText, "Retain this letter.");
+resetFixtureWork(queued.at(-1).input);
 await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact text" });
 assert.equal(calls, 0, "Sending first saves exact pending text before dispatch");
 active = queued.at(-1).input;
+const beforeInvalidReply = calls;
+narrationReply = "Hello. *Ada smiles and waves.*";
+await assert.rejects(() => service.handler.generate({ ...active, sourceText: "*waves* Hello" }), /roleplay action/);
+assert.equal(calls, beforeInvalidReply + 1, "Invalid reply stops before the System interpretation request");
+assert.equal(
+  social.mailThreads[active.threadId]!.messages[0]!.text,
+  "Hello\n  exact text",
+  "The player's exact words are unchanged",
+);
+const beforeRetainedReply = calls;
+await assert.rejects(
+  () => service.handler.generate({ ...active, retainedReply: "*Ada waves.* Hello!" }),
+  /roleplay action/,
+);
+assert.equal(calls, beforeRetainedReply, "A retained invalid reply is rejected without a model call");
+narrationReply = "I'd like to stay friends.";
+calls = beforeInvalidReply;
 const initialCalls = calls,
   initialPrompts = promptHistory.length;
 await service.handler.generate(active);
@@ -258,8 +392,26 @@ failMeaning = true;
 active = queued.at(-1).input;
 await assert.rejects(() => service.handler.generate(active), /Meaning provider unavailable/);
 assert.equal(social.mailDeliveries[active.messageId], undefined);
-await service.cancel(active.threadId, active.messageId);
-assert.equal(social.mailThreads[active.threadId]!.messages[0]!.status, "cancelled");
+await service.handler.afterFailure!(active);
+for (const status of ["queued", "running", "paused"]) {
+  backgroundStatuses = [{ id: "mail-job", kind: "personal-mail", subjectId: active.messageId, status, attempt: 1 }];
+  assert.equal((await service.readMailbox()).threads[0]!.messages[0]!.retryAvailable, false, status);
+  await assert.rejects(() => service.retry(active.threadId, active.messageId, "not-failed"), /already being processed/);
+}
+backgroundStatuses = [
+  { id: "mail-job", kind: "personal-mail", subjectId: active.messageId, status: "failed", attempt: 1 },
+];
+assert.equal((await service.readMailbox()).threads[0]!.messages[0]!.retryAvailable, true);
+await service.retry(active.threadId, active.messageId, "failed-retry");
+assert.deepEqual(retries, ["mail-job"]);
+assert.equal(
+  (await service.readMailbox()).threads[0]!.messages[0]!.retryAvailable,
+  false,
+  "Retry is hidden while work runs",
+);
+backgroundStatuses = [];
+await assert.rejects(() => service.retry(active.threadId, active.messageId, "not-failed"), /no failed processing/);
+resetFixtureWork(active);
 failMeaning = false;
 await service.send({ residentId: "ada", requestId: "two", text: "Can we be friends?" });
 failReplyWrite = true;
@@ -290,21 +442,68 @@ assert.equal(
   "Unread mail has not added notebook knowledge",
 );
 failMemoryWrite = true;
-await assert.rejects(() => service.readThread(active.threadId), /Memory publication unavailable/);
+await assert.rejects(
+  () => service.readLetter(active.threadId, active.messageId + ":reply"),
+  /Memory publication unavailable/,
+);
 assert.equal(
   social.mailThreads[active.threadId]!.messages.find((m) => m.id === active.messageId + ":reply")!.readAt,
   undefined,
   "A lost Memory write never marks mail read",
 );
-await service.readThread(active.threadId);
-await service.readThread(active.threadId);
+await service.readLetter(active.threadId, active.messageId + ":reply");
+await service.readLetter(active.threadId, active.messageId + ":reply");
 assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 1);
 assert.equal(calls, beforeRetryCalls, "Reading and polling buy no model calls");
-await assert.rejects(() => service.cancel(active.threadId, active.messageId), /already been delivered/);
 await assert.rejects(
   () => service.send({ residentId: "ada", requestId: "two", text: "Changed source" }),
   /different message/,
 );
+
+// A first incoming letter retains its replay control when its thread write fails.
+village.villagers.push({
+  characterId: "bea",
+  cardSnapshot: { name: "Bea", capturedAt: "bea-card" },
+  wishes: [],
+} as any);
+const firstIncoming = service.automaticOutbox(
+  await snapshot(),
+  social,
+  { senderId: "bea", text: "Hello from Bea.", relationshipReview: emptyRelationshipReview() },
+  "first-incoming",
+  new Date().toISOString(),
+);
+assert.throws(
+  () =>
+    service.automaticOutbox(
+      village,
+      social,
+      { senderId: "bea", text: "Hi! *Bea smiles.*", relationshipReview: emptyRelationshipReview() },
+      "bad-incoming",
+      new Date().toISOString(),
+    ),
+  /roleplay action/,
+);
+village.socialMailOutbox = [firstIncoming];
+failFirstIncoming = true;
+await service.processOutbox(await snapshot());
+assert.equal(social.mailThreads["personal:bea"], undefined);
+assert((await service.readMailbox()).recovery?.some((row) => row.messageId === firstIncoming.id));
+await service.retry(firstIncoming.input.threadId, firstIncoming.id, "replay-first-incoming");
+assert(social.mailDeliveries[firstIncoming.id]);
+assert.equal(village.socialMailOutbox?.length, 0);
+const oldAutomatic = service.automaticOutbox(
+  await snapshot(),
+  social,
+  { senderId: "bea", text: "Hello.", relationshipReview: emptyRelationshipReview() },
+  "old-action",
+  new Date().toISOString(),
+);
+oldAutomatic.input.sourceText = "Hello. *Bea smiles.*";
+village.socialMailOutbox = [oldAutomatic];
+await service.processOutbox(await snapshot());
+assert.equal(village.socialMailOutbox?.length, 0, "An unseen malformed saved automatic letter is retired locally");
+assert.equal(social.mailDeliveries[oldAutomatic.id], undefined);
 
 // Automatic mail is a single already interpreted source. Delivery creates no automatic reply chain.
 const automatic = service.automaticOutbox(
@@ -334,8 +533,27 @@ assert.equal(
   false,
 );
 assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 1);
-await service.readThread("personal:ada");
+const anotherLetter = service.automaticOutbox(
+  await snapshot(),
+  social,
+  { senderId: "ada", text: "Another separate letter.", relationshipReview: emptyRelationshipReview() },
+  "another-opportunity",
+  new Date().toISOString(),
+);
+village.socialMailOutbox = [anotherLetter];
+await service.processOutbox(await snapshot());
+await service.readLetter("personal:ada", "opportunity:mail");
 assert.equal(village.memories.records.filter((r) => !!r.knowers.player).length, 2);
+assert.equal(
+  social.mailThreads["personal:ada"]!.messages.find((m) => m.id === "opportunity:mail")!.readAt !== undefined,
+  true,
+);
+assert.equal(
+  social.mailThreads["personal:ada"]!.messages.find((m) => m.id === "another-opportunity:mail")!.readAt,
+  undefined,
+  "Reading one letter leaves the other unread",
+);
+await assert.rejects(() => service.readLetter("personal:ada", "not-a-letter"), /unavailable/);
 await assert.rejects(() => service.send({ residentId: "ada", requestId: "two:reply", text: "Collision" }));
 await service.send({ residentId: "ada", requestId: "cleanup", text: "Keep the original source." });
 active = queued.at(-1).input;
@@ -357,7 +575,59 @@ active = queued.at(-1).input;
 sourceOnlyReply = true;
 await assert.rejects(() => service.handler.generate(active), /Every reply effect must cite/);
 sourceOnlyReply = false;
-await service.cancel(active.threadId, active.messageId);
+resetFixtureWork(active);
+
+await service.send({ residentId: "ada", requestId: "old-invalid", text: "My exact letter." });
+active = queued.at(-1).input;
+const oldInvalid = await service.handler.generate(active);
+oldInvalid.replyText = "Hello. *Ada smiles.*";
+service.handler.apply(village, active, oldInvalid, { retrying: false });
+await service.processOutbox(await snapshot());
+assert(village.socialMailOutbox?.[0]?.reinterpretRequired, "A saved malformed reply waits for explicit recovery");
+assert.equal(social.mailDeliveries[active.messageId + ":reply"], undefined);
+backgroundStatuses = [
+  { id: "prior-failed-job", kind: "personal-mail", subjectId: active.messageId, status: "failed", attempt: 1 },
+];
+const beforeReplacement = calls;
+await service.retry(active.threadId, active.messageId, "replace-old-reply");
+assert.equal(queued.at(-1).input.retainedReply, undefined, "Explicit recovery asks for a new written reply");
+assert.match(queued.at(-1).revision, /:mail-rewrite-/);
+assert.equal(calls, beforeReplacement, "Retry admission itself does not dispatch a model call");
+backgroundStatuses = [
+  { id: "replacement-failed-job", kind: "personal-mail", subjectId: active.messageId, status: "failed", attempt: 1 },
+];
+await service.retry(active.threadId, active.messageId, "retry-replacement");
+assert.equal(retries.at(-1), "replacement-failed-job", "A failed replacement retries its own job");
+assert.equal(
+  social.mailThreads[active.threadId]!.messages.find((message) => message.id === active.messageId)!.text,
+  "My exact letter.",
+);
+resetFixtureWork(active);
+
+const memoryBeforeInvalidRecovery = structuredClone(village.memories);
+const receiptsBeforeInvalidRecovery = structuredClone(village.memoryReceipts);
+await service.send({ residentId: "ada", requestId: "old-invalid-memory", text: "MEMORY: I collect amber fossils." });
+active = queued.at(-1).input;
+const invalidAfterSource = await service.handler.generate(active);
+service.handler.apply(village, active, invalidAfterSource, { retrying: false });
+failNativeWrite = "source";
+await service.processOutbox(await snapshot());
+assert(social.mailDeliveries[active.messageId], "The source was delivered before Memory failed");
+village.socialMailOutbox![0]!.result.replyText = "Hello. *Ada smiles.*";
+backgroundStatuses = [];
+const beforeMemoryRetryQueue = queued.length;
+failNativeWrite = "source";
+await assert.rejects(() => service.retry(active.threadId, active.messageId, "memory-recovery-fails"));
+assert.equal(queued.length, beforeMemoryRetryQueue, "A replacement cannot overwrite unsettled source Memory");
+await service.retry(active.threadId, active.messageId, "memory-recovery-succeeds");
+assert.equal(queued.length, beforeMemoryRetryQueue + 1);
+assert(
+  village.memories.records.some((row) => row.text.includes("amber fossils")),
+  "The delivered source's original Memory settles before replacement admission",
+);
+resetFixtureWork(active);
+village.memories = memoryBeforeInvalidRecovery;
+village.memoryReceipts = receiptsBeforeInvalidRecovery;
 
 const held = service.automaticOutbox(
   await snapshot(),
@@ -379,19 +649,35 @@ await service.processOutbox(await snapshot());
 const heldView = await service.readMailbox();
 assert.equal(heldView.recovery?.[0]?.messageId, "held:mail");
 assert.equal(heldView.recovery?.[0]?.reinterpretRequired, true);
-assert.equal(heldView.recovery?.[0]?.cancellable, false);
-await assert.rejects(() => service.cancel(held.input.threadId, held.id), /local recovery/);
 assert(
   !JSON.stringify(heldView).includes("A private proposal."),
   "Recovery never exposes an undelivered resident message",
 );
 const heldSource = social.mailThreads[held.input.threadId]!.messages.find((row) => row.id === held.id)!;
 const sourceFingerprint = heldSource.sourceHash;
-await service.retry(held.input.threadId, held.id, "fresh-meaning");
+const beforeClaimConflict = queued.length;
+const savedHeld = structuredClone(village.socialMailOutbox);
+conflictClaimId = held.id;
+await service.retry(held.input.threadId, held.id, "conflicted-claim");
+assert.equal(queued.length, beforeClaimConflict, "A lost CAS claim cannot dispatch a model request");
+village.socialMailOutbox = savedHeld;
+const queueBeforeReinterpret = queued.length;
+await Promise.all([
+  service.retry(held.input.threadId, held.id, "fresh-meaning"),
+  service.retry(held.input.threadId, held.id, "another-attempt"),
+]);
+assert.equal(queued.length, queueBeforeReinterpret + 1, "Concurrent retries share one generation identity");
 assert.equal(queued.at(-1).input.sourceHash, sourceFingerprint);
 assert.equal(queued.at(-1).input.retainedReply, "", "Resident-source retry never starts a reply chain");
+village.villagers[0]!.cardSnapshot.capturedAt = "card-2";
+const retiredHeld = await service.readMailbox();
+assert(
+  !retiredHeld.recovery?.some((row) => row.messageId === held.id),
+  "A stale failed incoming letter retires without a retry",
+);
+assert.equal(social.mailDeliveries[held.id], undefined);
 
-// A card change before delivery remains private and can be discarded without applying effects.
+// A changed correspondent cannot deliver an unseen incoming letter.
 const obsolete = service.automaticOutbox(
   await snapshot(),
   social,
@@ -400,24 +686,107 @@ const obsolete = service.automaticOutbox(
   new Date().toISOString(),
 );
 village.socialMailOutbox = [obsolete];
-village.villagers[0]!.cardSnapshot.capturedAt = "card-2";
+village.villagers[0]!.cardSnapshot.capturedAt = "card-3";
 await service.processOutbox(await snapshot());
 const obsoleteView = await service.readMailbox();
-assert.equal(obsoleteView.recovery?.[0]?.cancellable, true);
+assert.equal(obsoleteView.recovery?.length, 0);
 assert(!JSON.stringify(obsoleteView).includes("Obsolete private message."));
-const beforeDiscardCalls = calls;
-failCleanup = true;
-await assert.rejects(() => service.cancel(obsolete.input.threadId, obsolete.id), /Final cleanup/);
-assert.equal(social.mailThreads[obsolete.input.threadId]!.messages.at(-1)!.status, "cancelled");
-await service.cancel(obsolete.input.threadId, obsolete.id);
-assert.equal(village.socialMailOutbox?.length, 0);
-// Even an already running job's late saved result cannot revive the cancelled source.
-village.socialMailOutbox = [{ ...obsolete, error: undefined }];
-await service.processOutbox(await snapshot());
 assert.equal(village.socialMailOutbox?.length, 0);
 assert.equal(social.mailDeliveries[obsolete.id], undefined);
-assert.equal(calls, beforeDiscardCalls);
+assert.equal(
+  social.mailThreads[obsolete.input.threadId]!.messages.find((message) => message.id === obsolete.id)!.status,
+  "cancelled",
+);
+resetFixtureWork(obsolete.input);
+const casIncoming = service.automaticOutbox(
+  await snapshot(),
+  social,
+  { senderId: "ada", text: "A letter with a concurrent receipt.", relationshipReview: emptyRelationshipReview() },
+  "cas-incoming",
+  new Date().toISOString(),
+);
+village.socialMailOutbox = [casIncoming];
+village.villagers[0]!.cardSnapshot.capturedAt = "card-after-cas";
+conflictRetirementId = casIncoming.id;
+await service.processOutbox(await snapshot());
+assert(social.mailDeliveries[casIncoming.id], "The concurrent delivery receipt is retained");
+assert(
+  village.socialMailOutbox?.some((row) => row.id === casIncoming.id),
+  "A lost retirement CAS cannot discard saved work",
+);
+await service.readMailbox();
+assert.equal(village.socialMailOutbox?.length, 0, "Delivered work can finish local recovery afterwards");
 // Keep truncation independent of the deliberately retained applying source above.
+social = defaultRelationshipState(village.seed);
+social.reviewedActorIds = ["ada"];
+await service.send({ residentId: "ada", requestId: "changed-card", text: "Keep my sent words." });
+active = queued.at(-1).input;
+const oldCardResult = await service.handler.generate(active);
+service.handler.apply(village, active, oldCardResult, { retrying: false });
+village.villagers[0]!.cardSnapshot.capturedAt = "card-4";
+await service.processOutbox(await snapshot());
+let terminal = (await service.readMailbox()).threads[0]!.messages.find((row) => row.id === active.messageId)!;
+assert.equal(terminal.status, "undeliverable");
+assert.equal(terminal.text, "Keep my sent words.");
+assert.equal(terminal.retryAvailable, false);
+backgroundStatuses = [
+  { id: "stale-failed", kind: "personal-mail", subjectId: active.messageId, status: "failed", attempt: 1 },
+];
+assert.equal(
+  (await service.readMailbox()).threads[0]!.messages.find((row) => row.id === active.messageId)!.retryAvailable,
+  false,
+);
+await assert.rejects(() => service.retry(active.threadId, active.messageId, "stale-retry"), /no longer be delivered/);
+backgroundStatuses = [];
+assert.equal(village.socialMailOutbox?.length, 0);
+await service.send({ residentId: "ada", requestId: "new-card", text: "A new letter." });
+resetFixtureWork(queued.at(-1).input);
+await service.send({ residentId: "ada", requestId: "partial-card", text: "Already delivered." });
+failReplyWrite = true;
+await generateAndSave();
+const partial = active;
+const partialReceipt = structuredClone(social.mailDeliveries[partial.messageId]);
+village.villagers[0]!.cardSnapshot.capturedAt = "card-5";
+backgroundStatuses = [
+  { id: "stale-partial", kind: "personal-mail", subjectId: partial.messageId, status: "failed", attempt: 1 },
+];
+terminal = (await service.readMailbox()).threads[0]!.messages.find((row) => row.id === partial.messageId)!;
+assert.deepEqual(
+  social.mailDeliveries[partial.messageId],
+  partialReceipt,
+  "An already delivered source keeps its receipt",
+);
+assert.equal(terminal.replyPending, false);
+assert.equal(terminal.retryAvailable, false);
+await assert.rejects(
+  () => service.retry(partial.threadId, partial.messageId, "partial-recovery"),
+  /no longer be delivered/,
+);
+backgroundStatuses = [];
+assert.equal(village.socialMailOutbox?.length, 0);
+await service.send({ residentId: "ada", requestId: "after-partial", text: "Another letter." });
+resetFixtureWork(queued.at(-1).input);
+await service.send({ residentId: "ada", requestId: "reply-race", text: "Keep my delivered letter." });
+changeBeforeReply = true;
+await generateAndSave();
+assert(social.mailDeliveries[active.messageId], "A delivered source keeps its receipt during reply retirement");
+assert.equal(
+  social.mailDeliveries[active.messageId + ":reply"],
+  undefined,
+  "A changed correspondent cannot deliver a late reply",
+);
+assert.equal(village.socialMailOutbox?.length, 0);
+await service.send({ residentId: "ada", requestId: "authority-fence", text: "One more letter." });
+const releaseCompeting = Promise.withResolvers<void>();
+const concurrentChange = releaseCompeting.promise.then(() =>
+  authorityGate.withAuthorityLock!(async () => {
+    village.villagers[0]!.cardSnapshot.capturedAt = "card-after-reply";
+  }),
+);
+competeAtReply = () => releaseCompeting.resolve();
+await generateAndSave();
+await concurrentChange;
+assert(social.mailDeliveries[active.messageId + ":reply"], "The reply committed before the competing resident update");
 social = defaultRelationshipState(village.seed);
 social.reviewedActorIds = ["ada"];
 await service.send({ residentId: "ada", requestId: "output-limit", text: "Please read this." });
@@ -426,7 +795,7 @@ truncateMeaning = true;
 await assert.rejects(() => service.handler.generate(active), /4,096 output-token limit \(4,096 reasoning tokens\)/);
 assert.equal(social.mailDeliveries[active.messageId], undefined);
 truncateMeaning = false;
-await service.cancel(active.threadId, active.messageId);
+resetFixtureWork(active);
 const home = {
   id: "ada-home",
   name: "Ada's home",
@@ -440,171 +809,55 @@ const home = {
 } as any;
 initializeVenueAccess(home);
 village.venues = [home];
-const offer = (id: string, visitAccess?: { accompanied: boolean; outsideHours: boolean }) => {
-  social.mailDeliveries[id] = { messageId: id, at: new Date().toISOString(), sourceHash: "source:" + id };
-  social.invitations[id] = {
-    id,
-    threadId: "personal:ada",
-    messageId: id,
-    proposerId: "ada",
-    participantIds: ["ada", "player"],
-    revision: 1,
-    terms: {
-      title: "A visit",
-      detail: "Come over for tea",
-      venueId: home.id,
-      zoneId: "living",
-      ...(visitAccess ? { visitAccess } : {}),
-    },
-    status: "proposed",
-  };
-};
-offer("meeting-only");
-await service.respond("meeting-only", { expectedRevision: 1, accepted: true });
-assert.equal(village.venues[0]!.access!.permissions.length, 0, "An old or general meeting invitation grants no access");
-offer("hosted-visit", { accompanied: false, outsideHours: false });
-failInvitationWrite = true;
-await assert.rejects(service.respond("hosted-visit", { expectedRevision: 1, accepted: true }), /permission storage/);
-assert.equal(
-  social.invitations["hosted-visit"]!.status,
-  "accepted",
-  "The exact player decision survives a permission storage failure",
-);
-assert.equal(village.venues[0]!.access!.permissions.length, 0);
-const beforeAccessRecovery = calls;
-assert.equal(
-  (await service.readMailbox()).invitations.find((row) => row.id === "hosted-visit")?.accessRecovery?.expectedRevision,
-  1,
-  "A refreshed Mailbox exposes local access recovery",
-);
-await service.respond("hosted-visit", { expectedRevision: 1, accepted: true });
-await service.respond("hosted-visit", { expectedRevision: 1, accepted: true });
-let currentHome = village.venues[0]!;
-assert.equal(currentHome.access!.permissions.length, 1);
-const permission = currentHome.access!.permissions[0]!;
-assert.equal(permission.duration, "visit");
-assert.deepEqual(permission.sourceLineIds, ["hosted-visit", "hosted-visit:accept"]);
-assert.equal(
-  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", { sceneId: "one", accepting: true }).allowed,
-  true,
-);
-claimVisitPermission(currentHome, permission.id, "one");
-assert.equal(
-  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", { sceneId: "two", accepting: true }).allowed,
-  false,
-);
-permission.revoked = true;
-await service.respond("hosted-visit", { expectedRevision: 1, accepted: true });
-assert.equal(
-  village.venues[0]!.access!.permissions[0]!.revoked,
-  true,
-  "Replaying acceptance cannot revive revoked access",
-);
-offer("escorted-visit", { accompanied: true, outsideHours: false });
-await service.respond("escorted-visit", { expectedRevision: 1, accepted: true });
-currentHome = village.venues[0]!;
-assert.equal(
-  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", { sceneId: "two", accepting: true }).reason,
-  "accompaniment-required",
-);
-currentHome.access!.visitorHours = [{ days: ["Monday"], start: "09:00", end: "17:00" }];
-assert.equal(
-  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", {
-    at: new Date("2026-10-25T00:00:00Z"),
-    sceneId: "two",
-    accepting: true,
-  }).reason,
-  "outside-hours",
-);
-currentHome.access!.visitorHours = null;
-currentHome.access!.bans.push({
-  id: "ban",
-  zoneId: "living",
+await service.send({ residentId: "ada", requestId: "no-mail-access", text: "Come into my room." });
+active = queued.at(-1).input;
+const saved = await service.handler.generate(active);
+saved.source.permissions.push({
+  id: "unexpected-permission",
+  controllerId: "ada",
   visitorId: "player",
-  issuerId: "ada",
-  active: true,
-  issuedAt: new Date().toISOString(),
-  sourceLineIds: [],
-});
-assert.equal(
-  evaluateZoneAccess(currentHome, currentHome.zones![0]!, "player", {
-    sceneId: "two",
-    accepting: true,
-    positions: { ada: "living" },
-  }).reason,
-  "banned",
-);
-offer("lost-authority", { accompanied: false, outsideHours: false });
-currentHome.zones![0]!.access!.managerIds = ["player"];
-currentHome.zones![0]!.access!.memberRoles = [];
-await service.respond("lost-authority", { expectedRevision: 1, accepted: true });
-assert.equal(village.venues[0]!.access!.permissions.length, 2);
-assert.equal(village.venues[0]!.access!.receipts["lost-authority:accept:visit"]?.outcome, "rejected");
-village.venues[0]!.zones![0]!.access!.managerIds = ["ada"];
-await service.respond("lost-authority", { expectedRevision: 1, accepted: true });
-assert.equal(
-  village.venues[0]!.access!.permissions.length,
-  2,
-  "Restored authority cannot revive a rejected invitation",
-);
-for (const status of ["cancelled", "fulfilled"] as const) {
-  offer(status, { accompanied: false, outsideHours: false });
-  failInvitationWrite = true;
-  await assert.rejects(service.respond(status, { expectedRevision: 1, accepted: true }), /permission storage/);
-  social.sharedRecords[status]!.status = status;
-  await service.respond(status, { expectedRevision: 1, accepted: true });
-  assert.equal(village.venues[0]!.access!.receipts[status + ":accept:visit"]?.outcome, "rejected");
-  social.sharedRecords[status]!.status = "accepted";
-  await service.respond(status, { expectedRevision: 1, accepted: true });
-  assert.equal(village.venues[0]!.access!.permissions.length, 2, "An inactive commitment cannot later recreate access");
-}
-offer("changed-policy", { accompanied: false, outsideHours: false });
-failInvitationWrite = true;
-await assert.rejects(service.respond("changed-policy", { expectedRevision: 1, accepted: true }), /permission storage/);
-village.venues[0]!.access!.changes.push({
-  id: "later-policy",
-  revision: 3,
-  actorId: "ada",
+  venueId: home.id,
   zoneId: "living",
-  action: "zone-policy",
-  at: new Date(Date.now() + 1000).toISOString(),
-  sourceLineIds: [],
+  action: "grant",
+  lineIds: [active.messageId],
 });
-await service.respond("changed-policy", { expectedRevision: 1, accepted: true });
-assert.equal(village.venues[0]!.access!.receipts["changed-policy:accept:visit"]?.outcome, "rejected");
-assert.equal(
-  village.venues[0]!.access!.permissions.length,
-  2,
-  "Later policy changes fence delayed access even when current host authority is restored",
-);
-assert.equal(calls, beforeAccessRecovery, "Invitation acceptance and recovery dispatch no model requests");
+const terms = {
+  id: "unexpected-commitment",
+  revision: 1,
+  kind: "commitment",
+  text: "Meet tomorrow",
+  participants: ["ada", "player"],
+  status: "accepted",
+  evidenceIds: [active.messageId],
+} as const;
+saved.source.changes[0]!.sceneAfter.records.push(terms as any);
+saved.source.changes[0]!.liveAfter.records.push(terms as any);
+service.handler.apply(village, active, saved, { retrying: false });
+await service.processOutbox(await snapshot());
+assert.equal(village.venues[0]!.access!.permissions.length, 0, "Retained mail cannot grant access");
+assert.equal(social.sharedRecords[terms.id], undefined, "Retained mail cannot create a commitment");
+const afterFenceCalls = calls;
 await service.send({ residentId: "ada", requestId: "obsolete-source", text: "Please try again." });
 const obsoleteInput = queued.at(-1).input as SocialMailInput;
 backgroundStatuses = [
   { id: "obsolete-job", kind: "personal-mail", subjectId: obsoleteInput.messageId, status: "obsolete", attempt: 1 },
 ];
-await service.retry(obsoleteInput.threadId, obsoleteInput.messageId, "new-admission");
 assert.equal(
-  queued.at(-1).revision,
-  obsoleteInput.sourceHash + ":new-admission",
-  "Deliberate recovery admits an obsolete pending source under a new revision",
+  (await service.readMailbox()).threads[0]!.messages.find((row) => row.id === obsoleteInput.messageId)!.retryAvailable,
+  false,
 );
-assert.equal(
-  queued.at(-1).input.sourceText,
-  obsoleteInput.sourceText,
-  "Re-admission preserves the exact unsent source",
+await assert.rejects(
+  () => service.retry(obsoleteInput.threadId, obsoleteInput.messageId, "new-admission"),
+  /no failed processing/,
 );
-assert.equal(calls, beforeAccessRecovery, "Re-admission only queues deliberate work");
-await service.cancel(obsoleteInput.threadId, obsoleteInput.messageId);
+assert.equal(calls, afterFenceCalls, "Obsolete work cannot dispatch a new request");
+resetFixtureWork(obsoleteInput);
 await service.send({ residentId: "ada", requestId: "native-learning", text: "MEMORY: I collect amber fossils." });
 failNativeWrite = "source";
 await generateAndSave();
 const nativeSource = active;
 const recovery = (await service.readMailbox()).recovery!.find((r) => r.messageId === nativeSource.messageId)!;
-assert(
-  recovery && !recovery.cancellable && !recovery.reinterpretRequired,
-  "Delivered-source Memory failures expose local replay",
-);
+assert(recovery && !recovery.reinterpretRequired, "Delivered-source Memory failures expose local replay");
 assert(social.mailDeliveries[nativeSource.messageId]);
 const paidBeforeReplay = calls;
 failNativeWrite = "reply";
@@ -651,14 +904,32 @@ forgetVillageMemory(
   new Date().toISOString(),
 );
 assert(frozen.narrationMemories!.includes("silver fossils"), "An admitted request retains its frozen recall on replay");
-await service.cancel(frozen.threadId, frozen.messageId);
+resetFixtureWork(frozen);
 await service.send({
   residentId: "ada",
   requestId: "native-forgotten",
   text: "What do you remember about my fossils?",
 });
 assert(!queued.at(-1).input.narrationMemories.includes("silver fossils"));
-await service.cancel(queued.at(-1).input.threadId, queued.at(-1).input.messageId);
+resetFixtureWork(queued.at(-1).input);
+await service.send({ residentId: "ada", requestId: "delivered-memory", text: "MEMORY: I collect amber fossils." });
+failNativeWrite = "reply";
+await generateAndSave();
+const completeSource = active;
+const completeReceipts = structuredClone([
+  social.mailDeliveries[completeSource.messageId],
+  social.mailDeliveries[completeSource.messageId + ":reply"],
+]);
+assert(village.socialMailOutbox?.[0]?.error, "A delivered reply can retain failed optional learning");
+const callsBeforeLocalRecovery = calls;
+village.villagers[0]!.cardSnapshot.capturedAt = "new-after-delivery";
+await service.readMailbox();
+assert.deepEqual(
+  [social.mailDeliveries[completeSource.messageId], social.mailDeliveries[completeSource.messageId + ":reply"]],
+  completeReceipts,
+);
+assert.equal(village.socialMailOutbox?.length, 0);
+assert.equal(calls, callsBeforeLocalRecovery, "A changed correspondent only replays local optional learning");
 const messageText = "I remember the hidden observatory.";
 const capturedMemory = sceneMemoryContext(village, ["ada"], messageText);
 const obsoleteNative = service.automaticOutbox(
@@ -693,7 +964,7 @@ await service.processOutbox(await snapshot());
 assert(social.mailDeliveries[obsoleteNative.id]);
 const deliveredOnce = structuredClone(social.mailDeliveries[obsoleteNative.id]);
 village.villagers[0]!.cardSnapshot.capturedAt = "replacement";
-await service.retry(obsoleteNative.input.threadId, obsoleteNative.id, "obsolete-native-local");
+await service.readMailbox();
 assert.deepEqual(social.mailDeliveries[obsoleteNative.id], deliveredOnce);
 assert(!village.memories.records.some((row) => row.text === "OLD INCARNATION ONLY"));
 assert(
@@ -701,6 +972,9 @@ assert(
   "A replaced correspondent rejects optional old learning locally",
 );
 assert.equal(village.socialMailOutbox!.length, 0, "Obsolete learning does not permanently block resident activity");
+console.log(
+  "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
+);
 
 // Reading after delivery but before Wish facts attach must converge without another model call.
 for (const failPublication of [false, true]) {
@@ -736,7 +1010,7 @@ for (const failPublication of [false, true]) {
       afterSocialCommit = onDelivered;
       return;
     }
-    reading = service.readThread(entry.input.threadId);
+    reading = service.readLetter(entry.input.threadId, entry.id);
     for (
       let i = 0;
       i < 30 && !social.mailThreads[entry.input.threadId].messages.find((m) => m.id === entry.id)?.readAt;
@@ -768,7 +1042,3 @@ for (const failPublication of [false, true]) {
   assert.equal(village.socialMailOutbox?.length, 0);
   assert.equal(calls, before, "Publication and recovery are provider-free");
 }
-
-console.log(
-  "Personal mail: exact outbox, failed delivery, failed reply, local replay, read privacy and automatic delivery passed.",
-);

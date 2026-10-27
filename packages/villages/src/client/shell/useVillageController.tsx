@@ -1,4 +1,3 @@
-import { useSaveBackgroundPace } from "../features/settings/actions.js";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
@@ -138,6 +137,7 @@ import { useSceneRecord } from "../features/scenes/useSceneRecord.js";
 import { useScenesState } from "../features/scenes/useScenesState.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
 import {
+  useSaveBackgroundPace,
   useSaveCharacterSpeechColors,
   useSaveScenerySettings,
   useSaveSendOnEnter,
@@ -972,7 +972,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const backgroundPanel = (
     <BackgroundWorkPanel
       jobs={(snapshot?.backgroundWork ?? []).filter((job) =>
-        menuPage === "venueRequests" ? ["mail", "adaptation"].includes(job.kind) : true,
+        menuPage === "venueRequests" ? job.kind === "adaptation" : true,
       )}
       onRetry={retryWork}
     />
