@@ -223,6 +223,23 @@ try {
         ),
       ]);
     const beforeCamera = await camera();
+    assert.deepEqual(
+      await page.evaluate(() =>
+        [".marinara-capability-villages-dossier-root", ".marinara-capability-villages-dossier-content"].map(
+          (selector) => {
+            const node = document.querySelector(selector);
+            node.scrollTop = 100;
+            node.scrollLeft = 100;
+            return [node.scrollTop, node.scrollLeft];
+          },
+        ),
+      ),
+      [
+        [0, 0],
+        [0, 0],
+      ],
+      "Wish notebook cannot retain hidden scroll offsets that move its controls",
+    );
     await openWish.press("Enter");
     const details = profile.getByRole("region", { name: "Wish details", exact: true });
     await expect(details).toBeFocused();

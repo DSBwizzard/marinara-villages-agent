@@ -1,6 +1,6 @@
 export const WISH_JOURNAL_STYLES = `
-.marinara-capability-villages-dossier-root:has(.villages-wish-browser){overflow:hidden}
-.marinara-capability-villages-dossier-content:has(.villages-wish-browser){display:block;overflow:hidden;height:100%;padding:16px 24px}
+.marinara-capability-villages-dossier-root:has(.villages-wish-browser){overflow:clip}
+.marinara-capability-villages-dossier-content:has(.villages-wish-browser){display:block;overflow:clip;height:100%;padding:16px 24px}
 .villages-wish-browser{grid-column:1/-1;min-width:0;min-height:0;height:100%;container-type:inline-size;display:flex;flex-direction:column}
 .villages-wish-layout{min-width:0;min-height:0;flex:1;display:grid;grid-template-rows:minmax(0,1fr);gap:24px;align-items:stretch}
 .villages-wish-list{min-width:0;min-height:0;display:grid;grid-template-rows:auto minmax(0,1fr) 44px;gap:10px}
