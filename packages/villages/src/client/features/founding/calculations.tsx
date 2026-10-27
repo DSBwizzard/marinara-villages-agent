@@ -1,6 +1,7 @@
 import { residentAdmissionProblems } from "../../../shared/helpers/resident-admission.js";
 import { placeSpot } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin } from "../../shared/types.js";
+import { simpleFoundingMap } from "./simple-map.js";
 
 export function calculateResidentContextProblem(ports: {
   selectedResidentAdmissions: {
@@ -140,9 +141,11 @@ export function calculateSetupMapShape(ports: {
   return snapshot
     ? setupMapSource === "existing"
       ? { width: snapshot.settings.townMapExpectedWidth, height: snapshot.settings.townMapExpectedHeight }
-      : setupMapSize && setupMapImageSource === setupMapSource
-        ? setupMapSize
-        : { width: snapshot.settings.townMapGenerationWidth, height: snapshot.settings.townMapGenerationHeight }
+      : setupMapSource === "simple"
+        ? { width: 1536, height: 1024 }
+        : setupMapSize && setupMapImageSource === setupMapSource
+          ? setupMapSize
+          : { width: snapshot.settings.townMapGenerationWidth, height: snapshot.settings.townMapGenerationHeight }
     : null;
 }
 export function calculateSetupMapSrc(ports: {
@@ -154,9 +157,11 @@ export function calculateSetupMapSrc(ports: {
   const { setupMapImage, setupMapImageSource, setupMapSource, townMapImage } = ports;
   return setupMapSource === "existing"
     ? townMapImage || null
-    : setupMapImageSource === setupMapSource
-      ? setupMapImage || null
-      : null;
+    : setupMapSource === "simple"
+      ? simpleFoundingMap()
+      : setupMapImageSource === setupMapSource
+        ? setupMapImage || null
+        : null;
 }
 export function calculatePlaceCount(ports: {
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;

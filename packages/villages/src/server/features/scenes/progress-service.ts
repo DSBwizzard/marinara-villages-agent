@@ -13,6 +13,9 @@ export interface SceneReplayEffects {
   receiptForTurn(scene: VenueScene, turn: VenueSubmission, persist?: boolean): Promise<VenueRecordEvent[]>;
 }
 export interface SceneProgressPorts {
+  withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
+  onSettled?(id: string): void;
+  onRecoveryFinished?(): void;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   processProjectSpeechTurn: typeof import("../projects/project-evidence.js").processProjectSpeechTurn;
@@ -34,6 +37,9 @@ export interface SceneProgressPorts {
 }
 /** Inert saved-exchange replay and startup batching with explicit originating connections. */
 export function createSceneProgress({
+  withSceneWork,
+  onSettled,
+  onRecoveryFinished,
   readVillageState,
   readSession,
   processProjectSpeechTurn,
@@ -55,6 +61,11 @@ export function createSceneProgress({
 }: SceneProgressPorts) {
   /** The Scene document is the outbox. Village receipts are idempotent if the second write is interrupted. */
   async function processSavedProgressSubmission(sessionId: string, submissionId: string): Promise<void> {
+    const work = () => applySavedProgressSubmission(sessionId, submissionId);
+    await (withSceneWork ? withSceneWork(sessionId, work) : work());
+    onSettled?.(sessionId);
+  }
+  async function applySavedProgressSubmission(sessionId: string, submissionId: string): Promise<void> {
     const village = await readVillageState();
 
     const session = await readSession(sessionId);
@@ -134,6 +145,11 @@ export function createSceneProgress({
 
   /** Replay only saved interpretations. Effects and duplicate receipts remain in their owning documents. */
   async function processSavedExchange(sessionId: string, submissionId: string): Promise<void> {
+    const work = () => processSavedExchangeOnce(sessionId, submissionId);
+    await (withSceneWork ? withSceneWork(sessionId, work) : work());
+    onSettled?.(sessionId);
+  }
+  async function processSavedExchangeOnce(sessionId: string, submissionId: string): Promise<void> {
     await measurePipeline("saved exchange", { sceneId: sessionId, submissionId }, () =>
       applySavedExchange(sessionId, submissionId),
     );
@@ -302,8 +318,10 @@ export function createSceneProgress({
             }
           }
           if (!stopped && queue.length) timer = setTimeout(() => void batch(), 25);
+          else if (!stopped) onRecoveryFinished?.();
         };
         if (!stopped && queue.length) timer = setTimeout(() => void batch(), 0);
+        else if (!stopped) onRecoveryFinished?.();
       } catch (error) {
         if (!stopped) villagesLogger().warn("[villages] progress recovery could not read visits: %s", String(error));
       }

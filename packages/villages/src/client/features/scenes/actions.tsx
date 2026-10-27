@@ -101,60 +101,6 @@ export function useDismissRoomNotice(ports: {
   );
 }
 
-export function useOpenVisit(ports: {
-  setArchiveError: React.Dispatch<SetStateAction<string>>;
-  setOpenArchivedVisit: React.Dispatch<SetStateAction<SceneView>>;
-}) {
-  const { setArchiveError, setOpenArchivedVisit } = ports;
-  return useCallback(
-    async (id: string) => {
-      try {
-        const response = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(id)}`);
-        setOpenArchivedVisit(response.visit);
-        setArchiveError("");
-      } catch (cause) {
-        setArchiveError(messageFrom(cause, "That Scene could not be read."));
-      }
-    },
-    [setArchiveError, setOpenArchivedVisit],
-  );
-}
-
-export function useDeleteArchivedVisits(ports: {
-  setArchiveError: React.Dispatch<SetStateAction<string>>;
-  setArchiveOffset: React.Dispatch<SetStateAction<number>>;
-  setArchiveVersion: React.Dispatch<SetStateAction<number>>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setOpenArchivedVisit: React.Dispatch<SetStateAction<SceneView>>;
-}) {
-  const { setArchiveError, setArchiveOffset, setArchiveVersion, setBusy, setOpenArchivedVisit } = ports;
-  return useCallback(
-    async (id?: string) => {
-      if (
-        !window.confirm(
-          id
-            ? "Delete this exact Scene transcript? Filed memories and world changes remain."
-            : "Delete all completed Scene transcripts? Filed memories and world changes remain.",
-        )
-      )
-        return;
-      setBusy(true);
-      try {
-        await request(id ? `/rooms/archive/${encodeURIComponent(id)}` : "/rooms/archive", { method: "DELETE" });
-        setOpenArchivedVisit(null);
-        setArchiveOffset(0);
-        setArchiveVersion((version) => version + 1);
-        setArchiveError("");
-      } catch (cause) {
-        setArchiveError(messageFrom(cause, "Scene transcripts could not be deleted."));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [setArchiveError, setArchiveOffset, setArchiveVersion, setBusy, setOpenArchivedVisit],
-  );
-}
-
 export function useCloseRoom(ports: {
   isFounded: boolean | undefined;
   onUnknownSceneExit?: () => void;
@@ -278,9 +224,7 @@ export function useCloseRoom(ports: {
         setRoomNotices([]);
         seenRoomEventIdsRef.current.clear();
         setLastSceneEnding(
-          staleReason === "inactivity"
-            ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
-            : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
+          staleReason === "inactivity" ? "Interrupted: Inactivity." : "This Scene ended while you were away.",
         );
         setScreen("home");
         void loadSnapshot();
@@ -288,6 +232,26 @@ export function useCloseRoom(ports: {
       }
       const authoritative = await refreshSceneAfterFailure(room.id, undefined, () => lifetime.owns(claim));
       if (!lifetime.owns(claim)) return;
+      if (!authoritative) {
+        const response = await request<{ operation: RoomOperation | null }>(
+          `/rooms/${encodeURIComponent(room.id)}/operations/close`,
+        ).catch(() => ({ operation: null }));
+        if (!lifetime.owns(claim)) return;
+        if (
+          response.operation?.terminal &&
+          response.operation.status === "complete" &&
+          response.operation.id === "close"
+        ) {
+          setRoom({ ...room, status: "closed" });
+          setRoomEnded(true);
+          receiveRoomRecordEvents(response.operation.recordEvents ?? []);
+          setRoomError("");
+          setEndFailed(false);
+          setRoomDraft("");
+          void loadSnapshot();
+          return;
+        }
+      }
       if (authoritative) {
         setRoom(currentRoom(authoritative));
         setRoomEnded(authoritative.status === "closed");
@@ -470,6 +434,18 @@ export function useLeaveRoom(ports: {
         held(operation.turnOutcome);
         return;
       }
+      if (operation?.id === submissionId && operation.terminal && operation.status === "complete") {
+        setRoom({ ...room, status: "closed" });
+        setRoomEnded(true);
+        receiveRoomRecordEvents(operation.recordEvents ?? []);
+        if (composerEditVersionRef.current === editVersion) setRoomDraft("");
+        setRoomError("The Scene ended. Your turn completed, but the reply text is no longer available.");
+        setEndFailed(false);
+        roomLeaveSubmissionIdRef.current = null;
+        claim.submission = null;
+        void loadSnapshot();
+        return;
+      }
       const recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
         ? latest
         : await completedRoomAfterFailure(room.id, submissionId, () => lifetime.owns(claim));
@@ -495,9 +471,7 @@ export function useLeaveRoom(ports: {
         setRoomNotices([]);
         seenRoomEventIdsRef.current.clear();
         setLastSceneEnding(
-          staleReason === "inactivity"
-            ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
-            : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
+          staleReason === "inactivity" ? "Interrupted: Inactivity." : "This Scene ended while you were away.",
         );
         setScreen("home");
         void loadSnapshot();
@@ -819,6 +793,8 @@ export function useSendRoom(ports: {
     submission: roomSubmissionIdRef,
     editVersion: composerEditVersionRef,
     setRoomRuling,
+    receiveRoomRecordEvents,
+    refreshSnapshot: () => void loadSnapshot({ quiet: true }),
   });
   const { pending: recoveryPending, begin: beginRecovery } = recovery;
   const sendRoom = useCallback(
@@ -877,9 +853,7 @@ export function useSendRoom(ports: {
           setRoomNotices([]);
           seenRoomEventIdsRef.current.clear();
           setLastSceneEnding(
-            staleReason === "inactivity"
-              ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
-              : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
+            staleReason === "inactivity" ? "Interrupted: Inactivity." : "This Scene ended while you were away.",
           );
           setScreen("home");
           void loadSnapshot();
@@ -1002,9 +976,7 @@ export function useSendRoom(ports: {
           setRoomNotices([]);
           seenRoomEventIdsRef.current.clear();
           setLastSceneEnding(
-            staleReason === "inactivity"
-              ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
-              : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
+            staleReason === "inactivity" ? "Interrupted: Inactivity." : "This Scene ended while you were away.",
           );
           setScreen("home");
           void loadSnapshot();

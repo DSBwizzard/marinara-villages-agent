@@ -55,7 +55,6 @@ state.villagers.push({
   addedAt: at,
   wishes: [],
 } as VillageVillager);
-state.noticeboard.push({ author: "Rosa", text: "Could we have somewhere to grow herbs?" });
 
 assert.deepEqual(readVenueRequestCore({ name: "", classes: ["community"] }), null);
 assert.deepEqual(readVenueRequestCore({ name: "Glasshouse", classes: ["unknown"] }), null);
@@ -159,8 +158,6 @@ assert.equal(persisted.pendingDecisions[0]?.venueDraft?.name, core.name);
 assert.equal(persisted.pendingDecisions[0]?.source, "background");
 assert.equal(persisted.pendingDecisions[0]?.requesterCharacterId, "rosa");
 const id = persisted.pendingDecisions[0]!.id;
-persisted.noticeboard.splice(0, 1);
-assert.equal(persisted.pendingDecisions[0]?.id, id, "removing a note does not dismiss its request");
 
 applyVillageVenueDecision(persisted, id, true, core, "A shared glasshouse for herbs.", new Date(at));
 assert.equal(persisted.pendingDecisions[0]?.status, "approved");

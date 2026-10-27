@@ -117,7 +117,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         ? options.operation
           ? "saved"
           : "recovery-operation"
-        : path.includes("/archive/")
+        : path.endsWith("/recovery")
           ? "archive"
           : path.endsWith("/operation")
             ? "preflight"
@@ -136,20 +136,37 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
                 },
               }
             : kind === "recovery-operation"
-              ? { operation: options.recovered ? { id: operationId, status: "complete", kind: "move" } : null }
+              ? {
+                  operation: options.retired
+                    ? {
+                        id: path.split("/").pop(),
+                        status: "complete",
+                        kind: "turn",
+                        terminal: true,
+                        recordEvents: [{ id: "terminal-event", kind: "project", text: "Saved" }],
+                      }
+                    : options.recovered
+                      ? { id: operationId, status: "complete", kind: "move" }
+                      : null,
+                }
               : kind === "active"
                 ? {
-                    session: options.archive
-                      ? null
-                      : scene(
-                          "A",
-                          options.recovered && !options.recoveredOnlyArchive ? operationId : null,
-                          options.closed,
-                          options.latestRevision ?? 2,
-                        ),
+                    session:
+                      options.archive || options.retired
+                        ? null
+                        : scene(
+                            "A",
+                            options.recovered && !options.recoveredOnlyArchive ? operationId : null,
+                            options.closed,
+                            options.latestRevision ?? 2,
+                          ),
                   }
                 : kind === "archive"
-                  ? { visit: scene("A", options.recovered ? operationId : null, options.closed) }
+                  ? {
+                      visit: options.retired
+                        ? null
+                        : scene("A", options.recovered ? operationId : null, options.closed),
+                    }
                   : {
                       session: scene(
                         body.sessionId,
@@ -243,6 +260,20 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   });
 
   async function verifyExitActions(strict, width) {
+    for (const action of ["close", "leave"]) {
+      const f = await mount(strict, width, { retired: true, fail: true });
+      try {
+        const index = await f.launch(action);
+        await f.settle(index);
+        const after = await f.snapshot();
+        assert.equal(after.state.ended, true);
+        assert.equal(after.received[0].id, "terminal-event");
+        assert.equal(after.loads, 1);
+        assert.equal(f.requests.filter((request) => request.method === "POST").length, 1);
+      } finally {
+        await f.close();
+      }
+    }
     for (const action of ["close", "leave", "retry"]) {
       const operation = action === "retry" ? savedOperation() : undefined;
       const hold = action === "close" ? "end" : action === "leave" ? "preflight" : "saved";

@@ -138,7 +138,7 @@ try {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         if (loseOperationRead) return fulfill(route, { status: 404, json: { error: "Operation unavailable" } });
         value = { operation: session.operation };
-      } else if (path.includes("/rooms/archive/")) {
+      } else if (/\/rooms\/[^/]+\/recovery$/.test(path)) {
         if (hideReads) return fulfill(route, { status: 503, json: { error: "Read unavailable" } });
         value = { visit: session };
       } else if (path.endsWith("/interpretation-settings")) {
@@ -476,6 +476,12 @@ try {
     await informationalRetryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
     await closeSceneErrors(page);
     const retryNext = page.getByRole("button", { name: "Next paragraph", exact: true });
+    await expect
+      .poll(
+        async () =>
+          (await retryNext.isEnabled()) || ((await composer.isVisible()) && (await composer.inputValue()) === ""),
+      )
+      .toBe(true);
     while (await retryNext.isEnabled()) await retryNext.click();
     await expect(composer).toHaveValue("");
     await expect(composer).toBeEnabled();

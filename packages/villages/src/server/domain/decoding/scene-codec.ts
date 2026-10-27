@@ -78,7 +78,7 @@ export function coerceSession(value: unknown): VenueScene {
   )
     throw conflict("The saved spinoff is malformed. Its ownership must be recovered before continuing.");
   if (raw.memoryMode && raw.memoryMode !== "live" && raw.status !== "closed")
-    throw conflict("This Scene uses a retired memory format; its transcript must be archived before continuing.");
+    throw conflict("This Scene uses a retired memory format and cannot continue.");
   const participants = Array.isArray(raw.participants)
     ? raw.participants
         .map((value) => {

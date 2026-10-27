@@ -24,7 +24,7 @@ The current package requires **Engine 2.5.0 or later, before 4.0.0**, plus its d
 
 Have a Persona and **one to three characters** ready in your Engine library. Your Persona represents you; the characters become the first residents. Villages keeps its own captured copies of their cards and does not rewrite your originals.
 
-Create or check your model connections in Engine before founding. In the founding screen's **Place** step, open the connection controls and choose:
+Create or check your model connections in Engine before founding. Choose them on the founding screen's **Place** step:
 
 | Connection    | What it does                                                              |
 | ------------- | ------------------------------------------------------------------------- |
@@ -34,7 +34,7 @@ Create or check your model connections in Engine before founding. In the foundin
 
 Choose a specific language connection for **both System and Narration** before continuing. You can use the same one for both. Later, change these choices in Villages' **General Settings**.
 
-An image connection is optional, but your Village needs map artwork. If Images is disabled, upload a map. Sprite analysis separately needs a vision-capable language connection, selected in its own editor.
+An image connection is optional. You can start with a simple map or upload one if Images is disabled. Sprite analysis separately needs a vision-capable language connection, selected in its own editor.
 
 **Requests may cost money.** Founding, Scene replies, artwork, and enabled resident activity use your configured providers. Model choice affects writing quality and reliability; a successful connection is not a guarantee that every response will be usable.
 
@@ -44,8 +44,8 @@ The setup steps are **Place → People → Map → Venues → Review**.
 
 1. **Place:** Name the Village and describe the location, world, and current situation. It can be an established place in good condition; you do not have to begin by rebuilding a ruin.
 2. **People:** Choose your Persona and one to three residents. Write **Your backstory** for your own situation. Optional **Homeworld** and **Add starting note** fields explain each resident's connection to the setting. The **Village world** label can help distinguish shared and different origins.
-3. **Map:** Upload artwork or deliberately generate it. The first map uses the Village's name. Describe the area actually shown, whether it is a building interior or a neighborhood.
-4. **Venues:** Prepare homes and the initial Community Venue. Give each place a physical form, an Exterior, and the spaces people will use. **Quick Start** can suggest Venues; review and edit those suggestions and their map placements.
+3. **Map:** Use the simple starting map, upload artwork, or deliberately generate it. The first map uses the Village's name. For generated artwork, describe the area actually shown, whether it is a building interior or a neighborhood.
+4. **Venues:** Review the automatically placed homes and Community Venue. Edit their physical forms, Zones, artwork, and placements yourself, or request optional suggestions. Residents' private interiors stay hidden until authorized entry.
 5. **Review:** Resolve the listed setup problems and found the Village. Preparation creates the needed interiors, resident routines, and initial Wish attempts. A resident having no initial Wish is a valid result.
 
 Map uploads need at least **768 pixels on the shorter side** and **1024 on the longer side**, with proportions between **2:3 and 2:1**. Generation requests an overhead map at 2560 × 1440; providers may return other dimensions.
@@ -96,6 +96,8 @@ If you see **HALT**, the proposed turn has not entered the story. Read the notic
 
 You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
 
+Once a Scene and its saved effects are settled, its transcript is removed. Relevant Project evidence and saved recovery work remain available where needed.
+
 A Scene keeps the time, attendance, and situation it began with. A morning conversation stays that morning conversation even if you return days later. Meanwhile, the wider Village follows real time. **Conclude** rejoins the current day without inventing activities for your Persona during the gap. A Scene cannot jump the Village into the future or complete days of work just because you waited between replies.
 
 ## Get to know the residents
@@ -108,7 +110,6 @@ Starting history honors the resident cards, your backstory, and selected lore. C
 
 **Mailbox** keeps personal correspondence as individual letters in Inbox and Sent. Opening one letter marks only that letter read. Sent letters remain in Sent; failure recovery is offered only when processing needs attention. Exact outgoing words are saved before generation. Reading and replaying saved processing make no model request. Each villager receives a randomly chosen letter style when they join. **Simple text** switches the letter body to a neutral font and is remembered on that browser or device; signatures stay visible. Missing characters fall back to a device font. Letters can influence relationships and memories, but do not grant access, create commitments, or perform actions. Failed processing retains recovery controls even when the original message was already delivered.
 
-The old Noticeboard is retired. Existing notes remain in saved Village data and snapshots, but are no longer displayed or editable in the game.
 
 Residents follow routines, and their availability changes through the day. Founding admits the chosen characters; accepted sprite copies and your original library cards stay separate.
 
@@ -122,7 +123,7 @@ The Memories page starts with your Persona and loads entries in batches. **Inspe
 
 Open **REPAIR** from the main menu. Choose **Memories**, **People**, **Places**, **World & history**, **Progress**, or **Backups & repairs**. **People** lists the villagers; choose someone to see their **Memories** or **Details**. Under **Details**, **letter style** previews and changes their font for existing and future letters. The style stays with that character if they leave and return. REPAIR is an administrative view: saved records, private memories, sources, history, and repair tools are available by default. Browsing does not teach your Persona or any villager anything.
 
-Edit a record, then use **Review changes** to check **Before / After** and **Affected records** before saving. **Modify** edits a memory's text. **Forget** shows the saved memory as read-only text and lets you select who forgets it; **Review forgetting** shows the effect before saving. Switching back to Modify keeps your unfinished edit. Memory changes apply only to selected people who already know the detail; the review shows each person's current wording. A memory about someone does not give that person knowledge of it. **Add memory** shows the new text and who will remember it, with the source recorded as **Added by you**. Physical facts, access, character context, relationships and authoritative progress have separate editors. Historical Scene corrections are annotations; the original transcript remains available. Saved-effect recovery replays retained work without requesting new model responses.
+Edit a record, then use **Review changes** to check **Before / After** and **Affected records** before saving. **Modify** edits a memory's text. **Forget** shows the saved memory as read-only text and lets you select who forgets it; **Review forgetting** shows the effect before saving. Switching back to Modify keeps your unfinished edit. Memory changes apply only to selected people who already know the detail; the review shows each person's current wording. A memory about someone does not give that person knowledge of it. **Add memory** shows the new text and who will remember it, with the source recorded as **Added by you**. Physical facts, access, character context, relationships and authoritative progress have separate editors. Historical Scene corrections are annotations. Saved-effect recovery replays retained work without requesting new model responses.
 
 **Repair history** keeps the changes and offers **Review undo** where a safe inverse is available. Undo refuses to overwrite later changes to affected records. Consequential repairs save a checkpoint automatically; you can also name a manual checkpoint. Checkpoints retain independent copies of saved world data. Restoration has its own review and saves the current world first. Current time, spending and replay protection remain current, so elapsed Projects may complete when play resumes.
 
@@ -150,7 +151,7 @@ A Venue supports up to six non-Entrance Zones, two Classes, and four residents. 
 
 ## Maps, artwork, and sprites
 
-**World Configuration** manages map names, artwork, framing, and marker placements. **All maps** switches between maps without moving anyone. Additional maps need artwork and begin empty; creating a map does not create its Venues. Existing Venues cannot currently be moved between maps, and maps cannot be deleted.
+**World Configuration** manages map names, artwork, framing, and marker placements. On the map, **Move markers** lets you correct Venue positions directly; select a Venue and tap the map, or use the arrow keys on the map or a marker, then save. These corrections do not move residents. **All maps** switches between maps without moving anyone. Additional maps need artwork and begin empty; creating a map does not create its Venues. Existing Venues cannot currently be moved between maps, and maps cannot be deleted.
 
 Scene navigation can open the map; **Return to Scene** restores your draft. Conclude the current Scene before starting another.
 

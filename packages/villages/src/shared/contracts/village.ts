@@ -74,18 +74,6 @@ export type VillagerRefreshPreview = {
   sourceAvailable: boolean;
   changed: boolean;
 };
-export /**
- * One note pinned to the noticeboard, and who wrote it.
- *
- * An empty author is your own note. The villagers sign theirs, because the point
- * of the board is that it is written in their voices rather than in the
- * narrator's; yours needs no name, since everyone here knows who you are.
- */
-type VillageNotice = {
-  author: string;
-  text: string;
-};
-
 export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
 export type BackgroundWork = {
@@ -145,7 +133,6 @@ export type VillageSnapshot = {
     dayIndex: number;
     nextTransitionAt: string;
   };
-  noticeboard: VillageNotice[];
   venueRequests: VenueRequest[];
   projects: BuildProject[];
   residences: {
@@ -525,7 +512,6 @@ export type VillageSettings = {
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
-  visitRetention: { mode: "forever" | "count" | "days"; value: number };
   promptKnowledge: string;
   defaultPromptKnowledge: string;
   promptBoxMaxLength: number;
@@ -540,8 +526,6 @@ export type VillageSettings = {
   playerPersonaName: string;
   /** True when the link is to a Persona that is no longer in the library. */
   playerPersonaMissing: boolean;
-  maxNoticeboardNotes: number;
-  maxNoticeLength: number;
   setting: string;
   settingMaxLength: number;
   foundingReason: string;
@@ -768,6 +752,9 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  /** The Scene has ended and its completed transcript is no longer retained. */
+  terminal?: boolean;
+  recordEvents?: RoomRecordEvent[];
   turnOutcome?: import("./scene-turn-outcome.js").SceneTurnOutcome;
   recoverable?: boolean;
   id: string;

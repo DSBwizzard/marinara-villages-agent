@@ -82,7 +82,7 @@ export function useFoundingState() {
 
   const [setupPlacementError, setSetupPlacementError] = useState("");
 
-  const [setupMapSource, setSetupMapSource] = useState<SetupMapSource>("generate");
+  const [setupMapSource, setSetupMapSource] = useState<SetupMapSource>("simple");
 
   const [setupMapImage, setSetupMapImage] = useState("");
 

@@ -300,19 +300,7 @@
     },
     {
       "method": "get",
-      "path": "/rooms/archive"
-    },
-    {
-      "method": "get",
-      "path": "/rooms/archive/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/rooms/archive/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/rooms/archive"
+      "path": "/rooms/:id/recovery"
     },
     {
       "method": "get",

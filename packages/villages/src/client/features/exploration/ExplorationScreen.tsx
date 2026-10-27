@@ -6,7 +6,15 @@ import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+type MarkerDraft = {
+  mapId: string;
+  revision: number;
+  placements: Record<string, { x: number | null; y: number | null }>;
+  original: string;
+  selected: string;
+};
 
 export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
   const {
@@ -48,7 +56,120 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     venueExplorationActions,
   } = controller;
   const [focusSearch, setFocusSearch] = useState(false);
+  const [markerDraft, setMarkerDraft] = useState<MarkerDraft | null>(null);
+  const [markerError, setMarkerError] = useState("");
+  const [hasSavedMarkers, setHasSavedMarkers] = useState(false);
+  const markerKey =
+    selectedMap && snapshot?.settings.maps[0]?.id
+      ? `villages-marker-draft:${snapshot.settings.maps[0].id}:${selectedMap.id}`
+      : "";
+  useEffect(() => {
+    try {
+      setHasSavedMarkers(!!markerKey && !!sessionStorage.getItem(markerKey));
+    } catch {
+      setHasSavedMarkers(false);
+    }
+  }, [markerKey]);
+  const updateMarkerDraft = (draft: MarkerDraft) => {
+    try {
+      if (!markerKey) throw new Error("Missing map");
+      sessionStorage.setItem(markerKey, JSON.stringify(draft));
+      setHasSavedMarkers(true);
+      setMarkerDraft(draft);
+      setMarkerError("");
+      return true;
+    } catch {
+      setMarkerError("Marker draft could not be saved on this device. Try again or cancel.");
+      return false;
+    }
+  };
+  useEffect(() => {
+    if (!markerDraft || JSON.stringify(markerDraft.placements) === markerDraft.original) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [markerDraft]);
   const places = (snapshot?.settings.venues ?? []).filter((venue) => venue.presentation.mapId === selectedMap?.id);
+  const startMarkers = () => {
+    if (!selectedMap || !snapshot) return;
+    try {
+      const saved = markerKey && sessionStorage.getItem(markerKey);
+      if (saved) {
+        const draft = JSON.parse(saved) as MarkerDraft;
+        if (draft.mapId === selectedMap.id && draft.placements && typeof draft.original === "string") {
+          setMarkerError("");
+          setExploreSheet(null);
+          setOpenPlaceId(null);
+          setMarkerDraft(draft);
+          return;
+        }
+      }
+    } catch {
+      setMarkerError("Could not restore the marker draft on this device.");
+      return;
+    }
+    const placements = Object.fromEntries([
+      ...places.map((venue) => [venue.id, { x: venue.presentation.x, y: venue.presentation.y }]),
+      ...snapshot.projects
+        .filter(
+          (project) =>
+            project.kind === "new-venue" &&
+            !["complete", "cancelled"].includes(project.status) &&
+            !project.venueId &&
+            project.venueDraft?.position.mapId === selectedMap.id,
+        )
+        .map((project) => [
+          "project:" + project.id,
+          { x: project.venueDraft!.position.x, y: project.venueDraft!.position.y },
+        ]),
+    ]);
+    if (
+      !updateMarkerDraft({
+        mapId: selectedMap.id,
+        revision: selectedMap.revision,
+        placements,
+        original: JSON.stringify(placements),
+        selected: "",
+      })
+    )
+      return;
+    setExploreSheet(null);
+    setOpenPlaceId(null);
+  };
+  const moveMarker = (id: string, x: number, y: number) => {
+    if (!markerDraft?.placements[id]) return;
+    updateMarkerDraft({ ...markerDraft, selected: id, placements: { ...markerDraft.placements, [id]: { x, y } } });
+  };
+  const saveMarkers = async () => {
+    if (!markerDraft || busy) return;
+    setBusy(true);
+    setMarkerError("");
+    try {
+      const next = await request<VillageSnapshot>(`/maps/${encodeURIComponent(markerDraft.mapId)}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          expectedRevision: markerDraft.revision,
+          placements: Object.entries(markerDraft.placements).map(([venueId, point]) => ({ venueId, ...point })),
+        }),
+      });
+      setSnapshot(next);
+      try {
+        sessionStorage.removeItem(markerKey);
+      } catch {
+        setMarkerError("Markers saved, but the local draft could not be cleared. Cancel it when storage is available.");
+        return;
+      }
+      setHasSavedMarkers(false);
+      setMarkerDraft(null);
+    } catch (cause) {
+      setMarkerError(messageFrom(cause, "The marker positions could not be saved."));
+    } finally {
+      setBusy(false);
+    }
+  };
   const navigatorOpen = !placingProjectId && exploreSheet?.tab === "places";
   const selectPlace = (place: VillageVenue) => {
     setFocusSearch(false);
@@ -76,17 +197,33 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       (action) => action.label !== "Visit" || !room || room.status === "closed",
     ),
   }));
-  const pins = savedPins
-    .filter((pin) => pin.kind !== "person")
-    .map((pin) => {
-      const place = places.find((entry) => entry.id === pin.id);
-      return {
-        ...pin,
-        text: place?.name ?? pin.text,
-        selected: pin.id === openPlaceId,
-        onSelect: place && !busy && !placingProjectId ? () => openPlace(place) : undefined,
-      };
-    });
+  const pins = markerDraft
+    ? places.flatMap((place) => {
+        const point = markerDraft.placements[place.id];
+        if (point?.x == null || point.y == null) return [];
+        return [
+          {
+            id: place.id,
+            x: point.x,
+            y: point.y,
+            text: place.name,
+            tone: "venue" as const,
+            selected: place.id === markerDraft.selected,
+            onSelect: !busy ? () => updateMarkerDraft({ ...markerDraft, selected: place.id }) : undefined,
+          },
+        ];
+      })
+    : savedPins
+        .filter((pin) => pin.kind !== "person")
+        .map((pin) => {
+          const place = places.find((entry) => entry.id === pin.id);
+          return {
+            ...pin,
+            text: place?.name ?? pin.text,
+            selected: pin.id === openPlaceId,
+            onSelect: place && !busy && !placingProjectId ? () => openPlace(place) : undefined,
+          };
+        });
   const navigation = (
     <ExplorationNavigation
       active={mobile ? (exploreSheet?.tab ?? "map") : "map"}
@@ -121,9 +258,14 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           <strong>{snapshot?.village.name}</strong>
           <HomeDateWeather weather={snapshot?.village.weather ?? ""} village={snapshot?.village} />
         </span>
-        {!mobile && !placingProjectId ? navigation : null}
+        {!mobile && !placingProjectId && !markerDraft ? navigation : null}
         <span className={`${ELEMENT_TAG}-home-bar-actions`}>
-          <button type="button" className={ELEMENT_TAG + "-button"} onClick={() => controller.setMailboxOpen(true)}>
+          <button
+            type="button"
+            className={ELEMENT_TAG + "-button"}
+            disabled={!!markerDraft}
+            onClick={() => controller.setMailboxOpen(true)}
+          >
             Mailbox
           </button>
           {placingProjectId ? (
@@ -142,10 +284,57 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         </span>
       </div>
       <div className={ELEMENT_TAG + "-maps-toolbar"}>
-        <button type="button" disabled={busy} onClick={() => setShowAllMaps(true)}>
+        <button type="button" disabled={busy || !!markerDraft} onClick={() => setShowAllMaps(true)}>
           All maps
         </button>
-        {room && room.status !== "closed" ? (
+        {!showAllMaps && !placingProjectId && selectedMap ? (
+          markerDraft ? (
+            <>
+              <label>
+                Venue{" "}
+                <select
+                  aria-label="Move Venue"
+                  disabled={busy}
+                  value={markerDraft.selected}
+                  onChange={(event) => updateMarkerDraft({ ...markerDraft, selected: event.target.value })}
+                >
+                  <option value="">Choose Venue</option>
+                  {places.map((place) => (
+                    <option key={place.id} value={place.id}>
+                      {place.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span>Choose a Venue, then tap the map or use arrow keys on the map or marker.</span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  try {
+                    sessionStorage.removeItem(markerKey);
+                  } catch {
+                    setMarkerError("Could not discard the marker draft. Try again.");
+                    return;
+                  }
+                  setHasSavedMarkers(false);
+                  setMarkerDraft(null);
+                  setMarkerError("");
+                }}
+              >
+                Cancel
+              </button>
+              <button type="button" disabled={busy} onClick={() => void saveMarkers()}>
+                Save markers
+              </button>
+            </>
+          ) : (
+            <button type="button" disabled={busy} onClick={startMarkers}>
+              {hasSavedMarkers ? "Resume marker edits" : "Move markers"}
+            </button>
+          )
+        ) : null}
+        {room && room.status !== "closed" && !markerDraft ? (
           <button type="button" onClick={returnToScene}>
             Return to Scene
           </button>
@@ -174,7 +363,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           </div>
         ) : (
           <>
-            {navigatorOpen ? (
+            {!markerDraft && navigatorOpen ? (
               <LocationNavigator
                 mobile={mobile}
                 focusSearch={focusSearch}
@@ -190,7 +379,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 }}
                 rows={rows}
               />
-            ) : !placingProjectId ? (
+            ) : !placingProjectId && !markerDraft ? (
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-navigator-toggle`}
@@ -210,10 +399,14 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 src={townMapImage || null}
                 alt={`A map of ${selectedMap?.name ?? snapshot?.village.name ?? "the village"}.`}
                 pins={pins}
-                placing={!!placingProjectId && !busy}
+                placing={(!!placingProjectId || !!markerDraft?.selected) && !busy}
                 view={savedTownMapView}
                 shape={savedTownMapShape}
                 onPlace={(x, y) => {
+                  if (markerDraft?.selected && !busy) {
+                    moveMarker(markerDraft.selected, x, y);
+                    return;
+                  }
                   if (!placingProjectId || busy) return;
                   const projectId = placingProjectId;
                   setBusy(true);
@@ -240,6 +433,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                     .finally(() => setBusy(false));
                 }}
                 onDismiss={() => {
+                  if (markerDraft) return;
                   setExploreSheet(null);
                   setOpenPlaceId(null);
                 }}
@@ -247,12 +441,31 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 exploration
                 navigationView={navigationView}
                 onNavigationView={setNavigationView}
+                keyboardPlacementId={markerDraft?.selected}
+                onNudgePin={
+                  markerDraft && !busy
+                    ? (id, dx, dy) => {
+                        const point = markerDraft.placements[id];
+                        if (!point) return;
+                        moveMarker(
+                          id,
+                          Math.round(Math.max(0, Math.min(1, (point.x ?? 0.5) + dx)) * 10000) / 10000,
+                          Math.round(Math.max(0, Math.min(1, (point.y ?? 0.5) + dy)) * 10000) / 10000,
+                        );
+                      }
+                    : undefined
+                }
               >
-                {error || settingsError || lastSceneEnding ? (
+                {error || settingsError || lastSceneEnding || markerError ? (
                   <div className={`${ELEMENT_TAG}-notice`}>
                     {error ? (
                       <p role="alert" className={`${ELEMENT_TAG}-error`}>
                         {error}
+                      </p>
+                    ) : null}
+                    {markerError ? (
+                      <p role="alert" className={`${ELEMENT_TAG}-error`}>
+                        {markerError}
                       </p>
                     ) : null}
                     {settingsError ? (
@@ -271,7 +484,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           </>
         )}
       </div>
-      {mobile && !placingProjectId ? navigation : null}
+      {mobile && !placingProjectId && !markerDraft ? navigation : null}
     </div>
   );
 }

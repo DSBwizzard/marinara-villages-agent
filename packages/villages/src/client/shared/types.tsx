@@ -3,7 +3,7 @@ import type { SpeechDelivery } from "../../shared/helpers/scene-speech.js";
 import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
-export type SetupMapSource = "existing" | "generate" | "upload";
+export type SetupMapSource = "existing" | "simple" | "generate" | "upload";
 
 export type SetupVenueDraft = VillageVenue;
 
@@ -312,7 +312,6 @@ export type RoomStep = {
 /**
  * Pages reachable from the village menu.
  */
-type MenuTab =
-  "villagers" | "venueRequests" | "projects" | "village" | "visual" | "general" | "advanced" | "chatlogs" | "progress";
+type MenuTab = "villagers" | "venueRequests" | "projects" | "village" | "visual" | "general" | "advanced" | "progress";
 
 export type MenuPage = "index" | "repair" | MenuTab;

@@ -6,7 +6,6 @@ import { fail, readCharacterId, SETTINGS_BODY_LIMIT } from "../../adapters/http/
 import { readRuntimeDebug, saveRuntimeDebug, readLoreInspections } from "../../adapters/observability/runtime-debug.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
-import { setVenueVisitRetention } from "../scenes/archive.js";
 import { readVillageAuthority } from "../world/village-store.js";
 import { setVillageHomeBuildingNames, setVillageVenues } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
@@ -223,7 +222,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
       spriteCardFlipEnabled?: unknown;
-      visitRetention?: unknown;
     };
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
     try {
@@ -260,10 +258,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
         snapshot = await setVillageSpriteCardFlipEnabled(body.spriteCardFlipEnabled);
       if (body.characterSpeechColors !== undefined)
         snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
-      if (body.visitRetention !== undefined) {
-        await setVenueVisitRetention(body.visitRetention);
-        snapshot = await buildVillageSnapshot();
-      }
       if (body.homeBuildingNames !== undefined) snapshot = await setVillageHomeBuildingNames(body.homeBuildingNames);
       // Every place in the village in one list, the houses included: what the
       // panel edits and what the map places are the same records, so there is

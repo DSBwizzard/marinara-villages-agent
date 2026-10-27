@@ -1320,9 +1320,262 @@ async function main() {
       [],
       null,
     ),
-    /invalid or reordered spans/,
+    /invalid Zone metadata/,
     "Legacy context without authoritative topology retains its visible-zone restriction",
   );
+  // Both intent entry points preserve source coverage and discard only verified local Zone annotations.
+  {
+    const timelineState = structuredClone(topologyState);
+    timelineState.villagers = [{ characterId: "host", cardSnapshot: { name: "Host" } }] as any;
+    let responseIntent: any;
+    let dispatches = 0;
+    const failures: any[] = [];
+    const timelinePorts = {
+      ...ports,
+      readVillageState: async () => timelineState,
+      venueSavedCheckpoint: () => undefined,
+      venueCheckpoint: async (_key, work) => work(),
+      rejectVenueCompletion: async (detail, options) => {
+        failures.push({ detail, options });
+      },
+      completeWithRoom: async (_model, messages) => {
+        dispatches++;
+        const packet = JSON.parse(messages[1].content as string);
+        return {
+          finishReason: "stop",
+          content: JSON.stringify({
+            sourceHash: packet.sourceHash,
+            ...responseIntent,
+            intent: responseIntent,
+            halt: { reason: "none", quote: "", appointments: [] },
+            consistent: true,
+            authority: { physical: false, access: false, projects: false, standing: false, social: false },
+            action: null,
+            access: [],
+            memoryChanges: [],
+            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+            wishChanges: [],
+            projectSpeech: [],
+            events: { moves: [], departures: [], contactEnd: [], playerMoves: [] },
+          }),
+        };
+      },
+    } as SemanticPorts;
+    const timelineService = createSemanticService(timelinePorts);
+    const rawIntent = (timeline: any[], extra = {}) => ({
+      status: "resolved",
+      instructions: "",
+      action: null,
+      movement: null,
+      timeline,
+      ...extra,
+    });
+    const before = structuredClone({ topologyScene, timelineState });
+    for (const combined of [false, true]) {
+      const run = async (message: string, raw: any) => {
+        responseIntent = raw;
+        const responseBefore = structuredClone(raw);
+        const callsBefore = dispatches;
+        try {
+          return combined
+            ? (await timelineService.exchange(topologyAdmission, message, [], null)).intent!
+            : await timelineService.intent(topologyScene, message);
+        } finally {
+          assert.deepEqual(raw, responseBefore, "Validation never changes the retained System response");
+          assert.equal(dispatches, callsBefore + 1, "Validation never makes a repair or expansion request");
+          assert.deepEqual(
+            { topologyScene, timelineState },
+            before,
+            "Validation cannot change saved Scene/world state",
+          );
+        }
+      };
+      for (const kind of ["speech", "thought", "action", "context", "movement"]) {
+        for (const zoneId of [undefined, "exterior", "unseen", "invented", null, 7, ""]) {
+          const raw = rawIntent([{ kind, text: "I wave.", ...(zoneId === undefined ? {} : { zoneId }) }]);
+          if (zoneId === "exterior" || (zoneId === undefined && kind !== "movement")) {
+            const result = await run("I wave.", raw);
+            assert.deepEqual(result.timeline, [
+              { kind: kind === "movement" ? "action" : kind, text: "I wave.", start: 0, end: 7 },
+            ]);
+            assert.equal(result.movement, null);
+          } else {
+            await assert.rejects(
+              run("I wave.", raw),
+              kind === "movement" && zoneId === "unseen" && combined
+                ? /Use Move to change Zones/
+                : /invalid Zone metadata/,
+            );
+            assert.equal(failures.at(-1).options.preserveWriting, true);
+            assert.equal(failures.at(-1).options.stages.length, 1);
+          }
+        }
+      }
+      const message = "“Hello.” *(I wave.)* [I think quietly.]";
+      const rows = [
+        { kind: "speech", text: "Hello.", targetId: "host", delivery: "whisper", zoneId: "exterior" },
+        { kind: "action", text: "*(I wave.)*", zoneId: "exterior" },
+        { kind: "thought", text: "[I think quietly.]", zoneId: "exterior" },
+      ];
+      const exact = await run(message, rawIntent(rows));
+      for (const row of exact.timeline) {
+        assert.equal(message.slice(row.start, row.end), row.text);
+        assert.equal(row.zoneId, undefined);
+      }
+      assert.equal(exact.timeline[0].targetId, "host");
+      assert.equal(exact.timeline[0].delivery, "whisper");
+      assert.deepEqual(
+        (
+          await run(
+            "Yes. Yes.",
+            rawIntent([
+              { kind: "speech", text: "Yes." },
+              { kind: "speech", text: "Yes." },
+            ]),
+          )
+        ).timeline.map(({ start, end }) => [start, end]),
+        [
+          [0, 4],
+          [5, 9],
+        ],
+      );
+      for (const [message, timeline] of [
+        ["I leave. I wave.", [{ kind: "action", text: "I wave." }]],
+        [
+          "I wave. I leave. I smile.",
+          [
+            { kind: "action", text: "I wave." },
+            { kind: "action", text: "I smile." },
+          ],
+        ],
+        ["I wave. I leave.", [{ kind: "action", text: "I wave." }]],
+        [
+          "I do not wave.",
+          [
+            { kind: "action", text: "I do" },
+            { kind: "action", text: "wave." },
+          ],
+        ],
+        [
+          "I pay $5.",
+          [
+            { kind: "action", text: "I pay" },
+            { kind: "action", text: "5." },
+          ],
+        ],
+        ["Hello!", [{ kind: "speech", text: "Hello" }]],
+        [
+          "I transfer 2*5 coins.",
+          [
+            { kind: "action", text: "I transfer 2" },
+            { kind: "action", text: "5 coins." },
+          ],
+        ],
+        [
+          "I transfer 2 * 5 coins.",
+          [
+            { kind: "action", text: "I transfer 2" },
+            { kind: "action", text: "5 coins." },
+          ],
+        ],
+        [
+          "guest_room",
+          [
+            { kind: "context", text: "guest" },
+            { kind: "context", text: "room" },
+          ],
+        ],
+        [
+          "don't",
+          [
+            { kind: "speech", text: "don" },
+            { kind: "speech", text: "t" },
+          ],
+        ],
+        [
+          "𝟚’𝟛",
+          [
+            { kind: "context", text: "𝟚" },
+            { kind: "context", text: "𝟛" },
+          ],
+        ],
+        [
+          "é’é",
+          [
+            { kind: "context", text: "é" },
+            { kind: "context", text: "é" },
+          ],
+        ],
+      ] as const) {
+        await assert.rejects(run(message, rawIntent([...timeline])), /omits player input/);
+      }
+      for (const [row, error] of [
+        [{ kind: "action", text: "Invented." }, /invalid or reordered spans/],
+        [{ kind: "invalid", text: "I wave." }, /invalid kind/],
+        [{ kind: "speech", text: "I wave.", targetId: "unknown" }, /invalid actor reference/],
+        [{ kind: "speech", text: "I wave.", delivery: "sing" }, /invalid delivery/],
+      ] as const) {
+        await assert.rejects(run("I wave.", rawIntent([row])), error);
+      }
+      await assert.rejects(
+        run(
+          "I wave. I smile.",
+          rawIntent([
+            { kind: "action", text: "I smile." },
+            { kind: "action", text: "I wave." },
+          ]),
+        ),
+        /invalid or reordered spans/,
+      );
+      await assert.rejects(
+        run(
+          "I wave.",
+          rawIntent([{ kind: "action", text: "I wave.", zoneId: "exterior" }], {
+            movement: { zoneId: "unseen", quote: "I wave." },
+          }),
+        ),
+        /Use Move to change Zones/,
+      );
+      const unresolved = await run(
+        "An uncertain action",
+        rawIntent([], { status: "unresolved", reason: "Needs clarification" }),
+      ).then(
+        (value) => value,
+        (error) => {
+          assert(combined);
+          assert.match(error.message, /Needs clarification/);
+          return null;
+        },
+      );
+      if (unresolved) assert.equal(unresolved.status, "unresolved");
+    }
+    const frozenCheckpoints = new Map<string, unknown>();
+    const frozenService = createSemanticService({
+      ...timelinePorts,
+      venueCheckpoint: async (key, work) => {
+        if (frozenCheckpoints.has(key)) return structuredClone(frozenCheckpoints.get(key)) as any;
+        const result = await work();
+        frozenCheckpoints.set(key, structuredClone(result));
+        return result;
+      },
+    });
+    const frozenScene = structuredClone(topologyAdmission);
+    responseIntent = rawIntent([{ kind: "action", text: "I wave.", zoneId: "exterior" }]);
+    const first = await frozenService.exchange(frozenScene, "I wave.", [], null);
+    const frozenInputKey = [...frozenCheckpoints.keys()].find((key) => key.endsWith(":input"))!;
+    const frozenInput = JSON.stringify(frozenCheckpoints.get(frozenInputKey));
+    frozenCheckpoints.delete(first.checkpointKey);
+    frozenScene.zoneId = "unseen";
+    for (const zoneId of ["exterior", "unseen"]) {
+      responseIntent = rawIntent([{ kind: "action", text: "I wave.", zoneId }]);
+      await assert.rejects(frozenService.exchange(frozenScene, "I wave.", [], null), /invalid Zone metadata/);
+      assert.equal(
+        JSON.stringify(frozenCheckpoints.get(frozenInputKey)),
+        frozenInput,
+        "Neither current-only nor frozen-only Zone annotations may rewrite the saved request",
+      );
+    }
+  }
   const reviewFor = (evidence: any[], proposed: any[], additional: any[] = []) => ({
     version: 1,
     additionalActions: additional,

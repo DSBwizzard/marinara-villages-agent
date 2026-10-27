@@ -230,11 +230,30 @@ export function usePatchSetupVenue(ports: {
           const changed = next(row);
           const fields = ["name", "venueType", "form", "description", "layout", "spaces", "privateSpaces"] as const;
           const edited = fields.filter((field) => JSON.stringify(row[field]) !== JSON.stringify(changed[field]));
+          const zoneFields: string[] = [];
+          for (const key of ["spaces", "privateSpaces"] as const) {
+            if (!edited.includes(key)) continue;
+            zoneFields.push(`zone:${key}:structure`);
+            for (const current of changed[key] ?? []) {
+              const previous = row[key]?.find((zone) => zone.id === current.id);
+              if (!previous) continue;
+              for (const field of ["name", "purpose", "description"] as const)
+                if (previous[field] !== current[field]) zoneFields.push(`zone:${key}:${current.id}:${field}`);
+            }
+          }
           if (edited.length)
-            setSetupAuthoredFields((current) => ({
-              ...current,
-              [id]: [...new Set([...(current[id] ?? []), ...edited])],
-            }));
+            setSetupAuthoredFields((current) => {
+              const previous = current[id] ?? [];
+              const legacy = (["spaces", "privateSpaces"] as const)
+                .filter(
+                  (key) =>
+                    edited.includes(key) &&
+                    previous.includes(key) &&
+                    !previous.some((entry) => entry.startsWith(`zone:${key}:`)),
+                )
+                .map((key) => `zone:${key}:legacy`);
+              return { ...current, [id]: [...new Set([...previous, ...edited, ...legacy, ...zoneFields])] };
+            });
           return changed;
         }),
       );
@@ -380,7 +399,7 @@ export function useOpenSetup(ports: {
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
       setSetupLoreTokenBudgetDraft(fresh ? 1600 : (village?.settings.loreTokenBudget ?? 1600));
-      setSetupMapSource(!fresh && village?.isFounded ? "existing" : "generate");
+      setSetupMapSource(!fresh && village?.isFounded ? "existing" : "simple");
       setSetupMapImage("");
       setSetupMapImageSource(null);
       setSetupMapGeneratedKey("");

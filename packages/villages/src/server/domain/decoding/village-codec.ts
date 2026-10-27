@@ -10,7 +10,6 @@ import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js"
 import type {
   VillageAgenda,
   VillageBackgroundPace,
-  VillageNotice,
   VillagePendingDecision,
   VillageProject,
   VillageRemap,
@@ -53,9 +52,8 @@ import {
   isGlobalGalleryRef,
   isHomeBuildingKind,
   isTownMapFit,
-  MAX_NOTICE_AUTHOR_LENGTH,
-  MAX_NOTICE_LENGTH,
-  MAX_NOTICEBOARD_NOTES,
+  MAX_REQUESTER_NAME_LENGTH,
+  MAX_EVENT_TEXT_LENGTH,
   MAX_PHYSICAL_NARRATION_LENGTH,
   MAX_PLACES,
   MAX_PLAYER_PERSONA_ID_LENGTH,
@@ -153,11 +151,6 @@ export function defaultVillageState(): VillageState {
     // player who only ever looks at the tab never gets a record created for them.
     foundedAt: "",
     seed: "",
-    // A village starts with nothing pinned up. The board is a record of what
-    // the people here have said to each other, and on the day it is founded
-    // nobody has said anything yet — shipping a few notices to make the panel
-    // look occupied would be the village inventing its own history.
-    noticeboard: [],
     simulatedThrough: "",
     lastKnownTimeZone: "",
     timeZone: "",
@@ -1077,7 +1070,7 @@ function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
   const receipt = asRecord(raw.actionReceipt);
   const id = asTrimmedString(raw.id) || randomVillageSeed();
   const venueId = asTrimmedString(raw.venueId);
-  const text = boundText(raw.text, MAX_NOTICE_LENGTH);
+  const text = boundText(raw.text, MAX_EVENT_TEXT_LENGTH);
   if (venueId.length === 0 || text.length === 0) return null;
   return {
     id,
@@ -1176,23 +1169,6 @@ function coerceResidences(value: unknown): VillageResidence[] {
     residences.push(residence);
   }
   return residences.slice(0, MAX_PLACES);
-}
-function coerceNotice(value: unknown): VillageNotice | null {
-  if (typeof value === "string") {
-    const text = boundText(value, MAX_NOTICE_LENGTH);
-    return text.length > 0 ? { author: "", text } : null;
-  }
-  const raw = asRecord(value);
-  const text = boundText(raw.text, MAX_NOTICE_LENGTH);
-  if (text.length === 0) return null;
-  return { author: boundText(raw.author, MAX_NOTICE_AUTHOR_LENGTH), text };
-}
-function coerceNotices(value: unknown): VillageNotice[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map(coerceNotice)
-    .filter((entry): entry is VillageNotice => entry !== null)
-    .slice(0, MAX_NOTICEBOARD_NOTES);
 }
 function coerceRefreshClocks(value: unknown): string[] {
   if (!Array.isArray(value)) return [...VILLAGE_CLOCKS];
@@ -1425,7 +1401,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
     .flatMap((entry) => {
       const raw = asRecord(entry);
       const id = asTrimmedString(raw.id);
-      const title = boundText(raw.title, MAX_NOTICE_LENGTH);
+      const title = boundText(raw.title, MAX_EVENT_TEXT_LENGTH);
       const proposedAt = asIsoString(raw.proposedAt);
       if (!id || !title || !proposedAt) return [];
       const kinds = ["residence", "project", "venue", "departure", "other"] as const;
@@ -1468,7 +1444,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
             : {}),
           requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
           venueId: asTrimmedString(raw.venueId),
-          requesterName: boundText(raw.requesterName, MAX_NOTICE_AUTHOR_LENGTH),
+          requesterName: boundText(raw.requesterName, MAX_REQUESTER_NAME_LENGTH),
           requestQuote: boundText(raw.requestQuote, MAX_VENUE_NOTE_LENGTH),
           source: raw.source === "chat" ? ("chat" as const) : ("background" as const),
           sourceKey: asTrimmedString(raw.sourceKey),
@@ -1694,7 +1670,6 @@ export function coerceVillageState(value: unknown): VillageState {
     // pretend it has been running since the upgrade.
     foundedAt,
     seed: asTrimmedString(raw.seed),
-    noticeboard: coerceNotices(raw.noticeboard),
     simulatedThrough: asIsoString(raw.simulatedThrough) ?? legacySimulatedThrough(foundedAt, raw.lastHappeningKey),
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
     timeZone: validTimeZone(raw.timeZone) ? raw.timeZone : "",
