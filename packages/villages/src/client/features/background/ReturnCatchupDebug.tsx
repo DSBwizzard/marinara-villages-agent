@@ -8,15 +8,11 @@ const object = (value: unknown): ObjectValue =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as ObjectValue) : {};
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const text = (value: unknown): string => (typeof value === "string" ? value : "");
-const when = (value: unknown): string => {
-  const valueText = text(value);
-  const time = new Date(valueText);
-  return valueText && Number.isFinite(time.getTime()) ? time.toLocaleString() : valueText || "Unknown time";
-};
 
-/** This deliberately exposes private resident outcomes only in the debug tools. */
+/** The inspection is deliberately private; the JSON retains the complete diagnostic record. */
 export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | null }) {
   const [account, setAccount] = useState<unknown>();
+  const [selectedId, setSelectedId] = useState("");
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,6 +20,7 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
     setLoading(true);
     try {
       setAccount(await request<unknown>("/debug/return-catchup"));
+      setSelectedId("");
       setError("");
       setCopyStatus("");
     } catch (cause) {
@@ -45,18 +42,62 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
   const empty = account !== undefined && (batch.batch === null || !text(batch.id));
   const opportunities = list(batch.opportunities).map(object);
   const records = list(batch.records).map(object);
-  const jobs = list(batch.jobs).map(object);
-  const name = (id: unknown) =>
-    snapshot?.villagers.find((person) => person.characterId === id)?.name || text(id) || "Unknown resident";
+  const name = (id: unknown) => snapshot?.villagers.find((person) => person.characterId === id)?.name || "A resident";
+  const time = (value: unknown) => {
+    const date = new Date(text(value));
+    if (!text(value) || !Number.isFinite(date.getTime())) return "";
+    const timeZone = snapshot?.village.timeZone || undefined;
+    try {
+      return date.toLocaleString(undefined, {
+        timeZone,
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    }
+  };
   const place = (entry: ObjectValue) => {
     const venue = snapshot?.settings.venues.find((row) => row.id === entry.venueId);
     const zone = venue?.zones?.find((row) => row.id === entry.zoneId);
-    return [venue?.name || text(entry.venueId), zone?.name || text(entry.zoneId)].filter(Boolean).join(" · ");
+    return [venue?.name, zone?.name].filter(Boolean).join(" · ");
   };
+  const events = opportunities.map((entry) => {
+    const record = records.find((row) => row.opportunityId === entry.id) ?? {};
+    const outcome = object(record.outcome);
+    const reflection = object(outcome.wishReflection);
+    const encounter = object(object(outcome.social).encounter);
+    const names = list(entry.actorIds).map(name);
+    const people = names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0] || "A resident";
+    const title =
+      record.status === "rejected"
+        ? "An opportunity was skipped"
+        : record.status !== "settled"
+          ? "An activity is unfinished"
+          : text(reflection.reason)
+            ? `${people} reflected`
+            : list(encounter.lines).length
+              ? `${people} met`
+              : "A quiet moment";
+    return { entry, record, reflection, encounter, title };
+  });
+  const selected = events.find(({ entry }) => entry.id === selectedId);
   return (
     <section className={`${ELEMENT_TAG}-panel`}>
+      <style>{`
+        .villages-catchup-list{display:grid;gap:8px;margin-top:12px}
+        button.villages-catchup-entry{width:100%;min-height:58px;display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;padding:10px 12px;color:inherit;font:inherit;background:var(--popover,#fff3dd);border:1px solid var(--border);border-radius:8px;box-shadow:none}
+        .villages-catchup-entry span{display:grid;gap:4px;min-width:0}
+        .villages-catchup-entry small{color:var(--muted-foreground);font-size:0.8em}
+        .villages-catchup-arrow{font:20px/1 sans-serif;color:var(--muted-foreground)}
+        .villages-catchup-detail{display:grid;gap:12px;margin-top:12px;overflow-wrap:anywhere}
+        .villages-catchup-detail h4,.villages-catchup-detail p{margin:0}
+        .villages-catchup-detail section{display:grid;gap:6px}
+      `}</style>
       <h3>Return catch-up</h3>
-      <p>Contains resident secrets and spoilers.</p>
+      <p>Private resident activity · spoilers</p>
       <div className={`${ELEMENT_TAG}-row`} style={{ flexWrap: "wrap", gap: "0.5rem" }}>
         <button type="button" className={`${ELEMENT_TAG}-button`} disabled={loading} onClick={() => void load()}>
           {loading ? "Loading…" : account === undefined ? "Inspect catch-up" : "Refresh"}
@@ -71,112 +112,105 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
       {copyStatus ? <p role="status">{copyStatus}</p> : null}
       {empty ? (
         <p>No catch-up has been recorded.</p>
-      ) : account !== undefined ? (
-        <div style={{ display: "grid", gap: "0.75rem", marginTop: "1rem" }}>
-          <div>
-            <strong>{text(batch.status) || "Unknown status"}</strong>
-            <p>
-              {when(batch.from)} → {when(batch.until)}
-            </p>
-            {text(batch.reason) ? <p>{text(batch.reason)}</p> : null}
-          </div>
-          {opportunities.length ? (
-            opportunities.map((entry) => {
-              const record = records.find((row) => row.opportunityId === entry.id) ?? {};
-              const outcome = object(record.outcome);
-              const reflection = object(outcome.wishReflection);
-              const attention = object(reflection.attention);
-              const encounter = object(object(outcome.social).encounter);
-              const job = jobs.find((row) => row.opportunityId === entry.id) ?? {};
-              const activity = object(job.activity),
-                interpretation = object(job.interpretation);
-              const isEncounter = entry.kind === "encounter";
-              return (
-                <article key={text(entry.id)} className={`${ELEMENT_TAG}-panel`}>
-                  <h4>
-                    {isEncounter ? "Encounter" : "Private reflection"} · {list(entry.actorIds).map(name).join(", ")}
-                  </h4>
-                  <p>
-                    {when(entry.startsAt)}
-                    {place(entry) ? ` · ${place(entry)}` : ""}
-                  </p>
-                  <p>
-                    <strong>{text(record.status) || "pending"}</strong>
-                  </p>
-                  {list(entry.facts).map((fact, index) => (
-                    <p key={index}>{text(fact)}</p>
-                  ))}
-                  {text(reflection.reason) ? (
-                    <p>
-                      <strong>Reflection:</strong> {text(reflection.reason)}
-                    </p>
-                  ) : null}
-                  {text(attention.reason) ? (
-                    <p>
-                      <strong>Why it surfaced:</strong> {text(attention.reason)}
-                    </p>
-                  ) : null}
-                  {list(encounter.lines).length ? (
-                    <div>
-                      <strong>Conversation</strong>
-                      {list(encounter.lines).map((line, index) => (
-                        <p key={index}>
-                          <strong>{name(object(line).speakerId)}:</strong> {text(object(line).text)}
-                        </p>
-                      ))}
-                    </div>
-                  ) : null}
-                  {list(encounter.memoryChanges).length ? (
-                    <div>
-                      <strong>Proposed memories</strong>
-                      {list(encounter.memoryChanges).map((memory, index) => (
-                        <p key={index}>{text(object(memory).text) || text(object(memory).action) || "Memory update"}</p>
-                      ))}
-                    </div>
-                  ) : null}
-                  {list(object(encounter.relationshipReview).changes).length ? (
-                    <div>
-                      <strong>Relationship interpretations</strong>
-                      {list(object(encounter.relationshipReview).changes).map((change, index) => (
-                        <p key={index}>
-                          {name(object(change).fromId)} → {name(object(change).toId)}:{" "}
-                          {text(object(change).reason) || "Relationship update"}
-                        </p>
-                      ))}
-                    </div>
-                  ) : null}
-                  {list(encounter.wishChanges).length ? (
-                    <div>
-                      <strong>Wish interpretations</strong>
-                      {list(encounter.wishChanges).map((change, index) => (
-                        <p key={index}>
-                          {name(object(change).actorId)}:{" "}
-                          {text(object(change).reason) || text(object(change).intent) || "Wish update"}
-                        </p>
-                      ))}
-                    </div>
-                  ) : null}
-                  {!outcome.wishReflection && !outcome.social && record.status === "settled" ? (
-                    <p>Nothing noteworthy happened.</p>
-                  ) : null}
-                  {text(record.error) ? <p role="alert">{text(record.error)}</p> : null}
-                  {activity.id || interpretation.id ? (
-                    <p>
-                      Model requests: {Number(activity.requests || 0) + Number(interpretation.requests || 0)}
-                      {activity.attempt ? ` · Activity attempt ${activity.attempt}` : ""}
-                      {interpretation.attempt ? ` · Interpretation attempt ${interpretation.attempt}` : ""}
-                    </p>
-                  ) : null}
-                </article>
-              );
-            })
+      ) : selected ? (
+        <div className="villages-catchup-detail" aria-label="Activity details">
+          <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setSelectedId("")}>
+            ← Activities
+          </button>
+          <h4>{selected.title}</h4>
+          {time(selected.entry.startsAt) || place(selected.entry) ? (
+            <p>{[time(selected.entry.startsAt), place(selected.entry)].filter(Boolean).join(" · ")}</p>
+          ) : null}
+          {selected.record.status === "rejected" ? (
+            <p>This activity did not happen.</p>
+          ) : selected.record.status !== "settled" ? (
+            <p>This activity has not finished.</p>
           ) : (
-            <p>No opportunities were selected.</p>
+            <>
+              {text(selected.reflection.reason) ? (
+                <section>
+                  <strong>What was on their mind</strong>
+                  <p>{text(selected.reflection.reason)}</p>
+                </section>
+              ) : null}
+              {text(object(selected.reflection.attention).reason) ? (
+                <section>
+                  <strong>Why it mattered</strong>
+                  <p>{text(object(selected.reflection.attention).reason)}</p>
+                </section>
+              ) : null}
+              {list(selected.encounter.lines).length ? (
+                <section>
+                  <strong>What they said</strong>
+                  {list(selected.encounter.lines).map((line, index) => (
+                    <p key={index}>
+                      <strong>{name(object(line).speakerId)}:</strong> {text(object(line).text)}
+                    </p>
+                  ))}
+                </section>
+              ) : null}
+              {list(selected.encounter.memoryChanges).some((item) => text(object(item).text)) ? (
+                <section>
+                  <strong>Possible memories</strong>
+                  {list(selected.encounter.memoryChanges).map((item, index) =>
+                    text(object(item).text) ? <p key={index}>{text(object(item).text)}</p> : null,
+                  )}
+                </section>
+              ) : null}
+              {list(object(selected.encounter.relationshipReview).changes).some((item) => text(object(item).reason)) ? (
+                <section>
+                  <strong>How they felt</strong>
+                  {list(object(selected.encounter.relationshipReview).changes).map((item, index) =>
+                    text(object(item).reason) ? (
+                      <p key={index}>
+                        {name(object(item).fromId)}: {text(object(item).reason)}
+                      </p>
+                    ) : null,
+                  )}
+                </section>
+              ) : null}
+              {list(selected.encounter.wishChanges).some((item) => text(object(item).reason)) ? (
+                <section>
+                  <strong>What mattered to them</strong>
+                  {list(selected.encounter.wishChanges).map((item, index) =>
+                    text(object(item).reason) ? (
+                      <p key={index}>
+                        {name(object(item).actorId)}: {text(object(item).reason)}
+                      </p>
+                    ) : null,
+                  )}
+                </section>
+              ) : null}
+              {selected.title === "A quiet moment" ? <p>Nothing noteworthy happened.</p> : null}
+            </>
           )}
         </div>
+      ) : account !== undefined ? (
+        events.length ? (
+          <div className="villages-catchup-list" aria-label="Activities while away">
+            {events.map(({ entry, title }) => (
+              <button
+                key={text(entry.id)}
+                type="button"
+                className="villages-catchup-entry"
+                onClick={() => setSelectedId(text(entry.id))}
+              >
+                <span>
+                  <strong>{title}</strong>
+                  {time(entry.startsAt) ? <small>{time(entry.startsAt)}</small> : null}
+                </span>
+                <span className="villages-catchup-arrow" aria-hidden="true">
+                  ›
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p>Nothing noteworthy was recorded.</p>
+        )
       ) : null}
-      {account !== undefined ? (
-        <details open={copyStatus.startsWith("Copy unavailable") || undefined}>
+      {account !== undefined && copyStatus.startsWith("Copy unavailable") ? (
+        <details open>
           <summary>Raw JSON</summary>
           <pre style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{JSON.stringify(account, null, 2)}</pre>
         </details>
