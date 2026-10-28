@@ -15,7 +15,6 @@ import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
 import { venueHasCommon } from "./villages-founding-editor";
-import { foundingPhotoOverlaps } from "./villages-founding-placement";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
 import { type SetStateAction, useCallback } from "react";
@@ -178,17 +177,11 @@ export function usePlaceSetupPin(ports: {
           rows.find((row) => row.presentation.x === null || row.presentation.y === null));
       if (!target || setupEditorOpen || (setupWorkspace.paused && !movingSetupVenueId && !draggedVenueId)) return;
       if (!setupMapSrc || setupMapBusy) {
-        setSetupPlacementError("Wait for the selected artwork before placing Venue photographs.");
+        setSetupPlacementError("Wait for the selected map before moving Venues.");
         return;
       }
-      if (
-        foundingPhotoOverlaps(
-          { x, y },
-          rows.filter((row) => row.id !== target.id).map((row) => row.presentation),
-          pictureSize ?? { width: 1000, height: 700, photoWidth: 58, photoHeight: 58 },
-        )
-      ) {
-        setSetupPlacementError("That Venue photograph would overlap another Venue. Choose a nearby spot.");
+      if (![x, y].every((value) => Number.isFinite(value) && value >= 0 && value <= 1)) {
+        setSetupPlacementError("Place the Venue inside the map.");
         return;
       }
       const next = rows.map((row) =>

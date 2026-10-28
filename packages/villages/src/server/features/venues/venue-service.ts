@@ -35,6 +35,7 @@ import { readVenueImageContext } from "../../domain/rules/village-projections.js
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import { zonePictureBaseline, zonePictureContext } from "../../domain/rules/zone-picture.js";
+import { applyVenueZoneLayout } from "../../domain/rules/venue-layout.js";
 export type VillageVenueDeletionDependencies = {
   venueId: string;
   venueName: string;
@@ -473,6 +474,15 @@ export function createVenueCommands({
     return buildVillageSnapshot();
   }
 
+  async function updateVenueZoneLayout(venueId: string, value: unknown): Promise<VillageSnapshot> {
+    await mutateVillageState((state) => {
+      const venue = state.venues.find((entry) => entry.id === venueId);
+      if (!venue) throw notFound("That Venue no longer exists.");
+      applyVenueZoneLayout(state, venue, value);
+    });
+    return buildVillageSnapshot();
+  }
+
   async function deleteVillageVenue(venueId: string, confirmed: boolean): Promise<VillageSnapshot> {
     if (!confirmed) throw badRequest("Deleting a venue requires confirmation.");
     const dependencies = await previewVillageVenueDeletion(venueId);
@@ -508,6 +518,7 @@ export function createVenueCommands({
     createVillageVenue,
     changeVenueAccess,
     updateVillageVenue,
+    updateVenueZoneLayout,
     deleteVillageVenue,
   };
 }

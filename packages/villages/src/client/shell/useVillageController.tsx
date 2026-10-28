@@ -827,6 +827,18 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const suggestionSignal = useActivitySignal(visible && screen === "setup");
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
+    onQuickStartApplied: () => {
+      setSetupAuthoredFields({});
+      setupAuthoredFieldsRef.current = {};
+      setupZoneDrafts.current = {};
+      setupEditorOriginal.current = null;
+      setupEditorZoneOriginal.current = undefined;
+      setupEditorAuthoredOriginal.current = [];
+      setSetupEditorOpen(false);
+      setSelectedSetupVenueId(null);
+      setMovingSetupVenueId(null);
+      setSetupMapReviewed(false);
+    },
     signal: suggestionSignal,
     setupWorkspace,
     setSetupWorkspace,

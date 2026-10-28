@@ -160,7 +160,7 @@ export const serverFeatureInterfaces = Object.freeze({
 /** Named client presentation contracts; entry and shell assemble private feature implementations. */
 export const clientFeatureInterfaces = Object.freeze({
   "background/BackgroundPanel.tsx": ["BackgroundWorkPanel"],
-  "exploration/MapStage.tsx": ["defaultView", "MapStage", "PROJECT_BLUEPRINT_IMAGE", "TOWN_MAP_FITS"],
+  "exploration/MapStage.tsx": ["defaultView", "MapStage", "MobileMapView", "PROJECT_BLUEPRINT_IMAGE", "TOWN_MAP_FITS"],
   "exploration/villages-venue-polaroid.tsx": ["VenuePolaroid"],
   "exploration/villages-exploration.tsx": ["ExplorationSheet", "ExplorationTab"],
   "founding/FoundingPanels.tsx": ["PlayerIdentityEditor", "VillageLorebookPicker", "LoreTokenBudgetField"],

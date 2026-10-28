@@ -142,6 +142,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             ...(quickStart
               ? [
                   "Quick Start: EVERY Residence MUST have layout both, with a complete Common Space and Private Space. The Community venue MUST have layout common and no Private Space. Do not return common-only or private-only Residences.",
+                  "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Tailor the Community Venue and its Common Zone to the Village itself. These template defaults do not restrict later editing.",
                 ]
               : []),
             "For villager Private Space suggest only names and structural purposes; never descriptions, images, objects or resident secrets. For the player's included Private Space also supply privateDescription: a short visible physical description. Identify the player's residence by its absent residentCharacterId.",

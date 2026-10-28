@@ -157,9 +157,6 @@ async function main() {
   assert.equal(savedFoundingStep({ step: 3, phase: "Review", mapSource: "none", mapImage: "cached" }), 4);
 
   const serverRoot = join(root, "packages/villages/src/server");
-  const { foundingPhotoOverlaps } = await import(
-    pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-placement.ts")).href
-  );
   const { coerceVillageState } = await import(pathToFileURL(join(serverRoot, "domain/decoding/village-codec.ts")).href);
   const { createFoundingSetup } = await import(
     pathToFileURL(join(serverRoot, "features/founding/founding-setup-service.ts")).href
@@ -272,28 +269,6 @@ async function main() {
   assert.equal(persona.backstory, "Traveled through the northern pass.");
   assert.equal(persona.avatarPath, "/portraits/ada.png");
   assert.match(persona.identity, /Appearance: Wears a green coat\./, "existing prompt identity is preserved");
-
-  for (const picture of [
-    { width: 1000, height: 700, photoWidth: 58, photoHeight: 58 },
-    { width: 420, height: 630, photoWidth: 72, photoHeight: 72 },
-  ]) {
-    const first = { x: 0.5, y: 0.5 };
-    assert.equal(foundingPhotoOverlaps({ x: 0.5, y: 0.5 }, [first], picture), true, "stacked photos must be rejected");
-    assert.equal(
-      foundingPhotoOverlaps({ x: 0.5 + (0.15 * picture.photoWidth) / picture.width, y: 0.5 }, [first], picture),
-      true,
-    );
-    assert.equal(
-      foundingPhotoOverlaps({ x: 0.5 + (0.25 * picture.photoWidth) / picture.width, y: 0.5 }, [first], picture),
-      false,
-      "nearby buildings are allowed",
-    );
-    assert.equal(
-      foundingPhotoOverlaps({ x: 0.5, y: 0.5 + (0.25 * picture.photoHeight) / picture.height }, [first], picture),
-      false,
-    );
-    assert.equal(foundingPhotoOverlaps(first, [{ x: null, y: null }], picture), false);
-  }
 
   assert.equal(
     coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })

@@ -105,6 +105,8 @@ export async function requestFoundingSuggestions(
         : error instanceof Error
           ? error.message
           : "Suggestion status is unavailable.";
-    throw new Error(`${detail} Use Check suggestions to retrieve this attempt without generating again.`);
+    throw new Error(
+      `${detail} Use ${pending.quickStart ? "Check Quick Start" : "Check suggestions"} to retrieve this attempt without generating again.`,
+    );
   }
 }

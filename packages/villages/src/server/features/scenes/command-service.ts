@@ -1281,6 +1281,7 @@ export function createSceneCommands({
                 occurrenceVersion: 1,
                 writingContractVersion: 3,
                 castLimitVersion: 1,
+                soundHopVersion: 1,
                 playerAgencyVersion: 1,
                 ...(admission.semanticVersion === 2
                   ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 2 }
@@ -1935,6 +1936,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       ...(input.contact ? { contact: input.contact } : {}),
       ...(input.attentionChoice ? { attentionChoice: input.attentionChoice } : {}),
       ...(admittedVersion !== undefined ? { interactionScopeVersion: admittedVersion } : {}),
+      ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.soundHopVersion === 1
+          ? { soundHopVersion: 1 }
+          : {}
+        : !prior && admittedVersion === 6
+          ? { soundHopVersion: 1 }
+          : {}),
       ...(writingVersion !== undefined
         ? {
             writingContractVersion: writingVersion,

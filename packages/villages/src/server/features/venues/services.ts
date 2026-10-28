@@ -41,6 +41,9 @@ export function changeVenueAccess(...args: Parameters<VenueCommands["changeVenue
 export function updateVillageVenue(...args: Parameters<VenueCommands["updateVillageVenue"]>) {
   return venueCommands().updateVillageVenue(...args);
 }
+export function updateVenueZoneLayout(...args: Parameters<VenueCommands["updateVenueZoneLayout"]>) {
+  return venueCommands().updateVenueZoneLayout(...args);
+}
 export function deleteVillageVenue(...args: Parameters<VenueCommands["deleteVillageVenue"]>) {
   return venueCommands().deleteVillageVenue(...args);
 }

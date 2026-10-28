@@ -1,4 +1,5 @@
 import { SpaceConnections } from "../../shared/SpaceConnections.js";
+import { resolveZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
@@ -114,7 +115,16 @@ export function VenueLayoutFields({
       <p>Exterior · Unrestricted, 24/7. Every Venue includes this arrival and departure point.</p>
       <button
         type="button"
-        onClick={() => onChange({ ...venue, layoutVersion: 1, layout: "exterior", spaces: [], privateSpaces: [] })}
+        onClick={() =>
+          onChange({
+            ...venue,
+            layoutVersion: 1,
+            layout: "exterior",
+            spaces: [],
+            privateSpaces: [],
+            zoneLayout: venue.zoneLayout ? resolveZoneLayout(["exterior"], venue.zoneLayout) : undefined,
+          })
+        }
       >
         Use Exterior only
       </button>

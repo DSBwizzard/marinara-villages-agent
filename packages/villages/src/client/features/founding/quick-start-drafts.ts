@@ -1,4 +1,5 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import { newSetupVenue } from "./FoundingPanels.js";
 import { startingZone } from "./founding-template.js";
 
 export type StartingVenueSuggestion = {
@@ -17,68 +18,70 @@ export type StartingVenueSuggestion = {
   privateDescription?: string;
 };
 
-/** Complete base spaces without discarding authored collections, images or in-flight edits. */
-export function mergeQuickStartSpaces(
-  current: VillageVenue,
-  before: VillageVenue,
-  proposal: StartingVenueSuggestion,
-  authored: readonly string[],
-): VillageVenue {
-  if (
-    current.layout !== before.layout ||
-    (["spaces", "privateSpaces"] as const).some((key) => (current[key]?.length ?? 0) !== (before[key]?.length ?? 0))
-  )
-    return current;
-  const residence = current.category !== "public-center";
-  const spaces = (personal: boolean) => {
-    const key = personal ? "privateSpaces" : "spaces";
-    const rows = current[key] ?? [];
-    const existing = rows[0];
-    const original = before[key]?.find((zone) => zone.id === existing?.id);
-    const suggested = {
-      name: personal ? proposal.privateName : proposal.commonName,
-      purpose: personal
-        ? proposal.privatePurpose
-        : (proposal.commonPurpose ?? (residence ? "Everyday home activities" : "Community gatherings")),
-      description: personal
-        ? current.occupancy.playerHome
-          ? (proposal.privateDescription ?? "")
-          : ""
-        : proposal.commonDescription,
-    };
-    const zone = { ...startingZone(current, personal), ...existing };
-    for (const field of ["name", "purpose", "description"] as const) {
-      if (existing && (!original || existing[field] !== original[field])) continue;
-      const prefix = `zone:${key}:`;
-      const detailed = authored.some((entry) => entry.startsWith(prefix));
-      if (existing && authored.includes(`${prefix}legacy`)) continue;
-      if (existing && authored.includes(key) && !detailed) continue;
-      if (existing && authored.includes(`${prefix}${existing.id}:${field}`)) continue;
-      if (
-        existing &&
-        (existing.image || !["common:base", "private:base"].includes(existing.id)) &&
-        existing[field]?.trim()
-      )
-        continue;
-      zone[field] = suggested[field];
-    }
-    if (zone.connectedTo === undefined && proposal.connections)
-      zone.connectedTo = proposal.connections
-        .filter((edge) => edge.includes(zone.id))
-        .map((edge) => (edge[0] === zone.id ? edge[1] : edge[0]));
-    return [zone, ...rows.slice(1)];
-  };
+/** Bind recovered templates to their intended owners, independently of editable content. */
+export function quickStartIdentity(venues: readonly VillageVenue[]): string {
+  return JSON.stringify(
+    venues.map((venue) => [
+      venue.id,
+      venue.category === "public-center",
+      venue.occupancy.playerHome,
+      venue.occupancy.residentCharacterId,
+    ]),
+  );
+}
+
+/** Fresh template inputs deliberately exclude the current Venue's authored content. */
+export function quickStartTemplates(venues: readonly VillageVenue[]): VillageVenue[] {
+  return venues.map((previous, index) => {
+    const residence = previous.category !== "public-center";
+    const venue = newSetupVenue(
+      previous.id,
+      residence ? "residence" : "community",
+      0.5,
+      0.5,
+      residence && previous.occupancy.playerHome,
+      index,
+    );
+    venue.occupancy.residentCharacterId =
+      residence && !venue.occupancy.playerHome ? previous.occupancy.residentCharacterId : null;
+    venue.residentIds = venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [];
+    venue.spaces = [startingZone(venue, false)];
+    venue.privateSpaces = residence ? [startingZone(venue, true)] : [];
+    return venue;
+  });
+}
+
+/** Confirmation authorizes complete replacement; no field-level edit detection is used. */
+export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVenueSuggestion): VillageVenue {
+  const residence = venue.category !== "public-center";
+  const links = (id: string) =>
+    proposal.connections?.filter((edge) => edge.includes(id)).map((edge) => (edge[0] === id ? edge[1] : edge[0]));
   return {
-    ...current,
-    layoutVersion: 1,
+    ...venue,
+    name: proposal.name,
+    venueType: proposal.venueType,
+    form: proposal.form,
+    description: proposal.description,
     layout: residence ? "both" : "common",
-    spaces: spaces(false),
+    spaces: [
+      {
+        ...startingZone(venue, false),
+        name: proposal.commonName,
+        purpose: proposal.commonPurpose || (residence ? "Everyday activities" : "Community gatherings"),
+        description: proposal.commonDescription,
+        connectedTo: links("common:base") ?? (residence ? ["exterior", "private:base"] : ["exterior"]),
+      },
+    ],
     privateSpaces: residence
-      ? spaces(true).map((zone) => ({
-          ...zone,
-          ownerId:
-            zone.ownerId ?? (current.occupancy.playerHome ? "player" : (current.occupancy.residentCharacterId ?? "")),
-        }))
+      ? [
+          {
+            ...startingZone(venue, true),
+            name: proposal.privateName,
+            purpose: proposal.privatePurpose,
+            description: venue.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
+            connectedTo: links("private:base") ?? ["common:base"],
+          },
+        ]
       : [],
   };
 }

@@ -221,6 +221,10 @@
       "path": "/spinoffs/resolve"
     },
     {
+      "method": "put",
+      "path": "/venues/:venueId/layout"
+    },
+    {
       "method": "post",
       "path": "/private-spaces/retry"
     },

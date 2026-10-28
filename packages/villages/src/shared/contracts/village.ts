@@ -347,6 +347,7 @@ export type VillageVenueImage = {
  * somewhere somebody lives.
  */
 export type VillageVenue = {
+  zoneLayout?: import("../helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
   accessView?: import("../helpers/venue-access.js").VenueAccessView;
   destinations?: Record<string, { home?: string; sleep?: string; work?: string }>;
