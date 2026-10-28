@@ -1203,6 +1203,25 @@ export async function verifyFoundingLayout(group) {
         if (width > 704) await root.getByRole("button", { name: "Reset map view", exact: true }).click();
         await capture("venue-map");
         await open();
+        if (width <= 704) {
+          const sheet = await inspector.boundingBox();
+          const done = await inspector.getByRole("button", { name: "Done", exact: true }).boundingBox();
+          assert.ok(sheet.y + sheet.height - done.y - done.height <= 3, "No empty strip below Done");
+          await zone("Common");
+          assert.equal(
+            await page.evaluate(() => document.activeElement?.matches("input,textarea")),
+            false,
+            "Opening Zone never focuses a text field",
+          );
+          await inspector.getByLabel("Used for", { exact: true }).focus();
+          const viewport = page.viewportSize();
+          await page.setViewportSize({ ...viewport, height: Math.round(viewport.height * 0.6) });
+          const covered = await inspector.boundingBox();
+          assert.ok(Math.abs(sheet.y - covered.y) <= 1, "Keyboard cannot push the sheet upward");
+          assert.ok(Math.abs(sheet.height - covered.height) <= 1, "Keyboard cannot squeeze the sheet");
+          await page.setViewportSize(viewport);
+          await inspector.getByRole("tab", { name: "Venue", exact: true }).click();
+        }
         await inspector.getByLabel("Venue Name", { exact: true }).fill("My observatory quarters");
         await inspector.getByLabel("Physical Form", { exact: true }).fill("Converted observatory room");
         await zone("Exterior");
