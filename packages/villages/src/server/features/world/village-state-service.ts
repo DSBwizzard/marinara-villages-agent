@@ -8,6 +8,7 @@ import type { WorldRelationships } from "./world-relationships.js";
 
 /** Owns hydrated reads and relationship effects, separate from raw document storage. */
 export function createVillageStateService(repository: VillageRepository, worldRelationships: () => WorldRelationships) {
+  const peekVillageAuthority = () => repository.readAuthority();
   const readVillageAuthority = async (options?: VillageMemoryRead) => {
     await observeVillageClock();
     return repository.readAuthority(options);
@@ -82,6 +83,7 @@ export function createVillageStateService(repository: VillageRepository, worldRe
     return repository.withAuthorityLock ? repository.withAuthorityLock(accept) : accept();
   }
   return {
+    peekVillageAuthority,
     readVillageAuthority,
     readVillageSnapshot,
     readVillageState,

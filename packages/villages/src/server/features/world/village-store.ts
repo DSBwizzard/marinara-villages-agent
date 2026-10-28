@@ -12,6 +12,9 @@ function villageStateService(): VillageStateService {
 export function readVillageAuthority(...args: Parameters<VillageStateService["readVillageAuthority"]>) {
   return villageStateService().readVillageAuthority(...args);
 }
+export function peekVillageAuthority() {
+  return villageStateService().peekVillageAuthority();
+}
 export function readVillageSnapshot(...args: Parameters<VillageStateService["readVillageSnapshot"]>) {
   return villageStateService().readVillageSnapshot(...args);
 }

@@ -20,6 +20,22 @@ export function decodeVillageClock(raw: unknown): VillageClockRecord | null {
       lastAdvance.milliseconds <= 0)
   )
     throw new Error("The saved Village time request could not be read. Restore it from a backup.");
+  const advanceReceipts = value.advanceReceipts;
+  if (
+    advanceReceipts !== undefined &&
+    (!Array.isArray(advanceReceipts) ||
+      advanceReceipts.some(
+        (receipt) =>
+          !receipt ||
+          typeof receipt !== "object" ||
+          typeof receipt.actionId !== "string" ||
+          !/^[a-zA-Z0-9-]{1,100}$/.test(receipt.actionId) ||
+          !Number.isSafeInteger(receipt.milliseconds) ||
+          receipt.milliseconds <= 0,
+      ) ||
+      new Set(advanceReceipts.map((receipt) => receipt.actionId)).size !== advanceReceipts.length)
+  )
+    throw new Error("The saved Village time requests could not be read. Restore them from a backup.");
   if (
     value.shiftTotalMs !== undefined &&
     (typeof value.shiftTotalMs !== "number" || !Number.isSafeInteger(value.shiftTotalMs))
@@ -70,6 +86,9 @@ export function decodeVillageClock(raw: unknown): VillageClockRecord | null {
       typeof value.shiftTotalMs === "number" && Number.isFinite(value.shiftTotalMs) ? value.shiftTotalMs : 0,
     ...(value.advanceMs !== undefined ? { advanceMs: Number(value.advanceMs) } : {}),
     ...(lastAdvance ? { lastAdvance: { actionId: lastAdvance.actionId, milliseconds: lastAdvance.milliseconds } } : {}),
+    ...(Array.isArray(advanceReceipts)
+      ? { advanceReceipts: advanceReceipts.map(({ actionId, milliseconds }) => ({ actionId, milliseconds })) }
+      : {}),
   };
 }
 export function calendarReplay(state: VillageState, now: Date): boolean {

@@ -921,10 +921,14 @@ export function createRepairService(ports: RepairPorts) {
     if (!saved) throw notFound("That checkpoint is unavailable.");
     const checkpointData = saved.data as CheckpointData,
       state = await read();
+    if (state.returnCatchup?.batch && !["completed", "cancelled"].includes(state.returnCatchup.batch.status))
+      throw conflict("Finish or safely close Village catch-up before restoring a checkpoint.");
     if (checkpointData.seed !== state.seed || checkpointData.setupAt !== state.setupAt)
       throw conflict("This checkpoint belongs to another Village.");
     const simulation = await gate.simulate(async () => {
       const state = await read();
+      if (state.returnCatchup?.batch && !["completed", "cancelled"].includes(state.returnCatchup.batch.status))
+        throw conflict("Finish or safely close Village catch-up before restoring a checkpoint.");
       if (state.seed !== checkpointData.seed || state.setupAt !== checkpointData.setupAt)
         throw conflict("This checkpoint belongs to another Village.");
       if (await sceneOpen())
@@ -987,6 +991,7 @@ export function createRepairService(ports: RepairPorts) {
       for (const key of [
         "clock",
         "eventAttempts",
+        "returnCatchup",
         "planningUsage",
         "lastPlanningDate",
         "processedActionIds",
@@ -998,6 +1003,10 @@ export function createRepairService(ports: RepairPorts) {
         "loreTokenBudget",
       ])
         if (key in preserved) data[key] = structuredClone(preserved[key]);
+      if (!("returnCatchup" in preserved)) delete data.returnCatchup;
+      // A restored world cannot use an absence capture from the world it replaced.
+      if (data.returnCatchup && typeof data.returnCatchup === "object")
+        delete (data.returnCatchup as { capture?: unknown }).capture;
       for (const row of current) if (!wanted.has(row.id)) await documents.remove(PKG, row.id, row.revision);
       const savedHead = data.memoryHead as { id: string } | null,
         savedPayload = savedHead ? wanted.get(savedHead.id) : undefined;

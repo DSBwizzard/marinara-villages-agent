@@ -7,6 +7,7 @@ import {
 } from "../../../shared/helpers/resident-admission.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -1510,6 +1511,175 @@ export function isEmptyLegacyVillage(raw: Record<string, unknown>): boolean {
       (memories.format === 1 && memories.revision === 0 && Array.isArray(memories.records) && !memories.records.length))
   );
 }
+function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value))
+    throw new Error("The saved Village catch-up could not be read.");
+  const record = value as Record<string, unknown>;
+  if (record.capture !== undefined) {
+    if (!record.capture || typeof record.capture !== "object" || Array.isArray(record.capture))
+      throw new Error("The saved Village departure capture could not be read.");
+    const capture = record.capture as Record<string, unknown>;
+    if (!capture.world || typeof capture.world !== "object" || Array.isArray(capture.world))
+      throw new Error("The saved Village departure capture could not be read.");
+    const world = capture.world as Record<string, unknown>;
+    if (
+      typeof capture.at !== "string" ||
+      !Number.isFinite(Date.parse(capture.at)) ||
+      !Number.isSafeInteger(capture.memoryRevision) ||
+      Number(capture.memoryRevision) < 0 ||
+      ![
+        "seed",
+        "setupAt",
+        "foundedAt",
+        "timeZone",
+        "name",
+        "setting",
+        "worldName",
+        "playerPersonaId",
+        "playerPersonaName",
+        "playerPersonaIdentity",
+      ].every((key) => typeof world[key] === "string") ||
+      typeof world.playerPersonaMissing !== "boolean" ||
+      !["worldFacts", "villagers", "venues", "residences", "projects"].every((key) => Array.isArray(world[key])) ||
+      (world.timeZone !== "" && !validTimeZone(world.timeZone)) ||
+      !(world.villagers as unknown[]).every((value) => {
+        const resident = asRecord(value),
+          card = asRecord(resident.cardSnapshot);
+        return (
+          typeof resident.characterId === "string" &&
+          typeof resident.addedAt === "string" &&
+          typeof card.capturedAt === "string" &&
+          (resident.agenda == null || (typeof resident.agenda === "object" && !Array.isArray(resident.agenda)))
+        );
+      }) ||
+      !(world.venues as unknown[]).every((value) => {
+        const venue = asRecord(value);
+        return (
+          typeof venue.id === "string" &&
+          !!venue.occupancy &&
+          typeof venue.occupancy === "object" &&
+          !!venue.state &&
+          typeof venue.state === "object" &&
+          (venue.zones === undefined || Array.isArray(venue.zones))
+        );
+      }) ||
+      (world.opening !== undefined &&
+        world.opening !== null &&
+        (typeof world.opening !== "object" ||
+          Array.isArray(world.opening) ||
+          (asRecord(world.opening).stage === "conversations" &&
+            (!Array.isArray(asRecord(world.opening).residentIds) || !Array.isArray(asRecord(world.opening).reveals)))))
+    )
+      throw new Error("The saved Village departure capture could not be read.");
+  }
+  function validateBatch(value: unknown, historical = false) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("The saved Village catch-up batch could not be read.");
+    const batch = value as Record<string, unknown>;
+    if (
+      typeof batch.id !== "string" ||
+      !/^[a-zA-Z0-9-]{1,100}$/.test(batch.id) ||
+      !["queued", "running", "failed", "recovering", "completed", "cancelled"].includes(String(batch.status))
+    )
+      throw new Error("The saved Village catch-up batch could not be read.");
+    if (historical && !["completed", "cancelled"].includes(String(batch.status)))
+      throw new Error("The saved Village catch-up history contains unfinished work.");
+    if (batch.labels !== undefined) {
+      const labels = asRecord(batch.labels);
+      if (
+        !["residents", "venues", "zones"].every((key) => {
+          const values = labels[key];
+          return (
+            !!values &&
+            typeof values === "object" &&
+            !Array.isArray(values) &&
+            Object.values(values).every((entry) => typeof entry === "string")
+          );
+        })
+      )
+        throw new Error("The saved Village catch-up labels could not be read.");
+    }
+    if (
+      (batch.from !== undefined && (typeof batch.from !== "string" || !Number.isFinite(Date.parse(batch.from)))) ||
+      (batch.until !== undefined && (typeof batch.until !== "string" || !Number.isFinite(Date.parse(batch.until)))) ||
+      (typeof batch.from === "string" &&
+        typeof batch.until === "string" &&
+        Date.parse(batch.until) < Date.parse(batch.from))
+    )
+      throw new Error("The saved Village catch-up interval could not be read.");
+    if (batch.opportunities !== undefined) {
+      if (
+        !Array.isArray(batch.opportunities) ||
+        batch.opportunities.length > 6 ||
+        typeof batch.from !== "string" ||
+        typeof batch.until !== "string"
+      )
+        throw new Error("The saved Village catch-up opportunities could not be read.");
+      for (const value of batch.opportunities) {
+        const row = asRecord(value);
+        if (
+          typeof row.id !== "string" ||
+          !/^[a-zA-Z0-9-]{1,100}$/.test(row.id) ||
+          (row.kind !== "encounter" && row.kind !== "routine") ||
+          typeof row.startsAt !== "string" ||
+          !Number.isFinite(Date.parse(row.startsAt)) ||
+          row.endsAt !== row.startsAt ||
+          Date.parse(row.startsAt) < Date.parse(batch.from) ||
+          Date.parse(row.startsAt) > Date.parse(batch.until) ||
+          !Array.isArray(row.actorIds) ||
+          row.actorIds.length < 1 ||
+          row.actorIds.length > 4 ||
+          row.actorIds.some((id) => typeof id !== "string" || !id || id === "player") ||
+          new Set(row.actorIds).size !== row.actorIds.length ||
+          typeof row.venueId !== "string" ||
+          (row.kind === "encounter" &&
+            (row.actorIds.length < 2 || !row.venueId || typeof row.zoneId !== "string" || !row.zoneId)) ||
+          (row.kind === "routine" && (row.actorIds.length !== 1 || !!row.venueId)) ||
+          !Array.isArray(row.facts) ||
+          row.facts.some((fact) => typeof fact !== "string")
+        )
+          throw new Error("The saved Village catch-up opportunities could not be read.");
+      }
+    }
+    if (batch.records !== undefined) {
+      if (
+        !Array.isArray(batch.records) ||
+        !Array.isArray(batch.opportunities) ||
+        batch.records.length !== batch.opportunities.length
+      )
+        throw new Error("The saved Village catch-up records could not be read.");
+      const ids = new Set((batch.opportunities as Record<string, unknown>[]).map((row) => row.id));
+      const recorded = new Set<string>();
+      for (const value of batch.records) {
+        const row = asRecord(value);
+        if (
+          typeof row.opportunityId !== "string" ||
+          !ids.has(row.opportunityId) ||
+          recorded.has(row.opportunityId) ||
+          !["pending", "queued", "settling", "settled", "rejected"].includes(String(row.status)) ||
+          (row.error !== undefined && typeof row.error !== "string")
+        )
+          throw new Error("The saved Village catch-up records could not be read.");
+        recorded.add(row.opportunityId);
+      }
+    }
+  }
+  if (record.batch !== undefined) validateBatch(record.batch);
+  if (record.history !== undefined) {
+    if (!Array.isArray(record.history) || record.history.length > RETURN_CATCHUP_HISTORY_LIMIT)
+      throw new Error("The saved Village catch-up history could not be read.");
+    const ids = new Set<string>();
+    if (record.batch) ids.add(String(asRecord(record.batch).id));
+    for (const entry of record.history) {
+      validateBatch(entry, true);
+      const id = String(asRecord(entry).id);
+      if (ids.has(id)) throw new Error("The saved Village catch-up history contains a duplicate period.");
+      ids.add(id);
+    }
+  }
+  return structuredClone(record) as VillageState["returnCatchup"];
+}
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
   if (value != null && raw.version !== 6 && !isEmptyLegacyVillage(raw))
@@ -1563,6 +1733,7 @@ export function coerceVillageState(value: unknown): VillageState {
     eventAttempts: raw.eventAttempts
       ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
       : undefined,
+    returnCatchup: decodeReturnCatchup(raw.returnCatchup),
     progressEngineVersion: 1,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),

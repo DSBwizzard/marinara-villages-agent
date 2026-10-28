@@ -38,12 +38,20 @@ export function hasVillagePresence(): boolean {
 export async function villageBackgroundPresence<T = void>(
   sessionId: string,
   visible: boolean,
-  options: { beforeResume?: () => Promise<T> } = {},
+  options: {
+    beforeResume?: () => Promise<T>;
+    afterResume?: () => Promise<void>;
+    onVisible?: () => Promise<void>;
+    onHidden?: () => Promise<void>;
+  } = {},
 ): Promise<T | undefined> {
   return binding.get().villageBackgroundPresence<T>(sessionId, visible, options);
 }
 export function queueBackgroundJob(work: BackgroundInput): Promise<void> {
   return binding.get().queueBackgroundJob(work);
+}
+export function cancelReturnCatchup(batchId: string): Promise<void> {
+  return binding.get().cancelReturnCatchup(batchId);
 }
 export async function retryBackgroundJob(id: string, expectedAttempt: number, actionId: string): Promise<void> {
   return binding.get().retryBackgroundJob(id, expectedAttempt, actionId);

@@ -7,6 +7,8 @@ import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
+import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
@@ -357,6 +359,9 @@ await runCase("repair/people", async () => {
 });
 await runCase("repair/checkpoints", async () => {
   const f = await fixture();
+  await f.repo.mutateAuthority((state) => {
+    state.foundedAt = state.setupAt;
+  });
   const cp = await f.api.createCheckpoint("Before change", "manual-save");
   assert.deepEqual(
     await f.api.createCheckpoint("Before change", "manual-save"),
@@ -373,16 +378,55 @@ await runCase("repair/checkpoints", async () => {
         lastAttemptAt: memoryTime(10),
         attempts: [{ id: "spent", at: memoryTime(10), date: "2026-10-26" }],
       };
+      s.returnCatchup = {
+        batch: { id: "pending-return", status: "running" },
+        history: [{ id: "previous-return", status: "completed" }],
+        capture: captureReturnContext(s, new Date(memoryTime(10))),
+      };
+      s.clock = {
+        revision: 3,
+        trustedAt: memoryTime(10),
+        recovery: null,
+        replayUntilDate: "",
+        advanceMs: 120_000,
+        lastAdvance: { actionId: "later-advance", milliseconds: 60_000 },
+        advanceReceipts: [
+          { actionId: "earlier-advance", milliseconds: 60_000 },
+          { actionId: "later-advance", milliseconds: 60_000 },
+        ],
+      };
     },
     { memories: true },
   );
   const spent = (await f.read()).eventAttempts;
+  await assert.rejects(() => f.api.restore(cp.id, "restore-during-catchup"), /catch-up/u);
+  await f.repo.mutateAuthority((state) => {
+    state.returnCatchup!.batch!.status = "completed";
+  });
   f.reopen();
   const review = await f.api.restore(cp.id, "restore-first");
   assert.equal((await f.read()).setting, "Later setting");
   await f.api.apply(review.id);
   assert.equal((await f.read()).setting, "Original setting");
   assert.deepEqual((await f.read()).eventAttempts, spent);
+  assert.equal((await f.read()).returnCatchup?.batch?.status, "completed");
+  assert.equal((await f.read()).returnCatchup?.history?.[0]?.id, "previous-return");
+  assert.equal(
+    (await f.read()).returnCatchup?.capture,
+    undefined,
+    "Restoring invalidates the previous world's capture.",
+  );
+  const clock = createVillageClock(f.repo);
+  const view = await clock.observe();
+  await clock.advance!({ worldId: view.worldId!, revision: 1, actionId: "earlier-advance", milliseconds: 60_000 });
+  assert.equal((await f.read()).clock!.advanceMs, 120_000, "Restoration cannot replay an earlier time advance.");
+  const withBatch = await f.api.createCheckpoint("After catch-up", "checkpoint-after-catchup");
+  await f.repo.mutateAuthority((state) => {
+    delete state.returnCatchup;
+  });
+  const withoutBatch = await f.api.restore(withBatch.id, "restore-without-catchup");
+  await f.api.apply(withoutBatch.id);
+  assert.equal((await f.read()).returnCatchup, undefined, "Restoring cannot revive an older catch-up batch.");
   assert.equal((await f.read()).memories.records.length, 2, "Checkpoint owns independently restorable memory bytes");
   const now = new Date().toISOString();
   await f.gate.documents.create({

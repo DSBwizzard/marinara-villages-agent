@@ -78,6 +78,7 @@ export function createVillageClock(
       shiftTotalMs: stored?.shiftTotalMs ?? 0,
       ...(stored?.advanceMs !== undefined ? { advanceMs: stored.advanceMs } : {}),
       ...(stored?.lastAdvance ? { lastAdvance: stored.lastAdvance } : {}),
+      ...(stored?.advanceReceipts ? { advanceReceipts: stored.advanceReceipts } : {}),
     };
     if (
       !stored ||
@@ -129,7 +130,7 @@ export function createVillageClock(
     advanceSettled() {
       for (const listener of listeners) listener();
     },
-    advance: (request) =>
+    advance: (request, effect) =>
       serial(async () => {
         if (
           !request ||
@@ -144,39 +145,55 @@ export function createVillageClock(
         await observeUnlocked();
         let advanced = false;
         let committed: VillageClockRecord | null = null;
-        await repository.mutateAuthority((state) => {
-          advanced = false;
-          const clock = state.clock;
-          if (JSON.stringify([state.seed, state.setupAt]) !== request.worldId || !clock)
-            throw conflict("The Village changed. Refresh its clock before advancing time.");
-          if (!state.foundedAt) throw badRequest("Found a Village before advancing time.");
-          committed = clock;
-          if (clock.lastAdvance?.actionId === request.actionId) {
-            if (clock.lastAdvance.milliseconds !== request.milliseconds)
-              throw conflict("This time request already used another duration.");
-            return false;
-          }
-          if (clock.revision !== request.revision)
-            throw conflict("Time already changed. Refresh the clock before advancing again.");
-          const offset = (clock.advanceMs ?? 0) + request.milliseconds;
-          const target = sources.wall() + offset;
-          if (
-            !Number.isSafeInteger(offset) ||
-            target > MAX_VILLAGE_INSTANT ||
-            !Number.isFinite(target) ||
-            !Number.isSafeInteger(clock.revision + 1)
-          )
-            throw badRequest("That duration exceeds the Village calendar.");
-          state.clock = {
-            ...clock,
-            revision: clock.revision + 1,
-            advanceMs: offset,
-            trustedAt: new Date(Math.max(target, Date.parse(clock.trustedAt))).toISOString(),
-            lastAdvance: { actionId: request.actionId, milliseconds: request.milliseconds },
-          };
-          committed = state.clock;
-          advanced = true;
-        });
+        await repository.mutateAuthority(
+          (state) => {
+            advanced = false;
+            const clock = state.clock;
+            if (JSON.stringify([state.seed, state.setupAt]) !== request.worldId || !clock)
+              throw conflict("The Village changed. Refresh its clock before advancing time.");
+            if (!state.foundedAt) throw badRequest("Found a Village before advancing time.");
+            committed = clock;
+            const receipt =
+              clock.advanceReceipts?.find((entry) => entry.actionId === request.actionId) ??
+              (clock.lastAdvance?.actionId === request.actionId ? clock.lastAdvance : undefined);
+            if (receipt) {
+              if (receipt.milliseconds !== request.milliseconds)
+                throw conflict("This time request already used another duration.");
+              return false;
+            }
+            if (clock.revision !== request.revision)
+              throw conflict("Time already changed. Refresh the clock before advancing again.");
+            const wall = sources.wall();
+            const offset = (clock.advanceMs ?? 0) + request.milliseconds;
+            const target = wall + offset;
+            if (
+              !Number.isSafeInteger(offset) ||
+              target > MAX_VILLAGE_INSTANT ||
+              !Number.isFinite(target) ||
+              !Number.isSafeInteger(clock.revision + 1)
+            )
+              throw badRequest("That duration exceeds the Village calendar.");
+            state.clock = {
+              ...clock,
+              revision: clock.revision + 1,
+              advanceMs: offset,
+              trustedAt: new Date(Math.max(target, Date.parse(clock.trustedAt))).toISOString(),
+              lastAdvance: { actionId: request.actionId, milliseconds: request.milliseconds },
+              advanceReceipts: [
+                ...(clock.advanceReceipts ?? []),
+                ...(!clock.advanceReceipts?.some((entry) => entry.actionId === clock.lastAdvance?.actionId) &&
+                clock.lastAdvance
+                  ? [clock.lastAdvance]
+                  : []),
+                { actionId: request.actionId, milliseconds: request.milliseconds },
+              ],
+            };
+            effect?.(state, new Date(wall + (clock.advanceMs ?? 0)), new Date(target));
+            committed = state.clock;
+            advanced = true;
+          },
+          effect ? { memories: true } : undefined,
+        );
         if (committed) cached = committed;
         const result = await observeUnlocked();
         if (advanced) for (const listener of listeners) listener();

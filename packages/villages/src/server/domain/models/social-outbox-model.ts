@@ -3,6 +3,8 @@ import type { ResidentPlanningOpportunity } from "./world.js";
 
 export type SocialOutboxEntry = {
   id: string;
+  /** A return coordinator owns settlement ordering for this source. */
+  catchupBatchId?: string;
   seed: string;
   at: string;
   opportunity: ResidentPlanningOpportunity;
@@ -16,5 +18,5 @@ export type SocialOutboxEntry = {
   reinterpretRequired?: boolean;
   reinterpreted?: boolean;
   admitted?: Pick<import("./world.js").VillageState, "villagers" | "venues" | "residences" | "timeZone"> &
-    Partial<Pick<import("./world.js").VillageState, "projects">>;
+    Partial<Pick<import("./world.js").VillageState, "projects" | "opening">>;
 };

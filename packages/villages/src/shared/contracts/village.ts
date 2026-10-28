@@ -109,6 +109,17 @@ export type BackgroundWork = {
   };
 };
 
+export type ReturnCatchupView = {
+  id: string;
+  status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+  from?: string;
+  until?: string;
+  completed: number;
+  total: number;
+  settlementRequired: boolean;
+  issue: "generation" | "interpretation" | "settlement" | "authority" | null;
+};
+
 export type VillageSnapshot = {
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };

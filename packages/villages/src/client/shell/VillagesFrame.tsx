@@ -3,6 +3,7 @@ import { useState, type ReactNode } from "react";
 import { VillageActivity } from "../shared/activity.js";
 import type { useVillageController } from "./useVillageController.js";
 import { SpinoffPanel } from "../features/scenes/SpinoffPanel.js";
+import { ReturnCatchup } from "../features/background/ReturnCatchup.js";
 type FrameProps = { controller: ReturnType<typeof useVillageController>; children: ReactNode };
 export function VillagesFrame({ controller, children }: FrameProps) {
   const [spinoffLocked, setSpinoffLocked] = useState(false);
@@ -37,6 +38,10 @@ export function VillagesFrame({ controller, children }: FrameProps) {
             <VillageContent controller={controller}>{children}</VillageContent>
           </div>
         </SpinoffPanel>
+        <ReturnCatchup
+          enabled={controller.visible && !!controller.snapshot?.isFounded}
+          onSettled={controller.loadSnapshot}
+        />
       </div>
     </VillageActivity>
   );

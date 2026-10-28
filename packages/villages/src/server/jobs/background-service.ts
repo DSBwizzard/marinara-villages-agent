@@ -1,6 +1,7 @@
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
 import { ZonedDate } from "../../shared/helpers/zoned-date.js";
+import { returnCatchupHasCommittedEffects } from "../domain/rules/return-catchup-recovery.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import { retainLateProviderResponse } from "../adapters/models/provider-deadline.js";
 import type { withUsagePurpose } from "../adapters/models/usage-ledger.js";
@@ -104,6 +105,37 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   const superseded = new Set<string>();
   const tickets: Ticket[] = [];
   let dispatching = false;
+  let catchupAdmission: Promise<unknown> = Promise.resolve();
+  function withCatchupAdmission<T>(work: () => Promise<T>): Promise<T> {
+    const result = catchupAdmission.then(work, work);
+    catchupAdmission = result.catch(() => {});
+    return result;
+  }
+  async function cancelReturnCatchup(batchId: string): Promise<void> {
+    if (!/^[a-zA-Z0-9-]{1,100}$/.test(batchId)) throw badRequest("Choose a Village catch-up.");
+    await withCatchupAdmission(() =>
+      mutateVillageState((state) => {
+        const batch = state.returnCatchup?.batch;
+        if (!batch || batch.id !== batchId) throw conflict("Village catch-up changed. Refresh its status.");
+        if (["completed", "cancelled"].includes(batch.status)) return;
+        const pending =
+          state.socialOutbox?.filter((entry) => !entry.processed && entry.catchupBatchId === batchId) ?? [];
+        if (returnCatchupHasCommittedEffects(state, batchId))
+          throw conflict("Finish recovering the saved encounter before continuing.");
+        if (pending.length) {
+          const ids = new Set(pending.map((entry) => entry.id));
+          state.socialOutbox = state.socialOutbox?.filter((entry) => !ids.has(entry.id));
+        }
+        for (const record of batch.records ?? []) {
+          if (record.status === "settled" || record.status === "rejected") continue;
+          record.status = "rejected";
+          record.error = "Skipped when continuing to the village.";
+        }
+        batch.status = "cancelled";
+        delete state.returnCatchup!.capture;
+      }),
+    );
+  }
   async function readJob(id: string): Promise<Job | null> {
     const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id);
     if (!record) return null;
@@ -321,12 +353,19 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   async function villageBackgroundPresence<T = void>(
     sessionId: string,
     visible: boolean,
-    options: { beforeResume?: () => Promise<T> } = {},
+    options: {
+      beforeResume?: () => Promise<T>;
+      afterResume?: () => Promise<void>;
+      onVisible?: () => Promise<void>;
+      onHidden?: () => Promise<void>;
+    } = {},
   ): Promise<T | undefined> {
     if (!/^[a-zA-Z0-9-]{1,100}$/.test(sessionId)) throw badRequest("Invalid browser session.");
     if (!visible) {
-      sessions.delete(sessionId);
+      hasVillagePresence(); // Expired leases cannot establish a late departure boundary.
+      const wasVisible = sessions.delete(sessionId);
       pendingPresence.delete(sessionId);
+      if (wasVisible && !hasVillagePresence()) await options.onHidden?.();
       return;
     }
     if (hasVillagePresence()) {
@@ -334,7 +373,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       // advances ongoing mechanics; a heartbeat only renews spending permission.
       pendingPresence.delete(sessionId);
       sessions.set(sessionId, presenceNow() + 90_000);
+      await options.onVisible?.();
       await recoverBackgroundWork();
+      await options.afterResume?.();
       return;
     }
     const token = Symbol();
@@ -352,8 +393,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (pendingPresence.get(sessionId) !== token) return advanced;
     pendingPresence.delete(sessionId);
     sessions.set(sessionId, presenceNow() + 90_000);
+    await options.onVisible?.();
     await recoverBackgroundWork();
     recoveryError = false;
+    await options.afterResume?.();
     return advanced;
   }
   function pump(): void {
@@ -385,8 +428,35 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       pump();
     });
   }
+  function catchupBatchId(job: Job): string | undefined {
+    const input = asRecord(job.input);
+    if (job.kind === "social-recovery") {
+      const id = asRecord(input.entry).catchupBatchId;
+      return typeof id === "string" && id ? id : undefined;
+    }
+    if (job.kind !== "resident-planning") return undefined;
+    if (asRecord(input.context).catchup !== true) return undefined;
+    if (typeof input.catchupBatchId !== "string" || !input.catchupBatchId)
+      throw new Obsolete("Catch-up work has no batch identity.");
+    return input.catchupBatchId;
+  }
+  function readForJob(job: Job): Promise<VillageState> {
+    return readVillageState(catchupBatchId(job) ? { memories: true } : undefined);
+  }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
+    const batchId = catchupBatchId(job),
+      batch = state.returnCatchup?.batch;
+    const holding = batch && !["completed", "cancelled"].includes(batch.status);
+    if (
+      batchId &&
+      (!holding ||
+        batch.id !== batchId ||
+        (batch.status !== "running" && !(job.kind === "social-recovery" && batch.status === "recovering")))
+    )
+      throw new Obsolete("This catch-up opportunity is no longer active.");
+    if (holding && !batchId && (!job.finite || job.kind === "resident-planning"))
+      throw new Paused("Waiting for Village catch-up.");
     if (superseded.has(job.id) || state.seed !== job.seed || !handlers.get(job.kind)!.valid(state, job.input))
       throw new Obsolete("This work is no longer needed.");
   }
@@ -558,7 +628,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         const admittedAt = Date.now(),
           queueMs = Math.max(0, Math.round(performance.now() - queuedClock));
         if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
-        if (!job!.finite && !hasVillagePresence()) throw new Paused("Waiting until Villages is visible.");
+        if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
+          throw new Paused("Waiting until Villages is visible.");
         if (pausedConnections.has(model.connectionId) && !job!.retrying) {
           job = await changeJob(id, (current) => ({
             ...current!,
@@ -567,9 +638,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           }));
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
-        checkCurrent(job!, await readVillageState());
-        if (job!.kind === "resident-planning" && job!.automaticDate && !job!.retrying) {
-          if (job!.requests >= 2)
+        checkCurrent(job!, await readForJob(job!));
+        if (job!.kind === "resident-planning" && job!.automaticDate && (!job!.retrying || catchupBatchId(job!))) {
+          if (!job!.retrying && job!.requests >= 2)
             throw new Error("Automatic resident activity may make at most two principal requests.");
           await mutateVillageState((state) => {
             if (state.seed !== job!.seed) throw new Obsolete("Village identity changed.");
@@ -579,7 +650,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             );
             if (!job!.requests && localDateKey(actual) !== job!.automaticDate)
               throw new Obsolete("Automatic resident opportunity belongs to an earlier day.");
-            reserveEventAttempt(state, job!.id, job!.automaticDate!, villageNow().getTime());
+            reserveEventAttempt(state, job!.id, job!.automaticDate!, villageNow().getTime(), catchupBatchId(job!));
           });
         }
         job = await changeJob(id, (current) => {
@@ -589,11 +660,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           current.owner = runOwner;
           current.connectionId = model.connectionId;
           current.steps[index] = { key: options.checkpointId, fingerprint, status: "running" };
-          current.requests++;
+          if (!catchupBatchId(job!)) current.requests++;
           return current;
         });
-        invoked = true;
-        dispatched = true;
+        if (!catchupBatchId(job!)) {
+          invoked = true;
+          dispatched = true;
+        }
         const timing = {
           queuedAt: new Date(queuedAt).toISOString(),
           admittedAt: new Date(admittedAt).toISOString(),
@@ -619,18 +692,57 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         const hostTiming = { ...timing, hostStartedAt: new Date().toISOString() };
         let response: Awaited<ReturnType<BackgroundCompletion>>;
         try {
-          response = await withUsagePurpose(options.usagePurpose ?? "background", () =>
-            model.chatComplete(messages, {
-              ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
-              ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
-              ...(options.verbosity ? { verbosity: options.verbosity } : {}),
-              ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
-              maxTokens,
-              debugMode: false,
-              signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
-            }),
-          );
+          const startRequest = () =>
+            withUsagePurpose(options.usagePurpose ?? "background", () =>
+              model.chatComplete(messages, {
+                ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
+                ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
+                ...(options.verbosity ? { verbosity: options.verbosity } : {}),
+                ...(options.responseFormat ? { responseFormat: options.responseFormat } : {}),
+                maxTokens,
+                debugMode: false,
+                signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
+              }),
+            );
+          const request = catchupBatchId(job!)
+            ? (
+                await withCatchupAdmission(async () => {
+                  checkCurrent(job!, await readForJob(job!));
+                  assertActive();
+                  if (!hasVillagePresence()) throw new Paused("Waiting until Villages is visible.");
+                  job = await changeJob(id, (current) => {
+                    if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
+                      throw new Obsolete("Request admission ownership changed.");
+                    current.requests++;
+                    return current;
+                  });
+                  if (
+                    !hasVillagePresence() ||
+                    stopped ||
+                    owner !== runOwner ||
+                    controller.signal.aborted ||
+                    superseded.has(runJobId)
+                  ) {
+                    job = await changeJob(id, (current) => {
+                      if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
+                        throw new Obsolete("Request admission ownership changed.");
+                      current.requests = Math.max(0, current.requests - 1);
+                      if (current.steps[index]?.status === "running") current.steps.splice(index, 1);
+                      return current;
+                    });
+                    assertActive();
+                    throw new Paused("Waiting until Villages is visible.");
+                  }
+                  assertActive();
+                  invoked = true;
+                  dispatched = true;
+                  return { pending: startRequest() };
+                })
+              ).pending
+            : startRequest();
+          response = await request;
         } catch (error) {
+          if (error instanceof Paused || error instanceof Obsolete) throw error;
           const receiptId = lateResponseId(job!, index);
           const documents = villagesDocuments();
           retainLateProviderResponse(error, (value) =>
@@ -745,9 +857,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (job!.steps.length) return undefined;
       return requestTurn(async () => {
         assertOwner();
-        if (!job!.finite && !hasVillagePresence()) throw new Paused("Waiting until Villages is visible.");
+        if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
+          throw new Paused("Waiting until Villages is visible.");
         const expectedOwner = job!.owner;
-        checkCurrent(job!, await readVillageState());
+        checkCurrent(job!, await readForJob(job!));
         const allowance = Math.max(
           0,
           10_000 - Object.values(job!.optionalAttempts ?? {}).reduce((sum, attempt) => sum + attempt.elapsedMs, 0),
@@ -797,7 +910,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           signal.removeEventListener("abort", onAbort);
         }
         assertOwner();
-        checkCurrent(job!, await readVillageState());
+        checkCurrent(job!, await readForJob(job!));
         // Persistence/ownership errors propagate: they never authorize a System request.
         job = await changeJob(id, (current) => {
           assertOwner();
@@ -856,7 +969,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       return job.settings[key] as T;
     };
     try {
-      checkCurrent(job, await readVillageState());
+      checkCurrent(job, await readForJob(job));
       if (!job.hasResult) {
         const result = await backgroundCalls.run(complete, () => handlers.get(job!.kind)!.generate(job!.input));
         if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
@@ -945,6 +1058,16 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           (current.owner !== runOwner && current.status === "running")
         )
           throw new Obsolete("This job was replaced.");
+        // Catch-up marks a step before entering the admission gate. If visibility
+        // was lost there, no provider call began and this is an ordinary pause.
+        if (
+          paused &&
+          !dispatched &&
+          catchupBatchId(current) &&
+          lastIndex >= 0 &&
+          current.steps[lastIndex]?.status === "running"
+        )
+          current.steps.splice(lastIndex, 1);
         return {
           ...current!,
           status: obsolete
@@ -1273,6 +1396,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     });
   }
   return {
+    cancelReturnCatchup,
     registerBackgroundHandler,
     retireLegacyFounding,
     backgroundJobSnapshot: (kind: BackgroundKind, subjectId: string) => readJob(slotId({ kind, subjectId })),

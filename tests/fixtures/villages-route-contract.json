@@ -576,6 +576,22 @@
       "path": "/background/presence"
     },
     {
+      "method": "get",
+      "path": "/background/catchup"
+    },
+    {
+      "method": "get",
+      "path": "/debug/return-catchup"
+    },
+    {
+      "method": "post",
+      "path": "/background/catchup/retry"
+    },
+    {
+      "method": "post",
+      "path": "/background/catchup/continue"
+    },
+    {
       "method": "post",
       "path": "/background/retry"
     },

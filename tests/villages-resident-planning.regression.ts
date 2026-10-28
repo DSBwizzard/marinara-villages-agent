@@ -8,11 +8,17 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
-import { reserveEventAttempt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
+import {
+  eventAttemptAvailable,
+  reserveEventAttempt,
+} from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { activateVillagerDay, planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
+import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 
@@ -74,6 +80,7 @@ function fixture() {
   const queued: any[] = [],
     calls: any[] = [];
   let payload: any = { social: null, routineIdea: null, housingRequests: [] },
+    memoryChanges: any[] = [],
     legacy: any = null;
   const model: any = {
     connectionId: "fixture",
@@ -99,7 +106,7 @@ function fixture() {
           messages[0].content.startsWith("Independently interpret")
             ? {
                 wishChanges: [],
-                memoryChanges: [],
+                memoryChanges,
                 relationshipReview: { changes: [], permissions: [], disclosures: [] },
               }
             : payload,
@@ -113,6 +120,7 @@ function fixture() {
     queued,
     calls,
     payload: (value: any) => (payload = value),
+    memoryChanges: (value: any[]) => (memoryChanges = value),
     legacy: (value: any) => (legacy = value),
   };
 }
@@ -137,6 +145,235 @@ f.service.handler.apply(f.state, input, quiet, { retrying: true });
 assert.equal(f.state.planningUsage.count, 1, "Replay cannot spend or apply the allowance twice");
 assert.equal(Object.hasOwn(f.state, "happenings"), false);
 assert.equal(Object.hasOwn(quiet, "happenings"), false);
+
+const spending = fixture().state;
+assert.equal(coerceVillageState(structuredClone(spending)).returnCatchup, undefined, "Older villages need no batch.");
+assert.throws(
+  () =>
+    coerceVillageState({ ...structuredClone(spending), returnCatchup: { batch: { id: "batch", status: "invalid" } } }),
+  /catch-up batch/,
+);
+assert.throws(() => coerceVillageState({ ...structuredClone(spending), returnCatchup: [] }), /catch-up/);
+spending.backgroundPace = "balanced";
+spending.returnCatchup = { batch: { id: "batch", status: "running" } };
+assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime()), false, "Ordinary activity waits for catch-up.");
+assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime(), "other"), false);
+reserveEventAttempt(spending, "one", dateKey, now.getTime(), "batch");
+reserveEventAttempt(spending, "two", dateKey, now.getTime() + 1, "batch");
+reserveEventAttempt(spending, "three", dateKey, now.getTime() + 2, "batch");
+reserveEventAttempt(spending, "one", dateKey, now.getTime() + 3, "batch");
+assert.throws(
+  () => reserveEventAttempt(spending, "one", dateKey, now.getTime() + 3, "other"),
+  /batch is no longer active/,
+);
+assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime() + 3, "batch"), false, "The daily limit is shared.");
+assert.equal(spending.eventAttempts!.attempts.length, 3, "A replay does not reserve another attempt.");
+spending.returnCatchup.batch!.status = "completed";
+assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime() + 3), false, "Normal spacing remains in effect.");
+assert.throws(
+  () => reserveEventAttempt(spending, "one", dateKey, now.getTime() + 3, "batch"),
+  /batch is no longer active/,
+  "An existing reservation does not admit another dispatch after cancellation or completion.",
+);
+
+const historical = fixture();
+await historical.service.reconcile(now);
+const historicalInput = historical.queued[0].input;
+historicalInput.context.catchup = true;
+for (const forbidden of [
+  { social: null, routineIdea: { characterId: "a" }, housingRequests: [] },
+  { social: null, routineIdea: null, housingRequests: [{ who: "a", kind: "move", venueId: "home" }] },
+  { social: { mail: { senderId: "a", text: "Hello" } }, routineIdea: null, housingRequests: [] },
+  { social: { planId: "future" }, routineIdea: null, housingRequests: [] },
+  { social: { mail: null }, routineIdea: null, housingRequests: [] },
+  { social: {}, routineIdea: null, housingRequests: [] },
+]) {
+  historical.payload(forbidden);
+  await assert.rejects(historical.service.handler.generate(historicalInput));
+  assert.throws(() =>
+    historical.service.handler.apply(historical.state, historicalInput, forbidden, { retrying: false }),
+  );
+}
+historical.payload({ social: null, routineIdea: null, housingRequests: [], wishReflection: null });
+await historical.service.handler.generate(historicalInput);
+assert.match(
+  String(historical.calls.at(-1).messages[0].content),
+  /no mail, housing request, routine change or future plan/i,
+);
+const queuedReturn = fixture();
+queuedReturn.state.villagers[0]!.agenda!.activeDay = {
+  dateKey,
+  weekday: "Monday",
+  blocks: [],
+  scheduleInformed: false,
+};
+await queuedReturn.service.reconcile(now);
+const returnOpportunity = structuredClone(queuedReturn.queued[0].input.opportunity);
+returnOpportunity.venueId = "";
+returnOpportunity.zoneId = undefined;
+const returnCapture = captureReturnContext(queuedReturn.state, now);
+queuedReturn.state.returnCatchup = {
+  batch: {
+    id: "batch-one",
+    status: "running",
+    from: returnCapture.at,
+    until: now.toISOString(),
+    opportunities: [returnOpportunity],
+    records: [{ opportunityId: returnOpportunity.id, status: "queued" }],
+  },
+  capture: returnCapture,
+};
+queuedReturn.queued.length = 0;
+await queuedReturn.service.queueReturnOpportunity("batch-one", returnOpportunity, returnCapture);
+assert.equal(queuedReturn.calls.length, 0, "Queueing a return opportunity does not dispatch a model request.");
+assert.equal(queuedReturn.queued[0].input.context.catchup, true);
+assert.deepEqual(queuedReturn.queued[0].input.context.social.candidates, []);
+assert.equal(queuedReturn.service.handler.valid(queuedReturn.state, queuedReturn.queued[0].input), true);
+const rolledDay = structuredClone(queuedReturn.state);
+rolledDay.villagers[0]!.agenda!.activeDay!.dateKey = "2099-01-01";
+assert.equal(
+  queuedReturn.service.handler.valid(rolledDay, queuedReturn.queued[0].input),
+  true,
+  "A normal day rollover does not erase a historical opportunity.",
+);
+const changedRoutine = structuredClone(queuedReturn.state);
+changedRoutine.villagers[0]!.agenda!.routineSummary = "A different routine";
+assert.equal(queuedReturn.service.handler.valid(changedRoutine, queuedReturn.queued[0].input), false);
+const changedOpening = structuredClone(queuedReturn.state);
+changedOpening.opening = { version: 2, stage: "conversations" } as any;
+assert.equal(queuedReturn.service.handler.valid(changedOpening, queuedReturn.queued[0].input), false);
+queuedReturn.service.handler.apply(queuedReturn.state, queuedReturn.queued[0].input, quiet, { retrying: false });
+assert.equal(
+  queuedReturn.state.returnCatchup!.batch!.records![0]!.status,
+  "settled",
+  "A quiet result is saved as a settled opportunity.",
+);
+assert.deepEqual(queuedReturn.state.returnCatchup!.batch!.records![0]!.outcome, quiet);
+queuedReturn.state.memories.revision++;
+assert.equal(queuedReturn.service.handler.valid(queuedReturn.state, queuedReturn.queued[0].input), false);
+await assert.rejects(
+  queuedReturn.service.queueReturnOpportunity("batch-one", returnOpportunity, returnCapture),
+  /memories changed/,
+);
+const longReturn = fixture();
+const departedAt = new Date(now.getTime() - 9 * 86_400_000);
+longReturn.state.foundedAt = longReturn.state.setupAt = longReturn.state.simulatedThrough = departedAt.toISOString();
+longReturn.state.villagers[0]!.addedAt = departedAt.toISOString();
+longReturn.state.villagers[0]!.cardSnapshot.capturedAt = departedAt.toISOString();
+longReturn.state.villagers[0]!.agenda!.generatedAt = departedAt.toISOString();
+const longCapture = captureReturnContext(longReturn.state, departedAt);
+planRoutineDays(longReturn.state, now);
+activateVillagerDay(longReturn.state.villagers[0]!, now, longReturn.state);
+longReturn.state.simulatedThrough = now.toISOString();
+const eventAt = new Date(now.getTime() - 5_000).toISOString();
+const longOpportunity = {
+  id: "later-reflection",
+  kind: "routine" as const,
+  startsAt: eventAt,
+  endsAt: eventAt,
+  actorIds: ["a"],
+  venueId: "",
+  facts: [],
+};
+longReturn.state.returnCatchup = {
+  batch: {
+    id: "long-return",
+    status: "running",
+    from: longCapture.at,
+    until: now.toISOString(),
+    opportunities: [longOpportunity],
+  },
+  capture: longCapture,
+};
+await longReturn.service.queueReturnOpportunity("long-return", longOpportunity, longCapture);
+assert.equal(
+  longReturn.service.handler.valid(longReturn.state, longReturn.queued[0].input),
+  true,
+  "A generated day after a long absence is compared with the captured routine.",
+);
+const alteredCapture = structuredClone(longCapture);
+alteredCapture.world.setting = "Different past";
+await assert.rejects(
+  longReturn.service.queueReturnOpportunity("long-return", longReturn.queued[0].input.opportunity, alteredCapture),
+  /departure interval/,
+  "The batch cannot use an arbitrary replacement capture.",
+);
+const afterReturn = new Date(now.getTime() + 1000).toISOString();
+await assert.rejects(
+  longReturn.service.queueReturnOpportunity(
+    "long-return",
+    { ...longReturn.queued[0].input.opportunity, startsAt: afterReturn, endsAt: afterReturn },
+    longCapture,
+  ),
+  /departure interval/,
+  "A catch-up event cannot happen after the fixed return instant.",
+);
+const privateReturn = fixture();
+const otherResident = structuredClone(privateReturn.state.villagers[0]!);
+otherResident.characterId = "b";
+otherResident.cardSnapshot.id = "b";
+otherResident.cardSnapshot.name = "B";
+privateReturn.state.villagers.push(otherResident);
+privateReturn.state.relationshipContext!.reviewedActorIds.push("b");
+const meetingVenue = privateReturn.state.venues[0]!;
+const meetingZone = venueZones(meetingVenue)[0]!;
+meetingZone.description = "SHARED-ZONE-DETAIL";
+meetingVenue.zones = [
+  meetingZone,
+  { ...structuredClone(meetingZone), id: "hidden-room", name: "Hidden", description: "PRIVATE-ROOM-SENTINEL" },
+];
+meetingVenue.state.traces = [{ id: "private-note", kind: "note", text: "PRIVATE-NOTE-SENTINEL" } as any];
+const privateCapture = captureReturnContext(privateReturn.state, now);
+const privateOpportunity = {
+  id: "private-event",
+  kind: "encounter" as const,
+  startsAt: now.toISOString(),
+  endsAt: now.toISOString(),
+  actorIds: ["a", "b"],
+  venueId: meetingVenue.id,
+  zoneId: meetingZone.id,
+  facts: [],
+};
+privateReturn.state.returnCatchup = {
+  batch: {
+    id: "private-return",
+    status: "running",
+    from: privateCapture.at,
+    until: now.toISOString(),
+    opportunities: [privateOpportunity],
+  },
+  capture: privateCapture,
+};
+await privateReturn.service.queueReturnOpportunity("private-return", privateOpportunity, privateCapture);
+privateReturn.payload({
+  routineIdea: null,
+  housingRequests: [],
+  social: {
+    encounter: {
+      opportunityId: privateOpportunity.id,
+      lines: [
+        { speakerId: "a", text: "Hello." },
+        { speakerId: "b", text: "Hello." },
+      ],
+    },
+  },
+});
+await privateReturn.service.handler.generate(privateReturn.queued[0].input);
+assert.match(
+  String(privateReturn.calls[0].messages[0].content),
+  /SHARED-ZONE-DETAIL/,
+  "The writing model can see the selected Zone.",
+);
+assert.match(
+  String(privateReturn.calls[1].messages[1].content),
+  /SHARED-ZONE-DETAIL/,
+  "Interpretation sees the selected Zone.",
+);
+assert.doesNotMatch(
+  JSON.stringify(privateReturn.calls),
+  /PRIVATE-ROOM-SENTINEL|PRIVATE-NOTE-SENTINEL/,
+  "Unseen Zones and notes are not sent to either model request.",
+);
 
 const effects = fixture();
 await effects.service.reconcile(now);
@@ -182,6 +419,21 @@ await social.service.reconcile(now);
 const si = social.queued[0].input;
 si.opportunity.kind = "encounter";
 si.opportunity.actorIds = ["a", "b"];
+si.context.catchup = true;
+si.context.residents.push({
+  ...si.context.residents[0],
+  characterId: "c",
+  wishes: [{ wish: "UNRELATED-PRIVATE-WISH" }],
+});
+// This checks propagation to the outbox; settlement validates the complete Memory contract separately.
+const proposedMemory = {
+  action: "create",
+  kind: "information",
+  text: "Ada and Bram agreed to compare sketches after breakfast.",
+  subjects: ["a", "b"],
+  learners: { a: { support: [{ lineId: 1, excerpt: "Yes, after breakfast." }] } },
+};
+social.memoryChanges([proposedMemory]);
 social.payload({
   routineIdea: null,
   housingRequests: [],
@@ -199,10 +451,18 @@ social.payload({
 });
 const accepted: any = await social.service.handler.generate(si);
 assert.equal(social.calls.length, 2, "An offered encounter retains independent interpretation");
+assert.doesNotMatch(
+  social.calls[1].messages[1].content,
+  /UNRELATED-PRIVATE-WISH/,
+  "Nonparticipants' private Wishes stay out of catch-up interpretation.",
+);
 assert.equal(accepted.social.encounter.semanticVersion, 2);
-assert.deepEqual(accepted.social.encounter.memoryChanges, []);
+assert.deepEqual(accepted.social.encounter.memoryChanges, [proposedMemory]);
+assert.doesNotMatch(social.calls[1].messages[0].content, /Return memoryChanges:\[\] under the native Memory contract/);
+si.context.catchup = false;
 social.service.handler.apply(social.state, si, accepted, { retrying: false });
 assert.equal(social.state.socialOutbox!.length, 1);
+assert.deepEqual((social.state.socialOutbox![0]!.proposal.encounter as any).memoryChanges, [proposedMemory]);
 assert.equal(social.state.memories.records.length, 0, "Only encounter settlement can create witnessed memory");
 const invalid = fixture();
 await invalid.service.reconcile(now);
