@@ -212,7 +212,7 @@ export function FoundingWorkspace({
       : inspector.current?.querySelector<HTMLElement>(selector);
     field?.focus();
     field?.scrollIntoView({ block: "nearest" });
-  }, [focusIssue, selectedId, section, zoneTab, sheet]);
+  }, [focusIssue, selectedId, section, zoneTab, sheet, activeTab]);
   const changeZone = (next: string) => {
     setLayoutTab(next === "layout");
     if (!selected || next === "layout") return;

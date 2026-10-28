@@ -23,8 +23,9 @@ import {createRoot} from 'react-dom/client';import {useState} from 'react';
 import {FoundingWorkspace} from './packages/villages/src/client/features/founding/villages-founding-workspace.js';
 import {newSetupVenue} from './packages/villages/src/client/features/founding/FoundingPanels.js';
 function Harness(){const [venue,setVenue]=useState(()=>newSetupVenue('home','residence',.2,.3,true));
-const [state,setState]=useState({view:'details',paused:false,sections:{},zones:{}});window.readVenue=()=>venue;
-return <div className='villages-forging-v2'><FoundingWorkspace venues={[venue]} people={[]} selectedId='home' placementId={null} state={state} map={null} existing={false} mapReady={true} issues={[]} focusIssue={null} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} onState={setState} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}} /></div>}
+const [state,setState]=useState({view:'details',paused:false,sections:{},zones:{}}),[issue,setIssue]=useState(null);window.readVenue=()=>venue;
+window.focusZone=id=>{setState(state=>({...state,sections:{home:'zones'},zones:{home:id}}));setIssue({venueId:'home',zoneId:id,field:'zone-name',message:'Name this Zone.'});};
+return <div className='villages-forging-v2'><FoundingWorkspace venues={[venue]} people={[]} selectedId='home' placementId={null} state={state} map={null} existing={false} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} onState={setState} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}} /></div>}
 createRoot(document.querySelector('marinara-capability-villages')).render(<Harness/>);
 `,
     resolveDir: process.cwd(),
@@ -73,6 +74,9 @@ try {
       await page.getByRole("button", { name: "Add Zone", exact: true }).click();
       const selected = (await page.evaluate(() => window.readVenue())).spaces.at(-1).id;
       await page.getByLabel("Zone Name", { exact: true }).fill("A long named room for shared community gatherings");
+      await page.getByRole("tab", { name: "Layout", exact: true }).click();
+      await page.evaluate((id) => window.focusZone(id), selected);
+      await expect(page.getByLabel("Zone Name", { exact: true })).toBeFocused();
       await page.getByRole("tab", { name: "Layout", exact: true }).click();
       await expect(map.locator("[data-layout-zone]")).toHaveCount(4);
       await expect(node(map, selected)).toContainText("A long named room");
