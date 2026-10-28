@@ -193,7 +193,13 @@ export function QuickStartVenues({
         >
           Edit
         </button>
-        <button type="button" aria-label="Arrange automatically" disabled={busy || imageBusy} onClick={onArrange}>
+        <button
+          className="villages-quick-arrange"
+          type="button"
+          aria-label="Arrange automatically"
+          disabled={busy || imageBusy}
+          onClick={onArrange}
+        >
           Arrange
         </button>
       </div>

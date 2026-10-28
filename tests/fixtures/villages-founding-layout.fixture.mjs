@@ -1060,7 +1060,8 @@ export async function verifyFoundingLayout(group) {
         await forward("Continue to Map").click();
         await forward("Continue to Venues").click();
         await expect(root).toHaveAttribute("data-step", "3");
-        await root.getByRole("button", { name: "Arrange automatically", exact: true }).click();
+        if (width > 704) await root.getByRole("button", { name: "Arrange automatically", exact: true }).click();
+        else await expect(root.locator(".villages-quick-arrange")).toBeHidden();
         await expect(root.getByRole("button", { name: "Advanced", exact: true })).toHaveCount(0);
         const inspector = root.locator("dialog.villages-quick-dialog");
         const placementMap = root.locator(".marinara-capability-villages-setup-map-viewport");
@@ -1167,13 +1168,39 @@ export async function verifyFoundingLayout(group) {
         await expect.poll(async () => Math.abs((await coordinates()).x - target.x)).toBeLessThan(target.epsilonX);
         await expect.poll(async () => Math.abs((await coordinates()).y - target.y)).toBeLessThan(target.epsilonY);
         const preserved = await coordinates();
-        await root.getByRole("button", { name: "Zoom in", exact: true }).click();
+        if (width <= 704) {
+          await expect(root.locator(".marinara-capability-villages-map-camera-controls")).toBeHidden();
+          const touchClient = await page.context().newCDPSession(page);
+          const point = await playerMarker.evaluate((node) => {
+            const box = node.parentElement.getBoundingClientRect();
+            return { x: box.x, y: box.y };
+          });
+          const imageWidth = await canvas.locator("img").evaluate((node) => node.getBoundingClientRect().width);
+          const touch = (type, points) =>
+            touchClient.send("Input.dispatchTouchEvent", {
+              type,
+              touchPoints: points.map(([x, y], id) => ({ x, y, id })),
+            });
+          await touch("touchStart", [
+            [point.x - 20, point.y],
+            [point.x + 20, point.y],
+          ]);
+          await touch("touchMove", [
+            [point.x - 30, point.y],
+            [point.x + 30, point.y],
+          ]);
+          await touch("touchEnd", []);
+          await expect
+            .poll(() => canvas.locator("img").evaluate((node) => node.getBoundingClientRect().width))
+            .toBeGreaterThan(imageWidth);
+          await touchClient.detach();
+        } else await root.getByRole("button", { name: "Zoom in", exact: true }).click();
         const afterZoom = await coordinates();
         assert.ok(
           Math.abs(preserved.x - afterZoom.x) < 0.0001 && Math.abs(preserved.y - afterZoom.y) < 0.0001,
           "Camera zoom never rewrites Venue coordinates",
         );
-        await root.getByRole("button", { name: "Reset map view", exact: true }).click();
+        if (width > 704) await root.getByRole("button", { name: "Reset map view", exact: true }).click();
         await capture("venue-map");
         await open();
         await inspector.getByLabel("Venue Name", { exact: true }).fill("My observatory quarters");
@@ -1340,7 +1367,9 @@ export async function verifyFoundingLayout(group) {
           await expect.poll(() => !!releaseMap).toBe(true);
           await forward("Continue to Venues").click();
           await expect(root).toHaveAttribute("data-step", "3");
-          await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toHaveCount(1);
+          if (width > 704)
+            await expect(root.getByRole("button", { name: "Arrange automatically", exact: true })).toBeVisible();
+          else await expect(root.locator(".villages-quick-arrange")).toBeHidden();
           releaseMap();
           await expect(
             root.getByRole("alert").filter({ hasText: "The generated map is too large to store." }),
