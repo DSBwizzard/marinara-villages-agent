@@ -177,6 +177,28 @@ try {
       await expect(sheet.getByRole("tab")).toHaveCount(2);
       await expect(sheet.getByLabel("Physical Form", { exact: true })).toBeVisible();
       await expect(quickLayout.locator("[data-layout-zone]")).toHaveCount(3);
+      await expect(sheet.getByRole("button", { name: "Add private Zone", exact: true })).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Regenerate this Venue", exact: true })).toHaveCount(0);
+      await expect(sheet.getByText(/Drag Zones|\d+\s*\/\s*6 Zones/)).toHaveCount(0);
+      const toolbarButtons = await quickLayout
+        .locator(".villages-zone-map-toolbar")
+        .getByRole("button")
+        .allTextContents();
+      assert.deepEqual(toolbarButtons, ["Add Zone", "Remove Zone", "Connect Zones"]);
+      const toolbarBoxes = await quickLayout
+        .locator(".villages-zone-map-toolbar button")
+        .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
+      assert.ok(
+        toolbarBoxes.every(
+          (box) =>
+            Math.abs(box.y - toolbarBoxes[0].y) < 1 && box.height >= 44 && box.x >= 0 && box.right <= viewport.width,
+        ),
+        "map controls share one row of touch targets within the viewport",
+      );
+      assert.ok(
+        await quickLayout.evaluate((node) => node.parentElement.lastElementChild === node),
+        "no extra Venue controls follow the map tool",
+      );
       await quickLayout.locator('[data-layout-zone="common:base"]').click();
       await quickLayout.locator('[data-layout-zone="common:base"]').press("ArrowRight");
       assert.equal((await page.evaluate(() => window.quickState.venues))[0].zoneLayout["common:base"].x, 1);
@@ -333,30 +355,6 @@ try {
           "tabs and Done stay on screen while the panel scrolls",
         );
       }
-      const savedRows = await page.evaluate(() => window.quickState.venues);
-      await sheet.getByRole("tab", { name: "Venue", exact: true }).click();
-      await sheet.getByRole("button", { name: "Regenerate this Venue", exact: true }).click();
-      await expect(sheet.getByRole("button", { name: "Regenerate this Venue", exact: true })).toBeEnabled();
-      await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("My Last Ride");
-      await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
-      await selectZone("common:base");
-      await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveValue("My cabin");
-      assert.deepEqual(
-        (await page.evaluate(() => window.quickState.venues)).slice(1),
-        savedRows.slice(1),
-        "single regeneration never rewrites other venues",
-      );
-      fail = true;
-      const beforeFailure = await page.evaluate(() => window.quickState.venues);
-      await sheet.getByRole("tab", { name: "Venue", exact: true }).click();
-      await sheet.getByRole("button", { name: "Regenerate this Venue", exact: true }).click();
-      await expect(sheet.getByRole("alert")).toHaveText(/System connection unavailable/);
-      assert.deepEqual(
-        await page.evaluate(() => window.quickState.venues),
-        beforeFailure,
-        "regeneration failure keeps the complete draft",
-      );
-      fail = false;
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await expect(sheet).not.toBeVisible();
       await expect(edit).toBeFocused();
@@ -470,16 +468,16 @@ try {
       assert.equal(afterRemoval.destinations.player.sleep, undefined);
       assert.equal(afterRemoval.destinations.player.home, "common:base");
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
-      assert.equal(count, 4, "resume and view switches do not request models");
+      assert.equal(count, 2, "resume and view switches do not request models");
       loseReply = true;
       await page.getByRole("button", { name: "Refresh suggestions", exact: true }).click();
       await expect(page.getByRole("button", { name: "Check suggestions", exact: true })).toBeEnabled();
-      assert.equal(count, 5);
+      assert.equal(count, 3);
       await page.reload();
       await expect(page.getByRole("button", { name: "Check suggestions", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Check suggestions", exact: true }).click();
       await expect(page.getByRole("button", { name: "Refresh suggestions", exact: true })).toBeEnabled();
-      assert.equal(count, 5, "reloading and checking a lost reply uses GET without another model request");
+      assert.equal(count, 3, "reloading and checking a lost reply uses GET without another model request");
       hold = true;
       release = undefined;
       await page.getByRole("button", { name: "Refresh suggestions", exact: true }).click();

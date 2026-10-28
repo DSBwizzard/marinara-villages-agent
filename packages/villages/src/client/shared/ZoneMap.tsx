@@ -11,6 +11,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   onSelect,
   disabled = false,
   labels,
+  toolbar,
 }: {
   zones: T[];
   positions?: ZoneLayout;
@@ -20,6 +21,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   onSelect?(id: string): void;
   disabled?: boolean;
   labels?(zone: T): ReactNode;
+  toolbar?: ReactNode;
 }) {
   const [connecting, setConnecting] = useState(false),
     [first, setFirst] = useState<string | null>(null);
@@ -76,23 +78,25 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   };
   return (
     <section className="villages-zone-map" aria-label="Zone layout">
-      <div className="villages-zone-map-toolbar">
-        {onPositions ? <small>Drag Zones</small> : null}
-        {onConnections ? (
-          <button
-            type="button"
-            disabled={disabled}
-            aria-pressed={connecting}
-            onClick={() => {
-              setConnecting(!connecting);
-              setFirst(null);
-              setNotice("");
-            }}
-          >
-            {connecting ? "Done connecting" : "Connect Zones"}
-          </button>
-        ) : null}
-      </div>
+      {toolbar || onConnections ? (
+        <div className="villages-zone-map-toolbar">
+          {toolbar}
+          {onConnections ? (
+            <button
+              type="button"
+              disabled={disabled}
+              aria-pressed={connecting}
+              onClick={() => {
+                setConnecting(!connecting);
+                setFirst(null);
+                setNotice("");
+              }}
+            >
+              {connecting ? "Done connecting" : "Connect Zones"}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <div className="villages-zone-map-canvas">
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           {pairs.map(([a, b]) => (

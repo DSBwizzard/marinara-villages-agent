@@ -3,12 +3,7 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { addFoundingZone } from "./founding-template.js";
 import { QuickStartZoneArtwork } from "./QuickStartZoneArtwork.js";
-import {
-  draftZonePolicy,
-  FoundingConnections,
-  foundingLayoutProblem,
-  removeFoundingZone,
-} from "./villages-founding-zones.js";
+import { draftZonePolicy, FoundingConnections, foundingLayoutProblem } from "./villages-founding-zones.js";
 import {
   foundingVenueIssues,
   type FoundingIssue,
@@ -174,11 +169,6 @@ export function QuickStartVenues({
     onPatch(next);
     setZoneId(id);
     setTab("zone");
-  };
-  const removeZone = () => {
-    if (!selected || !zone) return;
-    onPatch(removeFoundingZone(selected, zone.id));
-    setZoneId("exterior");
   };
   return (
     <section className="villages-quick-start" aria-label="Quick Start Venues">
@@ -358,39 +348,10 @@ export function QuickStartVenues({
                     onPatch={onPatch}
                     selectedZoneId={zoneId}
                     onSelect={setZoneId}
+                    allowAdd
+                    onAdd={addZone}
                     busy={busy || imageBusy}
                   />
-                  <div className="villages-zone-map-actions">
-                    <span>{(selected.spaces?.length ?? 0) + (selected.privateSpaces?.length ?? 0)} / 6 Zones</span>
-                    <button
-                      type="button"
-                      disabled={
-                        busy || imageBusy || (selected.spaces?.length ?? 0) + (selected.privateSpaces?.length ?? 0) >= 6
-                      }
-                      onClick={() => addZone(false)}
-                    >
-                      Add Zone
-                    </button>
-                    {selected.category !== "public-center" ? (
-                      <button
-                        type="button"
-                        disabled={
-                          busy ||
-                          imageBusy ||
-                          (selected.spaces?.length ?? 0) + (selected.privateSpaces?.length ?? 0) >= 6
-                        }
-                        onClick={() => addZone(true)}
-                      >
-                        Add private Zone
-                      </button>
-                    ) : null}
-                    <button type="button" disabled={busy || imageBusy || !zone} onClick={removeZone}>
-                      Remove Zone
-                    </button>
-                  </div>
-                  <button type="button" disabled={busy || imageBusy} onClick={() => onGenerate(selected.id)}>
-                    {busy ? "Preparing…" : state.suggestionRequest ? "Check suggestions" : "Regenerate this Venue"}
-                  </button>
                 </>
               ) : (
                 <>

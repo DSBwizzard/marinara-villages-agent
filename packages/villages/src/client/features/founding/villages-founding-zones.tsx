@@ -373,46 +373,38 @@ export function FoundingConnections({
       />
     );
   return (
-    <>
-      <ZoneMap
-        zones={zones}
-        positions={venue.zoneLayout}
-        selectedId={selectedZoneId}
-        onSelect={onSelect}
-        disabled={busy}
-        onPositions={(zoneLayout) => onPatch({ ...venue, zoneLayout })}
-        onConnections={(rows) =>
-          onPatch({
-            ...venue,
-            spaces: venue.spaces?.map((zone) => ({
-              ...zone,
-              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-            })),
-            privateSpaces: venue.privateSpaces?.map((zone) => ({
-              ...zone,
-              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-            })),
-          })
-        }
-      />
-      {allowAdd ? (
-        <div className="villages-zone-map-actions">
-          <span>{zones.length - 1} / 6 Zones + Entrance</span>
-          <button type="button" disabled={busy || zones.length >= 7} onClick={() => onAdd?.(false)}>
-            Add Zone
-          </button>
-          {venue.category !== "public-center" ? (
-            <button type="button" disabled={busy || zones.length >= 7} onClick={() => onAdd?.(true)}>
-              Add private Zone
+    <ZoneMap
+      zones={zones}
+      positions={venue.zoneLayout}
+      selectedId={selectedZoneId}
+      onSelect={onSelect}
+      disabled={busy}
+      toolbar={
+        allowAdd ? (
+          <>
+            <button type="button" disabled={busy || zones.length >= 7} onClick={() => onAdd?.(false)}>
+              Add Zone
             </button>
-          ) : null}
-          {selectedZoneId && selectedZoneId !== "exterior" ? (
-            <button type="button" disabled={busy || zones.length <= 2} onClick={remove}>
+            <button type="button" disabled={busy || !selectedZoneId || selectedZoneId === "exterior"} onClick={remove}>
               Remove Zone
             </button>
-          ) : null}
-        </div>
-      ) : null}
-    </>
+          </>
+        ) : undefined
+      }
+      onPositions={(zoneLayout) => onPatch({ ...venue, zoneLayout })}
+      onConnections={(rows) =>
+        onPatch({
+          ...venue,
+          spaces: venue.spaces?.map((zone) => ({
+            ...zone,
+            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+          })),
+          privateSpaces: venue.privateSpaces?.map((zone) => ({
+            ...zone,
+            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+          })),
+        })
+      }
+    />
   );
 }
