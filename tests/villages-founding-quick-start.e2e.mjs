@@ -139,6 +139,15 @@ try {
         }),
       );
       await page.goto("http://quick-start.test/");
+      const sheet = page.locator("dialog.villages-quick-dialog");
+      const selectZone = async (id) => {
+        const navigation = sheet.getByRole("group", { name: "Zone navigation", exact: true });
+        for (let i = 0; i < 7; i++) {
+          if ((await navigation.getAttribute("data-zone-id")) === id) return;
+          await sheet.getByRole("button", { name: "Next Zone", exact: true }).click();
+        }
+        assert.fail(`Zone ${id} not reachable through navigation`);
+      };
       const capture = async (stage) => {
         const directory = process.env.VILLAGES_FEEDBACK_SCREENSHOTS ?? process.env.VILLAGES_SCREENSHOT_DIR;
         if (!directory) return;
@@ -154,15 +163,19 @@ try {
       await expect(page.getByRole("button", { name: "Review village", exact: true })).toBeEnabled();
       assert.equal(count, 0, "opening Quick Start is free of model requests");
       await page.getByRole("button", { name: "Edit Your residence", exact: true }).click();
-      const quickLayout = page.getByRole("dialog").locator(".villages-zone-map");
-      await expect(page.getByRole("dialog").locator("summary")).toHaveCount(0);
-      await expect(page.getByRole("dialog").getByLabel("Selected Zone", { exact: true })).toHaveCount(0);
+      const quickLayout = page.locator("dialog.villages-quick-dialog").locator(".villages-zone-map");
+      await expect(page.locator("dialog.villages-quick-dialog").locator("summary")).toHaveCount(0);
+      await expect(
+        page.locator("dialog.villages-quick-dialog").getByLabel("Selected Zone", { exact: true }),
+      ).toHaveCount(0);
       const venueTab = page.getByRole("tab", { name: "Venue", exact: true });
       await venueTab.focus();
       await venueTab.press("ArrowRight");
-      await expect(page.getByRole("tab", { name: "Layout", exact: true })).toBeFocused();
-      await expect(page.getByRole("tab", { name: "Layout", exact: true })).toHaveAttribute("aria-selected", "true");
-      await expect(page.getByRole("dialog").getByLabel("Physical Form", { exact: true })).toHaveCount(0);
+      await expect(sheet.getByRole("tab", { name: "Zone", exact: true })).toBeFocused();
+      await sheet.getByRole("tab", { name: "Zone", exact: true }).press("ArrowLeft");
+      await expect(venueTab).toBeFocused();
+      await expect(sheet.getByRole("tab")).toHaveCount(2);
+      await expect(sheet.getByLabel("Physical Form", { exact: true })).toBeVisible();
       await expect(quickLayout.locator("[data-layout-zone]")).toHaveCount(3);
       await quickLayout.locator('[data-layout-zone="common:base"]').click();
       await quickLayout.locator('[data-layout-zone="common:base"]').press("ArrowRight");
@@ -180,11 +193,20 @@ try {
           );
         }
       await capture("layout");
-      await page.getByRole("dialog").getByRole("button", { name: "Edit Zone", exact: true }).click();
-      await expect(page.getByRole("dialog").getByLabel("Selected Zone", { exact: true })).toHaveValue("common:base");
+      await page
+        .locator("dialog.villages-quick-dialog")
+        .getByRole("button", { name: "Edit Zone", exact: true })
+        .click();
+      await expect(sheet.getByRole("group", { name: "Zone navigation", exact: true })).toHaveAttribute(
+        "data-zone-id",
+        "common:base",
+      );
       await venueTab.click();
-      await page.getByRole("dialog").getByLabel("Physical Form", { exact: true }).fill("Authored vehicle");
-      await page.getByRole("dialog").getByRole("button", { name: "Done", exact: true }).click();
+      await page
+        .locator("dialog.villages-quick-dialog")
+        .getByLabel("Physical Form", { exact: true })
+        .fill("Authored vehicle");
+      await page.locator("dialog.villages-quick-dialog").getByRole("button", { name: "Done", exact: true }).click();
       await capture("generate");
       fail = true;
       await generate.click();
@@ -214,7 +236,6 @@ try {
       await capture("review-list");
       const edit = page.getByRole("button", { name: "Edit Your residence", exact: true });
       await edit.click();
-      const sheet = page.getByRole("dialog");
       await expect(sheet).toBeVisible();
       await expect(sheet.getByLabel("Physical Form", { exact: true })).toHaveValue("Authored vehicle");
       await sheet.getByLabel("Venue Name", { exact: true }).fill("My Last Ride");
@@ -225,13 +246,48 @@ try {
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Zone access", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Used for", { exact: true })).toHaveCount(0);
-      await expect(sheet.getByLabel("Selected Zone", { exact: true }).locator("option").first()).toHaveText("Entrance");
-      await sheet.getByLabel("Selected Zone", { exact: true }).selectOption("common:base");
+      await expect(sheet.getByRole("group", { name: "Zone navigation", exact: true })).toHaveAttribute(
+        "data-zone-id",
+        "exterior",
+      );
+      await selectZone("common:base");
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveValue("Front cabin");
       await sheet.getByLabel("Zone name", { exact: true }).fill("My cabin");
       await expect(sheet.getByLabel("Appearance", { exact: true })).toBeVisible();
+      await sheet.getByRole("button", { name: "Public access", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: "Public access", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      assert.equal((await page.evaluate(() => window.quickState.venues))[0].spaces[0].access.mode, "public");
+      await sheet.getByRole("button", { name: "Permission required", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: "Permission required", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      assert.equal(
+        (await page.evaluate(() => window.quickState.venues))[0].spaces[0].access.mode,
+        "permission-required",
+      );
       await capture("zone");
-      await sheet.getByLabel("Selected Zone", { exact: true }).selectOption("private:base");
+      await expect(sheet.getByRole("button", { name: "Generate image", exact: true })).toHaveCount(0);
+      const countBeforeArtwork = count;
+      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      const firstArtwork = page.getByRole("dialog", { name: "Artwork for My cabin", exact: true });
+      await expect(firstArtwork).toBeVisible();
+      assert.equal(count, countBeforeArtwork, "opening artwork never requests a model");
+      await firstArtwork.press("Escape");
+      await expect(firstArtwork).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeFocused();
+      if (viewport.width === 390) {
+        await page.evaluate(() => (document.documentElement.style.fontSize = "20px"));
+        const appearance = await sheet.getByLabel("Appearance", { exact: true }).boundingBox();
+        const footer = await sheet.getByRole("button", { name: "Done", exact: true }).boundingBox();
+        assert.ok(appearance.y + appearance.height <= footer.y, "the complete Zone form fits a phone with larger text");
+        await capture("zone-large-text");
+        await page.evaluate(() => (document.documentElement.style.fontSize = ""));
+      }
+      await selectZone("private:base");
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A padded berth behind a curtain.");
       await expect(sheet.getByText(/Access:|Invitation required|Visitors need permission/)).toHaveCount(0);
       const dimensions = await sheet.evaluate((node) => ({
@@ -269,7 +325,7 @@ try {
       await expect(sheet.getByRole("button", { name: "Regenerate this Venue", exact: true })).toBeEnabled();
       await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("My Last Ride");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
-      await sheet.getByLabel("Selected Zone", { exact: true }).selectOption("common:base");
+      await selectZone("common:base");
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveValue("My cabin");
       assert.deepEqual(
         (await page.evaluate(() => window.quickState.venues)).slice(1),
@@ -292,38 +348,41 @@ try {
       await expect(edit).toBeFocused();
       await page.getByRole("button", { name: "Edit Buster’s residence", exact: true }).click();
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
-      await sheet.getByLabel("Selected Zone", { exact: true }).selectOption("private:base");
+      await selectZone("private:base");
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Room Specification", { exact: true })).toBeVisible();
       await expect(sheet.getByText(/private interior stays hidden/)).toBeVisible();
       await expect(sheet.getByLabel("Zone artwork")).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toHaveCount(0);
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await page.getByRole("button", { name: "Edit Community venue", exact: true }).click();
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
-      await sheet.getByLabel("Selected Zone", { exact: true }).selectOption("common:base");
-      await expect(sheet.getByLabel("Zone access").locator('option[value="permission-required"]')).toHaveAttribute(
-        "disabled",
-        "",
-      );
+      await selectZone("common:base");
+      await expect(sheet.getByRole("button", { name: "Permission required", exact: true })).toBeDisabled();
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await page.getByRole("button", { name: "Edit Your residence", exact: true }).click();
-      await sheet.getByRole("tab", { name: "Layout", exact: true }).click();
+      await sheet.getByRole("tab", { name: "Venue", exact: true }).click();
       await sheet.getByRole("button", { name: "Add Zone", exact: true }).click();
       await expect(sheet.getByRole("tab", { name: "Zone", exact: true })).toHaveAttribute("aria-selected", "true");
       await sheet.getByLabel("Zone name", { exact: true }).fill("Kitchen");
       await sheet.getByLabel("Used for", { exact: true }).fill("Cooking");
       await sheet.getByLabel("Appearance", { exact: true }).fill("A sunny kitchen.");
-      await sheet
+      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      const artwork = page.getByRole("dialog", { name: "Artwork for Kitchen", exact: true });
+      await artwork
         .getByLabel("Upload Zone image", { exact: true })
         .evaluate((input) => input.dispatchEvent(new Event("cancel", { bubbles: true })));
       await expect(sheet).toBeVisible();
-      await expect(sheet.getByLabel("Upload Zone image", { exact: true })).toBeFocused();
-      await sheet.getByLabel("Upload Zone image", { exact: true }).setInputFiles({
+      await expect(artwork.getByLabel("Upload Zone image", { exact: true })).toBeFocused();
+      await artwork.getByLabel("Upload Zone image", { exact: true }).setInputFiles({
         name: "kitchen.png",
         mimeType: "image/png",
         buffer: Buffer.from("test"),
       });
-      await expect(sheet.getByRole("img", { name: "Artwork for Kitchen" })).toBeVisible();
+      await expect(artwork.getByRole("img", { name: "Artwork for Kitchen" })).toBeVisible();
+      await capture("artwork");
+      await artwork.getByRole("button", { name: "Close artwork", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeFocused();
       const added = (await page.evaluate(() => window.quickState.venues))[0].spaces.find(
         (zone) => zone.name === "Kitchen",
       );
@@ -350,11 +409,14 @@ try {
       );
       await page.getByRole("button", { name: "Edit Your residence", exact: true }).click();
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
-      await sheet.getByLabel("Selected Zone", { exact: true }).selectOption(added.id);
+      await selectZone(added.id);
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A sunny kitchen.");
-      await expect(sheet.getByRole("img", { name: "Artwork for Kitchen" })).toBeVisible();
+      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      await expect(artwork.getByRole("img", { name: "Artwork for Kitchen" })).toBeVisible();
+      await artwork.getByRole("button", { name: "Close artwork", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeFocused();
       await page.evaluate((id) => window.referenceZone(id), added.id);
-      await sheet.getByRole("tab", { name: "Layout", exact: true }).click();
+      await sheet.getByRole("tab", { name: "Venue", exact: true }).click();
       await expect(sheet.getByRole("button", { name: "Remove Zone", exact: true })).toBeDisabled();
       await expect(sheet.getByText(/Update Zone connections/)).toBeVisible();
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
