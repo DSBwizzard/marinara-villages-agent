@@ -339,7 +339,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-moves { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
 .villages-quick-dialog { width:min(68rem,calc(100vw - 1.5rem)); }
 .villages-forging-v2 dialog.villages-quick-dialog:not([open]) { display:none; }
-.villages-forging-v2 dialog.villages-quick-dialog[open] { display:block; height:min(38rem,calc(100dvh - 1.5rem)); overflow:auto; }
+.villages-forging-v2 dialog.villages-quick-dialog[open] { display:block; height:min(42rem,calc(100dvh - 1.5rem)); overflow:auto; }
 .villages-quick-dialog .villages-quick-heading { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
 .villages-quick-dialog h3 { margin:.2rem 0; overflow-wrap:anywhere; }
 .villages-quick-dialog p { color:#c1c9e9; line-height:1.5; }

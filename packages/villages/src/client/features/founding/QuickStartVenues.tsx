@@ -2,7 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { addFoundingZone } from "./founding-template.js";
-import { draftZonePolicy } from "./villages-founding-zones.js";
+import { draftZonePolicy, FoundingConnections, removeFoundingZone } from "./villages-founding-zones.js";
 import {
   foundingVenueIssues,
   type FoundingIssue,
@@ -152,14 +152,7 @@ export function QuickStartVenues({
     !referencesZone;
   const removeZone = () => {
     if (!selected || !zone || !canRemove) return;
-    const spaces = (selected.spaces ?? []).filter((row) => row.id !== zone.id);
-    const privateSpaces = (selected.privateSpaces ?? []).filter((row) => row.id !== zone.id);
-    onPatch({
-      ...selected,
-      spaces,
-      privateSpaces,
-      layout: spaces.length ? (privateSpaces.length ? "both" : "common") : "private",
-    });
+    onPatch(removeFoundingZone(selected, zone.id));
     setZoneId("exterior");
   };
   return (
@@ -297,11 +290,21 @@ export function QuickStartVenues({
                 />
               </label>
             </fieldset>
+            <details>
+              <summary>Zone layout</summary>
+              <FoundingConnections
+                venue={selected}
+                onPatch={onPatch}
+                selectedZoneId={zoneId}
+                onSelect={setZoneId}
+                busy={busy || imageBusy}
+              />
+            </details>
             <div className="villages-quick-zone-picker">
               <label>
                 Selected Zone
                 <select aria-label="Selected Zone" value={zoneId} onChange={(event) => setZoneId(event.target.value)}>
-                  <option value="exterior">Exterior</option>
+                  <option value="exterior">Entrance</option>
                   {[...(selected.spaces ?? []), ...(selected.privateSpaces ?? [])].map((row) => (
                     <option key={row.id} value={row.id}>
                       {row.name || "Unnamed Zone"}
@@ -333,9 +336,7 @@ export function QuickStartVenues({
                 Remove Zone
               </button>
             </div>
-            {referencesZone ? (
-              <p>Update Zone connections and destinations in Advanced before removing this Zone.</p>
-            ) : null}
+            {referencesZone ? <p>Update Zone connections and destinations before removing this Zone.</p> : null}
             <div className="villages-quick-zone-body">
               <fieldset disabled={busy || imageBusy}>
                 <label>
@@ -343,7 +344,7 @@ export function QuickStartVenues({
                   <input
                     autoComplete="off"
                     aria-label="Zone name"
-                    value={zoneId === "exterior" ? "Exterior" : (zone?.name ?? "")}
+                    value={zoneId === "exterior" ? "Entrance" : (zone?.name ?? "")}
                     disabled={zoneId === "exterior" || !zone}
                     maxLength={100}
                     onChange={(event) => zone && patchZone(personal, zone.id, { name: event.target.value })}

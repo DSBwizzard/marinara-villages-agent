@@ -145,6 +145,25 @@ try {
       await expect(page.getByRole("button", { name: "Review village", exact: true })).toBeEnabled();
       assert.equal(count, 0, "opening Quick Start is free of model requests");
       await page.getByRole("button", { name: "Edit Your residence", exact: true }).click();
+      const quickLayout = page.getByRole("dialog").locator(".villages-zone-map");
+      await page.getByRole("dialog").getByText("Zone layout", { exact: true }).click();
+      await expect(quickLayout.locator("[data-layout-zone]")).toHaveCount(3);
+      await quickLayout.locator('[data-layout-zone="common:base"]').click();
+      await quickLayout.locator('[data-layout-zone="common:base"]').press("ArrowRight");
+      assert.equal((await page.evaluate(() => window.quickState.venues))[0].zoneLayout["common:base"].x, 1);
+      const rectangles = await quickLayout
+        .locator("[data-layout-zone]")
+        .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
+      for (let i = 0; i < rectangles.length; i++)
+        for (let j = i + 1; j < rectangles.length; j++) {
+          const a = rectangles[i],
+            b = rectangles[j];
+          assert.ok(
+            a.right <= b.left + 0.1 || b.right <= a.left + 0.1 || a.bottom <= b.top + 0.1 || b.bottom <= a.top + 0.1,
+            "Quick Start Zones remain separate at this viewport",
+          );
+        }
+      await page.getByRole("dialog").getByText("Zone layout", { exact: true }).click();
       await page.getByRole("dialog").getByLabel("Physical Form", { exact: true }).fill("Authored vehicle");
       await page.getByRole("dialog").getByRole("button", { name: "Done", exact: true }).click();
       const capture = async (stage) => {
@@ -190,7 +209,7 @@ try {
       await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toHaveCount(1);
       await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toBeVisible();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toBeDisabled();
-      await expect(sheet.getByLabel("Selected Zone", { exact: true }).locator("option").first()).toHaveText("Exterior");
+      await expect(sheet.getByLabel("Selected Zone", { exact: true }).locator("option").first()).toHaveText("Entrance");
       await sheet.getByLabel("Venue Name", { exact: true }).fill("My Last Ride");
       await capture("residence");
       await sheet.getByLabel("Selected Zone", { exact: true }).selectOption("common:base");
