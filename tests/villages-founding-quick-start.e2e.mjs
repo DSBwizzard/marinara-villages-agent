@@ -36,10 +36,10 @@ function Harness(){
   useEffect(()=>{authoredRef.current=authored;rowsRef.current=venues;sourceRef.current=source},[authored,venues,source]);
   const persist=async()=>{const result=await saveDeviceDraft('quick-start',{venues,workspace,authored,suggestionsKey},revision.current);revision.current=result.revision;setSaved(true)};
   useEffect(()=>{readDeviceDraft('quick-start').then(draft=>{if(draft){revision.current=draft.revision;setVenues(draft.data.venues);setWorkspace(draft.data.workspace);setAuthored(draft.data.authored);setKey(draft.data.suggestionsKey)}})},[]);
-  window.quickState={venues,workspace,authored,suggestionsKey,problem};window.persist=persist;window.changeContext=()=>setSource('new setting');
+  window.quickState={venues,workspace,authored,suggestionsKey,problem};window.persist=persist;window.changeContext=()=>setSource('new setting');window.clearProblem=()=>setProblem('');
   const suggest=createFoundingSuggestSetupVenues({setupWorkspace:workspace,setSetupWorkspace:setWorkspace,setupDraftData:{venues,workspace,authored,suggestionsKey},persistSetupDraft:async data=>{const result=await saveDeviceDraft('quick-start',data,revision.current);revision.current=result.revision},personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:['coast'],setupLoreTokenBudgetDraft:1600,setupSetting:'A dockside settlement of reclaimed shelters',setupName:'Tidebreak',setupWorldFacts:['The tide floods the lower street'],setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
   const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
-  window.referenceZone=id=>patch('player',venue=>({...venue,spaces:venue.spaces.map((zone,index)=>index===0?{...zone,connectedTo:[...(zone.connectedTo??[]),id]}:zone)}));
+  window.referenceZone=id=>patch('player',venue=>({...venue,destinations:{player:{sleep:id,home:venue.spaces[0].id}},spaces:venue.spaces.map((zone,index)=>index===0?{...zone,connectedTo:[...(zone.connectedTo??[]),id]}:zone)}));
   const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
   const select=venue=>{setSelected(venue.id);setWorkspace(state=>({...state,view:'details',paused:true}))};
   const people=['buster','feddy','mira'].map(id=>({id,name:id[0].toUpperCase()+id.slice(1)}));
@@ -193,10 +193,23 @@ try {
           );
         }
       await capture("layout");
-      await page
-        .locator("dialog.villages-quick-dialog")
-        .getByRole("button", { name: "Edit Zone", exact: true })
+      await quickLayout.getByRole("button", { name: "Connect Zones", exact: true }).click();
+      await quickLayout
+        .getByRole("button", {
+          name: /Remove connection Common Space to Entrance|Remove connection Entrance to Common Space/,
+        })
         .click();
+      await expect(sheet.getByText(/Every space needs|Zones cannot overlap/)).toHaveCount(0);
+      await expect(sheet.getByRole("alert")).toHaveCount(0);
+      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await expect(sheet).toBeVisible();
+      await expect(sheet.getByRole("alert")).toHaveText("Cannot save Venue layout: Unreachable Zones.");
+      await quickLayout.locator('[data-layout-zone="common:base"]').click();
+      await quickLayout.locator('[data-layout-zone="exterior"]').click();
+      await quickLayout.getByRole("button", { name: "Done connecting", exact: true }).click();
+      await expect(sheet.getByRole("alert")).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Edit Zone", exact: true })).toHaveCount(0);
+      await page.locator("dialog.villages-quick-dialog").getByRole("tab", { name: "Zone", exact: true }).click();
       await expect(sheet.getByRole("group", { name: "Zone navigation", exact: true })).toHaveAttribute(
         "data-zone-id",
         "common:base",
@@ -254,6 +267,7 @@ try {
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveValue("Front cabin");
       await sheet.getByLabel("Zone name", { exact: true }).fill("My cabin");
       await expect(sheet.getByLabel("Appearance", { exact: true })).toBeVisible();
+      await expect(sheet.getByText(/Zone \d+ of \d+/)).toHaveCount(0);
       await sheet.getByRole("button", { name: "Public access", exact: true }).click();
       await expect(sheet.getByRole("button", { name: "Public access", exact: true })).toHaveAttribute(
         "aria-pressed",
@@ -367,6 +381,7 @@ try {
       await sheet.getByLabel("Zone name", { exact: true }).fill("Kitchen");
       await sheet.getByLabel("Used for", { exact: true }).fill("Cooking");
       await sheet.getByLabel("Appearance", { exact: true }).fill("A sunny kitchen.");
+      await page.evaluate(() => window.clearProblem());
       await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
       const artwork = page.getByRole("dialog", { name: "Artwork for Kitchen", exact: true });
       await artwork
@@ -382,7 +397,30 @@ try {
       await expect(artwork.getByRole("img", { name: "Artwork for Kitchen" })).toBeVisible();
       await capture("artwork");
       await artwork.getByRole("button", { name: "Close artwork", exact: true }).click();
-      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeFocused();
+      await expect(sheet.getByRole("button", { name: "Edit Zone artwork", exact: true })).toBeFocused();
+      await expect(
+        sheet.getByRole("tabpanel").getByRole("img", { name: "Artwork for Kitchen", exact: true }),
+      ).toBeVisible();
+      await capture("inline-image");
+      if (viewport.width < 600) {
+        const panelSize = await sheet
+          .getByRole("tabpanel")
+          .evaluate((node) => ({ height: node.clientHeight, scroll: node.scrollHeight }));
+        assert.ok(
+          panelSize.scroll <= panelSize.height + 1,
+          `the healthy Zone form with an assigned image needs no phone scrolling: ${viewport.width} ${JSON.stringify(panelSize)}`,
+        );
+        const image = await sheet
+          .getByRole("tabpanel")
+          .getByRole("img", { name: "Artwork for Kitchen", exact: true })
+          .boundingBox();
+        const footer = await sheet.getByRole("button", { name: "Done", exact: true }).boundingBox();
+        assert.ok(
+          image.y + image.height <= footer.y,
+          "assigned image is visible beside Appearance without scrolling on a phone",
+        );
+      }
+      await capture("inline-image");
       const added = (await page.evaluate(() => window.quickState.venues))[0].spaces.find(
         (zone) => zone.name === "Kitchen",
       );
@@ -411,14 +449,26 @@ try {
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone(added.id);
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A sunny kitchen.");
-      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      await expect(
+        sheet.getByRole("tabpanel").getByRole("img", { name: "Artwork for Kitchen", exact: true }),
+      ).toBeVisible();
+      await sheet.getByRole("button", { name: "Edit Zone artwork", exact: true }).click();
       await expect(artwork.getByRole("img", { name: "Artwork for Kitchen" })).toBeVisible();
       await artwork.getByRole("button", { name: "Close artwork", exact: true }).click();
-      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeFocused();
+      await expect(sheet.getByRole("button", { name: "Edit Zone artwork", exact: true })).toBeFocused();
       await page.evaluate((id) => window.referenceZone(id), added.id);
       await sheet.getByRole("tab", { name: "Venue", exact: true }).click();
-      await expect(sheet.getByRole("button", { name: "Remove Zone", exact: true })).toBeDisabled();
-      await expect(sheet.getByText(/Update Zone connections/)).toBeVisible();
+      await expect(sheet.getByRole("button", { name: "Remove Zone", exact: true })).toBeEnabled();
+      await sheet.getByRole("button", { name: "Remove Zone", exact: true }).click();
+      const afterRemoval = (await page.evaluate(() => window.quickState.venues))[0];
+      assert.ok(
+        ![...afterRemoval.spaces, ...afterRemoval.privateSpaces].some(
+          (zone) => zone.id === added.id || zone.connectedTo?.includes(added.id),
+        ),
+        "removing a connected Zone prunes incoming connections",
+      );
+      assert.equal(afterRemoval.destinations.player.sleep, undefined);
+      assert.equal(afterRemoval.destinations.player.home, "common:base");
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       assert.equal(count, 4, "resume and view switches do not request models");
       loseReply = true;

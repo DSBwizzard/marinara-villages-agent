@@ -1,10 +1,5 @@
 import { useRef, useState, type ReactNode } from "react";
-import {
-  connectionProblem,
-  contactNeighborIds,
-  materializeConnections,
-  type ConnectedSpace,
-} from "../../shared/helpers/zone-contact.js";
+import { contactNeighborIds, materializeConnections, type ConnectedSpace } from "../../shared/helpers/zone-contact.js";
 import { resolveZoneLayout, zonePositionFits, ZONE_TILE, type ZoneLayout } from "../../shared/helpers/zone-layout.js";
 
 export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
@@ -156,10 +151,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
                 x: Math.round(Math.max(0, Math.min(68, current.x + (dx / bounds.width) * 100)) * 10) / 10,
                 y: Math.round(Math.max(0, Math.min(86, current.y + (dy / bounds.height) * 100)) * 10) / 10,
               };
-              if (!zonePositionFits(current.layout, zone.id, position)) {
-                setNotice("Zones cannot overlap.");
-                return;
-              }
+              if (!zonePositionFits(current.layout, zone.id, position)) return;
               current.layout = { ...current.layout, [zone.id]: position };
               setPreview(current.layout);
               setNotice("");
@@ -202,7 +194,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               if (zonePositionFits(layout, zone.id, position)) {
                 onPositions({ ...layout, [zone.id]: position });
                 setNotice("");
-              } else setNotice("Zones cannot overlap or leave the map.");
+              }
             }}
           >
             <strong>{name(zone.id)}</strong>
@@ -230,9 +222,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
             </li>
           ))}
         </ul>
-      ) : null}
-      {onConnections && connectionProblem(rows) ? (
-        <p role="status">{connectionProblem(rows).replaceAll("Exterior", "Entrance")}</p>
       ) : null}
     </section>
   );

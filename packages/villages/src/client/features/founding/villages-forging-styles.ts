@@ -348,22 +348,20 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-panel { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:0 .1rem; }
 .villages-quick-footer { display:flex; flex-wrap:wrap; justify-content:flex-end; border-top:1px solid #43547d; padding-top:.65rem; }
 .villages-quick-footer p { flex-basis:100%; margin:0 0 .5rem; }
-.villages-quick-layout-selection { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; }
-.villages-quick-layout-selection strong { flex:1 1 8rem; overflow-wrap:anywhere; }
 .villages-quick-panel .villages-zone-map { margin:0; }
 .villages-quick-dialog h3 { margin:.2rem 0; overflow-wrap:anywhere; }
 .villages-quick-dialog p { color:#c1c9e9; line-height:1.5; }
 .villages-quick-dialog fieldset { min-width:0; border:0; padding:0; margin:0; }
 .villages-quick-dialog fieldset { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 .75rem; align-content:start; }
-.villages-quick-zone-tools { display:flex; justify-content:space-between; align-items:center; gap:.5rem; }
-.villages-quick-zone-tools small { color:#c1c9e9; }
-.villages-quick-zone-tools button { display:flex; gap:.4rem; align-items:center; }
-.villages-quick-zone-tools img { width:1.5rem; height:1.5rem; object-fit:cover; border-radius:.25rem; }
-.villages-quick-zone-navigation { display:flex; gap:.25rem; align-items:center; margin:.35rem 0 .65rem; }
+.villages-quick-zone-appearance { display:grid; grid-template-columns:minmax(0,1fr) min(34%,8rem); gap:.5rem; align-items:end; }
+.villages-quick-zone-appearance textarea,.villages-quick-zone-appearance button { height:clamp(88px,15dvh,112px); min-height:0; }
+.villages-quick-zone-appearance button { display:grid; place-items:center; padding:.2rem; }
+.villages-quick-zone-image img { width:100%; height:100%; min-height:0; object-fit:contain; border-radius:.3rem; }
+.villages-quick-zone-navigation { display:flex; gap:.25rem; align-items:center; margin:.15rem 0 .4rem; }
 .villages-quick-zone-navigation strong { flex:1; text-align:center; }
 .villages-forging-v2 .villages-quick-zone-navigation input { flex:1; width:0; margin:0; padding:.3rem; font-size:1.1rem; font-weight:600; text-align:center; background:transparent; border:0; border-bottom:1px solid #65799c; border-radius:0; }
 .villages-quick-zone-navigation button { flex:none; border:0; background:transparent; font-size:1.5rem; padding:.1rem; }
-.villages-quick-dialog fieldset.villages-quick-zone-fields { display:flex; flex-direction:column; gap:.65rem; }
+.villages-quick-dialog fieldset.villages-quick-zone-fields { display:flex; flex-direction:column; gap:.5rem; }
 .villages-quick-dialog .villages-quick-zone-fields label { margin:0; font-size:.8rem; }
 .villages-quick-zone-fields input,.villages-quick-zone-fields textarea { margin-top:.2rem; }
 .villages-quick-access { display:flex; align-items:center; gap:.35rem; }

@@ -6,18 +6,40 @@ import type { ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
 import { ZonePolicyFields } from "../venues/villages-venue-access";
 import type { ReactNode } from "react";
 
+function foundingLayoutZones(venue: VillageVenue) {
+  return materializeConnections([
+    { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: undefined as string[] | undefined },
+    ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
+    ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
+  ]);
+}
+
+export function foundingLayoutProblem(venue: VillageVenue): string {
+  return connectionProblem(foundingLayoutZones(venue));
+}
+
 export function removeFoundingZone(venue: VillageVenue, id: string): VillageVenue {
-  if (id === "exterior") return venue;
+  if (id === "exterior" || ![...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].some((zone) => zone.id === id))
+    return venue;
+  const connections = new Map(foundingLayoutZones(venue).map((zone) => [zone.id, zone.connectedTo]));
   const prune = <T extends { id: string; connectedTo?: string[] }>(rows: T[]) =>
     rows
       .filter((zone) => zone.id !== id)
-      .map((zone) => ({ ...zone, connectedTo: zone.connectedTo?.filter((other) => other !== id) }));
+      .map((zone) => ({ ...zone, connectedTo: connections.get(zone.id)!.filter((other) => other !== id) }));
   const spaces = prune(venue.spaces ?? []),
     privateSpaces = prune(venue.privateSpaces ?? []);
   return {
     ...venue,
     spaces,
     privateSpaces,
+    destinations: venue.destinations
+      ? Object.fromEntries(
+          Object.entries(venue.destinations).map(([actor, roles]) => [
+            actor,
+            Object.fromEntries(Object.entries(roles).filter(([, zoneId]) => zoneId !== id)),
+          ]),
+        )
+      : undefined,
     layout: spaces.length ? (privateSpaces.length ? "both" : "common") : privateSpaces.length ? "private" : "exterior",
     zoneLayout: venue.zoneLayout
       ? resolveZoneLayout(["exterior", ...spaces.map((z) => z.id), ...privateSpaces.map((z) => z.id)], venue.zoneLayout)
@@ -33,13 +55,7 @@ export function foundingZoneProblem(venue: VillageVenue): string {
   )
     return "Give each Zone a name and describe what it is used for.";
   if (venue.spaces?.some((zone) => !zone.description.trim())) return "Describe each Zone's appearance.";
-  return connectionProblem(
-    materializeConnections([
-      { id: "exterior", kind: "exterior" },
-      ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
-      ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
-    ]),
-  );
+  return foundingLayoutProblem(venue);
 }
 
 export function draftZonePolicy(
@@ -340,11 +356,7 @@ export function FoundingConnections({
   busy?: boolean;
   readOnly?: boolean;
 }) {
-  const zones = [
-    { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: undefined as string[] | undefined },
-    ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
-    ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
-  ];
+  const zones = foundingLayoutZones(venue);
   const remove = () => {
     if (!selectedZoneId || selectedZoneId === "exterior") return;
     onPatch(removeFoundingZone(venue, selectedZoneId));

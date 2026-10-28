@@ -3,7 +3,7 @@ import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/
 import { addFoundingZone, includeFoundingZone } from "./founding-template.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
-import { FoundingConnections, FoundingZoneFields } from "./villages-founding-zones.js";
+import { FoundingConnections, FoundingZoneFields, foundingLayoutProblem } from "./villages-founding-zones.js";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 
 type Area = "exterior" | "interior" | "private";
@@ -79,6 +79,7 @@ export function FoundingWorkspace({
   };
   const tabId = useId();
   const [layoutTab, setLayoutTab] = useState(false);
+  const [layoutError, setLayoutError] = useState("");
   const [narrow, setNarrow] = useState(false);
   const [inclusionProblem, setInclusionProblem] = useState("");
   const selected = venues.find((venue) => venue.id === selectedId);
@@ -133,6 +134,14 @@ export function FoundingWorkspace({
   const locked = !!selected && imageTarget?.venueId === selected.id;
   const sheet = state.view === "details" && !!selected;
   const dismiss = () => onState({ ...state, paused: false, view: "map" });
+  const finish = () => {
+    if (!selected) return;
+    const problem = foundingLayoutProblem(selected);
+    setLayoutError(problem);
+    if (problem) setLayoutTab(true);
+    else dismiss();
+  };
+  useEffect(() => setLayoutError(""), [selected, sheet]);
   useEffect(() => setLayoutTab(false), [sheet, selectedId, focusIssue]);
   useEffect(() => {
     const element = root.current;
@@ -881,9 +890,10 @@ export function FoundingWorkspace({
               </section>
             </div>
             <footer className="villages-workspace-sheet-footer">
+              {layoutError ? <p role="alert">{layoutError}</p> : null}
               {saveError ? <p role="alert">{saveError}</p> : null}
               <div>
-                <button type="button" data-close-sheet className="villages-forging-primary" onClick={dismiss}>
+                <button type="button" data-close-sheet className="villages-forging-primary" onClick={finish}>
                   Done
                 </button>
               </div>

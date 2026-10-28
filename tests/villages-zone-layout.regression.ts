@@ -5,7 +5,10 @@ import { captureSceneLayout, sceneLayoutVenue } from "../packages/villages/src/s
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { zoneSoundRange } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
-import { removeFoundingZone } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
+import {
+  foundingLayoutProblem,
+  removeFoundingZone,
+} from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
 import {
   includeFoundingZone,
   resumeFoundingVenue,
@@ -85,7 +88,7 @@ disconnected.connections = disconnected.connections.map((z) => ({
   connectedTo: z.connectedTo.filter((id) => id !== "exterior"),
 }));
 disconnected.connections[0].connectedTo = [];
-assert.throws(() => applyVenueZoneLayout(state, venue, disconnected), /route to Entrance/);
+assert.throws(() => applyVenueZoneLayout(state, venue, disconnected), /Cannot save Venue layout: Unreachable Zones\./);
 const missing = command();
 missing.connections.pop();
 assert.throws(() => applyVenueZoneLayout(state, venue, missing), /each current Zone/);
@@ -140,9 +143,34 @@ home.zoneLayout = resolveZoneLayout(homeIds);
 assert.deepEqual(parsePlace(home, true).zoneLayout, home.zoneLayout, "Founding retains authored positions");
 home.spaces![0].connectedTo = ["exterior", home.privateSpaces![0].id];
 home.privateSpaces![0].connectedTo = [home.spaces![0].id];
-const removed = removeFoundingZone(home, home.privateSpaces![0].id);
+const removalInput = {
+  ...home,
+  destinations: {
+    player: { home: home.spaces![0].id, sleep: home.privateSpaces![0].id },
+  },
+};
+const removed = removeFoundingZone(removalInput, home.privateSpaces![0].id);
 assert.equal(removed.zoneLayout![home.privateSpaces![0].id], undefined);
+assert.deepEqual(
+  removed.destinations,
+  { player: { home: home.spaces![0].id } },
+  "Removed Zone destinations are cleared without changing other assignments",
+);
+assert.deepEqual(removed.spaces![0].connectedTo, ["exterior"], "Incoming connections are removed automatically");
+assert.deepEqual(
+  removeFoundingZone(
+    { ...home, destinations: { player: { sleep: home.privateSpaces![0].id } } },
+    home.privateSpaces![0].id,
+  ).destinations,
+  { player: {} },
+  "All references can be cleared for an actor",
+);
 assert.doesNotThrow(() => parsePlace(removed, true), "Removing a moved Zone prunes positions and incoming links");
+const legacy = newSetupVenue("legacy", "residence", 0.2, 0.3, true);
+const removedHub = removeFoundingZone(legacy, legacy.spaces![0].id);
+assert.deepEqual(removedHub.privateSpaces![0].connectedTo, [], "Deleting a legacy hub does not invent a new passage");
+assert.equal(foundingLayoutProblem(removedHub), "Cannot save Venue layout: Unreachable Zones.");
+assert.equal(removeFoundingZone(home, "exterior"), home, "Entrance cannot be removed");
 const omitted = includeFoundingZone(home, {}, true, false);
 assert.doesNotThrow(
   () => parsePlace(omitted.venue, true),
