@@ -132,7 +132,7 @@ import { completionFailure as typedCompletionFailure, type WorkFailure } from ".
 import {
   InvalidNarratedSound,
   routeZoneEvents,
-  ZONE_EVENT_CONTRACT,
+  zoneEventContract,
   ZONE_PLAYER_SPEECH_CONTRACT,
   zoneEventHearingContext,
   zoneEventReply,
@@ -490,12 +490,13 @@ export function createSceneWriting({
             PLAYER_CAPTURE_CONTRACT,
             "Input source quotes (text IDs, never audibility): " +
               JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
-            ZONE_EVENT_CONTRACT.replace(
-              ZONE_PLAYER_SPEECH_CONTRACT,
-              [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
-                ? 'Player speech uses playerSpeechCapture only. Never put speakerId:"player" in segments; code materializes the exact captured source spans. Exclude actions/thoughts, recalled, hypothetical, imagined, example and negated speech. No player words on arrival or silent input.'
-                : ZONE_PLAYER_SPEECH_CONTRACT,
-            )
+            zoneEventContract(session)
+              .replace(
+                ZONE_PLAYER_SPEECH_CONTRACT,
+                [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
+                  ? 'Player speech uses playerSpeechCapture only. Never put speakerId:"player" in segments; code materializes the exact captured source spans. Exclude actions/thoughts, recalled, hypothetical, imagined, example and negated speech. No player words on arrival or silent input.'
+                  : ZONE_PLAYER_SPEECH_CONTRACT,
+              )
               .replace(
                 "Physical changes still need validated sceneChange: sound proves no repair, transfer, permission or lasting effect.",
                 "System must validate physical outcomes; sound proves no deed.",
@@ -712,7 +713,7 @@ export function createSceneWriting({
           contactAction: !!session.contactGeneration,
           naturalAttention: !!session.contactGeneration?.attention,
           acousticContract: session.contactGeneration?.acoustics ? session.contactGeneration.instruction : undefined,
-          zoneEventContract: session.contactGeneration?.zoneEvents ? ZONE_EVENT_CONTRACT : undefined,
+          zoneEventContract: session.contactGeneration?.zoneEvents ? zoneEventContract(session) : undefined,
           contactFacts:
             !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
               ? `Known villagers (not attendance): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`

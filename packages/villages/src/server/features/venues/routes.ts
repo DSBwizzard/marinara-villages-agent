@@ -17,12 +17,20 @@ import {
   deleteVillageVenue,
   previewVillageVenueDeletion,
   updateVillageVenue,
+  updateVenueZoneLayout,
 } from "./services.js";
 import { decideVillageVenueRequest } from "./venue-requests.js";
 import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 
 export function registerVenueAccessRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.put<{ Params: { venueId: string }; Body: unknown }>("/venues/:venueId/layout", async (request, reply) => {
+    try {
+      return await updateVenueZoneLayout(readPlaceId(request.params.venueId), request.body);
+    } catch (error) {
+      return fail(reply, error, "editing the Zone layout");
+    }
+  });
   app.post("/private-spaces/retry", async (_request, reply) => {
     try {
       await retryPrivateSpaces();

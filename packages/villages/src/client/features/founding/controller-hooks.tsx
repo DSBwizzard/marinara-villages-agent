@@ -564,9 +564,8 @@ export function useFoundingSetupBlocker(ports: {
         !snapshot?.isFounded &&
         setupVenues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
       )
-        return "Place every starting Venue photograph.";
-      if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap)
-        return "Check all Venue photographs against the map on Venues.";
+        return "Place every starting Venue.";
+      if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap) return "Check the Venue positions on the map.";
 
       const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
       const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);

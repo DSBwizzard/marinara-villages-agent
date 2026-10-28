@@ -72,7 +72,7 @@ export function venueDisplayZones(place: VillageVenue, room: SceneView) {
             : "Currently unavailable";
     return {
       ...zone,
-      name: exterior ? "Exterior" : zone.name,
+      name: exterior ? "Entrance" : zone.name,
       known,
       allowed,
       restricted,

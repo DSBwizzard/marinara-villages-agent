@@ -229,6 +229,7 @@ export function createFoundingSetup({
         ...prior,
         ...place,
         layoutVersion: prior?.layoutVersion ?? place.layoutVersion,
+        zoneLayout: founding ? place.zoneLayout : (prior?.zoneLayout ?? place.zoneLayout),
         classes: prior?.classes ?? place.classes,
         spaces:
           prior && !founding

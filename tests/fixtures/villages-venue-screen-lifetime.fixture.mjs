@@ -130,6 +130,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         },
       })),
     }));
+    options.prepareSeed?.(seed);
     const draft = structuredClone(seed.settings.venues[0]);
     draft.name = " Draft A ";
     const proposal = {

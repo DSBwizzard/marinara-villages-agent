@@ -5,7 +5,10 @@ import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/d
 import { arrangeQuickStartVenues } from "../packages/villages/src/client/features/founding/quick-start-placement.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { calculateSetupBeginningSourceKey } from "../packages/villages/src/client/features/founding/calculations.js";
-import { mergeQuickStartSpaces } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import {
+  quickStartTemplates,
+  replaceQuickStartVenue,
+} from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingZoneProblem } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
@@ -46,55 +49,55 @@ const parsed = parseFoundingVenueSuggestions(
 );
 assert.equal(parsed[0].privateDescription, "A berth behind a curtain.");
 const draft = newSetupVenue("player", "residence", 0.2, 0.3, true);
-draft.name = parsed[0].name;
-draft.form = parsed[0].form;
-draft.description = parsed[0].description;
+draft.name = "Authored name";
+draft.form = "Authored form";
 draft.spaces![0].name = "My authored cabin";
-const complete = mergeQuickStartSpaces(draft, structuredClone(draft), parsed[0], [
-  "spaces",
-  "zone:spaces:common:base:name",
-]);
-assert.equal(complete.spaces![0].name, "My authored cabin");
-assert.equal(
-  complete.spaces![0].description,
-  parsed[0].commonDescription,
-  "generation fills missing fields even after another field is authored",
-);
-const legacyAuthored = mergeQuickStartSpaces(draft, structuredClone(draft), parsed[0], ["spaces"]);
-assert.equal(legacyAuthored.spaces![0].description, draft.spaces![0].description, "legacy edits stay intact");
-const cleared = structuredClone(draft);
-cleared.spaces![0].description = "";
-assert.equal(
-  mergeQuickStartSpaces(cleared, structuredClone(cleared), parsed[0], ["spaces", "zone:spaces:common:base:description"])
-    .spaces![0].description,
-  "",
-  "a deliberate cleared field stays empty",
-);
-assert.deepEqual(foundingVenueIssues([complete], false, true), []);
-assert.doesNotThrow(() => parsePlace(complete, true), "Quick Start produces a server-valid founding Residence");
+draft.spaces![0].image = { id: "photo", ref: "global-gallery:photo", url: "/photo.webp" };
+draft.spaces!.push({ ...draft.spaces![0], id: "extra", name: "Extra" });
+draft.destinations = { player: { sleep: "extra" } };
+draft.zoneLayout = { exterior: { x: 0, y: 0 }, extra: { x: 3, y: 0 } };
+const before = structuredClone(draft);
+const fresh = quickStartTemplates([draft])[0];
+const complete = replaceQuickStartVenue(fresh, parsed[0]);
+assert.deepEqual(draft, before, "preparing fresh inputs never mutates the draft");
+assert.equal(complete.name, parsed[0].name);
+assert.equal(complete.form, parsed[0].form);
+assert.equal(complete.spaces![0].name, parsed[0].commonName);
+assert.equal(complete.spaces!.length, 1);
+assert.equal(complete.privateSpaces!.length, 1);
+assert.equal(complete.spaces![0].image, null);
+assert.equal(complete.destinations, undefined);
+assert.equal(complete.zoneLayout, undefined);
+assert.deepEqual(foundingVenueIssues([complete]), []);
+assert.doesNotThrow(() => parsePlace(complete, true));
 for (const personal of [false, true]) {
-  const added = addFoundingZone(draft, personal, "zone:new");
-  assert.equal(foundingZoneProblem(added), "", "adding a Zone preserves existing connection routes");
-  assert.doesNotThrow(() => parsePlace(added, true), "the added Zone remains valid for founding");
+  const added = addFoundingZone(complete, personal, "zone:new");
+  assert.match(foundingZoneProblem(added), /describe what it is used for/);
+  const zone = (personal ? added.privateSpaces! : added.spaces!).at(-1)!;
+  assert.equal(zone.purpose, "");
+  assert.equal(zone.description, "");
+  assert.throws(() => parsePlace(added, true), /name and purpose/);
+  zone.purpose = "Authored purpose";
+  zone.description = "Authored appearance";
+  assert.equal(foundingZoneProblem(added), "");
+  assert.doesNotThrow(() => parsePlace(added, true));
 }
-const singleSpace = { ...draft, layout: "common" as const, privateSpaces: [] };
-assert.equal(
-  mergeQuickStartSpaces(singleSpace, structuredClone(singleSpace), parsed[0], ["layout"]).privateSpaces?.length,
-  1,
-  "explicit Quick Start completes a pre-existing single-space draft",
+const templates = quickStartTemplates([
+  draft,
+  { ...draft, id: "npc", occupancy: { ...draft.occupancy, playerHome: false, residentCharacterId: "buster" } },
+  newSetupVenue("community", "community", 0.5, 0.5),
+]);
+assert.deepEqual(
+  templates.map((row) => [row.spaces!.length, row.privateSpaces!.length]),
+  [
+    [1, 1],
+    [1, 1],
+    [1, 0],
+  ],
 );
-assert.equal(
-  mergeQuickStartSpaces(singleSpace, draft, parsed[0], ["layout"]),
-  singleSpace,
-  "a layout changed while generation was pending is preserved",
-);
-const editedDuringRequest = structuredClone(complete);
-editedDuringRequest.spaces![0].description = "";
-assert.equal(
-  mergeQuickStartSpaces(editedDuringRequest, complete, parsed[0], ["spaces"]).spaces![0].description,
-  "",
-  "even an empty in-flight field edit is retained",
-);
+assert.equal(templates[1].privateSpaces![0].ownerId, "buster");
+assert.equal(replaceQuickStartVenue(templates[1], parsed[1]).privateSpaces![0].description, "");
+assert.equal(templates[2].category, "public-center");
 assert.equal(Object.hasOwn(parsed[1], "privateDescription"), false, "villager interior is not returned to the client");
 for (const layout of ["common", "private", "exterior"])
   assert.throws(
@@ -361,5 +364,5 @@ for (const patch of [
     "changed context fences old suggestions",
   );
 console.log(
-  "Quick Start: complete context, enforced spaces, hidden villager interiors, one-call regeneration and preserved placement pass (synthetic model).",
+  "Quick Start: fresh replacement, template defaults, hidden villager interiors and one-call generation pass (synthetic model).",
 );

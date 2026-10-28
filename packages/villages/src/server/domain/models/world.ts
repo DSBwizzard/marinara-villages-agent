@@ -616,6 +616,7 @@ export type VillageVenueEditProposal = {
 
 /** An active structural change occupies one of the venue's two slots. */
 export type VillageVenue = {
+  zoneLayout?: import("../../../shared/helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
   access?: import("../../../shared/helpers/venue-access.js").VenueAccessState;
   accessView?: import("../../../shared/helpers/venue-access.js").VenueAccessView;

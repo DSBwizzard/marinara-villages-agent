@@ -166,7 +166,7 @@ try {
   };
   await assert.rejects(
     requestFoundingSuggestions(clientPorts, { quickStart: true, venueId: "home" }, {}),
-    /Check suggestions/,
+    /Check Quick Start/,
   );
   assert.equal(workspace.suggestionRequest?.id, "synthetic-request-id");
   // Reload restores the saved ID. Tapping a different mode's control only GETs that attempt.

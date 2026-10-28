@@ -45,7 +45,7 @@ The setup steps are **Place → People → Map → Venues → Review**.
 1. **Place:** Name the Village and describe the location, world, and current situation. It can be an established place in good condition; you do not have to begin by rebuilding a ruin.
 2. **People:** Choose your Persona and one to three residents. Write **Your backstory** for your own situation. Optional **Homeworld** and **Add starting note** fields explain each resident's connection to the setting. The **Village world** label can help distinguish shared and different origins.
 3. **Map:** Use the simple starting map, upload artwork, or deliberately generate it. The first map uses the Village's name. For generated artwork, describe the area actually shown, whether it is a building interior or a neighborhood.
-4. **Venues:** Review the automatically placed homes and Community Venue. Edit their physical forms, Zones, artwork, and placements yourself, or request optional suggestions. Residents' private interiors stay hidden until authorized entry.
+4. **Venues:** Select a Venue on the map or in the selector, then tap the map to move its marker; arrow keys make small adjustments. Pan and zoom as on the in-game Map. **Edit** opens its physical form, Zones and artwork. Added Zones start with blank Used for and Appearance fields and keep the current tab. **Quick Start** always asks before replacing the Venue drafts with fresh templates: Entrance, Common and Private Zones for each residence, tailored to its resident or your persona; Entrance and Common for the Community Venue, tailored to the Village. Those defaults impose no layout requirements afterward: every Venue needs only its Entrance and may have up to six additional Zones. Residents' private interiors stay hidden until authorized entry.
 5. **Review:** Resolve the listed setup problems and found the Village. Preparation creates the needed interiors, resident routines, and initial Wish attempts. A resident having no initial Wish is a valid result.
 
 Map uploads need at least **768 pixels on the shorter side** and **1024 on the longer side**, with proportions between **2:3 and 2:1**. Generation requests an overhead map at 2560 × 1440; providers may return other dimensions.
@@ -69,7 +69,7 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 - **People:** Browse residents and open their profiles.
 - **More:** Open the Village's other pages and settings.
 
-A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces, such as the kitchen, bedroom, or Exterior. Browse a Venue to see what is known about it, then choose **Visit** to enter.
+A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In founding or the Venue's **Zones** page, drag the Zones to arrange them without overlap. Managers can choose their connections; drawing distance changes neither movement nor sound. Browse a Venue to see what is known about it, then choose **Visit** to enter.
 
 Entering a private space requires permission. Knowing that a room exists, being friends with someone, or hearing a sound from it does not grant access or reveal its contents. An invitation permits entry; use **Move** when you want to go there. The [Venue and Zone reference](venue-zones.md) covers detailed access and sound rules.
 

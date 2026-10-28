@@ -15,6 +15,7 @@ import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
 import { ExplorationMarkers } from "./villages-exploration";
+export type { MobileMapView } from "./villages-mobile-map.js";
 import {
   focusedPhotoScale,
   mobileCoverZoom,
@@ -199,6 +200,7 @@ export function MapStage({
   fitToRoom,
   mobile,
   exploration = false,
+  navigationControlsWhilePlacing = false,
   navigationView,
   onNavigationView,
   compactPhotos = false,
@@ -244,6 +246,7 @@ export function MapStage({
   fitToRoom?: boolean;
   mobile?: boolean;
   exploration?: boolean;
+  navigationControlsWhilePlacing?: boolean;
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
@@ -271,6 +274,7 @@ export function MapStage({
   const framing = onView !== undefined;
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const pinDrag = useRef<{
     id: string;
     pointer: number;
@@ -383,6 +387,22 @@ export function MapStage({
         : { width: rect.width, height: rect.height },
     );
   }, []);
+
+  const measureImage = useCallback(() => {
+    const image = imageRef.current;
+    if (!src || !image?.complete || image.getAttribute("src") !== src || !image.naturalWidth || !image.naturalHeight)
+      return;
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+    setDecoded((previous) =>
+      previous?.src === src && previous.width === width && previous.height === height
+        ? previous
+        : { src, width, height },
+    );
+    measure();
+  }, [src, measure]);
+  // A restored data URL can already be loaded before React attaches its load handler.
+  useLayoutEffect(measureImage, [measureImage]);
 
   // The frame changes size with the window, the pane and the wizard's step.
   useEffect(() => {
@@ -661,7 +681,7 @@ export function MapStage({
       data-mobile={mobile ? "true" : "false"}
       data-exploration={exploration ? "true" : "false"}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
-      data-photo-pins="true"
+      data-photo-pins={exploration ? "false" : "true"}
       data-picture-width={picture?.width}
       data-picture-height={picture?.height}
       data-compact-photos={compactPhotos ? "true" : "false"}
@@ -746,6 +766,7 @@ export function MapStage({
       >
         {src ? (
           <img
+            ref={imageRef}
             className={`${ELEMENT_TAG}-canvas-img`}
             style={
               (mobile || exploration) && picture
@@ -762,12 +783,7 @@ export function MapStage({
             src={src}
             alt={alt}
             draggable={false}
-            onLoad={(event) => {
-              const { naturalWidth, naturalHeight } = event.currentTarget;
-              if (naturalWidth <= 0 || naturalHeight <= 0) return;
-              setDecoded({ src, width: naturalWidth, height: naturalHeight });
-              measure();
-            }}
+            onLoad={measureImage}
             onError={() => setFailedSrc(src)}
           />
         ) : (
@@ -1020,7 +1036,7 @@ export function MapStage({
             ))
         : null}
 
-      {exploration && !placing ? (
+      {exploration && (!placing || navigationControlsWhilePlacing) ? (
         !mobile && (
           <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
             <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(1 / 1.25)}>

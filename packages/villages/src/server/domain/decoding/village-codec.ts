@@ -6,6 +6,7 @@ import {
   readWorldName,
 } from "../../../shared/helpers/resident-admission.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
+import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import type {
@@ -893,6 +894,14 @@ function coerceVenue(value: unknown): VillageVenue | null {
     venue.privateSpaces = venue.zones
       .filter((zone) => zone.kind === "private-residence")
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
+  }
+  if (raw.zoneLayout !== undefined) {
+    const ids = (venue.zones ?? legacyVenueZones(venue)).map((zone) => zone.id);
+    venue.zoneLayout =
+      readZoneLayout(
+        Object.fromEntries(Object.entries(asRecord(raw.zoneLayout)).filter(([id]) => ids.includes(id))),
+        ids,
+      ) ?? undefined;
   }
   // Archive entries retain the state of removed Zones.
   venue.archivedZones = Array.isArray(raw.archivedZones)

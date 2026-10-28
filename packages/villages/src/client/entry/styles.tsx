@@ -3559,13 +3559,23 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-zone-picture-freeze input { width:1.15rem; height:1.15rem; margin:0; }
 .${ELEMENT_TAG}-venue-assignments { margin:0; padding:0; list-style:none; width:100%; }
 .${ELEMENT_TAG}-venue-assignments li { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.6rem; padding:.7rem 0; border-bottom:1px solid var(--border); }
-.${ELEMENT_TAG}-venue-layout { position:relative; display:flex; flex-direction:column; gap:2rem; padding:1rem 1rem 1rem 0; margin-bottom:1rem; }
-.${ELEMENT_TAG}-venue-layout > svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
-.${ELEMENT_TAG}-venue-layout path { fill:none; stroke:var(--muted-foreground); stroke-width:1.5; }
-.${ELEMENT_TAG}-venue-layout path[data-selected="true"] { stroke:var(--primary); }
-.${ELEMENT_TAG}-venue-layout-level { display:flex; flex-wrap:wrap; justify-content:center; gap:1rem; }
-.${ELEMENT_TAG}-venue-layout button { z-index:1; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center; width:min(12rem,calc((100% - 1rem) / 2)); max-width:100%; min-height:4rem; overflow-wrap:anywhere; padding:.65rem; border:1px solid var(--border); border-radius:.6rem; background:var(--popover); color:var(--foreground); font:inherit; cursor:pointer; }
-.${ELEMENT_TAG}-venue-layout button[aria-pressed="true"] { border-color:var(--primary); outline:2px solid var(--primary); outline-offset:2px; }
+.villages-zone-map { min-width:0; margin:1rem 0; }
+.villages-zone-map-toolbar { display:flex; gap:.35rem; align-items:stretch; margin:.6rem 0; }
+.villages-zone-map .villages-zone-map-toolbar button { flex:1; min-width:0; font-size:.85rem; line-height:1.15; }
+.villages-zone-map-actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:.6rem 0; }
+.villages-zone-map button, .villages-zone-map-actions button { font:inherit; color:var(--foreground); border:1px solid var(--border); background:var(--popover); border-radius:.5rem; padding:.4rem .6rem; min-height:44px; cursor:pointer; }
+.villages-zone-map button:disabled, .villages-zone-map-actions button:disabled { opacity:.5; cursor:default; }
+.villages-zone-map-canvas { position:relative; width:100%; height:clamp(320px,48dvh,480px); border:1px solid var(--border); border-radius:.5rem; background:var(--background); overflow:hidden; box-sizing:border-box; }
+.villages-zone-map-canvas > svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.villages-zone-map-canvas line { stroke:var(--primary); stroke-width:2; vector-effect:non-scaling-stroke; }
+.villages-zone-map-canvas button.villages-zone-map-tile { position:absolute; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; min-width:0; min-height:0; margin:0; padding:4px; overflow:hidden; border-radius:.6rem; touch-action:none; user-select:none; cursor:grab; line-height:1.2; }
+.villages-zone-map-tile strong { display:block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(12px,.8rem,16px); }
+.villages-zone-map-tile small { display:block; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(11px,.65rem,14px); }
+.villages-zone-map-tile[aria-pressed="true"] { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
+.villages-zone-map-canvas button[data-draggable="false"] { cursor:pointer; touch-action:pan-y; }
+.villages-zone-map-connections { list-style:none; padding:0; }
+.villages-zone-map-connections li { display:flex; justify-content:space-between; align-items:center; gap:.5rem; border-bottom:1px solid var(--border); padding:.3rem 0; }
+.villages-zone-map-connections li span { min-width:0; overflow-wrap:anywhere; }
 .${ELEMENT_TAG}-venue-profile input[type="file"] { display:block; width:100%; margin-top:.4rem; }
 .${ELEMENT_TAG}-venue-profile [hidden] { display:none !important; }
 .${ELEMENT_TAG}-venue-profile .${ELEMENT_TAG}-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
