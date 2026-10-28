@@ -40,6 +40,15 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
   };
   const batch = object(account);
   const empty = account !== undefined && (batch.batch === null || !text(batch.id));
+  const reason = text(batch.reason);
+  const emptyMessage =
+    reason === "No resident activity allowance remains."
+      ? "No activities were generated: resident activity was off or the day's limit had already been reached."
+      : reason.includes("memories changed after departure") || reason.includes("relationships changed after departure")
+        ? "The village changed while you were away, so no activity could be safely reconstructed."
+        : reason.includes("calendar is replaying")
+          ? "This time had already passed in the village, so no new activity was generated."
+          : "No suitable activity could be found for this time.";
   const opportunities = list(batch.opportunities).map(object);
   const records = list(batch.records).map(object);
   const name = (id: unknown) => snapshot?.villagers.find((person) => person.characterId === id)?.name || "A resident";
@@ -206,7 +215,7 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
             ))}
           </div>
         ) : (
-          <p>Nothing noteworthy was recorded.</p>
+          <p>{emptyMessage}</p>
         )
       ) : null}
       {account !== undefined && copyStatus.startsWith("Copy unavailable") ? (

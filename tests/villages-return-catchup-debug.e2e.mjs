@@ -122,6 +122,15 @@ try {
     await page.getByRole("button", { name: "Copy JSON" }).click();
     await expect(page.getByText(/Copy unavailable/)).toBeVisible();
     await expect(page.getByText(/RAW-ONLY-SECRET/)).toBeVisible();
+    account = {
+      id: "empty",
+      status: "completed",
+      reason: "No resident activity allowance remains.",
+      opportunities: [],
+      records: [],
+    };
+    await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await expect(page.getByText(/day.s limit had already been reached/)).toBeVisible();
     account = { batch: null };
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await expect(page.getByText("No catch-up has been recorded.")).toBeVisible();
