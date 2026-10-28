@@ -63,6 +63,14 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
+  async function setVillageSpriteVariantsEnabled(value: unknown): Promise<VillageSnapshot> {
+    if (typeof value !== "boolean") throw badRequest("Random sprite variants must be on or off.");
+    await mutateVillageState((state) => {
+      state.spriteVariantsEnabled = value;
+    });
+    return buildVillageSnapshot();
+  }
+
   async function setVillageSendOnEnter(value: unknown): Promise<VillageSnapshot> {
     if (typeof value !== "boolean") throw badRequest("Send on Enter must be on or off.");
     await mutateVillageState((state) => {
@@ -199,6 +207,7 @@ export function createVillageSettings({
     setVillageLoreSettings,
     setVillageBackgroundPace,
     setVillageSpriteCardFlipEnabled,
+    setVillageSpriteVariantsEnabled,
     setVillageSendOnEnter,
     setVillageCharacterSpeechColors,
     setVillageName,

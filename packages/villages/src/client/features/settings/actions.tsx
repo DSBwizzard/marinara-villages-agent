@@ -117,47 +117,6 @@ export function useSaveScenerySettings(ports: {
   );
 }
 
-export function useSaveSpriteCardFlip(ports: {
-  snapshot: VillageSnapshot | null;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-  setSpriteFlipDraft: React.Dispatch<SetStateAction<boolean>>;
-  setSpriteFlipError: React.Dispatch<SetStateAction<string>>;
-  setSpriteFlipSaving: React.Dispatch<SetStateAction<boolean>>;
-}) {
-  const { snapshot } = ports;
-
-  const { setSnapshot, setSpriteFlipDraft, setSpriteFlipError, setSpriteFlipSaving } = ports;
-  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setSpriteFlipSaving);
-  return useCallback(
-    async (spriteCardFlipEnabled: boolean) => {
-      const claim = lifetime.begin();
-      if (!claim) return;
-      claim.onRetire = () => {
-        setSpriteFlipSaving(false);
-        setSpriteFlipDraft(null);
-      };
-      setSpriteFlipDraft(spriteCardFlipEnabled);
-      setSpriteFlipSaving(true);
-      setSpriteFlipError("");
-      try {
-        const saved = await request<VillageSnapshot>("/settings", {
-          method: "PATCH",
-          body: JSON.stringify({ spriteCardFlipEnabled }),
-        });
-        if (lifetime.owns(claim)) setSnapshot(saved);
-      } catch (cause) {
-        if (lifetime.owns(claim)) setSpriteFlipError(messageFrom(cause, "That setting could not be saved."));
-      } finally {
-        if (lifetime.finish(claim)) {
-          setSpriteFlipSaving(false);
-          setSpriteFlipDraft(null);
-        }
-      }
-    },
-    [lifetime, setSnapshot, setSpriteFlipDraft, setSpriteFlipError, setSpriteFlipSaving],
-  );
-}
-
 export function useSaveBackgroundPace(ports: {
   snapshot: VillageSnapshot | null;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
@@ -223,43 +182,5 @@ export function useSaveSendOnEnter(ports: {
       }
     },
     [lifetime, snapshot?.settings?.sendOnEnter, setSnapshot, setBusy, setSettingsError],
-  );
-}
-
-export function useSaveCharacterSpeechColors(ports: {
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-  snapshot: VillageSnapshot;
-}) {
-  const { setBusy, setSettingsError, setSnapshot, snapshot } = ports;
-  const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
-  return useCallback(
-    async (characterSpeechColors: boolean) => {
-      const claim = lifetime.begin();
-      if (!claim) return;
-      const previous = snapshot?.settings.characterSpeechColors ?? true;
-      setSnapshot((current) =>
-        current ? { ...current, settings: { ...current.settings, characterSpeechColors } } : current,
-      );
-      setBusy(true);
-      setSettingsError("");
-      try {
-        const saved = await request<VillageSnapshot>("/settings", {
-          method: "PATCH",
-          body: JSON.stringify({ characterSpeechColors }),
-        });
-        if (lifetime.owns(claim)) setSnapshot(saved);
-      } catch (cause) {
-        if (!lifetime.owns(claim)) return;
-        setSnapshot((current) =>
-          current ? { ...current, settings: { ...current.settings, characterSpeechColors: previous } } : current,
-        );
-        setSettingsError(messageFrom(cause, "Character speech colors could not be saved."));
-      } finally {
-        if (lifetime.finish(claim)) setBusy(false);
-      }
-    },
-    [lifetime, snapshot?.settings?.characterSpeechColors, setSnapshot, setBusy, setSettingsError],
   );
 }

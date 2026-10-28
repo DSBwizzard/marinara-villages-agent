@@ -191,6 +191,14 @@ Background work shows progress, failures, and provider-reported usage where avai
 
 Failures do not automatically purchase replacement responses. Explicit interpretation, replacement, or generation retries may make another model request. A timed-out or interrupted provider request may already have been billed, including an in-flight sprite analysis. Saved results reduce repeated work but cannot guarantee that every response survives a hard server crash.
 
+## Sprite variants and visual settings
+
+**Visual Settings** contains **Random sprite variants**, **Card-flip sprite changes**, and **Character chat colors**. Changes save immediately. Random variants and card flips default On; reduced-motion preferences still disable flip animation.
+
+Use Engine's filename convention for approved sprites: happy_01.png and happy_blush.png share the happy choice. Full-body files use full_happy_01.png and full_happy_blush.png. At least two suffixed names form a group; an exact base image joins its group when present. Original filenames determine groups even when Sprite Setup supplies different display names. No separate variant assignments are needed. With random variants Off, expressions remain individual choices.
+
+Each new expression cue chooses an approved variant for its facing and saves that concrete choice. Refresh, backward reading and dialogue pagination retain it. Random picks can repeat. Artwork creation and cleanup remain in Engine, which also handles downloads from Sprite Manager.
+
 ## Settings and saved worlds
 
 In **General Settings**, choose your connections. **Writing Settings** control person, tense, rating, and prose guidance while preserving character identity and the game's rules. Optional **Use Decisions** defaults Off; when its Engine feature is unavailable, System handles the work instead.

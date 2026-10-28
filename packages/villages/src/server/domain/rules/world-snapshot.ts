@@ -167,6 +167,7 @@ export function villageSettings(
     characterSpeechColors: village.characterSpeechColors,
     sendOnEnter: village.sendOnEnter,
     spriteCardFlipEnabled: village.spriteCardFlipEnabled,
+    spriteVariantsEnabled: village.spriteVariantsEnabled,
     villageNameMaxLength: MAX_VILLAGE_NAME_LENGTH,
     playerPersonaId: village.playerPersonaId,
     // The cached name travels even when the link is broken, so the panel can

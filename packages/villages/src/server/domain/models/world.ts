@@ -409,6 +409,7 @@ export type VillageResidentSprite = {
     filename: string;
     assetId: string;
     expressionId: string;
+    spriteName?: string;
     name: string;
     useWhen: string;
   }>;
@@ -1016,6 +1017,7 @@ export type VillageState = {
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
+  spriteVariantsEnabled: boolean;
   /**
    * The one line of world the player wrote, e.g. "a rain-soaked harbour town".
    * Empty means the village has no place yet, and the setting and venue blocks

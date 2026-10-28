@@ -1,3 +1,4 @@
+import { downloadSpriteImage } from "../packages/villages/src/client/shared/image-download.js";
 import assert from "node:assert/strict";
 
 import { readFileSync } from "node:fs";
@@ -15,6 +16,8 @@ import {
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
   describeSpriteExpressions,
+  resolveSpriteExpression,
+  resolveSceneSpriteExpressions,
   validateSpriteExpression,
 } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import {
@@ -174,3 +177,110 @@ assert.match(entry, /Save and use in Scenes/);
 assert.match(entry, /Download saved PNG/);
 assert.doesNotMatch(entry, /generate-sheet|repair-background|Suggest another pose/);
 console.log("Resident expressions, stage selection, gaze, portrait fallback and retired assignments passed.");
+
+// Engine filenames group automatically, independently of reviewed display labels.
+const variantSprite = {
+  ...semanticSprite,
+  defaultExpressionId: "e-base",
+  expressions: [
+    { ...semanticSprite.expressions[0], expressionId: "e-base", spriteName: "happy", name: "Base" },
+    { ...semanticSprite.expressions[0], expressionId: "e-first", spriteName: "happy_01", name: "Warm smile" },
+    { ...semanticSprite.expressions[0], expressionId: "e-second", spriteName: "HAPPY_blush", name: "Bright smile" },
+    { ...semanticSprite.expressions[0], expressionId: "e-side", spriteName: "happy_side", view: "side" as const },
+    { ...semanticSprite.expressions[0], expressionId: "e-other", spriteName: "sad_01" },
+  ],
+};
+const choices = [...describeSpriteExpressions(variantSprite, true).matchAll(/"id":/g)];
+// Parse the actual complete catalog without splitting authored descriptions on punctuation.
+const grouped = JSON.parse(
+  describeSpriteExpressions({ ...variantSprite, expressions: variantSprite.expressions.slice(0, 4) }, true),
+);
+assert.equal(grouped.name, "happy");
+assert.equal(grouped.id, "g-e-base");
+assert.equal(grouped.isDefault, true);
+assert.deepEqual(grouped.views, ["front", "side"]);
+assert.equal(choices.length, 2, "a single suffixed sad image stays an individual choice");
+assert.equal(validateSpriteExpression(variantSprite, grouped.id, false), "");
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, false, "front", 0.9), "");
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, "front", 0), "e-base");
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, "front", 0.99), "e-second");
+assert.equal(resolveSpriteExpression(variantSprite, grouped.id, true, "side", 0), "e-side");
+assert.equal(
+  resolveSpriteExpression(variantSprite, "e-first", true, "front", 0.99),
+  "e-first",
+  "concrete choices never reroll",
+);
+assert.ok(!describeSpriteExpressions(variantSprite, false).includes('"id":"g-'));
+assert.equal(
+  resolveSpriteExpression(semanticSprite, grouped.id, true, "front", 0),
+  "",
+  "groups cannot select another resident's artwork",
+);
+const cueLines = [
+  { speakerId: "a", staging: [{ characterId: "a", look: { target: "villager" as const, characterId: "b" } }] },
+  { speakerId: "a", expression: grouped.id, staging: [{ characterId: "a", expression: grouped.id }] },
+  {
+    speakerId: "a",
+    expression: grouped.id,
+    gazeAt: "b",
+    staging: [{ characterId: "a", look: { target: "player" as const } }],
+  },
+];
+const stageState = { a: { position: "left" as const, expression: "", look: { target: "player" as const } } };
+resolveSceneSpriteExpressions(
+  cueLines,
+  stageState,
+  () => variantSprite,
+  true,
+  () => 0.99,
+);
+assert.equal(cueLines[1].expression, "e-side", "gaze-only cues persist to later variant selection");
+assert.equal(cueLines[1].staging[0].expression, "e-side", "speaker and staging share the same concrete pick");
+assert.equal(cueLines[2].expression, "e-second", "explicit staging attention wins over older gaze hints");
+const persisted = JSON.parse(JSON.stringify(cueLines));
+resolveSceneSpriteExpressions(
+  persisted,
+  stageState,
+  () => variantSprite,
+  true,
+  () => 0,
+);
+assert.deepEqual(persisted, cueLines, "saved concrete artwork survives reload and a different random draw");
+assert.equal(defaultVillageState().spriteVariantsEnabled, true);
+assert.equal(
+  coerceVillageState({ ...defaultVillageState(), version: 6, spriteVariantsEnabled: false }).spriteVariantsEnabled,
+  false,
+);
+assert.equal(
+  coerceVillageState({ ...defaultVillageState(), version: 6, spriteVariantsEnabled: undefined }).spriteVariantsEnabled,
+  true,
+);
+
+const globalHost = globalThis as typeof globalThis & { __MARINARA_HOST__?: unknown };
+const previousHost = globalHost.__MARINARA_HOST__;
+const downloads: unknown[] = [];
+try {
+  globalHost.__MARINARA_HOST__ = {
+    api: {
+      api: {
+        download: async (...args: unknown[]) => {
+          downloads.push(args);
+        },
+      },
+    },
+  };
+  await downloadSpriteImage("/api/sprites/villages-owned/file/saved.png", "happy.png");
+  assert.deepEqual(downloads, [["/sprites/villages-owned/file/saved.png", "happy.png"]]);
+  globalHost.__MARINARA_HOST__ = {
+    api: {
+      api: {
+        download: async () => {
+          throw new Error("Host save failed");
+        },
+      },
+    },
+  };
+  await assert.rejects(downloadSpriteImage("/api/sprites/owned/file/image.png", "image.png"), /Host save failed/);
+} finally {
+  globalHost.__MARINARA_HOST__ = previousHost;
+}

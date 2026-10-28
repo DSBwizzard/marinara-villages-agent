@@ -139,6 +139,7 @@ const publicFields = [
   "setupMinVillagerCount",
   "setupPlaceCount",
   "spriteCardFlipEnabled",
+  "spriteVariantsEnabled",
   "backgroundPace",
   "backgroundPaces",
   "maps",

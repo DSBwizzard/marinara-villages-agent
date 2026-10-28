@@ -71,7 +71,6 @@ export type SceneScreenController = {
   readonly roomSubmissionIdRef: ScenesState["roomSubmissionIdRef"];
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
-  readonly saveSpriteCardFlip: (spriteCardFlipEnabled: boolean) => Promise<void>;
   readonly sendRoom: ReturnType<typeof useSendRoom>["sendRoom"];
   readonly turnRecovery?: string;
   readonly replyPending?: boolean;
@@ -98,7 +97,4 @@ export type SceneScreenController = {
   readonly setVenueEditDraft: React.Dispatch<React.SetStateAction<VillageVenue | null>>;
   readonly setVenueId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-  readonly spriteFlipDraft: boolean | null;
-  readonly spriteFlipError: string;
-  readonly spriteFlipSaving: boolean;
 };

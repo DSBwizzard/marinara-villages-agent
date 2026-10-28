@@ -194,20 +194,18 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     manager.assignments = [];
     manager.defaultExpressionId = undefined;
     if (!value.useSprites) return manager;
-    const slots = new Set<string>();
     for (const item of value.assignments.filter(ready)) {
+      const view = item.direction === "front" ? "front" : "side";
       let expression = manager.expressions.find(
-        (entry) => entry.name.toLocaleLowerCase() === item.name.toLocaleLowerCase(),
+        (entry) =>
+          entry.name.toLocaleLowerCase() === item.name.toLocaleLowerCase() &&
+          !manager.assignments.some((assignment) => assignment.expressionId === entry.id && assignment.view === view),
       );
       if (!expression) {
         expression = { id: "e-" + randomUUID(), name: item.name, useWhen: item.useWhen };
         manager.expressions.push(expression);
       }
       if (!expression.useWhen) expression.useWhen = item.useWhen;
-      const view = item.direction === "front" ? "front" : "side";
-      const key = expression.id + view;
-      if (slots.has(key)) throw badRequest("Give different variants distinct expression names.");
-      slots.add(key);
       manager.artwork.find((art) => art.id === item.artworkId)!.direction = item.direction as
         "front" | "left" | "right";
       manager.assignments.push({ expressionId: expression.id, view, artworkId: item.artworkId });

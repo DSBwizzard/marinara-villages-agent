@@ -22,6 +22,11 @@ export function setVillageSpriteCardFlipEnabled(
 ) {
   return villageSettings().setVillageSpriteCardFlipEnabled(...args);
 }
+export function setVillageSpriteVariantsEnabled(
+  ...args: Parameters<VillageSettings["setVillageSpriteVariantsEnabled"]>
+) {
+  return villageSettings().setVillageSpriteVariantsEnabled(...args);
+}
 export function setVillageSendOnEnter(...args: Parameters<VillageSettings["setVillageSendOnEnter"]>) {
   return villageSettings().setVillageSendOnEnter(...args);
 }

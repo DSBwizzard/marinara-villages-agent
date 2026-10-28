@@ -1,3 +1,4 @@
+import { describeSpriteExpressions } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { PNG } from "pngjs";
@@ -402,3 +403,32 @@ assert.equal(
   "legacy suggestions without traits remain reviewable without guessing or paid migration",
 );
 console.log("Default sprite ranking, completion, retries, saved compatibility and manual preservation passed.");
+
+// Stock naming needs no additional variant labels or grouping assignments.
+documents.clear();
+libraryFiles.splice(0, libraryFiles.length, "full_happy_01.png", "full_happy_blush.png");
+const variantDraft = await service.prepare("variants");
+const variantSaved = await service.save("variants", {
+  ...variantDraft,
+  useSprites: true,
+  defaultArtworkId: variantDraft.assignments[0].artworkId,
+  assignments: variantDraft.assignments.map((item) => ({
+    ...item,
+    included: true,
+    approved: true,
+    name: "Smile",
+    useWhen: "Happy conversation",
+    direction: "front",
+  })),
+  validateForUse: true,
+});
+const variantManager = await service.preparedManager("variants", variantSaved.revision);
+assert.equal(variantManager!.assignments.length, 2, "same display label does not replace a filename variant");
+const filenameSprite = managerResidentSprite(variantManager)!;
+assert.deepEqual(
+  filenameSprite.expressions.map((entry) => entry.spriteName),
+  ["happy_01", "happy_blush"],
+);
+const automaticGroup = JSON.parse(describeSpriteExpressions(filenameSprite, true));
+assert.equal(automaticGroup.name, "happy", "source filename grouping survives reviewed display names");
+assert.equal(automaticGroup.id.startsWith("g-"), true);
