@@ -343,6 +343,10 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-map .marinara-capability-villages-stage[data-exploration=true] { height:clamp(14rem,40dvh,32rem)!important; }
 .villages-quick-map .marinara-capability-villages-stage[data-exploration=true] { height:100%!important; min-height:0; }
 .villages-quick-map>p { position:absolute; top:.5rem; left:.5rem; right:.5rem; z-index:7; margin:0; padding:.5rem; border-radius:.4rem; background:#141b39ed; }
+@media(min-width:728px) {
+ .villages-quick-start { flex:0 1 auto; width:100%; max-width:1024px; max-height:100%; align-self:center; }
+ .villages-quick-map { flex:0 1 auto; height:min(55dvh,480px); }
+}
 .villages-quick-dialog { width:min(68rem,calc(100vw - 1.5rem)); }
 .villages-forging-v2 dialog.villages-quick-dialog:not([open]) { display:none; }
 .villages-forging-v2 dialog.villages-quick-dialog[open] { display:flex; flex-direction:column; gap:.65rem; height:min(44rem,calc(100dvh - 1.5rem)); padding-bottom:0; overflow:hidden; }

@@ -1103,7 +1103,9 @@ export async function verifyFoundingLayout(group) {
           bodyBox = await root.locator(".villages-forging-body").boundingBox();
         await capture("map-sizing");
         assert.ok(
-          mapBox.height >= bodyBox.height * 0.6,
+          width >= 728
+            ? mapBox.height <= 481 && mapBox.width <= 1025 && mapBox.height >= 180
+            : mapBox.height >= bodyBox.height * 0.6,
           JSON.stringify({
             mapBox,
             bodyBox,
