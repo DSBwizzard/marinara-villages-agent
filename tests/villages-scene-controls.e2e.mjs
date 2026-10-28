@@ -244,7 +244,7 @@ try {
       for (const [key, label] of [
         ["general", "General Preferences"],
         ["village", "World Configuration"],
-        ["visual", "Visual Configuration"],
+        ["visual", "Visual Settings"],
         ["advanced", "Advanced"],
       ]) {
         await page.getByRole("button", { name: "Venue actions" }).click();
