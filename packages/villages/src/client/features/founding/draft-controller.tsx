@@ -269,7 +269,6 @@ export function createFoundingRestoreSetupDraft(ports: {
         view: data.editorOpen ? "details" : "map",
         paused: !!data.editorOpen,
       }),
-      mode: data.workspace?.mode ?? "advanced",
       inactive,
     });
     setupEditorOriginal.current = data.editorOriginal;

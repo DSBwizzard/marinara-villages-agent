@@ -16,7 +16,6 @@ import {createRoot} from 'react-dom/client';
 import {useState,useRef,useEffect} from 'react';
 import {QuickStartButton} from './packages/villages/src/client/features/founding/QuickStartButton.js';
 import {QuickStartVenues} from './packages/villages/src/client/features/founding/QuickStartVenues.js';
-import {FoundingWorkspace} from './packages/villages/src/client/features/founding/villages-founding-workspace.js';
 import {VILLAGES_FORGING_STYLES} from './packages/villages/src/client/features/founding/villages-forging-styles.js';
 import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
 import {emptyFoundingWorkspace,foundingVenueIssues} from './packages/villages/src/client/features/founding/villages-founding-workspace-state.js';
@@ -45,8 +44,8 @@ function Harness(){
   const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
   const select=venue=>{setSelected(venue.id);setWorkspace(state=>({...state,view:'details',paused:true}))};
   const people=['buster','feddy','mira'].map(id=>({id,name:id[0].toUpperCase()+id.slice(1)}));
-  return <><style>{VILLAGES_FORGING_STYLES}</style><div className="villages-forging-v2"><header className="marinara-capability-villages-setup-heading"><ol className="villages-forging-steps">{[1,2,3,4,5].map(n=><li key={n} data-active={n===4}>{n}</li>)}</ol><h1>Forging the Village</h1><p>Step 4 · Venues</p></header><main className="villages-forging-body"><h2>Starting Venues</h2><div className="villages-quick-switch"><QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({quickStart:true})}/><button aria-pressed={workspace.mode!=='quick'} disabled={busy} onClick={()=>setWorkspace({...workspace,mode:workspace.mode==='advanced'?'quick':'advanced'})}>Advanced</button></div>
-  {workspace.mode==='quick'?<QuickStartVenues venues={venues} people={people} selectedId={selected} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={()=>{}}/>:<FoundingWorkspace venues={venues} people={people} selectedId={selected} placementId={null} state={workspace} map={<p>Map preview</p>} existing={false} mapReady={true} issues={foundingVenueIssues(venues)} focusIssue={null} imageTarget={null} imageBusy={false} suggestionsBusy={busy} suggestionsChanged={false} onState={setWorkspace} onSelect={select} onContinue={()=>{}} onPatch={venue=>patch(venue.id,()=>venue)} onDraft={()=>suggest()} onGenerate={()=>{}} onUpload={()=>{}}/>}
+  return <><style>{VILLAGES_FORGING_STYLES}</style><div className="villages-forging-v2"><header className="marinara-capability-villages-setup-heading"><ol className="villages-forging-steps">{[1,2,3,4,5].map(n=><li key={n} data-active={n===4}>{n}</li>)}</ol><h1>Forging the Village</h1><p>Step 4 · Venues</p></header><main className="villages-forging-body"><h2>Starting Venues</h2><div className="villages-quick-switch"><QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({quickStart:true})}/></div>
+  <QuickStartVenues venues={venues} people={people} selectedId={selected} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={()=>{}}/>
   {problem?<p role="alert">{problem}</p>:null}{saved?<p>Draft saved</p>:null}{review?<p>Review Tidebreak</p>:null}</main><footer className="villages-forging-footer"><button disabled={busy||!!foundingVenueIssues(venues,false).length} onClick={()=>setReview(true)}>Review village</button><button onClick={persist}>Save draft</button></footer></div></>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);
@@ -143,6 +142,7 @@ try {
       );
       await page.goto("http://quick-start.test/");
       const sheet = page.locator("dialog.villages-quick-dialog");
+      const venueEntry = (id) => page.locator(`.villages-quick-list button[data-venue-id="${id}"]`);
       const selectZone = async (id) => {
         const navigation = sheet.getByRole("group", { name: "Zone navigation", exact: true });
         for (let i = 0; i < 7; i++) {
@@ -175,7 +175,7 @@ try {
       assert.equal(count, 0, "confirmation makes no model request");
       await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(count, 0, "cancelling a pristine template makes no model request");
-      await page.getByRole("button", { name: "Edit Your residence", exact: true }).click();
+      await venueEntry("player").click();
       const quickLayout = page.locator("dialog.villages-quick-dialog").locator(".villages-zone-map");
       await expect(page.locator("dialog.villages-quick-dialog").locator("summary")).toHaveCount(0);
       await expect(
@@ -281,8 +281,20 @@ try {
       assert.equal(rows.at(-1).privateSpaces.length, 0);
       assert.ok(rows.every((row) => row.presentation.x !== null && row.presentation.y !== null));
       assert.equal(new Set(rows.map((row) => `${row.presentation.x}:${row.presentation.y}`)).size, 5);
+      assert.deepEqual(
+        await page.locator(".villages-quick-list button").allTextContents(),
+        rows.map((row) => row.name),
+        "Venue entries contain only their names",
+      );
+      const entryBoxes = await page
+        .locator(".villages-quick-list button")
+        .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
+      assert.ok(
+        entryBoxes.every((box) => box.height >= 44 && box.height <= 60),
+        "Venue entries stay compact and touchable",
+      );
       await capture("review-list");
-      const edit = page.getByRole("button", { name: "Edit Your residence", exact: true });
+      const edit = venueEntry("player");
       await edit.click();
       await expect(sheet).toBeVisible();
       await expect(sheet.getByLabel("Physical Form", { exact: true })).toHaveValue("Converted hearse");
@@ -318,6 +330,27 @@ try {
         (await page.evaluate(() => window.quickState.venues))[0].spaces[0].access.mode,
         "permission-required",
       );
+      const fieldStyles = await sheet.getByLabel("Zone name", { exact: true }).evaluate((node) => ({
+        border: getComputedStyle(node).border,
+        background: getComputedStyle(node).backgroundColor,
+        radius: getComputedStyle(node).borderRadius,
+      }));
+      const otherStyles = await sheet.getByLabel("Used for", { exact: true }).evaluate((node) => ({
+        border: getComputedStyle(node).border,
+        background: getComputedStyle(node).backgroundColor,
+        radius: getComputedStyle(node).borderRadius,
+      }));
+      assert.deepEqual(fieldStyles, otherStyles, "Zone name uses the same text box as other fields");
+      const arrow = await sheet.getByRole("button", { name: "Previous Zone", exact: true }).evaluate((node) => ({
+        width: node.clientWidth,
+        height: node.clientHeight,
+        background: getComputedStyle(node).backgroundColor,
+      }));
+      assert.ok(Math.abs(arrow.width - arrow.height) < 2 && arrow.width >= 42, "Zone arrows have square touch targets");
+      assert.equal(arrow.background, "rgb(25, 44, 76)");
+      const sheetBox = await sheet.boundingBox(),
+        doneBox = await sheet.getByRole("button", { name: "Done", exact: true }).boundingBox();
+      assert.ok(sheetBox.y + sheetBox.height - doneBox.y - doneBox.height <= 16, "Done has no extra padding below it");
       await capture("zone");
       await expect(sheet.getByRole("button", { name: "Generate image", exact: true })).toHaveCount(0);
       const countBeforeArtwork = count;
@@ -371,7 +404,7 @@ try {
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await expect(sheet).not.toBeVisible();
       await expect(edit).toBeFocused();
-      await page.getByRole("button", { name: "Edit Buster’s residence", exact: true }).click();
+      await venueEntry("buster").click();
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone("private:base");
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveCount(0);
@@ -380,12 +413,12 @@ try {
       await expect(sheet.getByLabel("Zone artwork")).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toHaveCount(0);
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
-      await page.getByRole("button", { name: "Edit Community venue", exact: true }).click();
+      await venueEntry("community").click();
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone("common:base");
       await expect(sheet.getByRole("button", { name: "Permission required", exact: true })).toBeEnabled();
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
-      await page.getByRole("button", { name: "Edit Your residence", exact: true }).click();
+      await venueEntry("player").click();
       await sheet.getByRole("tab", { name: "Venue", exact: true }).click();
       await sheet.getByRole("button", { name: "Add Zone", exact: true }).click();
       await expect(sheet.getByRole("tab", { name: "Zone", exact: true })).toHaveAttribute("aria-selected", "true");
@@ -440,23 +473,14 @@ try {
       assert.equal(added.access.mode, "permission-required");
       assert.equal(added.image.ref, "global-gallery:fixture");
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
-      await page.getByRole("button", { name: "Advanced", exact: true }).click();
-      await expect(page.locator(".villages-workspace")).toBeVisible();
-      await page.getByRole("button", { name: "Advanced", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Edit Your residence", exact: true })).toContainText(
-        "My Last Ride",
-      );
+      await expect(page.getByRole("button", { name: "Advanced", exact: true })).toHaveCount(0);
+      await expect(venueEntry("player")).toContainText("My Last Ride");
       await page.getByRole("button", { name: "Save draft", exact: true }).click();
       await expect(page.getByText("Draft saved", { exact: true })).toBeVisible();
       await page.reload();
-      await expect(page.getByRole("button", { name: "Edit Your residence", exact: true })).toContainText(
-        "My Last Ride",
-      );
-      await expect(page.getByRole("button", { name: "Advanced", exact: true })).toHaveAttribute(
-        "aria-pressed",
-        "false",
-      );
-      await page.getByRole("button", { name: "Edit Your residence", exact: true }).click();
+      await expect(venueEntry("player")).toContainText("My Last Ride");
+
+      await venueEntry("player").click();
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone(added.id);
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A sunny kitchen.");
@@ -525,9 +549,7 @@ try {
       hold = false;
       release();
       await expect(page.getByRole("alert")).toHaveText(/people or setting changed/);
-      await expect(page.getByRole("button", { name: "Edit Your residence", exact: true })).toContainText(
-        "The Last Ride",
-      );
+      await expect(venueEntry("player")).toContainText("The Last Ride");
       await page.getByRole("button", { name: "Review village", exact: true }).click();
       await expect(page.getByText("Review Tidebreak", { exact: true })).toBeVisible();
       assert.deepEqual(errors, []);

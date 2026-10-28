@@ -168,40 +168,28 @@ export function QuickStartVenues({
     <section className="villages-quick-start" aria-label="Venues">
       <p role="status">{ready ? `${venues.length} Venues ready` : "Complete the remaining details."}</p>
       <div className="villages-quick-overview">
-        <section className="villages-forging-card">
-          <div className="villages-quick-list" role="group" aria-label="Required starting Venues">
-            {venues.map((venue) => {
-              const residence = venue.category !== "public-center";
-              const title = venue.occupancy.playerHome
-                ? "Your residence"
-                : residence
-                  ? `${people.find((person) => person.id === venue.occupancy.residentCharacterId)?.name ?? "Villager"}’s residence`
-                  : "Community venue";
-              const missing = issues.filter((issue) => issue.venueId === venue.id);
-              return (
-                <button
-                  type="button"
-                  key={venue.id}
-                  className="villages-quick-venue"
-                  aria-label={`Edit ${title}`}
-                  onClick={() => onSelect(venue)}
-                >
-                  <span>
-                    <strong>{title}</strong>
-                    <small>
-                      {venue.name}
-                      {venue.form ? ` · ${venue.form}` : ""}
-                    </small>
-                    <small className={missing.length ? "" : "villages-forging-saved"}>
-                      {missing.length ? `${missing.length} details needed` : `✓ Ready`}
-                    </small>
-                  </span>
-                  <span>Edit ›</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        <div className="villages-quick-list" role="group" aria-label="Starting Venues">
+          {venues.map((venue) => {
+            const residence = venue.category !== "public-center";
+            const title = venue.occupancy.playerHome
+              ? "Your residence"
+              : residence
+                ? `${people.find((person) => person.id === venue.occupancy.residentCharacterId)?.name ?? "Villager"}’s residence`
+                : "Community venue";
+            return (
+              <button
+                type="button"
+                key={venue.id}
+                className="villages-quick-venue"
+                aria-label={`Edit ${venue.name || title}`}
+                data-venue-id={venue.id}
+                onClick={() => onSelect(venue)}
+              >
+                {venue.name || title}
+              </button>
+            );
+          })}
+        </div>
         <section ref={mapDetails} className="villages-quick-map villages-forging-card">
           <h3>
             Map placement · {placed} of {venues.length} placed

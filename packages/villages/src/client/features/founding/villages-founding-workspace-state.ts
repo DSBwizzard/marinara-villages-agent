@@ -2,7 +2,6 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
-  mode?: "quick" | "advanced";
   suggestionRequest?: { id: string; sourceKey: string; quickStart: boolean; venueId?: string };
 
   view: "map" | "details";
@@ -12,7 +11,6 @@ export type FoundingWorkspaceState = {
   inactive?: Record<string, InactiveFoundingZones>;
 };
 export const emptyFoundingWorkspace = (): FoundingWorkspaceState => ({
-  mode: "quick",
   view: "map",
   paused: false,
   sections: {},

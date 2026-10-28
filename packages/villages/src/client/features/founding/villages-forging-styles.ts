@@ -327,25 +327,21 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-switch button { flex:1; }
 .villages-quick-start { max-width:52rem; margin:0 auto; width:100%; min-width:0; }
 .villages-quick-overview { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; align-items:start; }
-.villages-quick-list { display:grid; gap:.6rem; margin:1rem 0; }
-.villages-forging-v2 .villages-quick-venue { display:flex; justify-content:space-between; align-items:center; gap:.6rem; width:100%; min-width:0; text-align:left; padding:.8rem; background:#192441; border-color:#596b9b; border-radius:.65rem; }
-.villages-quick-venue>span:first-child { min-width:0; }
-.villages-quick-venue>span:last-child { flex:none; color:#c4a8ff; }
-.villages-quick-venue small { display:block; color:#c1c9e9; margin-top:.3rem; overflow-wrap:anywhere; }
-.villages-quick-venue small.villages-forging-saved { color:#81e6cd; }
+.villages-quick-list { display:grid; gap:.4rem; }
+.villages-forging-v2 .villages-quick-venue { display:block; width:100%; min-width:0; min-height:44px; text-align:left; padding:.5rem .65rem; font-size:.95rem; overflow-wrap:anywhere; background:#192441; border-color:#596b9b; border-radius:.5rem; }
 .villages-quick-map { border:1px solid #596b9b; border-radius:.6rem; padding:.8rem; }
 .villages-quick-map summary,.villages-quick-space summary { min-height:44px; cursor:pointer; align-content:center; }
 .villages-quick-moves { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.5rem; }
 .villages-quick-dialog { width:min(68rem,calc(100vw - 1.5rem)); }
 .villages-forging-v2 dialog.villages-quick-dialog:not([open]) { display:none; }
-.villages-forging-v2 dialog.villages-quick-dialog[open] { display:flex; flex-direction:column; gap:.65rem; height:min(44rem,calc(100dvh - 1.5rem)); overflow:hidden; }
+.villages-forging-v2 dialog.villages-quick-dialog[open] { display:flex; flex-direction:column; gap:.65rem; height:min(44rem,calc(100dvh - 1.5rem)); padding-bottom:0; overflow:hidden; }
 .villages-quick-dialog .villages-quick-heading { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
 .villages-quick-heading,.villages-quick-tabs,.villages-quick-footer { flex:none; }
 .villages-quick-tabs { display:flex; border-bottom:1px solid #596b9b; }
 .villages-forging-v2 .villages-quick-tabs button { flex:1; min-width:0; min-height:44px; padding:.45rem; border:0; border-bottom:3px solid transparent; border-radius:0; background:transparent; color:#c1cce5; }
 .villages-forging-v2 .villages-quick-tabs button[aria-selected=true] { color:#d4bfff; border-bottom-color:#aa87ff; }
 .villages-quick-panel { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:0 .1rem; }
-.villages-quick-footer { display:flex; flex-wrap:wrap; justify-content:flex-end; border-top:1px solid #43547d; padding-top:.65rem; }
+.villages-forging-v2 .villages-quick-dialog>.villages-quick-footer { display:flex; flex-wrap:wrap; justify-content:flex-end; border-top:1px solid #43547d; padding:.55rem 0 max(.55rem,env(safe-area-inset-bottom)); background:transparent; }
 .villages-quick-footer p { flex-basis:100%; margin:0 0 .5rem; }
 .villages-quick-panel .villages-zone-map { margin:0; }
 .villages-quick-dialog h3 { margin:.2rem 0; overflow-wrap:anywhere; }
@@ -358,8 +354,8 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-zone-image img { width:100%; height:100%; min-height:0; object-fit:contain; border-radius:.3rem; }
 .villages-quick-zone-navigation { display:flex; gap:.25rem; align-items:center; margin:.15rem 0 .4rem; }
 .villages-quick-zone-navigation strong { flex:1; text-align:center; }
-.villages-forging-v2 .villages-quick-zone-navigation input { flex:1; width:0; margin:0; padding:.3rem; font-size:1.1rem; font-weight:600; text-align:center; background:transparent; border:0; border-bottom:1px solid #65799c; border-radius:0; }
-.villages-quick-zone-navigation button { flex:none; border:0; background:transparent; font-size:1.5rem; padding:.1rem; }
+.villages-forging-v2 .villages-quick-zone-navigation input { flex:1; width:0; margin:0; padding:.6rem; border-radius:.45rem; }
+.villages-forging-v2 .villages-quick-zone-navigation button { flex:none; width:44px; height:44px; padding:0; font-size:1.5rem; line-height:1; }
 .villages-quick-dialog fieldset.villages-quick-zone-fields { display:flex; flex-direction:column; gap:.5rem; }
 .villages-quick-dialog .villages-quick-zone-fields label { margin:0; font-size:.8rem; }
 .villages-quick-zone-fields input,.villages-quick-zone-fields textarea { margin-top:.2rem; }

@@ -190,7 +190,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       (setupWorkspace.paused
         ? undefined
         : setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null));
-    const simpleVenueEditor = !snapshot?.isFounded && setupWorkspace.mode === "quick";
+    const simpleVenueEditor = !snapshot?.isFounded;
     const setupIssues = foundingVenueIssues(setupVenues, snapshot?.isFounded ?? false);
     const openIssue = (issue: FoundingIssue) => {
       setSelectedSetupVenueId(issue.venueId);
@@ -698,19 +698,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       pending={!!setupWorkspace.suggestionRequest}
                       onGenerate={() => void suggestSetupVenues({ quickStart: true })}
                     />
-                    <button
-                      type="button"
-                      aria-pressed={!simpleVenueEditor}
-                      disabled={setupSuggestionsBusy || setupVenueBusy}
-                      onClick={() =>
-                        setSetupWorkspace((state) => ({
-                          ...state,
-                          mode: state.mode === "advanced" ? "quick" : "advanced",
-                        }))
-                      }
-                    >
-                      Advanced
-                    </button>
                   </div>
                 </>
               ) : null}
