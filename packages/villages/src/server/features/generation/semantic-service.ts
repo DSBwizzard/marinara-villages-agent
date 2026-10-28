@@ -3,7 +3,7 @@ import type { InterpretationBatch } from "../../domain/models/interpretation-mod
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { badGateway, conflict } from "../../domain/rules/errors.js";
+import { badGateway, conflict, UnsupportedPlayerAgency } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
 import {
@@ -457,7 +457,7 @@ export function createSemanticService(ports: SemanticPorts) {
           ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
           : "") +
         (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
-        "consistent:true,reason,authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
+        "consistent:true,reason,playerAgencyViolation:null,authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
         (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
         "}. Return exactly one JSON object. " +
         (actionContractV2
@@ -465,6 +465,7 @@ export function createSemanticService(ports: SemanticPorts) {
           : "") +
         (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
         "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
+        'Review every draft segment for claims that the player spoke, acted, felt or committed. Include indirect narration such as "Your greeting carries across the room" or a resident reacting to words the player never said. A Scene arrival establishes only presence and entry, not a greeting or other voluntary action. If a current player claim is unsupported by the current input or already established Scene evidence, return consistent:false and playerAgencyViolation:{segment:zero-based draft index,quote:"exact excerpt asserting the unsupported claim"}. Otherwise return playerAgencyViolation:null. Distinguish a resident addressing the player, hypothetical speech, and a response to actual player input from invented player actions. Do not reject established prior actions or mere observation. ' +
         "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
         "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures and contactEnd sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact. " +
         (context.preservation
@@ -534,6 +535,23 @@ export function createSemanticService(ports: SemanticPorts) {
             effects: {},
             access: null,
           };
+        const agency = asRecord(raw.playerAgencyViolation);
+        const agencyEvidence =
+          typeof agency.segment === "number" && Number.isInteger(agency.segment)
+            ? savedInput.evidence[agency.segment]
+            : undefined;
+        const citedAgency = Boolean(
+          agencyEvidence?.playerHeard &&
+          agencyEvidence.speakerId !== "player" &&
+          typeof agency.quote === "string" &&
+          agency.quote.trim() &&
+          agencyEvidence.content.includes(agency.quote),
+        );
+        if (raw.playerAgencyViolation != null && !citedAgency)
+          throw badGateway("System could not match its player-agency review to the Scene. The draft is preserved.");
+        if (raw.consistent === false && citedAgency) throw new UnsupportedPlayerAgency();
+        if (raw.consistent === true && citedAgency)
+          throw badGateway("System returned contradictory player-agency review. The draft is preserved.");
         if (raw.consistent !== true)
           throw badGateway("System could not establish a consistent Scene outcome. The draft is preserved.");
         semanticPlayerMoves(

@@ -1527,6 +1527,52 @@ try {
     submissions: [],
     sceneRevision: 0,
   });
+  {
+    const beforeGreeting = clone(records);
+    const text = "Your greeting carries across the boards.";
+    semanticIntentAnswer = { status: "resolved", timeline: [], instructions: "", action: null, movement: null };
+    semanticExchangeAnswer = {
+      consistent: false,
+      playerAgencyViolation: { segment: 0, quote: text },
+      authority: { physical: false, access: false, projects: false, standing: false, social: false },
+      action: null,
+      access: [],
+      events: { moves: [], departures: [], contactEnd: [] },
+      memoryChanges: [],
+      relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+      wishChanges: [],
+      projectSpeech: [],
+    };
+    answer = { playerSpeechCapture: { status: "silent", utterances: [] }, segments: [{ text }] };
+    const count = modelCalls,
+      narrationCount = narrationCalls;
+    const rejected = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/greet",
+      payload: { sessionId: scene.id },
+    });
+    assert.equal(rejected.statusCode, 502, rejected.body);
+    assert.match(rejected.body, /invented a player action or speech/);
+    assert.equal(state().status, "opening");
+    assert.deepEqual(state().lines, []);
+    assert.equal(modelCalls, count + 2, "no automatic regeneration after rejection");
+    const retryOfAttemptId = state().operation.attemptId;
+    semanticExchangeAnswer = { ...semanticExchangeAnswer, consistent: true, playerAgencyViolation: null };
+    answer = {
+      playerSpeechCapture: { status: "silent", utterances: [] },
+      segments: [{ text: "The lantern sways gently." }],
+    };
+    const retried = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/greet",
+      payload: { sessionId: scene.id, retryOfAttemptId },
+    });
+    assert.equal(retried.statusCode, 200, retried.body);
+    assert.equal(narrationCalls, narrationCount + 2, "explicit retry replaces the rejected opening");
+    assert.equal(state().lines.filter((line: any) => line.content === "The lantern sways gently.").length, 1);
+    records.clear();
+    for (const [key, value] of clone(beforeGreeting)) records.set(key, value);
+  }
   const invitation = {
     actorId: "aqua",
     visitorId: "player",
@@ -1829,6 +1875,60 @@ try {
     records.clear();
     for (const [key, value] of clone(retained)) records.set(key, value);
     semanticIntentAnswer = oldIntent;
+  }
+
+  // A cited player-agency violation retires the invalid narration, but replacement
+  // is dispatched only on the player's explicit retry.
+  {
+    const retained = clone(records),
+      oldIntent = clone(semanticIntentAnswer),
+      oldExchange = clone(semanticExchangeAnswer);
+    const beforeLines = clone(state().lines);
+    const text = "Your greeting carries across the boards.";
+    const payload = {
+      sessionId: scene.id,
+      submissionId: "invented-greeting",
+      message: "*waits quietly*",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: state().sceneRevision,
+    };
+    semanticIntentAnswer = {
+      status: "resolved",
+      instructions: "",
+      action: null,
+      movement: null,
+      timeline: [{ kind: "action", text: payload.message }],
+    };
+    semanticExchangeAnswer = { ...oldExchange, consistent: false, playerAgencyViolation: { segment: 0, quote: text } };
+    answer = { playerSpeechCapture: { status: "silent", utterances: [] }, segments: [{ text }] };
+    const before = modelCalls,
+      beforeNarration = narrationCalls;
+    const rejected = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+    assert.equal(rejected.statusCode, 502, rejected.body);
+    assert.match(rejected.body, /invented a player action or speech/, JSON.stringify(lastSemanticInput.evidence));
+    assert.deepEqual(state().lines, beforeLines, "rejected prose never enters the Scene");
+    assert.equal(modelCalls, before + 2, "rejection does not automatically request a replacement");
+    assert.equal(narrationCalls, beforeNarration + 1);
+    const retryOfAttemptId = state().operation.attemptId;
+    semanticExchangeAnswer = { ...oldExchange, consistent: true, playerAgencyViolation: null };
+    answer = {
+      playerSpeechCapture: { status: "silent", utterances: [] },
+      segments: [{ text: "Aqua watches the water." }],
+    };
+    const retried = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: { ...payload, retryOfAttemptId },
+    });
+    assert.equal(retried.statusCode, 200, retried.body);
+    assert.equal(narrationCalls, beforeNarration + 2, "explicit retry replaces the rejected draft");
+    assert(!state().lines.some((line: any) => line.content === text));
+    assert.equal(state().lines.filter((line: any) => line.content === "Aqua watches the water.").length, 1);
+    records.clear();
+    for (const [key, value] of clone(retained)) records.set(key, value);
+    semanticIntentAnswer = oldIntent;
+    semanticExchangeAnswer = oldExchange;
   }
 
   // The whole mixed submission is an expected rejection, before consistency/effect review.
