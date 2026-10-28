@@ -38,7 +38,7 @@ type PaletteEntry = {
 
 export type CompactFoundingContext = {
   identityDescriptionRevision?: string;
-  openingVersion?: 2;
+  openingVersion?: 2 | 3;
   playerAgencyVersion?: 1;
   sourceRevision?: string;
   contractVersion?: 1 | 2;

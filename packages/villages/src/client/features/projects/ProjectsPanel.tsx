@@ -174,7 +174,7 @@ export function ProjectsPanel({
   const currentDraftPage = Math.min(draftPage, pages - 1);
   const historyPages = Math.max(1, Math.ceil(history.length / pageSize));
   const currentHistoryPage = Math.min(historyPage, historyPages - 1);
-  const openingAvailable = snapshot.opening && !["complete", "ended"].includes(snapshot.opening.stage);
+  const openingAvailable = snapshot.opening?.version === 2 && !["complete", "ended"].includes(snapshot.opening.stage);
   return (
     <div className={P + "-project-desk"}>
       <style>{projectStyles}</style>

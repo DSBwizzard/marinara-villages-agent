@@ -307,6 +307,20 @@ async function partialOpeningCount() {
     "Visible count follows current task receipts even if saved aggregate is stale",
   );
 }
+async function interactiveOpeningNeedsNoIdeas() {
+  const f = fixture("interactive-opening");
+  f.state().opening = initialOpening(["first", "second"], "same-venue", "interactive-opening", 3);
+  let calls = 0;
+  f.ports.proposeOpeningIdea = async () => {
+    calls++;
+    throw new Error("Interactive openings must not request a proposal");
+  };
+  f.gate.resolve();
+  await createFoundingPreparation(f.ports).prepareFoundedVillage();
+  assert.equal(calls, 0);
+  assert.equal(f.state().foundingPreparation!.status, "ready");
+  assert.deepEqual(f.state().opening!.proposals, []);
+}
 async function independentOpeningIdeas() {
   const f = fixture("independent-ideas");
   f.state().opening = initialOpening(["first", "second"], "same-venue", "independent-ideas");
@@ -402,6 +416,7 @@ async function changedOpeningSource(worldFacts = false) {
 }
 
 async function main() {
+  await interactiveOpeningNeedsNoIdeas();
   await changedOpeningSource();
   await changedOpeningSource(true);
   await independentOpeningIdeas();

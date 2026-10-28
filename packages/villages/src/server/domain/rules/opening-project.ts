@@ -46,7 +46,7 @@ export class IncompleteOpeningGathering extends VillagesRequestError {
 export type OpeningSignal = { kind: "pitch" | "first-use"; residentId: string; quote: string; playerQuote: string };
 export type OpeningRecord = {
   id: string;
-  version: 2;
+  version: 2 | 3;
   stage: OpeningView["stage"];
   communityVenueId: string;
   gatheringSceneId: string;
@@ -73,7 +73,7 @@ export function initialOpening(
   residentIds: string[],
   communityVenueId: string,
   id: string,
-  version: 2 = 2,
+  version: 2 | 3 = 2,
 ): OpeningRecord {
   return {
     id,
@@ -150,7 +150,8 @@ export function readOpening(value: unknown): OpeningRecord | undefined {
   if (value == null) return undefined;
   const row = asRecord(value);
   const stages = ["gathering", "conversations", "project", "first-use", "complete", "ended"];
-  if (row.version !== 2 || !stages.includes(String(row.stage))) throw conflict("This opening record is unsupported.");
+  if ((row.version !== 2 && row.version !== 3) || !stages.includes(String(row.stage)))
+    throw conflict("This opening record is unsupported.");
   const residentIds = [...new Set(asStringArray(row.residentIds))].slice(0, 3);
   const proposals = Array.isArray(row.proposals)
     ? row.proposals.map((entry) => readOpeningProposal(entry, asTrimmedString(asRecord(entry).residentId)))
@@ -172,7 +173,7 @@ export function readOpening(value: unknown): OpeningRecord | undefined {
   const evidence = asRecord(row.firstUseEvidence);
   return {
     id: asTrimmedString(row.id),
-    version: row.version as 2,
+    version: row.version as 2 | 3,
     stage: row.stage as OpeningRecord["stage"],
     communityVenueId: asTrimmedString(row.communityVenueId),
     gatheringSceneId: asTrimmedString(row.gatheringSceneId),
@@ -197,6 +198,7 @@ export function readOpening(value: unknown): OpeningRecord | undefined {
 export function reconcileOpening(state: VillageState): void {
   const opening = state.opening;
   if (!opening || !openingActive(state)) return;
+  if (opening.version === 3) return;
   const remaining = opening.residentIds.filter((id) => state.villagers.some((resident) => resident.characterId === id));
   if (!opening.projectId && !remaining.some((id) => !opening.declinedIds.includes(id))) {
     opening.stage = "ended";
@@ -230,17 +232,19 @@ export function openingView(state: VillageState): OpeningView | undefined {
     cancelled: "Project cancelled",
   };
   const action =
-    opening.stage === "gathering"
-      ? "Community gathering"
-      : opening.stage === "conversations"
-        ? pending
-          ? `Talk to ${name} · ${heardIds.filter((id) => residentIds.includes(id)).length}/${residentIds.length}`
-          : "Choose a proposal"
-        : opening.stage === "first-use"
-          ? "Experience its first use"
-          : opening.stage === "project"
-            ? (phases[project?.lifecycle?.phase ?? ""] ?? "Open Project")
-            : "";
+    opening.version === 3
+      ? ""
+      : opening.stage === "gathering"
+        ? "Community gathering"
+        : opening.stage === "conversations"
+          ? pending
+            ? `Talk to ${name} · ${heardIds.filter((id) => residentIds.includes(id)).length}/${residentIds.length}`
+            : "Choose a proposal"
+          : opening.stage === "first-use"
+            ? "Experience its first use"
+            : opening.stage === "project"
+              ? (phases[project?.lifecycle?.phase ?? ""] ?? "Open Project")
+              : "";
   return {
     id: opening.id,
     version: opening.version,
@@ -275,6 +279,10 @@ export function openingView(state: VillageState): OpeningView | undefined {
 export function openingSceneDirection(state: VillageState, scene: VenueScene, includeSignals = true): string {
   const opening = state.opening;
   if (!opening || !openingActive(state)) return "";
+  if (opening.version === 3) {
+    if (opening.stage !== "gathering" || scene.id !== opening.gatheringSceneId || scene.status !== "opening") return "";
+    return "OPENING SCENE: Begin with a small everyday task already underway in this shared place, suited to the setting, the residents and their established relationships. Develop a few meaningful beats through natural action and conversation, then pause at a natural moment for the player to respond. Let personalities and relationships shape the interaction without requiring everyone to speak or introduce themselves. Do not invent the player's words, actions, feelings or commitments. Respect each person's knowledge, privacy, authored history and identity. Do not require or stage a Project pitch, invent a major crisis, or force a welcome. The player may continue or leave freely.";
+  }
   if (opening.stage === "gathering" && scene.id === opening.gatheringSceneId)
     return (
       "OPENING GATHERING: Respect authored histories. Prepared public interests and ideas: " +
