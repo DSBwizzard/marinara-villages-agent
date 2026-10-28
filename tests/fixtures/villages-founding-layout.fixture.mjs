@@ -1206,7 +1206,15 @@ export async function verifyFoundingLayout(group) {
         if (width <= 704) {
           const sheet = await inspector.boundingBox();
           const done = await inspector.getByRole("button", { name: "Done", exact: true }).boundingBox();
-          assert.ok(sheet.y + sheet.height - done.y - done.height <= 3, "No empty strip below Done");
+          const footerPadding = await inspector.locator(".villages-quick-footer").evaluate((node) => {
+            const style = getComputedStyle(node);
+            return { top: parseFloat(style.paddingTop), bottom: parseFloat(style.paddingBottom) };
+          });
+          assert.ok(Math.abs(footerPadding.top - footerPadding.bottom) <= 1, "Done has balanced padding");
+          assert.ok(
+            Math.abs(sheet.y + sheet.height - done.y - done.height - footerPadding.bottom) <= 3,
+            "Only the matching footer padding remains below Done",
+          );
           await zone("Common");
           assert.equal(
             await page.evaluate(() => document.activeElement?.matches("input,textarea")),
@@ -1222,6 +1230,27 @@ export async function verifyFoundingLayout(group) {
           await page.setViewportSize(viewport);
           await inspector.getByRole("tab", { name: "Venue", exact: true }).click();
         }
+        await zone("Common");
+        const purposeField = inspector.getByLabel("Used for", { exact: true });
+        const appearanceField = inspector.getByLabel("Appearance", { exact: true });
+        const originalPurpose = await purposeField.inputValue();
+        const originalAppearance = await appearanceField.inputValue();
+        await purposeField.fill("");
+        await appearanceField.fill("");
+        await expect(inspector.getByRole("alert")).toHaveCount(0);
+        await inspector.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(inspector).toBeVisible();
+        await expect(purposeField).toHaveAttribute("aria-invalid", "true");
+        await expect(appearanceField).toHaveAttribute("aria-invalid", "true");
+        await expect(purposeField.locator("..").getByRole("alert")).toHaveText("Describe what the Zone is used for.");
+        await expect(appearanceField.locator("..").getByRole("alert")).toHaveText("Describe the Zone appearance.");
+        await expect(inspector.getByLabel("Details needed", { exact: true })).toHaveCount(0);
+        await purposeField.fill(originalPurpose);
+        await appearanceField.fill(originalAppearance);
+        await expect(inspector.getByRole("alert")).toHaveCount(0);
+        await inspector.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(inspector).toBeHidden();
+        await open();
         await inspector.getByLabel("Venue Name", { exact: true }).fill("My observatory quarters");
         await inspector.getByLabel("Physical Form", { exact: true }).fill("Converted observatory room");
         await zone("Exterior");

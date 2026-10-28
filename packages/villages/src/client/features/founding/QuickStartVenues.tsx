@@ -53,6 +53,7 @@ export function QuickStartVenues({
   const [tab, setTab] = useState<"venue" | "zone">("venue");
   const [artworkOpen, setArtworkOpen] = useState(false);
   const [layoutError, setLayoutError] = useState("");
+  const [saveAttempted, setSaveAttempted] = useState(false);
   const [zoneId, setZoneId] = useState("exterior");
   const selected = venues.find((venue) => venue.id === selectedId);
   const selectedRef = useRef(selected);
@@ -67,12 +68,24 @@ export function QuickStartVenues({
   const close = () => onState({ ...state, view: "map", paused: false });
   const finish = () => {
     if (!selected) return;
+    setSaveAttempted(true);
     const problem = foundingLayoutProblem(selected);
     setLayoutError(problem);
     if (problem) setTab("venue");
-    else close();
+    else {
+      const issue = issues.find(
+        (issue) =>
+          issue.venueId === selected.id &&
+          ["name", "form", "description", "zone-name", "zone-purpose", "zone-appearance"].includes(issue.field),
+      );
+      if (issue) {
+        setTab(issue.zoneId ? "zone" : "venue");
+        if (issue.zoneId) setZoneId(issue.zoneId);
+      } else close();
+    }
   };
   useEffect(() => setLayoutError(""), [selected, open]);
+  useEffect(() => setSaveAttempted(false), [open, selectedId]);
   const personal = !!selected?.privateSpaces?.some((zone) => zone.id === zoneId);
   const zone = [...(selected?.spaces ?? []), ...(selected?.privateSpaces ?? [])].find((row) => row.id === zoneId);
   const hiddenPrivate = !!zone && personal && zone.venueClass === "residence" && zone.ownerId !== "player";
@@ -85,11 +98,23 @@ export function QuickStartVenues({
   ];
   const zoneIndex = Math.max(0, zoneIds.indexOf(zoneId));
   const changeZone = (offset: number) => setZoneId(zoneIds[(zoneIndex + offset + zoneIds.length) % zoneIds.length]);
-  const tabIssues = issues.filter((issue) => {
-    if (issue.venueId !== selected?.id || issue.field === "placement") return false;
-    if (tab === "venue") return ["name", "form", "assignment", "layout"].includes(issue.field);
-    return issue.zoneId === zoneId || issue.zoneId === (personal ? "private" : "common");
+  const fieldIssue = (field: FoundingIssue["field"]) =>
+    saveAttempted || focusIssue?.venueId === selected?.id
+      ? issues.find(
+          (issue) =>
+            issue.venueId === selected?.id && issue.field === field && (!issue.zoneId || issue.zoneId === zoneId),
+        )
+      : undefined;
+  const errorProps = (field: FoundingIssue["field"]) => ({
+    "aria-invalid": fieldIssue(field) ? true : undefined,
+    "aria-describedby": fieldIssue(field) ? `${tabId}-error-${field}` : undefined,
   });
+  const fieldError = (field: FoundingIssue["field"]) =>
+    fieldIssue(field) ? (
+      <span className="villages-quick-field-error" id={`${tabId}-error-${field}`} role="alert">
+        {fieldIssue(field)?.message}
+      </span>
+    ) : null;
   useEffect(() => {
     const node = dialog.current;
     if (!open || !node) return;
@@ -266,13 +291,6 @@ export function QuickStartVenues({
               id={tabId + "panel"}
               aria-labelledby={tabId + tab}
             >
-              {tabIssues.length ? (
-                <ul className="villages-quick-issues" aria-label="Details needed">
-                  {tabIssues.map((issue) => (
-                    <li key={`${issue.field}:${issue.zoneId ?? ""}`}>{issue.message}</li>
-                  ))}
-                </ul>
-              ) : null}
               {tab === "venue" ? (
                 <>
                   <fieldset className="villages-quick-venue-fields" disabled={busy || imageBusy}>
@@ -281,20 +299,24 @@ export function QuickStartVenues({
                       <input
                         autoComplete="off"
                         aria-label="Venue Name"
+                        {...errorProps("name")}
                         maxLength={100}
                         value={selected.name}
                         onChange={(event) => onPatch({ ...selected, name: event.target.value })}
                       />
+                      {fieldError("name")}
                     </label>
                     <label>
                       Physical Form
                       <input
                         autoComplete="off"
                         aria-label="Physical Form"
+                        {...errorProps("form")}
                         maxLength={240}
                         value={selected.form ?? ""}
                         onChange={(event) => onPatch({ ...selected, form: event.target.value })}
                       />
+                      {fieldError("form")}
                     </label>
                   </fieldset>
                   <FoundingConnections
@@ -319,14 +341,18 @@ export function QuickStartVenues({
                       ‹
                     </button>
                     {zone ? (
-                      <input
-                        autoComplete="off"
-                        aria-label="Zone name"
-                        value={zone.name ?? ""}
-                        disabled={busy || imageBusy}
-                        maxLength={100}
-                        onChange={(event) => patchZone(personal, zone.id, { name: event.target.value })}
-                      />
+                      <div className="villages-quick-zone-name">
+                        <input
+                          autoComplete="off"
+                          aria-label="Zone name"
+                          {...errorProps("zone-name")}
+                          value={zone.name ?? ""}
+                          disabled={busy || imageBusy}
+                          maxLength={100}
+                          onChange={(event) => patchZone(personal, zone.id, { name: event.target.value })}
+                        />
+                        {fieldError("zone-name")}
+                      </div>
                     ) : (
                       <strong>Entrance</strong>
                     )}
@@ -368,10 +394,12 @@ export function QuickStartVenues({
                           <input
                             autoComplete="off"
                             aria-label="Used for"
+                            {...errorProps("zone-purpose")}
                             value={zone.purpose ?? ""}
                             maxLength={240}
                             onChange={(event) => patchZone(personal, zone.id, { purpose: event.target.value })}
                           />
+                          {fieldError("zone-purpose")}
                         </label>
                       </>
                     ) : null}
@@ -396,6 +424,7 @@ export function QuickStartVenues({
                           <textarea
                             autoComplete="off"
                             aria-label={zoneId === "exterior" ? "Exterior appearance" : "Appearance"}
+                            {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
                             value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
                             maxLength={1000}
                             rows={3}
@@ -405,6 +434,7 @@ export function QuickStartVenues({
                                 : zone && patchZone(personal, zone.id, { description: event.target.value })
                             }
                           />
+                          {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
                         </label>
                         <button
                           type="button"
