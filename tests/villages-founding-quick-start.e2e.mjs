@@ -44,8 +44,8 @@ function Harness(){
   const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
   const select=venue=>{setSelected(venue.id);setWorkspace(state=>({...state,view:'details',paused:true}))};
   const people=['buster','feddy','mira'].map(id=>({id,name:id[0].toUpperCase()+id.slice(1)}));
-  return <><style>{VILLAGES_FORGING_STYLES}</style><div className="villages-forging-v2"><header className="marinara-capability-villages-setup-heading"><ol className="villages-forging-steps">{[1,2,3,4,5].map(n=><li key={n} data-active={n===4}>{n}</li>)}</ol><h1>Forging the Village</h1><p>Step 4 · Venues</p></header><main className="villages-forging-body"><h2>Starting Venues</h2><div className="villages-quick-switch"><QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({quickStart:true})}/></div>
-  <QuickStartVenues venues={venues} people={people} selectedId={selected} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={()=>{}}/>
+  return <><style>{VILLAGES_FORGING_STYLES}</style><div className="villages-forging-v2" data-map-first="true"><header className="marinara-capability-villages-setup-heading villages-forging-heading"><ol className="villages-forging-steps">{[1,2,3,4,5].map(n=><li key={n} data-active={n===4}>{n}</li>)}</ol><h1>Forging the Village</h1></header><main className="villages-forging-body"><h2>Starting Venues</h2><div className="villages-quick-switch"><QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({quickStart:true})}/></div>
+  <QuickStartVenues venues={venues} people={people} selectedId={selected} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={venue=>{setSelected(venue?.id??null);setWorkspace(state=>({...state,view:"map",paused:!venue}))}}/>
   {problem?<p role="alert">{problem}</p>:null}{saved?<p>Draft saved</p>:null}{review?<p>Review Tidebreak</p>:null}</main><footer className="villages-forging-footer"><button disabled={busy||!!foundingVenueIssues(venues,false).length} onClick={()=>setReview(true)}>Review village</button><button onClick={persist}>Save draft</button></footer></div></>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);
@@ -142,7 +142,12 @@ try {
       );
       await page.goto("http://quick-start.test/");
       const sheet = page.locator("dialog.villages-quick-dialog");
-      const venueEntry = (id) => page.locator(`.villages-quick-list button[data-venue-id="${id}"]`);
+      const selector = page.getByLabel("Move Venue", { exact: true });
+      const venueEntry = (id) => selector.locator('option[value="' + id + '"]');
+      const openVenue = async (id) => {
+        await selector.selectOption(id);
+        await page.getByRole("button", { name: "Edit Venue", exact: true }).click();
+      };
       const selectZone = async (id) => {
         const navigation = sheet.getByRole("group", { name: "Zone navigation", exact: true });
         for (let i = 0; i < 7; i++) {
@@ -175,7 +180,7 @@ try {
       assert.equal(count, 0, "confirmation makes no model request");
       await confirm.getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(count, 0, "cancelling a pristine template makes no model request");
-      await venueEntry("player").click();
+      await openVenue("player");
       const quickLayout = page.locator("dialog.villages-quick-dialog").locator(".villages-zone-map");
       await expect(page.locator("dialog.villages-quick-dialog").locator("summary")).toHaveCount(0);
       await expect(
@@ -282,20 +287,14 @@ try {
       assert.ok(rows.every((row) => row.presentation.x !== null && row.presentation.y !== null));
       assert.equal(new Set(rows.map((row) => `${row.presentation.x}:${row.presentation.y}`)).size, 5);
       assert.deepEqual(
-        await page.locator(".villages-quick-list button").allTextContents(),
+        await selector.locator('option:not([value=""])').allTextContents(),
         rows.map((row) => row.name),
-        "Venue entries contain only their names",
       );
-      const entryBoxes = await page
-        .locator(".villages-quick-list button")
-        .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
-      assert.ok(
-        entryBoxes.every((box) => box.height >= 44 && box.height <= 60),
-        "Venue entries stay compact and touchable",
-      );
+      const toolbarBox = await page.getByRole("group", { name: "Venue placement controls", exact: true }).boundingBox();
+      assert.ok(toolbarBox.height <= 60, "One compact toolbar leaves room for the map");
       await capture("review-list");
-      const edit = venueEntry("player");
-      await edit.click();
+      const edit = page.getByRole("button", { name: "Edit Venue", exact: true });
+      await openVenue("player");
       await expect(sheet).toBeVisible();
       await expect(sheet.getByLabel("Physical Form", { exact: true })).toHaveValue("Converted hearse");
       await sheet.getByLabel("Venue Name", { exact: true }).fill("My Last Ride");
@@ -404,7 +403,7 @@ try {
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await expect(sheet).not.toBeVisible();
       await expect(edit).toBeFocused();
-      await venueEntry("buster").click();
+      await openVenue("buster");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone("private:base");
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveCount(0);
@@ -413,15 +412,18 @@ try {
       await expect(sheet.getByLabel("Zone artwork")).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toHaveCount(0);
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
-      await venueEntry("community").click();
+      await openVenue("community");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone("common:base");
       await expect(sheet.getByRole("button", { name: "Permission required", exact: true })).toBeEnabled();
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
-      await venueEntry("player").click();
+      await openVenue("player");
       await sheet.getByRole("tab", { name: "Venue", exact: true }).click();
       await sheet.getByRole("button", { name: "Add Zone", exact: true }).click();
-      await expect(sheet.getByRole("tab", { name: "Zone", exact: true })).toHaveAttribute("aria-selected", "true");
+      await expect(sheet.getByRole("tab", { name: "Venue", exact: true })).toHaveAttribute("aria-selected", "true");
+      await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
+      await expect(sheet.getByLabel("Used for", { exact: true })).toHaveValue("");
+      await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("");
       await sheet.getByLabel("Zone name", { exact: true }).fill("Kitchen");
       await sheet.getByLabel("Used for", { exact: true }).fill("Cooking");
       await sheet.getByLabel("Appearance", { exact: true }).fill("A sunny kitchen.");
@@ -480,7 +482,7 @@ try {
       await page.reload();
       await expect(venueEntry("player")).toContainText("My Last Ride");
 
-      await venueEntry("player").click();
+      await openVenue("player");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone(added.id);
       await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A sunny kitchen.");

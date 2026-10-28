@@ -1066,14 +1066,16 @@ export async function verifyFoundingLayout(group) {
         const placementMap = root.locator(".marinara-capability-villages-setup-map-viewport");
         const canvas = placementMap.locator(".marinara-capability-villages-canvas");
         const pins = canvas.locator("button[data-pin-id]");
-        const entries = root.locator(".villages-quick-list button");
+        const selector = root.getByLabel("Move Venue", { exact: true });
+        const entries = selector.locator('option:not([value=""])');
         const mapView = async () => {
           if (await inspector.isVisible()) await inspector.getByRole("button", { name: "Done", exact: true }).click();
           await canvas.scrollIntoViewIfNeeded();
         };
         const open = async (index = 0) => {
           if (await inspector.isVisible()) await inspector.getByRole("button", { name: "Done", exact: true }).click();
-          await entries.nth(index).click();
+          await selector.selectOption(await entries.nth(index).getAttribute("value"));
+          await root.getByRole("button", { name: "Edit Venue", exact: true }).click();
         };
         const zone = async (name) => {
           await inspector.getByRole("tab", { name: "Zone", exact: true }).click();
@@ -1085,7 +1087,8 @@ export async function verifyFoundingLayout(group) {
           }
           assert.fail("Missing Zone " + id);
         };
-        await expect(pins).toHaveCount(homeCount + 2);
+        await expect(entries).toHaveCount(homeCount + 2);
+        await expect(root.locator("[class*=pin-photo]")).toHaveCount(0);
         await root.getByRole("button", { name: "Quick Start", exact: true }).click();
         const confirmation = root.getByRole("dialog", { name: "Quick Start", exact: true });
         await expect(confirmation).toBeVisible();
@@ -1095,6 +1098,83 @@ export async function verifyFoundingLayout(group) {
         await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
         await expect(entries.first()).toHaveText("Your living space");
         assert.equal(suggestionCalls, 1);
+        const mapBox = await canvas.boundingBox(),
+          bodyBox = await root.locator(".villages-forging-body").boundingBox();
+        await capture("map-sizing");
+        assert.ok(
+          mapBox.height >= bodyBox.height * 0.6,
+          JSON.stringify({
+            mapBox,
+            bodyBox,
+            containers: await root
+              .locator(
+                ".villages-quick-start,.villages-quick-map,.villages-forging-map,.marinara-capability-villages-setup-map-viewport",
+              )
+              .evaluateAll((nodes) =>
+                nodes.map((node) => ({
+                  class: node.className,
+                  height: node.clientHeight,
+                  display: getComputedStyle(node).display,
+                  flex: getComputedStyle(node).flex,
+                })),
+              ),
+          }),
+        );
+        const wholePage = await root
+          .locator(".villages-forging-body")
+          .evaluate((node) => ({ height: node.clientHeight, scroll: node.scrollHeight }));
+        assert.ok(wholePage.scroll <= wholePage.height + 1, "The Venue map needs no page scrolling");
+        await expect(root.locator('[data-photo-pins="true"]')).toHaveCount(0);
+        const playerId = await entries.first().getAttribute("value");
+        await selector.selectOption(playerId);
+        const playerMarker = canvas.locator('button[data-pin-id="' + playerId + '"]');
+        const coordinates = () =>
+          playerMarker.evaluate((node) => {
+            const point = node.parentElement.getBoundingClientRect(),
+              image = node.closest('[class$="-canvas"]').querySelector("img").getBoundingClientRect();
+            return { x: (point.left - image.left) / image.width, y: (point.top - image.top) / image.height };
+          });
+        const beforeNudge = await coordinates();
+        await playerMarker.press("ArrowRight");
+        await expect
+          .poll(async () => Math.round((await coordinates()).x * 10000))
+          .toBe(Math.round((beforeNudge.x + 0.01) * 10000));
+        const hit = await canvas.evaluate((node) => {
+          const box = node.getBoundingClientRect();
+          for (const [x, y] of [
+            [0.83, 0.84],
+            [0.2, 0.8],
+            [0.7, 0.25],
+            [0.15, 0.15],
+          ]) {
+            const point = { x: box.x + box.width * x, y: box.y + box.height * y },
+              target = document.elementFromPoint(point.x, point.y);
+            if (target && node.contains(target) && !target.closest("button")) return point;
+          }
+          throw Error("No clear map destination");
+        });
+        const target = await canvas.locator("img").evaluate((node, hit) => {
+          const box = node.getBoundingClientRect();
+          return {
+            x: (hit.x - box.left) / box.width,
+            y: (hit.y - box.top) / box.height,
+            epsilonX: 1 / box.width + 0.0001,
+            epsilonY: 1 / box.height + 0.0001,
+          };
+        }, hit);
+        if (width < 600) await page.touchscreen.tap(hit.x, hit.y);
+        else await page.mouse.click(hit.x, hit.y);
+        await expect.poll(async () => Math.abs((await coordinates()).x - target.x)).toBeLessThan(target.epsilonX);
+        await expect.poll(async () => Math.abs((await coordinates()).y - target.y)).toBeLessThan(target.epsilonY);
+        const preserved = await coordinates();
+        await root.getByRole("button", { name: "Zoom in", exact: true }).click();
+        const afterZoom = await coordinates();
+        assert.ok(
+          Math.abs(preserved.x - afterZoom.x) < 0.0001 && Math.abs(preserved.y - afterZoom.y) < 0.0001,
+          "Camera zoom never rewrites Venue coordinates",
+        );
+        await root.getByRole("button", { name: "Reset map view", exact: true }).click();
+        await capture("venue-map");
         await open();
         await inspector.getByLabel("Venue Name", { exact: true }).fill("My observatory quarters");
         await inspector.getByLabel("Physical Form", { exact: true }).fill("Converted observatory room");
@@ -1137,7 +1217,7 @@ export async function verifyFoundingLayout(group) {
         });
         await page.reload();
         await page.addScriptTag({ content: foundingBundle });
-        await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
+        await root.getByRole("button", { name: "Resume Venue placement", exact: true }).click();
         await expect(root.getByRole("button", { name: "Advanced", exact: true })).toHaveCount(0);
         await expect(entries.first()).toHaveText("My observatory quarters");
         await open();
@@ -1148,6 +1228,11 @@ export async function verifyFoundingLayout(group) {
         );
         await mapView();
         assert.equal(suggestionCalls, 1, "resume never generates or replaces Venues");
+        const restoredPoint = await coordinates();
+        assert.ok(
+          Math.abs(restoredPoint.x - preserved.x) < 0.0001 && Math.abs(restoredPoint.y - preserved.y) < 0.0001,
+          "Marker movement survives saving and reopening",
+        );
         await capture("venue-details");
         if (width === 1366) {
           // Optional image failures and stale replies do not replace authored fields.
@@ -1279,7 +1364,7 @@ export async function verifyFoundingLayout(group) {
           await forward("Save & exit").click();
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
-          await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
+          await root.getByRole("button", { name: "Resume Venue placement", exact: true }).click();
           await expect(
             root.getByText(/Waiting for map artwork|Image generation can take several minutes|Creating map artwork/),
           ).toHaveCount(0);
@@ -1299,18 +1384,13 @@ export async function verifyFoundingLayout(group) {
           await forward("Change starting Venues").click();
           await open();
           await mapView();
-          await expect(
-            root.getByRole("heading", {
-              name: `Map placement · ${homeCount + 2} of ${homeCount + 2} placed`,
-              exact: true,
-            }),
-          ).toBeVisible();
+          await expect(selector).toBeVisible();
           await capture("artwork-spaces");
           await forward("Save & exit").click();
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
-          await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
-          await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
+          await expect(root.getByRole("button", { name: "Resume Venue placement", exact: true })).toBeVisible();
+          await root.getByRole("button", { name: "Resume Venue placement", exact: true }).click();
           assert.equal(mapCalls, 2, "only deliberate retry generates again; finished artwork is restored on reload");
           await forward("Back").click();
           assert.deepEqual(
@@ -1361,10 +1441,10 @@ export async function verifyFoundingLayout(group) {
           await forward("Review village").click();
           await forward("Change starting Venues").click();
           await forward("Save & exit").click();
-          await expect(root.getByRole("button", { name: "Resume photograph placement", exact: true })).toBeVisible();
+          await expect(root.getByRole("button", { name: "Resume Venue placement", exact: true })).toBeVisible();
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
-          await root.getByRole("button", { name: "Resume photograph placement", exact: true }).click();
+          await root.getByRole("button", { name: "Resume Venue placement", exact: true }).click();
           await forward("Back").click();
           await expect(root.getByRole("img", { name: "Selected village map", exact: true })).toBeVisible();
           assert.deepEqual(
@@ -1422,19 +1502,21 @@ export async function verifyFoundingLayout(group) {
             ).toBeVisible();
             await root
               .getByRole("button", {
-                name: legacyStep === 2 ? "Resume photograph placement" : "Resume founding",
+                name: legacyStep === 2 ? "Resume Venue placement" : "Resume founding",
                 exact: true,
               })
               .click();
             await expect(root).toHaveAttribute("data-step", String(legacyStep + 1));
-            await expect(root.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
+            await expect(root.locator(".marinara-capability-villages-explore-marker").first()).toBeVisible();
+            await expect(root.locator("[class*=pin-photo]")).toHaveCount(0);
             if (legacyStep === 2) await forward("Review village").click();
             assert.equal(mapCalls, 3, "legacy resume does not generate new artwork");
           }
         }
         await expect(root.getByRole("button", { name: "Change starting Venues", exact: true })).toBeVisible();
         await bounds();
-        await expect(root.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(homeCount + 2);
+        await expect(root.locator(".marinara-capability-villages-explore-marker").first()).toBeVisible();
+        await expect(root.locator("[class*=pin-photo]")).toHaveCount(0);
         await expect(root.locator('[class*="pin-tack"], [class*="photo-tack"]')).toHaveCount(0);
         await capture("review");
         await forward("Found village").click();

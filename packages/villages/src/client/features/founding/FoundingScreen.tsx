@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import type { MobileMapView } from "../exploration/MapStage.js";
 import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
 import { FoundingAdmissions } from "./FoundingAdmissions.js";
@@ -78,7 +79,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupSpriteRevisions,
     setupSpriteRevisions,
     setSetupFoundingVillagerIds,
-    setSetupKeyboardSpot,
     setSetupLorebookDraft,
     setSetupMapBusy,
     setSetupMapNegativePrompt,
@@ -87,7 +87,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupMapReviewed,
     setSetupMapSource,
     setSetupName,
-    setSetupPlacementError,
     setSetupPlayerBackground,
     setSetupProblem,
     setSetupResidentAdmissions,
@@ -104,7 +103,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupFoundingVillagerIds,
     setupImageClaim,
     setupImageTarget,
-    setupKeyboardSpot,
     setupLoreTokenBudgetDraft,
     setupLorebookDraft,
     setupMapBusy,
@@ -140,6 +138,26 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   } = controller;
 
   const rootRef = useRef<HTMLDivElement>(null);
+  const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
+  const cameraSource = useRef<string | null>(null);
+  useEffect(() => {
+    setMapNavigation(null);
+    cameraSource.current = null;
+  }, [setupMapSrc]);
+  useEffect(() => {
+    if (
+      screen !== "setup" ||
+      setupStep < 3 ||
+      snapshot?.isFounded ||
+      !setupMapSrc ||
+      !setupVenues.length ||
+      cameraSource.current === setupMapSrc
+    )
+      return;
+    cameraSource.current = setupMapSrc;
+    const venue = setupVenues.find((row) => row.id === selectedSetupVenueId) ?? setupVenues[0]!;
+    setMapNavigation({ zoom: 1, centerX: venue.presentation.x ?? 0.5, centerY: venue.presentation.y ?? 0.5 });
+  }, [screen, setupStep, setupMapSrc, setupVenues, selectedSetupVenueId, snapshot?.isFounded]);
   const [validationAttempt, setValidationAttempt] = useState(0);
   const focusedValidationAttempt = useRef(0);
   const [validatedFields, setValidatedFields] = useState<string[]>([]);
@@ -187,6 +205,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin =
       setupVenues.find((venue) => venue.id === movingSetupVenueId) ??
+      (!snapshot?.isFounded ? setupVenues.find((venue) => venue.id === selectedSetupVenueId) : undefined) ??
       (setupWorkspace.paused
         ? undefined
         : setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null));
@@ -223,48 +242,35 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               : "Generate or upload map artwork on Map."}
           </p>
         ) : null}
-        <div
-          className={`${ELEMENT_TAG}-setup-map-viewport`}
-          tabIndex={interactive ? 0 : -1}
-          aria-label="Venue placement map. Arrow keys choose a spot; Enter places a Venue."
-          onKeyDown={(event) => {
-            if (!interactive || event.target !== event.currentTarget || setupEditorOpen || !nextPin || !mapReady)
-              return;
-            if (event.key === "Enter") {
-              event.preventDefault();
-              const stage = event.currentTarget.querySelector<HTMLElement>(`.${ELEMENT_TAG}-stage`);
-              const photoSize = stage
-                ? parseFloat(getComputedStyle(stage).getPropertyValue("--founding-photo-width")) || 36
-                : 36;
-              placeSetupPin(setupKeyboardSpot.x, setupKeyboardSpot.y, {
-                width: Number(stage?.dataset.pictureWidth) || 1000,
-                height: Number(stage?.dataset.pictureHeight) || 700,
-                photoWidth: photoSize,
-                photoHeight: photoSize,
-              });
-            } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
-              event.preventDefault();
-              setSetupKeyboardSpot((spot) => ({
-                x: Math.max(
-                  0.02,
-                  Math.min(
-                    0.98,
-                    spot.x + (event.key === "ArrowLeft" ? -0.025 : event.key === "ArrowRight" ? 0.025 : 0),
-                  ),
-                ),
-                y: Math.max(
-                  0.02,
-                  Math.min(0.98, spot.y + (event.key === "ArrowUp" ? -0.025 : event.key === "ArrowDown" ? 0.025 : 0)),
-                ),
-              }));
-            }
-          }}
-        >
+        <div className={`${ELEMENT_TAG}-setup-map-viewport`} aria-label="Venue placement map">
           <MapStage
             src={setupMapSrc}
             alt={`Map of ${setupName || "your village"}`}
-            pins={draftPins}
-            placing={interactive && !!nextPin && mapReady && !setupEditorOpen && !snapshot?.isFounded}
+            pins={
+              !snapshot?.isFounded
+                ? draftPins.map((pin) => ({
+                    ...pin,
+                    selected: nextPin?.id === pin.id,
+                    onSelect: interactive
+                      ? () => {
+                          setSelectedSetupVenueId(pin.id);
+                          setMovingSetupVenueId(pin.id);
+                          setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+                        }
+                      : pin.onSelect,
+                  }))
+                : draftPins
+            }
+            placing={
+              interactive &&
+              !!nextPin &&
+              mapReady &&
+              !setupEditorOpen &&
+              setupWorkspace.view !== "details" &&
+              !setupSuggestionsBusy &&
+              !setupVenueBusy &&
+              !snapshot?.isFounded
+            }
             view={
               interactive
                 ? defaultView("contain")
@@ -273,23 +279,32 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   : defaultView("contain")
             }
             shape={setupMapShape}
-            onPlace={interactive && !snapshot?.isFounded ? placeSetupPin : undefined}
+            onPlace={
+              interactive && !snapshot?.isFounded ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined
+            }
             compact={false}
             mobile={false}
             fitToRoom={false}
-            compactPhotos={interactive}
-            onMovePin={
-              interactive && !snapshot?.isFounded && mapReady
-                ? (id, x, y, size) => {
+            exploration={!snapshot?.isFounded}
+            navigationView={mapNavigation}
+            onNavigationView={setMapNavigation}
+            navigationControlsWhilePlacing
+            keyboardPlacementId={interactive ? nextPin?.id : undefined}
+            onNudgePin={
+              interactive && !snapshot?.isFounded && mapReady && !setupSuggestionsBusy && !setupVenueBusy
+                ? (id, dx, dy) => {
+                    const venue = setupVenues.find((row) => row.id === id);
+                    if (!venue) return;
                     setSelectedSetupVenueId(id);
-                    placeSetupPin(x, y, size, id);
+                    placeSetupPin(
+                      Math.round(Math.max(0, Math.min(1, (venue.presentation.x ?? 0.5) + dx)) * 10000) / 10000,
+                      Math.round(Math.max(0, Math.min(1, (venue.presentation.y ?? 0.5) + dy)) * 10000) / 10000,
+                      undefined,
+                      id,
+                    );
                   }
                 : undefined
             }
-            onMoveInvalid={() =>
-              setSetupPlacementError("Drop the photograph inside the map. Its original position is kept.")
-            }
-            placementCursor={interactive ? setupKeyboardSpot : undefined}
           />
         </div>
       </div>
@@ -304,6 +319,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       <div
         className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}
         data-step={setupStep}
+        data-map-first={setupStep === 3 && !snapshot?.isFounded ? "true" : undefined}
         ref={rootRef}
       >
         <header className={`${ELEMENT_TAG}-setup-heading villages-forging-heading`}>
@@ -516,7 +532,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               <h3 aria-label="Map">Map</h3>
               {snapshot?.isFounded ? (
                 <p>
-                  Change artwork and Venue photographs in More → World Configuration → Maps. Existing locations are
+                  Change artwork and Venue markers in More → World Configuration → Maps. Existing locations are
                   retained.
                 </p>
               ) : (
@@ -689,7 +705,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           {setupStep === 3 ? (
             <>
               {!snapshot?.isFounded ? (
-                <>
+                <div className="villages-venue-heading">
                   <h2>Starting Venues</h2>
                   <div className="villages-quick-switch" role="group" aria-label="Venue setup">
                     <QuickStartButton
@@ -699,7 +715,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       onGenerate={() => void suggestSetupVenues({ quickStart: true })}
                     />
                   </div>
-                </>
+                </div>
               ) : null}
               {simpleVenueEditor ? (
                 <QuickStartVenues
@@ -729,10 +745,22 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
                   onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
                   onArrange={() => {
+                    setMapNavigation(null);
                     setSetupVenues((venues) => arrangeQuickStartVenues(venues, true));
                     setSetupMapReviewed(false);
                   }}
                   onMove={(venue) => {
+                    if (!venue) {
+                      setSelectedSetupVenueId(null);
+                      setMovingSetupVenueId(null);
+                      setSetupWorkspace((state) => ({ ...state, paused: true, view: "map" }));
+                      return;
+                    }
+                    setMapNavigation((current) => ({
+                      zoom: current?.zoom ?? 1,
+                      centerX: venue.presentation.x ?? 0.5,
+                      centerY: venue.presentation.y ?? 0.5,
+                    }));
                     setSelectedSetupVenueId(venue.id);
                     setMovingSetupVenueId(venue.id);
                     setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
@@ -879,7 +907,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <section className="villages-forging-card">
                   {map(false)}
                   <p>
-                    {placed} of {setupVenues.length} photographs placed
+                    {placed} of {setupVenues.length} Venues placed
                   </p>
                   <h3>After founding</h3>
                   <p>Prepare Venues, private spaces, Agendas, and initial Wishes before the first Scene.</p>

@@ -45,7 +45,7 @@ export function QuickStartVenues({
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   onArrange(): void;
-  onMove(venue: VillageVenue): void;
+  onMove(venue: VillageVenue | null): void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const mapDetails = useRef<HTMLElement>(null);
@@ -59,8 +59,11 @@ export function QuickStartVenues({
   selectedRef.current = selected;
   const open = state.view === "details" && !!selected;
   const issues = foundingVenueIssues(venues, false);
-  const placed = venues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
-  const ready = venues.length > 0 && !issues.length;
+  const moving =
+    selected ??
+    (!state.paused
+      ? venues.find((venue) => venue.presentation.x === null || venue.presentation.y === null)
+      : undefined);
   const close = () => onState({ ...state, view: "map", paused: false });
   const finish = () => {
     if (!selected) return;
@@ -162,52 +165,41 @@ export function QuickStartVenues({
     if (next === selected) return;
     onPatch(next);
     setZoneId(id);
-    setTab("zone");
   };
   return (
     <section className="villages-quick-start" aria-label="Venues">
-      <p role="status">{ready ? `${venues.length} Venues ready` : "Complete the remaining details."}</p>
-      <div className="villages-quick-overview">
-        <div className="villages-quick-list" role="group" aria-label="Starting Venues">
-          {venues.map((venue) => {
-            const residence = venue.category !== "public-center";
-            const title = venue.occupancy.playerHome
-              ? "Your residence"
-              : residence
-                ? `${people.find((person) => person.id === venue.occupancy.residentCharacterId)?.name ?? "Villager"}’s residence`
-                : "Community venue";
-            return (
-              <button
-                type="button"
-                key={venue.id}
-                className="villages-quick-venue"
-                aria-label={`Edit ${venue.name || title}`}
-                data-venue-id={venue.id}
-                onClick={() => onSelect(venue)}
-              >
-                {venue.name || title}
-              </button>
-            );
-          })}
-        </div>
-        <section ref={mapDetails} className="villages-quick-map villages-forging-card">
-          <h3>
-            Map placement · {placed} of {venues.length} placed
-          </h3>
-          <p>Place Venues on the map.</p>
-          <button type="button" disabled={busy || imageBusy} onClick={onArrange}>
-            Arrange automatically
-          </button>
-          {map}
-          <div className="villages-quick-moves">
-            {venues.map((venue) => (
-              <button type="button" key={venue.id} disabled={busy || imageBusy} onClick={() => onMove(venue)}>
-                Move {venue.name || "Venue"}
-              </button>
-            ))}
-          </div>
-        </section>
+      <div className="villages-quick-map-toolbar" role="group" aria-label="Venue placement controls">
+        <select
+          aria-label="Move Venue"
+          value={moving?.id ?? ""}
+          disabled={busy || imageBusy || !venues.length}
+          onChange={(event) => {
+            const venue = venues.find((row) => row.id === event.target.value);
+            onMove(venue ?? null);
+          }}
+        >
+          <option value="">Choose Venue</option>
+          {venues.map((venue) => (
+            <option key={venue.id} value={venue.id}>
+              {venue.name || "Venue"}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          aria-label="Edit Venue"
+          disabled={busy || imageBusy || !moving}
+          onClick={() => moving && onSelect(moving)}
+        >
+          Edit
+        </button>
+        <button type="button" aria-label="Arrange automatically" disabled={busy || imageBusy} onClick={onArrange}>
+          Arrange
+        </button>
       </div>
+      <section ref={mapDetails} className="villages-quick-map" aria-label="Venue placement">
+        {map}
+      </section>
       <dialog
         ref={dialog}
         className="villages-founding-dialog villages-quick-dialog"

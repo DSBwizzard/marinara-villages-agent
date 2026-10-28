@@ -29,13 +29,13 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full[data-mobile="false"] .${P}-explore-nav button[aria-pressed="true"] { border-bottom-color:var(--explore-selected); }
 .${P}-home-full .${P}-room { display:flex; align-items:stretch; justify-content:flex-start; padding:0; gap:0; margin:0; overflow:hidden; }
 .${P}-home-full .${P}-home-map-viewport { flex:1 1 auto; width:auto; min-width:0; height:100%; overflow:hidden; }
-.${P}-home-full .${P}-stage[data-exploration="true"] { flex:1; display:block; width:100%!important; height:100%!important; aspect-ratio:auto!important; border:0; border-radius:0; touch-action:none; user-select:none; }
+.${P}-stage[data-exploration="true"] { flex:1; display:block; width:100%!important; height:100%!important; aspect-ratio:auto!important; border:0; border-radius:0; touch-action:none; user-select:none; }
 .${P}-stage[data-exploration="true"] .${P}-canvas { overflow:clip; cursor:grab; }
 .${P}-stage[data-exploration="true"][data-mobile-gesturing="true"] .${P}-canvas { cursor:grabbing; }
 .${P}-stage[data-exploration="true"] .${P}-canvas-img { max-width:none; max-height:none; pointer-events:none; }
 .${P}-explore-anchor { position:absolute; z-index:2; width:0; height:0; }
 .${P}-explore-anchor:has([data-selected="true"]) { z-index:3; }
-.${P}-home-full .${P}-stage[data-exploration="true"] .${P}-explore-marker.${P}-pin {
+.${P}-stage[data-exploration="true"] .${P}-explore-marker.${P}-pin {
   position:absolute; left:0; top:0; transform:translate(-50%,-22px); display:flex; flex-direction:column;
   align-items:center; justify-content:flex-start; gap:4px; min-width:44px; min-height:44px; width:auto; height:auto;
   max-width:none; padding:0 6px 4px; border:0; border-radius:0; background:transparent; box-shadow:none;

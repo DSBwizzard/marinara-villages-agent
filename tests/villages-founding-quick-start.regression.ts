@@ -72,6 +72,13 @@ assert.deepEqual(foundingVenueIssues([complete]), []);
 assert.doesNotThrow(() => parsePlace(complete, true));
 for (const personal of [false, true]) {
   const added = addFoundingZone(complete, personal, "zone:new");
+  assert.match(foundingZoneProblem(added), /describe what it is used for/);
+  const zone = (personal ? added.privateSpaces! : added.spaces!).at(-1)!;
+  assert.equal(zone.purpose, "");
+  assert.equal(zone.description, "");
+  assert.throws(() => parsePlace(added, true), /name and purpose/);
+  zone.purpose = "Authored purpose";
+  zone.description = "Authored appearance";
   assert.equal(foundingZoneProblem(added), "");
   assert.doesNotThrow(() => parsePlace(added, true));
 }

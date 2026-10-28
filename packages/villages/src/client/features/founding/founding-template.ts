@@ -46,7 +46,14 @@ export function addFoundingZone(venue: VillageVenue, personal: boolean, id: stri
   const connections = new Map(graph.map((zone) => [zone.id, zone.connectedTo]));
   const common = (venue.spaces ?? []).map((zone) => ({ ...zone, connectedTo: connections.get(zone.id) }));
   const privateZones = (venue.privateSpaces ?? []).map((zone) => ({ ...zone, connectedTo: connections.get(zone.id) }));
-  const added = { ...startingZone(venue, personal), id, name: "New Zone", connectedTo: ["exterior"] };
+  const added = {
+    ...startingZone(venue, personal),
+    id,
+    name: "New Zone",
+    purpose: "",
+    description: "",
+    connectedTo: ["exterior"],
+  };
   const spaces = personal ? common : [...common, added];
   const privateSpaces = personal ? [...privateZones, added] : privateZones;
   return {
