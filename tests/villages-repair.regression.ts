@@ -380,6 +380,7 @@ await runCase("repair/checkpoints", async () => {
       };
       s.returnCatchup = {
         batch: { id: "pending-return", status: "running" },
+        history: [{ id: "previous-return", status: "completed" }],
         capture: captureReturnContext(s, new Date(memoryTime(10))),
       };
       s.clock = {
@@ -409,6 +410,7 @@ await runCase("repair/checkpoints", async () => {
   assert.equal((await f.read()).setting, "Original setting");
   assert.deepEqual((await f.read()).eventAttempts, spent);
   assert.equal((await f.read()).returnCatchup?.batch?.status, "completed");
+  assert.equal((await f.read()).returnCatchup?.history?.[0]?.id, "previous-return");
   assert.equal(
     (await f.read()).returnCatchup?.capture,
     undefined,

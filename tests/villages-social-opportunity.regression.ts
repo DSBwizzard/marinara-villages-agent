@@ -152,6 +152,28 @@ assert.deepEqual(coerceVillageState(structuredClone(tracking)).returnCatchup, tr
 const malformedBatch = structuredClone(tracking);
 malformedBatch.returnCatchup!.batch!.opportunities![0]!.actorIds.push("player");
 assert.throws(() => coerceVillageState(malformedBatch), /catch-up opportunities/);
+const historyWorld = structuredClone(tracking);
+historyWorld.returnCatchup!.batch!.status = "completed";
+const firstAccount = structuredClone(historyWorld.returnCatchup!.batch!);
+recordReturnVisibility(historyWorld, afterTwoHours);
+discoverReturnBatch(historyWorld, new Date(afterTwoHours.getTime() + 2 * 3_600_000), "second-return");
+assert.deepEqual(historyWorld.returnCatchup!.history, [firstAccount], "Only a finished batch is archived.");
+assert.equal(historyWorld.returnCatchup!.batch!.id, "second-return");
+assert.deepEqual(coerceVillageState(structuredClone(historyWorld)).returnCatchup, historyWorld.returnCatchup);
+const beforeActiveDiscovery = structuredClone(historyWorld.returnCatchup);
+historyWorld.returnCatchup!.batch!.status = "running";
+discoverReturnBatch(historyWorld, new Date(afterTwoHours.getTime() + 4 * 3_600_000), "third-return");
+assert.deepEqual(
+  historyWorld.returnCatchup!.history,
+  beforeActiveDiscovery!.history,
+  "Active work cannot be archived or replaced.",
+);
+const badHistory = structuredClone(historyWorld);
+badHistory.returnCatchup!.history![0]!.status = "running";
+assert.throws(() => coerceVillageState(badHistory), /unfinished work/);
+const duplicateHistory = structuredClone(historyWorld);
+duplicateHistory.returnCatchup!.history!.push(structuredClone(duplicateHistory.returnCatchup!.history![0]!));
+assert.throws(() => coerceVillageState(duplicateHistory), /catch-up history/);
 const empty = {
   ...defaultVillageState(),
   ...structuredClone(savedCapture.world),
@@ -161,6 +183,9 @@ const empty = {
 recordReturnVisibility(empty, now);
 discoverReturnBatch(empty, afterTwoHours, "empty-return");
 assert.equal(empty.returnCatchup?.batch?.status, "completed", "No grounded opportunities require no hold.");
+discoverReturnBatch(empty, afterTwoHours, "duplicate-empty-return");
+assert.equal(empty.returnCatchup?.batch?.id, "empty-return", "Repeated discovery cannot duplicate an absence.");
+assert.equal(empty.returnCatchup?.history, undefined);
 const off = {
   ...defaultVillageState(),
   ...structuredClone(savedCapture.world),
@@ -170,6 +195,25 @@ const off = {
 recordReturnVisibility(off, now);
 discoverReturnBatch(off, afterTwoHours, "off-return");
 assert.equal(off.returnCatchup?.batch?.status, "completed", "Disabled activity creates no queued model work.");
+const boundedHistory = structuredClone(off);
+for (let index = 1; index <= 23; index++) {
+  const departure = new Date(now.getTime() + index * 2 * 3_600_000);
+  recordReturnVisibility(boundedHistory, departure);
+  discoverReturnBatch(boundedHistory, new Date(departure.getTime() + 3_600_000), `history-${index}`);
+}
+assert.equal(boundedHistory.returnCatchup!.history!.length, 20);
+assert.equal(boundedHistory.returnCatchup!.history![0]!.id, "history-3");
+assert.equal(boundedHistory.returnCatchup!.batch!.id, "history-23");
+assert.deepEqual(coerceVillageState(structuredClone(boundedHistory)).returnCatchup, boundedHistory.returnCatchup);
+const replayHistory = structuredClone(boundedHistory.returnCatchup);
+recordReturnVisibility(boundedHistory, new Date(now.getTime() + 50 * 3_600_000));
+discoverReturnBatch(boundedHistory, new Date(now.getTime() + 51 * 3_600_000), "history-10");
+assert.deepEqual(
+  boundedHistory.returnCatchup!.history,
+  replayHistory!.history,
+  "A historical identity cannot be reused.",
+);
+assert.equal(boundedHistory.returnCatchup!.batch!.id, "history-23");
 const changedKnowledge = {
   ...defaultVillageState(),
   ...structuredClone(savedCapture.world),

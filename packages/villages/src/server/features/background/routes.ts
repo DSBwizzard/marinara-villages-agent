@@ -82,16 +82,22 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
   });
   app.get("/debug/return-catchup", async (_request, reply) => {
     try {
-      const batch = (await readVillageSnapshot()).returnCatchup?.batch;
-      if (!batch) return { batch: null };
-      const jobs = await Promise.all(
-        (batch.opportunities ?? []).map(async (opportunity) => ({
-          opportunityId: opportunity.id,
-          activity: await backgroundJobSnapshot("resident-planning", returnCatchupSubject(batch.id, opportunity.id)),
-          interpretation: await backgroundJobSnapshot("social-recovery", opportunity.id + ":social"),
-        })),
-      );
-      return { ...batch, jobs };
+      const tracking = (await readVillageSnapshot()).returnCatchup;
+      const batch = tracking?.batch;
+      if (!batch) return { batch: null, history: [] };
+      const withJobs = async (period: typeof batch) => ({
+        ...period,
+        jobs: await Promise.all(
+          (period.opportunities ?? []).map(async (opportunity) => ({
+            opportunityId: opportunity.id,
+            activity: await backgroundJobSnapshot("resident-planning", returnCatchupSubject(period.id, opportunity.id)),
+            interpretation: await backgroundJobSnapshot("social-recovery", opportunity.id + ":social"),
+          })),
+        ),
+      });
+      const current = await withJobs(batch);
+      const history = await Promise.all((tracking.history ?? []).map(withJobs));
+      return { ...current, history };
     } catch (error) {
       return fail(reply, error, "inspecting Village catch-up");
     }

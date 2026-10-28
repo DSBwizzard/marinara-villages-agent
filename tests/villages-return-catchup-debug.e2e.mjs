@@ -26,6 +26,7 @@ try {
       from: "2026-10-24T12:00:00.000Z",
       until: "2026-10-24T14:00:00.000Z",
       reason: "Sleeping intervals were skipped.",
+      labels: { residents: { [resident.characterId]: resident.name }, venues: { [venue.id]: venue.name }, zones: {} },
       opportunities: [
         {
           id: "one",
@@ -73,6 +74,25 @@ try {
       ],
       jobs: [{ opportunityId: "one", activity: { id: "job", requests: 2, attempt: 1 } }],
       privateDiagnostic: "RAW-ONLY-SECRET",
+      history: [
+        {
+          id: "older",
+          status: "completed",
+          from: "2026-10-22T12:00:00.000Z",
+          until: "2026-10-22T14:00:00.000Z",
+          labels: { residents: { [resident.characterId]: "Earlier name" }, venues: {}, zones: {} },
+          opportunities: [
+            { id: "old-one", kind: "routine", actorIds: [resident.characterId], startsAt: "2026-10-22T13:00:00.000Z" },
+          ],
+          records: [
+            {
+              opportunityId: "old-one",
+              status: "settled",
+              outcome: { wishReflection: { reason: "An earlier thought." } },
+            },
+          ],
+        },
+      ],
     };
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
@@ -97,6 +117,9 @@ try {
     if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
     else await page.getByRole("button", { name: "Debug", exact: true }).click();
     await page.getByRole("button", { name: "Inspect catch-up" }).click();
+    const periods = page.getByLabel("Recent catch-up periods");
+    await expect(periods.getByRole("button")).toHaveCount(2);
+    await periods.getByRole("button").first().click();
     const reflection = page.getByRole("button", { name: new RegExp(`${resident.name} reflected`) });
     const encounter = page.getByRole("button", { name: new RegExp(`${resident.name} met`) });
     await expect(reflection).toBeVisible();
@@ -114,6 +137,11 @@ try {
     await expect(page.getByText("A pleasant meeting.")).toBeVisible();
     await expect(page.getByText(/Trust grew/)).toBeVisible();
     await expect(page.getByText(/They want to meet again/)).toBeVisible();
+    await page.getByRole("button", { name: "← Activities" }).click();
+    await page.getByRole("button", { name: "← Catch-up periods" }).click();
+    await periods.getByRole("button").nth(1).click();
+    await page.getByRole("button", { name: /Earlier name reflected/ }).click();
+    await expect(page.getByText("An earlier thought.")).toBeVisible();
     await expect(page.getByText("RAW-ONLY-SECRET")).toBeHidden();
     await page.getByRole("button", { name: "Copy JSON" }).click();
     await expect(page.getByText("Copied JSON.")).toBeVisible();
@@ -130,6 +158,7 @@ try {
       records: [],
     };
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
+    await page.getByLabel("Recent catch-up periods").getByRole("button").click();
     await expect(page.getByText(/day.s limit had already been reached/)).toBeVisible();
     account = { batch: null };
     await page.getByRole("button", { name: "Refresh", exact: true }).click();

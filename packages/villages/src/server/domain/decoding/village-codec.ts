@@ -7,6 +7,7 @@ import {
 } from "../../../shared/helpers/resident-admission.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -1572,16 +1573,33 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     )
       throw new Error("The saved Village departure capture could not be read.");
   }
-  if (record.batch !== undefined) {
-    if (!record.batch || typeof record.batch !== "object" || Array.isArray(record.batch))
+  function validateBatch(value: unknown, historical = false) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
       throw new Error("The saved Village catch-up batch could not be read.");
-    const batch = record.batch as Record<string, unknown>;
+    const batch = value as Record<string, unknown>;
     if (
       typeof batch.id !== "string" ||
       !/^[a-zA-Z0-9-]{1,100}$/.test(batch.id) ||
       !["queued", "running", "failed", "recovering", "completed", "cancelled"].includes(String(batch.status))
     )
       throw new Error("The saved Village catch-up batch could not be read.");
+    if (historical && !["completed", "cancelled"].includes(String(batch.status)))
+      throw new Error("The saved Village catch-up history contains unfinished work.");
+    if (batch.labels !== undefined) {
+      const labels = asRecord(batch.labels);
+      if (
+        !["residents", "venues", "zones"].every((key) => {
+          const values = labels[key];
+          return (
+            !!values &&
+            typeof values === "object" &&
+            !Array.isArray(values) &&
+            Object.values(values).every((entry) => typeof entry === "string")
+          );
+        })
+      )
+        throw new Error("The saved Village catch-up labels could not be read.");
+    }
     if (
       (batch.from !== undefined && (typeof batch.from !== "string" || !Number.isFinite(Date.parse(batch.from)))) ||
       (batch.until !== undefined && (typeof batch.until !== "string" || !Number.isFinite(Date.parse(batch.until)))) ||
@@ -1645,6 +1663,19 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           throw new Error("The saved Village catch-up records could not be read.");
         recorded.add(row.opportunityId);
       }
+    }
+  }
+  if (record.batch !== undefined) validateBatch(record.batch);
+  if (record.history !== undefined) {
+    if (!Array.isArray(record.history) || record.history.length > RETURN_CATCHUP_HISTORY_LIMIT)
+      throw new Error("The saved Village catch-up history could not be read.");
+    const ids = new Set<string>();
+    if (record.batch) ids.add(String(asRecord(record.batch).id));
+    for (const entry of record.history) {
+      validateBatch(entry, true);
+      const id = String(asRecord(entry).id);
+      if (ids.has(id)) throw new Error("The saved Village catch-up history contains a duplicate period.");
+      ids.add(id);
     }
   }
   return structuredClone(record) as VillageState["returnCatchup"];

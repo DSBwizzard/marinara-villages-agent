@@ -929,6 +929,23 @@ export type VillageScenarioImprint = {
   visualCues: string[];
 };
 
+export const RETURN_CATCHUP_HISTORY_LIMIT = 20;
+export type ReturnCatchupBatch = {
+  id: string;
+  status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+  from?: string;
+  until?: string;
+  reason?: string;
+  opportunities?: ResidentPlanningOpportunity[];
+  records?: {
+    opportunityId: string;
+    status: "pending" | "queued" | "settling" | "settled" | "rejected";
+    outcome?: unknown;
+    error?: string;
+  }[];
+  /** Labels captured at departure, used only by the private debug account. */
+  labels?: { residents: Record<string, string>; venues: Record<string, string>; zones: Record<string, string> };
+};
 export type ReturnCatchupCapture = {
   at: string;
   memoryRevision: number;
@@ -964,23 +981,11 @@ export type VillageState = {
   socialMailOutbox?: import("./social-mail.js").SocialMailOutbox[];
   socialPublications?: Record<string, true>;
   eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
-  /** Optional return batch authority; old worlds start without an active batch. */
+  /** Current work remains separate from the recent, terminal debug history. */
   returnCatchup?: {
     capture?: ReturnCatchupCapture;
-    batch?: {
-      id: string;
-      status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
-      from?: string;
-      until?: string;
-      reason?: string;
-      opportunities?: ResidentPlanningOpportunity[];
-      records?: {
-        opportunityId: string;
-        status: "pending" | "queued" | "settling" | "settled" | "rejected";
-        outcome?: unknown;
-        error?: string;
-      }[];
-    };
+    batch?: ReturnCatchupBatch;
+    history?: ReturnCatchupBatch[];
   };
   socialClarifications?: { id: string; actorIds: string[]; text: string; at: string }[];
   opening?: import("../rules/opening-project.js").OpeningRecord;

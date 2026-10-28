@@ -13,6 +13,7 @@ const text = (value: unknown): string => (typeof value === "string" ? value : ""
 export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | null }) {
   const [account, setAccount] = useState<unknown>();
   const [selectedId, setSelectedId] = useState("");
+  const [periodId, setPeriodId] = useState("");
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,6 +22,7 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
     try {
       setAccount(await request<unknown>("/debug/return-catchup"));
       setSelectedId("");
+      setPeriodId("");
       setError("");
       setCopyStatus("");
     } catch (cause) {
@@ -38,8 +40,11 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
       setCopyStatus("Copy unavailable. Select the JSON below to copy it.");
     }
   };
-  const batch = object(account);
-  const empty = account !== undefined && (batch.batch === null || !text(batch.id));
+  const current = object(account);
+  const empty = account !== undefined && (current.batch === null || !text(current.id));
+  const periods = empty ? [] : [current, ...list(current.history).map(object).reverse()];
+  const batch = periods.find((period) => period.id === periodId) ?? {};
+  const labels = object(batch.labels);
   const reason = text(batch.reason);
   const emptyMessage =
     reason === "No resident activity allowance remains."
@@ -51,7 +56,7 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
           : "No suitable activity could be found for this time.";
   const opportunities = list(batch.opportunities).map(object);
   const records = list(batch.records).map(object);
-  const name = (id: unknown) => snapshot?.villagers.find((person) => person.characterId === id)?.name || "A resident";
+  const name = (id: unknown) => text(object(labels.residents)[text(id)]) || "A resident";
   const time = (value: unknown) => {
     const date = new Date(text(value));
     if (!text(value) || !Number.isFinite(date.getTime())) return "";
@@ -69,9 +74,9 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
     }
   };
   const place = (entry: ObjectValue) => {
-    const venue = snapshot?.settings.venues.find((row) => row.id === entry.venueId);
-    const zone = venue?.zones?.find((row) => row.id === entry.zoneId);
-    return [venue?.name, zone?.name].filter(Boolean).join(" · ");
+    const savedVenue = text(object(labels.venues)[text(entry.venueId)]);
+    const savedZone = text(object(labels.zones)[JSON.stringify([entry.venueId, entry.zoneId])]);
+    return [savedVenue, savedZone].filter(Boolean).join(" · ");
   };
   const events = opportunities.map((entry) => {
     const record = records.find((row) => row.opportunityId === entry.id) ?? {};
@@ -194,29 +199,59 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
             </>
           )}
         </div>
+      ) : account !== undefined && periodId ? (
+        <>
+          <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setPeriodId("")}>
+            ← Catch-up periods
+          </button>
+          <p>{[time(batch.from), time(batch.until)].filter(Boolean).join(" – ")}</p>
+          {events.length ? (
+            <div className="villages-catchup-list" aria-label="Activities while away">
+              {events.map(({ entry, title }) => (
+                <button
+                  key={text(entry.id)}
+                  type="button"
+                  className="villages-catchup-entry"
+                  onClick={() => setSelectedId(text(entry.id))}
+                >
+                  <span>
+                    <strong>{title}</strong>
+                    {time(entry.startsAt) ? <small>{time(entry.startsAt)}</small> : null}
+                  </span>
+                  <span className="villages-catchup-arrow" aria-hidden="true">
+                    ›
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p>{emptyMessage}</p>
+          )}
+        </>
       ) : account !== undefined ? (
-        events.length ? (
-          <div className="villages-catchup-list" aria-label="Activities while away">
-            {events.map(({ entry, title }) => (
-              <button
-                key={text(entry.id)}
-                type="button"
-                className="villages-catchup-entry"
-                onClick={() => setSelectedId(text(entry.id))}
-              >
-                <span>
-                  <strong>{title}</strong>
-                  {time(entry.startsAt) ? <small>{time(entry.startsAt)}</small> : null}
-                </span>
-                <span className="villages-catchup-arrow" aria-hidden="true">
-                  ›
-                </span>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p>{emptyMessage}</p>
-        )
+        <div className="villages-catchup-list" aria-label="Recent catch-up periods">
+          {periods.map((period) => (
+            <button
+              key={text(period.id)}
+              type="button"
+              className="villages-catchup-entry"
+              onClick={() => {
+                setPeriodId(text(period.id));
+                setSelectedId("");
+              }}
+            >
+              <span>
+                <strong>
+                  {[time(period.from), time(period.until)].filter(Boolean).join(" – ") || "Catch-up period"}
+                </strong>
+                <small>{list(period.opportunities).length ? "View activities" : "No activities generated"}</small>
+              </span>
+              <span className="villages-catchup-arrow" aria-hidden="true">
+                ›
+              </span>
+            </button>
+          ))}
+        </div>
       ) : null}
       {account !== undefined && copyStatus.startsWith("Copy unavailable") ? (
         <details open>
