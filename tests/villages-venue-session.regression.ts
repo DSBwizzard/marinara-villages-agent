@@ -9,6 +9,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/player-background.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import {
   venueReplyIntegrity,
   venueSceneHistory,
@@ -2732,6 +2733,48 @@ async function main() {
       ["narration"],
     );
     await endVenueSession(quietScene.id);
+    const socialRecord = [...records.values()].find((record) => record.id.startsWith("villages-relationships-"));
+    assert.ok(socialRecord);
+    for (const residents of [["bob"], ["bob", "tina"], ["bob", "tina", "sam"]]) {
+      if (residents.includes("sam")) {
+        socialRecord.data.reviewedActorIds.push("sam");
+        await mutateVillageState((state) => {
+          state.villagers.push({
+            characterId: "sam",
+            cardSnapshot: card("sam"),
+            agenda: agenda("park"),
+            addedAt: now.toISOString(),
+            ingestSchedule: false,
+          } as any);
+        });
+      }
+      await mutateVillageState((state) => {
+        state.opening = initialOpening(residents, "park", `interactive-${residents.length}`, 3);
+      });
+      openingSegmentsOnce = [{ kind: "dialogue", speakerId: "bob", text: "The hinge still catches." }];
+      const entry = await enterVenue("park");
+      assert.equal(entry.openingReader, undefined, "the interactive gathering permits player input");
+      assert.deepEqual(entry.activeIds.sort(), [...residents].sort());
+      const started = await greetVenue(entry.id);
+      assert.match(lastVenueSystem, /small everyday task already underway/);
+      assert.equal(started.status, "active");
+      const reply = await sendVenueTurn({
+        sessionId: entry.id,
+        message: "I'll take a look.",
+        mode: "chat",
+        targetId: "",
+        submissionId: `interactive-turn-${residents.length}`,
+      });
+      assert.equal(reply.session.status, "active", "the player can continue in the same Scene");
+      assert.doesNotMatch(lastVenueSystem, /OPENING SCENE:/);
+      await endVenueSession(entry.id);
+      assert.equal((await readVillageState()).opening?.stage, "complete");
+      await mutateVillageState((state) => {
+        state.opening = undefined;
+        state.villagers = state.villagers.filter((resident) => resident.characterId !== "sam");
+      });
+      socialRecord.data.reviewedActorIds = socialRecord.data.reviewedActorIds.filter((id: string) => id !== "sam");
+    }
     openingSegmentsOnce = [
       { kind: "dialogue", speakerId: "bob", text: "The hinge still catches.", heardBy: ["bob", "tina"] },
       { kind: "dialogue", speakerId: "tina", text: "Try the smaller pin.", heardBy: ["bob", "tina"] },

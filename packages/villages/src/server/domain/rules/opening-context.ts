@@ -5,7 +5,7 @@ import type { VenueScene } from "../models/scene-model.js";
 /** Frozen System context includes only the idea relevant to this Scene. */
 export function openingSemanticContext(state: VillageState, scene: VenueScene) {
   const opening = state.opening;
-  if (!opening || ["complete", "ended"].includes(opening.stage)) return null;
+  if (!opening || opening.version === 3 || ["complete", "ended"].includes(opening.stage)) return null;
   const proposal =
     opening.stage === "conversations" && scene.activeIds.length === 1
       ? opening.proposals.find(

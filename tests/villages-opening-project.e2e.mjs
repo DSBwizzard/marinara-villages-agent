@@ -84,6 +84,13 @@ try {
     assert.equal(snapshot.projects[0].status, "planning");
     assert.equal(snapshot.projects[0].lifecycle.builderId, "", "a pitch is not consent or willingness to lead");
     await page.close();
+    const interactiveSnapshot = projectSnapshot();
+    interactiveSnapshot.opening = { ...snapshot.opening, version: 3, stage: "gathering", action: "" };
+    const interactive = await openProjectPage(browser, width, interactiveSnapshot, () => {});
+    await expect(interactive.page.getByRole("button", { name: "New Venue", exact: true })).toBeEnabled();
+    await expect(interactive.page.getByRole("button", { name: "Renovation", exact: true })).toBeEnabled();
+    await expect(interactive.page.getByRole("button", { name: "Opening proposals", exact: true })).toHaveCount(0);
+    await interactive.page.close();
   }
   console.log(
     "Optional opening on desktop/phone: ordinary Projects available, first heard proposal accepted immediately, no automatic Start.",

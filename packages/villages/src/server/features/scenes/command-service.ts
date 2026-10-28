@@ -1070,7 +1070,7 @@ export function createSceneCommands({
               state.opening?.gatheringSceneId === id &&
               state.opening.stage === "gathering"
             )
-              state.opening.stage = "conversations";
+              state.opening.stage = state.opening.version === 3 ? "complete" : "conversations";
           });
           return prior;
         }
@@ -3867,7 +3867,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         state.opening?.stage === "gathering" &&
         state.opening.gatheringSceneId === id
       )
-        state.opening.stage = "conversations";
+        state.opening.stage = state.opening.version === 3 ? "complete" : "conversations";
     });
     return closed;
   }
@@ -3890,6 +3890,14 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     });
     await mutateVillageState((state) => {
       releaseSceneMemories(state, closed);
+      if (
+        state.seed === closed.villageSeed &&
+        state.opening?.version === 3 &&
+        state.opening.stage === "gathering" &&
+        state.opening.gatheringSceneId === closed.id &&
+        state.opening.id === closed.openingGatheringId
+      )
+        state.opening.stage = "complete";
     });
     await clearActivePointer(session.id);
     return closed;

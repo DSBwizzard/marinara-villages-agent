@@ -31,6 +31,7 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
   }, [controller, opening, snapshot, sceneRestoration.status, screen, roomBusy, room, placingProjectId]);
   if (
     !opening?.action ||
+    opening.version === 3 ||
     placingProjectId ||
     dismissed === key ||
     !["room", "home"].includes(screen) ||

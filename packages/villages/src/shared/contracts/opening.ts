@@ -22,7 +22,7 @@ export type OpeningProposal = {
 
 export type OpeningView = {
   id: string;
-  version: 2;
+  version: 2 | 3;
   stage: "gathering" | "conversations" | "project" | "first-use" | "complete" | "ended";
   communityVenueId: string;
   gatheringSceneId: string;
