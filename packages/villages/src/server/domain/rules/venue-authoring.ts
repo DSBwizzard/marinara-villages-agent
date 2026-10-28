@@ -138,6 +138,7 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
   });
   if (spaces.some((space) => !space.description)) throw badRequest("Approve a description for every Venue space.");
   const draft: VillageVenue = {
+    zoneLayout: existing?.zoneLayout,
     layoutVersion: existing?.layoutVersion,
 
     zones: existing?.zones,

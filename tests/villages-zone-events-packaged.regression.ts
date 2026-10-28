@@ -389,6 +389,7 @@ async function turn(
   assert.equal(response.json().turnOutcome, undefined, response.body);
   assert.equal(modelCalls, before + expectedCalls, "Narration plus the existing combined System stage only");
   assert.equal(state().operation.input.interactionScopeVersion, 6);
+  assert.equal(state().operation.input.soundHopVersion, 1);
   assert.equal(state().operation.input.writingContractVersion, 3);
   assert.equal(typeof state().operation.input.writingCapabilities.movement, "boolean");
   assert(!Object.keys(state().operation.checkpoints).some((key) => /attention-plan|acoustic-routing/.test(key)));
@@ -437,8 +438,12 @@ try {
   assert.deepEqual(state().lines.find((line: any) => line.content === "So, uh... Aqua, was it?").heardBy, [
     "aqua",
     "feddy",
-    "neighbor",
   ]);
+  assert.deepEqual(
+    state().lines.find((line: any) => line.content === "So, uh... Aqua, was it?").soundOnly.characterIds,
+    ["neighbor"],
+    "Adjacent listeners receive voices without the ordinary words",
+  );
   closeCoreBeforeEffects = true;
   const badMemory = { malformed: "preserve this failed payload" };
   await turn(
@@ -463,7 +468,8 @@ try {
   const ordinaryAside = state().lines.findLast((line: any) => line.content === "That is a confession.");
   assert.equal(ordinaryAside.delivery, "ordinary");
   assert.equal(ordinaryAside.presentation, "aside");
-  assert.deepEqual(ordinaryAside.heardBy, ["aqua", "feddy", "neighbor"]);
+  assert.deepEqual(ordinaryAside.heardBy, ["aqua", "feddy"]);
+  assert.deepEqual(ordinaryAside.soundOnly.characterIds, ["neighbor"]);
 
   const shouted = await turn("distant-call", "I wait quietly.", [
     { kind: "dialogue", speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", loud: true },
@@ -479,7 +485,7 @@ try {
     "distant",
   ]);
   const nearby = await turn("neighbor-call", "I look at the water.", [
-    { kind: "dialogue", speakerId: "neighbor", text: "Is anyone on the terrace?" },
+    { kind: "dialogue", speakerId: "neighbor", text: "Is anyone on the terrace?", delivery: "shout" },
   ]);
   assert.match(JSON.stringify(nearby), /Is anyone on the terrace/);
   assert(
@@ -530,7 +536,8 @@ try {
   assert(unquotedPrompt.includes('Unquoted:{text:"exact span",occurrence:1}'));
   assert.match(unquotedPrompt, /segments:.*\{speakerId,text\} speech and \{text\} visible narration/);
   const unquotedLine = state().lines.findLast((line: any) => line.content === "I dislike mint tea, unless it is cold.");
-  assert.deepEqual(unquotedLine.heardBy, ["aqua", "feddy", "neighbor"]);
+  assert.deepEqual(unquotedLine.heardBy, ["aqua", "feddy"]);
+  assert.deepEqual(unquotedLine.soundOnly.characterIds, ["neighbor"]);
   assert.equal(unquotedLine.delivery, "ordinary", "naming Aqua does not imply whisper delivery");
   assert(!state().lines.some((line: any) => line.attentionEvidence && line.content.includes("think about cinnamon")));
 
@@ -799,7 +806,10 @@ try {
   const asideLine = state().lines.findLast((line: any) => line.content === "A good place for a pause.");
   assert.equal(asideLine.presentation, "aside");
   assert.equal(asideLine.delivery, "ordinary");
-  assert(asideLine.heardBy.includes("neighbor"), "aside shorthand never acquires whisper privacy");
+  assert(
+    asideLine.soundOnly.characterIds.includes("neighbor"),
+    "ordinary asides remain audible across a connection without exposing words",
+  );
   for (const [field, domain] of [
     ["memoryChanges", "memories"],
     ["relationshipChanges", "relationships"],
@@ -953,7 +963,8 @@ try {
   assert.equal(state().lines.filter((line: any) => line.content === recoveryText).length, 1);
   const playerSource = state().lines.find((line: any) => line.attentionEvidence && line.content === "Mint, please.");
   assert(playerSource.speechSource?.spans.length);
-  assert.deepEqual(playerSource.heardBy, ["aqua", "feddy", "neighbor"]);
+  assert.deepEqual(playerSource.heardBy, ["aqua", "feddy"]);
+  assert.deepEqual(playerSource.soundOnly.characterIds, ["neighbor"]);
   assert.doesNotMatch(recovered.body, /speechSource|effectFailures|writing-completion/);
   const compact = await turn(
     "compact-preference",

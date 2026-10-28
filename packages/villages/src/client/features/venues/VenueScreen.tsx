@@ -7,7 +7,8 @@ import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../
 import { WorkspaceShell, type WorkspaceDestination } from "../../shared/WorkspaceShell.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
-import { VenueLayout, ZoneAccessLabels } from "./VenueLayout.js";
+import { ZoneAccessLabels } from "./VenueLayout.js";
+import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const { venueEditDraft, setVenueEditDraft, venueEditBusy, saveVenueName } = controller;
@@ -329,6 +330,8 @@ function AssignedVillagers({
 }
 
 export function VenueScreen({ controller }: { controller: VenueScreenController }) {
+  const [layoutDirty, setLayoutDirty] = useState(false);
+  const [layoutEditorKey, setLayoutEditorKey] = useState(0);
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
   const [zoneNameSaving, setZoneNameSaving] = useState(false);
   const [zoneEditorKey, setZoneEditorKey] = useState(0);
@@ -353,12 +356,16 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
   } = controller;
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
   const navigationBusy = zoneNameSaving || controller.venueEditBusy;
-  const canLeave = () => {
+  const canLeave = (keepLayout = false) => {
     if (navigationBusy) return false;
     const draft = controller.venueEditDraft;
     const venueNameDirty = !!draft && draft.id === place?.id && draft.name !== place.name;
-    if (!venueNameDirty && !zoneNameDirty) return true;
-    if (!window.confirm("Discard the unsaved name?")) return false;
+    if (!venueNameDirty && !zoneNameDirty && (keepLayout || !layoutDirty)) return true;
+    if (!window.confirm("Discard unsaved changes?")) return false;
+    if (!keepLayout && layoutDirty) {
+      setLayoutDirty(false);
+      setLayoutEditorKey((value) => value + 1);
+    }
     if (venueNameDirty) controller.setVenueEditDraft(null);
     if (zoneNameDirty) {
       setZoneNameDirty(false);
@@ -561,12 +568,15 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           ) : null}
           {venueSection === "zones" && selected ? (
             <section aria-label="Zones">
-              <VenueLayout
-                disabled={navigationBusy}
+              <VenueLayoutEditor
+                key={place.id + ":" + layoutEditorKey}
+                place={place}
+                controller={controller}
+                onDirtyChange={setLayoutDirty}
                 zones={zones}
                 selectedId={selected.id}
                 onSelect={(id) => {
-                  if (id === selected.id || !canLeave()) return;
+                  if (id === selected.id || !canLeave(true)) return;
                   setZoneNameDirty(false);
                   setVenueZoneKey(id);
                 }}
@@ -618,7 +628,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
               <VenueName place={place} controller={controller} />
               <section className={`${ELEMENT_TAG}-venue-section`}>
                 <h2>Layout & renovations</h2>
-                <p>Changes to physical form, Zones, connections, capacity or use require a Project.</p>
+                <p>Changes to physical form, Zones, capacity or use require a Project.</p>
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-venue-primary`}

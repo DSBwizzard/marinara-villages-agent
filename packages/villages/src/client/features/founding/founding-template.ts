@@ -1,9 +1,11 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
+import { resolveZoneLayout, type ZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { personalSpaceDraft } from "./villages-founding-editor.js";
 import { draftZonePolicy } from "./villages-founding-zones.js";
 
 export type InactiveFoundingZones = {
+  zoneLayout?: ZoneLayout;
   common?: NonNullable<VillageVenue["spaces"]>;
   private?: NonNullable<VillageVenue["privateSpaces"]>;
 };
@@ -73,7 +75,7 @@ export function includeFoundingZone(
     };
   if (!included && !(personal ? common : privateSpaces).length)
     return { venue, inactive, problem: "At least one Common or Private Space is required." };
-  const saved = { ...inactive };
+  const saved = { ...inactive, zoneLayout: { ...inactive.zoneLayout, ...venue.zoneLayout } };
   if (personal) saved.private = included ? saved.private : privateSpaces;
   else saved.common = included ? saved.common : common;
   const spaces = personal
@@ -90,11 +92,20 @@ export function includeFoundingZone(
         : [startingZone(venue, true)]
       : []
     : privateSpaces;
+  const ids = ["exterior", ...spaces.map((zone) => zone.id), ...rooms.map((zone) => zone.id)];
+  const prune = <T extends { connectedTo?: string[] }>(zone: T): T =>
+    zone.connectedTo
+      ? {
+          ...zone,
+          connectedTo: zone.connectedTo.filter((id) => ids.includes(id)),
+        }
+      : zone;
   return {
     venue: {
       ...venue,
-      spaces,
-      privateSpaces: rooms,
+      spaces: spaces.map(prune),
+      privateSpaces: rooms.map(prune),
+      zoneLayout: resolveZoneLayout(ids, saved.zoneLayout),
       layoutVersion: 1 as const,
       layout: spaces.length ? (rooms.length ? ("both" as const) : ("common" as const)) : ("private" as const),
     },
@@ -106,7 +117,13 @@ export function includeFoundingZone(
 /** Only unfounded drafts use the new template; never rewrite a founded world. */
 export function resumeFoundingVenue(venue: VillageVenue, inactive: InactiveFoundingZones) {
   if (venue.category !== "public-center") return { venue, inactive };
-  const saved = { ...inactive, ...(venue.privateSpaces?.length ? { private: venue.privateSpaces } : {}) };
+  const saved = {
+    ...inactive,
+    ...(venue.privateSpaces?.length ? { private: venue.privateSpaces } : {}),
+    zoneLayout: { ...inactive.zoneLayout, ...venue.zoneLayout },
+  };
+  const common = venue.spaces?.length ? venue.spaces : [startingZone(venue, false)];
+  const ids = ["exterior", ...common.map((zone) => zone.id)];
   return {
     inactive: saved,
     venue: {
@@ -114,14 +131,16 @@ export function resumeFoundingVenue(venue: VillageVenue, inactive: InactiveFound
       classes: ["community"] as VillageVenue["classes"],
       layoutVersion: 1 as const,
       layout: "common" as const,
-      spaces: (venue.spaces?.length ? venue.spaces : [startingZone(venue, false)]).map((zone) => ({
+      spaces: common.map((zone) => ({
         ...zone,
+        ...(zone.connectedTo ? { connectedTo: zone.connectedTo.filter((id) => ids.includes(id)) } : {}),
         ownerId: "",
         controllerIds: [],
         venueClass: "community" as const,
         access: draftZonePolicy(venue, { venueClass: "community" }),
       })),
       privateSpaces: [],
+      zoneLayout: venue.zoneLayout ? resolveZoneLayout(ids, venue.zoneLayout) : undefined,
     },
   };
 }

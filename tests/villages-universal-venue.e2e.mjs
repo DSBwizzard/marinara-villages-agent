@@ -223,9 +223,9 @@ try {
     await expect(profile.getByRole("button", { name: "Visit venue", exact: true })).toBeVisible();
     assert.equal(writes.length, 0);
     await tabs.getByRole("button", { name: "Zones", exact: true }).click();
-    const layout = profile.locator(`.${prefix}-venue-layout`);
+    const layout = profile.locator(".villages-zone-map");
     await expect(layout.locator("[data-layout-zone]")).toHaveCount(4);
-    await expect(layout.locator("svg path")).toHaveCount(3);
+    await expect(layout.locator("svg line")).toHaveCount(3);
     await layout.locator('[data-layout-zone="workshop"]').click();
     await profile.getByLabel("Zone name", { exact: true }).fill("Unsent Zone name");
     page.once("dialog", (dialog) => dialog.dismiss());
@@ -248,8 +248,8 @@ try {
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Workshop");
     await layout.locator('[data-layout-zone="exterior"]').click();
-    await expect(layout.locator('[data-layout-zone="exterior"]')).toContainText("Exterior");
-    await expect(profile.getByText("Entrance", { exact: true })).toHaveCount(0);
+    await expect(layout.locator('[data-layout-zone="exterior"]')).toContainText("Entrance");
+    await expect(profile.getByText("Exterior", { exact: true })).toHaveCount(0);
     await expect(profile.getByLabel("Zone name", { exact: true })).toHaveCount(0);
     await expect(profile.getByText("Access options", { exact: true })).toHaveCount(0);
     await layout.locator('[data-layout-zone="alcove"]').click();

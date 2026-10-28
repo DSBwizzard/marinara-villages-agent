@@ -16,6 +16,63 @@ import { badRequest, conflict } from "./errors.js";
 import { readZonePolicy } from "./venue-access.js";
 import { defaultVenueSpace, venueResidentIds } from "./venue-model.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
+import { readZoneLayout, zoneLayoutKey } from "../../../shared/helpers/zone-layout.js";
+import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
+import { managesAccess } from "./venue-access.js";
+
+/** Cosmetic positioning and explicit passages never edit access or an active Scene's captured layout. */
+export function applyVenueZoneLayout(state: VillageState, venue: VillageVenue, value: unknown): void {
+  const row = asRecord(value),
+    zones = materializeConnections(venueZones(venue));
+  const ids = zones.map((zone) => zone.id);
+  if (ids.length > 7) throw conflict("This legacy Venue needs at most six Zones before editing its layout.");
+  if (Object.keys(row).some((key) => !["base", "positions", "connections"].includes(key)))
+    throw badRequest("Only Zone positions and connections may be edited here.");
+  const positions = readZoneLayout(row.positions, ids);
+  if (!positions || Object.keys(positions).length !== ids.length)
+    throw badRequest("Place every Zone on the map without overlapping.");
+  const connections = row.connections;
+  if (
+    !Array.isArray(connections) ||
+    connections.length !== zones.length ||
+    new Set(connections.map((item) => asRecord(item).id)).size !== zones.length ||
+    connections.some((item) => !ids.includes(asRecord(item).id as string))
+  )
+    throw badRequest("Include each current Zone exactly once.");
+  const next = connections.map((item) => ({
+    id: asRecord(item).id as string,
+    connectedTo: asRecord(item).connectedTo as string[],
+  }));
+  const problem = connectionProblem(next);
+  if (problem) throw badRequest(problem.replaceAll("Exterior", "Entrance"));
+  const changed = zones.filter(
+    (zone) => JSON.stringify(contactNeighborIds(zones, zone.id)) !== JSON.stringify(contactNeighborIds(next, zone.id)),
+  );
+  if (changed.length) {
+    if (
+      !managesAccess(venue, null, "player") ||
+      changed.some((zone) => zone.id !== "exterior" && !managesAccess(venue, zone.id, "player"))
+    )
+      throw conflict("Only the Venue and affected Zone managers may change these connections.");
+    if (
+      state.projects.some(
+        (project) => project.venueId === venue.id && project.lifecycle && project.lifecycle.phase !== "complete",
+      )
+    )
+      throw conflict("Finish the current Venue project before changing its connections.");
+  }
+  if (typeof row.base !== "string" || row.base !== zoneLayoutKey(zones, venue.zoneLayout))
+    throw conflict("The layout changed. Reload the Venue before saving.");
+  if (venue.constructionStatus === "worksite") throw conflict("The worksite layout belongs to its build project.");
+  venue.zoneLayout = positions;
+  if (changed.length) {
+    venue.zones = zones.map((zone) => ({ ...zone, connectedTo: contactNeighborIds(next, zone.id) }));
+    venue.spaces = venue.zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+    venue.privateSpaces = venue.zones
+      .filter((zone) => zone.kind === "private-residence")
+      .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
+  }
+}
 
 export const VENUE_LAYOUTS = ["exterior", "common", "private", "both"] as const;
 export function readBaseVenueLayout(

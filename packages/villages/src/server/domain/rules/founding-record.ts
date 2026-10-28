@@ -1,4 +1,5 @@
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
+import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueImage } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest, conflict } from "./errors.js";
@@ -30,6 +31,7 @@ import { readVenueImageContext } from "./village-projections.js";
 
 /** A place as it comes out of a request body, once it has been checked over. */
 export type ParsedPlace = {
+  zoneLayout?: VillageVenue["zoneLayout"];
   venueType?: string;
   access?: VillageVenue["access"];
   destinations?: VillageVenue["destinations"];
@@ -176,6 +178,18 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
       ? readBaseVenueLayout(record, classes, playerHome ? "player" : characterId, foundingImage)
       : undefined;
   const result: ParsedPlace = {
+    ...(!explicitZones || record.zoneLayout === undefined
+      ? {}
+      : {
+          zoneLayout: (() => {
+            const layout = readZoneLayout(
+              record.zoneLayout,
+              (explicitZones ?? []).map((zone) => zone.id),
+            );
+            if (!layout) throw badRequest("Zone positions must be on the map without overlapping.");
+            return layout;
+          })(),
+        }),
     venueType: boundText(record.venueType, 100),
     layoutVersion: record.layoutVersion === 1 ? 1 : undefined,
     zones: explicitZones ?? (founding ? readCreationPrivateZones(record.privateSpaces, classes) : undefined),

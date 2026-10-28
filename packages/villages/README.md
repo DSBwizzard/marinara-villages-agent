@@ -69,7 +69,7 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 - **People:** Browse residents and open their profiles.
 - **More:** Open the Village's other pages and settings.
 
-A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces, such as the kitchen, bedroom, or Exterior. Browse a Venue to see what is known about it, then choose **Visit** to enter.
+A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In founding or the Venue's **Zones** page, drag the Zones to arrange them without overlap. Managers can choose their connections; drawing distance changes neither movement nor sound. Browse a Venue to see what is known about it, then choose **Visit** to enter.
 
 Entering a private space requires permission. Knowing that a room exists, being friends with someone, or hearing a sound from it does not grant access or reveal its contents. An invitation permits entry; use **Move** when you want to go there. The [Venue and Zone reference](venue-zones.md) covers detailed access and sound rules.
 

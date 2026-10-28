@@ -1,6 +1,7 @@
 import { FoundingHelp } from "./FoundingField.js";
 import type { VillageVenue, VillageVenueImage } from "../../../shared/contracts/village.js";
-import { includeFoundingZone } from "./founding-template.js";
+import { addFoundingZone, includeFoundingZone } from "./founding-template.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import type { FoundingIssue, FoundingWorkspaceState } from "./villages-founding-workspace-state.js";
 import { FoundingConnections, FoundingZoneFields } from "./villages-founding-zones.js";
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
@@ -551,6 +552,23 @@ export function FoundingWorkspace({
                   {fieldProblem("form") ? <p role="alert">{fieldProblem("form")}</p> : null}
                 </div>
               </header>
+              <details className="villages-zone-layout-editor">
+                <summary>Zone layout</summary>
+                <FoundingConnections
+                  venue={selected}
+                  onPatch={onPatch}
+                  selectedZoneId={existingZoneId}
+                  onSelect={changeZone}
+                  onAdd={(personal) => {
+                    const next = addFoundingZone(selected, personal, "zone:" + createVillagesClientId());
+                    onPatch(next);
+                    changeZone((personal ? next.privateSpaces : next.spaces)!.at(-1)!.id);
+                  }}
+                  allowAdd={!existing}
+                  readOnly={existing}
+                  busy={locked}
+                />
+              </details>
               <div role="tablist" aria-label="Venue spaces" className="villages-workspace-tabs">
                 {(["exterior", "common", "private"] as const).map((tab) => (
                   <button
@@ -842,7 +860,6 @@ export function FoundingWorkspace({
                 ) : (
                   initialZones(activeTab === "private")
                 )}
-                {!existing ? <FoundingConnections venue={selected} onPatch={onPatch} /> : null}
               </section>
             </div>
             <footer className="villages-workspace-sheet-footer">

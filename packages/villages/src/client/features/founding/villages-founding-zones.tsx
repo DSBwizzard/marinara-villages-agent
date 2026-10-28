@@ -1,9 +1,29 @@
-import { SpaceConnections } from "../../shared/SpaceConnections.js";
+import { ZoneMap } from "../../shared/ZoneMap.js";
+import { resolveZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { connectionProblem, materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
 import { ZonePolicyFields } from "../venues/villages-venue-access";
 import type { ReactNode } from "react";
+
+export function removeFoundingZone(venue: VillageVenue, id: string): VillageVenue {
+  if (id === "exterior") return venue;
+  const prune = <T extends { id: string; connectedTo?: string[] }>(rows: T[]) =>
+    rows
+      .filter((zone) => zone.id !== id)
+      .map((zone) => ({ ...zone, connectedTo: zone.connectedTo?.filter((other) => other !== id) }));
+  const spaces = prune(venue.spaces ?? []),
+    privateSpaces = prune(venue.privateSpaces ?? []);
+  return {
+    ...venue,
+    spaces,
+    privateSpaces,
+    layout: spaces.length ? (privateSpaces.length ? "both" : "common") : privateSpaces.length ? "private" : "exterior",
+    zoneLayout: venue.zoneLayout
+      ? resolveZoneLayout(["exterior", ...spaces.map((z) => z.id), ...privateSpaces.map((z) => z.id)], venue.zoneLayout)
+      : undefined,
+  };
+}
 
 export function foundingZoneProblem(venue: VillageVenue): string {
   if (
@@ -249,26 +269,7 @@ export function FoundingZoneFields({
               ) : (
                 imageFields(personal ? "private" : "interior", zone.image, zone.id)
               )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  const spaces = venue.spaces?.filter((row) => row.id !== zone.id) ?? [],
-                    privateSpaces = venue.privateSpaces?.filter((row) => row.id !== zone.id) ?? [];
-                  onPatch({
-                    ...venue,
-                    spaces,
-                    privateSpaces,
-                    layout: spaces.length
-                      ? privateSpaces.length
-                        ? "both"
-                        : "common"
-                      : privateSpaces.length
-                        ? "private"
-                        : "exterior",
-                  });
-                }}
-              >
+              <button type="button" disabled={busy} onClick={() => onPatch(removeFoundingZone(venue, zone.id))}>
                 Remove Zone
               </button>
             </section>
@@ -320,27 +321,86 @@ export function FoundingZoneFields({
 }
 
 /** Shared by the founding workspace and the standalone Venue editor. */
-export function FoundingConnections({ venue, onPatch }: { venue: VillageVenue; onPatch(venue: VillageVenue): void }) {
+export function FoundingConnections({
+  venue,
+  onPatch,
+  selectedZoneId,
+  onSelect,
+  onAdd,
+  allowAdd = false,
+  busy = false,
+  readOnly = false,
+}: {
+  venue: VillageVenue;
+  onPatch(venue: VillageVenue): void;
+  selectedZoneId?: string;
+  onSelect?(id: string): void;
+  onAdd?(personal: boolean): void;
+  allowAdd?: boolean;
+  busy?: boolean;
+  readOnly?: boolean;
+}) {
+  const zones = [
+    { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: undefined as string[] | undefined },
+    ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
+    ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
+  ];
+  const remove = () => {
+    if (!selectedZoneId || selectedZoneId === "exterior") return;
+    onPatch(removeFoundingZone(venue, selectedZoneId));
+    onSelect?.("exterior");
+  };
+  if (readOnly)
+    return (
+      <ZoneMap
+        zones={zones}
+        positions={venue.zoneLayout}
+        selectedId={selectedZoneId}
+        onSelect={onSelect}
+        disabled={busy}
+      />
+    );
   return (
-    <SpaceConnections
-      spaces={[
-        { id: "exterior", name: "Exterior", kind: "exterior", connectedTo: undefined as string[] | undefined },
-        ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
-        ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
-      ]}
-      onChange={(rows) =>
-        onPatch({
-          ...venue,
-          spaces: venue.spaces?.map((zone) => ({
-            ...zone,
-            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-          })),
-          privateSpaces: venue.privateSpaces?.map((zone) => ({
-            ...zone,
-            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-          })),
-        })
-      }
-    />
+    <>
+      <ZoneMap
+        zones={zones}
+        positions={venue.zoneLayout}
+        selectedId={selectedZoneId}
+        onSelect={onSelect}
+        disabled={busy}
+        onPositions={(zoneLayout) => onPatch({ ...venue, zoneLayout })}
+        onConnections={(rows) =>
+          onPatch({
+            ...venue,
+            spaces: venue.spaces?.map((zone) => ({
+              ...zone,
+              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+            })),
+            privateSpaces: venue.privateSpaces?.map((zone) => ({
+              ...zone,
+              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+            })),
+          })
+        }
+      />
+      {allowAdd ? (
+        <div className="villages-zone-map-actions">
+          <span>{zones.length - 1} / 6 Zones + Entrance</span>
+          <button type="button" disabled={busy || zones.length >= 7} onClick={() => onAdd?.(false)}>
+            Add Zone
+          </button>
+          {venue.category !== "public-center" ? (
+            <button type="button" disabled={busy || zones.length >= 7} onClick={() => onAdd?.(true)}>
+              Add private Zone
+            </button>
+          ) : null}
+          {selectedZoneId && selectedZoneId !== "exterior" ? (
+            <button type="button" disabled={busy || zones.length <= 2} onClick={remove}>
+              Remove Zone
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </>
   );
 }

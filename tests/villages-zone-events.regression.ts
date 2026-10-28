@@ -20,6 +20,7 @@ import {
   zoneEventHearingContext,
   zoneEventReply,
   zoneEventScene,
+  zoneEventContract,
 } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
 
@@ -81,6 +82,84 @@ const base = coerceSession({
   submissions: [],
 });
 const scene = zoneEventScene(base, venue);
+
+// New connection sound rules apply only to new admissions. Retained work keeps its purchased contract.
+{
+  const chain = structuredClone(venue);
+  chain.zones!.find((zone) => zone.id === "bedroom")!.connectedTo!.push("attic");
+  chain.zones!.push({
+    ...defaultVenueSpace("other"),
+    id: "attic",
+    kind: "public",
+    name: "Attic",
+    connectedTo: ["bedroom"],
+  });
+  const marked = structuredClone(scene);
+  marked.operation = { kind: "turn", input: { interactionScopeVersion: 6, soundHopVersion: 1 } } as any;
+  marked.sceneAttendance!.layout = captureSceneLayout(chain);
+  marked.sceneAttendance!.occupants.push({
+    characterId: "veryFar",
+    name: "Distant resident",
+    doing: "Reading",
+    zoneId: "attic",
+  } as any);
+  marked.contactGeneration!.venue = chain;
+  marked.contactGeneration!.actorIds = ["local", "near", "far", "veryFar"];
+  const route = (raw: Record<string, unknown>, context = marked) => {
+    const normalized = zoneEventReply(raw, "");
+    const parsed = parseVenueReply(normalized, ["local", "near", "far", "veryFar", "player"]);
+    routeZoneEvents(raw, context, parsed, []);
+    return parsed.lines[0];
+  };
+  const event = (segment: unknown) => ({
+    segments: [segment],
+    wishChanges: [],
+    memoryChanges: [],
+    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+  });
+  const ordinary = route(event({ kind: "dialogue", speakerId: "local", text: "PRIVATE ORDINARY WORDS" }));
+  assert.deepEqual(ordinary.heardBy, ["local"]);
+  assert.deepEqual(ordinary.soundOnly?.characterIds, ["near"]);
+  assert.ok(!ordinary.soundOnly?.text.includes("PRIVATE"));
+  const loud = route(event({ kind: "sound", speakerId: "local", text: "A crash.", loud: true }));
+  assert.deepEqual(loud.heardBy, ["local", "near", "far"]);
+  const shout = route(event({ kind: "dialogue", speakerId: "local", text: "A shouted warning!", delivery: "shout" }));
+  assert.deepEqual(shout.heardBy, ["local", "near"]);
+  assert.deepEqual(shout.soundOnly?.characterIds, ["far"]);
+  assert.equal(
+    route(event({ kind: "sound", speakerId: "veryFar", text: "Distant crash", loud: true })).contactHidden,
+    true,
+  );
+  const voice = route(event({ kind: "dialogue", speakerId: "near", text: "PRIVATE NEARBY WORDS" }));
+  assert.equal(voice.contactHidden, true);
+  assert.equal(voice.soundOnly?.player, true);
+  assert.throws(
+    () =>
+      route(
+        event({
+          kind: "narration",
+          text: "A crash is heard.",
+          sound: { sourceId: "veryFar", text: "A crash.", loud: true },
+        }),
+      ),
+    /outside hearing range/,
+  );
+  assert.match(zoneEventContract(marked), /at most two connections/);
+  const relationships = JSON.parse(zoneEventHearingContext(marked, chain).split(": ").slice(1).join(": "));
+  assert.deepEqual(relationships.find((row: any) => row.source === "player").alertOnly, ["far"]);
+  const retained = structuredClone(marked);
+  delete retained.operation!.input.soundHopVersion;
+  assert.deepEqual(
+    route(event({ kind: "sound", speakerId: "local", text: "A crash.", loud: true }), retained).heardBy,
+    ["local", "near", "far", "veryFar"],
+  );
+  assert.deepEqual(route(event({ kind: "dialogue", speakerId: "local", text: "Retained words" }), retained).heardBy, [
+    "local",
+    "near",
+  ]);
+  assert.equal(zoneEventContract(retained), ZONE_EVENT_CONTRACT);
+  assert.equal(coerceSession(marked).operation!.input.soundHopVersion, 1);
+}
 const message = 'I privately think SECRET. "Aqua, help!" I turn around.';
 const response = (segments: unknown[]) => ({
   segments,
