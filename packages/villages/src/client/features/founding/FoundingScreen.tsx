@@ -13,6 +13,7 @@ import {
   SETUP_STEPS,
   VillageLorebookPicker,
 } from "./FoundingPanels.js";
+import { QuickStartButton } from "./QuickStartButton.js";
 import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
@@ -178,15 +179,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     return () => cancelAnimationFrame(frame);
   }, [setupProblem, inlineProblem, backgroundError, validationAttempt]);
 
-  useEffect(() => {
-    if (screen !== "setup" || setupStep !== 3 || snapshot?.isFounded || setupWorkspace.mode !== "quick") return;
-    setSetupVenues((venues) =>
-      venues.some((venue) => venue.presentation.x === null || venue.presentation.y === null)
-        ? arrangeQuickStartVenues(venues)
-        : venues,
-    );
-  }, [screen, setupStep, snapshot?.isFounded, setupWorkspace.mode, setupVenues, setSetupVenues]);
-
   if (screen === "setup") {
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
       id,
@@ -198,8 +190,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       (setupWorkspace.paused
         ? undefined
         : setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null));
-    const quickStart = !snapshot?.isFounded && setupWorkspace.mode === "quick";
-    const setupIssues = foundingVenueIssues(setupVenues, snapshot?.isFounded ?? false, quickStart);
+    const simpleVenueEditor = !snapshot?.isFounded && setupWorkspace.mode === "quick";
+    const setupIssues = foundingVenueIssues(setupVenues, snapshot?.isFounded ?? false);
     const openIssue = (issue: FoundingIssue) => {
       setSelectedSetupVenueId(issue.venueId);
       setSetupFocusIssue(issue);
@@ -699,34 +691,37 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               {!snapshot?.isFounded ? (
                 <>
                   <h2>Starting Venues</h2>
-                  <div className="villages-quick-switch" role="group" aria-label="Venue setup mode">
+                  <div className="villages-quick-switch" role="group" aria-label="Venue setup">
+                    <QuickStartButton
+                      busy={setupSuggestionsBusy}
+                      disabled={setupVenueBusy || !setupVenues.length}
+                      pending={!!setupWorkspace.suggestionRequest}
+                      onGenerate={() => void suggestSetupVenues({ quickStart: true })}
+                    />
                     <button
                       type="button"
-                      aria-pressed={quickStart}
-                      onClick={() => setSetupWorkspace((state) => ({ ...state, mode: "quick" }))}
-                    >
-                      Quick Start
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={!quickStart}
-                      onClick={() => setSetupWorkspace((state) => ({ ...state, mode: "advanced" }))}
+                      aria-pressed={!simpleVenueEditor}
+                      disabled={setupSuggestionsBusy || setupVenueBusy}
+                      onClick={() =>
+                        setSetupWorkspace((state) => ({
+                          ...state,
+                          mode: state.mode === "advanced" ? "quick" : "advanced",
+                        }))
+                      }
                     >
                       Advanced
                     </button>
                   </div>
                 </>
               ) : null}
-              {quickStart ? (
+              {simpleVenueEditor ? (
                 <QuickStartVenues
                   venues={setupVenues}
                   people={wizardVillagers}
                   selectedId={selectedSetupVenueId}
                   state={setupWorkspace}
                   busy={setupSuggestionsBusy}
-                  imageBusy={setupVenueBusy}
-                  suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
-                  suggestionsKey={setupSuggestionsKey}
+                  imageBusy={setupVenueBusy || setupSuggestionsBusy}
                   focusIssue={setupFocusIssue}
                   saveError={draftSaveError || undefined}
                   problem={setupProblem || undefined}
@@ -744,7 +739,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
                   }}
                   onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
-                  onGenerate={(venueId) => void suggestSetupVenues({ quickStart: true, venueId })}
                   onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
                   onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
                   onArrange={() => {
@@ -775,7 +769,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   issues={setupIssues}
                   focusIssue={setupFocusIssue}
                   imageTarget={setupImageTarget}
-                  imageBusy={setupVenueBusy}
+                  imageBusy={setupVenueBusy || setupSuggestionsBusy}
                   suggestionsBusy={setupSuggestionsBusy}
                   suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
                   saveError={draftSaveError || undefined}

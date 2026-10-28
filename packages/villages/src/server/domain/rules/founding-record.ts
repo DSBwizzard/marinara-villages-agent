@@ -172,10 +172,10 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     throw badRequest("Your own home cannot also belong to a villager.");
   }
   if (founding && record.layoutVersion !== 1) throw badRequest("Choose the venue layout before founding.");
-  if (founding) validateStartingVenue(record, classes, playerHome);
+  if (founding) validateStartingVenue(record, playerHome);
   const explicitZones =
     record.layoutVersion === 1 && founding
-      ? readBaseVenueLayout(record, classes, playerHome ? "player" : characterId, foundingImage)
+      ? readBaseVenueLayout(record, classes, playerHome ? "player" : characterId, foundingImage, { founding: true })
       : undefined;
   const result: ParsedPlace = {
     ...(!explicitZones || record.zoneLayout === undefined
@@ -260,7 +260,8 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
     initializeVenueAccess(result);
     if (result.category.toLowerCase() === "public-center" && result.access) {
       result.access.managerIds = [];
-      for (const zone of result.zones ?? []) if (zone.kind !== "exterior" && zone.access) zone.access.managerIds = [];
+      for (const zone of result.zones ?? [])
+        if (zone.kind !== "exterior" && zone.access?.managerIds === null) zone.access.managerIds = [];
     }
     for (const [actor, destinations] of Object.entries(asRecord(record.destinations))) {
       if (!result.destinations?.[actor])

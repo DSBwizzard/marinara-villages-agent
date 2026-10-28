@@ -1065,6 +1065,7 @@ export async function verifyFoundingLayout(group) {
         await forward("Continue to Map").click();
         await forward("Continue to Venues").click();
         await expect(root).toHaveAttribute("data-step", "3");
+        await root.getByRole("button", { name: "Arrange automatically", exact: true }).click();
         await root.getByRole("button", { name: "Advanced", exact: true }).click();
         const phaseHeading = root.locator(".villages-forging-heading");
         await expect(phaseHeading).toBeVisible();
@@ -1161,7 +1162,7 @@ export async function verifyFoundingLayout(group) {
         assert.equal(narrow, (await root.locator(".villages-workspace").boundingBox()).width < 704);
         await expect(root.getByRole("dialog", { name: "Venue editor" })).toBeVisible();
         if (width === 1366) {
-          // Resume a legacy modal checkpoint using current authored fields and retained prohibited Zone data.
+          // Resume an older checkpoint without rewriting its authored Community Zones.
           await inspector.getByLabel("Venue Name", { exact: true }).fill("Legacy current edit");
           await mapView();
           await forward("Save & exit").click();
@@ -1191,6 +1192,9 @@ export async function verifyFoundingLayout(group) {
                       ...saved.data.venues[0].privateSpaces[0],
                       id: "old:private",
                       name: "Legacy private draft",
+                      venueClass: "community",
+                      ownerId: "",
+                      access: { mode: "permission-required", managerIds: ["player"], memberIds: ["player"] },
                       purpose: "Stored old purpose",
                       description: "Kept old description",
                     },
@@ -1209,7 +1213,10 @@ export async function verifyFoundingLayout(group) {
           await expect(inspector.getByLabel("Venue Name", { exact: true })).toHaveValue("Legacy current edit");
           await open(homeCount + 1);
           await zone("Private");
-          await expect(inspector.getByText(/previous draft and images are kept/)).toBeVisible();
+          await expect(inspector.getByLabel("Include Private Space", { exact: true })).toBeChecked();
+          await expect(inspector.getByLabel("Zone Name", { exact: true })).toHaveValue("Legacy private draft");
+          await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveValue("Kept old description");
+          await inspector.getByLabel("Include Private Space", { exact: true }).uncheck();
           await open();
           await zone("Exterior");
         }
@@ -1421,8 +1428,8 @@ export async function verifyFoundingLayout(group) {
         await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveCount(0);
         await zone("Common");
         await inspector.getByLabel("Include Common Space", { exact: true }).click();
-        await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeChecked();
-        await expect(inspector.getByRole("alert")).toContainText("At least one");
+        await expect(inspector.getByLabel("Include Common Space", { exact: true })).not.toBeChecked();
+        await expect(inspector.getByRole("alert")).toHaveCount(0);
         await zone("Private");
         await mapView();
         await forward("Save & exit").click();
@@ -1432,6 +1439,9 @@ export async function verifyFoundingLayout(group) {
         await open();
         await zone("Private");
         await expect(inspector.getByLabel("Include Private Space", { exact: true })).not.toBeChecked();
+        await zone("Common");
+        await inspector.getByLabel("Include Common Space", { exact: true }).check();
+        await zone("Private");
         await inspector.getByLabel("Include Private Space", { exact: true }).check();
         await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveValue(
           "My hammock and traveling journal.",
@@ -1445,10 +1455,10 @@ export async function verifyFoundingLayout(group) {
         await open(homeCount + 1);
         await zone("Common");
         await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeChecked();
-        await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeDisabled();
+        await expect(inspector.getByLabel("Include Common Space", { exact: true })).toBeEnabled();
         await zone("Private");
         await expect(inspector.getByLabel("Include Private Space", { exact: true })).not.toBeChecked();
-        await expect(inspector.getByLabel("Include Private Space", { exact: true })).toBeDisabled();
+        await expect(inspector.getByLabel("Include Private Space", { exact: true })).toBeEnabled();
         await expect(inspector.getByLabel("Zone Appearance", { exact: true })).toHaveCount(0);
         await open(1);
         await zone("Private");

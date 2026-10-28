@@ -8,7 +8,6 @@ import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { readDeviceDraft, removeDeviceDraft, saveDeviceDraft } from "../../shared/device-drafts.js";
 import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
-import { resumeFoundingVenue } from "./founding-template.js";
 import { useCallback, useEffect } from "react";
 
 export function useFoundingPersistSetupDraft(ports: {
@@ -234,12 +233,7 @@ export function createFoundingRestoreSetupDraft(ports: {
         ...inactive[id],
       };
     }
-    const venues = data.venues.map((venue) => {
-      const resumed = resumeFoundingVenue(venue, inactive[venue.id] ?? {});
-      inactive[venue.id] = resumed.inactive;
-      return resumed.venue;
-    });
-    setSetupVenues(venues);
+    setSetupVenues(data.venues);
     setupZoneDrafts.current = data.zoneDrafts ?? {};
     setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);

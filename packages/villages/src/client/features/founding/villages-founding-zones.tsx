@@ -120,7 +120,7 @@ export function FoundingZoneFields({
                 : { ...venue, spaces: venue.spaces?.map((row) => (row.id === zone.id ? { ...row, ...next } : row)) },
             );
           const policy = zone.access ?? draftZonePolicy(venue, zone, personal);
-          const generatedLater = personal && zone.ownerId !== "player";
+          const generatedLater = personal && zone.venueClass === "residence" && zone.ownerId !== "player";
           return (
             <section key={zone.id} data-zone-id={zone.id}>
               {!identityInHeader ? (

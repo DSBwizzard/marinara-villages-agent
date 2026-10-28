@@ -80,6 +80,7 @@ export function readBaseVenueLayout(
   classes: VillageVenueClass[],
   residentId: string,
   image: (value: unknown) => VillageVenueImage | null,
+  options: { founding?: boolean } = {},
 ): VillageVenueZone[] {
   const row = asRecord(value);
   if (!VENUE_LAYOUTS.includes(row.layout as (typeof VENUE_LAYOUTS)[number]))
@@ -122,6 +123,8 @@ export function readBaseVenueLayout(
     if (description.length > 1000 || (!isPrivate && !description))
       throw badRequest("Describe the Common Space in at most 1000 characters.");
     const ownerId = isPrivate && role === "residence" ? residentId || undefined : undefined;
+    const hiddenPrivate =
+      isPrivate && ownerId !== "player" && (!options.founding || (role === "residence" && !!ownerId));
     const controllers = Array.isArray(area.controllerIds)
       ? [...new Set(area.controllerIds.filter((id): id is string => typeof id === "string" && !!id))]
       : [];
@@ -129,7 +132,7 @@ export function readBaseVenueLayout(
       throw badRequest("Choose controllers for the Private Space.");
     result.push({
       ...defaultVenueSpace(role, description),
-      ...(isPrivate && ownerId !== "player" ? { roomSpecification, description: "" } : {}),
+      ...(hiddenPrivate ? { roomSpecification, description: "" } : {}),
       id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
       connectedTo: Array.isArray(area.connectedTo) ? (area.connectedTo as string[]) : undefined,
       name: asTrimmedString(area.name).slice(0, 100) || "Zone",
@@ -148,9 +151,9 @@ export function readBaseVenueLayout(
           : "public",
       ownerId,
       controllerIds: controllers,
-      image: isPrivate && ownerId !== "player" ? null : image(area.image),
+      image: hiddenPrivate ? null : image(area.image),
       seen: ownerId === "player",
-      preparation: isPrivate && ownerId !== "player" ? { status: "pending" } : undefined,
+      preparation: hiddenPrivate ? { status: "pending" } : undefined,
     });
   }
   if (new Set(result.map((zone) => zone.id)).size !== result.length)

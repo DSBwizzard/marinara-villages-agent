@@ -211,26 +211,11 @@ function fixture(name: string) {
 }
 
 // Exercise the real HTTP entry and setup coordinator with provider-free ports.
-for (const invalid of ["exterior-residence", "missing-purpose", "community-private", "owned-community"]) {
+for (const invalid of ["missing-purpose", "layout-mismatch"]) {
   const api = fixture(invalid),
     payload = input(invalid);
-  if (invalid === "exterior-residence") Object.assign(payload.venues[0]!, { layout: "exterior", spaces: [] });
+  if (invalid === "layout-mismatch") payload.venues[0]!.spaces = [];
   if (invalid === "missing-purpose") payload.venues[0]!.spaces[0]!.purpose = "";
-  if (invalid === "community-private")
-    Object.assign(payload.venues[2]!, {
-      layout: "both",
-      privateSpaces: [
-        {
-          id: "forbidden",
-          name: "Bedroom",
-          purpose: "Rest",
-          description: "Bed",
-          venueClass: "community",
-          ownerId: "player",
-        },
-      ],
-    });
-  if (invalid === "owned-community") Object.assign(payload.venues[2]!.spaces[0]!, { ownerId: "player" });
   const dispose = configureFoundingSetup(api.service),
     server = Fastify();
   registerFoundingRoutes(server);
@@ -243,6 +228,27 @@ for (const invalid of ["exterior-residence", "missing-purpose", "community-priva
       "Invalid initial templates cause no model work or world writes",
     );
     assert.equal(api.state.setupAt, "");
+  } finally {
+    dispose();
+    await server.close();
+  }
+}
+// Templates are defaults: the HTTP founding path accepts Entrance-only homes and Community.
+{
+  const api = fixture("Entrance-only"),
+    server = Fastify();
+  const dispose = configureFoundingSetup(api.service);
+  registerFoundingRoutes(server);
+  try {
+    const payload = input("Entrance-only");
+    for (const venue of payload.venues) Object.assign(venue, { layout: "exterior", spaces: [], privateSpaces: [] });
+    const response = await server.inject({ method: "POST", url: "/setup", payload });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.ok(api.state.venues.every((venue) => venue.zones?.length === 1 && venue.zones[0].id === "exterior"));
+    assert.ok(
+      !api.calls.some((call) => ["propose", "names", "descriptions"].includes(call)),
+      "founding does not regenerate edited templates",
+    );
   } finally {
     dispose();
     await server.close();

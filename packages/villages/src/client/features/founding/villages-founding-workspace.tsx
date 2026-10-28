@@ -109,7 +109,8 @@ export function FoundingWorkspace({
       : ((activeTab === "private" ? selected?.privateSpaces : selected?.spaces)?.find(
           (zone) => zone.id === existingZoneId,
         ) ?? (activeTab === "private" ? selected?.privateSpaces : selected?.spaces)?.[0]);
-  const privateHeaderHidden = activeTab === "private" && headerZone?.ownerId !== "player";
+  const privateHeaderHidden =
+    activeTab === "private" && headerZone?.venueClass === "residence" && headerZone.ownerId !== "player";
   const patchHeaderZone = (patch: {
     name?: string;
     purpose?: string;
@@ -313,7 +314,6 @@ export function FoundingWorkspace({
       ? issues.find((issue) => issue.venueId === selectedId && issue.field === field && issue.zoneId === zoneId)
           ?.message
       : undefined;
-  const community = selected?.category === "public-center";
   const inclusionControl = (personal: boolean) =>
     selected && (
       <>
@@ -323,7 +323,7 @@ export function FoundingWorkspace({
               autoComplete="off"
               aria-label={`Include ${personal ? "Private" : "Common"} Space`}
               type="checkbox"
-              disabled={locked || community}
+              disabled={locked}
               checked={personal ? !!selected.privateSpaces?.length : !!selected.spaces?.length}
               onChange={(event) => {
                 const result = includeFoundingZone(
@@ -345,13 +345,6 @@ export function FoundingWorkspace({
             />
             Included
           </label>
-          <FoundingHelp label="Included spaces">
-            {community
-              ? personal
-                ? "The starting Community Place has no Private Space. It is a neutral meeting spot everyone can enter."
-                : "Required for the starting Community Place. Open to everyone · No owner."
-              : "At least one Common or Private Space is required."}
-          </FoundingHelp>
         </div>
         {fieldProblem("layout", "common") ? <p role="alert">{fieldProblem("layout", "common")}</p> : null}
         {inclusionProblem ? <p role="alert">{inclusionProblem}</p> : null}
@@ -371,7 +364,7 @@ export function FoundingWorkspace({
             </p>
           ) : (
             (personal ? (selected.privateSpaces ?? []) : (selected.spaces ?? [])).map((zone) => {
-              const hidden = personal && zone.ownerId !== "player";
+              const hidden = personal && zone.venueClass === "residence" && zone.ownerId !== "player";
               return (
                 <section key={zone.id} data-zone-id={zone.id}>
                   {hidden ? (

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
+import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import { chooseAgendaZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
-import {
-  includeFoundingZone,
-  resumeFoundingVenue,
-} from "../packages/villages/src/client/features/founding/founding-template.js";
+import { includeFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/domain/rules/founding-draft-rules.js";
@@ -28,9 +27,17 @@ residence.privateSpaces!.push({ ...residence.privateSpaces![0], id: "private:sec
 const disabled = includeFoundingZone(residence, {}, true, false);
 assert.equal(disabled.venue.layout, "common");
 assert.deepEqual(disabled.inactive.private, residence.privateSpaces);
-const refused = includeFoundingZone(disabled.venue, disabled.inactive, false, false);
-assert.match(refused.problem, /At least one/);
-assert.equal(refused.venue, disabled.venue);
+const entranceOnly = includeFoundingZone(disabled.venue, disabled.inactive, false, false);
+assert.equal(entranceOnly.problem, "");
+assert.equal(entranceOnly.venue.layout, "exterior");
+assert.deepEqual(foundingVenueIssues([entranceOnly.venue]), []);
+assert.doesNotThrow(() => parsePlace(entranceOnly.venue, true));
+for (const activity of ["sleep", "eat", "work"])
+  assert.equal(
+    chooseAgendaZone(parsePlace(entranceOnly.venue, true) as any, "player", activity).id,
+    "exterior",
+    "Entrance-only Venues remain usable without inventing Zones",
+  );
 const restored = includeFoundingZone(disabled.venue, structuredClone(disabled.inactive), true, true);
 assert.deepEqual(
   restored.venue.privateSpaces,
@@ -50,10 +57,7 @@ for (const layout of ["common", "private", "both"] as const) {
     layout === "private" ? undefined : "Meals",
   );
 }
-assert.throws(
-  () => parsePlace({ ...residence, layout: "exterior", spaces: [], privateSpaces: [] }, true),
-  /at least one/,
-);
+assert.doesNotThrow(() => parsePlace({ ...residence, layout: "exterior", spaces: [], privateSpaces: [] }, true));
 assert.doesNotThrow(
   () => parsePlace({ ...residence, layout: "exterior", spaces: [], privateSpaces: [] }, false),
   "existing map editing remains compatible",
@@ -78,23 +82,50 @@ community.spaces![0] = {
 const parsedPark = parsePlace(community, true);
 assert.deepEqual(parsedPark.access?.managerIds, []);
 assert.equal(parsedPark.zones?.find((zone) => zone.id === "common:base")?.access?.mode, "public");
-for (const changed of [
-  { ...community, classes: ["workplace"] },
-  { ...community, layout: "both", privateSpaces: residence.privateSpaces },
-  { ...community, spaces: [{ ...community.spaces![0], controllerIds: ["player"] }] },
+assert.doesNotThrow(() => parsePlace({ ...community, layout: "exterior", spaces: [], privateSpaces: [] }, true));
+const restricted = parsePlace(
   {
     ...community,
-    spaces: [{ ...community.spaces![0], access: { ...community.spaces![0].access!, mode: "permission-required" } }],
+    spaces: [
+      {
+        ...community.spaces![0],
+        access: {
+          ...community.spaces![0].access!,
+          mode: "permission-required",
+          managerIds: ["player"],
+          memberIds: ["player"],
+        },
+      },
+    ],
   },
-])
-  assert.throws(() => parsePlace(changed, true));
-const old = { ...community, layout: "both" as const, spaces: [], privateSpaces: residence.privateSpaces };
-const resumed = resumeFoundingVenue(old, {});
-assert.deepEqual(resumed.inactive.private, residence.privateSpaces);
-assert.equal(resumed.venue.privateSpaces?.length, 0);
-assert.equal(resumed.venue.spaces?.length, 1);
-assert.equal(resumed.venue.spaces?.[0].purpose, "Community gatherings");
-assert.equal(foundingVenueIssues([resumed.venue]).length, 0, "a missing community space has usable defaults");
+  true,
+);
+assert.deepEqual(restricted.zones?.find((zone) => zone.id === "common:base")?.access?.managerIds, ["player"]);
+const genericPrivate = {
+  ...residence.privateSpaces![0],
+  venueClass: "community",
+  ownerId: "",
+  access: { ...residence.privateSpaces![0].access!, managerIds: ["player"], memberIds: ["player"] },
+};
+const projectZones = readBaseVenueLayout(
+  {
+    ...community,
+    layout: "both",
+    privateSpaces: [{ ...genericPrivate, description: "", roomSpecification: "A staff quiet room" }],
+  },
+  ["community"],
+  "",
+  () => null,
+);
+assert.equal(projectZones.find((zone) => zone.id === genericPrivate.id)?.roomSpecification, "A staff quiet room");
+assert.equal(
+  projectZones.find((zone) => zone.id === genericPrivate.id)?.preparation?.status,
+  "pending",
+  "Project rooms retain their existing preparation contract",
+);
+const varied = parsePlace({ ...community, layout: "both", privateSpaces: [genericPrivate] }, true);
+assert.equal(varied.zones?.find((zone) => zone.id === genericPrivate.id)?.description, "A hammock");
+assert.equal(varied.zones?.find((zone) => zone.id === genericPrivate.id)?.image?.ref, artwork.ref);
 const suggestion = {
   id: "home",
   name: "Home",
@@ -144,5 +175,5 @@ assert.ok(
   "unseen private interiors never reach the client",
 );
 console.log(
-  "Founding template: inclusion retention, legacy recovery, neutral access, contract validation, purpose round-trip and server privacy passed.",
+  "Founding template: optional Zones, inclusion retention, neutral access, contract validation, purpose round-trip and server privacy passed.",
 );

@@ -9,7 +9,7 @@ import { personalSpaceDraft } from "./villages-founding-editor";
 import { draftZonePolicy } from "./villages-founding-zones";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
-import { mergeQuickStartSpaces } from "./quick-start-drafts.js";
+import { quickStartIdentity, quickStartTemplates, replaceQuickStartVenue } from "./quick-start-drafts.js";
 import { requestFoundingSuggestions } from "./suggestion-request.js";
 import { useCallback } from "react";
 
@@ -19,6 +19,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setSetupWorkspace?: FoundingState["setSetupWorkspace"];
   readonly persistSetupDraft?: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
   readonly setupDraftData?: import("./draft-model.js").SetupDraftData;
+  readonly onQuickStartApplied?: () => void;
   readonly personaDraft: string;
   readonly selectedResidentAdmissions: {
     [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
@@ -67,12 +68,14 @@ export function createFoundingSuggestSetupVenues(ports: {
 
     if (setupSuggestionsClaim.current || !setupSetting.trim()) return;
     setupSuggestionsClaim.current = true;
-    const source = setupBeginningSourceKey;
-    const rows = setupVenues;
+    const replacing = !!options.quickStart;
+    const identity = quickStartIdentity(setupVenues);
+    const source = replacing ? JSON.stringify([setupBeginningSourceKey, identity]) : setupBeginningSourceKey;
+    const rows = replacing ? quickStartTemplates(setupVenues) : setupVenues;
     setSetupSuggestionsBusy(true);
     setSetupProblem("");
     try {
-      const result = await requestFoundingSuggestions(ports, options, {
+      const result = await requestFoundingSuggestions({ ...ports, setupBeginningSourceKey: source }, options, {
         setting: setupSetting,
         worldName: ports.setupWorldName,
         ...(options?.quickStart ? { mode: "quick-start", targetVenueId: options.venueId } : {}),
@@ -86,21 +89,46 @@ export function createFoundingSuggestSetupVenues(ports: {
         foundingResidentAdmissions: selectedResidentAdmissions,
         venues: rows.map((row) => ({
           id: row.id,
-          name: row.name,
-          form: row.form,
-          description: row.description,
-          spaceDescription: row.spaces?.[0]?.description ?? "",
+          name: replacing ? "" : row.name,
+          form: replacing ? "" : row.form,
+          description: replacing ? "" : row.description,
+          spaceDescription: replacing ? "" : (row.spaces?.[0]?.description ?? ""),
           venueClass: row.category === "public-center" ? "community" : "residence",
           residentCharacterId: row.occupancy.residentCharacterId ?? "",
         })),
       });
       if (
-        setupBeginningSourceKeyRef.current !== source ||
-        rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id))
+        setupBeginningSourceKeyRef.current !== setupBeginningSourceKey ||
+        (replacing && quickStartIdentity(setupVenuesRef.current) !== identity) ||
+        (!replacing && rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id)))
       )
         throw new Error(
           "The people or setting changed while suggestions were prepared. Your existing draft is kept; request fresh suggestions when ready.",
         );
+      if (replacing) {
+        if (!options.quickStart || options.venueId)
+          throw new Error(
+            "The older suggestion attempt was checked. Press Quick Start again to generate all template Venues.",
+          );
+        const next = rows.map((row) => {
+          const proposal = result.venues.find((item) => item.id === row.id);
+          if (!proposal) throw new Error("Quick Start did not return every template Venue. Your draft is unchanged.");
+          return replaceQuickStartVenue(row, proposal);
+        });
+        setSetupVenues(arrangeQuickStartVenues(next, true));
+        ports.onQuickStartApplied?.();
+        ports.setSetupWorkspace?.((state) => ({
+          ...state,
+          view: "map",
+          paused: false,
+          sections: {},
+          zones: {},
+          inactive: undefined,
+        }));
+        setSetupSuggestionsKey(setupBeginningSourceKey);
+        return;
+      }
+      if (options.quickStart) throw new Error("Use Quick Start to confirm replacing Venue drafts.");
       setSetupVenues((currentRows) => {
         const nextRows = currentRows.map((row) => {
           const proposal = result.venues.find((item) => item.id === row.id);
@@ -116,8 +144,6 @@ export function createFoundingSuggestSetupVenues(ports: {
           for (const key of ["name", "venueType", "form", "description"] as const)
             if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
-          if (options?.quickStart)
-            return mergeQuickStartSpaces(changed, before, proposal, setupAuthoredFieldsRef.current[row.id] ?? []);
           const layoutEdited = ["layout", "spaces", "privateSpaces"].some((key) =>
             setupAuthoredFieldsRef.current[row.id]?.includes(key),
           );
@@ -185,7 +211,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           }
           return changed;
         });
-        return options?.quickStart ? arrangeQuickStartVenues(nextRows) : nextRows;
+        return nextRows;
       });
       if (!options?.venueId) setSetupSuggestionsKey(source);
     } catch (cause) {

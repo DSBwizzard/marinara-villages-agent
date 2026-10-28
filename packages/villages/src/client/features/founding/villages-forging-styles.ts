@@ -327,7 +327,6 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-switch button { flex:1; }
 .villages-quick-start { max-width:52rem; margin:0 auto; width:100%; min-width:0; }
 .villages-quick-overview { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; align-items:start; }
-.villages-quick-generate { width:100%; }
 .villages-quick-list { display:grid; gap:.6rem; margin:1rem 0; }
 .villages-forging-v2 .villages-quick-venue { display:flex; justify-content:space-between; align-items:center; gap:.6rem; width:100%; min-width:0; text-align:left; padding:.8rem; background:#192441; border-color:#596b9b; border-radius:.65rem; }
 .villages-quick-venue>span:first-child { min-width:0; }

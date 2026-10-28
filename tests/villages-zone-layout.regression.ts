@@ -9,10 +9,7 @@ import {
   foundingLayoutProblem,
   removeFoundingZone,
 } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
-import {
-  includeFoundingZone,
-  resumeFoundingVenue,
-} from "../packages/villages/src/client/features/founding/founding-template.js";
+import { includeFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import {
   readZoneLayout,
   resolveZoneLayout,
@@ -183,10 +180,6 @@ assert.deepEqual(
   home.zoneLayout![home.privateSpaces![0].id],
   "Re-inclusion retains its prior drawing position",
 );
-const resumed = resumeFoundingVenue({ ...home, category: "public-center" }, {}).venue;
-assert.equal(resumed.zoneLayout![home.privateSpaces![0].id], undefined);
-assert.ok(!resumed.spaces![0].connectedTo!.includes(home.privateSpaces![0].id));
-assert.doesNotThrow(() => parsePlace(resumed, true), "Resumed Community layouts prune private coordinates and links");
 assert.throws(
   () => parsePlace({ ...home, zoneLayout: { ...home.zoneLayout, [homeIds[1]]: home.zoneLayout!.exterior } }, true),
   /without overlapping/,

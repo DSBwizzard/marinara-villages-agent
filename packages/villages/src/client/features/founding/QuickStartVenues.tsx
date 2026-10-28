@@ -17,8 +17,6 @@ export function QuickStartVenues({
   state,
   busy,
   imageBusy,
-  suggestionsChanged,
-  suggestionsKey,
   focusIssue,
   saveError,
   problem,
@@ -26,7 +24,6 @@ export function QuickStartVenues({
   onState,
   onSelect,
   onPatch,
-  onGenerate,
   onGenerateImage,
   onUploadImage,
   onArrange,
@@ -38,8 +35,6 @@ export function QuickStartVenues({
   state: FoundingWorkspaceState;
   busy: boolean;
   imageBusy: boolean;
-  suggestionsChanged: boolean;
-  suggestionsKey: string;
   focusIssue: FoundingIssue | null;
   saveError?: string;
   problem?: string;
@@ -47,7 +42,6 @@ export function QuickStartVenues({
   onState(state: FoundingWorkspaceState): void;
   onSelect(venue: VillageVenue): void;
   onPatch(venue: VillageVenue): void;
-  onGenerate(venueId?: string): void;
   onGenerateImage(venue: VillageVenue, area: "exterior" | "interior" | "private", zoneId?: string): void;
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   onArrange(): void;
@@ -64,7 +58,7 @@ export function QuickStartVenues({
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const open = state.view === "details" && !!selected;
-  const issues = foundingVenueIssues(venues, false, true);
+  const issues = foundingVenueIssues(venues, false);
   const placed = venues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
   const ready = venues.length > 0 && !issues.length;
   const close = () => onState({ ...state, view: "map", paused: false });
@@ -78,7 +72,7 @@ export function QuickStartVenues({
   useEffect(() => setLayoutError(""), [selected, open]);
   const personal = !!selected?.privateSpaces?.some((zone) => zone.id === zoneId);
   const zone = [...(selected?.spaces ?? []), ...(selected?.privateSpaces ?? [])].find((row) => row.id === zoneId);
-  const hiddenPrivate = !!zone && personal && zone.ownerId !== "player";
+  const hiddenPrivate = !!zone && personal && zone.venueClass === "residence" && zone.ownerId !== "player";
   const area = zoneId === "exterior" ? "exterior" : personal ? "private" : "interior";
   const image = zoneId === "exterior" ? selected?.presentation.image : zone?.image;
   const zoneIds = [
@@ -171,33 +165,10 @@ export function QuickStartVenues({
     setTab("zone");
   };
   return (
-    <section className="villages-quick-start" aria-label="Quick Start Venues">
+    <section className="villages-quick-start" aria-label="Venues">
       <p role="status">{ready ? `${venues.length} Venues ready` : "Complete the remaining details."}</p>
-      {suggestionsChanged ? (
-        <p className="villages-forging-notice">
-          Founding choices changed. Your edits are kept; review these Venues or generate fresh suggestions.
-        </p>
-      ) : null}
       <div className="villages-quick-overview">
         <section className="villages-forging-card">
-          <button
-            type="button"
-            className="villages-quick-generate"
-            disabled={busy || imageBusy || !venues.length}
-            onClick={() => onGenerate()}
-          >
-            {busy
-              ? "Preparing Venues…"
-              : state.suggestionRequest
-                ? "Check suggestions"
-                : suggestionsKey
-                  ? "Refresh suggestions"
-                  : "Suggest details"}
-          </button>
-          <p className="villages-resident-help">
-            Uses your System connection. Your edits and artwork are kept; generation fills unedited fields. No artwork
-            is generated.
-          </p>
           <div className="villages-quick-list" role="group" aria-label="Required starting Venues">
             {venues.map((venue) => {
               const residence = venue.category !== "public-center";
@@ -222,9 +193,7 @@ export function QuickStartVenues({
                       {venue.form ? ` · ${venue.form}` : ""}
                     </small>
                     <small className={missing.length ? "" : "villages-forging-saved"}>
-                      {missing.length
-                        ? `${missing.length} details needed`
-                        : `✓ ${residence ? "Common + Private Space" : "Common Space"}`}
+                      {missing.length ? `${missing.length} details needed` : `✓ Ready`}
                     </small>
                   </span>
                   <span>Edit ›</span>
@@ -237,7 +206,7 @@ export function QuickStartVenues({
           <h3>
             Map placement · {placed} of {venues.length} placed
           </h3>
-          <p>Quick Start arranges missing Venues automatically. Adjust them here.</p>
+          <p>Place Venues on the map.</p>
           <button type="button" disabled={busy || imageBusy} onClick={onArrange}>
             Arrange automatically
           </button>
@@ -391,10 +360,17 @@ export function QuickStartVenues({
                               key={mode}
                               aria-label={mode === "public" ? "Public access" : "Permission required"}
                               aria-pressed={(zone.access ?? draftZonePolicy(selected, zone, personal)).mode === mode}
-                              disabled={mode === "permission-required" && selected.category === "public-center"}
                               onClick={() =>
                                 patchZone(personal, zone.id, {
-                                  access: { ...(zone.access ?? draftZonePolicy(selected, zone, personal)), mode },
+                                  access: {
+                                    ...(zone.access ?? draftZonePolicy(selected, zone, personal)),
+                                    mode,
+                                    ...(mode === "permission-required" &&
+                                    selected.category === "public-center" &&
+                                    !zone.access?.managerIds?.length
+                                      ? { managerIds: ["player"], memberIds: ["player"] }
+                                      : {}),
+                                  },
                                 })
                               }
                             >
