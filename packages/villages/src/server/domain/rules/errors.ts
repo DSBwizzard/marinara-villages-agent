@@ -16,6 +16,13 @@ export class VillagesRequestError extends Error {
   }
 }
 
+/** System identified an unsupported player act in a specific returned draft. */
+export class UnsupportedPlayerAgency extends VillagesRequestError {
+  constructor() {
+    super(502, "The Scene reply invented a player action or speech. Retry to replace the reply; your input is saved.");
+  }
+}
+
 export function badRequest(message: string): VillagesRequestError {
   return new VillagesRequestError(400, message);
 }

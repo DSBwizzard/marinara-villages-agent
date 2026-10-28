@@ -2264,6 +2264,7 @@ async function main() {
   // A greeting has no player input: an empty intent is a no-op, not an unresolved player choice.
   {
     let intentMessage = "";
+    let agencyReply: Record<string, unknown> = {};
     let intentOverride: any = {
       status: "unresolved",
       reason: "The player input is empty; there is no player speech, thought, action or movement to interpret.",
@@ -2292,6 +2293,7 @@ async function main() {
             projectSpeech: [],
             access: [],
             events: { moves: [], departures: [], contactEnd: [] },
+            ...agencyReply,
           }),
         };
       },
@@ -2301,6 +2303,30 @@ async function main() {
     const greeting = await emptyService.exchange(emptyScene, intentMessage, [], null);
     assert.equal(greeting.intent?.status, "resolved", "Empty opening input cannot block a consistent greeting");
     assert.deepEqual(intentOverride, original, "Raw System intent remains untouched");
+    const invented = {
+      kind: "narration",
+      speakerId: "__venue_scene__",
+      content: "Your greeting carries across the boards.",
+      heardBy: ["host"],
+    } as any;
+    agencyReply = {
+      consistent: false,
+      playerAgencyViolation: { segment: 0, quote: "Your greeting carries across the boards." },
+    };
+    await assert.rejects(emptyService.exchange(emptyScene, "", [invented], null), /invented a player action or speech/);
+    agencyReply = { consistent: false, playerAgencyViolation: { segment: 0, quote: "not in the draft" } };
+    await assert.rejects(
+      emptyService.exchange(emptyScene, "", [invented], null),
+      /could not match its player-agency review/,
+    );
+    agencyReply = { consistent: true, playerAgencyViolation: { segment: 3, quote: invented.content } };
+    await assert.rejects(
+      emptyService.exchange(emptyScene, "", [invented], null),
+      /could not match its player-agency review/,
+    );
+    agencyReply = { consistent: true, playerAgencyViolation: { segment: 0, quote: invented.content } };
+    await assert.rejects(emptyService.exchange(emptyScene, "", [invented], null), /contradictory player-agency review/);
+    agencyReply = {};
     intentMessage = "I might move";
     await assert.rejects(emptyService.exchange(emptyScene, intentMessage, [], null), /player input is empty/);
     intentMessage = "";

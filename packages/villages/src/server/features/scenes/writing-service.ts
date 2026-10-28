@@ -16,7 +16,7 @@ import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js
 import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
 import { validDecisionEvidence } from "../../domain/rules/decision-candidates.js";
-import { badGateway, conflict } from "../../domain/rules/errors.js";
+import { badGateway, conflict, UnsupportedPlayerAgency } from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import { recallMemories } from "../../domain/rules/memory-recall.js";
 import {
@@ -547,7 +547,7 @@ export function createSceneWriting({
           ? ""
           : "The latest player message is a completed turn. Continue after it. Never speak for the player, quote their words back as a resident, or replay a resident question they have just answered.",
         mode === "greet"
-          ? "Open on a specific moment already underway in this place. Follow the residents' current activities, relationships, and cards. Do not force a welcome or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
+          ? "Open on a specific moment already underway in this place. Arrival establishes the player's presence, not a greeting or other voluntary words, actions, feelings or commitments. Never narrate or imply these for the player. Follow the residents' current activities, relationships, and cards. Do not force a welcome or a question to the player. If nobody speaks, show an observable action or change rather than generic atmosphere."
           : "",
         mode === "leave"
           ? "The player selected Conclude. Read their ENTIRE authored input before writing a closing exchange; selecting Conclude does not reduce it to walking away. Never silently discard a clause, injury, death or other asserted outcome to produce a normal farewell. Input and draft remain subject to the same System boundary check as an ordinary turn. For a supported departure, let someone present answer or say goodbye aloud, or narrate only the chosen departure if the room is empty. Do not invent the player's goodbye, further actions, or a new errand."
@@ -1153,9 +1153,20 @@ export function createSceneWriting({
               residentActionsOmitted,
             )
             .catch(async (error: unknown) => {
-              if (error instanceof IncompleteOpeningPitch || error instanceof IncompleteOpeningGathering)
+              if (
+                error instanceof IncompleteOpeningPitch ||
+                error instanceof IncompleteOpeningGathering ||
+                error instanceof UnsupportedPlayerAgency
+              )
                 await rejectVenueCompletion(
-                  { model: model.model, connectionId: model.connectionId, reason: "incomplete-introduction" },
+                  {
+                    model: model.model,
+                    connectionId: model.connectionId,
+                    reason:
+                      error instanceof UnsupportedPlayerAgency
+                        ? "unsupported-player-agency"
+                        : "incomplete-introduction",
+                  },
                   { stages: ["writing-completion:" + requestKey] },
                 );
               throw error;
