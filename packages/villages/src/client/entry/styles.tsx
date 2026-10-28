@@ -3561,10 +3561,10 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-venue-assignments li { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.6rem; padding:.7rem 0; border-bottom:1px solid var(--border); }
 .villages-zone-map { min-width:0; margin:1rem 0; }
 .villages-zone-map-toolbar, .villages-zone-map-actions { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:.6rem 0; }
-.villages-zone-map-toolbar small { flex:1 1 12rem; }
+.villages-zone-map-toolbar small { flex:1 1 6rem; }
 .villages-zone-map button, .villages-zone-map-actions button { font:inherit; color:var(--foreground); border:1px solid var(--border); background:var(--popover); border-radius:.5rem; padding:.4rem .6rem; min-height:44px; cursor:pointer; }
 .villages-zone-map button:disabled, .villages-zone-map-actions button:disabled { opacity:.5; cursor:default; }
-.villages-zone-map-canvas { position:relative; width:100%; height:560px; border:1px solid var(--border); border-radius:.5rem; background:var(--background); overflow:hidden; box-sizing:border-box; }
+.villages-zone-map-canvas { position:relative; width:100%; height:clamp(320px,48dvh,480px); border:1px solid var(--border); border-radius:.5rem; background:var(--background); overflow:hidden; box-sizing:border-box; }
 .villages-zone-map-canvas > svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 .villages-zone-map-canvas line { stroke:var(--primary); stroke-width:2; vector-effect:non-scaling-stroke; }
 .villages-zone-map-canvas button.villages-zone-map-tile { position:absolute; box-sizing:border-box; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:1px; min-width:0; min-height:0; margin:0; padding:4px; overflow:hidden; border-radius:.6rem; touch-action:none; user-select:none; cursor:grab; line-height:1.2; }
@@ -3572,9 +3572,9 @@ ${VILLAGES_FORGING_STYLES}
 .villages-zone-map-tile small { display:block; width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:clamp(11px,.65rem,14px); }
 .villages-zone-map-tile[aria-pressed="true"] { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
 .villages-zone-map-canvas button[data-draggable="false"] { cursor:pointer; touch-action:pan-y; }
-.villages-zone-map details ul { list-style:none; padding:0; }
-.villages-zone-map details li { display:flex; justify-content:space-between; align-items:center; gap:.5rem; border-bottom:1px solid var(--border); padding:.3rem 0; }
-.villages-zone-map details li span { min-width:0; overflow-wrap:anywhere; }
+.villages-zone-map-connections { list-style:none; padding:0; }
+.villages-zone-map-connections li { display:flex; justify-content:space-between; align-items:center; gap:.5rem; border-bottom:1px solid var(--border); padding:.3rem 0; }
+.villages-zone-map-connections li span { min-width:0; overflow-wrap:anywhere; }
 .${ELEMENT_TAG}-venue-profile input[type="file"] { display:block; width:100%; margin-top:.4rem; }
 .${ELEMENT_TAG}-venue-profile [hidden] { display:none !important; }
 .${ELEMENT_TAG}-venue-profile .${ELEMENT_TAG}-sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }

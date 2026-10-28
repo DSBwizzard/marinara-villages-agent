@@ -62,7 +62,7 @@ try {
       );
       await page.addScriptTag({ content: styles.outputFiles[0].text });
       await page.addScriptTag({ content: founding.outputFiles[0].text });
-      await page.getByText("Zone layout", { exact: true }).click();
+      await page.getByRole("tab", { name: "Layout", exact: true }).click();
       const map = page.locator(".villages-zone-map");
       await expect(map.locator("[data-layout-zone]")).toHaveCount(3);
       await assertNoOverlap(map);
@@ -71,9 +71,10 @@ try {
       await node(map, "common:base").press("ArrowRight");
       assert.ok((await node(map, "common:base").boundingBox()).x > start.x, "Keyboard rearranges a founding Zone");
       await page.getByRole("button", { name: "Add Zone", exact: true }).click();
-      await expect(map.locator("[data-layout-zone]")).toHaveCount(4);
       const selected = (await page.evaluate(() => window.readVenue())).spaces.at(-1).id;
       await page.getByLabel("Zone Name", { exact: true }).fill("A long named room for shared community gatherings");
+      await page.getByRole("tab", { name: "Layout", exact: true }).click();
+      await expect(map.locator("[data-layout-zone]")).toHaveCount(4);
       await expect(node(map, selected)).toContainText("A long named room");
       await map.getByRole("button", { name: "Connect Zones", exact: true }).click();
       await node(map, selected).click();
@@ -89,7 +90,7 @@ try {
       await assertNoOverlap(map);
       await page.setViewportSize({ width: 320, height: 1000 });
       await assertNoOverlap(map);
-      await map.locator("summary").click();
+      await map.getByRole("button", { name: "Connect Zones", exact: true }).click();
       await map
         .getByRole("button", {
           name: /Remove connection Entrance to Common Space|Remove connection Common Space to Entrance/,

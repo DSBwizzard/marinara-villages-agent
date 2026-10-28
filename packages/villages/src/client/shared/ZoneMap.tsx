@@ -82,7 +82,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   return (
     <section className="villages-zone-map" aria-label="Zone layout">
       <div className="villages-zone-map-toolbar">
-        {onPositions ? <small>Drag Zones · Arrow keys move the selected Zone</small> : null}
+        {onPositions ? <small>Drag Zones</small> : null}
         {onConnections ? (
           <button
             type="button"
@@ -212,27 +212,24 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
       </div>
       {connecting ? <p role="status">{first ? `Connect ${name(first)} to…` : "Select two Zones to connect."}</p> : null}
       {notice ? <p role="status">{notice}</p> : null}
-      {onConnections ? (
-        <details>
-          <summary>Connections · {pairs.length}</summary>
-          <ul>
-            {pairs.map(([a, b]) => (
-              <li key={JSON.stringify([a, b])}>
-                <span>
-                  {name(a)} ↔ {name(b)}
-                </span>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  aria-label={`Remove connection ${name(a)} to ${name(b)}`}
-                  onClick={() => updateConnection(a, b, false)}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        </details>
+      {onConnections && connecting && pairs.length ? (
+        <ul className="villages-zone-map-connections" aria-label="Connections">
+          {pairs.map(([a, b]) => (
+            <li key={JSON.stringify([a, b])}>
+              <span>
+                {name(a)} ↔ {name(b)}
+              </span>
+              <button
+                type="button"
+                disabled={disabled}
+                aria-label={`Remove connection ${name(a)} to ${name(b)}`}
+                onClick={() => updateConnection(a, b, false)}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
       ) : null}
       {onConnections && connectionProblem(rows) ? (
         <p role="status">{connectionProblem(rows).replaceAll("Exterior", "Entrance")}</p>
