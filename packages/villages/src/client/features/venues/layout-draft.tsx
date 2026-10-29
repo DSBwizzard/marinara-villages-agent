@@ -3,6 +3,7 @@ import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/vi
 import { zoneLayoutKey, type ZoneLayoutChange } from "../../../shared/helpers/zone-layout.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { venueDisplayZones } from "./venue-view.js";
+import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 
 type LayoutSave = {
   change: ZoneLayoutChange;
@@ -10,7 +11,7 @@ type LayoutSave = {
   error: string;
 };
 type PendingLayout = LayoutSave & {
-  running: boolean;
+  promise?: Promise<boolean>;
   base: string;
   uncertain?: { change: ZoneLayoutChange; base: string };
 };
@@ -18,9 +19,21 @@ type PendingLayout = LayoutSave & {
 function layoutKey(venue: VillageVenue) {
   return zoneLayoutKey(venueDisplayZones(venue, null), venue.zoneLayout);
 }
+function mergeLayout(venue: VillageVenue, saved: VillageVenue): VillageVenue {
+  const connections = new Map(venueDisplayZones(saved, null).map((zone) => [zone.id, zone.connectedTo]));
+  const merge = <T extends { id?: string; connectedTo?: string[] }>(zones: T[] | undefined) =>
+    zones?.map((zone) => ({ ...zone, connectedTo: zone.id ? connections.get(zone.id) : zone.connectedTo }));
+  return {
+    ...venue,
+    zoneLayout: saved.zoneLayout,
+    zones: merge(venue.zones ?? venueDisplayZones(venue, null)),
+    spaces: merge(venue.spaces),
+    privateSpaces: merge(venue.privateSpaces),
+  };
+}
 
-/** Layout saves belong to the village, so leaving Places does not retire them. */
-export function useVenueLayoutAutosave({
+/** Drafts remain local until navigation commits them. */
+export function useVenueLayoutDraft({
   snapshot,
   setSnapshot,
 }: {
@@ -55,11 +68,9 @@ export function useVenueLayoutAutosave({
       setVenueLayouts(Object.fromEntries([...pending.current].map(([id, entry]) => [id, { ...entry }])));
   };
   const drain = async (id: string, entry: PendingLayout) => {
-    if (entry.running) return;
     const generation = epoch.current;
     const currentWorld = () => active.current && epoch.current === generation;
     const owns = () => currentWorld() && pending.current.get(id) === entry;
-    entry.running = true;
     entry.saving = true;
     entry.error = "";
     publish();
@@ -72,7 +83,7 @@ export function useVenueLayoutAutosave({
           // A lost HTTP reply may have committed. Read before retrying rather than
           // overwriting a different layout or rejecting our own acknowledged save.
           const observed = await request<VillageSnapshot>("");
-          if (!owns()) return;
+          if (!owns()) return false;
           const venue = observed.settings.venues.find((venue) => venue.id === id);
           if (!venue) throw new Error("The Venue is no longer available.");
           const key = layoutKey(venue);
@@ -92,7 +103,7 @@ export function useVenueLayoutAutosave({
             body: JSON.stringify({ ...submitted, base }),
           });
         }
-        if (!owns()) return;
+        if (!owns()) return false;
         const saved = next.settings.venues.find((venue) => venue.id === id);
         if (!saved) throw new Error("The Venue is no longer available.");
         const savedKey = layoutKey(saved);
@@ -110,19 +121,7 @@ export function useVenueLayoutAutosave({
               ...latest.settings,
               venues: latest.settings.venues.map((venue) => {
                 if (venue.id !== id || layoutKey(venue) !== base) return venue;
-                const connections = new Map(venueDisplayZones(saved, null).map((zone) => [zone.id, zone.connectedTo]));
-                const merge = <T extends { id?: string; connectedTo?: string[] }>(zones: T[] | undefined) =>
-                  zones?.map((zone) => ({
-                    ...zone,
-                    connectedTo: zone.id ? connections.get(zone.id) : zone.connectedTo,
-                  }));
-                return {
-                  ...venue,
-                  zoneLayout: saved.zoneLayout,
-                  zones: merge(venue.zones ?? venueDisplayZones(venue, null)),
-                  spaces: merge(venue.spaces),
-                  privateSpaces: merge(venue.privateSpaces),
-                };
+                return mergeLayout(venue, saved);
               }),
             },
           };
@@ -130,31 +129,87 @@ export function useVenueLayoutAutosave({
         if (entry.change === submitted) {
           pending.current.delete(id);
           publish();
-          return;
+          return true;
         }
       } catch (cause) {
-        if (!owns()) return;
-        entry.running = false;
+        if (!owns()) return false;
         entry.saving = false;
         entry.error = messageFrom(cause, "The layout could not be saved.");
         publish();
-        return;
+        return false;
       }
     }
+    return false;
   };
   const generation = epoch.current;
-  const saveVenueZoneLayout = (place: VillageVenue, change: ZoneLayoutChange) => {
+  const stageVenueZoneLayout = (place: VillageVenue, change: ZoneLayoutChange) => {
     if (!active.current || epoch.current !== generation || current.current?.isFounded === false) return;
     const venue = current.current?.settings.venues.find((venue) => venue.id === place.id);
     if (!venue) return;
     let entry = pending.current.get(place.id);
-    if (entry) entry.change = change;
-    else {
-      entry = { change, base: change.base, saving: true, running: false, error: "" };
+    if (entry?.saving) return;
+    if (entry) {
+      entry.change = change;
+      entry.error = "";
+    } else {
+      entry = { change, base: change.base, saving: false, error: "" };
       pending.current.set(place.id, entry);
     }
     publish();
-    void drain(place.id, entry);
   };
-  return { venueLayouts, saveVenueZoneLayout };
+  const commitVenueZoneLayout = (id: string): Promise<boolean> => {
+    if (!active.current || epoch.current !== generation) return Promise.resolve(false);
+    const entry = pending.current.get(id);
+    if (!entry) return Promise.resolve(true);
+    if (entry.promise) return entry.promise;
+    if (connectionProblem(entry.change.connections)) return Promise.resolve(false);
+    const promise = drain(id, entry).then((saved) => saved === true);
+    entry.promise = promise;
+    void promise.finally(() => {
+      if (entry.promise === promise) entry.promise = undefined;
+    });
+    return promise;
+  };
+  const discardVenueZoneLayout = async (id: string): Promise<boolean> => {
+    const owns = () => active.current && epoch.current === generation;
+    const entry = pending.current.get(id);
+    if (!owns() || entry?.saving) return false;
+    if (entry?.uncertain) {
+      entry.saving = true;
+      publish();
+      try {
+        const observed = await request<VillageSnapshot>("");
+        if (!owns() || pending.current.get(id) !== entry) return false;
+        const saved = observed.settings.venues.find((venue) => venue.id === id);
+        if (!saved) throw new Error("The Venue is no longer available.");
+        const expected = zoneLayoutKey(entry.uncertain.change.connections, entry.uncertain.change.positions);
+        setSnapshot((latest) =>
+          !owns() || !latest
+            ? latest
+            : {
+                ...latest,
+                settings: {
+                  ...latest.settings,
+                  venues: latest.settings.venues.map((venue) =>
+                    venue.id === id && [entry.base, expected].includes(layoutKey(venue))
+                      ? mergeLayout(venue, saved)
+                      : venue,
+                  ),
+                },
+              },
+        );
+      } catch (cause) {
+        if (owns() && pending.current.get(id) === entry) {
+          entry.saving = false;
+          entry.error = messageFrom(cause, "The saved layout could not be checked.");
+          publish();
+        }
+        return false;
+      }
+    }
+    pending.current.delete(id);
+    publish();
+    return true;
+  };
+  return { venueLayouts, stageVenueZoneLayout, commitVenueZoneLayout, discardVenueZoneLayout };
 }

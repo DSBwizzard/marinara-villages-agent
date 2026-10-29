@@ -6,7 +6,7 @@ import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { venueSpaceFor } from "../../shared/venue.js";
 import { editableVenueFields } from "./edit-fields.js";
-import { useVenueLayoutAutosave } from "./layout-autosave.js";
+import { useVenueLayoutDraft } from "./layout-draft.js";
 import { useConfirmation } from "../../shared/confirmation.js";
 import type { VenuesState } from "./useVenuesState.js";
 
@@ -175,7 +175,7 @@ export function useVenueScreenCommands(ports: {
       if (editor.finish(claim)) setVenueEditBusy(false);
     }
   };
-  const layoutAutosave = useVenueLayoutAutosave({ snapshot: ports.snapshot, setSnapshot });
+  const layoutDraft = useVenueLayoutDraft({ snapshot: ports.snapshot, setSnapshot });
   const saveVenueDetails = async (
     place: VillageVenue,
     venueEditDraft: VillageVenue | null,
@@ -424,7 +424,7 @@ export function useVenueScreenCommands(ports: {
     }
   };
   return {
-    ...layoutAutosave,
+    ...layoutDraft,
     saveVenueName,
     saveVenueImageContext,
     setZonePictureFrozen,

@@ -5,7 +5,7 @@ import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
 /** Actual editor and always-mounted command owner; held HTTP never reaches a provider. */
-export async function verifyVenueLayoutAutosave(browser) {
+export async function verifyVenueLayoutDraft(browser) {
   const bundle = await build({
     stdin: {
       loader: "tsx",
@@ -104,22 +104,47 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
         body: JSON.stringify(fail ? { error: "Layout unavailable" } : server),
       });
     };
+
+    const map = page.locator(".villages-zone-map");
+    const leave = () =>
+      page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "Map", exact: true })
+        .click();
+    const back = () => page.getByRole("button", { name: "Return to Places" }).click();
+    const modify = () => page.getByRole("button", { name: "Modify Zone Connections", exact: true }).click();
+    const pair = async (a, b) => {
+      await page.locator('[data-layout-zone="' + a + '"]').click();
+      await page.locator('[data-layout-zone="' + b + '"]').click();
+    };
     await expect(tile()).toBeVisible();
-    await expect(page.getByRole("button", { name: "Save layout", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Cancel layout changes", exact: true })).toHaveCount(0);
     await tile().press("ArrowRight");
+    await tile().press("ArrowRight");
+    await page.locator('[data-layout-zone="common"]').click();
+    assert.equal(requests.length, 0, "edits and selecting Zones never save");
+    await modify();
+    await pair("exterior", "common");
+    await expect(map.locator("svg line")).toHaveCount(1);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+    await leave();
+    const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
+    await expect(dialog).toContainText("Some Zones aren’t connected to Entrance");
+    await dialog.getByRole("button", { name: "Keep editing", exact: true }).click();
+    await expect(tile()).toHaveAttribute("style", /left: 2%;/);
+    assert.equal(requests.length, 0);
+    await leave();
+    await dialog.getByRole("button", { name: "Discard and leave", exact: true }).click();
+    await back();
+    await expect(tile()).toHaveAttribute("style", /left: 0%;/);
+    await expect(map.locator("svg line")).toHaveCount(2);
+    assert.equal(requests.length, 0, "discard restores all saved positions and links without writing");
+    await modify();
+    await pair("common", "other");
+    await page.getByRole("button", { name: "Done", exact: true }).click();
+    await tile().press("ArrowRight");
+    await page.getByRole("button", { name: "Manage", exact: true }).click();
     await expect.poll(() => requests.length).toBe(1);
-    await tile().press("ArrowRight");
-    await tile().press("ArrowDown");
-    assert.equal(requests.length, 1, "one layout request at a time");
-    await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "Map", exact: true })
-      .click();
-    await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
-    await page.getByRole("button", { name: "Return to Places" }).click();
-    await expect(tile()).toHaveAttribute("style", /left: 2%; top: 1%;/);
-    // A response must preserve a newer unrelated field in the current snapshot.
+    await expect(page.getByRole("button", { name: "Zones", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.evaluate(() =>
       window.h.snapshot({
         ...window.h.read().snapshot,
@@ -127,117 +152,69 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
       }),
     );
     await reply(0);
-    await expect.poll(() => requests.length).toBe(2);
-    assert.deepEqual(requests[1].body.positions.exterior, { x: 2, y: 1 });
-    await reply(1);
-    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await expect(page.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute("aria-pressed", "true");
     assert.equal((await read()).snapshot.settings.name, "Newer name");
-    await expect(tile()).toHaveAttribute("style", /left: 2%; top: 1%;/);
-    // Unreachable connection changes are rejected inline without requesting a save.
-    await page.getByRole("button", { name: "Connect Zones", exact: true }).click();
-    await page.getByRole("button", { name: "Disconnect Zones", exact: true }).click();
-    await page.locator('[data-layout-zone="common"]').click();
-    await tile().click();
-    await expect(page.getByRole("alert")).toContainText("Unreachable Zones");
-    assert.equal(requests.length, 2);
-    // A new connection automatically saves.
-    await page.getByRole("button", { name: "Connect Zones", exact: true }).click();
-    await page.locator('[data-layout-zone="common"]').click();
-    await page.locator('[data-layout-zone="other"]').click();
+    await page.getByRole("button", { name: "Zones", exact: true }).click();
+    await expect(tile()).toHaveAttribute("style", /left: 1%;/);
+    await expect(map.locator("svg line")).toHaveCount(3);
+    await tile().press("ArrowRight");
+    await leave();
+    await expect.poll(() => requests.length).toBe(2);
+    await reply(1, { fail: true });
+    await expect(page.getByRole("alert")).toContainText("Layout unavailable");
+    await expect(tile()).toHaveAttribute("style", /left: 2%;/);
+    await leave();
     await expect.poll(() => requests.length).toBe(3);
     await reply(2);
-    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    await page.getByRole("button", { name: "Done", exact: true }).click();
-    await tile().press("ArrowRight");
     await expect.poll(() => requests.length).toBe(4);
-    await reply(3, { fail: true });
-    await expect(page.getByRole("alert").filter({ hasText: "Layout unavailable" })).toBeVisible();
-    await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "Map", exact: true })
-      .click();
-    await page.getByRole("button", { name: "Return to Places" }).click();
-    await expect(tile()).toHaveAttribute("style", /left: 3%; top: 1%;/);
-    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+    await reply(3);
+    await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
+    await back();
+    await expect(tile()).toHaveAttribute("style", /left: 2%;/);
     await tile().press("ArrowRight");
+    await leave();
     await expect.poll(() => requests.length).toBe(5);
-    await reply(4);
+    await reply(4, { fail: true, committed: true });
+    await expect(page.getByRole("alert")).toBeVisible();
+    await modify();
+    await pair("exterior", "common");
+    await pair("exterior", "other");
+    await leave();
+    await dialog.getByRole("button", { name: "Discard and leave", exact: true }).click();
     await expect.poll(() => requests.length).toBe(6);
     await reply(5);
-    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    // A failed reply after commit is read back, then the later queued intent saves.
+    await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
+    assert.equal(
+      requests.length,
+      6,
+      "discard after lost committed response reads actual saved layout without duplicate PUT",
+    );
+    await back();
+    await expect(tile()).toHaveAttribute("style", /left: 3%;/);
+    await expect(map.locator("svg line")).toHaveCount(3);
     await tile().press("ArrowRight");
+    await page.evaluate(() => window.h.scene({ id: "scene", status: "active", placeId: "b", zoneId: "exterior" }));
+    await expect(tile()).toHaveAttribute("data-draggable", "false");
+    await tile().press("ArrowRight");
+    await expect(page.getByRole("button", { name: "Modify Zone Connections", exact: true })).toHaveCount(0);
+    await page.locator('[data-layout-zone="other"]').click();
+    await expect(page.locator('[data-layout-zone="other"]')).toHaveAttribute("aria-pressed", "true");
+    assert.equal(requests.length, 6);
+    await leave();
+    await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
+    await back();
+    assert.equal(requests.length, 6, "Scene navigation keeps pending draft without trying forbidden save");
+    await page.evaluate(() => window.h.scene(null));
+    await expect(tile()).toHaveAttribute("data-draggable", "true");
+    await tile().press("ArrowRight");
+    await leave();
     await expect.poll(() => requests.length).toBe(7);
-    await tile().press("ArrowDown");
-    await reply(6, { fail: true, committed: true });
-    await expect(page.getByRole("alert").filter({ hasText: "Layout unavailable" })).toBeVisible();
-    await tile().press("ArrowRight");
-    await expect.poll(() => requests.length).toBe(8);
-    await reply(7);
-    await expect.poll(() => requests.length).toBe(9);
-    await reply(8);
-    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    assert.deepEqual((await read()).snapshot.settings.venues[0].zoneLayout.exterior, { x: 6, y: 2 });
-    // A late response cannot restore a reset village or launch its queued edit.
-    await tile().press("ArrowRight");
-    await expect.poll(() => requests.length).toBe(10);
-    await tile().press("ArrowRight");
     await page.evaluate(() => window.h.reset());
     await expect.poll(async () => (await read()).snapshot.isFounded).toBe(false);
     await page.evaluate(() => window.h.refound());
-    await expect.poll(async () => (await read()).snapshot.isFounded).toBe(true);
-    await reply(9);
+    await reply(6);
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    assert.deepEqual((await read()).snapshot.settings.venues[0].zoneLayout.exterior, { x: 0, y: 0 });
-    assert.equal(requests.length, 10);
-    // Legacy class-based venues gain explicit structural rows after a connection save.
-    const legacy = structuredClone(seed);
-    const legacyVenue = legacy.settings.venues[0];
-    legacyVenue.classes = ["community", "workplace"];
-    delete legacyVenue.zones;
-    legacyVenue.spaces = ["community", "workplace"].map((venueClass, index) => ({
-      ...zones[index + 1],
-      id: "class:" + venueClass,
-      venueClass,
-      connectedTo: undefined,
-    }));
-    legacyVenue.zoneLayout = {
-      exterior: { x: 0, y: 0 },
-      "class:community": { x: 0, y: 24 },
-      "class:workplace": { x: 68, y: 12 },
-    };
-    server = structuredClone(legacy);
-    server.settings.venues[0].zones = [
-      { ...zones[0], connectedTo: ["class:community", "class:workplace"] },
-      ...legacyVenue.spaces.map((zone) => ({ ...zone, kind: "public", connectedTo: ["exterior"] })),
-    ];
-    await page.evaluate((next) => window.h.snapshot(next), legacy);
-    await page.getByRole("button", { name: "Connect Zones", exact: true }).click();
-    await page.locator('[data-layout-zone="class:community"]').click();
-    await page.locator('[data-layout-zone="class:workplace"]').click();
-    await expect.poll(() => requests.length).toBe(11);
-    await reply(10);
-    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    assert.ok(
-      (await read()).snapshot.settings.venues[0].zones
-        .find((zone) => zone.id === "class:community")
-        .connectedTo.includes("class:workplace"),
-    );
-    await expect(page.locator(".villages-zone-map svg line")).toHaveCount(3);
-    await page.getByRole("button", { name: "Disconnect Zones", exact: true }).click();
-    await page.locator('[data-layout-zone="class:community"]').click();
-    await page.locator('[data-layout-zone="class:workplace"]').click();
-    await expect.poll(() => requests.length).toBe(12);
-    await reply(11);
-    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    await expect(page.locator(".villages-zone-map svg line")).toHaveCount(2);
-    await page.evaluate(() => window.h.scene({ id: "scene", status: "active", placeId: "b", zoneId: "exterior" }));
-    await expect(tile()).toHaveAttribute("data-draggable", "false");
-    await expect(page.getByRole("button", { name: "Connect Zones", exact: true })).toHaveCount(0);
-    await tile().press("ArrowRight");
-    await page.locator('[data-layout-zone="class:workplace"]').click();
-    await expect(page.locator('[data-layout-zone="class:workplace"]')).toHaveAttribute("aria-pressed", "true");
-    assert.equal(requests.length, 12, "Scene prevents layout writes while still allowing selection");
+    await expect(tile()).toHaveAttribute("style", /left: 0%;/);
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
     await context.close();

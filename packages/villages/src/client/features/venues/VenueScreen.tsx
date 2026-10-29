@@ -1,5 +1,6 @@
 import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
+import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
@@ -416,12 +417,13 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     [venueId, venueZoneKey, venueSection],
   );
   const navigation = useVillageMutationLifetime(snapshot?.isFounded, undefined, navigationSelection);
-  const navigationBusy = controller.venueEditBusy;
-  const canLeave = async () => {
+  const navigationBusy = controller.venueEditBusy || !!controller.venueLayouts[venueId ?? ""]?.saving;
+  const canLeave = async (keepLayout = false) => {
     if (navigationBusy) return false;
     const draft = controller.venueEditDraft;
     const venueNameDirty = !!draft && draft.id === place?.id && draft.name !== place.name;
-    if (!venueNameDirty && !zoneNameDirty) return true;
+    const layout = !keepLayout && place ? controller.venueLayouts[place.id] : undefined;
+    if (!venueNameDirty && !zoneNameDirty && !layout) return true;
     const claim = navigation.begin();
     if (!claim) return false;
     if (zoneNameDirty && !(await zoneNameEditor.current?.save())) {
@@ -431,8 +433,32 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     if (!navigation.owns(claim)) return false;
     const accepted = !venueNameDirty || (await confirmVillages("Discard unsaved changes?"));
     if (!navigation.owns(claim)) return false;
+    if (!accepted) {
+      navigation.finish(claim);
+      return false;
+    }
+    if (layout && place) {
+      const invalid = connectionProblem(layout.change.connections);
+      if (invalid) {
+        const discard = await confirmVillages(
+          "Some Zones aren’t connected to Entrance. Discard layout changes and leave?",
+          { cancel: "Keep editing", confirm: "Discard and leave" },
+        );
+        if (!navigation.owns(claim) || !discard) {
+          navigation.finish(claim);
+          return false;
+        }
+        if (!(await controller.discardVenueZoneLayout(place.id))) {
+          navigation.finish(claim);
+          return false;
+        }
+      } else if ((!room || room.status === "closed") && !(await controller.commitVenueZoneLayout(place.id))) {
+        navigation.finish(claim);
+        return false;
+      }
+      if (!navigation.owns(claim)) return false;
+    }
     navigation.finish(claim);
-    if (!accepted) return false;
     if (venueNameDirty) controller.setVenueEditDraft(null);
     if (zoneNameDirty) {
       setZoneNameDirty(false);
@@ -561,7 +587,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           ))}
         </nav>
         <main className={`${ELEMENT_TAG}-venue-profile-body`}>
-          {navigationBusy ? <p role="status">Saving name…</p> : null}
+          {navigationBusy ? <p role="status">Saving…</p> : null}
           {venueSection === "about" ? (
             <section className={`${ELEMENT_TAG}-workspace-about`} aria-label="About this venue">
               <div>
@@ -644,7 +670,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   zones={zones}
                   selectedId={selected.id}
                   onSelect={async (id) => {
-                    if (id === selected.id || !(await canLeave())) return;
+                    if (id === selected.id || !(await canLeave(true))) return;
                     setZoneNameDirty(false);
                     setVenueZoneKey(id);
                   }}
