@@ -34,10 +34,10 @@ export const serverFeatureInterfaces = Object.freeze({
     "readVillageImageStyleCatalog",
   ],
   "media/location-image.ts": [
-    "personalizeZoneOnEntry",
+    "requestZonePicture",
     "setZonePictureFrozen",
     "generateVillageLocationImage",
-    "generateFirstPrivateSpaceImage",
+    "generateFirstZoneImage",
     "storeVillageVenueImage",
   ],
   "media/town-map-image.ts": ["generateVillageTownMap"],

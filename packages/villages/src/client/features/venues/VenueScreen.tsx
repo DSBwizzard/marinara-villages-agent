@@ -199,9 +199,7 @@ function ZoneArtwork({
         )}
       </div>
       <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
-        {zone.pictureRetryAvailable &&
-        !zone.freezePicture &&
-        controller.snapshot.settings.automaticZonePictures !== false ? (
+        {zone.pictureRetryAvailable ? (
           <button
             type="button"
             className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
@@ -211,6 +209,17 @@ function ZoneArtwork({
             Retry artwork
           </button>
         ) : null}
+        {zone.image ? (
+          <button
+            type="button"
+            aria-label="Update artwork"
+            className={`${ELEMENT_TAG}-button`}
+            disabled={disabled || zone.pictureUpdateAvailable === false}
+            onClick={() => void controller.updateZonePicture(place, zone.id)}
+          >
+            Update
+          </button>
+        ) : null}
         <button
           type="button"
           aria-label="Regenerate artwork"
@@ -218,7 +227,7 @@ function ZoneArtwork({
           disabled={disabled}
           onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
         >
-          Generate
+          {zone.image ? "Replace" : "Generate"}
         </button>
         <button
           type="button"
@@ -255,6 +264,9 @@ function ZoneArtwork({
           </button>
         ) : null}
       </div>
+      {zone.pictureProblem || zone.pictureUpdating ? (
+        <p role="status">{zone.pictureProblem || "Artwork pending"}</p>
+      ) : null}
     </>
   );
 }

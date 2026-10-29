@@ -1167,7 +1167,7 @@ try {
     heardLines(coerceSession(state()), "neighbor").find((line) => line.id === narratedLine.id)?.content,
     audibleCue,
   );
-  // Actual packaged navigation owns one persisted picture evaluation per entered Zone.
+  // Actual packaged navigation records visits without adding a classifier/model request.
   const beforePictureNavigation = modelCalls;
   for (const [index, zoneId] of ["kitchen", "terrace", "kitchen"].entries()) {
     const moved = await app.inject({
@@ -1182,8 +1182,14 @@ try {
     });
     assert.equal(moved.statusCode, 200, moved.body);
   }
-  assert.equal(state().pictureEvaluatedZoneIds.filter((id: string) => id === "kitchen").length, 1);
-  assert.equal(state().pictureEvaluatedZoneIds.filter((id: string) => id === "terrace").length, 1);
+  assert.equal(
+    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen,
+    true,
+  );
+  assert.equal(
+    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "terrace").seen,
+    true,
+  );
   const rejectedEntry = await app.inject({
     method: "POST",
     url: "/api/villages/rooms/zone",
@@ -1195,14 +1201,17 @@ try {
     },
   });
   assert.equal(rejectedEntry.statusCode, 409, rejectedEntry.body);
-  assert(!state().pictureEvaluatedZoneIds.includes("bedroom"));
+  assert(!records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "bedroom").seen);
   assert.equal(modelCalls, beforePictureNavigation, "Zone image evaluation never adds a language-model call");
   await stop?.();
   await app.close();
   app = Fastify();
   await start();
   await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
-  assert.equal(state().pictureEvaluatedZoneIds.filter((id: string) => id === "kitchen").length, 1);
+  assert.equal(
+    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen,
+    true,
+  );
   // A fresh v2 Scene exercises the archive-identical server and real HTTP application owners.
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
     version: 3,

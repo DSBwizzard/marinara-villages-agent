@@ -5,6 +5,7 @@ export type PlaceTextEdit = { before: string; after: string };
 export type PlaceUpdate = {
   narration: string;
   expectedRevision: number;
+  appearanceChanged?: boolean;
   edits?: PlaceTextEdit[];
   append?: string;
   recent?: { text: string; renew?: boolean };

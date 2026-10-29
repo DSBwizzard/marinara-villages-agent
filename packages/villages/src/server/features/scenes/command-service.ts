@@ -121,7 +121,6 @@ import {
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { metadataFailure, completionFailure as typedCompletionFailure } from "../../domain/rules/work-failure.js";
 import { zoneEventScene } from "../../domain/rules/zone-events.js";
-import { claimZonePictureEntry, zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { interpretAcoustics } from "./acoustic-interpretation.js";
 import { acousticInstructions } from "./acoustic-prompt.js";
 import { interpretAttention } from "./attention-interpretation.js";
@@ -171,8 +170,8 @@ export interface SceneCommandPorts {
     "resolveForRequest"
   >;
   loadPrivateSpaceImages(): Promise<
-    Pick<typeof import("../media/location-image.js"), "generateFirstPrivateSpaceImage"> &
-      Partial<Pick<typeof import("../media/location-image.js"), "personalizeZoneOnEntry">>
+    Pick<typeof import("../media/location-image.js"), "generateFirstZoneImage"> &
+      Partial<Pick<typeof import("../media/location-image.js"), "requestZonePicture">>
   >;
   runtimeDebug: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
   assertVenueOwnership: typeof import("../../adapters/operations/operation-context.js").assertVenueOwnership;
@@ -925,28 +924,11 @@ export function createSceneCommands({
     });
     if (!admitted) return;
     if (!generateImage) return;
-    const village = sceneContinuityView(await readVillageState(), await readSession(session.id)),
-      venue = village.venues.find((entry) => entry.id === session.placeId),
-      zone =
-        venue &&
-        resolveVenueZone(
-          venue,
-          session.zoneId ?? legacyZoneId(venue, session.area, session.spaceClass, session.privateOwnerId),
-        );
-    if (zone) {
-      let firstEntry = false;
-      await changeSession(session.id, (saved) => {
-        firstEntry = false;
-        firstEntry = claimZonePictureEntry(saved, zone.id);
-      });
-      if (!firstEntry) return;
-      const entryContext = zonePictureContext(village, venue!, zone);
-      outsideVenueOperation(() => {
-        void loadPrivateSpaceImages()
-          .then(({ personalizeZoneOnEntry }) => personalizeZoneOnEntry?.(session.placeId, zone.id, entryContext))
-          .catch(() => {});
-      });
-    }
+    outsideVenueOperation(() => {
+      void loadPrivateSpaceImages()
+        .then(({ requestZonePicture }) => requestZonePicture?.(session.placeId, session.zoneId ?? "exterior"))
+        .catch(() => {});
+    });
   }
 
   function enterVenue(
@@ -1489,6 +1471,7 @@ export function createSceneCommands({
     if (turn) {
       if (turn.semanticProvenance?.version === 2) await applyVenueRequests(greeted, turn);
       await settleSemanticAuthority(greeted, turn);
+      if (!semanticBlocker(await readSession(id))) await markZoneSeen(greeted);
     }
     return refreshZoneParticipants(await readSession(id), true);
   }
@@ -2090,9 +2073,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         await recordSpokenInvitation(session, prior.invitationSignal);
       await settleSemanticAuthority(session, prior);
       await finishSemanticScene(session.id);
-      await markZoneSeen(session, false).catch((error) =>
-        villagesLogger().warn("[villages] saved turn observation deferred for %s: %s", prior.id, String(error)),
-      );
+      if (!semanticBlocker(await readSession(session.id)))
+        await markZoneSeen(session).catch((error) =>
+          villagesLogger().warn("[villages] saved turn observation deferred for %s: %s", prior.id, String(error)),
+        );
       const recordEvents = await receiptForTurn(session, prior);
       return {
         session: await readSession(session.id),
@@ -2797,6 +2781,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     }
     await settleSemanticAuthority(updated, submission);
     await finishSemanticScene(updated.id);
+    if (!semanticBlocker(await readSession(updated.id))) await markZoneSeen(updated);
     let recordEvents = await receiptForTurn(updated, submission);
     let finalSession = updated;
     if (updated.status === "closed") {

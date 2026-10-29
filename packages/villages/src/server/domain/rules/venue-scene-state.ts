@@ -80,6 +80,9 @@ export function applyVenueSceneChange(
     controllers,
     state.villagers.map((person) => person.characterId),
   );
+  if (enduring && change.appearanceChanged === true) {
+    zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
+  }
   zone.description = after.description;
   zone.state = after.state;
   return structuredClone(after);

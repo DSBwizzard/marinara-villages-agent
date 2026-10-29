@@ -95,7 +95,10 @@ try {
         path = new URL(req.url()).pathname;
       let value = snapshot;
       if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
-      if (path.endsWith("/locations/venue/image") && req.method() !== "GET") {
+      if (
+        (path.endsWith("/locations/venue/image") || path.endsWith("/locations/venue/image/update")) &&
+        req.method() !== "GET"
+      ) {
         const body = req.postDataJSON();
         mutations.push({ path, method: req.method(), body });
         const zone = venue.zones.find((z) => z.id === body.zoneId);
@@ -147,8 +150,14 @@ try {
     await returnToScene();
     await expect(backdrop).toHaveAttribute("src", uploaded);
     await openSettings();
-    await page.getByRole("button", { name: "Remove artwork", exact: true }).click();
+    await page.getByRole("button", { name: "Update artwork", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(3);
+    assert.ok(mutations.at(-1).path.endsWith("/image/update"));
+    await returnToScene();
+    await expect(backdrop).toHaveAttribute("src", generated);
+    await openSettings();
+    await page.getByRole("button", { name: "Remove artwork", exact: true }).click();
+    await expect.poll(() => mutations.length).toBe(4);
     await expect(page.getByRole("button", { name: "Remove artwork", exact: true })).toHaveCount(0);
     await returnToScene();
     await expect(backdrop).toHaveCount(0);

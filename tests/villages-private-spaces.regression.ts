@@ -37,7 +37,7 @@ import {
 } from "../packages/villages/src/server/features/venues/services.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 import { readCreationPrivateZones } from "../packages/villages/src/server/domain/rules/founding-record.js";
-import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
+import { generateFirstZoneImage } from "../packages/villages/src/server/features/media/location-image.js";
 import type { VillageVenue, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 const stamp = new Date().toISOString();
 function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): VillageVenue {
@@ -321,7 +321,7 @@ async function main() {
       await mutateVillageState((current) => {
         resolveVenueZone(current.venues[1], "private:player")!.image = null;
       });
-      await generateFirstPrivateSpaceImage("own", "player");
+      await generateFirstZoneImage("own", "player");
       assert.equal(draws, 0, "the player's known personal space keeps image generation optional");
       const { saveVillageConnections } =
         await import("../packages/villages/src/server/features/settings/connections.js");
@@ -335,16 +335,13 @@ async function main() {
       const { activeVenueSession } = await import("../packages/villages/src/server/features/scenes/live-session.js");
       const visit = await enterVenue("bank", undefined, "", undefined, "staff");
       assert.equal(visit.privateSpaceId, "staff");
-      await Promise.all([
-        generateFirstPrivateSpaceImage("bank", "staff"),
-        generateFirstPrivateSpaceImage("bank", "staff"),
-      ]);
+      await Promise.all([generateFirstZoneImage("bank", "staff"), generateFirstZoneImage("bank", "staff")]);
       saved = await readVillageState({ memories: true });
       assert.ok(resolveVenueZone(saved.venues[2]!, "staff")!.initialImageAttemptedAt);
       for (let retry = 0; draws === 0 && retry < 100; retry++) await new Promise((resolve) => setTimeout(resolve, 10));
       assert.ok(draws > 0, "first invited entry reaches the image service");
       const attempted = draws;
-      await generateFirstPrivateSpaceImage("bank", "staff");
+      await generateFirstZoneImage("bank", "staff");
       assert.equal(draws, attempted, "failed first image is never retried");
       await mutateVillageState((current) => {
         current.venues[2].workerIds = [];
@@ -484,11 +481,11 @@ async function privateInteriorLifecycle() {
   } as any);
   bedroom.seen = true;
   await Promise.all([
-    images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
-    images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
+    images.generateFirstZoneImage("bungalow", "bedroom"),
+    images.generateFirstZoneImage("bungalow", "bedroom"),
   ]);
   assert.equal(draws, 1, "first vacant-room entry gets one image attempt");
-  await images.generateFirstPrivateSpaceImage("bungalow", "bedroom");
+  await images.generateFirstZoneImage("bungalow", "bedroom");
   assert.equal(draws, 1, "failed initial images require explicit retry");
   assert.ok(bedroom.initialImageAttemptedAt);
   const persisted = coerceVillageState(structuredClone(village));

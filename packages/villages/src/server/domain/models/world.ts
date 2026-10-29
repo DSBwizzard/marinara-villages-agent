@@ -505,6 +505,10 @@ export type ZonePicture = {
   claim?: string;
   removed?: boolean;
   failed?: boolean;
+  dirty?: boolean;
+  operation?: "update" | "replace";
+  problem?: string;
+  lastAutomaticAt?: string;
 };
 export type VillageVenueSpace = {
   picture?: ZonePicture;
@@ -970,6 +974,7 @@ export type VillageState = {
   sceneryArtStyle: string;
   sceneryStyleProfileId?: string | null;
   automaticZonePictures?: boolean;
+  zonePictureBudget?: { startedAt: string; used: number };
   zonePictureEpoch?: number;
   personalizeVenueImagesByDefault: boolean;
   useVisualLoreByDefault: boolean;

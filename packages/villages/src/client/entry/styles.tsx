@@ -3571,7 +3571,7 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-zone-artwork-frame { width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { display:block; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
-.${ELEMENT_TAG}-zone-artwork-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; align-items:stretch; }
+.${ELEMENT_TAG}-zone-artwork-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); min-height:calc(88px + .4rem); gap:.4rem; align-items:stretch; align-content:start; }
 .${ELEMENT_TAG}-zone-artwork-actions > button { min-width:0; width:100%; min-height:44px; margin:0; padding:.5rem .2rem; font-size:.8rem; line-height:1.2; white-space:nowrap; }
 .${ELEMENT_TAG}-zone-artwork-actions > .${ELEMENT_TAG}-zone-artwork-retry { grid-column:1/-1; }
 .${ELEMENT_TAG}-zone-access-details small { display:block; }

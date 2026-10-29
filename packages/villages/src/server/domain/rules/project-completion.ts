@@ -75,6 +75,11 @@ export function completeProject(state: VillageState, project: VillageProject, at
               ? { status: "pending" }
               : previous?.preparation,
         };
+        if (
+          previous &&
+          (zone.description !== previous.description || zone.roomSpecification !== previous.roomSpecification)
+        )
+          zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
         prepareRenovatedPrivateInterior(zone, previous);
         if (previous && zone.description !== previous.description)
           zone.state = { ...previous.state, revision: previous.state.revision + 1, updatedAt: at };

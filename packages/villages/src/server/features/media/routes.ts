@@ -16,6 +16,7 @@ import {
   storeVillageVenueImage,
   setZonePictureFrozen,
   retryZonePicture,
+  updateZonePicture,
 } from "./location-image.js";
 import {
   adoptSpriteArtwork,
@@ -140,6 +141,16 @@ export function registerVenueImageRoutes(engine: FastifyInstance) {
       return await retryZonePicture(readVenueId(request.body.venueId), request.body.zoneId);
     } catch (error) {
       return fail(reply, error, "retrying artwork");
+    }
+  });
+  app.post<{ Body: { venueId: string; zoneId: string } }>("/locations/venue/image/update", async (request, reply) => {
+    try {
+      if (typeof request.body?.zoneId !== "string") return reply.code(400).send({ error: "Choose a Zone." });
+      const target = await imageTarget(request.body);
+      if (!target) return reply.code(400).send({ error: "Choose a Zone." });
+      return await updateZonePicture(readVenueId(request.body.venueId), target);
+    } catch (error) {
+      return fail(reply, error, "updating artwork");
     }
   });
   app.patch<{ Body: { venueId: string; zoneId: string; frozen: boolean } }>(

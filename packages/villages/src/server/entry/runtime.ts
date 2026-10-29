@@ -1043,6 +1043,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseLocationImages = configureLocationImages(
     createLocationImages({
       resolveVillageImageEditing,
+      resolveVillageImageConnectionId,
       readZonePictureReference,
       buildVillageSnapshot,
       readVillageState,

@@ -108,6 +108,8 @@ function restoredReceipts(
   return { ...result, ...saved };
 }
 function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
+  prior.zonePictureBudget = structuredClone(current.zonePictureBudget);
+  prior.zonePictureEpoch = Math.max(prior.zonePictureEpoch ?? 0, current.zonePictureEpoch ?? 0) + 1;
   for (const map of prior.maps)
     map.revision = Math.max(map.revision, current.maps.find((m) => m.id === map.id)?.revision ?? 0) + 1;
   for (const project of prior.projects)
@@ -123,6 +125,12 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
   for (const venue of prior.venues) {
     const currentVenue = current.venues.find((v) => v.id === venue.id);
     for (const zone of venue.zones ?? []) {
+      const currentZone = currentVenue?.zones?.find((z) => z.id === zone.id);
+      zone.pictureRevision = Math.max(zone.pictureRevision ?? 0, currentZone?.pictureRevision ?? 0) + 1;
+      if (zone.picture) {
+        zone.picture.claim = undefined;
+        zone.picture.lastAutomaticAt = currentZone?.picture?.lastAutomaticAt;
+      }
       const savedRevision = zone.state.revision;
       zone.state.revision =
         Math.max(savedRevision, currentVenue?.zones?.find((z) => z.id === zone.id)?.state.revision ?? 0) + 1;

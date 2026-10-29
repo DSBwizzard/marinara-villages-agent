@@ -734,7 +734,7 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
       loadPrivateSpaceImages: async () => {
         await touch("image-loader");
         return {
-          generateFirstPrivateSpaceImage: async (placeId, zoneId) => {
+          generateFirstZoneImage: async (placeId, zoneId) => {
             assert.equal(placeId, scene.placeId);
             assert.equal(zoneId, "staff-zone");
             await touch("image-command");

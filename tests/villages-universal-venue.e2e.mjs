@@ -324,15 +324,16 @@ try {
     assert.equal(writes.at(-1).body.zoneId, "bay");
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Regenerate artwork", "Upload artwork", "Remove artwork"].map((name) =>
+      ["Update artwork", "Regenerate artwork", "Upload artwork", "Remove artwork"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
     assert.ok(
-      actionBoxes.every(
-        (box) => Math.abs(box.y - actionBoxes[0].y) < 1 && Math.abs(box.width - actionBoxes[0].width) < 1,
-      ),
-      "artwork actions share one aligned row at every viewport",
+      actionBoxes.every((box) => Math.abs(box.width - actionBoxes[0].width) < 1) &&
+        Math.abs(actionBoxes[0].y - actionBoxes[1].y) < 1 &&
+        Math.abs(actionBoxes[2].y - actionBoxes[3].y) < 1 &&
+        actionBoxes[2].y > actionBoxes[0].y,
+      "artwork actions share two aligned rows at every viewport",
     );
     const actions = detail.locator(`.${prefix}-zone-artwork-actions`);
     assert.ok(

@@ -168,7 +168,6 @@ export type VenueScene = {
   sceneRevision: number;
   operation?: VenueOperation;
   /** Idempotent free navigation, separate from conversational turns. */
-  pictureEvaluatedZoneIds?: string[];
   navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];
   /** Operational receipts only: rejected inputs never become fictional submissions. */
   rejectedSubmissions?: {
