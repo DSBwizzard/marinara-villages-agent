@@ -322,61 +322,76 @@ try {
     });
   await runCase("repair-ui/retry", async () => {
     // The server suites exercise uncertain save replay. Here exercise retained editor state after rejection.
-    const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
-    await mockEngineLookups(page);
-    const code = await build({
-      stdin: {
-        loader: "tsx",
-        resolveDir: process.cwd(),
-        contents: `import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async()=>null);return <RepairPage controller={c} onBack={()=>{}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
-      },
-      bundle: true,
-      write: false,
-      format: "iife",
-      platform: "browser",
-      jsx: "automatic",
-    });
-    const item = {
-      id: '["world"]',
-      token: "fresh",
-      topic: "world",
-      title: "Village setting",
-      summary: "Setting",
-      fields: [{ key: "setting", label: "Place description", type: "text", value: "Old setting" }],
-      actions: [{ id: "correct", label: "Modify" }],
-      source: [],
-      related: [],
-    };
-    await page.route("http://repair-retry.test/", (route) =>
-      fulfill(route, { contentType: "text/html", body: '<div id="root"></div>' }),
-    );
-    await page.route("**/api/villages**", (route) => {
-      const path = new URL(route.request().url()).pathname;
-      if (path.endsWith("/review"))
-        return fulfill(route, { status: 409, json: { error: "A reviewed record changed. Your draft is kept." } });
-      return fulfill(route, {
-        json: path.endsWith("/records")
-          ? { records: [item], total: 1 }
-          : path.endsWith("/record")
-            ? item
-            : { seed: "s", records: [], history: [], checkpoints: [], sceneOpen: false },
+    for (const width of [1440, 390]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await mockEngineLookups(page);
+      const code = await build({
+        stdin: {
+          loader: "tsx",
+          resolveDir: process.cwd(),
+          contents: `import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async()=>null);return <RepairPage controller={c} onBack={()=>{}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
+        },
+        bundle: true,
+        write: false,
+        format: "iife",
+        platform: "browser",
+        jsx: "automatic",
       });
-    });
-    await page.goto("http://repair-retry.test/");
-    await page.addScriptTag({ content: code.outputFiles[0].text });
-    await page
-      .getByRole("button", { name: "World & history Setting, founding details, and Scene corrections." })
-      .click();
-    await page.getByRole("button", { name: "Village setting Setting", exact: true }).click();
-    await page
-      .getByRole("textbox", { name: "Place description", exact: true })
-      .fill("My correction survives this conflict.");
-    await page.getByRole("button", { name: "Review changes", exact: true }).click();
-    await expect(page.getByRole("alert")).toContainText("Your draft is kept");
-    await expect(page.getByRole("textbox", { name: "Place description", exact: true })).toHaveValue(
-      "My correction survives this conflict.",
-    );
-    await page.close();
+      const item = {
+        id: '["world"]',
+        token: "fresh",
+        topic: "world",
+        title: "Village setting",
+        summary: "Setting",
+        fields: [
+          { key: "setting", label: "Place description", type: "text", value: "Old setting" },
+          { key: "enabled", label: "Enabled", type: "boolean", value: true },
+          { key: "limit", label: "Limit", type: "number", value: 3 },
+          { key: "mode", label: "Mode", type: "choice", value: "daily", options: [{ value: "daily", label: "Daily" }] },
+        ],
+        actions: [{ id: "correct", label: "Modify" }],
+        source: ["Old setting", "Retained source note", "Retained source note"],
+        related: [],
+      };
+      await page.route("http://repair-retry.test/", (route) =>
+        fulfill(route, { contentType: "text/html", body: '<div id="root"></div>' }),
+      );
+      await page.route("**/api/villages**", (route) => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/review"))
+          return fulfill(route, { status: 409, json: { error: "A reviewed record changed. Your draft is kept." } });
+        return fulfill(route, {
+          json: path.endsWith("/records")
+            ? { records: [item], total: 1 }
+            : path.endsWith("/record")
+              ? item
+              : { seed: "s", records: [], history: [], checkpoints: [], sceneOpen: false },
+        });
+      });
+      await page.goto("http://repair-retry.test/");
+      await page.addScriptTag({ content: code.outputFiles[0].text });
+      await page
+        .getByRole("button", { name: "World & history Setting, founding details, and Scene corrections." })
+        .click();
+      await page.getByRole("button", { name: "Village setting Setting", exact: true }).click();
+      await expect(page.getByText("Current", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Old setting", { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Retained source note", { exact: true })).toHaveCount(1);
+      await expect(page.getByLabel("Enabled", { exact: true })).toBeChecked();
+      await expect(page.getByLabel("Limit", { exact: true })).toHaveValue("3");
+      await expect(page.getByLabel("Mode", { exact: true })).toHaveValue("daily");
+      await page.screenshot({ path: `.build-tmp/repair-ui/fields-${width}.png`, fullPage: true });
+      assert.equal(await page.locator(".villages-repair").evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+      await page
+        .getByRole("textbox", { name: "Place description", exact: true })
+        .fill("My correction survives this conflict.");
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      await expect(page.getByRole("alert")).toContainText("Your draft is kept");
+      await expect(page.getByRole("textbox", { name: "Place description", exact: true })).toHaveValue(
+        "My correction survives this conflict.",
+      );
+      await page.close();
+    }
   });
 } finally {
   await browser.close();

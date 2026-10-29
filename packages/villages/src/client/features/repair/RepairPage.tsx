@@ -23,7 +23,6 @@ export function RepairPage({
   const isRestore = c.review?.kind === "restore";
   const addingMemory = c.review?.memory?.creating === true;
   const memoryRecord = c.selected?.topic === "memories";
-  const zoneDetailsRecord = c.selected?.topic === "places" && c.selected.fields.some((f) => f.key === "recent");
   const forgettingMemory = memoryRecord && c.draft?.action === "forget";
   const restoringMemory = memoryRecord && c.draft?.action === "remember";
   const memoryReadOnly = forgettingMemory || restoringMemory;
@@ -33,7 +32,7 @@ export function RepairPage({
       ? "Review restoration"
       : "Review changes";
   const source = [...new Set(c.selected?.source ?? [])].filter(
-    (excerpt) => !memoryRecord || !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
+    (excerpt) => !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
   );
   const hasSource = !!source.length || !!c.selected?.related.length;
   const editorTitle = memoryRecord
@@ -292,14 +291,6 @@ export function RepairPage({
               {c.selected.fields.map((f) => (
                 <div className="repair-field" key={f.key}>
                   {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
-                  {!c.selected.creating && !memoryRecord && !zoneDetailsRecord ? (
-                    <div className="repair-current">
-                      <small>Current</small>
-                      <p>
-                        {f.options?.find((option) => option.value === f.value)?.label ?? (display(f.value) || "None")}
-                      </p>
-                    </div>
-                  ) : null}
                   {f.key === "letterFontId" ? (
                     <div>
                       <p
