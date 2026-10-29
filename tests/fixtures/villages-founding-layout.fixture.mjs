@@ -260,6 +260,13 @@ export async function verifyFoundingLayout(group) {
         });
         await mockEngineLookups(context);
         const page = await context.newPage();
+        if (width === 320)
+          await page.addInitScript(() => {
+            const keyboard = new EventTarget();
+            keyboard.overlaysContent = false;
+            keyboard.boundingRect = new DOMRect();
+            Object.defineProperty(navigator, "virtualKeyboard", { configurable: true, value: keyboard });
+          });
         const errors = [];
         page.on("pageerror", (error) => errors.push(error.message));
         let foundingPayload;
@@ -510,6 +517,68 @@ export async function verifyFoundingLayout(group) {
             });
           }
         };
+        const keyboardOverlay = async (field, container, footer) => {
+          if (width >= 600) return;
+          const viewport = page.viewportSize();
+          const initial = await container.boundingBox();
+          const fieldHeight = (await field.boundingBox()).height;
+          const footerPosition = () =>
+            footer.evaluate((element) => {
+              const scroller = element.closest("dialog[open]") ?? element.closest(".villages-forging-v2");
+              const bounds = element.getBoundingClientRect();
+              return {
+                top: bounds.top - scroller.getBoundingClientRect().top + scroller.scrollTop,
+                height: bounds.height,
+              };
+            });
+          const before = await footerPosition();
+          await field.focus();
+          const reducedHeight = Math.round(viewport.height * 0.55);
+          const cover = async (bottom) => {
+            if (width === 320)
+              await page.evaluate((bottom) => {
+                const keyboard = navigator.virtualKeyboard;
+                keyboard.boundingRect = bottom
+                  ? new DOMRect(0, bottom, innerWidth, innerHeight - bottom)
+                  : new DOMRect();
+                keyboard.dispatchEvent(new Event("geometrychange"));
+              }, bottom);
+            else await page.setViewportSize({ ...viewport, height: bottom || viewport.height });
+          };
+          await cover(reducedHeight);
+          await expect(container).toHaveAttribute("data-founding-keyboard", "true");
+          const after = await container.boundingBox();
+          assert.ok(Math.abs(initial.y - after.y) <= 1, "Keyboard does not push the form upward");
+          assert.ok(Math.abs(initial.height - after.height) <= 1, "Keyboard does not squeeze the form");
+          assert.ok(Math.abs(fieldHeight - (await field.boundingBox()).height) <= 1, "Fields keep their height");
+          const footerAfter = await footerPosition();
+          assert.ok(
+            Math.abs(before.top - footerAfter.top) <= 1,
+            `Footer retains its place in the form: ${JSON.stringify({ before, footerAfter, initial, after })}`,
+          );
+          assert.ok(Math.abs(before.height - footerAfter.height) <= 1, "Footer controls retain their height");
+          const reachable = async (control) => {
+            await control.focus();
+            await expect
+              .poll(async () => {
+                const box = await control.boundingBox();
+                return box.y >= 0 && box.y + box.height <= reducedHeight;
+              })
+              .toBe(true);
+          };
+          await reachable(footer);
+          if (process.env.VILLAGES_SCREENSHOT_DIR)
+            await page.screenshot({
+              path: resolve(
+                process.env.VILLAGES_SCREENSHOT_DIR,
+                `keyboard-footer-${width}x${height}-${fontSize}-${(await field.getAttribute("aria-label")) ?? "field"}.png`,
+              ),
+            });
+          await reachable(field);
+          await capture("keyboard-" + ((await field.getAttribute("aria-label")) ?? "field").replaceAll(" ", "-"));
+          await cover(0);
+          await expect(container).not.toHaveAttribute("data-founding-keyboard", "true");
+        };
         await expect(root.locator('.villages-forging-steps [aria-current="step"]')).toHaveAttribute(
           "aria-label",
           "Place",
@@ -610,7 +679,8 @@ export async function verifyFoundingLayout(group) {
         await chooseLore.click();
         const loreDialog = root.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
         const loreSearch = loreDialog.getByRole("searchbox", { name: "Search Lorebooks", exact: true });
-        await expect(loreSearch).toBeFocused();
+        await expect(loreDialog.getByRole("button", { name: "Close Choose Lorebooks", exact: true })).toBeFocused();
+        await keyboardOverlay(loreSearch, loreDialog, loreDialog.getByRole("button", { name: "Done", exact: true }));
         await loreSearch.fill("Lorebook 60");
         await loreDialog.getByRole("checkbox", { name: "Lorebook 60", exact: true }).check();
         await loreDialog.getByRole("button", { name: "Close Choose Lorebooks", exact: true }).click();
@@ -776,9 +846,17 @@ export async function verifyFoundingLayout(group) {
         await expect(past).toHaveValue("");
         await past.fill("Finn has always been guardian of a relic in the observatory.");
         await root.getByLabel("Your backstory", { exact: true }).fill("I came to help restore the observatory.");
+        await keyboardOverlay(root.getByLabel("Your backstory", { exact: true }), root, forward("Continue to Map"));
         await bounds();
         await capture("people-backgrounds");
         await forward("Save & exit").click();
+        if (width === 320)
+          await expect
+            .poll(
+              () => page.evaluate(() => navigator.virtualKeyboard.overlaysContent),
+              "Leaving founding restores keyboard behavior",
+            )
+            .toBe(false);
         await page.reload();
         await page.addScriptTag({ content: foundingBundle });
         await root.getByRole("button", { name: "Resume founding", exact: true }).click();
@@ -871,6 +949,7 @@ export async function verifyFoundingLayout(group) {
         await mapDialog.getByRole("button", { name: "Generate artwork", exact: true }).click();
         await expect(mapDialog.getByText("Based on your Setting description.", { exact: true })).toHaveCount(0);
         const mapDetails = mapDialog.getByLabel("Map Details", { exact: true });
+        await keyboardOverlay(mapDetails, root, forward("Continue to Venues"));
         await expect(mapDetails).toHaveValue("");
         const mapHints = [
           "An inn beside the river, with homes around a central square.",
@@ -1224,12 +1303,11 @@ export async function verifyFoundingLayout(group) {
             "Opening Zone never focuses a text field",
           );
           await inspector.getByLabel("Used for", { exact: true }).focus();
-          const viewport = page.viewportSize();
-          await page.setViewportSize({ ...viewport, height: Math.round(viewport.height * 0.6) });
-          const covered = await inspector.boundingBox();
-          assert.ok(Math.abs(sheet.y - covered.y) <= 1, "Keyboard cannot push the sheet upward");
-          assert.ok(Math.abs(sheet.height - covered.height) <= 1, "Keyboard cannot squeeze the sheet");
-          await page.setViewportSize(viewport);
+          await keyboardOverlay(
+            inspector.getByLabel("Used for", { exact: true }),
+            inspector,
+            inspector.getByRole("button", { name: "Done", exact: true }),
+          );
           await inspector.getByRole("tab", { name: "Venue", exact: true }).click();
         }
         await zone("Common");
