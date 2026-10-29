@@ -127,14 +127,13 @@ try {
     assert.equal(writes.length, 0, "marker changes are a draft until saved");
     assert.equal(
       await page.evaluate(() => window.dispatchEvent(new Event("beforeunload", { cancelable: true }))),
-      false,
+      true,
     );
     const draftKey = "villages-marker-draft:map-house:map-house";
     const editedPlacement = await page.evaluate(
       ([key, id]) => JSON.parse(sessionStorage.getItem(key)).placements[id],
       [draftKey, state.settings.venues[0].id],
     );
-    page.once("dialog", (dialog) => dialog.accept());
     await mount();
     await page.getByRole("button", { name: "Resume marker edits", exact: true }).click();
     assert.deepEqual(
@@ -218,10 +217,13 @@ try {
     const stageBox = await editStage.boundingBox();
     await editStage.click({ position: { x: stageBox.width * 0.2, y: stageBox.height * 0.6 } });
     await expect(marker).toHaveValue("");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page
       .getByRole("navigation", { name: "Village navigation" })
       .getByRole("button", { name: "Map", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
       .click();
     await expect(page.getByRole("textbox", { name: "Map name", exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Map name", exact: true }).fill("Maple House Interior");

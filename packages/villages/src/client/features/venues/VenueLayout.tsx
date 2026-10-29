@@ -2,11 +2,11 @@ import { ZoneMap } from "../../shared/ZoneMap.js";
 import type { ZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import type { VenueDisplayZone } from "./venue-view.js";
 
-export function ZoneAccessLabels({ zone }: { zone: VenueDisplayZone }) {
+export function ZoneAccessLabels({ zone, hideOpen = false }: { zone: VenueDisplayZone; hideOpen?: boolean }) {
   return (
     <>
       {zone.isPrivate ? <small>Private</small> : null}
-      <small>{zone.accessLabel}</small>
+      {!hideOpen || zone.accessLabel !== "Open to you" ? <small>{zone.accessLabel}</small> : null}
       {zone.restricted && zone.allowed ? <small>Permission needed</small> : null}
     </>
   );

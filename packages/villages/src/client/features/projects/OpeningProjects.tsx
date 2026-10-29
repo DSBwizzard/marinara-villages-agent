@@ -1,3 +1,4 @@
+import { useConfirmation } from "../../shared/confirmation.js";
 import { useState } from "react";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
@@ -15,6 +16,7 @@ export function OpeningProjects({
   onPeople(): void;
   pageSize?: number;
 }) {
+  const confirmVillages = useConfirmation(snapshot.opening?.stage);
   const opening = snapshot.opening!;
   const [selectedId, select] = useState("");
   const [page, setPage] = useState(0);
@@ -37,8 +39,8 @@ export function OpeningProjects({
           type="button"
           className={`${P}-button`}
           disabled={busy}
-          onClick={() => {
-            if (window.confirm("Skip opening guidance?")) void decide("skip");
+          onClick={async () => {
+            if (await confirmVillages("Skip opening guidance?")) void decide("skip");
           }}
         >
           Skip opening

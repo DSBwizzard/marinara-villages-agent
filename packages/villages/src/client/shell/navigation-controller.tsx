@@ -29,8 +29,8 @@ export function useNavigationOpenPerson(ports: {
   } = ports;
 
   return useCallback(
-    (navigation: DossierNavigation) => {
-      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return false;
+    async (navigation: DossierNavigation) => {
+      if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return false;
       const button = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const key = button?.getAttribute("data-exploration-row");
       const label = button?.getAttribute("aria-label");
@@ -89,8 +89,8 @@ export function useNavigationGoHome(ports: {
     spriteLeaveGuard,
   } = ports;
 
-  return useCallback(() => {
-    if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+  return useCallback(async () => {
+    if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return;
     setSpriteManagerId(null);
     setExploreSheet(null);
     setPickerOpen(false);

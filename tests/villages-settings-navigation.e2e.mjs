@@ -435,6 +435,9 @@ async function checkPackage(width) {
   const section = async (key, label) => {
     if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
     else await page.getByRole("button", { name: label, exact: true }).click();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    const confirmation = page.getByRole("dialog", { name: "Confirm", exact: true });
+    if (await confirmation.count()) await confirmation.getByRole("button", { name: "Continue", exact: true }).click();
   };
   if (width === 390) {
     await expect.poll(() => heldConnectionRead !== null).toBe(true);

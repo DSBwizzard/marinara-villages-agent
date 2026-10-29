@@ -12,6 +12,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   disabled = false,
   labels,
   toolbar,
+  modifyConnections = false,
 }: {
   zones: T[];
   positions?: ZoneLayout;
@@ -22,10 +23,10 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   disabled?: boolean;
   labels?(zone: T): ReactNode;
   toolbar?: ReactNode;
+  modifyConnections?: boolean;
 }) {
   const [connecting, setConnecting] = useState(false),
     [first, setFirst] = useState<string | null>(null);
-  const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<ZoneLayout | null>(null);
   const drag = useRef<{
     id: string;
@@ -70,8 +71,9 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
       if (!first || !zones.some((z) => z.id === first)) setFirst(id);
       else if (first === id) setFirst(null);
       else {
-        if (!contactNeighborIds(rows, first).includes(id)) updateConnection(first, id, true);
-        setNotice(`${name(first)} connected to ${name(id)}.`);
+        const connected = contactNeighborIds(rows, first).includes(id);
+        if (modifyConnections) updateConnection(first, id, !connected);
+        else if (!connected) updateConnection(first, id, true);
         setFirst(null);
       }
     } else onSelect?.(id);
@@ -89,10 +91,15 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               onClick={() => {
                 setConnecting(!connecting);
                 setFirst(null);
-                setNotice("");
               }}
             >
-              {connecting ? "Done connecting" : "Connect Zones"}
+              {connecting
+                ? modifyConnections
+                  ? "Done"
+                  : "Done connecting"
+                : modifyConnections
+                  ? "Modify Zone Connections"
+                  : "Connect Zones"}
             </button>
           ) : null}
         </div>
@@ -123,7 +130,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               width: `${ZONE_TILE.width}%`,
               height: `${ZONE_TILE.height}%`,
             }}
-            aria-pressed={first === zone.id || selectedId === zone.id}
+            aria-pressed={connecting ? first === zone.id : selectedId === zone.id}
             aria-label={name(zone.id)}
             title={name(zone.id)}
             onClick={(event) => {
@@ -158,7 +165,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               if (!zonePositionFits(current.layout, zone.id, position)) return;
               current.layout = { ...current.layout, [zone.id]: position };
               setPreview(current.layout);
-              setNotice("");
             }}
             onPointerUp={(event) => {
               const current = drag.current;
@@ -187,7 +193,12 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
                 setFirst(null);
                 return;
               }
-              if (!onPositions || disabled || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key))
+              if (
+                !onPositions ||
+                connecting ||
+                disabled ||
+                !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
+              )
                 return;
               event.preventDefault();
               const amount = event.shiftKey ? 5 : 1;
@@ -197,7 +208,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               };
               if (zonePositionFits(layout, zone.id, position)) {
                 onPositions({ ...layout, [zone.id]: position });
-                setNotice("");
               }
             }}
           >
@@ -206,9 +216,18 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
           </button>
         ))}
       </div>
-      {connecting ? <p role="status">{first ? `Connect ${name(first)} to…` : "Select two Zones to connect."}</p> : null}
-      {notice ? <p role="status">{notice}</p> : null}
-      {onConnections && connecting && pairs.length ? (
+      {connecting && onConnections ? (
+        <p role="status">
+          {first
+            ? modifyConnections
+              ? `Select another Zone for ${name(first)}.`
+              : `Connect ${name(first)} to…`
+            : modifyConnections
+              ? "Select two Zones to add or remove a connection."
+              : "Select two Zones to connect."}
+        </p>
+      ) : null}
+      {onConnections && !modifyConnections && connecting && pairs.length ? (
         <ul className="villages-zone-map-connections" aria-label="Connections">
           {pairs.map(([a, b]) => (
             <li key={JSON.stringify([a, b])}>

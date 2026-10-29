@@ -104,6 +104,7 @@ try {
       resolveDir: process.cwd(),
       contents: `
     import {createRoot} from 'react-dom/client';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
     import {useVillageController} from './packages/villages/src/client/shell/useVillageController.js';
     import {VillagerDossier} from './packages/villages/src/client/features/residents/villages-dossier.js';
     const request=async(path,options)=>{if(options?.method==='POST')throw Error('Scene profile attempted a mutation');return path.endsWith('/signature')?{available:true,status:'ready'}:{profiles:[{characterId:'mara',knownWishes:[{wishId:'garden',text:'Share gardening stories',status:'open',at:'2026-10-26T00:00:00.000Z',followed:true,facts:[]}]}]}}; const noop=()=>{};
@@ -113,7 +114,7 @@ try {
         venues={[{id:'mill',name:'The Mill',connections:['Home'],publicConnections:['Home']}]} links={[{id:'project',title:'A project',onOpen:noop}]}
         controls={<button>Character card</button>} inspectors={{overview:<button>Manage village</button>}}
         onInspectSection={noop} onBack={()=>c.setScreen('room')} onVenue={noop}/>}</>;
-    } createRoot(document.getElementById('root')).render(<Harness/>);
+    } createRoot(document.getElementById('root')).render(<ConfirmationProvider><Harness/></ConfirmationProvider>);
   `,
     },
     bundle: true,

@@ -61,8 +61,15 @@ export function agendaUpdatePending(view: VillagerAgendaView): boolean {
 export function venuePictureOf(venues: readonly VillageVenue[], room: SceneView): string {
   const venue = venues.find((entry) => entry.id === room.placeId);
   if (!venue) return "";
+  if (room.zoneId && venue.zones) {
+    const zone = venue.zones.find((zone) => zone.id === room.zoneId);
+    if (!zone) return "";
+    // A deliberate removal stays blank; old Entrance rows without artwork
+    // keep their Venue-image fallback.
+    if (zone.image !== undefined) return zone.image?.url ?? "";
+    if (room.area !== "outside") return "";
+  }
   if (room.area === "outside") return venue.presentation.image?.url ?? "";
-  if (room.zoneId && venue.zones) return venue.zones.find((zone) => zone.id === room.zoneId)?.image?.url ?? "";
   if (room.area === "private")
     return venue.privateSpaces?.find((entry) => entry.ownerId === room.privateOwnerId)?.image?.url ?? "";
   return (room.spaceClass ? venueSpaceFor(venue, room.spaceClass).image : null)?.url ?? "";
