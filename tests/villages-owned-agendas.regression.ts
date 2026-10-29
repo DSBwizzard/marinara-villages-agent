@@ -93,7 +93,7 @@ const translated = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [{ ...
 const raw = {
   memories: { format: 1, revision: 0, records: [] },
   memoryScenes: {},
-  version: 6,
+  version: 7,
   seed: "owned-test",
   setting: "Quiet valley",
   backgroundPace: "off",
@@ -499,12 +499,12 @@ async function main() {
       name: "Library",
       classes: ["other"],
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      state: { condition: "sound", publicFacts: [] },
+      state: { revision: 0, updatedAt: "", recent: null },
       presentation: { image: null, x: 0.2, y: 0.2 },
     };
     const access = coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
@@ -527,7 +527,7 @@ async function main() {
     assert.equal(validateRoutineDay([destination], resident, access)[0]!.venueId, "");
     const crowd = coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],

@@ -14,7 +14,7 @@ try {
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
-    const remoteDelivery = width === 390 ? "loud" : width === 320 ? "device" : undefined;
+    const remoteDelivery = width === 390 ? "loud" : undefined;
     snapshot.settings.venues[0].zones = [
       { id: "exterior", kind: "exterior", name: "Exterior", seen: true },
       { id: "common", kind: "shared-residence", venueClass: "residence", name: "Common Space", seen: false },
@@ -139,15 +139,7 @@ try {
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
     if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
     await expect(
-      page
-        .getByText(
-          remoteDelivery === "loud"
-            ? /calling from inside/i
-            : remoteDelivery === "device"
-              ? /over the intercom/i
-              : /through the doorway/i,
-        )
-        .first(),
+      page.getByText(remoteDelivery === "loud" ? /calling from inside/i : /through the doorway/i).first(),
     ).toBeVisible();
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();

@@ -33,7 +33,7 @@ function fixture(name: string) {
     active: ActiveVenue = { sessionId: "same", placeId: "venue" },
     sessions = new Map<string, VenueScene>(),
     world = coerceVillageState({
-      version: 6,
+      version: 7,
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,
@@ -41,7 +41,7 @@ function fixture(name: string) {
     });
   initializeVenueAccess(world.venues[0]!);
   const saved = coerceSession({
-    version: 2,
+    version: 3,
     id: "same",
     villageSeed: world.seed,
     placeId: "venue",

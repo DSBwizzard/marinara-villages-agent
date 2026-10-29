@@ -420,10 +420,10 @@ export function QuickStartVenues({
                     ) : (
                       <div className="villages-quick-zone-appearance">
                         <label>
-                          Appearance
+                          Long-term details
                           <textarea
                             autoComplete="off"
-                            aria-label={zoneId === "exterior" ? "Exterior appearance" : "Appearance"}
+                            aria-label="Long-term details"
                             {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
                             value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
                             maxLength={1000}

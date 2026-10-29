@@ -12,8 +12,7 @@ export type BackgroundKind =
   | "translation"
   | "wish"
   | "personal-mail"
-  | "social-recovery"
-  | "adaptation";
+  | "social-recovery";
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
 export type BackgroundSummary = {
   id: string;

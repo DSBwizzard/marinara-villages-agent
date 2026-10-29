@@ -1,4 +1,4 @@
-import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueFeature } from "../models/world.js";
+import type { VillageState, VillageVenue, VillageVenueClass } from "../models/world.js";
 import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
 import {
@@ -13,6 +13,12 @@ import { legacyZoneId } from "./venue-zones.js";
 import { randomVillageSeed } from "./village-clock.js";
 
 export function venueFieldText(value: unknown, fallback: string, limit: number): string {
+  if (
+    limit === MAX_VENUE_DESCRIPTION_LENGTH &&
+    value !== undefined &&
+    (typeof value !== "string" || value.length > limit)
+  )
+    throw badRequest("Zone descriptions must be at most 4000 characters.");
   return value === undefined ? fallback : boundText(value, limit);
 }
 export function venueStringList(value: unknown, fallback: string[]): string[] {
@@ -23,31 +29,6 @@ export function venueStringList(value: unknown, fallback: string[]): string[] {
     .map((entry) => boundText(entry, MAX_VENUE_NOTE_LENGTH))
     .filter(Boolean)
     .slice(0, 24);
-}
-export function venueFeatures(value: unknown, existing: readonly VillageVenueFeature[]): VillageVenueFeature[] {
-  if (value === undefined) return [...existing];
-  if (!Array.isArray(value) || value.length > 5) throw badRequest("A venue can have at most five features.");
-  const ids = new Set<string>();
-  return value.map((entry) => {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw badRequest("Each feature needs text.");
-    const row = entry as Record<string, unknown>;
-    const requestedId = asTrimmedString(row.id);
-    const prior = existing.find((feature) => feature.id === requestedId);
-    const id = prior?.id ?? randomVillageSeed();
-    const text = boundText(row.text, MAX_VENUE_NOTE_LENGTH);
-    if (!text || ids.has(id)) throw badRequest("Each feature needs distinct text and an identity.");
-    ids.add(id);
-    return {
-      id,
-      text,
-      sourceCharacterId: prior && prior.text === text ? prior.sourceCharacterId : "",
-      locked: row.locked === true,
-      updatedAt:
-        prior && prior.text === text && prior.locked === (row.locked === true)
-          ? prior.updatedAt
-          : new Date().toISOString(),
-    };
-  });
 }
 export function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -88,11 +69,6 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
   const x = presentation.x === undefined ? (existing?.presentation.x ?? null) : presentation.x;
   const y = presentation.y === undefined ? (existing?.presentation.y ?? null) : presentation.y;
   const position = readPlacePosition({ x, y });
-  const stateValue = record.state;
-  const state =
-    stateValue && typeof stateValue === "object" && !Array.isArray(stateValue)
-      ? (stateValue as Record<string, unknown>)
-      : {};
   const priorSpaces = existing
     ? venueSpaces(existing)
     : classes.map((venueClass) => defaultVenueSpace(venueClass, description));
@@ -110,26 +86,12 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
       ? postedSpaces.find((space) => typeof space === "object" && space !== null && space.venueClass === venueClass)
       : null;
     const row = posted && typeof posted === "object" ? (posted as Record<string, unknown>) : {};
-    const scene =
-      row.state && typeof row.state === "object" && !Array.isArray(row.state)
-        ? (row.state as Record<string, unknown>)
-        : {};
     const nextDescription = venueFieldText(row.description, prior.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-    const nextState = {
-      condition: venueFieldText(scene.condition, prior.state.condition, MAX_VENUE_NOTE_LENGTH),
-      items: venueStringList(scene.items, prior.state.items),
-      publicFacts: venueStringList(scene.publicFacts, prior.state.publicFacts),
-      features: venueFeatures(scene.features, prior.state.features),
-      traces: prior.state.traces,
-      updatedAt: prior.state.updatedAt,
-    };
-    const changed =
-      nextDescription !== prior.description ||
-      nextState.condition !== prior.state.condition ||
-      JSON.stringify(nextState.items) !== JSON.stringify(prior.state.items) ||
-      JSON.stringify(nextState.publicFacts) !== JSON.stringify(prior.state.publicFacts) ||
-      JSON.stringify(nextState.features) !== JSON.stringify(prior.state.features);
-    if (changed) nextState.updatedAt = new Date().toISOString();
+    const nextState = { ...prior.state };
+    if (nextDescription !== prior.description) {
+      nextState.revision++;
+      nextState.updatedAt = new Date().toISOString();
+    }
     return {
       ...prior,
       description: nextDescription,
@@ -155,7 +117,6 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
     exteriorState: existing?.exteriorState,
     privateSpaces: existing?.privateSpaces,
     archivedPrivateSpaces: existing?.archivedPrivateSpaces,
-    editProposals: existing?.editProposals,
     playerSeenShared: existing?.playerSeenShared,
     playerSeenPublic: existing?.playerSeenPublic,
     playerSeenPrivateIds: existing?.playerSeenPrivateIds,
@@ -171,28 +132,8 @@ export function venueDraft(value: unknown, existing: VillageVenue | null): Villa
     occupancy: existing?.occupancy ?? { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: venueStringList(record.capabilities, existing?.capabilities ?? []),
     workerIds: venueStringList(record.workerIds, existing?.workerIds ?? []),
-    state: {
-      condition: venueFieldText(state.condition, existing?.state.condition ?? "", MAX_VENUE_NOTE_LENGTH),
-      furniture: venueStringList(state.furniture, existing?.state.furniture ?? []),
-      publicFacts: venueStringList(state.publicFacts, existing?.state.publicFacts ?? []),
-      features: venueFeatures(state.features, existing?.state.features ?? []),
-      traces: existing?.state.traces ?? [],
-      updatedAt: new Date().toISOString(),
-    },
+    state: existing?.state ?? { revision: 0, updatedAt: "", recent: null },
   };
-  // Older editors submit the single scene as `state`. Keep its Class space in
-  // step so the next visit and the next edit see the same feature identities.
-  if (postedSpaces === undefined && record.state !== undefined && draft.spaces?.[0]) {
-    draft.spaces[0].state = {
-      ...draft.spaces[0].state,
-      condition: draft.state.condition,
-      items: [...draft.state.furniture],
-      publicFacts: [...draft.state.publicFacts],
-      features: [...(draft.state.features ?? [])],
-      traces: [...(draft.state.traces ?? [])],
-      updatedAt: draft.state.updatedAt,
-    };
-  }
   return draft;
 }
 export function addVillageVenue(state: VillageState, draft: VillageVenue): void {

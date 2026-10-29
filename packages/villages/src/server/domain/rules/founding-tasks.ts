@@ -7,6 +7,7 @@ import type { VillageState } from "../models/world.js";
 import { agendaRevision } from "./agenda-revision.js";
 import { backgroundRevision } from "./background-revision.js";
 import { asRecord } from "./coerce.js";
+import { venueZones } from "./venue-zones.js";
 import { foundingIdentity } from "./founding-requests.js";
 export function foundingTaskRevision(state: VillageState, id: string, kind: FoundingTaskKind): string {
   const resident = state.villagers.find((row) => row.characterId === id);
@@ -22,7 +23,7 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
     state.playerPersonaName,
     foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
     resident?.scheduleInfluence,
-    state.venues.map((venue) => [venue.id, venue.state.condition, venue.state.publicFacts.slice(0, 2)]),
+    state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description, zone.state])]),
     kind === "wish" ? resident?.wishes : null,
   ]);
 }

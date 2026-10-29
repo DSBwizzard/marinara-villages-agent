@@ -199,7 +199,7 @@ try {
   const privateZone = projected.zones!.find((zone) => zone.id === "private")!;
   assert.equal(privateZone.description, "");
   assert.equal(privateZone.image, null);
-  assert.deepEqual(privateZone.state.items, []);
+  assert.deepEqual(privateZone.state, { revision: 0, updatedAt: "", recent: null });
 
   // Older stored data can lack these fields; explicit response fallbacks remain present.
   Reflect.deleteProperty(state, "worldName");

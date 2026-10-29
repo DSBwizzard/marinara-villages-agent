@@ -113,19 +113,19 @@ async function main() {
   } as any);
   try {
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 6 }).name,
+      coerceVillageState({ ...defaultVillageState(), version: 7 }).name,
       "",
       "new worlds have no invented village name",
     );
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 6, name: "Willowbrook" }).name,
+      coerceVillageState({ ...defaultVillageState(), version: 7, name: "Willowbrook" }).name,
       "Willowbrook",
       "authored names remain intact",
     );
     for (const [name, setting, circumstances, home] of scenarios) {
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 6,
+        version: 7,
         wishSystemVersion: 3,
         name,
         setting,
@@ -235,10 +235,10 @@ async function main() {
     );
     // Later physical receipts remain authoritative even when the starting description is unchanged.
     const common = defaultVenueSpace("community", "A farmhouse kitchen");
-    common.state.condition = "The roof leaks";
+    common.description += ". The roof leaks";
     const farm = coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       seed: "farm-progress",
       setupAt: "2026-10-01T12:00:00Z",
@@ -262,18 +262,21 @@ async function main() {
       farmhouse.id,
       {
         narration: "The roof is repaired.",
-        conditionBefore: "The roof leaks",
-        conditionAfter: "The repaired roof is watertight",
+        expectedRevision: 0,
+        edits: [{ before: "The roof leaks", after: "The repaired roof is watertight" }],
       },
       "roof-repair",
       "2026-10-02T12:00:00Z",
       "community",
       "public",
+      "",
+      zone.id,
+      { actorIds: ["player"], witnessIds: [], consentIds: [], positions: { player: zone.id } },
     );
     const savedFarm = coerceVillageState(JSON.parse(JSON.stringify(farm)));
     const currentFarmhouse = savedFarm.venues[0]!;
     const currentZone = venueZones(currentFarmhouse).find((row) => row.kind === "public")!;
-    assert.equal(currentZone.state.condition, "The repaired roof is watertight");
+    assert.match(currentZone.description, /The repaired roof is watertight/);
     const farmPrompt = await currentScenePrompt(savedFarm, card, "chat", "How is the farmhouse?", {
       zoneId: zone.id,
       area: "public",
@@ -288,7 +291,7 @@ async function main() {
       "",
       "interior",
     );
-    assert.ok(farmImage.includes("Current condition: The repaired roof is watertight"));
+    assert.ok(farmImage.includes("The repaired roof is watertight"));
     assert.ok(
       farmImage.includes(savedFarm.setting),
       "image context retains conditions beyond its former 400-character cut",
@@ -316,7 +319,7 @@ async function main() {
 
     const legacy = coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
@@ -328,7 +331,7 @@ async function main() {
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, setupAt: legacy.setupAt })
+      coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, setupAt: legacy.setupAt })
         .playerBackground,
       "",
     );

@@ -54,7 +54,7 @@ export function foundingZoneProblem(venue: VillageVenue): string {
     )
   )
     return "Give each Zone a name and describe what it is used for.";
-  if (venue.spaces?.some((zone) => !zone.description.trim())) return "Describe each Zone's appearance.";
+  if (venue.spaces?.some((zone) => !zone.description.trim())) return "Add long-term details for each Zone.";
   return foundingLayoutProblem(venue);
 }
 
@@ -200,10 +200,10 @@ export function FoundingZoneFields({
                 </>
               ) : !identityInHeader ? (
                 <label>
-                  Appearance
+                  Long-term details
                   <textarea
                     autoComplete="off"
-                    aria-label="Zone Appearance"
+                    aria-label="Long-term details"
                     disabled={busy}
                     maxLength={1000}
                     rows={3}
@@ -272,7 +272,7 @@ export function FoundingZoneFields({
                   Venue Type: {venue.venueType || "Not set"}. Physical form: {venue.form || "Not set"}.
                 </p>
                 <p>
-                  Used for: {zone.purpose || "Not set"}. Appearance:{" "}
+                  Used for: {zone.purpose || "Not set"}. Long-term details:{" "}
                   {zone.description || (generatedLater ? "Prepared after founding" : "Not set")}.
                 </p>
                 <p>

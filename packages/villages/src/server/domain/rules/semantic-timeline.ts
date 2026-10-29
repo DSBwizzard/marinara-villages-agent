@@ -1,4 +1,7 @@
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
+import { bindPlaceEvidence } from "./zone-continuity.js";
+import { residentPositionsAt } from "./resident-movement.js";
+import type { ContactMove } from "./venue-contact.js";
 import { asRecord } from "./coerce.js";
 import { badGateway, conflict } from "./errors.js";
 
@@ -28,10 +31,22 @@ export function semanticPlayerMoves(
   return [];
 }
 
-export function semanticPhysicalContext(value: unknown, lines: readonly VenueReplyLine[], scene: VenueScene) {
-  const segment = asRecord(value).segment;
-  const line = Number.isInteger(segment) ? lines[Number(segment)] : undefined;
-  if (!line || line.kind !== "narration")
-    throw badGateway("System physical outcome needs an exact current narration source.");
-  return { zoneId: line.zoneId ?? scene.zoneId ?? "exterior", witnessIds: [...line.heardBy], segment: Number(segment) };
+export function semanticPhysicalContext(
+  value: unknown,
+  lines: readonly VenueReplyLine[],
+  scene: VenueScene,
+  playerInput = "",
+  moves: readonly ContactMove[] = [],
+) {
+  const positions = {
+    ...residentPositionsAt(scene, moves, Number(asRecord(value).segment)),
+    player: scene.zoneId ?? "exterior",
+  };
+  return bindPlaceEvidence(value, lines, {
+    zoneId: scene.zoneId ?? "exterior",
+    positions,
+    priorLines: scene.lines,
+    playerInput,
+    playerPresent: true,
+  });
 }

@@ -234,7 +234,7 @@
     },
     {
       "method": "put",
-      "path": "/venues/:venueId/zones/:zoneId"
+      "path": "/venues/:venueId/zones/:zoneId/name"
     },
     {
       "method": "post",
@@ -520,10 +520,6 @@
       "path": "/locations/venue/:venueId"
     },
     {
-      "method": "post",
-      "path": "/locations/venue/:venueId/edit-proposals"
-    },
-    {
       "method": "get",
       "path": "/locations/venue/:venueId/dependencies"
     },
@@ -554,10 +550,6 @@
     {
       "method": "post",
       "path": "/residences/debug/complete-now"
-    },
-    {
-      "method": "post",
-      "path": "/residences/private-space/retry"
     },
     {
       "method": "get",

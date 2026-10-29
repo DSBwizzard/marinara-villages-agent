@@ -54,8 +54,7 @@ export function foundingRequestMessages(
       id: venue.id,
       name: venue.name,
       form: venue.form,
-      condition: venue.state.condition,
-      facts: venue.state.publicFacts.slice(0, 2),
+      description: venue.description,
       zones: venue.zones
         ?.filter((zone) => zone.kind === "exterior" || zone.kind === "public")
         .map((zone) => ({ id: zone.id, name: zone.name })),

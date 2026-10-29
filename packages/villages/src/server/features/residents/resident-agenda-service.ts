@@ -131,7 +131,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         .join("\n"),
       home: (() => {
         const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
-        return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
+        return home ? [home.name, home.form, home.description].filter(Boolean).join("; ") : "";
       })(),
       wishes: villager.wishes,
       lore: await readVillageLore(

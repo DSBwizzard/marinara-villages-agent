@@ -1,3 +1,4 @@
+import { MAX_IMAGE_PROMPT_LENGTH } from "../../domain/rules/image-generation-rules.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { createHash } from "node:crypto";
 import { zonePictureBaseline, zonePictureChanges, zonePictureContext } from "../../domain/rules/zone-picture.js";
@@ -23,8 +24,8 @@ import {
   sceneryImageKey,
   sceneryPrompt,
 } from "../../domain/rules/scenery-context.js";
-import { venueClasses, venueInArea, venueInSpace } from "../../domain/rules/venue-model.js";
-import { legacyZoneId, resolveVenueZone, venueInZone, venueZones } from "../../domain/rules/venue-zones.js";
+import { venueClasses } from "../../domain/rules/venue-model.js";
+import { legacyZoneId, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { assertVenueImageAccess, setVillageVenueImage } from "../venues/services.js";
@@ -78,20 +79,16 @@ export function createLocationImages(ports: LocationImagePorts) {
     const village = found.village;
     if (spaceClass && !venueClasses(found.venue).includes(spaceClass))
       throw notFound("That Venue space no longer exists.");
+    zoneId ??= legacyZoneId(
+      found.venue,
+      privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
+      spaceClass,
+      privateOwnerId,
+    );
+    const targetZone = resolveVenueZone(found.venue, zoneId);
+    if (!targetZone) throw conflict("Choose the exact Zone before drawing its image.");
     await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
-    const venue = zoneId
-      ? venueInZone(found.venue, zoneId)
-      : privateOwnerId
-        ? venueInArea(found.venue, "private", "residence", privateOwnerId)
-        : spaceClass
-          ? venueInSpace(found.venue, spaceClass)
-          : found.venue;
-    const targetZone = zoneId
-      ? resolveVenueZone(found.venue, zoneId)
-      : privateOwnerId
-        ? resolveVenueZone(found.venue, legacyZoneId(found.venue, "private", "residence", privateOwnerId))
-        : undefined;
-    if (privateOwnerId && !targetZone) throw conflict("Choose the exact personal Zone before drawing its image.");
+    const venue = venueInZone(found.venue, zoneId);
     const character = onlyIfEmpty
       ? sceneryCharacterContext(
           village,
@@ -115,28 +112,20 @@ export function createLocationImages(ports: LocationImagePorts) {
       seed: village.seed,
       now: villageNow(),
     });
-    const exterior = zoneId
-      ? resolveVenueZone(found.venue, zoneId)?.kind === "exterior"
-      : !spaceClass && !privateOwnerId;
-    const exteriorContext = [venue.name, venue.form, venue.description, venue.exteriorState?.condition ?? ""].join(
-      "\n",
-    );
+    const exterior = targetZone.kind === "exterior";
+    const exteriorContext = [venue.name, venue.form, venue.description].join("\n");
     const lore =
       (found.venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault)
         ? await readVillageVisualLore(
             village.selectedLorebookIds,
-            `${village.name}\n${village.worldName}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
+            `${village.name}\n${village.worldName}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
             900,
             village.loreTokenBudget,
           )
         : "";
     const basePrompt = buildLocationPrompt(
       { ...village, setting: "", worldFacts: [], venues: [] },
-      {
-        ...venue,
-        state: { ...venue.state, furniture: [], publicFacts: [] },
-        exteriorState: venue.exteriorState ? { ...venue.exteriorState, items: [], publicFacts: [] } : undefined,
-      },
+      { ...venue, description: "" },
       moment,
       "",
       exterior ? "exterior" : "interior",
@@ -156,7 +145,7 @@ export function createLocationImages(ports: LocationImagePorts) {
           ? `Public exterior context for architectural continuity only: ${found.venue.description}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
           : "",
         targetZone && isPrivateInterior(targetZone)
-          ? `Illustrate this saved interior without adding possessions from personality context. Visible items: ${targetZone.state.items.join("; ")}. Physical facts: ${targetZone.state.publicFacts.join("; ")}.`
+          ? "Illustrate this saved interior without adding possessions from personality context."
           : "",
       ],
       [
@@ -171,27 +160,12 @@ export function createLocationImages(ports: LocationImagePorts) {
           : "",
         village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
         lore ? `Established visual lore: ${lore}` : "",
-        ...(targetZone && isPrivateInterior(targetZone)
-          ? []
-          : exterior
-            ? (venue.exteriorState?.items ?? [])
-            : venue.state.furniture
-        ).map((item) => `Visible physical detail: ${item}`),
-        ...(targetZone && isPrivateInterior(targetZone)
-          ? []
-          : exterior
-            ? (venue.exteriorState?.publicFacts ?? [])
-            : venue.state.publicFacts
-        ).map((fact) => `Established area fact: ${fact}`),
       ],
       village.sceneryArtStyle,
       [
         village.setting ? "Authored place description; later verified state takes precedence: " + village.setting : "",
         ...village.worldFacts.map((fact) => "Current world fact: " + fact),
-        "Current area condition: " + (exterior ? (venue.exteriorState?.condition ?? "") : venue.state.condition),
-        ...(exterior ? (venue.exteriorState?.publicFacts ?? []) : venue.state.publicFacts).map(
-          (fact) => "Current area fact: " + fact,
-        ),
+        `Current physical account: ${venue.description}`,
         ...(onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
           ? sceneryAdmissionContext(village, found.venue)
           : []),
@@ -240,9 +214,8 @@ export function createLocationImages(ports: LocationImagePorts) {
       const venue = state.venues.find((entry) => entry.id === venueId);
       const space =
         venue &&
-        venueZones(venue).find(
-          (entry) => entry.id === ownerId || (entry.kind === "private-residence" && entry.ownerId === ownerId),
-        );
+        (resolveVenueZone(venue, ownerId) ??
+          resolveVenueZone(venue, legacyZoneId(venue, "private", "residence", ownerId)));
       if (
         state.automaticZonePictures === false ||
         space?.freezePicture ||
@@ -333,6 +306,19 @@ export function createLocationImages(ports: LocationImagePorts) {
       });
       return;
     }
+    const prompt = [
+      "Edit reference 1, the latest appearance of this exact Zone. Preserve its viewpoint, architecture, windows, doors, floor materials, furniture identities, colors, fabrics and unrelated decorations.",
+      support.multiple && base.id !== source.id
+        ? "Reference 2 is the original architectural anchor, not an instruction to remove later furnishings."
+        : "",
+      "Apply only the listed changes. Explicit renovations may change structure. Preserve everything else, including existing furniture colors and fabrics. Resident identity may affect styling but cannot add possessions absent the physical account. No people. Match the existing art style.",
+      `Changes: ${changes}`,
+      Object.hasOwn(JSON.parse(changes), "description") ? "" : `Current physical account: ${zone.description}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    // Never omit physical changes and then claim the complete state was rendered.
+    if (prompt.length > MAX_IMAGE_PROMPT_LENGTH) return;
     const epoch = village.zonePictureEpoch ?? 0,
       revision = zone.pictureRevision ?? 0;
     const claim = createHash("sha256")
@@ -372,19 +358,6 @@ export function createLocationImages(ports: LocationImagePorts) {
       const references = [reference.dataUrl];
       if (support.multiple && base.id !== source.id)
         references.push((await ports.readZonePictureReference(base)).dataUrl);
-      const prompt = [
-        "Edit reference 1, the latest appearance of this exact Zone. Preserve its viewpoint, architecture, windows, doors, floor materials, furniture identities, colors, fabrics and unrelated decorations.",
-        references.length > 1
-          ? "Reference 2 is the original architectural anchor, not an instruction to remove later furnishings."
-          : "",
-        "Apply only the listed changes. Explicit renovations may change structure. Preserve everything else, including existing furniture colors and fabrics. Resident identity may inspire small decorative touches; no new major possessions or people. Match the existing art style.",
-        `Changes: ${changes}`,
-        `Current furniture and decoration continuity: ${JSON.stringify(zone.state.items)}`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      // Never omit physical changes and then claim the complete state was rendered.
-      if (prompt.length > 4000) return;
       const before = await readVillageState();
       if (valid(before)?.picture?.claim !== claim) return;
       const currentSupport = await ports.resolveVillageImageEditing();

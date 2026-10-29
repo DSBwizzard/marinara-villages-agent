@@ -6,7 +6,7 @@ import { applySceneMutation } from "../packages/villages/src/server/domain/rules
 const stamp = "2026-10-06T12:00:00.000Z";
 function scene(submissions: unknown[] = []) {
   return coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     placeId: "venue",
     zoneId: "exterior",

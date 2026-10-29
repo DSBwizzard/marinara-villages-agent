@@ -1,5 +1,5 @@
 import type { VenueScene } from "../models/scene-model.js";
-import type { VillageState, VillageVenue, VillageVenueSpace, VillageWish } from "../models/world.js";
+import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
 import { relationshipKey } from "./relationship-rules.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { contactNeighbors, contactPosition } from "./venue-contact.js";
@@ -68,7 +68,7 @@ export const sceneContinuityFields = [
 ] as const satisfies readonly (keyof VillageState)[];
 
 export type SceneContinuity = {
-  version: 2;
+  version: 3;
   seed: string;
   capturedAt: string;
   receiptIds: string[];
@@ -116,7 +116,7 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
     Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])),
   ) as SceneContinuity["facts"];
   return {
-    version: 2,
+    version: 3,
     seed: state.seed,
     capturedAt,
     receiptIds: physicalVenueEvents(state)
@@ -236,52 +236,9 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
       );
     const zone = resolveVenueZone(venue, zoneId);
     if (!zone) continue;
-    const state = zone.state;
-    // Presentation of an already committed receipt: no preconditions, stock,
-    // capacity checks or authority writes. Unrelated captured facts stay intact.
-    if (change.conditionBefore !== undefined) state.condition = change.conditionAfter ?? "";
-    if (change.featureId)
-      state.features = change.featureText
-        ? [
-            ...state.features.filter((row) => row.id !== change.featureId),
-            {
-              id: change.featureId,
-              text: change.featureText,
-              locked: state.features.find((row) => row.id === change.featureId)?.locked ?? false,
-              sourceCharacterId: "",
-              updatedAt: context.capturedAt,
-            },
-          ]
-        : state.features.filter((row) => row.id !== change.featureId);
-    if (change.publicFactBefore)
-      state.publicFacts = [
-        ...state.publicFacts.filter((row) => row !== change.publicFactBefore),
-        ...(change.publicFactAfter ? [change.publicFactAfter] : []),
-      ];
-    if (change.resolveTraceId) state.traces = state.traces.filter((row) => row.id !== change.resolveTraceId);
-    if (change.removeItem) state.items = state.items.filter((row) => row !== change.removeItem);
-    if (change.addItem && !state.items.includes(change.addItem)) state.items.push(change.addItem);
-    const trace = (
-      id: string,
-      kind: string,
-      text: string,
-      recipientId = "",
-    ): VillageVenueSpace["state"]["traces"][number] => ({
-      id,
-      kind,
-      text,
-      recipientId,
-      createdAt: context.capturedAt,
-      expiresAt: new Date(Date.parse(context.capturedAt) + 3 * 86400000).toISOString(),
-    });
-    if (change.sceneNote)
-      state.traces = [
-        ...state.traces.filter((row) => row.kind !== "scene-note"),
-        ...state.traces.filter((row) => row.kind === "scene-note").slice(-3),
-        trace(`scene-note:${turn.id}`, "scene-note", change.sceneNote),
-      ];
-    if (change.traceKind && change.traceText)
-      state.traces.push(trace(`trace:${turn.id}`, change.traceKind, change.traceText, change.recipientId));
+    // Exact committed after-values extend this captured Scene only; live time and preconditions do not apply.
+    zone.description = change.after.description;
+    zone.state = structuredClone(change.after.state);
     view.venueEvents = [event, ...view.venueEvents.filter((row) => row.id !== event.id)];
   }
   return view;

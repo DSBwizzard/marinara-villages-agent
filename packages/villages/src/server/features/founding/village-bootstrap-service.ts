@@ -1,5 +1,7 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash } from "node:crypto";
+import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
+import { asRecord } from "../../domain/rules/coerce.js";
 import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { backgroundCalls } from "../../adapters/operations/background-context.js";
@@ -182,6 +184,10 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       >[];
       memory?: ReturnType<typeof import("../../domain/rules/scene-memories.js").sceneMemoryContext>;
       at: string;
+      place?: unknown;
+      possibleMemoryEffects?: unknown;
+      committedPhysical?: unknown;
+      originalPlaceUpdate?: unknown;
     },
     mail: boolean,
     options: { signal?: AbortSignal } = {},
@@ -195,6 +201,10 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
         content:
           RELATIONSHIP_REVIEW_INSTRUCTION +
           " Return JSON only. Independently interpret these supplied exact lines. Return a memoryChanges array using the native Memory contract supplied below, grounded only in actual witnessed dialogue; use an empty array when none are supported. Use zero-based numeric lineIds into lines for social citations. For an encounter the player is absent: disclosures must be empty. For personal mail the recipient is player; save its disclosures for reading. The captured and live social baseline is context.state; absent pair revisions are 0. sceneAfter and liveAfter coincide for this automatic source. Mail cannot grant access or create actionable invitations; return permissions:[] for mail. Do not invent physical deeds or player consent. Private reasons and intentions remain private. " +
+          (mail
+            ? ""
+            : " Return consistent:true only if every narrated physical outcome is supported. Otherwise consistent:false; never rewrite source facts. possibleMemoryEffects lists a pending physical receipt: dependent physical facts need its exact effectId with validated-event support, and a supported matching placeUpdate. When committedPhysical is supplied, physical truth is already settled: preserve the original physical nomination and use its saved outcome while reinterpreting social meaning. " +
+              PLACE_UPDATE_INSTRUCTION) +
           SCENE_MEMORY_INSTRUCTION +
           "\n" +
           SOCIAL_WISH_INSTRUCTION,
@@ -228,7 +238,18 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
       !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
     )
       throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
-    const record: Record<string, unknown> = { relationshipReview: review };
+    if (
+      !mail &&
+      Array.isArray(lines) &&
+      lines.some((line) => asRecord(line).kind === "narration") &&
+      interpreted?.consistent !== true
+    )
+      throw new Error("The saved encounter contains unsupported physical outcomes.");
+    const record: Record<string, unknown> = {
+      relationshipReview: review,
+      placeUpdate: mail ? null : (interpreted?.placeUpdate ?? null),
+      physicalConsistent: !mail && interpreted?.consistent === true,
+    };
     if (context.memory) record.memoryContexts = { [context.memory.saved.protection.fingerprint]: context.memory.saved };
     record.semanticVersion = 2;
     record.memoryChanges = interpreted!.memoryChanges;

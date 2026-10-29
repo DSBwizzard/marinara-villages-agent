@@ -14,7 +14,7 @@ The original completion stays unchanged in provider checkpoints. The model adapt
 | Founding Venue drafts, details, descriptions, names and scenario imprint      | Bounded object recovery; existing place/layout/ID validators; legacy arrays must be closed before wrapping; at most two encoded-string unwraps |
 | Compact routines and agendas                                                  | Bounded object recovery; complete seven-day pattern and existing routine validation                                                            |
 | System intent, exchange, schedule influence and starting ties                 | Bounded object recovery; source hashes, evidence, actor IDs, explicit outcomes and authority remain required                                   |
-| Wish lifecycle and residence adaptation                                       | Bounded object recovery; existing eligibility, affected-person, evidence and allowed-item checks                                               |
+| Wish lifecycle                                       | Bounded object recovery; existing eligibility, affected-person and evidence checks                                               |
 | Scene narration, speech recovery, effect retry and consequential verification | Bounded recovery before existing schema/identity/privacy checks; existing narrow recovery of untouched Scene core fields remains separate      |
 | Spinoff memory review                                                         | Bounded model-object recovery followed by transcript and memory validation                                                                     |
 

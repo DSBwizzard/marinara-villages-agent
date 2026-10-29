@@ -185,7 +185,7 @@ const departed = fixture("Departed");
 await departed.service.addVillager("same");
 const home = coerceVillageState({
   ...defaultVillageState(),
-  version: 6,
+  version: 7,
   venues: [
     parsePlace(
       {
@@ -222,11 +222,7 @@ zone.seen = true;
 zone.preparation = { status: "ready" };
 zone.description = "Secret writing";
 home.privateSpaces![0].description = "Secret writing";
-zone.adaptationPending = true;
-zone.adaptationSourceArchiveAt = "previous";
 zone.controllerIds = ["same", "other"];
-zone.state.publicFacts = ["Private fact"];
-zone.state.traces = [];
 zone.access = {
   mode: "permission-required",
   managerIds: ["same"],
@@ -251,13 +247,11 @@ assert.equal(departed.state.villagers.length, 0);
 assert.deepEqual(emptied.residentIds, []);
 assert.equal(emptied.occupancy.residentCharacterId, null);
 assert.equal(vacant.ownerId, undefined);
-assert.equal(vacant.preparation, undefined);
-assert.equal(vacant.adaptationPending, false);
-assert.equal(vacant.adaptationSourceArchiveAt, "");
-assert.equal(vacant.seen, false);
-assert.equal(vacant.description, "A garden-facing window", "vacancy keeps the known shell rather than personal prose");
+assert.deepEqual(vacant.preparation, { status: "ready" });
+assert.equal(vacant.seen, true);
+assert.equal(vacant.description, "Secret writing", "vacancy preserves established physical truth");
 assert.equal(vacant.image, null);
-assert.deepEqual(vacant.state.publicFacts, []);
+assert.equal(vacant.state.recent, null);
 assert.deepEqual(vacant.access!.managerIds, null);
 assert.deepEqual(vacant.access!.inviterIds, []);
 assert.deepEqual(vacant.access!.memberIds, []);

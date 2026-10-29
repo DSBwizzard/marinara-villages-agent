@@ -8,7 +8,6 @@ import {
   decideVillageResidence,
   movePlayerToResidence,
   proposeVillageResidence,
-  retryResidencePrivateSpaceAdaptation,
 } from "../venues/residences.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
@@ -17,10 +16,10 @@ import {
   deleteVillageVenue,
   previewVillageVenueDeletion,
   updateVillageVenue,
+  renameVillageZone,
   updateVenueZoneLayout,
 } from "./services.js";
 import { decideVillageVenueRequest } from "./venue-requests.js";
-import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 
 export function registerVenueAccessRoutes(engine: FastifyInstance) {
   const app = engine;
@@ -47,10 +46,10 @@ export function registerVenueAccessRoutes(engine: FastifyInstance) {
     }
   });
   app.put<{ Params: { venueId: string; zoneId: string }; Body: unknown }>(
-    "/venues/:venueId/zones/:zoneId",
+    "/venues/:venueId/zones/:zoneId/name",
     async (request, reply) => {
       try {
-        return await updateVillageZone(
+        return await renameVillageZone(
           readPlaceId(request.params.venueId),
           readPlaceId(request.params.zoneId),
           request.body,
@@ -97,16 +96,6 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       return fail(reply, error, "updating a place");
     }
   });
-  app.post<{ Params: { venueId: string }; Body: unknown }>(
-    "/locations/venue/:venueId/edit-proposals",
-    async (request, reply) => {
-      try {
-        return await proposeResidenceSpaceEdit(readVenueId(request.params.venueId), request.body);
-      } catch (error) {
-        return fail(reply, error, "proposing a Residence edit");
-      }
-    },
-  );
   app.get<{ Params: { venueId: string } }>("/locations/venue/:venueId/dependencies", async (request, reply) => {
     try {
       return await previewVillageVenueDeletion(readVenueId(request.params.venueId));
@@ -184,13 +173,6 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       return await completeVillageResidence(request.body?.characterId, true);
     } catch (error) {
       return fail(reply, error, "completing a residence change");
-    }
-  });
-  app.post<{ Body: { characterId?: unknown } }>("/residences/private-space/retry", async (request, reply) => {
-    try {
-      return await retryResidencePrivateSpaceAdaptation(request.body?.characterId);
-    } catch (error) {
-      return fail(reply, error, "adapting a private space");
     }
   });
 }

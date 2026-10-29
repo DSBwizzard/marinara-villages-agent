@@ -101,7 +101,7 @@ world.venues = [
 ] as typeof world.venues;
 const village = coerceVillageState(world);
 const scene = coerceSession({
-  version: 2,
+  version: 3,
   id: "harbour-scene",
   placeId: "harbour",
   placeName: "The Harbour Terrace",
@@ -1205,7 +1205,7 @@ try {
   assert.equal(state().pictureEvaluatedZoneIds.filter((id: string) => id === "kitchen").length, 1);
   // A fresh v2 Scene exercises the archive-identical server and real HTTP application owners.
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
-    version: 2,
+    version: 3,
     ...clone(scene),
     semanticVersion: 2,
     lines: [],
@@ -1530,7 +1530,7 @@ try {
   initializeVenueAccess(canonicalVenue);
   canonicalVenue.access.managerIds = ["aqua"];
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
-    version: 2,
+    version: 3,
     ...clone(scene),
     semanticVersion: 2,
     status: "opening",
@@ -1649,8 +1649,10 @@ try {
     segment: 0,
     happened: true,
     narration: "The cloth is straightened.",
-    conditionBefore: canonicalVenue.zones.find((zone: any) => zone.id === "terrace").state.condition,
-    conditionAfter: "The cloth is straight.",
+    expectedRevision: canonicalVenue.zones.find((zone: any) => zone.id === "terrace").state.revision,
+    actorIds: ["player"],
+    consent: [],
+    recent: { text: "The cloth is straight." },
   };
   semanticIntentAnswer = {
     status: "resolved",
@@ -1662,11 +1664,31 @@ try {
   semanticExchangeAnswer.action = physical;
   semanticExchangeAnswer.access = [];
   semanticExchangeAnswer.authority = { physical: true, access: false, projects: false, standing: false, social: false };
+  semanticExchangeAnswer.memoryChanges = [
+    {
+      action: "create",
+      kind: "experience",
+      text: "I straightened the cloth.",
+      subjects: ["player"],
+      domainRef: { kind: "physical", id: scene.placeId },
+      effectId: `venue-chat:${scene.id}:semantic-physical`,
+      learners: {
+        player: { basis: "validated-event", support: [{ lineId: 0, excerpt: "You straighten the cloth." }] },
+      },
+    },
+  ];
   await turn("semantic-physical", "*straightens the cloth*", [{ text: "You straighten the cloth." }]);
+  assert(
+    fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
+      (row) => row.text === "I straightened the cloth." && row.knowers.player,
+    ),
+    "a player-witnessed physical receipt supports their own Memory",
+  );
+  semanticExchangeAnswer.memoryChanges = [];
   assert.equal(state().submissions.at(-1).semanticReady, true);
   assert.equal(
-    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "terrace").state.condition,
-    physical.conditionAfter,
+    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "terrace").state.recent.text,
+    physical.recent.text,
   );
   assert(
     Object.values(records.get("villages-village").data.exchangeReceipts).some(
@@ -1947,7 +1969,7 @@ try {
     const retained = clone(records),
       oldIntent = clone(semanticIntentAnswer),
       oldExchange = clone(semanticExchangeAnswer);
-    const blocked = coerceSession({ version: 2, ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
+    const blocked = coerceSession({ version: 3, ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
     blocked.sceneAttendance!.occupants.find((row) => row.characterId === "distant")!.zoneId = "kitchen";
     records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen = true;
     records.get("villages-venue-visit-" + scene.id).data = blocked;
@@ -2234,9 +2256,11 @@ try {
       beforeSemanticResponse = undefined;
       records.clear();
       for (const [key, record] of retained) records.set(key, clone(record));
+      // Construct a chronologically valid old capture, without a later incidental arrangement.
+      records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "terrace").state.recent = null;
       const preserved = coerceSession({
         ...clone(scene),
-        version: 2,
+        version: 3,
         semanticVersion: 2,
         sceneRevision: 0,
         startedAt: "2026-10-12T14:00:00.000Z",
@@ -2386,9 +2410,10 @@ try {
       happened: true,
       segment: 0,
       narration: "You fold the cloth.",
-      conditionBefore: zone().state.condition,
-      conditionAfter: "The cloth is folded.",
-      sceneNote: "A neat folded cloth.",
+      expectedRevision: zone().state.revision,
+      actorIds: ["player"],
+      consent: [],
+      recent: { text: "A neat folded cloth." },
     };
     semanticIntentAnswer = {
       status: "resolved",
@@ -2407,7 +2432,8 @@ try {
     };
     answer = { playerSpeechCapture: { status: "silent", segments: [] }, segments: [{ text: "You fold the cloth." }] };
     beforeSemanticResponse = () => {
-      zone().state.condition = "The cloth was removed elsewhere.";
+      zone().description = "The cloth was removed elsewhere.";
+      zone().state.revision++;
     };
     const changed = await app.inject({
       method: "POST",
@@ -2424,12 +2450,20 @@ try {
     assert.equal(changed.statusCode, 200, changed.body);
     assert.equal(changed.json().turnOutcome, "halt-world");
     assert.deepEqual(state().lines, sourceLines);
-    assert.equal(zone().state.condition, "The cloth was removed elsewhere.");
-    zone().state.condition = action.conditionBefore;
+    assert.equal(zone().description, "The cloth was removed elsewhere.");
+    zone().description = state().continuity.facts.venues[0].zones.find((row: any) => row.id === "terrace").description;
+    zone().state.revision = action.expectedRevision;
     await turn("preserved-physical", "*folds the cloth*", [{ text: "You fold the cloth." }]);
-    assert.equal(zone().state.updatedAt, now, "authority stamps use application time");
-    assert.equal(zone().state.traces.at(-1).createdAt, now);
-    assert.equal(zone().state.traces.at(-1).expiresAt, new Date(Date.parse(now) + 3 * 86_400_000).toISOString());
+    assert.equal(
+      zone().state.updatedAt,
+      "2026-10-12T14:00:00.000Z",
+      "physical continuity retains Scene occurrence time",
+    );
+    assert.equal(
+      zone().state.recent.expiresAt,
+      "2026-10-13T14:00:00.000Z",
+      "accepting old events cannot refresh them to today",
+    );
     const physicalEvent =
       records.get("villages-village").data.exchangeReceipts[`venue-chat:${scene.id}:preserved-physical`];
     assert.equal(physicalEvent.at, "2026-10-12T14:00:00.000Z");
@@ -2463,8 +2497,9 @@ try {
   const afterMovePhysical = {
     ...physical,
     segment: 1,
-    conditionBefore: physical.conditionAfter,
-    conditionAfter: "The cloth is folded.",
+    expectedRevision: records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "terrace")
+      .state.revision,
+    recent: { text: "The cloth is folded." },
   };
   semanticIntentAnswer = {
     status: "resolved",
@@ -2488,7 +2523,7 @@ try {
     records.get("villages-village").data.exchangeReceipts[`venue-chat:${scene.id}:semantic-physical-after-departure`];
   assert.deepEqual(
     movedWitnessReceipt.physicalOutcome.actionReceipt.witnessIds,
-    ["feddy"],
+    ["player", "feddy"],
     "Physical proof uses actual witnesses at its segment, not initial attendance",
   );
   semanticIntentAnswer = {

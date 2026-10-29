@@ -33,7 +33,7 @@ try {
     place.occupancy = { playerHome: false, residentCharacterId: "mara", homeKind: null };
     place.form = "A converted warehouse";
     place.description = "A home beside the village mill.";
-    const state = { condition: "", items: [], features: [], publicFacts: [], traces: [], updatedAt: "" };
+    const state = { revision: 0, recent: null, updatedAt: "" };
     const access = (allowed, mode = "permission-required") => ({
       decision: {
         allowed,
@@ -156,8 +156,8 @@ try {
           heldVenueSave = route;
           return;
         }
-      } else if (/\/venues\/[^/]+\/zones\/[^/]+$/.test(path) && request.method() === "PUT") {
-        const zone = place.zones.find((zone) => zone.id === decodeURIComponent(path.split("/").at(-1)));
+      } else if (/\/venues\/[^/]+\/zones\/[^/]+\/name$/.test(path) && request.method() === "PUT") {
+        const zone = place.zones.find((zone) => zone.id === decodeURIComponent(path.split("/").at(-2)));
         zone.name = request.postDataJSON().name;
         if (holdZoneSave) {
           heldZoneSave = route;
@@ -378,7 +378,7 @@ try {
     holdZoneSave = false;
     await expect(layout.locator('[data-layout-zone="exterior"]')).toHaveAttribute("aria-pressed", "true");
     assert.deepEqual(writes.at(-1), {
-      path: `/api/villages/venues/${place.id}/zones/bay`,
+      path: `/api/villages/venues/${place.id}/zones/bay/name`,
       body: { name: "Harbour Lounge" },
     });
     await expect(layout.locator('[data-layout-zone="bay"]')).toContainText("Harbour Lounge");

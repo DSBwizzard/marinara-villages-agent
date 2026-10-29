@@ -122,7 +122,7 @@ export function ProjectZones({
         ...zone,
         access: draftZonePolicy(venue, zone, personal),
         image: null,
-        state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+        state: { revision: 0, updatedAt: "", recent: null },
       };
       setNewRows(
         personal ? (venue.spaces ?? []) : [...(venue.spaces ?? []), area],
@@ -232,7 +232,7 @@ export function ProjectZones({
                   aria-pressed={editorPage === "appearance"}
                   onClick={() => setEditorPage("appearance")}
                 >
-                  Appearance
+                  Long-term details
                 </button>
                 <button
                   type="button"
@@ -266,10 +266,10 @@ export function ProjectZones({
         <fieldset disabled={!editable || busy}>
           {entrance ? (
             <label>
-              Entrance
+              Long-term details
               <textarea
                 autoComplete="off"
-                aria-label="Entrance"
+                aria-label="Long-term details"
                 rows={4}
                 value={venue.description}
                 readOnly={renovation}
@@ -308,19 +308,19 @@ export function ProjectZones({
                       autoComplete="off"
                       aria-label="Room Specification"
                       rows={4}
-                      maxLength={1000}
+                      maxLength={4000}
                       value={selected.roomSpecification ?? ""}
                       onChange={(event) => patch({ roomSpecification: event.target.value })}
                     />
                   </label>
                 ) : (
                   <label>
-                    Appearance
+                    Long-term details
                     <textarea
                       autoComplete="off"
-                      aria-label="Zone Appearance"
+                      aria-label="Long-term details"
                       rows={4}
-                      maxLength={1000}
+                      maxLength={4000}
                       value={selected.description}
                       onChange={(event) => patch({ description: event.target.value })}
                     />

@@ -82,6 +82,7 @@ function readPrivateReply(
             ...(generated.venueId !== venueId ? ["venue_id_mismatch"] : []),
             ...(generated.id !== zoneId ? ["space_id_mismatch"] : []),
             ...(!asTrimmedString(generated.description) ? ["missing_description"] : []),
+            ...(asTrimmedString(generated.description).length > 4000 ? ["description_too_long"] : []),
           ];
   if (["length", "max_tokens"].includes(completion.finishReason ?? "")) issues.unshift("truncated");
 
@@ -179,9 +180,6 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             ? {
                 existingInterior: {
                   description: zone.description,
-                  condition: zone.state.condition,
-                  items: zone.state.items,
-                  facts: zone.state.publicFacts,
                 },
               }
             : {}),
@@ -212,7 +210,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             role: "system",
             content:
               (room.characters.some((person) => person.admissionContext) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
-              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled items and facts, removing only details contradicted by the approved work; do not reset the room or add unexplained possessions. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"at most 240 characters","items":["ordinary item"],"facts":["grounded physical detail"]}]}. Return at most four items and four facts for initial preparation, or up to twenty-four of each when preserving an existingInterior, each at most 240 characters. Keep the complete reply concise.',
+              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled description, removing only details contradicted by the approved work; preserve unrelated established details. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"complete current physical account, at most 4000 characters"}]}. Keep the complete reply concise.',
           },
           {
             role: "user",
@@ -355,32 +353,11 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             stale = true;
             return;
           }
-          const list = (field: string) =>
-            Array.isArray(generated[field])
-              ? (generated[field] as unknown[])
-                  .filter((item): item is string => typeof item === "string")
-                  .map((item) => item.trim().slice(0, 240))
-                  .filter(Boolean)
-                  .slice(0, zone.preparation?.mode === "renovation" ? 24 : 4)
-              : [];
           const target = current.zone;
           if (target.name === "Private work area")
             target.name = asTrimmedString(generated.name).slice(0, 100) || target.name;
-          if (target.roomSpecification !== undefined)
-            target.description = asTrimmedString(generated.description).slice(0, 1000);
-          else target.description ||= asTrimmedString(generated.description).slice(0, 1000);
-          target.state = {
-            ...target.state,
-            condition: asTrimmedString(generated.condition).slice(0, 240),
-            items:
-              target.preparation?.mode === "renovation"
-                ? list("items")
-                : venue.layoutVersion === 1
-                  ? [...new Set([...target.state.items, ...list("items")])]
-                  : list("items"),
-            publicFacts: list("facts"),
-            updatedAt: new Date().toISOString(),
-          };
+          target.description = asTrimmedString(generated.description);
+          target.state = { ...target.state, revision: target.state.revision + 1, updatedAt: new Date().toISOString() };
           target.preparation = { status: "ready", attempt };
         });
         if (stale) throw new Error("The space changed during preparation. Retry deliberately.");

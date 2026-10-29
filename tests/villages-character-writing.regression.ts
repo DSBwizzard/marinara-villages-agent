@@ -161,11 +161,7 @@ async function run() {
       assert.ok(outsidePrompt.includes("Every knower must directly witness EVERY cited line"));
       assert.ok(outsidePrompt.includes("Dialogue, side and whisper text contain only that speaker's audible words"));
       assert.ok(outsidePrompt.includes("unconditional standing invitations are distinct"));
-      assert.ok(
-        outsidePrompt.includes(
-          "Speech about deeds, unsupported elsewhere-claims, promises, and impossible attempts have no physical effect",
-        ),
-      );
+      assert.ok(outsidePrompt.includes("No invented supplies, remote deeds or object/quantity accounting."));
       for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
         assert.ok(outsidePrompt.includes(fragment), fragment);
       const greeting = await prepareVenueTurnMessages(exterior, "", "greet", "", null);
@@ -208,7 +204,7 @@ async function run() {
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],

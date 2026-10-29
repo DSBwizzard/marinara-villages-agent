@@ -20,8 +20,8 @@ function put(id: string, kind: string, data: unknown = {}) {
     updatedAt: stamp,
   });
 }
-const closed = coerceSession({ version: 2, id: "closed", status: "closed", startedAt: stamp });
-const active = coerceSession({ version: 2, id: "active", status: "active", startedAt: stamp });
+const closed = coerceSession({ version: 3, id: "closed", status: "closed", startedAt: stamp });
+const active = coerceSession({ version: 3, id: "active", status: "active", startedAt: stamp });
 put(SESSION_PREFIX + closed.id, SESSION_KIND, closed);
 put(SESSION_PREFIX + active.id, SESSION_KIND, active);
 put("terminal", "scene-terminal");

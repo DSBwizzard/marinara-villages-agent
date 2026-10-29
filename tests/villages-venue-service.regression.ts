@@ -5,10 +5,6 @@ import { initializeVenueAccess } from "../packages/villages/src/server/domain/ru
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
-  createVenueZoneEdits,
-  type VenueZoneEditPorts,
-} from "../packages/villages/src/server/features/venues/zone-edit-service.js";
-import {
   createVenueCommands,
   type VenueCommandPorts,
 } from "../packages/villages/src/server/features/venues/venue-service.js";
@@ -239,65 +235,25 @@ async function main() {
       image: newImage,
     },
   ];
-  const editPorts: VenueZoneEditPorts = {
-    ...edits.ports,
-    sceneQueries: () => {
-      edits.events.push("queries");
-      return {
-        activeVenueSession: async () => {
-          edits.events.push("scene");
-          return {
-            id: "scene",
-            placeId: "venue",
-            zoneId: "staff",
-            area: "public",
-            privateOwnerId: "",
-            startedAt: "2026-10-01T12:00:00.000Z",
-            zoneGrants: [{ zoneId: "staff", controllerId: "resident" }],
-          };
-        },
-      };
-    },
-  };
-  const zoneEdits = createVenueZoneEdits(editPorts);
-  await zoneEdits.updateVillageZone("venue", "staff", { description: "Proposed workspace." });
-  assert.deepEqual(edits.events, ["read", "queries", "scene", "mutate", "snapshot"]);
-  assert.equal(
-    editVenue.zones[0].description,
-    "Original workspace.",
-    "resident-controlled edits remain proposals until approval",
-  );
-  const proposal = editVenue.editProposals![0];
-  const result = await zoneEdits.applyResidenceEditApproval("venue", proposal.id, "resident", true);
-  assert.equal(result, undefined, "approval preserves its void contract and does not build a snapshot");
-  assert.equal(editVenue.zones[0].description, "Proposed workspace.");
-  assert.deepEqual(editVenue.zones[0].image, newImage);
-  assert.equal(edits.events.at(-1), "mutate");
-  assert.equal(editVenue.editProposals!.length, 0);
-
+  const commands = createVenueCommands(edits.ports);
   const beforeRename = structuredClone(editVenue.zones[0]);
   editVenue.zones[0].seen = false;
-  await zoneEdits.updateVillageZone("venue", "staff", { name: "  Studio  " });
+  await commands.renameVillageZone("venue", "staff", { name: " Studio " });
   assert.equal(editVenue.zones[0].name, "Studio");
-  assert.equal(editVenue.zones[0].seen, false, "renaming does not reveal an unseen interior");
+  assert.equal(editVenue.zones[0].seen, false, "renaming does not discover an interior");
   assert.deepEqual(editVenue.zones[0].state, beforeRename.state);
   assert.deepEqual(editVenue.zones[0].image, beforeRename.image);
-  assert.equal(editVenue.editProposals!.length, 0, "label changes need no resident proposal");
-  await assert.rejects(() => zoneEdits.updateVillageZone("venue", "staff", { name: "  " }), /name/);
+  assert.equal(editVenue.zones[0].description, beforeRename.description);
+  await assert.rejects(() => commands.renameVillageZone("venue", "staff", { name: "", description: "replacement" }));
+  await assert.rejects(() =>
+    commands.renameVillageZone("venue", "staff", { name: "Studio", description: "replacement" }),
+  );
+  await assert.rejects(() => commands.updateVillageVenue("venue", { description: "replacement" }), /Project/);
   editVenue.zones.push({ ...structuredClone(beforeRename), id: "exterior", kind: "exterior", name: "Exterior" });
   await assert.rejects(
-    () => zoneEdits.updateVillageZone("venue", "exterior", { name: "Front door" }),
+    () => commands.renameVillageZone("venue", "exterior", { name: "Front door" }),
     /always named Exterior/,
   );
-  assert.equal(editVenue.zones[1].name, "Exterior");
-  editVenue.zones[0].seen = true;
-
-  await zoneEdits.proposeResidenceSpaceEdit("venue", { zoneId: "staff", description: "Obsolete proposal." });
-  const staleProposal = editVenue.editProposals![0];
-  editVenue.zones[0].state.updatedAt = "2026-10-02T12:00:00.000Z";
-  await zoneEdits.applyResidenceEditApproval("venue", staleProposal.id, "resident", true);
-  assert.equal(staleProposal.declined, true);
-  assert.equal(editVenue.zones[0].description, "Proposed workspace.", "stale approval cannot replace newer Zone state");
   console.log(
     "Venue service ports, overlapping independent stores, binding ownership, Scene timing and retry fences passed.",
   );

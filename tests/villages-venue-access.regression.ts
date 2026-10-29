@@ -56,7 +56,6 @@ import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { changeVenueAccess } from "../packages/villages/src/server/features/venues/services.js";
-import { updateVillageZone } from "../packages/villages/src/server/features/venues/zone-edits.js";
 
 import { contactPath } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -96,7 +95,7 @@ function fixture(): VillageVenue {
     occupancy: { playerHome: false, residentCharacterId: "jim", homeKind: null },
     capabilities: [],
     presentation: { image: null, x: 0.4, y: 0.4 },
-    state: { condition: "", furniture: [], publicFacts: [], updatedAt: stamp },
+    state: { revision: 0, recent: null, updatedAt: stamp },
     zones: [
       { ...zone("exterior"), kind: "exterior", seen: true },
       zone("living"),
@@ -676,13 +675,6 @@ async function main() {
       "Scene-change projection has no access commands.",
     );
     await endVenueSession(entered.id);
-    await updateVillageZone("home", "exterior", { name: "Exterior", purpose: "Arrival", description: "A stone gate" });
-    assert.equal(
-      (await readVillageState({ memories: true })).venues[0].zones!.find((zone) => zone.kind === "exterior")!
-        .description,
-      "A stone gate",
-      "Venue managers can edit the Unrestricted Entrance's physical details.",
-    );
     const managementWorld = defaultVillageState();
     managementWorld.foundedAt = stamp;
     managementWorld.setupAt = stamp;
@@ -1030,7 +1022,7 @@ async function main() {
       0,
     );
     const speechScene = {
-      version: 2,
+      version: 3,
       id: "speech-scene",
       placeId: "home",
       lines: [{ ...draft[0], id: "speech-line" }],
@@ -1136,7 +1128,7 @@ async function main() {
       0,
     );
     const recoveryScene = {
-      version: 2,
+      version: 3,
       id: "recovery-scene",
       placeId: "home",
       lines: [{ ...recoveryDraft[0], id: "recovery-line" }],
@@ -1404,7 +1396,7 @@ async function main() {
       oldHome = moveWorld.venues[0];
     oldHome.destinations!.jim = { home: "living", sleep: "bedroom" };
     for (const zone of oldHome.zones!.filter((zone) => zone.ownerId === "jim"))
-      zone.state.items = [zone.id + " keepsake"];
+      zone.description = zone.id + " keepsake";
     const destination = fixture();
     destination.id = "new-home";
     destination.name = "New home";
@@ -1440,7 +1432,7 @@ async function main() {
     assert.deepEqual(
       priorHome
         .archivedPrivateSpaces!.filter((row) => row.ownerId === "jim")
-        .map((row) => row.space.state.items[0])
+        .map((row) => row.space.description)
         .sort(),
       ["bedroom keepsake", "office keepsake"],
     );

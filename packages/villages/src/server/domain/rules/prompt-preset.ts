@@ -117,7 +117,7 @@ export const MAX_VILLAGE_NAME_LENGTH = 60;
 /** How much a place may say about itself. */
 export const MAX_VENUE_NAME_LENGTH = 60;
 export const MAX_VENUE_NOTE_LENGTH = 240;
-export const MAX_VENUE_DESCRIPTION_LENGTH = 1_000;
+export const MAX_VENUE_DESCRIPTION_LENGTH = 4_000;
 
 /**
  * How many places a village holds, and how many of them a villager may be SENT

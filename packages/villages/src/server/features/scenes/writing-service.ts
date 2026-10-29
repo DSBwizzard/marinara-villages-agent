@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import {
@@ -108,12 +109,12 @@ import {
   readContactMoves,
   readContactRelay,
 } from "../../domain/rules/venue-contact.js";
-import { hasVenueClass, venueClasses, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
+import { hasVenueClass, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { type MovementIntent, readPlayerMovement } from "../../domain/rules/venue-movement.js";
 import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { buildVenueResponseContract } from "../../domain/rules/venue-response-contract.js";
 import { venueFoundingBackground } from "../../domain/rules/venue-scene-context.js";
-import { readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
+import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { venueReplyIntegrity } from "../../domain/rules/venue-turn-integrity.js";
 import {
   buildVenueSceneBlocks,
@@ -373,15 +374,6 @@ export function createSceneWriting({
     const pendingMoves = village.residences.filter(
       (residence) => residence.status === "pending" && audience.includes(residence.characterId),
     );
-    // Prose Events are visual only. Verified player deeds have separate receipts.
-    const recentHappenings = village.venueEvents
-      .filter(
-        (entry) =>
-          entry.venueId === session.placeId &&
-          (!session.zoneId || entry.zoneId === session.zoneId) &&
-          now.getTime() - Date.parse(entry.at) <= 3 * 24 * 60 * 60 * 1000,
-      )
-      .slice(0, 4);
     const loreStarted = performance.now();
     let loreInspection: LoreInspection | undefined;
     const lorePromise = (
@@ -441,14 +433,6 @@ export function createSceneWriting({
             session.placeId,
           )
         : [];
-    const pendingEdits = (village.venues.find((row) => row.id === session.placeId)?.editProposals ?? []).filter(
-      (proposal) =>
-        !proposal.declined &&
-        (!proposal.zoneId || proposal.zoneId === session.zoneId) &&
-        (proposal.zoneId === session.zoneId ||
-          proposal.target === "shared" ||
-          proposal.ownerId === session.privateOwnerId),
-    );
     const earlierContext =
       history?.context ??
       "Earlier evidence: " +
@@ -503,7 +487,7 @@ export function createSceneWriting({
                   : ZONE_PLAYER_SPEECH_CONTRACT,
               )
               .replace(
-                "Physical changes still need validated sceneChange: sound proves no repair, transfer, permission or lasting effect.",
+                "Physical changes still need validated placeUpdate: sound proves no repair, transfer, permission or lasting effect.",
                 "System must validate physical outcomes; sound proves no deed.",
               )
               .replace(
@@ -597,19 +581,11 @@ export function createSceneWriting({
               writingVersion === 3,
             )
           : "",
-        `Zone: ${storedPlace ? (resolveVenueZone(storedPlace, session.zoneId ?? "")?.name ?? session.area) : session.area} (${session.zoneId ?? "legacy"}). Venue Class: ${place ? venueClasses(place).join(" / ") : "other"}. Form: ${place?.form ?? ""}. Current condition: ${place?.state.condition ?? ""}. Defining features: ${place?.state.features?.map((feature) => `${feature.id}: ${feature.text}${feature.locked ? " [locked]" : ""}`).join("; ") || "none"}. Visible traces: ${
-          place?.state.traces
-            ?.filter(
-              (trace) => trace.kind !== "note" && (!trace.expiresAt || Date.parse(trace.expiresAt) > now.getTime()),
-            )
-            .map((trace) => `${trace.id}: ${trace.text}`)
-            .join("; ") || "none"
-        }. Items: ${place?.state.furniture.join("; ") || "none"}. Public facts: ${place?.state.publicFacts.join("; ") ?? ""}. Current state outranks older scene lines.`,
+        `Current Zone description (revision ${place?.state.revision ?? 0}): ${place?.description ?? ""}. Recent context: ${place ? recentPlaceText(place.state, now.getTime()) : ""}. Preserve unrelated established facts.`,
         "Approved room description: " + (place?.description || "none"),
         place?.constructionStatus === "worksite"
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
           : "",
-        `Recent verified venue actions: ${recentHappenings.map((entry) => entry.text).join("; ") || "none"}`,
         accessManagementPrompt(village, audience, session.placeId),
         session.contactGeneration?.actorIds
           ? `Only selected residents ${JSON.stringify(audience)} may speak, act or receive invented reactions. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
@@ -664,9 +640,6 @@ export function createSceneWriting({
               .filter((move) => move.requestedBy === "player")
               .map((move) => `${move.characterId} to ${move.proposedVenueId}`)
               .join("; ")}.`
-          : "",
-        pendingEdits.length
-          ? `Pending exact Residence edit proposals: ${pendingEdits.map((proposal) => `${proposal.id}: ${proposal.target} ${proposal.ownerId || "shared"}; description ${proposal.proposed.description}; condition ${proposal.proposed.state.condition}; items ${proposal.proposed.state.items.join(", ")}; public facts ${proposal.proposed.state.publicFacts.join(", ")}; features ${proposal.proposed.state.features.map((feature) => feature.text).join(", ")}; required ${proposal.requiredIds.join(", ")}; approved ${proposal.approvedIds.join(", ")}`).join(" | ")}`
           : "",
         actionOutcome
           ? session.semanticVersion === 2
@@ -792,7 +765,7 @@ export function createSceneWriting({
           ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
             ? "System interprets consequences. Write Scene prose, exact speech/source, delivery metadata and residentActions only."
             : "System interprets consequences. Write Scene prose, exact speech/source and delivery metadata only.") +
-          " Omit memoryChanges, relationshipChanges, wishChanges, projectSpeech, roomEvents, sceneChange and interpretationRouting. Existing cards and private audience boundaries still govern characterization.",
+          " Omit memoryChanges, relationshipChanges, wishChanges, projectSpeech, roomEvents, placeUpdate and interpretationRouting. Existing cards and private audience boundaries still govern characterization.",
       });
     }
     if (storedPlace)
@@ -1264,12 +1237,11 @@ export function createSceneWriting({
         "residenceRequest",
         "residenceDecision",
         "venueRequest",
-        "editApproval",
         "departures",
         "sceneEnded",
         "contactEnd",
         "contactMoves",
-        "sceneChange",
+        "placeUpdate",
         "interpretationRouting",
       ])
         delete raw?.[key];
@@ -1314,7 +1286,7 @@ export function createSceneWriting({
           const localIds = residentLocalIdsAt(session, contactMoves, index);
           if (!localIds.includes(line.speakerId) && context.remoteIds.includes(line.speakerId)) {
             line.viaDoorway = true;
-            if (context.delivery === "loud" || context.delivery === "device") line.remoteDelivery = context.delivery;
+            if (context.delivery === "loud") line.remoteDelivery = context.delivery;
           }
           // Presentation never places an unseen remote listener in the player's Zone.
           line.staging = line.staging?.filter((cue) => localIds.includes(cue.characterId));
@@ -1336,10 +1308,6 @@ export function createSceneWriting({
           throw cause;
         }
       }
-      const physicalContext =
-        semanticResult && raw?.sceneChange
-          ? semanticPhysicalContext(raw.sceneChange, parsed.lines, session)
-          : undefined;
       if (session.contactGeneration?.attention && raw) {
         try {
           if (session.contactGeneration.acoustics) applyAcousticWitnesses(raw, session, message, parsed, contactMoves);
@@ -1363,6 +1331,10 @@ export function createSceneWriting({
           throw cause;
         }
       }
+      const physicalContext =
+        semanticResult && raw?.placeUpdate
+          ? semanticPhysicalContext(raw.placeUpdate, parsed.lines, session, message, contactMoves)
+          : undefined;
       if (semanticResult?.effects.residentActionReceipt) {
         const receipt = semanticResult.effects
           .residentActionReceipt as import("../../domain/rules/resident-actions.js").ResidentActionReceipt;
@@ -1411,7 +1383,6 @@ export function createSceneWriting({
       const decision = heardSignal(raw?.residenceDecision);
       const venueRequest = heardSignal(raw?.venueRequest);
       const invitation = heardSignal(raw?.invitation);
-      const editApproval = heardSignal(raw?.editApproval);
       const departures = Array.isArray(raw?.departures)
         ? [
             ...new Set(
@@ -1470,17 +1441,29 @@ export function createSceneWriting({
       const pendingDecision = decision
         ? pendingMoves.find((move) => move.characterId === decision.speakerId && move.requestedBy === "player")
         : null;
-      let sceneChange: ReturnType<typeof readVenueSceneChange> = null;
+      let placeUpdate: ReturnType<typeof readVenueSceneChange> = null;
       try {
         if (
           (!session.contactGeneration || session.contactGeneration.attention || session.contactGeneration.zoneEvents) &&
           (semanticResult || mode === "chat" || mode === "ask")
         )
-          sceneChange = readVenueSceneChange(
-            raw?.sceneChange,
+          placeUpdate = readVenueSceneChange(
+            raw?.placeUpdate,
             physicalContext && storedPlace ? venueInZone(storedPlace, physicalContext.zoneId) : place,
-            physicalContext?.witnessIds ?? session.activeIds,
-            village.villagers.map((person) => person.characterId),
+            session.continuity?.capturedAt ?? session.startedAt,
+          );
+        if (placeUpdate)
+          applyVenueSceneChange(
+            { ...village, venues: structuredClone(village.venues) },
+            session.placeId,
+            placeUpdate,
+            session.id,
+            session.continuity?.capturedAt ?? session.startedAt,
+            session.spaceClass,
+            session.area,
+            session.privateOwnerId,
+            physicalContext?.zoneId,
+            physicalContext,
           );
       } catch (cause) {
         if (!semanticResult) await rejectVenueCompletion();
@@ -1577,7 +1560,7 @@ export function createSceneWriting({
               })
             : [],
         projectSpeech,
-        sceneChange,
+        placeUpdate,
         semanticPlayerMoves: playerMoves,
         physicalContext,
         movementIntent,
@@ -1651,22 +1634,6 @@ export function createSceneWriting({
                 timing: invitationTiming,
                 ownerId: invitationOwnerId,
                 quote: asTrimmedString(invitation.entry.quote),
-              }
-            : null,
-        editApprovalSignal:
-          editApproval &&
-          (village.venues.find((venue) => venue.id === session.placeId)?.editProposals ?? []).some(
-            (proposal) =>
-              proposal.id === asTrimmedString(editApproval.entry.proposalId) &&
-              !proposal.declined &&
-              proposal.requiredIds.includes(editApproval.speakerId),
-          ) &&
-          typeof editApproval.entry.approved === "boolean"
-            ? {
-                proposalId: asTrimmedString(editApproval.entry.proposalId),
-                residentId: editApproval.speakerId,
-                approved: editApproval.entry.approved === true,
-                quote: asTrimmedString(editApproval.entry.quote),
               }
             : null,
         recap:
@@ -1854,11 +1821,11 @@ export function createSceneWriting({
           session.area === "private" ||
           controlledZone?.kind === "staff" ||
           controlledZone?.kind === "restricted") &&
-        reply.sceneChange &&
+        reply.placeUpdate &&
         session.semanticVersion !== 2
       )
         throw new VenueReplyFailure("residence-consent");
-      if (reply.sceneChange) {
+      if (reply.placeUpdate) {
         if (controlledVenue?.constructionStatus === "worksite") throw new VenueReplyFailure("construction-worksite");
         if (
           session.semanticVersion !== 2 &&

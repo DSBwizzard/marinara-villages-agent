@@ -288,6 +288,8 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       const mode = request.body?.mode;
       if (mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act" && mode !== "contact")
         throw badRequest("Choose Chat, Ask, Fulfill, Act, or Knock / Call.");
+      if (mode === "contact" && request.body?.contact?.delivery === "device")
+        throw badRequest("Device links are not supported by Contact.");
       return await sendVenueTurn({
         sessionId: readChatId(request.body?.sessionId),
         message: readMessage(request.body?.message),
@@ -309,10 +311,6 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
                   typeof request.body?.contact?.boundaryZoneId === "string" ? request.body.contact.boundaryZoneId : "",
                 targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
                 quote: readMessage(request.body?.message),
-                ...(request.body?.contact?.delivery === "device" ? { delivery: "device" as const } : {}),
-                ...(typeof request.body?.contact?.deviceFeatureId === "string"
-                  ? { deviceFeatureId: request.body.contact.deviceFeatureId }
-                  : {}),
               },
             }
           : {}),

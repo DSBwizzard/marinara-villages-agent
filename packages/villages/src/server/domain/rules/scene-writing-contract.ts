@@ -167,14 +167,7 @@ export function normalizeSparseSceneReply(raw: Record<string, unknown>): Record<
     const { source: _source, ...rest } = row;
     return { ...rest, speakerId: line.speakerId, quote: line.text };
   };
-  for (const key of [
-    "invitation",
-    "residenceRequest",
-    "residenceDecision",
-    "venueRequest",
-    "editApproval",
-    "sceneEnded",
-  ])
+  for (const key of ["invitation", "residenceRequest", "residenceDecision", "venueRequest", "sceneEnded"])
     if (result[key] !== undefined) result[key] = speechSignal(result[key]);
   if (Array.isArray(result.departures)) result.departures = result.departures.map(speechSignal);
   if (Array.isArray(result.contactMoves))

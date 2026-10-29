@@ -29,7 +29,7 @@ export function mapsFixture() {
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
     spaces: [defaultVenueSpace("community", id)],
-    state: { condition: "Standing", furniture: [], publicFacts: [], updatedAt: state.setupAt },
+    state: { revision: 0, recent: null, updatedAt: state.setupAt },
   }));
   let beforeWrite: (() => void) | undefined;
   let inspect: (() => Promise<{ width: number; height: number }>) | undefined;

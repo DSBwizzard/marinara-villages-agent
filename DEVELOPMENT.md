@@ -57,7 +57,7 @@ The runner executes selected tests afresh. Focused local tests are feedback; pas
 
 Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
 
-The [social Wishes](docs/wishes.md) and [experimental spinoffs](docs/spinoffs.md) guides document their behavior and extension boundaries. Social Wishes replace the prior Wish/Pursuit implementations and require a fresh format-6 Village; no conversion is provided.
+The [social Wishes](docs/wishes.md) and [experimental spinoffs](docs/spinoffs.md) guides document their behavior and extension boundaries. Social Wishes replace the prior Wish/Pursuit implementations and require a fresh format-7 Village; no conversion is provided.
 
 During development, **DEBUG Settings → Advance Village time** advances the current instance by a chosen elapsed duration. The saved offset survives restart; days are 24 hours. It runs ordinary absence catch-up across Village mechanics, including any normally enabled model work, and preserves active Scene snapshots and held failures. Operational clocks and model settings remain unchanged. It is available in every development instance. Before admitting active playtesters, remove the `TimeControl.tsx` UI and `/clock/advance` route. Retain saved-offset compatibility so existing development worlds do not jump backwards; resetting the offset is not an undo operation. Checkpoint retained worlds before consequential time tests.
 

@@ -218,7 +218,7 @@ export function committedSceneMemoryEffects(
           domainRef: { kind: "physical", id: receipt.physicalOutcome.venueId },
           occurredAt: at,
           committedAt: receipt.committedAt,
-          audience: ["player", ...receipt.physicalOutcome.actionReceipt.witnessIds],
+          audience: receipt.physicalOutcome.actionReceipt.witnessIds ?? [],
         },
       ];
     if (receipt.domain === "wishes" && receipt.actorId && receipt.wishId && receipt.wishOutcome === "fulfilled")

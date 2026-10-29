@@ -25,9 +25,7 @@ setVenueEditBusy=useCallback(v=>{window.calls.editBusy++;rawEditBusy(v)},[]),set
 setVenueEditDraft=useCallback(v=>{window.calls.draft++;rawDraft(v)},[]),setVenueProposalDraft=useCallback(v=>{window.calls.proposal++;rawProposal(v)},[]),setPlaceProblem=useCallback(v=>{window.calls.problem++;rawProblem(v)},[]);
 const ports={snapshot,screen,venueId,venuePage,venueZoneKey,venueEditDraft,venueProposalDraft,setSnapshot,setBusy,setSettingsError,setVenueEditBusy,setVenueEditError,setVenueEditNotice,setVenueEditDraft,setVenueProposalDraft,setPlaceProblem};
 const commands=useVenueScreenCommands(ports),pace=useSaveBackgroundPace(ports),place=snapshot.settings.venues.find(v=>v.id===venueId);
-const actions={name:()=>commands.saveVenueName(place,venueEditDraft.name),image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),details:()=>commands.saveVenueDetails(place,venueEditDraft,window.occupied,place.classes),
-shared:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'shared'),private:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'private','mara'),
-player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>commands.changeVenueAccess(place.id,window.accessCommand),retry:()=>commands.retryPrivateSpacePreparation(),
+const actions={name:()=>commands.saveVenueName(place,venueEditDraft.name),image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>commands.changeVenueAccess(place.id,window.accessCommand),retry:()=>commands.retryPrivateSpacePreparation(),
 zone:()=>commands.saveVenueZone(place.id,venueZoneKey,window.zoneBody),residence:()=>commands.proposeResidenceMove('resident / A','target / B',' private / target '),
 layout:()=>commands.commitVenueZoneLayout(place.id),discard:()=>commands.discardVenueZoneLayout(place.id),proposal:()=>commands.submitVenueProposal(place,venueProposalDraft),pace:()=>pace('quiet')};
 const capture=p=>{window.pending.push(Promise.resolve(p).then(value=>({value}),cause=>({error:cause.message})));return window.pending.length-1};
@@ -91,11 +89,8 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       canInvite: true,
     };
     const state = {
-      condition: "sound",
-      items: [],
-      publicFacts: [],
-      features: [{ id: "feature / A", text: "Known feature", locked: true }],
-      traces: [],
+      revision: 0,
+      recent: null,
       updatedAt: seed.village.instant,
     };
     seed.settings.venues = ["A / venue", "B / venue"].map((id, index) => ({
@@ -108,7 +103,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       layoutVersion: 1,
       workerIds: [],
       residentIds: ["mara"],
-      state: { ...seed.settings.venues[0].state, features: [] },
+      state: { ...seed.settings.venues[0].state },
       spaces: [{ id: "common", venueClass: "residence", description: "Common description", state, image: null }],
       privateSpaces: [{ ownerId: "mara", description: "Private description", state, image: null }],
       accessView: { revision: 1, canManage: true, managerIds: ["player"], visitorHours: null, bans: [], changes: [] },
@@ -147,12 +142,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       operationId: "operation / A",
       policy,
     };
-    const zoneBody = {
-      name: " Raw Zone ",
-      purpose: "Purpose",
-      description: " Raw description ",
-      state: { features: state.features },
-    };
+    const zoneBody = { name: " Raw Zone " };
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-screen.test/", (route) =>
       fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
@@ -223,29 +213,14 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
 /** Actual owner and delegated panels; HTTP is held independently and never reaches providers. */
 export async function verifyVenueScreenLifetimes(browser) {
   const mount = await createVenueScreenHarness(browser);
-  const kinds = [
-    "name",
-    "image",
-    "details",
-    "shared",
-    "private",
-    "player",
-    "access",
-    "retry",
-    "zone",
-    "residence",
-    "proposal",
-  ];
+  const kinds = ["name", "image", "player", "access", "retry", "zone", "residence", "proposal"];
   const paths = {
     name: "/locations/venue/A%20%2F%20venue",
     image: "/locations/venue/A%20%2F%20venue",
-    details: "/locations/venue/A%20%2F%20venue",
-    shared: "/locations/venue/A%20%2F%20venue/edit-proposals",
-    private: "/locations/venue/A%20%2F%20venue/edit-proposals",
     player: "/locations/venue/A%20%2F%20venue/player-move",
     access: "/venues/A%20%2F%20venue/access",
     retry: "/private-spaces/retry",
-    zone: "/venues/A%20%2F%20venue/zones/zone%20%2F%20same",
+    zone: "/venues/A%20%2F%20venue/zones/zone%20%2F%20same/name",
     residence: "/residences/proposals",
     proposal: "/locations/venue/A%20%2F%20venue/proposals",
   };
@@ -253,22 +228,9 @@ export async function verifyVenueScreenLifetimes(browser) {
     name: { name: "Draft A" },
     image: {
       name: "A / venue",
-      description: f.seed.settings.venues[0].description,
       imageContext: { useAssignedVillagerContext: false, useVisualLore: true },
     },
-    details: { name: " Draft A ", venueType: "Home", description: f.draft.description },
-    shared: {
-      target: "shared",
-      ownerId: "",
-      description: f.draft.spaces[0].description,
-      state: f.draft.spaces[0].state,
-    },
-    private: {
-      target: "private",
-      ownerId: "mara",
-      description: f.draft.privateSpaces[0].description,
-      state: f.draft.privateSpaces[0].state,
-    },
+
     player: { privateZoneId: " private / target " },
     access: f.accessCommand,
     retry: null,
@@ -341,7 +303,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           await f.run(kind);
           await expect.poll(() => f.requests.length).toBe(1);
           assert.equal(f.requests[0].path, "/api/villages" + paths[kind]);
-          assert.equal(f.requests[0].method, ["name", "image", "details", "zone"].includes(kind) ? "PUT" : "POST");
+          assert.equal(f.requests[0].method, ["name", "image", "name", "zone"].includes(kind) ? "PUT" : "POST");
           assert.deepEqual(f.requests[0].body, bodies(f)[kind]);
           await f.reply(0, { fail });
           const outcome = await settled(f, 0),
@@ -355,7 +317,6 @@ export async function verifyVenueScreenLifetimes(browser) {
             } else if (kind === "access") assert.equal(outcome.error, "synthetic Venue failure");
             else assert.equal(s.venueEditError, "synthetic Venue failure");
           } else {
-            if (["details", "shared", "private"].includes(kind)) assert.equal(s.venueEditDraft.name, "Saved A");
             if (kind === "proposal") assert.equal(s.venueProposalDraft, null);
             if (["zone", "access"].includes(kind)) assert.equal(outcome.value, true);
           }
@@ -364,7 +325,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       // Each existing admission group rejects an immediate second command.
       for (const group of [
         ["image", "retry", "pace"],
-        ["name", "details", "shared", "private", "residence", "proposal"],
+        ["name", "residence", "proposal"],
         ["player", "player"],
         ["access", "access"],
         ["zone", "zone"],
@@ -397,7 +358,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           assert.equal((await f.read()).setting, "Reply 1");
           await f.finish();
         }
-      for (const kind of ["image", "details", "zone", "access"]) {
+      for (const kind of ["image", "name", "zone", "access"]) {
         const f = await mount(strict, width);
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
@@ -430,7 +391,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       }
       for (const transition of ["page", "zone"]) {
         const f = await mount(strict, width);
-        await f.page.evaluate((transition) => window.h.retain(transition === "page" ? "details" : "zone"), transition);
+        await f.page.evaluate((transition) => window.h.retain(transition === "page" ? "name" : "zone"), transition);
         await f.page.evaluate((transition) => {
           if (transition === "page") {
             window.h.jump({ page: "view" });
@@ -445,7 +406,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.equal(f.requests.length, 0);
         await f.finish();
       }
-      for (const kind of ["details", "shared", "private", "proposal"]) {
+      for (const kind of ["name", "proposal"]) {
         const f = await mount(strict, width);
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
@@ -460,59 +421,9 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.deepEqual(s.venueProposalDraft, before.venueProposalDraft);
         await f.finish();
       }
-      // Existing refused/cancelled edits and a confirmation that retires the owner issue no HTTP.
-      {
-        const f = await mount(strict, width);
-        await f.page
-          .getByRole("navigation", { name: "Venue sections" })
-          .getByRole("button", { name: "Zones", exact: true })
-          .click();
-        await expect(f.page.getByRole("dialog", { name: "Confirm", exact: true })).toBeVisible();
-        await f.page.evaluate(() => window.h.jump({ id: "B / venue" }));
-        const before = await f.read();
-        await f.page
-          .getByRole("dialog", { name: "Confirm", exact: true })
-          .getByRole("button", { name: "Continue", exact: true })
-          .click();
-        assert.deepEqual(await f.read(), before, "retired navigation confirmation cannot change the new Venue");
-        await f.finish();
-      }
-      for (const mode of ["physical", "cancelDetails", "cancelZone", "retireConfirm"]) {
-        const f = await mount(strict, width, { occupied: true });
-        await f.page.evaluate((mode) => {
-          if (mode === "physical") window.h.edit({ form: "Changed physical form" });
-          if (mode === "cancelDetails")
-            window.h.edit({
-              privateSpaces: window.draft.privateSpaces.map((s) => ({ ...s, description: "Changed room" })),
-            });
-        }, mode);
-        await f.run(["cancelZone", "retireConfirm"].includes(mode) ? "shared" : "details", false);
-        if (mode !== "physical") {
-          await expect(f.page.getByRole("dialog", { name: "Confirm", exact: true })).toBeVisible();
-          if (mode === "retireConfirm") await f.page.evaluate(() => window.h.jump({ id: "B / venue" }));
-          await f.page
-            .getByRole("button", { name: mode === "retireConfirm" ? "Continue" : "Cancel", exact: true })
-            .click();
-        }
-        await f.settle(0);
-        assert.equal(f.requests.length, 0);
-        if (mode === "physical") assert.match((await f.read()).venueEditError, /Physical edits and map moves/);
-        else await expect(f.page.getByRole("dialog", { name: "Confirm", exact: true })).toHaveCount(0);
-        await f.finish();
-      }
-      {
-        const f = await mount(strict, width);
-        await f.run("details");
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.page.evaluate(() => window.h.poll());
-        await f.reply(0);
-        await settled(f, 0);
-        assert.equal((await f.read()).venueEditDraft.name, "Saved A");
-        await f.finish();
-      }
       for (const hydrate of [false, true]) {
         const f = await mount(strict, width, hydrate ? { hydrate: true } : { founded: false });
-        await f.run("details");
+        await f.run("name");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => window.h.hydrate());
         await f.reply(0);
@@ -520,7 +431,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.equal((await f.read()).setting, hydrate ? "Reply 0" : "A");
         await f.finish();
       }
-      for (const kind of ["image", "details", "access", "zone", "player"]) {
+      for (const kind of ["image", "name", "access", "zone", "player"]) {
         const f = await mount(strict, width);
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
@@ -534,7 +445,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       }
       {
         const f = await mount(strict, width);
-        await f.run("details");
+        await f.run("name");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => window.h.removeVenue());
         const before = await f.read();

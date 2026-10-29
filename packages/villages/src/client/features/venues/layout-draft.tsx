@@ -27,8 +27,6 @@ function mergeLayout(venue: VillageVenue, saved: VillageVenue): VillageVenue {
     ...venue,
     zoneLayout: saved.zoneLayout,
     zones: merge(venue.zones ?? venueDisplayZones(venue, null)),
-    spaces: merge(venue.spaces),
-    privateSpaces: merge(venue.privateSpaces),
   };
 }
 

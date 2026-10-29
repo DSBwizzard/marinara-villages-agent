@@ -52,9 +52,6 @@ export const REPAIR_STYLES = `
 .villages-repair .repair-actions{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:20px;}
 .villages-repair .repair-field{margin-bottom:20px;}
 .villages-repair .repair-field>label{display:block;font-weight:500;margin-bottom:7px;}
-.villages-repair .repair-current{padding:8px 12px;border-left:2px solid var(--repair-line);margin-bottom:12px;}
-.villages-repair .repair-current small{color:var(--repair-muted);}
-.villages-repair .repair-current p{margin:4px 0 0;}
 .villages-repair fieldset{border:0;padding:0;margin:15px 0;}
 .villages-repair legend{font-weight:500;margin-bottom:7px;}
 .villages-repair .repair-audience{display:flex;flex-wrap:wrap;gap:9px;}

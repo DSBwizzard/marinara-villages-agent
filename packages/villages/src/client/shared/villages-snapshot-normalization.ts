@@ -45,9 +45,14 @@ function isVillageVenue(value: unknown): boolean {
     typeof occupancy.playerHome === "boolean" &&
     isNullableString(occupancy.residentCharacterId) &&
     isNullableString(occupancy.homeKind) &&
-    typeof state.condition === "string" &&
-    isStringArray(state.furniture) &&
-    isStringArray(state.publicFacts) &&
+    Number.isSafeInteger(state.revision) &&
+    Number(state.revision) >= 0 &&
+    (state.recent === null ||
+      (isRecord(state.recent) &&
+        typeof state.recent.text === "string" &&
+        state.recent.text.length <= 600 &&
+        typeof state.recent.occurredAt === "string" &&
+        typeof state.recent.expiresAt === "string")) &&
     typeof state.updatedAt === "string"
   );
 }

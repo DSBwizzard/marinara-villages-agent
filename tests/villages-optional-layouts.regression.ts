@@ -89,7 +89,7 @@ function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const zones = readBaseVenueLayout(source, [role as "residence"], owner, () => null);
   const parsed = { ...parsePlace(source, false), zones };
   initializeVenueAccess(parsed);
-  return coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: [parsed] })
+  return coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, venues: [parsed] })
     .venues[0]!;
 }
 for (const layout of ["exterior", "common", "private", "both"]) {
@@ -98,7 +98,7 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     const expected =
       1 + Number(layout === "common" || layout === "both") + Number(layout === "private" || layout === "both");
     assert.equal(venue.zones!.length, expected, `${role} ${layout} creates only selected Zones`);
-    let saved = coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: [venue] });
+    let saved = coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, venues: [venue] });
     for (let pass = 0; pass < 3; pass++) {
       const before = structuredClone(saved);
       saved = coerceVillageState(saved);
@@ -161,13 +161,11 @@ initial.maps = [
   },
 ];
 initial.venues = [privateOnly, place("exterior", "residence", "b"), vacant];
-initial.venues[0]!.zones![1]!.description = "A secret journal and old furnishings.";
-initial.venues[0]!.zones![1]!.state.items = ["Personal hammock"];
-initial.venues[0]!.zones![1]!.state.condition = "Fixed hammock hooks remain anchored to the beams.";
-initial.venues[0]!.zones![1]!.state.publicFacts = ["A personal secret"];
+initial.venues[0]!.zones![1]!.description =
+  "A secret journal, personal hammock and old furnishings. Fixed hammock hooks remain anchored to the beams.";
 initial.villagers = coerceVillageState({
   ...defaultVillageState(),
-  version: 6,
+  version: 7,
   wishSystemVersion: 3,
   villagers: [
     {
@@ -200,7 +198,7 @@ assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
 const legacy = structuredClone(privateOnly);
 delete legacy.layoutVersion;
-const preserved = coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: [legacy] })
+const preserved = coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, venues: [legacy] })
   .venues[0]!;
 assert.equal(preserved.zones!.find((zone) => zone.id === "personal")!.description, privateOnly.zones![1]!.description);
 const records = new Map<string, any>();
@@ -309,12 +307,8 @@ async function main() {
     current = await readVillageState({ memories: true });
     const old = current.venues.find((venue) => venue.id === privateOnly.id)!;
     assert.equal(old.zones!.find((zone) => zone.id === "personal")!.ownerId, undefined);
-    assert.deepEqual(old.zones!.find((zone) => zone.id === "personal")!.state.items, []);
-    assert.equal(
-      old.zones!.find((zone) => zone.id === "personal")!.state.condition,
-      "Fixed hammock hooks remain anchored to the beams.",
-    );
-    assert.deepEqual(old.archivedPrivateSpaces![0]!.space.state.items, ["Personal hammock"]);
+    assert.match(old.zones!.find((zone) => zone.id === "personal")!.description, /personal hammock/);
+    assert.match(old.zones!.find((zone) => zone.id === "personal")!.description, /Fixed hammock hooks/);
     assert.match(old.archivedPrivateSpaces![0]!.space.description, /secret journal/);
     assert.deepEqual(
       current.venues.find((venue) => venue.id === outside.id)!.zones!.map((zone) => zone.kind),
@@ -499,9 +493,9 @@ async function main() {
     await movePlayerToResidence(privateOnly.id, "personal");
     current = await readVillageState({ memories: true });
     assert.equal(current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.ownerId, "player");
-    assert.equal(
-      current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.state.condition,
-      "Fixed hammock hooks remain anchored to the beams.",
+    assert.match(
+      current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.description,
+      /Fixed hammock hooks/,
     );
     await assert.rejects(movePlayerToResidence(outside.id, chamber.id), /shared Residence/);
     current = await readVillageState({ memories: true });
@@ -573,7 +567,7 @@ async function main() {
     const departedHome = current.venues.find((venue) => venue.id === vacant.id)!;
     assert.equal(departedHome.occupancy.residentCharacterId, null);
     assert.equal(departedHome.zones!.find((zone) => zone.id === "personal")!.ownerId, undefined);
-    assert.equal(departedHome.zones!.find((zone) => zone.id === "personal")!.preparation, undefined);
+    assert.equal(departedHome.zones!.find((zone) => zone.id === "personal")!.preparation?.status, "ready");
     assert.ok(departedHome.archivedPrivateSpaces!.some((entry) => entry.ownerId === "b"));
     console.log(
       "Villages optional layouts: founding, repeat loading, role access, capacity, moves, renovation removal, privacy, and new-venue opening passed.",

@@ -69,11 +69,12 @@ async function main() {
     id,
     name,
     form,
+    description: "",
     category: "public",
     presentation: { image: null, x: 0.5, y: 0.5 },
     occupancy: { playerHome: false, residentCharacterId: null as string | null, homeKind: null as string | null },
     capabilities: [],
-    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
+    state: { revision: 0, recent: null, updatedAt: "" },
   });
   const cardSnapshot = (id: string, name: string) => ({
     id,
@@ -1310,7 +1311,7 @@ async function main() {
   const refusals = store.coerceVillageState({
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
-    version: 6,
+    version: 7,
     socialContractVersion: 2,
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
@@ -1336,7 +1337,7 @@ async function main() {
   const partial = store.coerceVillageState({
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
-    version: 6,
+    version: 7,
     socialContractVersion: 2,
     wishSystemVersion: 3,
     villagers: [
@@ -1395,7 +1396,7 @@ async function main() {
     store.coerceVillageState({
       memories: { format: 1, revision: 0, records: [] },
       memoryScenes: {},
-      version: 6,
+      version: 7,
       socialContractVersion: 2,
       wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],

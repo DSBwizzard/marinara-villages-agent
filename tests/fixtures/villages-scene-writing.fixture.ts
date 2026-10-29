@@ -43,7 +43,7 @@ export async function currentScenePrompt(
   };
   const world = coerceVillageState({
     ...defaultVillageState(),
-    version: 6,
+    version: 7,
     ...state,
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>
@@ -57,7 +57,7 @@ export async function currentScenePrompt(
     "all supplied residents, including hidden actors, survive current save decoding",
   );
   const session = coerceSession({
-    version: 2,
+    version: 3,
     id: "prompt-fixture",
     placeId: "common-room",
     placeName: "Common room",

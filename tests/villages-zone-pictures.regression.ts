@@ -31,7 +31,7 @@ const picture = (id: string): VillageVenueImage => ({
 const image = picture("original");
 function fixture() {
   return coerceVillageState({
-    version: 6,
+    version: 7,
     ...defaultVillageState(),
     wishSystemVersion: 3,
     venues: [
@@ -50,11 +50,7 @@ function fixture() {
             kind: "shared-residence",
             seen: true,
             image,
-            description: "Two windows, hardwood floor",
-            state: {
-              ...defaultVenueSpace("residence").state,
-              items: ["rust linen sofa", "cream knitted blanket on its left arm"],
-            },
+            description: "Two windows, hardwood floor. A rust linen sofa with a cream knitted blanket on its left arm.",
           },
         ],
       },
@@ -85,12 +81,12 @@ assert.equal(
   true,
 );
 
-const scene = coerceSession({ version: 2, id: "scene", placeId: "home" });
+const scene = coerceSession({ version: 3, id: "scene", placeId: "home" });
 assert.equal(claimZonePictureEntry(scene, "exterior"), true);
 assert.equal(claimZonePictureEntry(scene, "living"), true);
 assert.equal(claimZonePictureEntry(scene, "exterior"), false);
 assert.equal(claimZonePictureEntry(coerceSession(JSON.parse(JSON.stringify(scene))), "living"), false);
-assert.equal(claimZonePictureEntry(coerceSession({ version: 2, id: "next" }), "exterior"), true);
+assert.equal(claimZonePictureEntry(coerceSession({ version: 3, id: "next" }), "exterior"), true);
 
 const calls: Record<string, unknown>[] = [];
 let state = fixture(),
@@ -125,7 +121,10 @@ const enter = () =>
   service.personalizeZoneOnEntry("home", "living", zonePictureContext(state, state.venues[0]!, zone()));
 zone().picture = {
   base: image,
-  baseline: JSON.stringify({ ...JSON.parse(zonePictureContext(state, state.venues[0]!, zone())), items: [] }),
+  baseline: JSON.stringify({
+    ...JSON.parse(zonePictureContext(state, state.venues[0]!, zone())),
+    description: "Two windows, hardwood floor.",
+  }),
 };
 await enter();
 assert.equal(calls.length, 1);
@@ -134,13 +133,13 @@ assert.equal(zone().image?.id, "edited-1");
 assert.deepEqual(calls[0]!.referenceImages, ["reference:original"]);
 await enter();
 assert.equal(calls.length, 1, "unchanged next Scene reuses the picture");
-zone().state.items.push("brass lamp beside the sofa");
+zone().description += "\nA brass lamp beside the sofa.";
 await enter();
 assert.deepEqual(calls[1]!.referenceImages, ["reference:edited-1", "reference:original"]);
 assert.match(String(calls[1]!.prompt), /cream knitted blanket/);
 assert.equal(zone().picture?.base?.id, "original");
 
-zone().state.items = ["brass lamp"];
+zone().description = "Two windows, hardwood floor. A brass lamp.";
 supported = false;
 await enter();
 assert.equal(calls.length, 2);
@@ -160,7 +159,7 @@ await enter();
 assert.equal(calls.length, 3, "identical failed input is not automatically retried");
 assert.equal(zone().image?.id, "edited-2");
 fail = false;
-zone().state.items.push("new rug");
+zone().description += "\nA new rug.";
 duringGeneration = () => {
   zone().freezePicture = true;
   zone().pictureRevision = (zone().pictureRevision ?? 0) + 1;
@@ -215,7 +214,10 @@ await assert.rejects(readZonePictureReference({ ...image, url: "https://example.
 state = fixture();
 zone().picture = {
   base: image,
-  baseline: JSON.stringify({ ...JSON.parse(zonePictureContext(state, state.venues[0]!, zone())), items: [] }),
+  baseline: JSON.stringify({
+    ...JSON.parse(zonePictureContext(state, state.venues[0]!, zone())),
+    description: "Two windows, hardwood floor.",
+  }),
 };
 const beforeEpoch = calls.length;
 duringGeneration = () => {
@@ -225,40 +227,25 @@ await enter();
 assert.equal(calls.length, beforeEpoch + 1);
 assert.equal(zone().image?.id, "original", "disable/re-enable epoch invalidates in-flight work");
 duringGeneration = undefined;
-zone().state.traces.push({
-  id: "private",
-  kind: "note",
-  text: "private letter contents",
-  recipientId: "resident",
-  createdAt: new Date().toISOString(),
-});
-assert.doesNotMatch(zonePictureContext(state, state.venues[0]!, zone()), /private letter contents/);
-zone().state.features.push({
-  id: "repair",
-  text: "Repaired oak desk",
-  sourceCharacterId: "",
-  locked: false,
-  updatedAt: "",
-});
-zone().state.traces.push({
-  id: "stain",
-  kind: "stain",
-  text: "ink on the desktop",
-  recipientId: "",
-  createdAt: new Date().toISOString(),
-});
+zone().state.recent = {
+  text: "Cups after tea.",
+  occurredAt: "2026-10-28T10:00:00Z",
+  expiresAt: "2026-10-29T10:00:00Z",
+};
+assert.doesNotMatch(zonePictureContext(state, state.venues[0]!, zone()), /Cups after tea/);
+zone().description += "\nA repaired oak desk with ink on the desktop.";
 await enter();
-assert.match(String(calls.at(-1)!.prompt), /Repaired oak desk/);
+assert.match(String(calls.at(-1)!.prompt), /repaired oak desk/);
 assert.match(String(calls.at(-1)!.prompt), /ink on the desktop/);
 
 state = fixture();
 const migratedBaseline = zone().picture!.baseline;
-assert.ok(migratedBaseline, "migration captures the physical baseline before later gameplay");
-zone().state.items.push("copper kettle added after loading");
+assert.ok(migratedBaseline, "saved artwork has a physical baseline before later gameplay");
+zone().description += "\nA copper kettle added after loading.";
 await enter();
 assert.match(String(calls.at(-1)!.prompt), /copper kettle added after loading/);
 assert.equal(zone().picture!.baseline, migratedBaseline);
-zone().state.items.push("blue cushions");
+zone().description += "\nBlue cushions.";
 fail = true;
 await enter();
 fail = false;
@@ -266,7 +253,7 @@ const beforeRetry = calls.length;
 assert.equal(zone().picture?.failed, true);
 await service.retryZonePicture("home", "living");
 assert.equal(calls.length, beforeRetry + 1);
-zone().state.items.push("a small plant");
+zone().description += "\nA small plant.";
 await service.retryZonePicture("home", "living");
 assert.equal(calls.length, beforeRetry + 1, "stale retry cannot dispatch without a failed attempt");
 fail = true;
@@ -280,11 +267,13 @@ assert.equal(zone().picture!.failed, true, "the interrupted request becomes expl
 await service.retryZonePicture("home", "living");
 assert.equal(calls.length, beforeRecovery + 1);
 state = fixture();
-zone().state.items.push(...Array.from({ length: 22 }, (_, index) => `${index} ${"x".repeat(235)}`));
+zone().picture!.context = JSON.stringify({ description: "a".repeat(4000), resident: "" });
+zone().description = "b".repeat(4000);
 const beforeLong = calls.length;
 await enter();
 assert.equal(calls.length, beforeLong, "overlong deltas do not spend or lose later changes");
-assert.equal(zone().picture?.context, undefined);
+assert.equal(zone().picture?.context, JSON.stringify({ description: "a".repeat(4000), resident: "" }));
+assert.equal(zone().picture?.claim, undefined, "budget deferral creates no pending image claim");
 
 state = fixture();
 zone().kind = "staff";
@@ -308,4 +297,82 @@ await service.generateFirstPrivateSpaceImage("home", "living");
 assert.equal(calls.length, beforeInitial + 1);
 assert.equal(zone().image, null, "initial private generation also rejects disable/re-enable races");
 duringGeneration = undefined;
+// Owner aliases must use the same exact Zone for access, prompt and save.
+{
+  const privateWorld = fixture(),
+    home = privateWorld.venues[0];
+  home.residentIds = ["owner"];
+  home.destinations = { owner: { sleep: "bedroom" } };
+  privateWorld.villagers = coerceVillageState({
+    ...defaultVillageState(),
+    villagers: [
+      {
+        characterId: "owner",
+        addedAt: new Date().toISOString(),
+        cardSnapshot: {
+          id: "owner",
+          name: "Owner",
+          revision: 1,
+          sourceStatus: "available",
+          capturedAt: new Date().toISOString(),
+        },
+      },
+    ],
+  }).villagers;
+  const study = {
+    ...defaultVenueSpace("residence", "UNSEEN PRIVATE STUDY CONTENTS"),
+    id: "study",
+    name: "Study",
+    kind: "private-residence" as const,
+    ownerId: "owner",
+    seen: false,
+  };
+  const bedroom = {
+    ...defaultVenueSpace("residence", "Previously observed bedroom."),
+    id: "bedroom",
+    name: "Bedroom",
+    kind: "private-residence" as const,
+    ownerId: "owner",
+    seen: true,
+  };
+  home.zones!.push(study, bedroom);
+  home.privateSpaces = [study, bedroom];
+  const { initializeVenueAccess } = await import("../packages/villages/src/server/domain/rules/venue-access.js");
+  initializeVenueAccess(home);
+  const commands = createVenueCommands({
+    readVillageState: async () => structuredClone(privateWorld),
+    mutateVillageState: async () => {
+      throw Error("unexpected write");
+    },
+    buildVillageSnapshot: async () => ({}) as any,
+    sceneQueries: () => ({
+      activeVenueSession: async () => ({
+        id: "bedroom-visit",
+        placeId: "home",
+        zoneId: "bedroom",
+        zoneGrants: [{ zoneId: "bedroom", controllerId: "owner" }],
+      }),
+    }),
+  });
+  let prompt = "",
+    savedId = "";
+  const exact = createLocationImages({
+    ...imagePorts,
+    readVillageState: async () => structuredClone(privateWorld),
+    assertVenueImageAccess: commands.assertVenueImageAccess,
+    generateVillageImage: async (input) => {
+      prompt = input.prompt;
+      return { bytes: new Uint8Array([1]), mime: "image/png", dataUrl: "synthetic" };
+    },
+    uploadVillageGalleryImage: async () => picture("bedroom-picture"),
+    setVillageVenueImage: async (_venue, _image, _class, _owner, _onlyIfEmpty, zoneId) => {
+      savedId = zoneId!;
+      return {} as any;
+    },
+  });
+  await exact.generateVillageLocationImage("home", undefined, "residence", "owner");
+  assert.match(prompt, /Previously observed bedroom/);
+  assert.doesNotMatch(prompt, /UNSEEN PRIVATE STUDY/);
+  assert.equal(savedId, "bedroom");
+}
 process.stdout.write("Zone picture continuity, entry claims, opt-outs, failures and fallback checks passed.\n");

@@ -119,9 +119,9 @@ export function readBaseVenueLayout(
     if (!classes.includes(role)) throw badRequest("Choose one of this venue's Classes for each area.");
     const description = asTrimmedString(area.description);
     const roomSpecification = asTrimmedString(area.roomSpecification ?? (isPrivate ? area.description : ""));
-    if (roomSpecification.length > 1000) throw badRequest("Room specification must be at most 1000 characters.");
-    if (description.length > 1000 || (!isPrivate && !description))
-      throw badRequest("Describe the Common Space in at most 1000 characters.");
+    if (roomSpecification.length > 4000) throw badRequest("Room specification must be at most 4000 characters.");
+    if (description.length > 4000 || (!isPrivate && !description))
+      throw badRequest("Describe the Common Space in at most 4000 characters.");
     const ownerId = isPrivate && role === "residence" ? residentId || undefined : undefined;
     const hiddenPrivate =
       isPrivate && ownerId !== "player" && (!options.founding || (role === "residence" && !!ownerId));

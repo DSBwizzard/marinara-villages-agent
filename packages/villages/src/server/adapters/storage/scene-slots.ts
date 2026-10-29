@@ -15,6 +15,6 @@ export const sessionSlot: DocumentSlot<VenueScene> = {
   kind: SESSION_KIND,
   name: "Scene",
   description: "The player's exact record of one Scene, indexed by Venue and participant.",
-  coerce: coerceSession,
+  coerce: (value: unknown) => coerceSession(value === undefined ? { version: 3 } : value),
   label: (session) => session.placeName || "Scene",
 };

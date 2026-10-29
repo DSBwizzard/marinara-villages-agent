@@ -16,6 +16,8 @@ export type ExchangeEffectReceipt = {
   sceneId: string;
   submissionId: string;
   domain: "wishes" | "memories" | "physical" | "development" | "relationships";
+  /** Stable action/source identity for idempotent offscreen physical settlement. */
+  sourceHash?: string;
   physicalOutcome?: import("./world.js").VillageVenueEvent;
   /** Immutable private writing context from this exact effect, never live authority. */
   sceneFacts?: import("../rules/scene-continuity.js").SceneEffectFacts;

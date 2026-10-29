@@ -70,7 +70,7 @@ try {
     }
     await fits("zone details");
     if (width < 700) {
-      await page.getByRole("button", { name: "Appearance", exact: true }).click();
+      await page.getByRole("button", { name: "Long-term details", exact: true }).click();
       await fits("zone appearance");
       await page.getByRole("button", { name: "Options", exact: true }).click();
       await fits("zone options");

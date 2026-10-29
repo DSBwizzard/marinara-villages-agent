@@ -1,3 +1,4 @@
+import { readPlaceDescription } from "./zone-continuity.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueImage } from "../models/world.js";
@@ -254,7 +255,7 @@ export function parsePlace(value: unknown, founding = false): ParsedPlace {
       homeKind,
     },
     capabilities: [],
-    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
+    state: { revision: 0, recent: null, updatedAt: "" },
   };
   if (founding) {
     initializeVenueAccess(result);
@@ -421,7 +422,7 @@ export function readCreationPrivateZones(
       return {
         ...defaultVenueSpace(
           classes.includes("workplace") ? "workplace" : (classes[0] ?? "other"),
-          boundText(row.description, 1000),
+          readPlaceDescription(row.description),
         ),
         id,
         name,

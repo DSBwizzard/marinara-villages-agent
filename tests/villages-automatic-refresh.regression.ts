@@ -102,7 +102,7 @@ async function main() {
   const migrated = coerceVillageState({
     ...defaultVillageState(),
     backgroundPace: "quiet",
-    version: 6,
+    version: 7,
     wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
@@ -130,7 +130,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       backgroundPace: "off",
       refreshClocks: [],
@@ -140,7 +140,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       refreshClocks: ["morning", "evening"],
     }).backgroundPace,
@@ -439,7 +439,7 @@ async function main() {
     });
     await assert.rejects(
       () => updateVillageVenue("rosa-home", { presentation: { x: 0.8, y: 0.8 } }),
-      /only name and description/u,
+      /Project, natural gameplay, or REPAIR/u,
     );
     await proposeVillageResidence("housing-resident", "empty-venue");
     await decideVillageResidence("housing-resident", false, "villager");
@@ -454,46 +454,26 @@ async function main() {
         24 * 60 * 60_000,
     );
     await mutateVillageState((state) => {
-      state.venues[0]!.privateSpaces = [
-        {
-          id: "private:housing-resident",
-          ownerId: "housing-resident",
-          venueClass: "residence",
-          description: "Rosa's old nook.",
-          image: null,
-          state: {
-            condition: "",
-            items: ["Rosa's letter"],
-            publicFacts: [],
-            features: [],
-            traces: [],
-            updatedAt: start.toISOString(),
-          },
-        },
-      ];
-      state.venues[0]!.spaces = [
-        {
-          id: "residence",
-          venueClass: "residence",
-          description: "Shared kitchen.",
-          image: null,
-          state: {
-            condition: "",
-            items: ["shared table"],
-            publicFacts: [],
-            features: [],
-            traces: [],
-            updatedAt: start.toISOString(),
-          },
-        },
-      ];
+      const home = state.venues[0]!;
+      home.layoutVersion = 1;
+      const nook = home.zones!.find((zone) => zone.ownerId === "housing-resident")!;
+      nook.description = "Rosa's old nook. A letter lies on the desk.";
+      home.privateSpaces = home.zones!.filter((zone) => zone.kind === "private-residence");
     });
     await completeVillageResidence("housing-resident", false, new Date());
     assert.equal((await readVillageState()).venues[0]?.occupancy.residentCharacterId, "housing-resident");
     await completeVillageResidence("housing-resident", true, new Date());
     assert.equal((await readVillageState()).venues[1]?.occupancy.residentCharacterId, "housing-resident");
     const movedState = await readVillageState();
-    assert.deepEqual(movedState.venues[0]?.archivedPrivateSpaces?.at(-1)?.space.state.items, ["Rosa's letter"]);
+    assert.match(
+      movedState.venues[0]?.archivedPrivateSpaces?.find((row) => row.space.description.includes("A letter lies"))?.space
+        .description ?? "",
+      /A letter lies on the desk/,
+    );
+    assert.match(
+      movedState.venues[0]?.zones?.find((zone) => zone.kind === "private-residence")?.description ?? "",
+      /Rosa's old nook/,
+    );
     assert.equal(
       movedState.venues[0]?.privateSpaces?.some((space) => space.ownerId === "housing-resident"),
       false,

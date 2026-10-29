@@ -271,15 +271,15 @@ async function main() {
   assert.match(persona.identity, /Appearance: Wears a green coat\./, "existing prompt identity is preserved");
 
   assert.equal(
-    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
+    coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" })
       .foundingPreparation,
     null,
-    "older villages remain ready",
+    "a current world without preparation work remains ready",
   );
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       foundingPreparation: { status: "failed", completedIds: ["one"], currentId: "two", error: "offline" },
     }).foundingPreparation,
@@ -289,7 +289,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       foundingPreparation: {
         status: "pending",
@@ -318,14 +318,14 @@ async function main() {
     "the active stage and bounded retry count survive a process restart",
   );
   assert.equal(
-    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }).foundingGuidance,
+    coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3 }).foundingGuidance,
     "",
-    "older villages have no narrative direction",
+    "an unspecified narrative direction is empty",
   );
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       foundingGuidance: "Favor quiet bonds.",
     }).foundingGuidance,
@@ -399,7 +399,7 @@ async function main() {
   const identity = { name: "Ashwater", setting: "A valley beside the river" };
   const noMapSetup = createFoundingSetup({
     ...setupPorts,
-    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }),
+    readVillageState: async () => coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3 }),
     prepareVillageMap: async () => ({
       image: "",
       size: null,
@@ -463,12 +463,6 @@ async function main() {
           name: "Hearth room",
           purpose: "Sharing meals",
           image: insideImage,
-          state: {
-            condition: "lived in",
-            items: ["wooden bowl"],
-            publicFacts: ["old chimney"],
-            features: [{ text: "blue curtains" }],
-          },
         },
       ],
     },
@@ -477,10 +471,7 @@ async function main() {
   assert.deepEqual(parsed.presentation.image, outsideImage);
   assert.deepEqual(parsed.spaces?.[0]?.image, insideImage);
   assert.equal(parsed.spaces?.[0]?.description, "A hearth and a low table");
-  assert.equal(parsed.spaces?.[0]?.state.condition, "", "founding details emerge during preparation");
-  assert.deepEqual(parsed.spaces?.[0]?.state.items, []);
-  assert.deepEqual(parsed.spaces?.[0]?.state.publicFacts, []);
-  assert.deepEqual(parsed.spaces?.[0]?.state.features, []);
+  assert.deepEqual(parsed.spaces?.[0]?.state, { revision: 0, updatedAt: "", recent: null });
   assert.throws(() => parsePlace({ ...parsed, form: "" }, true), /Form/);
   assert.throws(() => parsePlace({ ...parsed, description: "" }, true), /exterior/);
   assert.throws(
@@ -658,7 +649,7 @@ async function foundingConnectionOwnership() {
       let held = false;
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 6,
+        version: 7,
         wishSystemVersion: 3,
         seed: "equal-founding-seed",
         name: label,
@@ -750,10 +741,7 @@ async function foundingConnectionOwnership() {
                 venues: [
                   {
                     id: "equal-venue",
-                    condition: `${label} tidy`,
-                    items: ["Books"],
-                    publicFacts: ["Open window"],
-                    features: [],
+                    addition: `${label} tidy`,
                   },
                 ],
               }
@@ -1017,7 +1005,7 @@ async function foundingConnectionOwnership() {
           ["resolving", "model", "validating"],
         );
         assert.equal(callbacks[1]!.modelName, "A-model");
-        assert.equal((result.value as Record<string, { condition: string }>)["equal-venue"]!.condition, "A tidy");
+        assert.equal((result.value as Record<string, { addition: string }>)["equal-venue"]!.addition, "A tidy");
       }
       if (operation === "suggest") {
         const suggestions = (result.value as { venues: Array<Record<string, unknown>> }).venues;
@@ -1145,7 +1133,7 @@ async function foundingArchitecturePrompts() {
   });
   assert.equal(prompts.length, before + 1, "long authored details still permit an image request");
   const fitted = prompts.at(-1)!;
-  assert.ok(fitted.length <= 4000);
+  assert.ok(fitted.length <= 8000);
   assert.ok(fitted.includes("v".repeat(600)), "the full art style survives prompt fitting");
   assert.ok(fitted.includes("Venue form defines the whole place"));
   assert.ok(fitted.includes("Do not invent or show adjoining rooms"));

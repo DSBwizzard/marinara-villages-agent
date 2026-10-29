@@ -34,7 +34,7 @@ const start = Date.now() - 3 * day,
 function fixture() {
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 6,
+    version: 7,
     seed: "time-world",
     foundedAt: new Date(start - day).toISOString(),
     timeZone: "America/Los_Angeles",
@@ -57,7 +57,7 @@ function fixture() {
     connection: "Friends",
   };
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "morning",
     processingVersion: 1,
     villageSeed: state.seed,
@@ -154,12 +154,11 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   state.venues[0]!.name = "Future venue name";
   state.venues[0]!.occupancy.residentCharacterId = "a";
   state.residences.push({ id: "future-move", characterId: "a", status: "pending", proposedVenueId: "square" } as any);
-  state.venues[0]!.editProposals = [{ id: "future-edit", declined: false }] as any;
   const laterMemory = learn(state, "Ada opened a new shop during the three days");
   state.villagers[0]!.wishes = [];
   state.relationshipContext!.edges[relationshipKey("a", "player")]!.connection = "Former friends";
   state.simulatedThrough = new Date().toISOString();
-  resolveVenueZone(state.venues[0]!, "community")!.state.condition = "A changed Village";
+  resolveVenueZone(state.venues[0]!, "community")!.description = "A changed Village";
   const packet = semanticContext(scene, state, "market shop", false, false, sceneContinuityView(state, scene));
   assert(
     packet.memory.memories.some((row) => row.id === laterMemory.id),
@@ -172,7 +171,6 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   assert.equal(packet.requests.residences.length, 0, "background housing is outside the Scene snapshot");
   assert.equal(packet.requests.venues[0]!.name, "Square");
   assert.equal(packet.requests.venues[0]!.occupancy.residentCharacterId, null);
-  assert(!packet.requests.edits?.length, "background edit requests cannot enter dialogue context");
   assert.notEqual((publicSceneResponse(scene) as any).playerName, "Future player identity");
   assert.equal(packet.time!.capturedAt, at);
   assert.equal(
@@ -192,7 +190,7 @@ function learn(state: VillageState, text: string, sceneId?: string) {
   assert.equal(restored.facts.villagers[0]!.wishes[0]!.id, "ride");
   assert.equal(restored.facts.relationshipContext!.edges[relationshipKey("a", "player")]!.connection, "Friends");
   assert.throws(
-    () => coerceSession({ version: 2, ...scene, continuity: { ...scene.continuity, version: 99 } }),
+    () => coerceSession({ version: 3, ...scene, continuity: { ...scene.continuity, version: 99 } }),
     /captured context/,
   );
 }
@@ -200,63 +198,42 @@ function learn(state: VillageState, text: string, sceneId?: string) {
 {
   const { state, scene } = fixture();
   const zone = resolveVenueZone(state.venues[0]!, "community")!;
-  zone.state.items = ["motorcycle", "unchanged chair"];
-  const priorId = `venue-chat:${scene.id}:prior`;
-  state.venueEvents = [
-    {
-      id: priorId,
-      venueId: scene.placeId,
-      venueName: "Square",
-      zoneId: scene.zoneId,
-      at,
-      text: "An earlier action",
-      actionReceipt: { happened: true, submissionId: "prior", narration: "Earlier", addItem: "removed later" },
-    },
-  ];
-  scene.submissions.push({ id: "prior" } as any);
+  zone.description = "A motorcycle and an unchanged chair.";
   scene.continuity = captureSceneContinuity(state, scene, start);
+  const after = {
+    description: "A parked motorcycle, helmet and unchanged chair.",
+    state: { revision: 1, updatedAt: at, recent: null },
+  };
   const id = `venue-chat:${scene.id}:hop`;
-  const event = {
+  const event: any = {
     id,
     venueId: scene.placeId,
     venueName: "Square",
     zoneId: scene.zoneId,
-    at: new Date().toISOString(),
-    text: "Ada moves the motorcycle",
-    actionReceipt: {
-      happened: true,
-      submissionId: "hop",
-      narration: "Moves it",
-      conditionBefore: "Live condition after outside changes",
-      conditionAfter: "Motorcycle parked",
-      removeItem: "motorcycle",
-      addItem: "helmet",
-    },
+    at,
+    text: "Ada parks the motorcycle.",
+    actionReceipt: { happened: true, submissionId: "hop", narration: "Parks it", expectedRevision: 0, after },
   };
   state.exchangeReceipts[id] = {
     id,
     sceneId: scene.id,
     submissionId: "hop",
     domain: "physical",
-    at: event.at,
+    at,
     status: "applied",
     evidenceIds: [],
     reason: "Accepted",
     physicalOutcome: event,
   };
   scene.submissions.push({ id: "hop" } as any);
-  zone.state.items = ["unrelated later delivery"];
+  zone.description = "An unrelated later delivery.";
+  zone.state.revision++;
   const before = structuredClone(state);
   const view = sceneContinuityView(state, scene);
-  const projected = resolveVenueZone(view.venues[0]!, "community")!.state;
-  assert.deepEqual(projected.items, ["unchanged chair", "helmet"]);
-  assert.equal(
-    projected.condition,
-    "Motorcycle parked",
-    "accepted after-values project without repeating live preconditions",
-  );
-  assert(!projected.items.includes("removed later"), "legacy capture does not replay already-reflected receipts");
-  assert.deepEqual(state, before, "physical presentation consumes no live resources or stock");
+  const projected = resolveVenueZone(view.venues[0]!, "community")!;
+  assert.equal(projected.description, after.description);
+  assert.deepEqual(projected.state, after.state);
+  assert.deepEqual(state, before, "physical presentation does not mutate live reality");
 }
 
 {

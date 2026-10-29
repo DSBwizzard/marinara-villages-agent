@@ -19,9 +19,8 @@ export function proposalSourceCompatible(
   if (context.sourceRevision) return context.sourceRevision === foundingTaskRevision(state, id, "routine");
   const resident = state.villagers.find((row) => row.characterId === id),
     home = state.venues.find((venue) => venue.occupancy.residentCharacterId === id);
-  const homeText = home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
-  const facts = (venues: typeof state.venues) =>
-    venues.map((venue) => [venue.id, venue.state?.condition, venue.state?.publicFacts?.slice(0, 2)]);
+  const homeText = home ? [home.name, home.form, home.description].filter(Boolean).join("; ") : "";
+  const facts = (venues: typeof state.venues) => venues.map((venue) => [venue.id, venue.description]);
   return (
     !!resident &&
     job.revision === agendaRevision(state, id) &&

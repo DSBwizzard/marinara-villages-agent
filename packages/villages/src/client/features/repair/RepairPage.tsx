@@ -5,7 +5,7 @@ import { REPAIR_STYLES } from "./repair-styles.js";
 const topics: { id: RepairTopic; name: string; description: string }[] = [
   { id: "memories", name: "Memories", description: "Edit, add, or forget a memory." },
   { id: "people", name: "People", description: "Villagers, their memories, and character details." },
-  { id: "places", name: "Places", description: "Venues, Zones, objects, homes, and access." },
+  { id: "places", name: "Places", description: "Venues, Zones, homes, and access." },
   { id: "world", name: "World & history", description: "Setting, founding details, and Scene corrections." },
   { id: "progress", name: "Progress", description: "Wishes, Projects, Pursuits, and saved work." },
   { id: "restore", name: "Backups & repairs", description: "Review repairs, undo, or restore a checkpoint." },
@@ -32,7 +32,7 @@ export function RepairPage({
       ? "Review restoration"
       : "Review changes";
   const source = [...new Set(c.selected?.source ?? [])].filter(
-    (excerpt) => !memoryRecord || !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
+    (excerpt) => !c.selected?.fields.some((field) => String(field.value).trim() === excerpt.trim()),
   );
   const hasSource = !!source.length || !!c.selected?.related.length;
   const editorTitle = memoryRecord
@@ -291,14 +291,6 @@ export function RepairPage({
               {c.selected.fields.map((f) => (
                 <div className="repair-field" key={f.key}>
                   {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
-                  {!c.selected.creating && !memoryRecord ? (
-                    <div className="repair-current">
-                      <small>Current</small>
-                      <p>
-                        {f.options?.find((option) => option.value === f.value)?.label ?? (display(f.value) || "None")}
-                      </p>
-                    </div>
-                  ) : null}
                   {f.key === "letterFontId" ? (
                     <div>
                       <p

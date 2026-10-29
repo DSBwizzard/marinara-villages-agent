@@ -46,7 +46,7 @@ function fixture(name: string) {
   const stamp = new Date().toISOString();
   let state = coerceVillageState({
     ...defaultVillageState(),
-    version: 6,
+    version: 7,
     seed: "same-seed",
     name,
     setting: name,
@@ -117,7 +117,7 @@ function fixture(name: string) {
       seedRequests++;
       entered.resolve();
       await gate.promise;
-      return { "same-venue": { condition: name, items: [], publicFacts: [], features: [] } };
+      return { "same-venue": { addition: name } };
     },
     preparePrivateSpaces: async () => {
       preparationRequests++;
@@ -184,7 +184,7 @@ async function independentFounding() {
     assert.equal(b.state().foundingPreparation?.status, "ready");
     assert.deepEqual(b.state().foundingPreparation?.completedIds, ["first", "second"]);
     assert.deepEqual(b.calls, ["first", "second"], "resident order is unchanged");
-    assert.equal(b.state().venues[0].state.condition, "B");
+    assert.match(b.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /B$/);
     assert.equal(a.state().foundingPreparation?.status, "pending");
     assert.equal(a.counts().preparationRequests, 0);
     a.gate.resolve();
@@ -207,7 +207,7 @@ async function independentFounding() {
     ]);
     assert.deepEqual(a.calls, ["first", "second"]);
     assert.equal(a.counts().seedRequests, 1, "deliberate retry preserves completed Venue details");
-    assert.equal(a.state().venues[0].state.condition, "A");
+    assert.match(a.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /A$/);
     assert.equal(a.state().foundingPreparation?.status, "ready");
     await a.service.assertFoundedVillageReady();
     await a.service.retryFoundedVillagePreparation();
@@ -246,14 +246,14 @@ async function scopedAndDefaultDispatch() {
     await Promise.all([a.entered.promise, b.entered.promise]);
     a.gate.resolve();
     await pendingA;
-    assert.equal(a.state().venues[0].state.condition, "scoped-A");
+    assert.match(a.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /scoped-A$/);
     releaseA();
     ownerA.dispose();
     clearA();
     assert.throws(() => ownerA.run(prepareFoundedVillage), /founding preparation is not configured/);
     b.gate.resolve();
     await pendingB;
-    assert.equal(b.state().venues[0].state.condition, "scoped-B");
+    assert.match(b.state().venues[0].zones!.find((zone) => zone.kind === "public")!.description, /scoped-B$/);
     const snapshot = await foundingPreparationSnapshot();
     assert.equal(snapshot.name, "scoped-B");
     await prepareFoundedVillage();
@@ -415,6 +415,18 @@ async function changedOpeningSource(worldFacts = false) {
   assert.notEqual(keys[0], keys[1], "current-source retry retains the old paid receipt under its original key");
 }
 
+async function changedPhysicalSeed() {
+  const f = fixture("Changed source");
+  const pending = f.service.prepareFoundedVillage();
+  await f.entered.promise;
+  const zone = f.state().venues[0].zones!.find((zone) => zone.kind === "public")!;
+  zone.description = "Blue walls.";
+  zone.state.revision++;
+  f.gate.resolve();
+  await pending;
+  assert.equal(f.state().venues[0].zones!.find((row) => row.id === zone.id)!.description, "Blue walls.");
+  assert.equal(f.state().foundingPreparation!.venueDetailsSeeded, false, "stale physical seed never commits");
+}
 async function main() {
   await interactiveOpeningNeedsNoIdeas();
   await changedOpeningSource();
@@ -422,6 +434,7 @@ async function main() {
   await independentOpeningIdeas();
   await partialOpeningCount();
   await independentFounding();
+  await changedPhysicalSeed();
   await scopedAndDefaultDispatch();
   await pendingSnapshotResumes();
   console.log(

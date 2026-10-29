@@ -92,29 +92,42 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             for (const venue of state.venues) {
               const seed = details[venue.id];
               if (!seed) continue;
-              const space = venue.spaces?.[0] ?? venue.zones?.find((zone) => zone.kind === "exterior");
-              if (!space) continue;
-              const features = seed.features.map((text) => ({
-                id: randomVillageSeed(),
-                text,
-                sourceCharacterId: "",
-                locked: false,
-                updatedAt: "",
-              }));
-              space.state = {
-                ...space.state,
-                condition: seed.condition,
-                items: seed.items,
-                publicFacts: seed.publicFacts,
-                features,
-              };
-              venue.state = {
-                ...venue.state,
-                condition: seed.condition,
-                furniture: seed.items,
-                publicFacts: seed.publicFacts,
-                features,
-              };
+              const original = initial.venues.find((row) => row.id === venue.id);
+              const source =
+                original?.zones?.find((zone) => zone.kind === "public" || zone.kind === "shared-residence") ??
+                original?.zones?.find((zone) => zone.kind === "exterior");
+              const space = venue.zones?.find((zone) => zone.id === source?.id);
+              const physicalSource = (place: typeof venue) => [
+                place.form,
+                place.classes,
+                place.zones?.map((zone) => [
+                  zone.id,
+                  zone.name,
+                  zone.kind,
+                  zone.ownerId,
+                  zone.description,
+                  zone.state.revision,
+                ]),
+              ];
+              if (
+                !original ||
+                !source ||
+                !space ||
+                backgroundRevision(physicalSource(original)) !== backgroundRevision(physicalSource(venue))
+              )
+                throw conflict(
+                  "The founding Zone changed while its details were prepared. Its saved response is retained.",
+                );
+              if (seed.addition) {
+                const description = [space.description, seed.addition].filter(Boolean).join("\n");
+                if (description.length > 4000) throw badRequest("The complete initial Zone description is too long.");
+                space.description = description;
+                space.state = {
+                  revision: space.state.revision + 1,
+                  updatedAt: villageNow().toISOString(),
+                  recent: null,
+                };
+              }
             }
             state.foundingPreparation.venueDetailsSeeded = true;
           });

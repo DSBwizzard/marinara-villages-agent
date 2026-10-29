@@ -16,7 +16,7 @@ export function venueImageCompositionPrompt(area: "exterior" | "interior"): stri
     (area === "exterior"
       ? "The same exterior image also identifies the Venue in a small Polaroid. Keep its entrance and distinctive visible features clear and comfortably within the image, recognizable at thumbnail size. "
       : "Depict only the selected Zone as experienced from within it, with its defining furnishings and usable space clearly visible. ") +
-    "Later verified area conditions and current facts take precedence over outdated details in the authored place description. Render only the place: no people, animals, writing, numerals, labels, interface graphics, icons or markers. Do not draw an overhead map, floor plan, cutaway, collage, photograph frame, decorative border or blank panel for chat. The application supplies the Polaroid frame and chat interface."
+    "The current Zone description is the physical account for this enduring image. Do not add incidental arrangements from conversation. Render only the place: no people, animals, writing, numerals, labels, interface graphics, icons or markers. Do not draw an overhead map, floor plan, cutaway, collage, photograph frame, decorative border or blank panel for chat. The application supplies the Polaroid frame and chat interface."
   );
 }
 
@@ -40,24 +40,6 @@ export function buildLocationPrompt(
     .join(", ");
   const building = venue.occupancy.homeKind ? village.homeBuildingNames[venue.occupancy.homeKind] : "";
   const outside = area === "exterior";
-  const privateResidenceOutside = outside && venue.classes?.includes("residence") && venue.residentIds?.length;
-  const condition = outside
-    ? venue.exteriorState?.condition || (privateResidenceOutside ? "" : venue.state.condition)
-    : venue.state.condition;
-  const items = outside
-    ? venue.exteriorState?.items?.length
-      ? venue.exteriorState.items
-      : privateResidenceOutside
-        ? []
-        : venue.state.furniture
-    : venue.state.furniture;
-  const facts = outside
-    ? venue.exteriorState?.publicFacts?.length
-      ? venue.exteriorState.publicFacts
-      : privateResidenceOutside
-        ? []
-        : venue.state.publicFacts
-    : venue.state.publicFacts;
   const approvedDescription = venue.description;
   return [
     venueImageCompositionPrompt(area),
@@ -74,9 +56,6 @@ export function buildLocationPrompt(
     approvedDescription
       ? `Approved description of this ${outside ? "venue (show exterior cues only)" : "space"}: ${approvedDescription}.`
       : "",
-    condition ? `Current condition: ${condition}.` : "",
-    items.length ? `Visible ${outside ? "exterior details" : "furniture and items"}: ${items.join(", ")}.` : "",
-    facts.length ? `Established venue facts: ${facts.join("; ")}.` : "",
     setting.length > 0 ? `Village setting and theme: ${setting}.` : "",
     village.worldFacts.length ? `Current world facts: ${village.worldFacts.join("; ")}.` : "",
     surrounding ? `Other known places in the village: ${surrounding}.` : "",

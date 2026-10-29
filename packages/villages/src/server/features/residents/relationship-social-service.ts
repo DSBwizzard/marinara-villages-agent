@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import { applyVenueSceneChange, releasePhysicalOutcomes } from "../../domain/rules/venue-scene-state.js";
+import { structuralShape } from "../../domain/rules/project-structure.js";
+import { resolveVenueZone } from "../../domain/rules/venue-zones.js";
+import { residentEncounterPlace } from "../../domain/rules/resident-planning.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
@@ -18,7 +23,7 @@ import {
 import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-capture.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
-import { readEncounter } from "../../domain/rules/social-encounter.js";
+import { encounterPhysicalId, readEncounter } from "../../domain/rules/social-encounter.js";
 import { projectSocialActivities, reconcileSocialPlans, socialPlanValid } from "../../domain/rules/social-rules.js";
 import { applyWishSource } from "../../domain/rules/social-wishes.js";
 import { settleStandingAccess } from "../../domain/rules/venue-access.js";
@@ -39,6 +44,108 @@ export type RelationshipSocialPorts = {
 export function createRelationshipSocial(ports: RelationshipSocialPorts) {
   const { mutateVillageState, mutateRelationships, processLiveMemories } = ports;
 
+  async function settlePhysical(village: VillageState, entry: SocialOutboxEntry, encounter: SocialEncounter) {
+    const id = encounterPhysicalId(entry.id),
+      update = encounter.placeUpdate;
+    if (!update) {
+      if (village.exchangeReceipts[id]?.physicalOutcome)
+        throw new EncounterInterpretationError("Committed physical meaning cannot be removed by reinterpretation.");
+      return;
+    }
+    const raw = asRecord(asRecord(entry.proposal.encounter).placeUpdate);
+    const sourceHash = backgroundRevision([
+      entry.seed,
+      entry.at,
+      encounter.venueId,
+      encounter.zoneId,
+      [...encounter.actorIds].sort(),
+      encounter.lines.map((line) => [line.id, line.speakerId, line.kind, line.content, [...line.heardBy].sort()]),
+      update.narration,
+      update.expectedRevision,
+      (update.edits ?? []).map((row) => [row.before, row.after]).sort(),
+      update.append ?? null,
+      update.recent ? [update.recent.text, update.recent.renew === true] : null,
+      encounter.physicalContext?.segment,
+      [...(encounter.physicalContext?.actorIds ?? [])].sort(),
+      (Array.isArray(raw.consent) ? raw.consent : [])
+        .map((value) => {
+          const row = asRecord(value);
+          return [row.actorId, row.segment, row.lineId, row.quote];
+        })
+        .sort(),
+    ]);
+    await mutateVillageState((state) => {
+      if (state.seed !== entry.seed) throw new Error("The encounter belongs to another Village.");
+      const prior = state.exchangeReceipts[id];
+      if (prior) {
+        if (
+          prior.status !== "applied" ||
+          prior.sourceHash !== sourceHash ||
+          (!prior.physicalOutcome && state.socialOutbox?.some((row) => row.id === entry.id))
+        )
+          throw new EncounterInterpretationError(
+            "The saved physical meaning changed; its committed outcome is preserved.",
+          );
+        return;
+      }
+      const saved = state.socialOutbox?.find((row) => row.id === entry.id);
+      if (!saved || JSON.stringify(saved.proposal) !== JSON.stringify(entry.proposal))
+        throw new Error("The saved encounter source changed before settlement.");
+      for (const actor of encounter.actorIds) {
+        const admitted = entry.admitted?.villagers.find((row) => row.characterId === actor);
+        const live = state.villagers.find((row) => row.characterId === actor);
+        if (!admitted || !live || admitted.cardSnapshot.capturedAt !== live.cardSnapshot.capturedAt)
+          throw new Error("An encounter participant changed.");
+      }
+      const venue = state.venues.find((row) => row.id === encounter.venueId);
+      const original = entry.admitted?.venues.find((row) => row.id === encounter.venueId);
+      const zone = venue && resolveVenueZone(venue, encounter.zoneId);
+      const old = original && resolveVenueZone(original, encounter.zoneId);
+      if (!zone || !old || JSON.stringify(structuralShape(zone)) !== JSON.stringify(structuralShape(old)))
+        throw new Error("The encounter Zone changed before settlement.");
+      const after = applyVenueSceneChange(
+        state,
+        encounter.venueId,
+        update,
+        "offscreen:" + entry.id,
+        entry.at,
+        undefined,
+        "public",
+        "",
+        encounter.zoneId,
+        encounter.physicalContext,
+      );
+      const outcome = {
+        id,
+        venueId: encounter.venueId,
+        venueName: venue!.name,
+        zoneId: encounter.zoneId,
+        at: entry.at,
+        text: update.narration,
+        actionReceipt: {
+          ...update,
+          happened: true,
+          submissionId: entry.id,
+          witnessIds: [...(encounter.physicalContext?.witnessIds ?? [])],
+          after,
+        },
+      };
+      state.exchangeReceipts[id] = {
+        id,
+        sceneId: "offscreen:" + entry.id,
+        submissionId: entry.id,
+        domain: "physical",
+        at: entry.at,
+        committedAt: villageNow().toISOString(),
+        status: "applied",
+        sourceHash,
+        evidenceIds: encounter.lines.map((line) => line.id),
+        reason: "Confirmed resident physical outcome",
+        physicalOutcome: outcome,
+      };
+    });
+  }
+
   async function processSocialOutbox(village: VillageState, sourceId?: string): Promise<boolean> {
     const pending = (village.socialOutbox ?? [])
       .filter((entry) => !entry.processed && !entry.error && (sourceId ? entry.id === sourceId : !entry.catchupBatchId))
@@ -47,6 +154,18 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
     for (const entry of pending) {
       if (entry.seed !== village.seed) continue;
       try {
+        const rawSource = asRecord(entry.proposal.encounter);
+        if (
+          Array.isArray(rawSource.lines) &&
+          rawSource.lines.some((line) => asRecord(line).kind === "narration") &&
+          rawSource.physicalConsistent !== true
+        )
+          throw new EncounterInterpretationError("Narrated encounter outcomes need independent validation.");
+        if (rawSource.placeUpdate || village.exchangeReceipts[encounterPhysicalId(entry.id)]) {
+          const prepared = readEncounter(entry.proposal.encounter, entry, village);
+          if (!prepared) throw new Error("The saved encounter could not be admitted.");
+          await settlePhysical(village, entry, prepared);
+        }
         const settled = await mutateRelationships(village.seed, (state) => {
           const current = { ...village, relationshipContext: state };
           reconcileRelationships(state, current);
@@ -147,6 +266,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
             contactHidden: true,
           }));
           const privateScene = coerceSession({
+            version: 3,
             id: "offscreen:" + entry.id,
             processingVersion: 1,
             villageSeed: entry.seed,
@@ -160,6 +280,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
             submissions: [
               {
                 id: entry.id,
+                physicalOutcomeVersion: 1,
                 mode: "chat",
                 message: "",
                 targetId: "",
@@ -235,6 +356,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
             saved.processed = true;
           }
           state.socialOutbox = state.socialOutbox?.filter((row) => !row.processed);
+          releasePhysicalOutcomes(state, "offscreen:" + entry.id);
         });
       } catch (error) {
         await mutateVillageState((state) => {
@@ -254,13 +376,32 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
 
   async function recover(id: string, value: unknown) {
     const input = z
-      .object({ requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/), reinterpret: z.boolean() })
+      .object({
+        requestId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/),
+        reinterpret: z.boolean(),
+        skip: z.boolean().optional(),
+      })
       .parse(value);
     if (!ports.readVillageSnapshot) throw new Error("Encounter recovery unavailable.");
     const village = await ports.readVillageSnapshot({ memories: true }),
       entry = village.socialOutbox?.find((row) => row.id === id);
     if (!entry) return;
     if (entry.catchupBatchId) throw conflict("Recover this encounter from Village catch-up.");
+    if (input.skip) {
+      await mutateVillageState((state) => {
+        const saved = state.socialOutbox?.find((row) => row.id === id);
+        if (!saved) return;
+        if (
+          !saved.error ||
+          saved.catchupBatchId ||
+          state.relationshipContext?.applied[id] ||
+          state.exchangeReceipts[encounterPhysicalId(id)]?.status === "applied"
+        )
+          throw conflict("Only an uncommitted encounter awaiting recovery can be skipped.");
+        state.socialOutbox = state.socialOutbox!.filter((row) => row.id !== id);
+      });
+      return;
+    }
     if (input.reinterpret) {
       if (!ports.queueBackgroundJob) throw new Error("Encounter interpretation unavailable.");
       await ports.queueBackgroundJob({
@@ -276,6 +417,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           seed: village.seed,
           admittedAt: villageNow().toISOString(),
           memory: sceneMemoryContext(village, entry.opportunity.actorIds, (entry.opportunity.facts ?? []).join(" ")),
+          committedPhysical: village.exchangeReceipts[encounterPhysicalId(entry.id)],
         },
       });
     } else {
@@ -318,6 +460,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         seed: village.seed,
         admittedAt: entry.at,
         memory: sceneMemoryContext(historical, entry.opportunity.actorIds, entry.opportunity.facts.join(" ")),
+        committedPhysical: village.exchangeReceipts[encounterPhysicalId(entry.id)],
       },
     });
   }
@@ -328,6 +471,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       seed: string;
       admittedAt: string;
       memory: ReturnType<typeof sceneMemoryContext>;
+      committedPhysical?: unknown;
     }) {
       if (!ports.interpretSocialSource) throw new Error("Encounter interpretation unavailable.");
       const raw = input.entry.proposal.encounter as Record<string, unknown>;
@@ -342,8 +486,17 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                 input.entry.opportunity.actorIds.includes(resident.characterId),
               )
             : input.entry.admitted.villagers,
-          at: input.admittedAt,
+          at: input.entry.at,
           memory: input.memory,
+          place: residentEncounterPlace(input.entry.admitted?.venues ?? [], input.entry.opportunity, input.entry.at),
+          possibleMemoryEffects: {
+            physical: {
+              id: encounterPhysicalId(input.entry.id),
+              domainRef: { kind: "physical", id: input.entry.opportunity.venueId },
+            },
+          },
+          committedPhysical: input.committedPhysical,
+          originalPlaceUpdate: raw.placeUpdate,
         },
         false,
       );

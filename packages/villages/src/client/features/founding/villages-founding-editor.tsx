@@ -287,7 +287,7 @@ export function BaseZoneFields({
           </label>
           {["public", "shared-residence"].includes(zone.kind) ? (
             <label>
-              Description
+              Long-term details
               <textarea
                 autoComplete="off"
                 value={zone.description}
@@ -409,7 +409,7 @@ export function personalSpaceDraft(): PrivateDraft {
     venueClass: "residence",
     description: "",
     image: null,
-    state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+    state: { revision: 0, updatedAt: "", recent: null },
   };
 }
 export function PrivateSpaceFields({
@@ -648,7 +648,7 @@ export function FoundingVenueEditor({
       !venue.name.trim() || !venue.form?.trim()
         ? "Add a Venue name and physical form."
         : !venue.description.trim()
-          ? "Describe the Exterior appearance."
+          ? "Describe the Long-term details."
           : foundingZoneProblem(venue)
             ? foundingZoneProblem(venue)
             : !venue.occupancy.playerHome && residence && !owner
@@ -765,10 +765,10 @@ export function FoundingVenueEditor({
               <h4>Exterior · Unrestricted, 24/7</h4>
               <p>The entrance and approach, including corridors for indoor Venues.</p>
               <label>
-                Exterior appearance
+                Long-term details
                 <textarea
                   autoComplete="off"
-                  aria-label="Exterior Description"
+                  aria-label="Long-term details"
                   maxLength={1000}
                   value={venue.description}
                   disabled={busy}
