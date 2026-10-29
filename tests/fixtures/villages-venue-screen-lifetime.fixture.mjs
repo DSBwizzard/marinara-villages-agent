@@ -445,6 +445,22 @@ export async function verifyVenueScreenLifetimes(browser) {
         await f.finish();
       }
       // Existing refused/cancelled edits and a confirmation that retires the owner issue no HTTP.
+      {
+        const f = await mount(strict, width);
+        await f.page
+          .getByRole("navigation", { name: "Venue sections" })
+          .getByRole("button", { name: "Zones", exact: true })
+          .click();
+        await expect(f.page.getByRole("dialog", { name: "Confirm", exact: true })).toBeVisible();
+        await f.page.evaluate(() => window.h.jump({ id: "B / venue" }));
+        const before = await f.read();
+        await f.page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Continue", exact: true })
+          .click();
+        assert.deepEqual(await f.read(), before, "retired navigation confirmation cannot change the new Venue");
+        await f.finish();
+      }
       for (const mode of ["physical", "cancelDetails", "cancelZone", "retireConfirm"]) {
         const f = await mount(strict, width, { occupied: true });
         await f.page.evaluate((mode) => {

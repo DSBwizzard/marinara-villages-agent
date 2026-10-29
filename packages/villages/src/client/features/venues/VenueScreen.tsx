@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -355,13 +355,23 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     planVenueRenovation,
   } = controller;
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
+  const navigationSelection = useMemo(
+    () => ({ venueId, venueZoneKey, venueSection }),
+    [venueId, venueZoneKey, venueSection],
+  );
+  const navigation = useVillageMutationLifetime(snapshot?.isFounded, undefined, navigationSelection);
   const navigationBusy = zoneNameSaving || controller.venueEditBusy;
   const canLeave = async () => {
     if (navigationBusy) return false;
     const draft = controller.venueEditDraft;
     const venueNameDirty = !!draft && draft.id === place?.id && draft.name !== place.name;
     if (!venueNameDirty && !zoneNameDirty) return true;
-    if (!(await confirmVillages("Discard unsaved changes?"))) return false;
+    const claim = navigation.begin();
+    if (!claim) return false;
+    const accepted = await confirmVillages("Discard unsaved changes?");
+    if (!navigation.owns(claim)) return false;
+    navigation.finish(claim);
+    if (!accepted) return false;
     if (venueNameDirty) controller.setVenueEditDraft(null);
     if (zoneNameDirty) {
       setZoneNameDirty(false);

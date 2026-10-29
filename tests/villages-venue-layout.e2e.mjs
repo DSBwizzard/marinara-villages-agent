@@ -1,6 +1,6 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-// Test cases: venues/layout/exterior, venues/layout/common, venues/layout/private, venues/layout/both, venues/screen-lifetimes
+// Test cases: venues/layout/exterior, venues/layout/common, venues/layout/private, venues/layout/both, venues/screen-lifetimes, venues/layout-autosave
 import { runCase, wantsCase } from "../scripts/test-cases.mjs";
 import { resolve } from "node:path";
 import { chromium } from "./fixtures/browser-diagnostics.mjs";
