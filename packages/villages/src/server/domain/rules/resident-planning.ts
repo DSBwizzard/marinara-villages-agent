@@ -1,4 +1,5 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { VILLAGE_ACTIVITY_POLICY } from "../../../shared/helpers/activity-policy.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import { venueZones } from "./venue-zones.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -31,10 +32,7 @@ export function localDateKey(now: Date): string {
   );
 }
 export function planningAllowance(pace: VillageBackgroundPace, _seed: string, _date: string): number {
-  if (pace === "off") return 0;
-  if (pace === "quiet") return 1;
-  if (pace === "lively") return 6;
-  return 3;
+  return VILLAGE_ACTIVITY_POLICY[pace].reviews;
 }
 /** Current shared space supports an encounter. A lone resident still has routine/housing choices. */
 export function residentPlanningOpportunity(

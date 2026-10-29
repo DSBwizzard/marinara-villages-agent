@@ -79,6 +79,8 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   );
   tracking.batch = {
     id,
+    budgetDate: date,
+    opportunityLimit: Math.min(6, remaining),
     status: opportunities.length ? "queued" : "completed",
     from: capture.at,
     until: now.toISOString(),

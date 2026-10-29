@@ -332,6 +332,7 @@ import {
 import { configureWorldCoordination } from "../features/world/village.js";
 import { configureWorldRelationships, worldRelationships } from "../features/world/world-relationships.js";
 import { createBackgroundWork } from "../jobs/background-service.js";
+import { requestVillageRefresh } from "../jobs/village-refresh-scheduler.js";
 import {
   backgroundJobSnapshot,
   backgroundWorkSummaries,
@@ -1024,6 +1025,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSettings = configureVillageSettings(
     createVillageSettings({
+      activityChanged: requestVillageRefresh,
       mutateVillageState,
       buildVillageSnapshot,
       readLinkedPersona,
@@ -1144,6 +1146,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
+      activityChanged: requestVillageRefresh,
       villagesDocuments,
       villagesLogger,
       readVillageState,
@@ -1170,6 +1173,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     processSocialOutbox,
   });
   const returnCatchup = createReturnCatchup({
+    activityChanged: requestVillageRefresh,
     readSnapshot: readVillageSnapshot,
     mutate: mutateVillageMemoryState,
     queue: residentPlanning.queueReturnOpportunity,

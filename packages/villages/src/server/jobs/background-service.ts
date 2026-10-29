@@ -42,6 +42,8 @@ const KIND = "background-work";
 const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
   "villages-background-" + backgroundRevision([work.kind, work.subjectId]);
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);
+const activityDispatched = (job: Job) =>
+  job.requests > 0 || job.attemptHistory?.some((attempt) => attempt.requests > 0) === true;
 export function retireBackgroundResident(state: VillageState, characterId: string): void {
   for (const kind of ["agenda", "translation", "wish"] as const)
     delete state.backgroundReceipts[slotId({ kind, subjectId: characterId })];
@@ -56,6 +58,7 @@ export interface BackgroundWorkPorts {
   runtimeDebug: typeof runtimeDebug;
   backgroundCalls: BackgroundContext["backgroundCalls"];
   handlers: Iterable<readonly [BackgroundKind, Handler]>;
+  activityChanged?: () => void;
 }
 /** An application owns its handler registry, admission, recovery and provider queues. */
 export function createBackgroundWork(ports: BackgroundWorkPorts) {
@@ -135,6 +138,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         delete state.returnCatchup!.capture;
       }),
     );
+    ports.activityChanged?.();
   }
   async function readJob(id: string): Promise<Job | null> {
     const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id);
@@ -366,6 +370,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const wasVisible = sessions.delete(sessionId);
       pendingPresence.delete(sessionId);
       if (wasVisible && !hasVillagePresence()) await options.onHidden?.();
+      if (wasVisible && !hasVillagePresence()) ports.activityChanged?.();
       return;
     }
     if (hasVillagePresence()) {
@@ -397,6 +402,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     await recoverBackgroundWork();
     recoveryError = false;
     await options.afterResume?.();
+    ports.activityChanged?.();
     return advanced;
   }
   function pump(): void {
@@ -457,7 +463,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       throw new Obsolete("This catch-up opportunity is no longer active.");
     if (holding && !batchId && (!job.finite || job.kind === "resident-planning"))
       throw new Paused("Waiting for Village catch-up.");
-    if (superseded.has(job.id) || state.seed !== job.seed || !handlers.get(job.kind)!.valid(state, job.input))
+    if (
+      superseded.has(job.id) ||
+      state.seed !== job.seed ||
+      !handlers.get(job.kind)!.valid(state, job.input, {
+        activityAttemptId: job.id,
+        ...(activityDispatched(job) && job.automaticDate ? { activityDate: job.automaticDate } : {}),
+      })
+    )
       throw new Obsolete("This work is no longer needed.");
   }
   function launch(id: string): void {
@@ -468,6 +481,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         logger.warn("[villages] background work could not be saved: %s", String(error));
       })
       .finally(() => {
+        ports.activityChanged?.();
         if (running.get(id) === task) running.delete(id);
         if (relaunch.delete(id)) launch(id);
       });
@@ -648,10 +662,15 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               villageNow().toISOString(),
               state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
             );
-            if (!job!.requests && localDateKey(actual) !== job!.automaticDate)
+            const reserved = state.eventAttempts?.attempts.some((row) => row.id === job!.id);
+            if (!reserved && !activityDispatched(job!) && localDateKey(actual) !== job!.automaticDate)
               throw new Obsolete("Automatic resident opportunity belongs to an earlier day.");
-            reserveEventAttempt(state, job!.id, job!.automaticDate!, villageNow().getTime(), catchupBatchId(job!));
+            // A later month's admission can prune the original ledger row. The
+            // same saved job's purchased request remains proof, not a new review.
+            if (reserved || !activityDispatched(job!))
+              reserveEventAttempt(state, job!.id, job!.automaticDate!, villageNow().getTime(), catchupBatchId(job!));
           });
+          ports.activityChanged?.();
         }
         job = await changeJob(id, (current) => {
           if (current?.id !== job!.id || superseded.has(current.id)) throw new Obsolete("This job was replaced.");

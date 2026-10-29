@@ -148,7 +148,40 @@ assert.equal(tracking.returnCatchup?.batch, undefined, "Short breaks do not crea
 discoverReturnBatch(tracking, afterTwoHours, "grounded-return");
 assert.equal(tracking.returnCatchup?.batch?.status, "queued");
 assert.equal(tracking.returnCatchup?.batch?.opportunities?.length, 1);
+assert.equal(tracking.returnCatchup?.batch?.budgetDate, "2026-10-26");
+assert.equal(tracking.returnCatchup?.batch?.opportunityLimit, 6);
 assert.deepEqual(coerceVillageState(structuredClone(tracking)).returnCatchup, tracking.returnCatchup);
+for (const [pace, expected] of [
+  ["quiet", 2],
+  ["balanced", 6],
+  ["lively", 6],
+] as const) {
+  const world = structuredClone(tracking);
+  world.returnCatchup = undefined;
+  world.backgroundPace = pace;
+  for (const resident of world.villagers) {
+    const visiting = resident.agenda!.week!.Monday!;
+    for (const day of ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const)
+      resident.agenda!.week![day] = structuredClone(visiting);
+  }
+  recordReturnVisibility(world, now);
+  discoverReturnBatch(world, new Date(now.getTime() + 7 * 86_400_000), "bounded-" + pace);
+  assert.equal(world.returnCatchup!.batch!.opportunityLimit, expected);
+  assert.equal(
+    world.returnCatchup!.batch!.opportunities!.length,
+    expected,
+    "Busy's twelve reviews do not enlarge catch-up.",
+  );
+}
+for (const patch of [{ opportunityLimit: 7 }, { budgetDate: 12 }, { budgetDate: undefined }]) {
+  const malformed = structuredClone(tracking);
+  Object.assign(malformed.returnCatchup!.batch!, patch);
+  assert.throws(() => coerceVillageState(malformed), /catch-up allowance/);
+}
+const legacyBatch = structuredClone(tracking);
+delete legacyBatch.returnCatchup!.batch!.budgetDate;
+delete legacyBatch.returnCatchup!.batch!.opportunityLimit;
+assert.deepEqual(coerceVillageState(legacyBatch).returnCatchup, legacyBatch.returnCatchup);
 const malformedBatch = structuredClone(tracking);
 malformedBatch.returnCatchup!.batch!.opportunities![0]!.actorIds.push("player");
 assert.throws(() => coerceVillageState(malformedBatch), /catch-up opportunities/);

@@ -1,4 +1,5 @@
 import type { VillageBackgroundPace } from "../../../shared/contracts/village.js";
+import { VILLAGE_ACTIVITY_POLICY } from "../../../shared/helpers/activity-policy.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { AgentConnectionsControls } from "./AgentConnections.js";
 import type { GeneralSettingsPagePorts } from "./page-contracts.js";
@@ -43,7 +44,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
           {snapshot ? (
             <div className={`${ELEMENT_TAG}-field`}>
               <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-background-pace`}>
-                Resident activity and Wishes
+                Pace
               </label>
               <select
                 id={`${ELEMENT_TAG}-background-pace`}
@@ -53,7 +54,7 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
               >
                 {snapshot.settings.backgroundPaces.map((pace) => (
                   <option key={pace} value={pace}>
-                    {pace.charAt(0).toUpperCase() + pace.slice(1)}
+                    {VILLAGE_ACTIVITY_POLICY[pace].label}
                   </option>
                 ))}
               </select>

@@ -14,6 +14,7 @@ export interface VillageSettingsPorts {
   readLinkedPersona(id: unknown): Promise<{ id: string; name: string; identity: string }>;
   runVillageBootstrap(): Promise<VillageSnapshot>;
   villagesLogger(): { warn(message: string, ...args: unknown[]): void };
+  activityChanged?: () => void;
 }
 
 /** Settings retain only their injected coordination ports; construction starts no work. */
@@ -23,6 +24,7 @@ export function createVillageSettings({
   readLinkedPersona,
   runVillageBootstrap,
   villagesLogger,
+  activityChanged,
 }: VillageSettingsPorts) {
   /** Store the box: what a villager in this village knows. */
   async function setVillagePromptKnowledge(value: unknown): Promise<VillageSnapshot> {
@@ -47,11 +49,12 @@ export function createVillageSettings({
   async function setVillageBackgroundPace(value: unknown): Promise<VillageSnapshot> {
     const paces: readonly VillageBackgroundPace[] = ["off", "quiet", "balanced", "lively"];
     if (typeof value !== "string" || !paces.includes(value as VillageBackgroundPace)) {
-      throw badRequest("Resident activity and Wishes must be off, quiet, balanced or lively.");
+      throw badRequest("Choose Off, Quiet, Average or Busy for Pace.");
     }
     await mutateVillageState((state) => {
       state.backgroundPace = value as VillageBackgroundPace;
     });
+    activityChanged?.();
     return buildVillageSnapshot();
   }
 

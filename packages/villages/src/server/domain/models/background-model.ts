@@ -105,7 +105,7 @@ export type Job = BackgroundInput & {
 };
 export type Handler = {
   generate(input: any): Promise<unknown>;
-  valid(state: VillageState, input: any): boolean;
+  valid(state: VillageState, input: any, admission?: { activityAttemptId: string; activityDate?: string }): boolean;
   apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void | WorkFailure;
   /** Pure local validation of saved replies on deliberate retry, before discarding failed steps. */
   recoverSavedResult?(input: any, steps: readonly Step[]): unknown;

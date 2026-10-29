@@ -2,6 +2,7 @@ import type { VillageState } from "../../domain/models/world.js";
 import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain/rules/return-catchup-authority.js";
 import { discoverReturnBatch, recordReturnVisibility } from "../../domain/rules/return-catchup-state.js";
 import { conflict } from "../../domain/rules/errors.js";
+import { activityDate } from "../../domain/rules/event-attempts.js";
 
 type Ports = {
   readSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
@@ -18,6 +19,7 @@ type Ports = {
   reinterpret: (batchId: string, opportunityId: string, actionId: string) => Promise<void>;
   hasPresence: () => boolean;
   now: () => Date;
+  activityChanged?: () => void;
 };
 
 /** One durable batch uses the existing background worker and social settlement. */
@@ -43,6 +45,7 @@ export function createReturnCatchup(ports: Ports) {
       if (["completed", "cancelled"].includes(state.returnCatchup.batch.status)) return;
       change(state);
     });
+    ports.activityChanged?.();
   }
   function advance(): Promise<void> {
     if (advancing) return Promise.resolve();
@@ -99,6 +102,21 @@ export function createReturnCatchup(ports: Ports) {
         if (!ports.hasPresence()) return;
         const subject = returnCatchupSubject(batch.id, opportunity.id);
         const job = await ports.job("resident-planning", subject);
+        if (
+          batch.budgetDate !== undefined &&
+          activityDate(state, ports.now()) !== batch.budgetDate &&
+          !state.eventAttempts?.attempts.some((row) => row.id === job?.id && row.batchId === batch.id) &&
+          !job?.requests &&
+          !job?.attemptHistory?.some((attempt) => attempt.requests > 0) &&
+          !job?.steps?.length
+        ) {
+          await update(batch.id, (world) => {
+            const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
+            row.status = "rejected";
+            row.error = "The catch-up allowance date ended before this opportunity started.";
+          });
+          continue;
+        }
         if (record.status === "queued" && job) {
           if (["queued", "running", "paused"].includes(job.status)) return;
           if (job.status === "failed" || job.status === "interrupted") {
@@ -195,6 +213,7 @@ export function createReturnCatchup(ports: Ports) {
   async function continueToVillage(batchId: string): Promise<void> {
     await ports.cancel(batchId);
     if (ports.hasPresence()) await recordVisible(ports.now());
+    ports.activityChanged?.();
   }
   return { prepare, recordVisible, advance, retry, continueToVillage };
 }
