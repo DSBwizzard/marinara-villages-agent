@@ -90,7 +90,11 @@ import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene
 import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { wishWritingContext } from "../../domain/rules/social-wishes.js";
-import { describeSpriteExpressions, validateSpriteExpression } from "../../domain/rules/sprite-expressions.js";
+import {
+  describeSpriteExpressions,
+  resolveSceneSpriteExpressions,
+  validateSpriteExpression,
+} from "../../domain/rules/sprite-expressions.js";
 import {
   contactNeighbors,
   contactPosition,
@@ -318,7 +322,7 @@ export function createSceneWriting({
       const sceneOccupant = session.sceneAttendance?.occupants.find(
         (entry) => entry.characterId === person.characterId,
       );
-      const spriteLabels = describeSpriteExpressions(resident.sprite);
+      const spriteLabels = describeSpriteExpressions(resident.sprite, village.spriteVariantsEnabled !== false);
 
       residentContexts.push(
         [
@@ -1075,18 +1079,26 @@ export function createSceneWriting({
           validateSpriteExpression(
             village.villagers.find((item) => item.characterId === characterId)?.sprite,
             requested,
+            village.spriteVariantsEnabled !== false,
           ),
       );
       for (const [index, spans] of captureSources ?? []) parsed.lines[index].speechSource = { version: 3, spans };
-      for (const line of parsed.lines) {
-        if (!line.expression) continue;
-        const expression = validateSpriteExpression(
-          village.villagers.find((item) => item.characterId === line.speakerId)?.sprite,
-          line.expression,
-        );
-        if (expression) line.expression = expression;
-        else delete line.expression;
-      }
+      const stageIds = session.participants.map((person) => person.characterId);
+      const currentStage =
+        replayStaging(
+          stageIds,
+          stagingTranscriptEvents(
+            session.lines.filter((line) => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId),
+            session.submissions,
+          ),
+        ).at(-1)?.state ?? initialStaging(stageIds);
+      resolveSceneSpriteExpressions(
+        parsed.lines,
+        currentStage,
+        (characterId) => village.villagers.find((item) => item.characterId === characterId)?.sprite,
+        village.spriteVariantsEnabled !== false,
+        Math.random,
+      );
     } catch (cause) {
       await rejectVenueCompletion({
         model: model.model,

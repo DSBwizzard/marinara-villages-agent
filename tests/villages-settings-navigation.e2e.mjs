@@ -294,6 +294,7 @@ async function checkHooks(width) {
 }
 
 async function checkPackage(width) {
+  let failVisualSave = false;
   const page = await browser.newPage({ viewport: { width, height: 900 } }),
     errors = [],
     scenerySaves = [],
@@ -353,6 +354,13 @@ async function checkPackage(width) {
       return fulfill(route, { json: narration });
     }
     if (path.endsWith("/settings") && route.request().method() === "PATCH") {
+      const visual = route.request().postDataJSON();
+      if (["spriteVariantsEnabled", "spriteCardFlipEnabled", "characterSpeechColors"].some((key) => key in visual)) {
+        if (failVisualSave) return fulfill(route, { status: 503, json: { error: "Visual save unavailable" } });
+        Object.assign(snapshot.settings, visual);
+        return fulfill(route, { json: snapshot });
+      }
+
       if ("worldName" in route.request().postDataJSON()) worldSaves.push(route);
       else if ("selectedLorebookIds" in route.request().postDataJSON()) loreSaves.push(route);
       else scenerySaves.push(route);
@@ -483,7 +491,35 @@ async function checkPackage(width) {
   await expect(imageLore).not.toBeChecked();
   Object.assign(snapshot.settings, loreSaved.settings);
 
-  await section("visual", "Visual Configuration");
+  await expect(page.getByRole("checkbox", { name: "Character chat colors", exact: true })).toHaveCount(0);
+  await section("visual", "Visual Settings");
+  const variants = page.getByRole("checkbox", { name: "Random sprite variants", exact: true });
+  const flips = page.getByRole("checkbox", { name: "Card-flip sprite changes", exact: true });
+  const colors = page.getByRole("checkbox", { name: "Character chat colors", exact: true });
+  await expect(variants).toBeChecked();
+  await variants.uncheck();
+  await expect.poll(() => snapshot.settings.spriteVariantsEnabled).toBe(false);
+  await section("general", "General Preferences");
+  await expect(page.getByRole("checkbox", { name: "Card-flip sprite changes" })).toHaveCount(0);
+  await section("visual", "Visual Settings");
+  await expect(variants).not.toBeChecked();
+  failVisualSave = true;
+  await variants.check();
+  await expect(page.getByText("Visual save unavailable", { exact: true })).toBeVisible();
+  await expect(variants).not.toBeChecked();
+  failVisualSave = false;
+  await variants.check();
+  await expect.poll(() => snapshot.settings.spriteVariantsEnabled).toBe(true);
+  await flips.uncheck();
+  await expect.poll(() => snapshot.settings.spriteCardFlipEnabled).toBe(false);
+  await flips.check();
+  await expect.poll(() => snapshot.settings.spriteCardFlipEnabled).toBe(true);
+  await colors.uncheck();
+  await expect.poll(() => snapshot.settings.characterSpeechColors).toBe(false);
+  if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
+    await page.screenshot({
+      path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `sprite-visual-settings-${width}.png`),
+    });
   await page.getByLabel("Scenery style description", { exact: true }).fill("Packaged scenery save");
   await page.getByLabel("Personalize new venue images by default", { exact: true }).uncheck();
   await expect(page.getByLabel("Use selected lorebooks when generating images", { exact: true })).toHaveCount(0);
@@ -501,7 +537,7 @@ async function checkPackage(width) {
   const saved = structuredClone(snapshot);
   Object.assign(saved.settings, scenerySaves[0].request().postDataJSON());
   await fulfill(scenerySaves[0], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
-  await section("visual", "Visual Configuration");
+  await section("visual", "Visual Settings");
   await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeEnabled();
   await expect(page.getByLabel("Scenery style description", { exact: true })).toHaveValue(
     "Newer packaged scenery draft",

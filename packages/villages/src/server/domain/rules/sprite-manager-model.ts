@@ -149,6 +149,7 @@ export function managerResidentSprite(state: SpriteManagerState | null | undefin
         label: expression.id,
         expressionId: expression.id,
         name: expression.name,
+        spriteName: (art.engineSource?.filename ?? art.name).replace(/\.(png|jpe?g|webp)$/i, "").replace(/^full_/i, ""),
         useWhen: expression.useWhen,
         filename: art.rendered.filename,
         assetId: art.assetId,

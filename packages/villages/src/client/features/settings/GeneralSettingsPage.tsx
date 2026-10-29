@@ -11,7 +11,6 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
     connections,
     busy,
     resetArmed,
-    saveCharacterSpeechColors,
     saveSendOnEnter,
     saveBackgroundPace,
     setResetArmed,
@@ -37,22 +36,6 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
                   onChange={(event) => void saveSendOnEnter(event.target.checked)}
                 />
                 <span>Send on Enter</span>
-              </label>
-            </div>
-          ) : null}
-
-          {snapshot ? (
-            <div className={`${ELEMENT_TAG}-field`}>
-              <label className={`${ELEMENT_TAG}-row`} htmlFor={`${ELEMENT_TAG}-speech-colors`}>
-                <input
-                  autoComplete="off"
-                  id={`${ELEMENT_TAG}-speech-colors`}
-                  type="checkbox"
-                  checked={snapshot.settings.characterSpeechColors}
-                  disabled={busy}
-                  onChange={(event) => void saveCharacterSpeechColors(event.target.checked)}
-                />
-                <span>Character chat colors</span>
               </label>
             </div>
           ) : null}

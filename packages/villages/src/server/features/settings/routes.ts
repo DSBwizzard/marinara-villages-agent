@@ -27,6 +27,7 @@ import {
   setVillageSendOnEnter,
   setVillageSetting,
   setVillageSpriteCardFlipEnabled,
+  setVillageSpriteVariantsEnabled,
   setVillageWorldName,
 } from "./village-settings.js";
 
@@ -222,6 +223,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
       spriteCardFlipEnabled?: unknown;
+      spriteVariantsEnabled?: unknown;
     };
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
     try {
@@ -254,6 +256,8 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       if (body.backgroundPace !== undefined || body.storyPace !== undefined)
         snapshot = await setVillageBackgroundPace(body.backgroundPace ?? body.storyPace);
       if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);
+      if (body.spriteVariantsEnabled !== undefined)
+        snapshot = await setVillageSpriteVariantsEnabled(body.spriteVariantsEnabled);
       if (body.spriteCardFlipEnabled !== undefined)
         snapshot = await setVillageSpriteCardFlipEnabled(body.spriteCardFlipEnabled);
       if (body.characterSpeechColors !== undefined)

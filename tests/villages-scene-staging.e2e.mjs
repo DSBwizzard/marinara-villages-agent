@@ -254,40 +254,8 @@ try {
       const mobile = width <= 704;
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-      const flipSwitch = page.getByRole("checkbox", { name: "Card-flip sprite changes" });
       const flipEnabled = count < 4;
-      if (flipEnabled) await expect(flipSwitch).toBeChecked();
-      else await expect(flipSwitch).not.toBeChecked();
-      if (count === 2 && width === 1440) {
-        await flipSwitch.uncheck();
-        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
-        await flipSwitch.check();
-        await expect(flipSwitch).toBeChecked();
-        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(true);
-      }
-      if (count === 1 && width === 1440) {
-        failSpriteSave = true;
-        await flipSwitch.click();
-        await page.getByRole("button", { name: /^1 Scene error$/ }).click();
-        await expect(page.getByRole("region", { name: "Scene errors" })).toBeVisible();
-        await page.getByRole("button", { name: "Close Scene errors" }).click();
-        await expect(flipSwitch).toBeChecked();
-        failSpriteSave = false;
-        const otherDevice = await browser.newPage({ viewport: { width: 390, height: 844 } });
-        await mockEngineLookups(otherDevice);
-        await otherDevice.route("**/api/villages**", api);
-        await mount(otherDevice);
-        await otherDevice.getByRole("button", { name: "Venue actions" }).click();
-        await otherDevice.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-        await expect(otherDevice.getByRole("checkbox", { name: "Card-flip sprite changes" })).toBeChecked();
-        await otherDevice.getByRole("checkbox", { name: "Card-flip sprite changes" }).uncheck();
-        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
-        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-        await expect(flipSwitch).not.toBeChecked();
-        await flipSwitch.check();
-        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(true);
-        await otherDevice.close();
-      }
+      await expect(page.getByRole("checkbox", { name: "Card-flip sprite changes" })).toHaveCount(0);
       const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
       await expect(decisionSwitch).toBeVisible();
       await expect(decisionSwitch).toBeEnabled();
@@ -564,7 +532,8 @@ try {
         await expect(img).toHaveAttribute("data-flipping", "out");
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-        await flipSwitch.uncheck();
+        fixture.settings.spriteCardFlipEnabled = false;
+        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
         await expect(img).toHaveAttribute("data-flipping", "false");
         await expect(img).toHaveAttribute("src", thoughts);
         assert.equal(
@@ -572,7 +541,8 @@ try {
           0,
           "disabling the shared toggle cancels an active flip",
         );
-        await flipSwitch.check();
+        fixture.settings.spriteCardFlipEnabled = true;
+        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
         await page.getByRole("button", { name: "Close Scene settings" }).click();
         await page.evaluate(() => {
           window.holdSpriteFlips = false;

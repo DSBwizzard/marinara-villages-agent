@@ -6,7 +6,7 @@ import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
 /** Actual Settings hooks and independently held synthetic HTTP responses. */
 export async function verifySettingsRequestLifetimes(browser) {
-  const kinds = ["save", "scenery", "flip", "pace", "enter", "colors"];
+  const kinds = ["save", "scenery", "flip", "variants", "pace", "enter", "colors"];
   const bundle = await build({
     stdin: {
       loader: "tsx",
@@ -14,16 +14,16 @@ export async function verifySettingsRequestLifetimes(browser) {
       contents: `
 import {createRoot} from 'react-dom/client';import {StrictMode,useState} from 'react';
 import {useSettingsState} from './packages/villages/src/client/features/settings/useSettingsState.js';
-import {useSaveSettings,useSaveScenerySettings,useSaveSpriteCardFlip,useSaveBackgroundPace,useSaveSendOnEnter,useSaveCharacterSpeechColors} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveSettings,useSaveScenerySettings,useSaveBackgroundPace,useSaveSendOnEnter} from './packages/villages/src/client/features/settings/actions.js';
+import {useSpriteVisualSettings} from './packages/villages/src/client/features/settings/SpriteVisualSettings.js';
 function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
- [flipDraft,setSpriteFlipDraft]=useState(null),[flipError,setSpriteFlipError]=useState(''),[flipSaving,setSpriteFlipSaving]=useState(false),
  [archive,setArchiveVersion]=useState(0),
  [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false),[visualLoreDefault,setVisualLoreDefault]=useState(true);
- const ports={...settings,snapshot,setSnapshot,setBusy,setSpriteFlipDraft,setSpriteFlipError,setSpriteFlipSaving,setArchiveVersion,
+ const ports={...settings,snapshot,setSnapshot,setBusy,setArchiveVersion,
   sceneryStyle,sceneryStyleProfileId,personalizeHomes,visualLoreDefault,acceptSavedSettings:()=>{window.acks++}};
- const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),flip=useSaveSpriteCardFlip(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports),colors=useSaveCharacterSpeechColors(ports);
- const commands={save,scenery,flip:()=>flip(window.flipValue??true),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>colors(false)};
+ const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),visual=useSpriteVisualSettings(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports);
+ const commands={save,scenery,flip:()=>visual.save('spriteCardFlipEnabled',window.flipValue??true),variants:()=>visual.save('spriteVariantsEnabled',false),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>visual.save('characterSpeechColors',false)};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},
   editScenery:()=>{setSceneryStyle('Newer scenery');setPersonalizeHomes(true);setVisualLoreDefault(false)},
@@ -31,7 +31,7 @@ function Harness(){
   reset:()=>{setSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});setBusy(true)},
   resetDone:()=>setBusy(false),refound:()=>{setSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B',sendOnEnter:true,characterSpeechColors:false}})},
   hydrate:()=>setSnapshot(current=>({...current,isFounded:true})),
-  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError,flipDraft,flipError,flipSaving,archive,sceneryStyle,personalizeHomes,visualLoreDefault,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
+  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError,flipDraft:visual.draft.spriteCardFlipEnabled??null,flipError:visual.error,flipSaving:visual.saving,colorsDraft:visual.draft.characterSpeechColors,archive,sceneryStyle,personalizeHomes,visualLoreDefault,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
  return <pre id='state'>{JSON.stringify(window.h.read())}</pre>;
 }window.pending=[];window.acks=0;
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
@@ -109,6 +109,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       personalizeVenueImagesByDefault: false,
     },
     flip: { spriteCardFlipEnabled: true },
+    variants: { spriteVariantsEnabled: false },
     pace: { backgroundPace: "quiet" },
     enter: { sendOnEnter: true },
     colors: { characterSpeechColors: false },
@@ -125,7 +126,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           assert.equal(f.requests[0].method, "PATCH");
           assert.deepEqual(f.requests[0].body, payloads[kind]);
           if (kind === "enter") assert.equal((await f.state()).enter, true);
-          if (kind === "colors") assert.equal((await f.state()).colors, false);
+          if (kind === "colors") assert.equal((await f.state()).colorsDraft, false);
           await f.respond(0, fail);
           await f.settle(0);
           const after = await f.state();
@@ -136,7 +137,10 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             assert.equal(after.setting, "A");
             assert.equal(after.enter, false);
             assert.equal(after.colors, true);
-            assert.match(kind === "flip" ? after.flipError : after.error, /synthetic settings failure/);
+            assert.match(
+              ["flip", "variants", "colors"].includes(kind) ? after.flipError : after.error,
+              /synthetic settings failure/,
+            );
           } else {
             assert.equal(after.setting, "saved 0");
           }
@@ -221,17 +225,15 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal(await f.page.evaluate(() => window.acks), 0);
         await f.finish();
       }
-      // Flip retains its separate Scene control group; finishing it leaves shared busy intact.
-      const independent = await mount(strict, width);
-      await independent.page.evaluate(() => window.h.independent());
-      await expect.poll(() => independent.requests.length).toBe(2);
-      await independent.respond(0);
-      await independent.settle(0);
-      assert.equal((await independent.state()).busy, true);
-      assert.equal((await independent.state()).flipSaving, false);
-      await independent.respond(1);
-      await independent.settle(1);
-      await independent.finish();
+      // Sprite controls now share the same admission group as scenery and other settings.
+      const shared = await mount(strict, width);
+      await shared.page.evaluate(() => window.h.independent());
+      await expect.poll(() => shared.requests.length).toBe(1);
+      await shared.respond(0);
+      await shared.page.evaluate(() => Promise.all(window.pending));
+      assert.equal(shared.requests.length, 1);
+      assert.equal((await shared.state()).busy, false);
+      await shared.finish();
       // Old callbacks do not revive after reset/refounding; new pre-founding saves are allowed.
       for (const kind of kinds) {
         const f = await mount(strict, width);

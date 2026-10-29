@@ -127,14 +127,13 @@ import { useScenesState } from "../features/scenes/useScenesState.js";
 import { useSceneViewport } from "../features/scenes/villages-scene-viewport.js";
 import {
   useSaveBackgroundPace,
-  useSaveCharacterSpeechColors,
   useSaveScenerySettings,
   useSaveSendOnEnter,
   useSaveSettings,
-  useSaveSpriteCardFlip,
 } from "../features/settings/actions.js";
 import { useAgentConnections } from "../features/settings/AgentConnections.js";
 import { useSettingsDraftSession } from "../features/settings/draft-session.js";
+import { useSpriteVisualSettings } from "../features/settings/SpriteVisualSettings.js";
 import { useSettingsState } from "../features/settings/useSettingsState.js";
 import { useVillageWriting } from "../features/settings/WritingSettings.js";
 import {
@@ -217,12 +216,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRefreshPreviews,
     refreshBusyId,
     setRefreshBusyId,
-    spriteFlipSaving,
-    setSpriteFlipSaving,
-    spriteFlipDraft,
-    setSpriteFlipDraft,
-    spriteFlipError,
-    setSpriteFlipError,
     portraitsAsked,
   } = useResidentsState();
 
@@ -1400,6 +1393,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     acceptSavedSettings,
   });
 
+  const spriteVisualSettings = useSpriteVisualSettings({ snapshot, setSnapshot, setBusy });
+
   const saveScenerySettings = useSaveScenerySettings({
     sceneryStyle,
     sceneryStyleProfileId,
@@ -1410,19 +1405,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSnapshot,
   });
 
-  const saveSpriteCardFlip = useSaveSpriteCardFlip({
-    snapshot,
-    setSnapshot,
-    setSpriteFlipDraft,
-    setSpriteFlipError,
-    setSpriteFlipSaving,
-  });
-
   const saveBackgroundPace = useSaveBackgroundPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
-
-  const saveCharacterSpeechColors = useSaveCharacterSpeechColors({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   /**
    * Ask the model for places again. Deliberately a separate button from Save:
@@ -2144,11 +2129,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomSubmissionIdRef,
     roomTargetId,
     roomUnresolvedChanges,
-    saveCharacterSpeechColors,
     saveScenerySettings,
+    spriteVisualSettings,
     saveSendOnEnter,
     saveSettings,
-    saveSpriteCardFlip,
     saveBackgroundPace,
     saveVenue,
     savedPins,
@@ -2296,9 +2280,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupWorldFacts,
     siteProjectId,
     snapshot,
-    spriteFlipDraft,
-    spriteFlipError,
-    spriteFlipSaving,
     spriteLeaveGuard,
     spriteManagerId,
     spriteProfileScroll,

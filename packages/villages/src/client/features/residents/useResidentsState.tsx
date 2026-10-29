@@ -89,11 +89,6 @@ export function useResidentsState() {
    * That is what keeps a switch from showing a setting the village did not
    * accept.
    */
-  const [spriteFlipSaving, setSpriteFlipSaving] = useState(false);
-
-  const [spriteFlipDraft, setSpriteFlipDraft] = useState<boolean | null>(null);
-
-  const [spriteFlipError, setSpriteFlipError] = useState("");
 
   /**
    * Portraits already asked about, including the ones the Engine had none of.
@@ -135,12 +130,6 @@ export function useResidentsState() {
     setRefreshPreviews,
     refreshBusyId,
     setRefreshBusyId,
-    spriteFlipSaving,
-    setSpriteFlipSaving,
-    spriteFlipDraft,
-    setSpriteFlipDraft,
-    spriteFlipError,
-    setSpriteFlipError,
     portraitsAsked,
   };
 }

@@ -1,4 +1,5 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { SpriteVisualSettings } from "./SpriteVisualSettings.js";
 import { MapsPanel } from "./MapsPanel.js";
 import { WorldNameSettings } from "./WorldNameSettings.js";
 
@@ -17,6 +18,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     mobile,
     personalizeHomes,
     saveScenerySettings,
+    spriteVisualSettings,
     saveSettings,
     sceneryStyle,
     sceneryStyleProfileId,
@@ -34,6 +36,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
       {category === "visual" ? (
         <>
+          <SpriteVisualSettings settings={spriteVisualSettings} disabled={busy} />
           <section className={ELEMENT_TAG + "-venue-card"}>
             <label>
               <input

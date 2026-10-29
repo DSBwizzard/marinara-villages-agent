@@ -36,6 +36,18 @@ try {
   ]) {
     const page = await browser.newPage({ viewport, hasTouch: viewport.width < 720 });
     await mockEngineLookups(page);
+    await page.addInitScript(() => {
+      window.spriteDownloads = [];
+      window.__MARINARA_HOST__ = {
+        api: {
+          api: {
+            download: async (path, filename) => {
+              window.spriteDownloads.push({ path, filename });
+            },
+          },
+        },
+      };
+    });
     const errors = [],
       requests = [],
       files = new Map();
@@ -435,9 +447,12 @@ try {
     await page.getByRole("button", { name: "Make default" }).click();
     await page.getByLabel("More artwork actions").click();
     await expect(page.getByRole("button", { name: "Make default" })).toBeDisabled();
-    const download = page.waitForEvent("download");
+
     await page.getByRole("button", { name: "Download saved PNG" }).click();
-    assert.match((await download).suggestedFilename(), /Calculating-front\.png/);
+    await expect.poll(() => page.evaluate(() => window.spriteDownloads.length)).toBe(1);
+    const download = await page.evaluate(() => window.spriteDownloads[0]);
+    assert.equal(download.path, manager.artwork[2].rendered.url.replace(/^\/api/, ""));
+    assert.match(download.filename, /Calculating-front\.png/);
     const png = PNG.sync.read(files.get(manager.artwork[2].rendered.url));
     assert.equal(png.width, 1024);
     assert.equal(png.height, 1536);

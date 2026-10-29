@@ -11,7 +11,6 @@ export type GeneralSettingsPagePorts = {
   readonly connections: ReturnType<typeof import("./AgentConnections.js").useAgentConnections>;
   readonly busy: boolean;
   readonly resetArmed: boolean;
-  readonly saveCharacterSpeechColors: (characterSpeechColors: boolean) => Promise<void>;
   readonly saveSendOnEnter: (sendOnEnter: boolean) => Promise<void>;
   readonly saveBackgroundPace: (backgroundPace: VillageBackgroundPace) => Promise<void>;
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -32,6 +31,7 @@ export type VillageSettingsPagePorts = {
   readonly lorebooksError: string;
   readonly mobile: boolean;
   readonly personalizeHomes: boolean;
+  readonly spriteVisualSettings: ReturnType<typeof import("./SpriteVisualSettings.js").useSpriteVisualSettings>;
   readonly saveScenerySettings: (automaticZonePictures?: boolean) => Promise<void>;
   readonly saveSettings: () => Promise<void>;
   readonly sceneryStyle: string;

@@ -524,6 +524,7 @@ export type VillageSettings = {
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
+  spriteVariantsEnabled: boolean;
   promptKnowledge: string;
   defaultPromptKnowledge: string;
   promptBoxMaxLength: number;

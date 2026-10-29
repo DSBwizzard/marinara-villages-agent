@@ -1,3 +1,4 @@
+import { downloadSpriteImage } from "../../shared/image-download.js";
 import {
   type SpriteArtwork,
   type SpriteFrame,
@@ -569,14 +570,10 @@ export function SpriteManager({
                           onClick={() => {
                             closeMoreActions();
                             void perform(async () => {
-                              const response = await fetch(selected.rendered.url);
-                              if (!response.ok) throw new Error("The saved PNG could not be downloaded.");
-                              const url = URL.createObjectURL(await response.blob());
-                              const link = document.createElement("a");
-                              link.href = url;
-                              link.download = `${(baseline?.name ?? selected.name).replace(/[^a-z0-9_-]/gi, "-") || "sprite"}-${baseline?.view ?? "front"}.png`;
-                              link.click();
-                              setTimeout(() => URL.revokeObjectURL(url), 30000);
+                              await downloadSpriteImage(
+                                selected.rendered.url,
+                                `${(baseline?.name ?? selected.name).replace(/[^a-z0-9_-]/gi, "-") || "sprite"}-${baseline?.view ?? "front"}.png`,
+                              );
                             });
                           }}
                         >

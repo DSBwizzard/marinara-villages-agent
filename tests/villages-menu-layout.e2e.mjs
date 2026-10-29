@@ -103,7 +103,7 @@ const snapshot = {
 const pages = [
   ["General Preferences", "general"],
   ["World Configuration", "village"],
-  ["Visual Configuration", "visual"],
+  ["Visual Settings", "visual"],
   ["Advanced", "advanced"],
   ["Venue Requests", "venueRequests"],
   ["Debug", "progress"],
@@ -253,7 +253,7 @@ try {
         await worldName.locator("..").locator("..").getByRole("button", { name: "Save", exact: true }).click();
         await expect.poll(() => !!heldWorldSave).toBe(true);
         if (mobile) await expect(picker).toBeDisabled();
-        else await expect(nav.getByRole("button", { name: "Visual Configuration", exact: true })).toBeDisabled();
+        else await expect(nav.getByRole("button", { name: "Visual Settings", exact: true })).toBeDisabled();
         await expect(
           page
             .getByRole("navigation", { name: "Village navigation" })

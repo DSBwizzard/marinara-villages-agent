@@ -125,7 +125,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomRuling,
     roomSubmissionIdRef,
     roomUnresolvedChanges,
-    saveSpriteCardFlip,
     sendRoom,
     setMailboxOpen,
     setRoom,
@@ -135,9 +134,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     setRoomMode,
     openVenue,
     snapshot,
-    spriteFlipDraft,
-    spriteFlipError,
-    spriteFlipSaving,
   } = controller;
 
   return (
@@ -187,7 +183,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 title: "Scene opening failed",
                 message: roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "",
               },
-              { id: "sprite-setting", title: "Scene setting could not be saved", message: spriteFlipError },
               ...reportedErrors
                 .filter((entry) => entry.sceneId === room.id)
                 .map(({ sceneId: _sceneId, ...entry }) => entry),
@@ -444,16 +439,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
           sceneSettings={
             <>
-              <label className={ELEMENT_TAG + "-row"}>
-                <input
-                  autoComplete="off"
-                  type="checkbox"
-                  checked={spriteFlipDraft ?? snapshot?.settings.spriteCardFlipEnabled !== false}
-                  disabled={spriteFlipSaving}
-                  onChange={(event) => void saveSpriteCardFlip(event.target.checked)}
-                />
-                Card-flip sprite changes
-              </label>
               {room.semanticVersion !== 2 ? (
                 <DecisionsControl
                   sceneId={room.id}
