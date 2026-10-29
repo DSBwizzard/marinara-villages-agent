@@ -156,10 +156,5 @@ export function useVenueLayoutAutosave({
     publish();
     void drain(place.id, entry);
   };
-  const retryVenueZoneLayout = (id: string) => {
-    if (!active.current || epoch.current !== generation) return;
-    const entry = pending.current.get(id);
-    if (entry) void drain(id, entry);
-  };
-  return { venueLayouts, saveVenueZoneLayout, retryVenueZoneLayout };
+  return { venueLayouts, saveVenueZoneLayout };
 }

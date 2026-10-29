@@ -71,7 +71,7 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 
 A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In founding or the Venue's **Zones** page, drag the Zones to arrange them without overlap. Managers can choose their connections; drawing distance changes neither movement nor sound. Browse a Venue to see what is known about it, then choose **Visit** to enter.
 
-In Places, Zone positions and connections save automatically. You can move between menus while a layout saves. Connections must keep every Zone reachable from the Entrance; invalid changes show an inline error. A failed save retains the layout with a retry control.
+In Places, Zone positions and connections save automatically. The layout sits beside the selected Zone editor on desktop and above it on phones. You can move between menus while a layout saves. Connections must keep every Zone reachable from the Entrance; invalid changes show an inline error. A failed save retains the layout; the next layout change retries saving.
 
 Entering a private space requires permission. Knowing that a room exists, being friends with someone, or hearing a sound from it does not grant access or reveal its contents. An invitation permits entry; use **Move** when you want to go there. The [Venue and Zone reference](venue-zones.md) covers detailed access and sound rules.
 

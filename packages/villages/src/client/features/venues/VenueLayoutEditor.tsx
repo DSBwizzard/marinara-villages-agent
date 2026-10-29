@@ -62,14 +62,7 @@ export function VenueLayoutEditor({
       />
       {problem ? <p role="alert">{problem}</p> : null}
       {pending?.saving ? <p role="status">Saving layout…</p> : null}
-      {pending?.error ? (
-        <div role="alert">
-          {pending.error}{" "}
-          <button type="button" onClick={() => controller.retryVenueZoneLayout(place.id)}>
-            Retry
-          </button>
-        </div>
-      ) : null}
+      {pending?.error ? <p role="alert">{pending.error}</p> : null}
     </>
   );
 }

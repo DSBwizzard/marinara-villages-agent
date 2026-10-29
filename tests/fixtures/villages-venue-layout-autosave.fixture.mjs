@@ -155,7 +155,8 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
       .click();
     await page.getByRole("button", { name: "Return to Places" }).click();
     await expect(tile()).toHaveAttribute("style", /left: 3%; top: 1%;/);
-    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+    await tile().press("ArrowRight");
     await expect.poll(() => requests.length).toBe(5);
     await reply(4);
     await expect.poll(() => requests.length).toBe(6);
@@ -166,13 +167,14 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect.poll(() => requests.length).toBe(7);
     await tile().press("ArrowDown");
     await reply(6, { fail: true, committed: true });
-    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Layout unavailable" })).toBeVisible();
+    await tile().press("ArrowRight");
     await expect.poll(() => requests.length).toBe(8);
     await reply(7);
     await expect.poll(() => requests.length).toBe(9);
     await reply(8);
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    assert.deepEqual((await read()).snapshot.settings.venues[0].zoneLayout.exterior, { x: 4, y: 2 });
+    assert.deepEqual((await read()).snapshot.settings.venues[0].zoneLayout.exterior, { x: 6, y: 2 });
     // A late response cannot restore a reset village or launch its queued edit.
     await tile().press("ArrowRight");
     await expect.poll(() => requests.length).toBe(10);

@@ -574,20 +574,35 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
             </section>
           ) : null}
           {venueSection === "zones" && selected ? (
-            <section aria-label="Zones">
-              <VenueLayoutEditor
-                key={place.id}
-                place={place}
-                controller={controller}
-                zones={zones}
-                selectedId={selected.id}
-                onSelect={async (id) => {
-                  if (id === selected.id || !(await canLeave())) return;
-                  setZoneNameDirty(false);
-                  setVenueZoneKey(id);
-                }}
-              />
+            <section className={`${ELEMENT_TAG}-venue-zones-workspace`} aria-label="Zones">
+              <div className={`${ELEMENT_TAG}-venue-zones-layout`}>
+                <VenueLayoutEditor
+                  key={place.id}
+                  place={place}
+                  controller={controller}
+                  zones={zones}
+                  selectedId={selected.id}
+                  onSelect={async (id) => {
+                    if (id === selected.id || !(await canLeave())) return;
+                    setZoneNameDirty(false);
+                    setVenueZoneKey(id);
+                  }}
+                />
+              </div>
               <section className={`${ELEMENT_TAG}-venue-zone-details`} aria-label={selected.name}>
+                {selected.kind !== "exterior" ? (
+                  <ZoneName
+                    key={place.id + selected.id + ":" + zoneEditorKey}
+                    place={place}
+                    zone={selected}
+                    controller={controller}
+                    onDirtyChange={setZoneNameDirty}
+                    onBusyChange={setZoneNameSaving}
+                  />
+                ) : (
+                  <h2>{selected.name}</h2>
+                )}
+                <ZoneArtwork key={selected.id} place={place} zone={selected} controller={controller} />
                 <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
                   <input
                     autoComplete="off"
@@ -599,23 +614,11 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   Freeze picture
                 </label>
                 <div className={`${ELEMENT_TAG}-venue-zone-heading`}>
-                  <h2>{selected.name}</h2>
                   <div>
                     <ZoneAccessLabels zone={selected} />
                   </div>
                 </div>
-                <ZoneArtwork key={selected.id} place={place} zone={selected} controller={controller} />
                 {selected.description ? <p>{selected.description}</p> : null}
-                {selected.kind !== "exterior" ? (
-                  <ZoneName
-                    key={place.id + selected.id + ":" + zoneEditorKey}
-                    place={place}
-                    zone={selected}
-                    controller={controller}
-                    onDirtyChange={setZoneNameDirty}
-                    onBusyChange={setZoneNameSaving}
-                  />
-                ) : null}
                 {selected.preparation?.status === "failed" ? (
                   <button
                     type="button"

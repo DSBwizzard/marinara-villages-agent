@@ -3552,7 +3552,24 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-venue-section p { margin:.25rem 0; }
 .${ELEMENT_TAG}-venue-section > label { display:grid; gap:.4rem; width:100%; }
 .${ELEMENT_TAG}-venue-section input, .${ELEMENT_TAG}-venue-section select { width:100%; box-sizing:border-box; }
-.${ELEMENT_TAG}-venue-zone-details { padding:1rem; background:var(--popover); border:1px solid var(--border); border-radius:.75rem; }
+.${ELEMENT_TAG}-venue-zones-workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:1rem; align-items:start; }
+.${ELEMENT_TAG}-venue-zones-layout { min-width:0; }
+.${ELEMENT_TAG}-venue-zones-layout .villages-zone-map { margin:0; }
+.${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-toolbar { margin-top:0; }
+.${ELEMENT_TAG}-venue-zone-details { min-width:0; padding:1rem; background:var(--popover); border:1px solid var(--border); border-radius:.75rem; display:flex; flex-direction:column; gap:.75rem; }
+.${ELEMENT_TAG}-venue-zone-details > form { display:flex; align-items:end; gap:.5rem; flex-wrap:wrap; }
+.${ELEMENT_TAG}-venue-zone-details > form > label { flex:1; min-width:140px; margin:0; }
+.${ELEMENT_TAG}-venue-zone-details > form > button { width:auto; margin:0; flex:none; }
+.${ELEMENT_TAG}-venue-zone-details .${ELEMENT_TAG}-venue-profile-image { max-height:340px; width:100%; object-fit:contain; }
+.${ELEMENT_TAG}-venue-zone-details .${ELEMENT_TAG}-venue-image-empty { min-height:180px; height:clamp(180px,26dvh,280px); }
+@media(max-width:700px) {
+ .${ELEMENT_TAG}-venue-zones-workspace { grid-template-columns:minmax(0,1fr); gap:.75rem; }
+ .${ELEMENT_TAG}-venue-zone-details { padding:.75rem; }
+ .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-canvas { height:300px; }
+ .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-tile small { display:none; }
+ .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-tile strong { font-size:.8rem; line-height:1.15; white-space:normal; overflow-wrap:anywhere; }
+ .${ELEMENT_TAG}-venue-zone-details .${ELEMENT_TAG}-venue-image-empty { min-height:140px; height:160px; }
+}
 .${ELEMENT_TAG}-venue-zone-heading { display:flex; justify-content:space-between; align-items:start; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
 .${ELEMENT_TAG}-venue-zone-heading small { display:block; }
 .${ELEMENT_TAG}-zone-picture-freeze { display:flex; align-items:center; gap:.5rem; min-height:44px; width:fit-content; margin-bottom:.25rem; cursor:pointer; }

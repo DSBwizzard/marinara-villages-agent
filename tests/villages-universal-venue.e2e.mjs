@@ -263,6 +263,16 @@ try {
     await expect(profile.getByText("Access options", { exact: true })).toHaveCount(0);
     await layout.locator('[data-layout-zone="alcove"]').click();
     const detail = profile.locator(`.${prefix}-venue-zone-details`);
+    const mapBounds = await layout.boundingBox();
+    const editorBounds = await detail.boundingBox();
+    assert.ok(mapBounds && editorBounds);
+    if (width > 700) {
+      assert.ok(mapBounds.x + mapBounds.width <= editorBounds.x, "desktop layout sits left of selected Zone editor");
+      assert.ok(Math.abs(mapBounds.y - editorBounds.y) < 4, "desktop columns align at the top");
+    } else {
+      assert.ok(mapBounds.y + mapBounds.height <= editorBounds.y, "phone editor follows layout");
+    }
+    await expect(layout.locator('[data-layout-zone="alcove"]')).toHaveAttribute("aria-pressed", "true");
     await expect(detail.getByText("Private", { exact: true })).toBeVisible();
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
@@ -285,8 +295,8 @@ try {
     assert.equal(writes.at(-1).path, "/api/villages/locations/venue/image/freeze");
     assert.deepEqual(writes.at(-1).body, { venueId: place.id, zoneId: "bay", frozen: true });
     const freezeBox = await detail.locator(`.${prefix}-zone-picture-freeze`).boundingBox();
-    const headingBox = await detail.getByRole("heading", { name: "Main Bay", exact: true }).boundingBox();
-    assert.ok(freezeBox.y + freezeBox.height <= headingBox.y + 1, "freeze is above the Zone heading");
+    const headingBox = await detail.getByLabel("Zone name", { exact: true }).boundingBox();
+    assert.ok(headingBox.y + headingBox.height <= freezeBox.y + 1, "Zone name appears before artwork options");
     await freeze.click();
     await expect(freeze).not.toBeChecked();
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
@@ -335,7 +345,7 @@ try {
       ).toBeDisabled();
     await fulfill(heldZoneSave, { json: snapshot });
     holdZoneSave = false;
-    await expect(detail.getByRole("heading", { name: "Harbour Lounge", exact: true })).toBeVisible();
+    await expect(detail.getByLabel("Zone name", { exact: true })).toHaveValue("Harbour Lounge");
     assert.deepEqual(writes.at(-1), {
       path: `/api/villages/venues/${place.id}/zones/bay`,
       body: { name: "Harbour Lounge" },
