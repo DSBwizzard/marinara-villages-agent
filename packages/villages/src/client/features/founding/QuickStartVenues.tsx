@@ -118,14 +118,11 @@ export function QuickStartVenues({
     const node = dialog.current;
     if (!open || !node) return;
     const opener = document.activeElement;
-    const keyboard = (navigator as Navigator & { virtualKeyboard?: { overlaysContent: boolean } }).virtualKeyboard;
-    const wasOverlay = keyboard?.overlaysContent;
     const phone = window.matchMedia("(max-width:727px)").matches;
     if (phone) {
       // Keep the sheet in layout-viewport coordinates while the keyboard covers it.
       node.style.setProperty("--quick-editor-height", `${window.innerHeight * 0.92}px`);
       node.style.setProperty("--quick-editor-top", `${window.innerHeight * 0.08}px`);
-      if (keyboard) keyboard.overlaysContent = true;
     }
     const pickerCancel = (event: Event) => {
       if (event.target instanceof HTMLInputElement && event.target.type === "file") {
@@ -144,7 +141,6 @@ export function QuickStartVenues({
       node.close();
       node.style.removeProperty("--quick-editor-height");
       node.style.removeProperty("--quick-editor-top");
-      if (phone && keyboard) keyboard.overlaysContent = wasOverlay ?? false;
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
     };
   }, [open, selected?.id]);
