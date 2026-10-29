@@ -162,7 +162,7 @@ A Venue supports up to six non-Entrance Zones, two Classes, and four residents. 
 
 Scene navigation can open the map; **Return to Scene** restores your draft. Conclude the current Scene before starting another.
 
-Scenery styles apply to future pictures. Zone artwork shows the space as known through an authorized visit; artwork does not create gameplay facts. First discovery of a private space can request one picture. A failed picture does not automatically retry; later regeneration is deliberate.
+Scenery styles apply to future pictures. Zone artwork shows the space as known through an authorized visit; artwork does not create gameplay facts. Saved artwork changes update the active Scene background immediately; captured Scene facts, attendance and navigation stay unchanged. Closed Scenes retain their captured presentation. First discovery of a private space can request one picture. A failed picture does not automatically retry; later regeneration is deliberate.
 
 Sprite setup lets you choose expressions, facing, inclusion, defaults, and framing. **Add without sprites** remains available. Analysis uses the vision connection you choose and saves completed suggestions as it goes. Review the set and choose **Add villager with sprites** or **Use sprites** to accept it. Closing the editor or saving framing does not approve the set.
 
