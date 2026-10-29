@@ -1412,7 +1412,7 @@ export type VillageMomentView = {
 type ClientVisibleSnapshot<T extends import("../../../shared/contracts/village.js").VillageSnapshot> = T;
 
 export type VillageSnapshot = ClientVisibleSnapshot<{
-  placeUpdates?: { sceneId: string; revision: string };
+  sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettingsView["venues"][number] };
   opening?: import("../../../shared/contracts/opening.js").OpeningView;
   clock?: import("../../../shared/contracts/clock.js").VillageClockView;

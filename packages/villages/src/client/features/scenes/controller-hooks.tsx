@@ -36,8 +36,8 @@ export function useSceneChangesPolling(ports: {
   } = ports;
   const cursorRef = useRef({ sceneId: "", cursor: "" });
   const focusRevision = useFocusRevision(ports.visible && ports.viewing);
-  const placeUpdates = ports.snapshot?.placeUpdates;
-  const revision = room?.id && placeUpdates?.sceneId === room.id ? placeUpdates.revision : "";
+  const sceneChanges = ports.snapshot?.sceneChanges;
+  const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
   const jobs = "";
   useEffect(() => {
     if (

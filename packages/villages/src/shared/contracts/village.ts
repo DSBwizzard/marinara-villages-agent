@@ -120,7 +120,7 @@ export type ReturnCatchupView = {
 };
 
 export type VillageSnapshot = {
-  placeUpdates?: { sceneId: string; revision: string };
+  sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
   opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;

@@ -169,21 +169,21 @@ async function main() {
   });
   scene.submissions.push({ id: "late", changeSequence: 1, semanticReady: false } as any);
   marker.setScene(scene);
-  const revision = (await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision;
+  const revision = (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision;
   assert.equal(
-    (await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision,
+    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
     revision,
     "idle snapshots do not restart the feed",
   );
   scene.submissions[0]!.semanticReady = true;
-  const ready = (await marker.service.buildVillageSnapshot(now)).placeUpdates!;
+  const ready = (await marker.service.buildVillageSnapshot(now)).sceneChanges!;
   assert.equal(ready.sceneId, scene.id);
   assert.notEqual(ready.revision, revision, "late readiness reopens delivery without a processing sequence change");
   marker.world.exchangeReceipts.foreign = { id: "foreign", sceneId: "elsewhere", noticeSequence: 1 } as any;
-  assert.equal((await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision, ready.revision);
+  assert.equal((await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision, ready.revision);
   marker.world.exchangeReceipts.own = { id: "own", sceneId: scene.id, noticeSequence: 2 } as any;
   assert.notEqual(
-    (await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision,
+    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
     ready.revision,
     "late own-Scene notice is delivered through shared refresh",
   );

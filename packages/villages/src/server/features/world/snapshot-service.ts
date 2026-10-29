@@ -233,7 +233,7 @@ export function createVillageSnapshot({
         : {}),
       ...(residenceAccess
         ? {
-            placeUpdates: {
+            sceneChanges: {
               sceneId: residenceAccess.id,
               revision: createHash("sha256")
                 .update(
