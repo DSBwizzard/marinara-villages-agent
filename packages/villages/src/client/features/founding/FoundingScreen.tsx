@@ -898,7 +898,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         ))}
                         {venue.privateSpaces?.map((room) => (
                           <p key={room.id}>
-                            {room.name} · {room.purpose} · Private contents stay hidden until invited.
+                            {room.name} · {room.purpose} · {room.description}
                             {room.roomSpecification ? <> Room specification: {room.roomSpecification}</> : null}
                           </p>
                         ))}

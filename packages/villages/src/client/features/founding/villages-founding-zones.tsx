@@ -120,7 +120,6 @@ export function FoundingZoneFields({
                 : { ...venue, spaces: venue.spaces?.map((row) => (row.id === zone.id ? { ...row, ...next } : row)) },
             );
           const policy = zone.access ?? draftZonePolicy(venue, zone, personal);
-          const generatedLater = personal && zone.venueClass === "residence" && zone.ownerId !== "player";
           return (
             <section key={zone.id} data-zone-id={zone.id}>
               {!identityInHeader ? (
@@ -179,26 +178,7 @@ export function FoundingZoneFields({
                   </select>
                 </label>
               ) : null}
-              {generatedLater ? (
-                <>
-                  <label>
-                    Room Specification (optional)
-                    <textarea
-                      autoComplete="off"
-                      aria-label="Room Specification"
-                      disabled={busy}
-                      maxLength={1000}
-                      rows={3}
-                      value={zone.roomSpecification ?? zone.description}
-                      placeholder="Structure, windows, and furnishings you are providing…"
-                      onChange={(event) => patch({ roomSpecification: event.target.value })}
-                    />
-                  </label>
-                  <p>
-                    The interior is prepared privately from this specification and stays hidden until authorized entry.
-                  </p>
-                </>
-              ) : !identityInHeader ? (
+              {!identityInHeader ? (
                 <label>
                   Long-term details
                   <textarea
@@ -208,11 +188,7 @@ export function FoundingZoneFields({
                     maxLength={1000}
                     rows={3}
                     value={zone.description}
-                    placeholder={
-                      generatedLater
-                        ? "Optional; prepared for the assigned resident after founding."
-                        : "Materials, furnishings, light, and other visible details…"
-                    }
+                    placeholder="Materials, furnishings, light, and other visible details…"
                     onChange={(event) => patch({ description: event.target.value })}
                   />
                 </label>
@@ -272,19 +248,14 @@ export function FoundingZoneFields({
                   Venue Type: {venue.venueType || "Not set"}. Physical form: {venue.form || "Not set"}.
                 </p>
                 <p>
-                  Used for: {zone.purpose || "Not set"}. Long-term details:{" "}
-                  {zone.description || (generatedLater ? "Prepared after founding" : "Not set")}.
+                  Used for: {zone.purpose || "Not set"}. Long-term details: {zone.description || "Not set"}.
                 </p>
                 <p>
                   Shared scenery style and enabled resident/lore context also apply. Access rules do not change the
                   artwork.
                 </p>
               </details>
-              {generatedLater ? (
-                <p>Unvisited contents stay hidden after founding. Optional artwork is generated on first entry.</p>
-              ) : (
-                imageFields(personal ? "private" : "interior", zone.image, zone.id)
-              )}
+              {imageFields(personal ? "private" : "interior", zone.image, zone.id)}
               <button type="button" disabled={busy} onClick={() => onPatch(removeFoundingZone(venue, zone.id))}>
                 Remove Zone
               </button>

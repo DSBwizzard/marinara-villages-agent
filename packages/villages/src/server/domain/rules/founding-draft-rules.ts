@@ -101,8 +101,14 @@ export function parseFoundingVenueSuggestions(
       commonDescription: text("commonDescription", 4000, layout === "common" || layout === "both"),
       privateName: text("privateName", 100, layout === "private" || layout === "both"),
       privatePurpose: text("privatePurpose", 240, layout === "private" || layout === "both"),
-      ...(venue?.venueClass === "residence" && !venue.residentCharacterId && (layout === "private" || layout === "both")
-        ? { privateDescription: text("privateDescription", 4000, true) }
+      ...(layout === "private" || layout === "both"
+        ? {
+            privateDescription: text(
+              "privateDescription",
+              4000,
+              venue?.venueClass === "residence" && !venue.residentCharacterId,
+            ),
+          }
         : {}),
     };
   });

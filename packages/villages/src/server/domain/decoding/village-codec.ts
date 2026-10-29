@@ -42,7 +42,6 @@ import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "../
 import { readOpening } from "../rules/opening-project.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
 import { coercePlayerBackground } from "../rules/player-background.js";
-import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from "../rules/private-interior.js";
 import { coerceProgressTasks } from "../rules/progress-engine.js";
 import { readProjectPlan } from "../rules/project-completion.js";
 import {
@@ -503,16 +502,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
       ...(typeof row.roomSpecification === "string"
         ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
         : {}),
-      ...(asIsoString(asRecord(row.lastObserved).observedAt)
-        ? {
-            lastObserved: {
-              description: readPlaceDescription(asRecord(row.lastObserved).description),
-              state: coerceSpaceState(asRecord(row.lastObserved).state),
-              observedAt: asIsoString(asRecord(row.lastObserved).observedAt)!,
-            },
-          }
-        : {}),
-      ...(typeof row.imageInteriorKey === "string" ? { imageInteriorKey: row.imageInteriorKey.slice(0, 20000) } : {}),
       description: value
         ? readPlaceDescription(row.description) || `A private space for this resident at ${name}.`
         : "",
@@ -692,16 +681,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
       ...(typeof row.roomSpecification === "string"
         ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
         : {}),
-      ...(asIsoString(asRecord(row.lastObserved).observedAt)
-        ? {
-            lastObserved: {
-              description: readPlaceDescription(asRecord(row.lastObserved).description),
-              state: coerceSpaceState(asRecord(row.lastObserved).state),
-              observedAt: asIsoString(asRecord(row.lastObserved).observedAt)!,
-            },
-          }
-        : {}),
-      ...(typeof row.imageInteriorKey === "string" ? { imageInteriorKey: row.imageInteriorKey.slice(0, 20000) } : {}),
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
       ownerId: ownerId || undefined,
@@ -745,10 +724,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
         base: zone.picture?.base ?? zone.image,
         baseline: zone.picture?.context ?? zonePictureBaseline(JSON.stringify(zonePicturePhysicalRecord(zone))),
       };
-    }
-    if (isPrivateInterior(zone) && zone.seen) {
-      if (!zone.lastObserved) observePrivateInterior(zone, zone.state.updatedAt || "1970-01-01T00:00:00.000Z");
-      if (zone.image && !zone.imageInteriorKey) zone.imageInteriorKey = privateInteriorKey(zone.lastObserved!);
     }
     return zone;
   };

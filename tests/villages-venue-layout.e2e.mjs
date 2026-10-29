@@ -120,8 +120,8 @@ try {
         await editor.getByLabel("Zone Name", { exact: true }).last().fill("Sleeping alcove");
         await editor.getByLabel("Zone Used For", { exact: true }).last().fill("Sleeping");
         if (width < 700) await editor.getByRole("button", { name: "Long-term details", exact: true }).click();
-        await editor.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas sleeping alcove.");
-        await expect(editor.getByText(/Private contents stay hidden/)).toBeVisible();
+        await editor.getByLabel("Long-term details", { exact: true }).fill("A quiet canvas sleeping alcove.");
+        await expect(editor.getByText(/Private contents stay hidden/)).toHaveCount(0);
       }
       await editor.getByRole("button", { name: "Save design", exact: true }).click();
       await expect.poll(() => submitted).toBeTruthy();
@@ -130,7 +130,7 @@ try {
       assert.equal(submitted.spaces.length, Number(layout === "common" || layout === "both"));
       assert.equal(submitted.privateSpaces.length, Number(layout === "private" || layout === "both"));
       if (submitted.privateSpaces.length)
-        assert.equal(submitted.privateSpaces[0].roomSpecification, "A quiet canvas sleeping alcove.");
+        assert.equal(submitted.privateSpaces[0].description, "A quiet canvas sleeping alcove.");
       if (submitted.spaces.length) assert.equal(submitted.spaces[0].venueClass, "workplace");
       else {
         assert.equal(submitted.interiorDescription, undefined);

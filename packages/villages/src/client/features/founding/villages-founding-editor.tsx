@@ -291,7 +291,7 @@ export function BaseZoneFields({
               <textarea
                 autoComplete="off"
                 value={zone.description}
-                placeholder="Existing undiscovered description is retained"
+                placeholder="Existing description is retained"
                 onChange={(event) =>
                   onChange(
                     zones.map((area) => (area.id === zone.id ? { ...area, description: event.target.value } : area)),
@@ -442,9 +442,7 @@ export function PrivateSpaceFields({
   return (
     <section ref={container} className="villages-private-fields">
       {playerHome ? (
-        <p>
-          Your personal space belongs to you. Other residents’ personal spaces remain a surprise until you’re invited.
-        </p>
+        <p>Your personal space belongs to you.</p>
       ) : workplace ? (
         <p>A Private Space is optional. All current workers have access; guests need an invitation.</p>
       ) : (
@@ -505,10 +503,7 @@ export function PrivateSpaceFields({
                 onChange={(event) => patch(room.id, { roomSpecification: event.target.value })}
               />
             </label>
-            <p>
-              Private details are prepared when the venue opens. Assigned residents personalize their rooms; vacant
-              rooms start neutral. Discover and image the interior on your first authorized entry.
-            </p>
+            <p>Assigned residents personalize their rooms when the Venue opens; vacant rooms start neutral.</p>
             <button type="button" onClick={() => onChange(rooms.filter((entry) => entry.id !== room.id))}>
               Remove this private space
             </button>

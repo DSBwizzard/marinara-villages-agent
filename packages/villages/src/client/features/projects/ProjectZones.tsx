@@ -146,13 +146,13 @@ export function ProjectZones({
     setView("list");
   };
   const privateRoom = !!selected && personalKind(selected.kind);
-  const hidden = privateRoom && (renovation || selected.ownerId !== "player");
+  const specificationOnly = privateRoom && renovation;
   const artwork = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].find(
     (zone) => zone.id === selected?.id,
   )?.image;
   const hasControllers =
     !!selected && renovation && selected.kind === "restricted" && !venue.zones?.some((zone) => zone.id === selected.id);
-  const hasArtwork = !!selected && !renovation && !hidden;
+  const hasArtwork = !!selected && !renovation;
   const controllers = [{ id: "player", name: "You" }, ...people];
   const controllerPages = Math.max(1, Math.ceil(controllers.length / pageSize));
   const currentControllerPage = Math.min(controllerPage, controllerPages - 1);
@@ -301,7 +301,7 @@ export function ProjectZones({
                 </label>
               </div>
               <div className="vp-zone-appearance">
-                {hidden ? (
+                {specificationOnly ? (
                   <label>
                     Room specification
                     <textarea
@@ -326,9 +326,7 @@ export function ProjectZones({
                     />
                   </label>
                 )}
-                {hidden ? (
-                  <p className="vp-note">Private contents stay hidden. Specify the physical changes here.</p>
-                ) : null}
+                {specificationOnly ? <p className="vp-note">Specify the physical changes to this Zone.</p> : null}
               </div>
               <div className="vp-zone-options">
                 {!mobile || optionPage === "main" ? (

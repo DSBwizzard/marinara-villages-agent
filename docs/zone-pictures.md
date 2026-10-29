@@ -1,6 +1,6 @@
 # Zone pictures
 
-Automatic Zone pictures are enabled by default. The village setting disables all automatic picture calls; Freeze picture preserves one Zone's current artwork. Manual upload and generation remain separate actions. Upload artwork or Regenerate artwork replaces that Zone's base and current picture without changing its freeze preference.
+Automatic Zone pictures are enabled by default. The village setting disables all automatic picture calls; Freeze picture preserves one Zone's current artwork. Zone details and saved artwork are visible before a first visit, including private interiors. Viewing or editing artwork grants no gameplay entry or character knowledge. Manual upload and generation remain separate actions. Upload artwork or Regenerate artwork replaces that Zone's base and current picture without changing its freeze preference.
 
 Each Scene persists one evaluation per successfully entered Zone, including Exterior. A return to the same Zone makes no additional automatic request. Changes while staying there wait for its first entry in a later Scene. An evaluation is consumed even when no rendering is needed, the feature is disabled, or its connection is unsupported. Re-enabling does not generate immediately.
 

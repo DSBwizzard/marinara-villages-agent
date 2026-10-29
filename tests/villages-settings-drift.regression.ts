@@ -42,25 +42,18 @@ const visible: VillageVenueZone = {
   seen: true,
   picture: { base: null, claim: "PRIVATE-PICTURE-CLAIM", failed: true },
   pictureRevision: 12,
-  imageInteriorKey: "PRIVATE-IMAGE-KEY",
   preparation: { status: "ready" as const, claimId: "PRIVATE-PREPARATION-CLAIM", attempt: 2 },
 };
 const hidden: VillageVenueZone = {
-  ...defaultVenueSpace("residence", "PRIVATE-UNSEEN-DESCRIPTION"),
+  ...defaultVenueSpace("residence", "A resident room before the first visit"),
   id: "private",
   name: "Private room",
   kind: "private-residence" as const,
   ownerId: "resident",
   seen: false,
   image: { ref: "global-gallery:hidden", url: "/hidden.png", id: "hidden" },
-  lastObserved: {
-    description: "PRIVATE-OBSERVATION",
-    state: defaultVenueSpace("residence").state,
-    observedAt: "2026-10-20T12:00:00.000Z",
-  },
   preparation: { status: "pending" as const, claimId: "PRIVATE-PREPARATION-CLAIM" },
 };
-hidden.state.items = ["PRIVATE-UNSEEN-ITEM"];
 venue.zones = [visible, hidden];
 state.venues = [venue];
 
@@ -197,9 +190,9 @@ try {
   for (const field of ["lastObserved", "picture", "pictureRevision", "imageInteriorKey", "access", "controllerIds"])
     assert.equal(Object.hasOwn(publicZone, field), false, field);
   const privateZone = projected.zones!.find((zone) => zone.id === "private")!;
-  assert.equal(privateZone.description, "");
-  assert.equal(privateZone.image, null);
-  assert.deepEqual(privateZone.state, { revision: 0, updatedAt: "", recent: null });
+  assert.equal(privateZone.description, hidden.description);
+  assert.equal(privateZone.image?.id, "hidden");
+  assert.deepEqual(privateZone.state, hidden.state);
 
   // Older stored data can lack these fields; explicit response fallbacks remain present.
   Reflect.deleteProperty(state, "worldName");

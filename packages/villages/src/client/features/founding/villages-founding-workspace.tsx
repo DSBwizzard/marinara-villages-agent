@@ -109,8 +109,6 @@ export function FoundingWorkspace({
       : ((activeTab === "private" ? selected?.privateSpaces : selected?.spaces)?.find(
           (zone) => zone.id === existingZoneId,
         ) ?? (activeTab === "private" ? selected?.privateSpaces : selected?.spaces)?.[0]);
-  const privateHeaderHidden =
-    activeTab === "private" && headerZone?.venueClass === "residence" && headerZone.ownerId !== "player";
   const patchHeaderZone = (patch: {
     name?: string;
     purpose?: string;
@@ -364,18 +362,9 @@ export function FoundingWorkspace({
             </p>
           ) : (
             (personal ? (selected.privateSpaces ?? []) : (selected.spaces ?? [])).map((zone) => {
-              const hidden = personal && zone.venueClass === "residence" && zone.ownerId !== "player";
               return (
                 <section key={zone.id} data-zone-id={zone.id}>
-                  {hidden ? (
-                    <div className="villages-founding-field-heading">
-                      <span>Private Interior</span>
-                      <FoundingHelp label="Private interior">
-                        This interior is prepared privately. Discover it on your first authorized visit.
-                      </FoundingHelp>
-                    </div>
-                  ) : null}
-                  {!hidden ? imageFields(personal ? "private" : "interior", zone.image, zone.id) : null}
+                  {imageFields(personal ? "private" : "interior", zone.image, zone.id)}
                 </section>
               );
             })
@@ -716,30 +705,7 @@ export function FoundingWorkspace({
                               </div>
                             </>
                           ) : null}
-                          {headerZone && privateHeaderHidden ? (
-                            <div className="villages-workspace-box-field">
-                              <label className="villages-workspace-caption" htmlFor={tabId + "Room-specification"}>
-                                Room Specification (optional)
-                              </label>
-                              <textarea
-                                autoComplete="off"
-                                id={tabId + "Room-specification"}
-                                aria-label="Room Specification"
-                                placeholder="A small bedroom with a garden-facing window…"
-                                rows={3}
-                                maxLength={1000}
-                                disabled={locked}
-                                value={headerZone.roomSpecification ?? ""}
-                                onChange={(event) => patchHeaderZone({ roomSpecification: event.target.value })}
-                              />
-                              <p>
-                                {selected.occupancy.residentCharacterId
-                                  ? `${people.find((person) => person.id === selected.occupancy.residentCharacterId)?.name ?? "The resident"} will personalize this interior. Discover it when they invite you inside.`
-                                  : "This specification describes the provided space. Its prepared interior stays hidden until entry."}
-                              </p>
-                            </div>
-                          ) : null}
-                          {headerZone && !privateHeaderHidden ? (
+                          {headerZone ? (
                             <>
                               <div className="villages-workspace-box-field">
                                 <div className="villages-founding-field-heading">
