@@ -813,6 +813,11 @@ async function main() {
       "The first retried dispatch reserves its allowance.",
     );
     await villageBackgroundPresence("retry-session", false);
+    await villageBackgroundPresence("retry-session", true);
+    await queueBackgroundJob(catchupWork("quiet-second", "quiet-second"));
+    await settleBackgroundWork();
+    assert.ok(calls.includes("quiet-second"), "Quiet permits a second review in its shared daily allowance.");
+    await villageBackgroundPresence("retry-session", false);
     await queueBackgroundJob(catchupWork("retry-over-budget", "retry-over-budget"));
     await settleBackgroundWork();
     pending = await summary("retry-over-budget");

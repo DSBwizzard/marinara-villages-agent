@@ -17,6 +17,8 @@ import { activateVillagerDay, planRoutineDays } from "../packages/villages/src/s
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { VILLAGE_ACTIVITY_POLICY } from "../packages/villages/src/shared/helpers/activity-policy.js";
+import { nextEventAttemptAt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
@@ -145,6 +147,25 @@ f.service.handler.apply(f.state, input, quiet, { retrying: true });
 assert.equal(f.state.planningUsage.count, 1, "Replay cannot spend or apply the allowance twice");
 assert.equal(Object.hasOwn(f.state, "happenings"), false);
 assert.equal(Object.hasOwn(quiet, "happenings"), false);
+const paidRollover = structuredClone(f.state);
+paidRollover.simulatedThrough = new Date(now.getTime() + 86_400_000).toISOString();
+assert.equal(f.service.handler.valid(paidRollover, input), false, "Unreserved old live work remains stale.");
+assert.equal(
+  f.service.handler.valid(paidRollover, input, { activityAttemptId: "unrelated" }),
+  false,
+  "Another job's reservation cannot authorize this source.",
+);
+assert.equal(
+  f.service.handler.valid(paidRollover, input, { activityAttemptId: f.queued[0].revision }),
+  true,
+  "The matching live reservation survives a day rollover.",
+);
+paidRollover.eventAttempts = undefined;
+assert.equal(
+  f.service.handler.valid(paidRollover, input, { activityAttemptId: "purchased", activityDate: dateKey }),
+  true,
+  "Trusted saved-job dispatch evidence survives retirement of its old ledger row.",
+);
 
 const spending = fixture().state;
 assert.equal(coerceVillageState(structuredClone(spending)).returnCatchup, undefined, "Older villages need no batch.");
@@ -166,8 +187,10 @@ assert.throws(
   () => reserveEventAttempt(spending, "one", dateKey, now.getTime() + 3, "other"),
   /batch is no longer active/,
 );
-assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime() + 3, "batch"), false, "The daily limit is shared.");
-assert.equal(spending.eventAttempts!.attempts.length, 3, "A replay does not reserve another attempt.");
+for (let index = 4; index <= 6; index++)
+  reserveEventAttempt(spending, "review-" + index, dateKey, now.getTime() + index, "batch");
+assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime() + 7, "batch"), false, "The daily limit is shared.");
+assert.equal(spending.eventAttempts!.attempts.length, 6, "A replay does not reserve another attempt.");
 spending.returnCatchup.batch!.status = "completed";
 assert.equal(eventAttemptAvailable(spending, dateKey, now.getTime() + 3), false, "Normal spacing remains in effect.");
 assert.throws(
@@ -175,6 +198,36 @@ assert.throws(
   /batch is no longer active/,
   "An existing reservation does not admit another dispatch after cancellation or completion.",
 );
+
+for (const [pace, count, minutes] of [
+  ["quiet", 2, 60],
+  ["balanced", 6, 30],
+  ["lively", 12, 15],
+] as const) {
+  const state = fixture().state;
+  state.backgroundPace = pace;
+  state.timeZone = "UTC";
+  const instant = new Date("2026-10-29T23:55:00Z");
+  reserveEventAttempt(state, "first", "2026-10-29", instant.getTime());
+  assert.equal(eventAttemptAvailable(state, "2026-10-29", instant.getTime() + 1), false);
+  assert.equal(nextEventAttemptAt(state, instant), instant.getTime() + minutes * 60_000);
+  const ready = new Date(instant.getTime() + minutes * 60_000);
+  assert.equal(
+    eventAttemptAvailable(state, "2026-10-30", ready.getTime() - 1),
+    false,
+    "Midnight does not clear cadence.",
+  );
+  assert.equal(eventAttemptAvailable(state, "2026-10-30", ready.getTime()), true);
+  state.returnCatchup = { batch: { id: "quota", status: "running" } };
+  for (let index = 0; index < count; index++)
+    reserveEventAttempt(state, "quota-" + index, "2026-10-30", ready.getTime() + index, "quota");
+  assert.equal(eventAttemptAvailable(state, "2026-10-30", ready.getTime() + count, "quota"), false);
+  state.returnCatchup.batch!.status = "completed";
+  assert.equal(nextEventAttemptAt(state, ready), Date.parse("2026-10-31T00:00:00Z"));
+  assert.equal(VILLAGE_ACTIVITY_POLICY[pace].reviews, count);
+  state.backgroundPace = "off";
+  assert.equal(nextEventAttemptAt(state, ready), null);
+}
 
 const historical = fixture();
 await historical.service.reconcile(now);

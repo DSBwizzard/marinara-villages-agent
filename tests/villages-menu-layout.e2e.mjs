@@ -42,7 +42,7 @@ const snapshot = {
     promptBoxMaxLength: 2000,
     macros: [],
     backgroundPace: "off",
-    backgroundPaces: ["off"],
+    backgroundPaces: ["off", "quiet", "balanced", "lively"],
     villageNameMaxLength: 80,
     playerPersonaId: "",
     playerPersonaName: "",
@@ -231,7 +231,9 @@ try {
       await expect(root).toHaveAttribute("data-page", key);
       await expect(main).toBeVisible();
       if (key === "general") {
-        await expect(main.getByRole("combobox", { name: "Resident activity and Wishes" })).toBeVisible();
+        const pace = main.getByRole("combobox", { name: "Pace", exact: true });
+        await expect(pace).toBeVisible();
+        assert.deepEqual(await pace.locator("option").allTextContents(), ["Off", "Quiet", "Average", "Busy"]);
       }
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toHaveCount(0);

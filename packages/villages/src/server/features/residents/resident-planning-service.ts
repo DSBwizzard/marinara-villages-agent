@@ -10,7 +10,7 @@ import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } 
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
-import { eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
+import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import {
   ReturnOpportunityUnavailable,
   returnCatchupSubject,
@@ -78,7 +78,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
   async function reconcile(now: Date): Promise<void> {
     await ports.applySavedStartingTies?.();
     const village = await readVillageState({ memories: true });
-    const dateKey = localDateKey(now),
+    const dateKey = activityDate(village, now),
       allowance = planningAllowance(village.backgroundPace, village.seed, dateKey);
     if (
       !allowance ||
@@ -339,7 +339,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         state: socialContextState(historical.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
       },
     };
-    const dateKey = localDateKey(villageNow());
+    const dateKey = current.returnCatchup.batch.budgetDate ?? activityDate(current, villageNow());
     await queueBackgroundJob({
       kind: "resident-planning",
       subjectId: returnCatchupSubject(batchId, opportunity.id),
@@ -528,7 +528,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
   }
   const handler: Handler = {
     generate: (input) => proposeResidentChoices(input.context),
-    valid: (state, input) =>
+    valid: (state, input, admission) =>
       input.context.version === 1 &&
       (!input.context.catchup ||
         (state.returnCatchup?.batch?.id === input.catchupBatchId &&
@@ -568,9 +568,14 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       ) &&
       (!input.opportunity.venueId || state.venues.some((v) => v.id === input.opportunity.venueId)) &&
       (!input.socialPlanId || socialContinuationValid(state, input.socialPlanId, input.socialPlan, villageNow())) &&
-      localDateKey(
-        new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
-      ) <= input.dateKey,
+      (input.context.catchup ||
+        (typeof admission?.activityDate === "string" && admission.activityDate === input.dateKey) ||
+        state.eventAttempts?.attempts.some(
+          (row) => row.id === admission?.activityAttemptId && row.date === input.dateKey && row.batchId === undefined,
+        ) ||
+        localDateKey(
+          new ZonedDate(state.simulatedThrough, state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
+        ) <= input.dateKey),
     apply(state, input, proposal) {
       if (input.context.catchup) assertCatchupChoices(proposal);
       const { dateKey, opportunity } = input;
