@@ -561,12 +561,27 @@ for (const supplied of [
   );
   const { normalizeRecoverableSceneReply } =
     await import("../packages/villages/src/server/domain/rules/scene-writing-contract.js");
-  for (const projectSpeech of [[{}], [{ projectId: "missing", kind: "unknown", speakerId: "rosa", citations: [] }]]) {
+  const project = { projectId: "bridge", speakerId: "rosa", citations: [{ segment: 0 }] };
+  const segments = [{ kind: "dialogue", speakerId: "rosa", text: "I withdraw my commitment to lead the bridge." }];
+  const withdrawal = normalizeRecoverableSceneReply({
+    segments,
+    projectSpeech: [{ ...project, kind: "withdrawal" }],
+  });
+  assert.deepEqual(withdrawal.failures, {});
+  assert.equal((withdrawal.raw.projectSpeech as any)[0].kind, "withdrawal");
+  assert.equal((withdrawal.raw.projectSpeech as any)[0].citations[0].quote, segments[0].text);
+  for (const projectSpeech of [
+    [{}],
+    [{ projectId: "missing", kind: "unknown", speakerId: "rosa", citations: [] }],
+    [{ ...project, kind: "requirements" }],
+  ]) {
     const result = normalizeRecoverableSceneReply({
-      segments: [{ kind: "narration", text: "Prose stays." }],
+      segments,
       projectSpeech,
     });
     assert(result.failures.projects);
+    assert.equal(result.raw.projectSpeech, undefined);
+    assert.deepEqual(result.raw.segments, withdrawal.raw.segments, "Invalid metadata preserves the accepted prose");
   }
 }
 

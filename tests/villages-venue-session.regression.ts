@@ -391,17 +391,6 @@ const release = configureVillagesRuntime({
                 finishReason: "stop",
               };
             }
-            if (system.startsWith("Prepare faithful fulfillment conditions"))
-              return {
-                content: fixtureJson({
-                  complete: true,
-                  kind: "transfer",
-                  requiresPhysical: true,
-                  goal: "The parcel is handed to Tina.",
-                  itemName: "parcel",
-                }),
-                finishReason: "stop",
-              };
             calls += 1; // Existing cadence assertions concern narration and legacy calls; interpretation has its own suite.
             if (system.startsWith("Identify explicit Project events"))
               return { content: fixtureJson({ events: [] }), finishReason: "stop" };

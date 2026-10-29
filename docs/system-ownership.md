@@ -12,7 +12,7 @@ Social Wishes retain source-bound owner decisions, expressed conditions and outc
 
 `features/generation/semantic-service.ts` owns System calls. `features/scenes/writing-service.ts` owns provisional prose and binds the independent exchange result. `features/scenes/command-service.ts` owns immediate application. Semantic provenance, hashes, operation IDs and authority flags are minted or checked by code. Model claims of verification or receipts confer no authority.
 
-Code checks exact source spans/IDs, legal routes, witnesses, schema, capacity, stock/source claims, revisions and durable receipts. Ordered movement and speech use up to eight prepared Zone transitions; exact speech spans cannot cross a movement boundary. Physical receipts use the actual Zone and witnesses at the cited narration segment. Code does not use English verbs, relationship adjectives, name mentions or numerical affection thresholds to decide new-contract subjective meaning. Explicit mechanics, such as visitor hours, explicit Venue access policies and construction deadlines, remain code rules.
+Code checks exact source spans/IDs, legal routes, witnesses, schema, capacity, actor/consent bindings, revisions and durable receipts. Ordered movement and speech use up to eight prepared Zone transitions; exact speech spans cannot cross a movement boundary. Physical receipts use the actual Zone and witnesses at the cited narration segment. Code does not use English verbs, relationship adjectives, name mentions or numerical affection thresholds to decide new-contract subjective meaning. Explicit mechanics, such as visitor hours, explicit Venue access policies and construction deadlines, remain code rules.
 
 ## Ownership register
 

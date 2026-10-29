@@ -190,14 +190,6 @@ async function main() {
   const compactDayparts = {
     ...payload(0),
     days: Array.from({ length: 7 }, () => [0, 1, 2, 3]),
-    wishes: [
-      {
-        wish: "An engraved keepsake",
-        intensity: 2,
-        neutralWording: true,
-        criteria: { kind: "action", requiresPhysical: true, predicate: "item-added", itemName: "engraved keepsake" },
-      },
-    ],
   };
   const semanticContext = { ...context(null), semanticVersion: 2 } as any;
   const savedResponse = { content: JSON.stringify(compactDayparts), finishReason: "stop" };
