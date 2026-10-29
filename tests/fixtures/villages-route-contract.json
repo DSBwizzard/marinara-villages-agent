@@ -552,10 +552,6 @@
       "path": "/residences/debug/complete-now"
     },
     {
-      "method": "post",
-      "path": "/residences/private-space/retry"
-    },
-    {
       "method": "get",
       "path": "/clock"
     },

@@ -156,8 +156,8 @@ try {
           heldVenueSave = route;
           return;
         }
-      } else if (/\/venues\/[^/]+\/zones\/[^/]+$/.test(path) && request.method() === "PUT") {
-        const zone = place.zones.find((zone) => zone.id === decodeURIComponent(path.split("/").at(-1)));
+      } else if (/\/venues\/[^/]+\/zones\/[^/]+\/name$/.test(path) && request.method() === "PUT") {
+        const zone = place.zones.find((zone) => zone.id === decodeURIComponent(path.split("/").at(-2)));
         zone.name = request.postDataJSON().name;
         if (holdZoneSave) {
           heldZoneSave = route;
@@ -328,7 +328,7 @@ try {
     holdZoneSave = false;
     await expect(detail.getByRole("heading", { name: "Harbour Lounge", exact: true })).toBeVisible();
     assert.deepEqual(writes.at(-1), {
-      path: `/api/villages/venues/${place.id}/zones/bay`,
+      path: `/api/villages/venues/${place.id}/zones/bay/name`,
       body: { name: "Harbour Lounge" },
     });
     await expect(layout.locator('[data-layout-zone="bay"]')).toContainText("Harbour Lounge");
