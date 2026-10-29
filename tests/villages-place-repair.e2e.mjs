@@ -95,12 +95,12 @@ try {
               title: getRecord().title,
               changes: [
                 {
-                  label: "Description",
+                  label: "Long-term details",
                   before: state.venues[0].zones[0].description,
                   after: staged.venues[0].zones[0].description,
                 },
                 {
-                  label: "Recent context",
+                  label: "Short-term details",
                   before: state.venues[0].zones[0].state.recent?.text ?? "",
                   after: staged.venues[0].zones[0].state.recent?.text ?? "",
                 },
@@ -126,15 +126,18 @@ try {
         await page.getByRole("button", { name: /Hall · Entrance Zone physical state/ }).click();
       };
       await open();
-      await expect(page.getByRole("textbox", { name: "Description", exact: true })).toHaveValue(
+      await expect(page.getByText("Current", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("textbox", { name: "Long-term details", exact: true })).toHaveValue(
         "White walls. Two windows. A table.",
       );
-      await expect(page.getByRole("textbox", { name: "Recent context", exact: true })).toHaveValue("Cups after tea.");
-      await expect(page.getByRole("button", { name: "Clear recent context", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Short-term details", exact: true })).toHaveValue(
+        "Cups after tea.",
+      );
+      await expect(page.getByRole("button", { name: "Clear short-term details", exact: true })).toBeVisible();
       await page
-        .getByRole("textbox", { name: "Description", exact: true })
+        .getByRole("textbox", { name: "Long-term details", exact: true })
         .fill("White walls. Two windows. A table. Shelves beside the window.");
-      await page.getByRole("textbox", { name: "Recent context", exact: true }).fill("Fresh cups after tea.");
+      await page.getByRole("textbox", { name: "Short-term details", exact: true }).fill("Fresh cups after tea.");
       await page.getByRole("button", { name: "Renew for one day", exact: true }).click();
       await page.locator(".villages-repair").screenshot({ path: `.build-tmp/place-repair/${name}-editor.png` });
       assert.equal(await page.locator(".villages-repair").evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
@@ -149,7 +152,7 @@ try {
       assert.match(state.venues[0].zones[0].description, /Two windows.*Shelves/);
       await page.getByRole("button", { name: "Back to REPAIR", exact: true }).click();
       await open();
-      await page.getByRole("button", { name: "Clear recent context", exact: true }).click();
+      await page.getByRole("button", { name: "Clear short-term details", exact: true }).click();
       await page.getByRole("button", { name: "Review changes", exact: true }).click();
       await page.getByRole("button", { name: "Save changes", exact: true }).click();
       await expect(page.getByRole("heading", { name: "Changes saved", exact: true })).toBeVisible();

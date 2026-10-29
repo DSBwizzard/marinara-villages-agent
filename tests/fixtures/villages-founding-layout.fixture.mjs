@@ -189,7 +189,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
     await expect(page.getByLabel("Zone Name", { exact: true })).toHaveCount(1);
     await expect(page.getByLabel("Zone Name", { exact: true })).toHaveValue(id);
     await page.getByLabel("Zone Name", { exact: true }).fill("Named " + id);
-    await page.getByLabel("Zone Appearance", { exact: true }).fill("Described " + id);
+    await page.getByLabel("Long-term details", { exact: true }).fill("Described " + id);
     await page.getByLabel("Zone Used For", { exact: true }).fill("Edited " + id);
   }
   await page.getByRole("tab", { name: "Common Space", exact: true }).click();
@@ -217,7 +217,7 @@ createRoot(document.getElementById('root')).render(<Harness/>);
   );
   await page.getByRole("button", { name: "Remove Zone", exact: true }).click();
   await expect(page.getByRole("tab", { name: "Exterior", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Exterior Description", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Long-term details", { exact: true })).toBeVisible();
   await context.close();
   console.log(
     "Existing-world inspector: multiple saved Common/Private IDs, independent edits and exact Review focus (isolated React fixture).",
@@ -1234,7 +1234,7 @@ export async function verifyFoundingLayout(group) {
         }
         await zone("Common");
         const purposeField = inspector.getByLabel("Used for", { exact: true });
-        const appearanceField = inspector.getByLabel("Appearance", { exact: true });
+        const appearanceField = inspector.getByLabel("Long-term details", { exact: true });
         const originalPurpose = await purposeField.inputValue();
         const originalAppearance = await appearanceField.inputValue();
         await purposeField.fill("");
@@ -1260,10 +1260,10 @@ export async function verifyFoundingLayout(group) {
           .getByLabel("Exterior appearance", { exact: true })
           .fill("A blue door beside the telescope corridor.");
         await zone("Private");
-        await inspector.getByLabel("Appearance", { exact: true }).fill("My hammock and traveling journal.");
+        await inspector.getByLabel("Long-term details", { exact: true }).fill("My hammock and traveling journal.");
         await open(1);
         await zone("Private");
-        await expect(inspector.getByLabel("Appearance", { exact: true })).toHaveCount(0);
+        await expect(inspector.getByLabel("Long-term details", { exact: true })).toHaveCount(0);
         await inspector
           .getByLabel("Room Specification", { exact: true })
           .fill("A small bedroom with a garden-facing window.");
@@ -1300,7 +1300,7 @@ export async function verifyFoundingLayout(group) {
         await open();
         await expect(inspector.getByLabel("Physical Form", { exact: true })).toHaveValue("Converted observatory room");
         await zone("Private");
-        await expect(inspector.getByLabel("Appearance", { exact: true })).toHaveValue(
+        await expect(inspector.getByLabel("Long-term details", { exact: true })).toHaveValue(
           "My hammock and traveling journal.",
         );
         await mapView();

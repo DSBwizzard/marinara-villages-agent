@@ -23,6 +23,7 @@ export function RepairPage({
   const isRestore = c.review?.kind === "restore";
   const addingMemory = c.review?.memory?.creating === true;
   const memoryRecord = c.selected?.topic === "memories";
+  const zoneDetailsRecord = c.selected?.topic === "places" && c.selected.fields.some((f) => f.key === "recent");
   const forgettingMemory = memoryRecord && c.draft?.action === "forget";
   const restoringMemory = memoryRecord && c.draft?.action === "remember";
   const memoryReadOnly = forgettingMemory || restoringMemory;
@@ -291,7 +292,7 @@ export function RepairPage({
               {c.selected.fields.map((f) => (
                 <div className="repair-field" key={f.key}>
                   {memoryReadOnly ? <h2>{f.label}</h2> : <label htmlFor={`repair-${f.key}`}>{f.label}</label>}
-                  {!c.selected.creating && !memoryRecord ? (
+                  {!c.selected.creating && !memoryRecord && !zoneDetailsRecord ? (
                     <div className="repair-current">
                       <small>Current</small>
                       <p>

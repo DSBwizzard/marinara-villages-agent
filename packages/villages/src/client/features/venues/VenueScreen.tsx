@@ -599,8 +599,20 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   </div>
                 </div>
                 <ZoneArtwork key={selected.id} place={place} zone={selected} controller={controller} />
-                {selected.description ? <p>{selected.description}</p> : null}
-                {selected.state.recent?.text ? <p>{selected.state.recent.text}</p> : null}
+                {selected.description ? (
+                  <p>
+                    <strong>Long-term details</strong>
+                    <br />
+                    {selected.description}
+                  </p>
+                ) : null}
+                {selected.state.recent?.text ? (
+                  <p>
+                    <strong>Short-term details</strong>
+                    <br />
+                    {selected.state.recent.text}
+                  </p>
+                ) : null}
                 {selected.kind !== "exterior" ? (
                   <ZoneName
                     key={place.id + selected.id + ":" + zoneEditorKey}

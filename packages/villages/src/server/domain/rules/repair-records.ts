@@ -281,18 +281,18 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         `${venue.name} · ${zone.name}`,
         "Zone physical state",
         [
-          text("description", "Description", zone.description),
-          text("recent", "Recent context", zone.state.recent?.text ?? ""),
+          text("description", "Long-term details", zone.description),
+          text("recent", "Short-term details", zone.state.recent?.text ?? ""),
         ],
         {
           revision: zone.state.revision,
           source: [
             `Owner: ${people.find((p) => p.id === zone.ownerId)?.name ?? "Unassigned"}`,
-            ...(zone.state.recent ? [`Recent context expires: ${zone.state.recent.expiresAt}`] : []),
+            ...(zone.state.recent ? [`Short-term details expire: ${zone.state.recent.expiresAt}`] : []),
           ],
           actions: [
             { id: "correct", label: "Modify" },
-            { id: "clear-recent", label: "Clear recent context" },
+            { id: "clear-recent", label: "Clear short-term details" },
             ...(zone.state.recent ? [{ id: "renew-recent", label: "Renew for one day" }] : []),
           ],
           related: state.projects

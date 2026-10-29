@@ -232,7 +232,7 @@ export function ProjectZones({
                   aria-pressed={editorPage === "appearance"}
                   onClick={() => setEditorPage("appearance")}
                 >
-                  Appearance
+                  Long-term details
                 </button>
                 <button
                   type="button"
@@ -266,10 +266,10 @@ export function ProjectZones({
         <fieldset disabled={!editable || busy}>
           {entrance ? (
             <label>
-              Entrance
+              Long-term details
               <textarea
                 autoComplete="off"
-                aria-label="Entrance"
+                aria-label="Long-term details"
                 rows={4}
                 value={venue.description}
                 readOnly={renovation}
@@ -315,10 +315,10 @@ export function ProjectZones({
                   </label>
                 ) : (
                   <label>
-                    Appearance
+                    Long-term details
                     <textarea
                       autoComplete="off"
-                      aria-label="Zone Appearance"
+                      aria-label="Long-term details"
                       rows={4}
                       maxLength={4000}
                       value={selected.description}
