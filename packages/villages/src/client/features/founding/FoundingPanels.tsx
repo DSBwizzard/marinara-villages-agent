@@ -12,7 +12,7 @@ import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { SpriteSetupDialog } from "../residents/SpriteSetupDialog.js";
 import { startingZone } from "./founding-template.js";
-import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it
@@ -474,10 +474,6 @@ export function VillageLorebookPicker({
   const active = open ? pending : selected;
   const stale =
     open && (baseSelection.length !== selected.length || baseSelection.some((id, index) => id !== selected[index]));
-  const search = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (open) search.current?.focus({ preventScroll: true });
-  }, [open]);
   const [query, setQuery] = useState("");
   const byId = new Map((books ?? []).map((book) => [book.id, book]));
   const visible = (books ?? []).filter(
@@ -558,7 +554,6 @@ export function VillageLorebookPicker({
             type="search"
             className="villages-lorebook-search"
             value={query}
-            ref={search}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();

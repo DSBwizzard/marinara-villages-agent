@@ -17,6 +17,7 @@ import {
 import { QuickStartButton } from "./QuickStartButton.js";
 import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
+import { useFoundingKeyboardOverlay } from "./useFoundingKeyboardOverlay.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { FoundingWorkspace } from "./villages-founding-workspace";
@@ -138,6 +139,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   } = controller;
 
   const rootRef = useRef<HTMLDivElement>(null);
+  useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
   const cameraSource = useRef<string | null>(null);
   useEffect(() => {

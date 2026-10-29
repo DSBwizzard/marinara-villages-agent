@@ -1,4 +1,8 @@
 export const VILLAGES_FORGING_STYLES = `
+/* Extra scroll reach sits outside layout, so a keyboard cannot compress a form or its footer. */
+.villages-forging-v2 { position:relative; }
+.villages-forging-v2[data-founding-keyboard=true],.villages-forging-v2 dialog[data-founding-keyboard=true] { overflow:auto!important; }
+.villages-forging-v2[data-founding-keyboard=true]::after,.villages-forging-v2 dialog[data-founding-keyboard=true]::after { content:""; position:absolute; top:var(--founding-scroll-end,100%); left:0; width:1px; height:var(--founding-keyboard-inset); pointer-events:none; }
 .villages-forging-v2 .villages-founding-dialog[data-header-input]>header { display:flex; gap:.6rem; padding:0; background:transparent; align-items:center; }
 .villages-founding-dialog[data-header-input]>header>input { flex:1; min-width:0; width:auto; margin:0; }
 .villages-founding-dialog[data-header-input]>header>button { flex:none; width:44px; height:44px; padding:0; }
@@ -340,7 +344,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-map { --explore-selected:#a88aff; --explore-border:#343f51; --explore-text:#edf0f5; display:flex; flex:1; min-width:0; min-height:0; position:relative; overflow:hidden; border-radius:.5rem; }
 .villages-quick-map>.villages-forging-map { display:flex; flex-direction:column; flex:1; min-height:0; min-width:0; }
 .villages-quick-map .marinara-capability-villages-setup-map-viewport { flex:1; min-height:0; border:0; border-radius:0; overflow:hidden; }
-.villages-forging-map .marinara-capability-villages-stage[data-exploration=true] { height:clamp(14rem,40dvh,32rem)!important; }
+.villages-forging-map .marinara-capability-villages-stage[data-exploration=true] { height:clamp(14rem,calc(var(--founding-viewport-height,100dvh) * .4),32rem)!important; }
 .villages-quick-map .marinara-capability-villages-stage[data-exploration=true] { height:100%!important; min-height:0; }
 .villages-quick-map>p { position:absolute; top:.5rem; left:.5rem; right:.5rem; z-index:7; margin:0; padding:.5rem; border-radius:.4rem; background:#141b39ed; }
 @media(min-width:728px) {
@@ -364,7 +368,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-dialog fieldset { min-width:0; border:0; padding:0; margin:0; }
 .villages-quick-dialog fieldset { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 .75rem; align-content:start; }
 .villages-quick-zone-appearance { display:grid; grid-template-columns:minmax(0,1fr) min(34%,8rem); gap:.5rem; align-items:end; }
-.villages-quick-zone-appearance textarea,.villages-quick-zone-appearance button { height:clamp(88px,15svh,112px); min-height:0; }
+.villages-quick-zone-appearance textarea,.villages-quick-zone-appearance button { height:clamp(88px,calc(var(--founding-viewport-height,100svh) * .15),112px); min-height:0; }
 .villages-quick-zone-appearance button { display:grid; place-items:center; padding:.2rem; }
 .villages-quick-zone-image img { width:100%; height:100%; min-height:0; object-fit:contain; border-radius:.3rem; }
 .villages-quick-zone-navigation { display:flex; gap:.25rem; align-items:center; margin:.15rem 0 .4rem; }
@@ -417,7 +421,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-lorebook-budget>p { flex-basis:100%; margin:0; color:#ff9ba5; }
 .villages-lorebook-budget input { flex:none; width:6rem!important; min-width:0; min-height:44px; margin-left:auto; padding:.6rem; border:1px solid #65799c; border-radius:.45rem; color:#f3f3ff; background:#0c1830; font:inherit; }
 .villages-lorebook-search { flex:none; margin-bottom:.65rem; }
-.villages-lorebook-results { flex:1 1 auto; min-height:0; max-height:50dvh; overflow:auto; overscroll-behavior:contain; }
+.villages-lorebook-results { flex:1 1 auto; min-height:0; max-height:calc(var(--founding-viewport-height,100dvh) * .5); overflow:auto; overscroll-behavior:contain; }
 .villages-founding-dialog .villages-lorebook-option { display:flex; align-items:center; gap:.65rem; min-height:44px; margin:0 0 .4rem; padding:.55rem .65rem; border:1px solid #43547d; border-radius:.65rem; background:#19213b; cursor:pointer; transition:background .15s,border-color .15s; }
 .villages-founding-dialog .villages-lorebook-option[data-selected=true] { background:#30305c; border-color:#aa87ff; }
 .villages-founding-dialog .villages-lorebook-option:hover { border-color:#b495ff; }
