@@ -507,7 +507,8 @@ async function checkPackage(width) {
   await section("visual", "Visual Settings");
   await expect(variants).not.toBeChecked();
   failVisualSave = true;
-  await variants.check();
+  // A rejected save can roll back before Playwright checks the transient checked state.
+  await variants.click();
   await expect(page.getByText("Visual save unavailable", { exact: true })).toBeVisible();
   await expect(variants).not.toBeChecked();
   failVisualSave = false;
