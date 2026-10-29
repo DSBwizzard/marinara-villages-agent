@@ -149,7 +149,7 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
  .${P}-project-board .vp-columns,.${P}-project-board .vp-zone-columns{grid-template-columns:minmax(0,1fr)}
  .${P}-project-board .vp-zone-columns[data-zone-view="list"]>section:last-child,.${P}-project-board .vp-zone-columns[data-zone-view="editor"]>section:first-child{display:none}
  .${P}-project-board .vp-zone-columns[data-editor-page="details"] :is(.vp-zone-options,.vp-zone-appearance),.${P}-project-board .vp-zone-columns[data-editor-page="appearance"] :is(.vp-zone-details,.vp-zone-options),.${P}-project-board .vp-zone-columns[data-editor-page="access"] :is(.vp-zone-details,.vp-zone-appearance){display:none}
- .${P}-project-board .vp-zone-pages{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.2rem}
+ .${P}-project-board .vp-zone-pages{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);gap:.2rem}
  .${P}-project-board .vp-zone-pages button{font-size:.75rem;padding:.3rem .15rem}
  .${P}-project-board .vp-zone-list{gap:.25rem;margin-bottom:.4rem}
  .${P}-project-board .vp-zone-list button{padding:.35rem .55rem}
