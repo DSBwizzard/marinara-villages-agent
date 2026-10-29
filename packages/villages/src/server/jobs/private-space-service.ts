@@ -356,6 +356,8 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           const target = current.zone;
           if (target.name === "Private work area")
             target.name = asTrimmedString(generated.name).slice(0, 100) || target.name;
+          if (target.description !== asTrimmedString(generated.description) && target.image)
+            target.picture = { ...target.picture, base: target.picture?.base ?? target.image, dirty: true };
           target.description = asTrimmedString(generated.description);
           target.state = { ...target.state, revision: target.state.revision + 1, updatedAt: new Date().toISOString() };
           target.preparation = { status: "ready", attempt };

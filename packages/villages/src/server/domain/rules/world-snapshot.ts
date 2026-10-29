@@ -1,3 +1,4 @@
+import { zonePictureBaseline, zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
@@ -227,6 +228,15 @@ export function villageSettings(
           picture: undefined,
           pictureRevision: undefined,
           pictureRetryAvailable: originalZone.picture?.failed === true,
+          pictureUpdateAvailable:
+            !originalZone.image ||
+            originalZone.picture?.dirty === true ||
+            (originalZone.picture?.context || originalZone.picture?.baseline
+              ? zonePictureBaseline(originalZone.picture.context ?? originalZone.picture.baseline!) !==
+                zonePictureContext(village, venue, originalZone)
+              : false),
+          pictureProblem: originalZone.picture?.problem,
+          pictureUpdating: !!originalZone.picture?.claim && originalZone.picture?.failed !== true,
           preparation: originalZone.preparation
             ? { status: originalZone.preparation.status, error: originalZone.preparation.error }
             : undefined,

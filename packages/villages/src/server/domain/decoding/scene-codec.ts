@@ -224,9 +224,6 @@ export function coerceSession(value: unknown): VenueScene {
     dismissedZoneIds: Array.isArray(raw.dismissedZoneIds)
       ? raw.dismissedZoneIds.filter((id): id is string => typeof id === "string")
       : [],
-    pictureEvaluatedZoneIds: Array.isArray(raw.pictureEvaluatedZoneIds)
-      ? raw.pictureEvaluatedZoneIds.filter((id): id is string => typeof id === "string").slice(0, 256)
-      : [],
     privateSpaceId: asTrimmedString(raw.privateSpaceId) || undefined,
     zoneGrants: Array.isArray(raw.zoneGrants)
       ? raw.zoneGrants

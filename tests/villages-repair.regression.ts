@@ -421,6 +421,8 @@ await runCase("repair/checkpoints", async () => {
   await f.repo.mutateAuthority(
     (s) => {
       s.setting = "Later setting";
+      s.zonePictureBudget = { startedAt: "2026-10-29T12:00:00.000Z", used: 6 };
+      s.zonePictureEpoch = 11;
       s.memories = addMemory(s.memories, { sourceId: "later" });
       s.eventAttempts = {
         highWaterDate: "2026-10-26",
@@ -457,6 +459,8 @@ await runCase("repair/checkpoints", async () => {
   assert.equal((await f.read()).setting, "Later setting");
   await f.api.apply(review.id);
   assert.equal((await f.read()).setting, "Original setting");
+  assert.equal((await f.read()).zonePictureBudget?.used, 6, "Restore cannot rewind automatic image spending");
+  assert.ok((await f.read()).zonePictureEpoch! > 11, "Restore fences in-flight artwork");
   assert.deepEqual((await f.read()).eventAttempts, spent);
   assert.equal((await f.read()).returnCatchup?.batch?.status, "completed");
   assert.equal((await f.read()).returnCatchup?.history?.[0]?.id, "previous-return");

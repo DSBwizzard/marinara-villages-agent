@@ -388,6 +388,9 @@ export type VillageVenue = {
     description: string;
     freezePicture?: boolean;
     pictureRetryAvailable?: boolean;
+    pictureUpdateAvailable?: boolean;
+    pictureProblem?: string;
+    pictureUpdating?: boolean;
     image: VillageVenueImage | null;
     state: import("./place-continuity.js").PlaceContinuity;
   }>;

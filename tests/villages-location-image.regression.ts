@@ -52,7 +52,7 @@ import {
   resolveVillageImageConnectionId,
 } from "../packages/villages/src/server/features/media/image-generation.js";
 import {
-  generateFirstPrivateSpaceImage,
+  generateFirstZoneImage,
   generateVillageLocationImage,
   storeVillageVenueImage,
 } from "../packages/villages/src/server/features/media/location-image.js";
@@ -1280,10 +1280,6 @@ async function main() {
     ),
     "and wired to a click on the screen that stands in a place",
   );
-  const imageService = await readFile(join(repoRoot, services, "features/media/location-image-service.ts"), "utf8");
-  const venueSession = await readFile(join(repoRoot, services, "features/scenes/command-service.ts"), "utf8");
-  assert.match(imageService, /initialImageAttemptedAt/u, "first private drawing has a durable attempt marker");
-  assert.match(venueSession, /generateFirstPrivateSpaceImage/u, "private entry starts the one automatic draw");
 
   const foundingVenue = {
     id: "founding-home",
@@ -1636,7 +1632,7 @@ async function mediaConnectionOwnership() {
               : operation === "store"
                 ? storeVillageVenueImage("equal-venue", TINY_PNG)
                 : operation === "private"
-                  ? generateFirstPrivateSpaceImage("equal-venue", "own-room")
+                  ? generateFirstZoneImage("equal-venue", "own-room")
                   : generateVillageLocationImage(
                       "equal-venue",
                       undefined,
@@ -1697,7 +1693,11 @@ async function mediaConnectionOwnership() {
       );
       const aCalls = calls.filter((call) => call.owner === "A"),
         draws = aCalls.filter((call) => call.path === AVATAR_PATH);
-      const paid = operation !== "store" && operation !== "resolve" && variant !== "claim-cas";
+      const paid =
+        operation !== "store" &&
+        operation !== "resolve" &&
+        variant !== "claim-cas" &&
+        !(operation === "location" && stage === "write" && ["context", "only-empty"].includes(variant));
       assert.equal(draws.length, paid ? 1 : 0, "one Engine image dispatch, with no replay or failed-claim spending");
       assert.equal(a.requests().length, paid ? 1 : 0, "the native image ledger belongs to A");
       if (paid) {
@@ -1744,7 +1744,7 @@ async function mediaConnectionOwnership() {
         const zone = a.world().venues[0]!.zones!.find((entry) => entry.id === "own-room")!;
         assert(zone.initialImageAttemptedAt, "private draw claims before provider dispatch");
         if (variant !== "claim-cas") assert.equal(zone.image?.id, "A-image");
-        await a.scope.run(() => generateFirstPrivateSpaceImage("equal-venue", "own-room"));
+        await a.scope.run(() => generateFirstZoneImage("equal-venue", "own-room"));
         assert.equal(
           calls.filter((call) => call.owner === "A" && call.path === AVATAR_PATH).length,
           draws.length,

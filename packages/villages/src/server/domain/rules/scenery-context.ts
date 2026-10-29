@@ -89,6 +89,8 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     !!ownerId || (venue.imageContext?.useAssignedVillagerContext ?? village.personalizeVenueImagesByDefault);
   const ids = ownerId ? [ownerId] : [...(venue.residentIds ?? []), ...(venue.workerIds ?? [])];
   return JSON.stringify([
+    village.seed,
+    village.foundedAt,
     zoneId,
     village.zonePictureEpoch ?? 0,
     zone?.pictureRevision ?? 0,

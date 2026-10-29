@@ -427,6 +427,10 @@
       "path": "/locations/venue/image/retry"
     },
     {
+      "method": "post",
+      "path": "/locations/venue/image/update"
+    },
+    {
       "method": "patch",
       "path": "/locations/venue/image/freeze"
     },

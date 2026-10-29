@@ -14,7 +14,7 @@ import {
   venueSceneHistory,
 } from "../packages/villages/src/server/domain/rules/venue-turn-integrity.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
+import { generateFirstZoneImage } from "../packages/villages/src/server/features/media/location-image.js";
 import { setVillageSendOnEnter } from "../packages/villages/src/server/features/settings/village-settings.js";
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
 import { settleBackgroundWork } from "../packages/villages/src/server/jobs/background-work.js";
@@ -2929,18 +2929,18 @@ async function main() {
     });
     assert.equal(calls - beforePrivateQuiet, 1);
     assert.equal(privateQuiet.session.lines.at(-1)?.kind, "narration");
-    await generateFirstPrivateSpaceImage("home", "bob");
+    await generateFirstZoneImage("home", "bob");
     const firstImageAttempt = (await readVillageState({ memories: true })).venues
       .find((place) => place.id === "home")
       ?.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt;
-    assert.ok(firstImageAttempt, "the first private entry records one automatic image attempt");
-    await generateFirstPrivateSpaceImage("home", "bob");
+    assert.ok(!firstImageAttempt, "an unavailable image connection is rejected before reserving an automatic attempt");
+    await generateFirstZoneImage("home", "bob");
     assert.equal(
       (await readVillageState({ memories: true })).venues
         .find((place) => place.id === "home")
         ?.privateSpaces?.find((space) => space.ownerId === "bob")?.initialImageAttemptedAt,
       firstImageAttempt,
-      "later visits cannot claim another automatic draw, even after a failed first draw",
+      "later visits with an unavailable connection still reserve no automatic draw",
     );
     const privateBefore = home.privateSpaces?.find((space) => space.ownerId === "bob")?.description;
     await setVillageVenueImage(

@@ -272,6 +272,9 @@ export function createVenueCommands({
         base: image,
         removed: !image,
         baseline: image ? zonePictureBaseline(zonePictureContext(state, venue, zone)) : undefined,
+        context: image ? zonePictureContext(state, venue, zone) : undefined,
+        lastAutomaticAt: zone.picture?.lastAutomaticAt,
+        dirty: false,
       };
       if (!image) zone.initialImageAttemptedAt = new Date().toISOString();
       if (zone.kind === "exterior") venue.presentation.image = image;
