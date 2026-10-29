@@ -1257,7 +1257,7 @@ export async function verifyFoundingLayout(group) {
         await inspector.getByLabel("Physical Form", { exact: true }).fill("Converted observatory room");
         await zone("Exterior");
         await inspector
-          .getByLabel("Exterior appearance", { exact: true })
+          .getByLabel("Long-term details", { exact: true })
           .fill("A blue door beside the telescope corridor.");
         await zone("Private");
         await inspector.getByLabel("Long-term details", { exact: true }).fill("My hammock and traveling journal.");

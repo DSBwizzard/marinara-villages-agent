@@ -300,8 +300,8 @@ try {
       await sheet.getByLabel("Venue Name", { exact: true }).fill("My Last Ride");
       await capture("residence");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
-      await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toHaveCount(1);
-      await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toBeVisible();
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveCount(1);
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toBeVisible();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Zone access", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Used for", { exact: true })).toHaveCount(0);

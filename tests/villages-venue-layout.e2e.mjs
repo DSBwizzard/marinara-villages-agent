@@ -98,7 +98,7 @@ try {
           .getByRole("navigation", { name: "Project Zones" })
           .getByRole("button", { name: /Entrance/ })
           .click();
-      await editor.getByLabel("Entrance", { exact: true }).fill("A sheltered patch beneath a tree.");
+      await editor.getByLabel("Long-term details", { exact: true }).fill("A sheltered patch beneath a tree.");
       if (width < 700) await editor.getByRole("button", { name: "‹ Zones", exact: true }).click();
       if (layout === "common" || layout === "both") {
         await editor.getByRole("button", { name: "Add Zone", exact: true }).click();

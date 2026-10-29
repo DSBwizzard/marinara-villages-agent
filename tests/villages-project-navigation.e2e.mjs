@@ -344,10 +344,12 @@ try {
         .getByRole("navigation", { name: "Project Zones" })
         .getByRole("button", { name: /Entrance/ })
         .click();
-    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("");
-    await page.getByLabel("Entrance", { exact: true }).first().fill("A narrow gate beside the old oak.");
+    await expect(page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue("");
+    await page.getByLabel("Long-term details", { exact: true }).first().fill("A narrow gate beside the old oak.");
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
-    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("A narrow gate beside the old oak.");
+    await expect(page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue(
+      "A narrow gate beside the old oak.",
+    );
     await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await expect(page.getByRole("button", { name: "Full design", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Save design", exact: true }).click();
@@ -368,7 +370,7 @@ try {
         .getByRole("navigation", { name: "Project Zones" })
         .getByRole("button", { name: /Entrance/ })
         .click();
-    await expect(reopened.page.getByLabel("Entrance", { exact: true }).first()).toHaveValue(
+    await expect(reopened.page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue(
       "A narrow gate beside the old oak.",
     );
     await reopened.page.close();

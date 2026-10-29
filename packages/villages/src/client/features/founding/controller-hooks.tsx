@@ -553,7 +553,7 @@ export function useFoundingSetupBlocker(ports: {
             foundingZoneProblem(venue),
         )
       )
-        return "Complete each Venue's physical form, Exterior appearance and Zone name, use and appearance on Venues.";
+        return "Complete each Venue's physical form and each Zone's name, use and long-term details on Venues.";
       const occupants = villagerHomes
         .map((home) => home.occupancy.residentCharacterId)
         .filter((id): id is string => id !== null);
