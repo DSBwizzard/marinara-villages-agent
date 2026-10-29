@@ -416,21 +416,22 @@ assert.deepEqual(village.memories, readOnce);
 // Shared Events budget counts admitted attempts, including failed, empty and uncertain calls.
 const budget = defaultVillageState();
 budget.backgroundPace = "balanced";
+budget.timeZone = "UTC";
 assert.equal(
   eventAttemptAvailable(budget, "2026-10-21", Date.parse("2026-10-22T12:00:00Z")),
   false,
   "An unspent prior day cannot generate catch-up requests",
 );
 const instant = Date.parse("2026-10-22T12:00:00Z");
-for (let index = 0; index < 3; index++) {
-  assert.equal(eventAttemptAvailable(budget, "2026-10-22", instant + index * 900000), true);
-  reserveEventAttempt(budget, "attempt:" + index, "2026-10-22", instant + index * 900000);
-  reserveEventAttempt(budget, "attempt:" + index, "2026-10-22", instant + index * 900000);
+for (let index = 0; index < 6; index++) {
+  assert.equal(eventAttemptAvailable(budget, "2026-10-22", instant + index * 1_800_000), true);
+  reserveEventAttempt(budget, "attempt:" + index, "2026-10-22", instant + index * 1_800_000);
+  reserveEventAttempt(budget, "attempt:" + index, "2026-10-22", instant + index * 1_800_000);
 }
-assert.equal(budget.eventAttempts!.attempts.length, 3);
-assert.equal(eventAttemptAvailable(budget, "2026-10-22", instant + 2700000), false);
+assert.equal(budget.eventAttempts!.attempts.length, 6);
+assert.equal(eventAttemptAvailable(budget, "2026-10-22", instant + 10_800_000), false);
 const restored = structuredClone(budget);
-assert.equal(eventAttemptAvailable(restored, "2026-10-22", instant + 2700000), false, "Restart preserves attempts");
+assert.equal(eventAttemptAvailable(restored, "2026-10-22", instant + 10_800_000), false, "Restart preserves attempts");
 assert.equal(eventAttemptAvailable(restored, "2026-10-21", instant + 86400000), false, "No calendar replay");
 assert.equal(eventAttemptAvailable(restored, "2026-10-23", instant + 86400000), true);
 restored.backgroundPace = "off";
