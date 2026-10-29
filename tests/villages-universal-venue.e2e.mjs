@@ -76,8 +76,8 @@ try {
         venueClass: "residence",
         connectedTo: ["bay"],
         seen: false,
-        description: "",
-        image: null,
+        description: "A private sleeping alcove with a blue blanket.",
+        image: { id: "alcove-art", ref: "global-gallery:alcove-art", url: mapImage },
         state,
         accessView: access(false),
       },
@@ -260,8 +260,18 @@ try {
     await expect(detail.getByText("Private", { exact: true })).toBeVisible();
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
-    await expect(detail.getByRole("button", { name: "Regenerate artwork" })).toHaveCount(0);
-    assert.equal(writes.length, 0, "browsing does not visit, discover or generate");
+    await expect(detail.getByRole("button", { name: "Regenerate artwork" })).toBeVisible();
+    await expect(detail.getByRole("img", { name: "Sleeping Alcove at " + place.name })).toHaveAttribute(
+      "src",
+      mapImage,
+    );
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
+      await mkdir(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, { recursive: true });
+      await detail.screenshot({
+        path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, "unvisited-private-" + width + ".png"),
+      });
+    }
+    assert.equal(writes.length, 0, "browsing does not visit or generate");
     place.zones[1].accessView = access(true);
     place.zones[2].accessView = access(true);
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));

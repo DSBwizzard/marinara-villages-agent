@@ -160,7 +160,7 @@ assert.throws(() =>
 assert.equal(
   parseFoundingVenueSuggestions({ venues: [suggestion] }, ["home"], [{ ...template[0], residentCharacterId: "npc" }])[0]
     .privateDescription,
-  undefined,
+  "Hammock",
 );
 const npc = parsePlace({ ...residence, occupancy: { playerHome: false, residentCharacterId: "npc" } }, true);
 const world = defaultVillageState();
@@ -171,8 +171,8 @@ const settings = villageSettings(
   null,
 );
 assert.ok(
-  settings.venues[0].privateSpaces?.every((zone) => !zone.description && !zone.image && zone.state.recent === null),
-  "unseen private interiors never reach the client",
+  settings.venues[0].privateSpaces?.every((zone) => zone.description === "A hammock" && zone.state.recent === null),
+  "private interior details are visible before a visit",
 );
 console.log(
   "Founding template: optional Zones, inclusion retention, neutral access, contract validation, purpose round-trip and server privacy passed.",

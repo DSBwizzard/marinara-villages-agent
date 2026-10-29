@@ -9,7 +9,6 @@ import type {
 } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { parsePlace } from "../../domain/rules/founding-record.js";
-import { isPrivateInterior, privateInteriorKey } from "../../domain/rules/private-interior.js";
 import { boundText, isHousePlace, MAX_PLACES, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { keepAgendaPlaces } from "../../domain/rules/resident-agenda.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
@@ -17,14 +16,7 @@ import { applyAccessCommand, readAccessCommand } from "../../domain/rules/venue-
 import { addVillageVenue, venueDraft } from "../../domain/rules/venue-authoring.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
 import { hasVenueClass, venueAssignedCount, venueResidentIds } from "../../domain/rules/venue-model.js";
-import {
-  legacyZoneId,
-  privateTarget,
-  resolveVenueZone,
-  venueZones,
-  zoneClosed,
-  zoneControllerIds,
-} from "../../domain/rules/venue-zones.js";
+import { legacyZoneId, privateTarget, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { readVenueImageContext } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
@@ -273,14 +265,6 @@ export function createVenueCommands({
       const zone = resolveVenueZone(venue, targetId);
       if (!zone) throw notFound("That zone no longer exists.");
       if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed)) return;
-      if (zone.kind !== "exterior" && !zone.seen && !(zone.kind === "shared-residence" && venue.occupancy.playerHome))
-        throw conflict("Visit this zone before changing its image.");
-      if (
-        isPrivateInterior(zone) &&
-        zone.lastObserved &&
-        privateInteriorKey(zone.lastObserved) !== privateInteriorKey(zone)
-      )
-        throw conflict("Visit this private interior again before changing its image.");
       if (onlyIfEmpty && zone.image) return;
       zone.image = image;
       zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
@@ -290,7 +274,6 @@ export function createVenueCommands({
         baseline: image ? zonePictureBaseline(zonePictureContext(state, venue, zone)) : undefined,
       };
       if (!image) zone.initialImageAttemptedAt = new Date().toISOString();
-      if (isPrivateInterior(zone)) zone.imageInteriorKey = image ? privateInteriorKey(zone) : undefined;
       if (zone.kind === "exterior") venue.presentation.image = image;
     });
     return buildVillageSnapshot();
@@ -302,60 +285,21 @@ export function createVenueCommands({
     privateOwnerId = "",
     zoneId?: string,
   ): Promise<void> {
-    if (zoneId || privateOwnerId) {
-      const village = await readVillageState(),
-        venue = village.venues.find((entry) => entry.id === venueId),
-        zone = venue && resolveVenueZone(venue, zoneId || legacyZoneId(venue, "private", "residence", privateOwnerId));
-      if (!zone) throw notFound("That zone no longer exists.");
-      if (zoneClosed(village, venue!, zone)) throw conflict("This Zone is not physically available yet.");
-      if (
-        isPrivateInterior(zone) &&
-        zone.lastObserved &&
-        privateInteriorKey(zone.lastObserved) !== privateInteriorKey(zone)
-      )
-        throw conflict("Visit this private interior again before changing its image.");
-      if (
-        ["private-residence", "staff", "restricted"].includes(zone.kind) &&
-        !zoneControllerIds(venue!, zone).includes("player") &&
-        zone.ownerId !== "player"
-      ) {
-        const { activeVenueSession } = sceneQueries();
-        const session = await activeVenueSession();
-        const controllers = zoneControllerIds(venue!, zone);
-        const grant = session?.zoneGrants?.find((entry) => entry.zoneId === zone.id);
-        if (
-          !session ||
-          session.placeId !== venueId ||
-          session.zoneId !== zone.id ||
-          !controllers.length ||
-          (grant && !controllers.includes(grant.controllerId)) ||
-          zoneClosed(village, venue!, zone)
-        )
-          throw conflict("Enter this private space with a current invitation before changing its image.");
-      }
-      if (zone.kind === "exterior" || zone.seen || (zone.kind === "shared-residence" && venue!.occupancy.playerHome))
-        return;
-      throw conflict("Visit this zone before changing its image.");
-    }
-    if (spaceClass) {
-      const venue = (await readVillageState()).venues.find((entry) => entry.id === venueId);
-      if (
-        venue?.layoutVersion === 1 &&
-        !venueZones(venue).some(
-          (zone) => ["public", "shared-residence"].includes(zone.kind) && zone.venueClass === spaceClass,
-        )
-      )
-        throw notFound("That Common Space is absent from this Venue.");
-    }
-    if (spaceClass !== "residence" && !privateOwnerId) return;
     const village = await readVillageState();
     const venue = village.venues.find((entry) => entry.id === venueId);
-    if (!venue || !hasVenueClass(venue, "residence")) throw notFound("That Residence is no longer here.");
-    if (privateOwnerId && !venueResidentIds(venue).includes(privateOwnerId))
-      throw notFound("That resident no longer has a private space here.");
-    if (venue.occupancy.playerHome && !privateOwnerId) return;
-    if (privateOwnerId ? venue.playerSeenPrivateIds?.includes(privateOwnerId) : venue.playerSeenShared) return;
-    throw conflict("Visit this Residence space before changing its image.");
+    if (!venue) throw notFound("That Venue is no longer here.");
+    if (spaceClass && !hasVenueClass(venue, spaceClass)) throw notFound("That Venue space no longer exists.");
+    const targetId =
+      zoneId ??
+      legacyZoneId(
+        venue,
+        privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
+        spaceClass,
+        privateOwnerId,
+      );
+    const zone = resolveVenueZone(venue, targetId);
+    if (!zone) throw notFound("That Zone no longer exists.");
+    if (zoneClosed(village, venue, zone)) throw conflict("This Zone is not physically available yet.");
   }
 
   async function setVillageHomeBuildingNames(value: unknown): Promise<VillageSnapshot> {

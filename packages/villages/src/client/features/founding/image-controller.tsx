@@ -269,7 +269,10 @@ export function createFoundingGenerateSetupImage(ports: {
           zoneName: selectedArea?.name,
           zonePurpose: selectedArea?.purpose,
           zoneAppearance: selectedArea?.description,
-          privateOwnerId: area === "private" ? "player" : undefined,
+          privateOwnerId:
+            area === "private"
+              ? (selectedArea?.ownerId ?? (venue.occupancy.playerHome ? "player" : venue.occupancy.residentCharacterId))
+              : undefined,
           privateDescription: description,
           residentAdmission: venue.occupancy.residentCharacterId
             ? selectedResidentAdmissions[venue.occupancy.residentCharacterId]

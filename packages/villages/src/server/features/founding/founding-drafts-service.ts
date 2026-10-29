@@ -147,8 +147,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Tailor the Community Venue and its Common Zone to the Village itself. These template defaults do not restrict later editing.",
                 ]
               : []),
-            "For villager Private Space suggest only names and structural purposes; never descriptions, images, objects or resident secrets. For the player's included Private Space also supply privateDescription: a short visible physical description. Identify the player's residence by its absent residentCharacterId.",
-            'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"player residence only","connections":[["exterior","common:base"]]}]}.',
+            "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned resident or the Player Persona. Describe the space and ordinary furnishings, not private thoughts or secrets. Identify the player's residence by its absent residentCharacterId.",
+            'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
             'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
             "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 4000.",
             `Return exactly ${requestedRows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Return only the requested template rows.`,
@@ -349,8 +349,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         : area === "exterior"
           ? row.description
           : row.spaceDescription);
-    if (area === "private" && input.privateOwnerId !== "player")
-      throw badRequest("Hidden personal spaces are drawn only after an invited entry.");
     const personality = input.useAssignedVillagerContext !== false;
     if (
       [input.useVisualLore, input.useAssignedVillagerContext].some(
@@ -358,7 +356,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       )
     )
       throw badRequest("Image context controls must be on or off.");
-    const persona = area === "private" ? await readLinkedPersona(input.playerPersonaId) : null;
+    const persona =
+      area === "private" && input.privateOwnerId === "player" ? await readLinkedPersona(input.playerPersonaId) : null;
     const character = persona
       ? `${persona.name}; ${persona.identity.slice(0, 900)}`
       : personality && row.resident

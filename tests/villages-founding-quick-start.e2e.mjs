@@ -124,7 +124,9 @@ try {
               commonDescription: "Worn seats face a folding table.",
               privateName: "Curtained berth",
               privatePurpose: "Sleeping and storing belongings",
-              privateDescription: row.residentCharacterId ? "" : "A padded berth behind a curtain.",
+              privateDescription: row.residentCharacterId
+                ? "A resident berth with a blue blanket."
+                : "A padded berth behind a curtain.",
             })),
         };
         savedReceipt = { id: body.actionId, sourceKey: body.sourceKey, status: "complete", error: "", result };
@@ -408,11 +410,14 @@ try {
       await openVenue("buster");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone("private:base");
-      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveCount(0);
-      await expect(sheet.getByLabel("Room Specification", { exact: true })).toBeVisible();
-      await expect(sheet.getByText(/private interior stays hidden/)).toBeVisible();
-      await expect(sheet.getByLabel("Zone artwork")).toHaveCount(0);
-      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toHaveCount(0);
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveValue(
+        "A resident berth with a blue blanket.",
+      );
+      await expect(sheet.getByLabel("Room Specification", { exact: true })).toHaveCount(0);
+      await expect(sheet.getByText(/private interior stays hidden/)).toHaveCount(0);
+      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      await expect(sheet.getByLabel("Zone artwork")).toBeVisible();
+      await sheet.getByRole("button", { name: "Close artwork", exact: true }).click();
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await openVenue("community");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();

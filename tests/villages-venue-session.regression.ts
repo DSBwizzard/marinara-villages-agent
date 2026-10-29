@@ -2796,8 +2796,8 @@ async function main() {
     const hiddenHome = redacted.settings.venues.find((place) => place.id === "home")!;
     assert.equal(
       hiddenHome.spaces?.find((space) => space.venueClass === "residence")?.description,
-      "",
-      "View Venue does not reveal an uninvited Residence interior",
+      "A quiet meeting place in home.",
+      "View Venue shows appearance while entry still requires an invitation",
     );
     await assert.rejects(
       () => enterVenue("home", "residence", "", "shared"),
@@ -2956,22 +2956,18 @@ async function main() {
       privateBefore,
     );
     await leaveVenueSession(outside.id, "home-leave");
-    await assert.rejects(
-      () =>
-        setVillageVenueImage(
-          "home",
-          { id: "private-redraw", ref: "global-gallery:private-redraw", url: "/redraw.webp" },
-          "residence",
-          "bob",
-        ),
-      /current invitation/,
+    await setVillageVenueImage(
+      "home",
+      { id: "private-redraw", ref: "global-gallery:private-redraw", url: "/redraw.webp" },
+      "residence",
+      "bob",
     );
     assert.equal(
       (await readVillageState({ memories: true })).venues
         .find((place) => place.id === "home")
         .privateSpaces.find((space) => space.ownerId === "bob").image.id,
-      "private-image",
-      "discovery preserves artwork without granting future room actions",
+      "private-redraw",
+      "artwork management stays available after leaving without granting entry",
     );
 
     await mutateVillageState((state) => {

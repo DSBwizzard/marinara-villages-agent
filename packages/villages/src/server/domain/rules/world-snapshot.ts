@@ -1,7 +1,6 @@
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
-import { isPrivateInterior, privateInteriorKey } from "./private-interior.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type {
   VillageMomentView,
@@ -222,12 +221,9 @@ export function villageSettings(
                 }),
               ),
             };
-      const blankState = { revision: 0, recent: null, updatedAt: "" };
       const zones = venueZones(venue).map((originalZone) => {
         const zone = {
           ...originalZone,
-          lastObserved: undefined,
-          imageInteriorKey: undefined,
           picture: undefined,
           pictureRevision: undefined,
           pictureRetryAvailable: originalZone.picture?.failed === true,
@@ -253,56 +249,16 @@ export function villageSettings(
             "player",
           ),
         };
-        const visible =
-          zone.kind === "exterior" ||
-          zone.seen ||
-          (zone.kind === "shared-residence" && venue.occupancy.playerHome) ||
-          (residenceAccess?.placeId === venue.id && residenceAccess.zoneId === zone.id);
-        const observed = isPrivateInterior(originalZone) ? originalZone.lastObserved : undefined;
-        return visible
-          ? {
-              ...zone,
-              ...(observed
-                ? { description: observed.description, state: observed.state, observedAt: observed.observedAt }
-                : {}),
-              state: {
-                ...(observed?.state ?? zone.state),
-                recent: recentPlaceText(observed?.state ?? zone.state, now.getTime())
-                  ? (observed?.state ?? zone.state).recent
-                  : null,
-              },
-              imageOutdated: !!(
-                observed &&
-                zone.image &&
-                originalZone.imageInteriorKey &&
-                originalZone.imageInteriorKey !== privateInteriorKey(observed)
-              ),
-              closed: zoneClosed(village, venue, zone),
-            }
-          : {
-              ...zone,
-              closed: zoneClosed(village, venue, zone),
-              description: "",
-              image: null,
-              pictureRetryAvailable: false,
-              state: blankState,
-              initialImageAttemptedAt: undefined,
-            };
+        return {
+          ...zone,
+          state: {
+            ...zone.state,
+            recent: recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null,
+          },
+          closed: zoneClosed(village, venue, zone),
+        };
       });
-      const visibleIds = new Set(
-        zones
-          .filter(
-            (zone) =>
-              zone.kind === "exterior" ||
-              zone.seen ||
-              (residenceAccess?.placeId === venue.id && residenceAccess.zoneId === zone.id) ||
-              (zone.kind === "shared-residence" && venue.occupancy.playerHome),
-          )
-          .map((zone) => zone.id),
-      );
-      const primary = zones.find(
-        (zone) => zone.kind !== "exterior" && zone.kind !== "private-residence" && visibleIds.has(zone.id),
-      );
+      const primary = zones.find((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence");
       return {
         ...venue,
         access: undefined,
