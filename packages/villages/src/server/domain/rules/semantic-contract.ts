@@ -62,10 +62,11 @@ export function semanticContext(
     history.unshift(row);
   }
   return {
-    ...(scene.operation?.input.preservationVersion === 1
+    ...(scene.operation?.input.preservationVersion === 1 || scene.operation?.input.sceneBoundaryVersion === 1
       ? {
           preservation: {
             version: 1 as const,
+            ...(scene.operation?.input.sceneBoundaryVersion === 1 ? { sceneBoundaryVersion: 1 as const } : {}),
             sceneAt: scene.continuity?.capturedAt ?? scene.sceneAttendance?.capturedAt ?? scene.startedAt,
             chosenAt: String(scene.operation.input.chosenAt),
             timeZone: authority.timeZone,

@@ -77,7 +77,12 @@ import {
   sceneLocationContext,
   visibleSceneContinuity,
 } from "../../domain/rules/scene-continuity.js";
-import { capturedSceneCalendar, HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
+import {
+  capturedSceneCalendar,
+  GeneratedSceneBoundary,
+  SCENE_OUTCOME_BOUNDARY,
+  HaltedSceneTurn,
+} from "../../domain/rules/scene-halt.js";
 import { extractSceneReply } from "../../domain/rules/scene-reply-json.js";
 import { parseVenueReply, quietContactReply } from "../../domain/rules/scene-reply.js";
 import {
@@ -545,6 +550,7 @@ export function createSceneWriting({
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         VENUE_SCENE_WRITING_FOUNDATION,
+        venueOperationInput()?.sceneBoundaryVersion === 1 ? SCENE_OUTCOME_BOUNDARY : "",
         openingSceneDirection(village, session, session.semanticVersion !== 2),
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
@@ -859,13 +865,47 @@ export function createSceneWriting({
     };
   }
 
+  type BoundaryReplacement = {
+    requestKey: string;
+    outcome: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
+  };
+  function writingRequestKey(args: Parameters<typeof prepareVenueTurnMessages>) {
+    return createHash("sha256")
+      .update(JSON.stringify([args[0].id, args[2], args[1]]))
+      .digest("hex");
+  }
   async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>) {
-    return measurePipeline("Scene interpretation", { sceneId: args[0].id, mode: args[2] }, () =>
-      generateMeasured(...args),
-    );
+    return measurePipeline("Scene interpretation", { sceneId: args[0].id, mode: args[2] }, async () => {
+      const requestKey = writingRequestKey(args);
+      const replacementKey = "scene-boundary-replacement";
+      const saved = venueSavedCheckpoint?.<BoundaryReplacement>(replacementKey);
+      const replace = async (replacement: BoundaryReplacement) => {
+        if (replacement.requestKey !== requestKey) throw new GeneratedSceneBoundary(replacement.outcome);
+        await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+        try {
+          return await generateMeasured(replacement, ...args);
+        } catch (error) {
+          if (error instanceof GeneratedSceneBoundary)
+            await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey + "-boundary"] });
+          throw error;
+        }
+      };
+      if (saved) return replace(saved);
+      try {
+        return await generateMeasured(undefined, ...args);
+      } catch (error) {
+        if (!(error instanceof GeneratedSceneBoundary) || venueOperationInput()?.sceneBoundaryVersion !== 1)
+          throw error;
+        const replacement = await venueCheckpoint(replacementKey, async () => ({ requestKey, outcome: error.outcome }));
+        return replace(replacement);
+      }
+    });
   }
 
-  async function generateMeasured(...args: Parameters<typeof prepareVenueTurnMessages>) {
+  async function generateMeasured(
+    replacement: BoundaryReplacement | undefined,
+    ...args: Parameters<typeof prepareVenueTurnMessages>
+  ) {
     let [session] = args;
     const [, message, mode] = args;
     const signal = args[5];
@@ -886,17 +926,36 @@ export function createSceneWriting({
       place,
       projectContexts,
     } = prepared;
-    const requestKey = createHash("sha256")
-      .update(JSON.stringify([session.id, mode, message]))
-      .digest("hex");
+    const originalKey = writingRequestKey(args);
+    const requestKey = originalKey + (replacement ? "-boundary" : "");
     if (writingVersion === 3) {
-      const saved = await venueCheckpoint("writing-request:" + requestKey, async () => ({
+      const saved = await venueCheckpoint("writing-request:" + originalKey, async () => ({
         fitted,
         earlierEvidence,
         promptMemories,
         loreInspection,
       }));
       ({ fitted, earlierEvidence, promptMemories, loreInspection } = saved);
+    }
+    if (replacement) {
+      const corrected = await venueCheckpoint("writing-request:" + requestKey, async () => {
+        const messages = [
+          ...fitted.messages,
+          {
+            role: "system" as const,
+            content:
+              "Replace the unaccepted reply. Its unsupported consequence was " +
+              replacement.outcome +
+              ". Preserve the original player input and authoritative Scene facts. " +
+              SCENE_OUTCOME_BOUNDARY,
+          },
+        ];
+        const correction = model.fitContext(messages, { maxTokens: fitted.maxTokens ?? maxTokens });
+        if (correction.trimmed || JSON.stringify(correction.messages) !== JSON.stringify(messages))
+          throw badGateway("The replacement context does not fit. Your input is saved.");
+        return correction;
+      });
+      fitted = { ...corrected, loreEntries: fitted.loreEntries };
     }
     if (loreInspection) runtimeDebug("lore inspection", loreInspection);
     trace?.("model request", 0, `${model.model} (${model.connectionId})`);
@@ -1185,6 +1244,8 @@ export function createSceneWriting({
               throw error;
             })
         : null;
+    if (semanticResult?.draftBoundaryViolation)
+      throw new GeneratedSceneBoundary(semanticResult.draftBoundaryViolation.outcome);
     if (semanticResult?.turnOutcome === "occupancy-unavailable") throw new UnavailableResidentMovement();
     if (semanticResult?.turnOutcome) throw new HaltedSceneTurn(semanticResult.turnOutcome);
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
