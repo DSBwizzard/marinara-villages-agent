@@ -1055,8 +1055,6 @@ export type VillageState = {
   /** Versioned evidence-backed task records; empty for villages that have not adopted the Progress Engine. */
   wishFollowing?: Record<string, boolean>;
   progressTasks: ProgressTask[];
-  /** Ordinary scene props are visible but cannot become project stock. */
-  /** Finite resident source yields already transferred into a project. */
   pendingDecisions: VillagePendingDecision[];
   villagers: VillageVillager[];
   /** Writing styles retained when residents leave, keyed by character ID. */

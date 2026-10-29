@@ -212,7 +212,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
   }
 
   // Replay only already-committed physical receipts, in transcript order.
-  // This edits a disposable presentation copy, never consumes live stock.
+  // This edits a disposable presentation copy, never writes live state.
   const physical = new Map(
     physicalVenueEvents(current)
       .filter((row) => row.actionReceipt?.happened && !baselineReceipts.has(row.id))

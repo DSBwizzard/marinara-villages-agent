@@ -373,7 +373,7 @@ export function createSceneCommands({
       ];
       if (turn.semanticProvenance?.version === 2)
         messages[0].content +=
-          ' This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. Wish check/progress rows require criteria:{kind:"conversation|transfer|action|complex",requiresPhysical:boolean,itemName?,predicate?,target?,venueId?} for the ORIGINAL goal. No model-authored provenance or verification flags.';
+          " This is a v2 System-owned event. Interpret paraphrases and contextual short answers without phrase tests. No model-authored provenance or verification flags.";
       const output = turn.semanticProvenance?.version === 2 ? 4096 : VENUE_REPLY_MAX_TOKENS;
       const request = await venueCheckpoint("change-interpretation:input", async () => ({
         messages,

@@ -218,7 +218,7 @@ assert.equal(
   60,
   "Prepared System meaning is reused locally",
 );
-const before = JSON.stringify([state.venues, state.projects, state.narrativeItems]);
+const before = JSON.stringify([state.venues, state.projects]);
 assert(
   addRoutineIdea(
     resident.agenda!,
@@ -228,7 +228,7 @@ assert(
   ),
 );
 assert.equal(
-  JSON.stringify([state.venues, state.projects, state.narrativeItems]),
+  JSON.stringify([state.venues, state.projects]),
   before,
   "A repertoire entry has no asset or physical authority",
 );

@@ -52,7 +52,7 @@ ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
       ? `Optional residenceDecision:{source:0,approved} for a pending player move request.`
       : "",
     c.projects
-      ? `Optional interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover all eligible current main speech; uncertainty and short contextual answers remain uncertain/potential. Optional projectSpeech:[{projectId,kind:"approval|builder|requirements",speakerId,citations:[{segment:0}],checklist:[{category:"structure|equipment|finish",title,needed,citation}]}]. Code supplies exact cited quotes (at most 1200 characters) and current revision. For longer speech supply a supported quote explicitly; never omit conditions or negation. Checklist citation indexes its citations array. Speech is no completed work.`
+      ? `Optional interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover all eligible current main speech; uncertainty and short contextual answers remain uncertain/potential. Optional projectSpeech:[{projectId,kind:"approval|builder|withdrawal",speakerId,citations:[{segment:0}]}]. Code supplies exact cited quotes (at most 1200 characters) and current revision. For longer speech supply a supported quote explicitly; never omit conditions or negation. Speech is no completed work.`
       : "",
     `Optional departures:[{source:0}] for explicit resident departures; sceneEnded:{source:0} only for spoken ending of the whole encounter. Neither silence nor ordinary company ends it. Player movement requires Move; never return movementIntent/contactIntent/contactRelay in Zone-event Scenes.`,
     c.staging
@@ -137,7 +137,7 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
     capabilities.residences ? "residenceRequest:{source:0,venueId},listed available Residence only." : "",
     capabilities.residenceDecision ? "residenceDecision:{source:0,approved},pending player move only." : "",
     c.projects
-      ? 'interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover eligible current main speech; short/contextual/uncertain answers stay potential/uncertain. projectSpeech:[{projectId,kind:"approval|builder|requirements",speakerId,citations:[{segment:0}],checklist:[{category:"structure|equipment|finish",title,needed,citation}]}]. Code supplies full quotes(max1200 chars)/revision; longer speech needs explicit supported quote retaining conditions/negation. Checklist citation indexes citations. Speech is no completed work.'
+      ? 'interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover eligible current main speech; short/contextual/uncertain answers stay potential/uncertain. projectSpeech:[{projectId,kind:"approval|builder|withdrawal",speakerId,citations:[{segment:0}]}]. Code supplies full quotes(max1200 chars)/revision; longer speech needs explicit supported quote retaining conditions/negation. Speech is no completed work.'
       : "",
     "departures:[{source:0}],explicit resident departures only; sceneEnded:{source:0},spoken end of WHOLE encounter only. Silence/ordinary company end neither. Player movement requires Move; never return movementIntent/contactIntent/contactRelay. All source fields cite complete returned segments; omit repeated speakerId/quote.",
     c.staging

@@ -50,10 +50,16 @@ const change = readVenueSceneChange(
 );
 assert.equal(change?.recent?.text, "The teapot is in the cupboard.");
 for (const change of [
-  { removeItem: "missing", transferTo: "player" },
-  { removeItem: "teapot", transferTo: "remote" },
-  { transferTo: "tina" },
-  { traceKind: "note", traceText: "Hello" },
+  { recent: { text: 42 } },
+  { recent: { text: "x".repeat(601) } },
+  { edits: [{ before: "Missing detail", after: "Changed detail" }] },
+  { append: "A change.", unsupported: true },
 ])
-  assert.throws(() => readVenueSceneChange({ happened: true, narration: "Unsupported.", ...change }, venue, ["tina"]));
-console.log("Scene actions: movement, writing styles, bounded physical admission and rejected legacy fields passed");
+  assert.throws(() =>
+    readVenueSceneChange(
+      { happened: true, narration: "Unsupported.", expectedRevision: 0, ...change },
+      venue,
+      "2026-10-28T12:00:00.000Z",
+    ),
+  );
+console.log("Scene actions: movement, writing styles and bounded physical admission passed");

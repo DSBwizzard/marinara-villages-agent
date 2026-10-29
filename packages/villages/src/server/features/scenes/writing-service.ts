@@ -616,7 +616,7 @@ export function createSceneWriting({
         ...residentContexts,
         projectSpeechPrompt(village, projectContexts),
         session.pendingProjectQuestions?.length
-          ? `These Project matters remain unresolved: ${session.pendingProjectQuestions.join("; ")}. Clarify naturally; do not assume approval, commitment, or complete requirements. Do not demand formal wording.`
+          ? `These Project matters remain unresolved: ${session.pendingProjectQuestions.join("; ")}. Clarify naturally; do not assume approval or commitment. Do not demand formal wording.`
           : "",
         session.pendingRoomQuestions?.length
           ? `These room matters remain unresolved: ${session.pendingRoomQuestions.join("; ")}. Resolve them through natural contextual clarification before reacting as though permission or dismissal were established. Do not ask for formal permission wording.`

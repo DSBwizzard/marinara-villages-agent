@@ -246,7 +246,7 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
                 !row.projectId ||
                 typeof row.speakerId !== "string" ||
                 !row.speakerId ||
-                !["approval", "builder", "requirements"].includes(String(row.kind)) ||
+                !["approval", "builder", "withdrawal"].includes(String(row.kind)) ||
                 !Array.isArray(row.citations) ||
                 !row.citations.length ||
                 row.citations.length > 12
