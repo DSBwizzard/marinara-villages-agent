@@ -428,6 +428,7 @@ export function readCreationPrivateZones(
         name,
         purpose,
         controllerIds,
+        image: foundingImage(row.image),
         kind: classes.includes("workplace") ? ("staff" as const) : ("restricted" as const),
         seen: false,
         preparation: { status: "pending" as const },

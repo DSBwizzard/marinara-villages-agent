@@ -398,12 +398,12 @@ try {
     await limit.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
     await limit.page.getByLabel("Zone Name", { exact: true }).fill("Quiet room");
     if (width < 700) await limit.page.getByRole("button", { name: "Long-term details", exact: true }).click();
-    await limit.page.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas alcove.");
-    await expect(limit.page.getByLabel("Long-term details", { exact: true })).toHaveCount(0);
+    await limit.page.getByLabel("Long-term details", { exact: true }).fill("A quiet canvas alcove.");
+    await expect(limit.page.getByLabel("Room Specification", { exact: true })).toHaveCount(0);
     await limit.page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect.poll(() => limit.calls.length).toBe(1);
     assert.equal(limit.calls[0].body.spaces.length, 5);
-    assert.equal(limit.calls[0].body.privateSpaces[0].roomSpecification, "A quiet canvas alcove.");
+    assert.equal(limit.calls[0].body.privateSpaces[0].description, "A quiet canvas alcove.");
     assert.deepEqual(limit.calls[0].body.privateSpaces[0].connectedTo, ["exterior"]);
     const payload = limit.calls[0].body;
     const decoded = readBaseVenueLayout(

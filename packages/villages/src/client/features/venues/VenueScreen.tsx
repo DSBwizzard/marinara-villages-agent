@@ -195,70 +195,66 @@ function ZoneArtwork({
             alt={`${zone.name} at ${place.name}`}
           />
         ) : (
-          <div className={`${ELEMENT_TAG}-venue-image-empty`}>
-            {zone.known ? "No artwork yet" : "Artwork has not been shared with you"}
-          </div>
+          <div className={`${ELEMENT_TAG}-venue-image-empty`}>No artwork yet</div>
         )}
       </div>
-      {zone.known ? (
-        <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
-          {zone.pictureRetryAvailable &&
-          !zone.freezePicture &&
-          controller.snapshot.settings.automaticZonePictures !== false ? (
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
-              disabled={disabled}
-              onClick={() => void controller.retryZonePicture(place, zone.id)}
-            >
-              Retry artwork
-            </button>
-          ) : null}
+      <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
+        {zone.pictureRetryAvailable &&
+        !zone.freezePicture &&
+        controller.snapshot.settings.automaticZonePictures !== false ? (
           <button
             type="button"
-            aria-label="Regenerate artwork"
-            className={`${ELEMENT_TAG}-button`}
+            className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
             disabled={disabled}
-            onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
+            onClick={() => void controller.retryZonePicture(place, zone.id)}
           >
-            Generate
+            Retry artwork
           </button>
+        ) : null}
+        <button
+          type="button"
+          aria-label="Regenerate artwork"
+          className={`${ELEMENT_TAG}-button`}
+          disabled={disabled}
+          onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
+        >
+          Generate
+        </button>
+        <button
+          type="button"
+          aria-label="Upload artwork"
+          className={`${ELEMENT_TAG}-button`}
+          disabled={disabled}
+          onClick={() => upload.current?.click()}
+        >
+          Upload
+        </button>
+        <input
+          autoComplete="off"
+          ref={upload}
+          hidden
+          type="file"
+          accept="image/*"
+          aria-label={`Upload ${zone.name} artwork`}
+          disabled={disabled}
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            event.target.value = "";
+            void keepPlaceImage(place.id, file, spaceClass, zone.ownerId ?? "", zone.id);
+          }}
+        />
+        {zone.image ? (
           <button
             type="button"
-            aria-label="Upload artwork"
+            aria-label="Remove artwork"
             className={`${ELEMENT_TAG}-button`}
             disabled={disabled}
-            onClick={() => upload.current?.click()}
+            onClick={() => void dropPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
           >
-            Upload
+            Remove
           </button>
-          <input
-            autoComplete="off"
-            ref={upload}
-            hidden
-            type="file"
-            accept="image/*"
-            aria-label={`Upload ${zone.name} artwork`}
-            disabled={disabled}
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              void keepPlaceImage(place.id, file, spaceClass, zone.ownerId ?? "", zone.id);
-            }}
-          />
-          {zone.image ? (
-            <button
-              type="button"
-              aria-label="Remove artwork"
-              className={`${ELEMENT_TAG}-button`}
-              disabled={disabled}
-              onClick={() => void dropPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
-            >
-              Remove
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </>
   );
 }

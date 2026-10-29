@@ -39,7 +39,7 @@ const suggestions = rows.map((row) => ({
   commonDescription: "A bench beside the opening.",
   privateName: row.venueClass === "community" ? "" : "Resting nook",
   privatePurpose: row.venueClass === "community" ? "" : "Resting and storing belongings",
-  privateDescription: row.id === "player" ? "A berth behind a curtain." : "Secret must never leave the server",
+  privateDescription: row.id === "player" ? "A berth behind a curtain." : "A resident berth with a blue blanket.",
 }));
 const parsed = parseFoundingVenueSuggestions(
   { venues: suggestions },
@@ -96,9 +96,12 @@ assert.deepEqual(
   ],
 );
 assert.equal(templates[1].privateSpaces![0].ownerId, "buster");
-assert.equal(replaceQuickStartVenue(templates[1], parsed[1]).privateSpaces![0].description, "");
+assert.equal(
+  replaceQuickStartVenue(templates[1], parsed[1]).privateSpaces![0].description,
+  "A resident berth with a blue blanket.",
+);
 assert.equal(templates[2].category, "public-center");
-assert.equal(Object.hasOwn(parsed[1], "privateDescription"), false, "villager interior is not returned to the client");
+assert.equal(parsed[1].privateDescription, "A resident berth with a blue blanket.");
 for (const layout of ["common", "private", "exterior"])
   assert.throws(
     () =>
@@ -364,5 +367,5 @@ for (const patch of [
     "changed context fences old suggestions",
   );
 console.log(
-  "Quick Start: fresh replacement, template defaults, hidden villager interiors and one-call generation pass (synthetic model).",
+  "Quick Start: fresh replacement, template defaults, visible villager interiors and one-call generation pass (synthetic model).",
 );

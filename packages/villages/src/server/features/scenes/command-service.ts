@@ -34,7 +34,6 @@ import {
 import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
 import { openingPresence } from "../../domain/rules/opening-presence.js";
 import { gatheringDialogueComplete, openingActive } from "../../domain/rules/opening-project.js";
-import { observePrivateInterior } from "../../domain/rules/private-interior.js";
 import {
   bindProjectSpeech,
   projectSpeechContexts,
@@ -897,8 +896,7 @@ export function createSceneCommands({
       await changeSceneVenues(session, (state) => {
         const venue = state.venues.find((entry) => entry.id === session.placeId);
         const zone = venue && resolveVenueZone(venue, session.zoneId ?? "exterior");
-        if (venue && zone && contactCanEnter(state, venue, zone.id, "player", session))
-          observePrivateInterior(zone, villageNow().toISOString());
+        if (venue && zone && contactCanEnter(state, venue, zone.id, "player", session)) zone.seen = true;
       });
     }
     let admitted = false;
@@ -922,11 +920,7 @@ export function createSceneCommands({
           }).allowed)
       )
         return;
-      const capturedVenue =
-        session.continuity && sceneContinuityView(state, session).venues.find((row) => row.id === venue.id);
-      const observed = capturedVenue ? resolveVenueZone(capturedVenue, zone.id) : zone;
-      if (!observed) return;
-      observePrivateInterior(zone, session.continuity?.capturedAt ?? villageNow().toISOString(), observed);
+      zone.seen = true;
       admitted = true;
     });
     if (!admitted) return;

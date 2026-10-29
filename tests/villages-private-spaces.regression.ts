@@ -1,11 +1,7 @@
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
-import {
-  observePrivateInterior,
-  privateInteriorKey,
-  prepareRenovatedPrivateInterior,
-} from "../packages/villages/src/server/domain/rules/private-interior.js";
+import { prepareRenovatedPrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
 import { createLocationImages } from "../packages/villages/src/server/features/media/location-image-service.js";
 import {
@@ -279,7 +275,7 @@ async function main() {
     );
     const view = villageSettings(saved, { name: "Player", description: "", personaId: "" } as any);
     const hidden = view.venues.find((v) => v.id === "bank")!.zones!.find((z) => z.id === "staff")!;
-    assert.equal(hidden.description, "");
+    assert.equal(hidden.description, "Secret shell collection in a canvas corner");
     assert.equal(hidden.state.recent, null);
     assert.equal(hidden.image, null);
     assert.equal(hidden.preparation!.status, "ready");
@@ -358,7 +354,7 @@ async function main() {
         "staff",
         "background worker removal preserves the captured invitation",
       );
-      await assert.rejects(() => assertVenueImageAccess("bank", undefined, "", "staff"), /current invitation/);
+      await assertVenueImageAccess("bank", undefined, "", "staff");
       assert.equal(
         resolveVenueZone((await readVillageState({ memories: true })).venues[2], "staff").seen,
         true,
@@ -446,34 +442,22 @@ async function privateInteriorLifecycle() {
   assert.equal(bedroom.roomSpecification, "A small room with a garden-facing window");
   const player = { name: "Player", description: "", personaId: "" } as any;
   let view = villageSettings(village, player);
-  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, "");
-  assert.equal(
-    view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.roomSpecification,
-    bedroom.roomSpecification,
-  );
-  observePrivateInterior(bedroom, stamp);
+  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, bedroom.description);
+  assert.equal(bedroom.seen, false, "viewing details does not record a gameplay visit");
   bedroom.image = { ref: "global-gallery:before", id: "before", url: "https://example.test/before.png" };
-  bedroom.imageInteriorKey = privateInteriorKey(bedroom);
-  const prior = structuredClone(bedroom.lastObserved);
-  bedroom.description = "A newly personalized interior that has not been visited. An unseen keepsake rests here.";
+  bedroom.description = "A personalized interior with a keepsake.";
   view = villageSettings(village, player);
-  const remembered = view.venues[0].zones!.find((zone) => zone.id === "bedroom")!;
-  assert.equal(remembered.description, prior!.description);
-  assert.deepEqual(remembered.state, prior!.state);
-  assert.equal(remembered.imageOutdated, false, "unseen changes do not disclose image staleness");
-  assert.equal((remembered as any).lastObserved, undefined, "private observation storage stays server-only");
-  const reloaded = coerceVillageState(structuredClone(village));
-  assert.deepEqual(resolveVenueZone(reloaded.venues[0], "bedroom")!.lastObserved, prior);
-  const key = privateInteriorKey(bedroom);
-  bedroom.state.revision++;
-  assert.equal(privateInteriorKey(bedroom), key, "administrative revision alone does not redraw");
-  assert.equal(sceneryImageKey(village, home, "bedroom"), sceneryImageKey(village, structuredClone(home), "bedroom"));
-  observePrivateInterior(bedroom, stamp);
+  const shown = view.venues[0].zones!.find((zone) => zone.id === "bedroom")!;
   assert.equal(
-    villageSettings(village, player).venues[0].zones!.find((zone) => zone.id === "bedroom")!.imageOutdated,
-    true,
-    "observed physical changes expose explicit redraw status",
+    shown.description,
+    bedroom.description,
+    "private details use the same current projection as other Zones",
   );
+  assert.equal(shown.image?.id, "before", "saved artwork is visible before a visit");
+  assert.equal(bedroom.seen, false);
+  const reloaded = coerceVillageState(structuredClone(village));
+  assert.equal(resolveVenueZone(reloaded.venues[0], "bedroom")!.description, bedroom.description);
+  assert.equal(sceneryImageKey(village, home, "bedroom"), sceneryImageKey(village, structuredClone(home), "bedroom"));
   bedroom.image = null;
   let draws = 0;
   const images = createLocationImages({
@@ -487,9 +471,9 @@ async function privateInteriorLifecycle() {
     generateVillageImage: async (input: any) => {
       draws++;
       assert.ok(input.prompt.length <= 8000);
-      assert.match(input.prompt, /newly personalized interior/);
+      assert.match(input.prompt, /personalized interior/);
       if (draws === 1) {
-        assert.match(input.prompt, /unseen keepsake/);
+        assert.match(input.prompt, /keepsake/);
         assert.match(input.prompt, /garden-facing window/);
       } else assert.match(input.prompt, /Large established physical detail/);
       assert.match(input.prompt, /Shared architecture/);
@@ -498,6 +482,7 @@ async function privateInteriorLifecycle() {
     },
     villagesLogger: () => ({ warn() {} }),
   } as any);
+  bedroom.seen = true;
   await Promise.all([
     images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
     images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
@@ -524,7 +509,6 @@ async function privateInteriorLifecycle() {
   prepareRenovatedPrivateInterior(bedroom, priorRoom);
   assert.equal(bedroom.preparation?.mode, "renovation");
   assert.equal(bedroom.description, priorRoom.description, "approved specification waits for reconciled preparation");
-  assert.deepEqual(bedroom.lastObserved, priorRoom.lastObserved);
   assert.equal(bedroom.initialImageAttemptedAt, priorRoom.initialImageAttemptedAt);
   await preparation.preparePrivateSpaces();
   assert.equal(calls, 2, "an approved Renovation prepares exactly once");

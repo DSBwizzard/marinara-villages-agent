@@ -123,7 +123,7 @@ export function readBaseVenueLayout(
     if (description.length > 4000 || (!isPrivate && !description))
       throw badRequest("Describe the Common Space in at most 4000 characters.");
     const ownerId = isPrivate && role === "residence" ? residentId || undefined : undefined;
-    const hiddenPrivate =
+    const prepareInterior =
       isPrivate && ownerId !== "player" && (!options.founding || (role === "residence" && !!ownerId));
     const controllers = Array.isArray(area.controllerIds)
       ? [...new Set(area.controllerIds.filter((id): id is string => typeof id === "string" && !!id))]
@@ -132,7 +132,7 @@ export function readBaseVenueLayout(
       throw badRequest("Choose controllers for the Private Space.");
     result.push({
       ...defaultVenueSpace(role, description),
-      ...(hiddenPrivate ? { roomSpecification, description: "" } : {}),
+      ...(prepareInterior ? { roomSpecification } : {}),
       id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
       connectedTo: Array.isArray(area.connectedTo) ? (area.connectedTo as string[]) : undefined,
       name: asTrimmedString(area.name).slice(0, 100) || "Zone",
@@ -151,9 +151,9 @@ export function readBaseVenueLayout(
           : "public",
       ownerId,
       controllerIds: controllers,
-      image: hiddenPrivate ? null : image(area.image),
+      image: image(area.image),
       seen: ownerId === "player",
-      preparation: hiddenPrivate ? { status: "pending" } : undefined,
+      preparation: prepareInterior ? { status: "pending" } : undefined,
     });
   }
   if (new Set(result.map((zone) => zone.id)).size !== result.length)

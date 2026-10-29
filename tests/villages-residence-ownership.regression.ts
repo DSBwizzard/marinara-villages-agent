@@ -272,11 +272,6 @@ const neutralRoom = {
   seen: true,
   initialImageAttemptedAt: "2026-10-05T12:00:00Z",
   image: { id: "neutral", ref: "global-gallery:neutral", url: "https://example.test/neutral.png" },
-  lastObserved: {
-    description: "Neutral room",
-    state: defaultVenueSpace("residence").state,
-    observedAt: "2026-10-05T12:00:00Z",
-  },
 };
 roomMove.destination.layoutVersion = 1;
 roomMove.destination.zones = [neutralRoom];
@@ -298,7 +293,6 @@ const occupiedRoom = roomMove.state.venues[0].zones![0];
 assert.equal(occupiedRoom.ownerId, "same");
 assert.equal(occupiedRoom.roomSpecification, "A garden-facing window");
 assert.equal(occupiedRoom.seen, true);
-assert.deepEqual(occupiedRoom.lastObserved, neutralRoom.lastObserved);
 assert.equal(occupiedRoom.image?.id, "neutral");
 assert.equal(occupiedRoom.initialImageAttemptedAt, neutralRoom.initialImageAttemptedAt);
 assert.equal(occupiedRoom.preparation?.status, "ready");

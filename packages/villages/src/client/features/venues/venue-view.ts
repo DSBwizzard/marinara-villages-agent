@@ -36,8 +36,6 @@ export function venueDisplayZones(place: VillageVenue, room: SceneView) {
       ];
   return zones.map((zone) => {
     const exterior = zone.kind === "exterior";
-    const active = room?.status !== "closed" && room?.placeId === place.id && room.zoneId === zone.id;
-    const known = exterior || !!zone.seen || active || (zone.kind === "shared-residence" && place.occupancy.playerHome);
     const invited = place.playerInvitations?.some(
       (invitation) =>
         invitation.zoneId === zone.id ||
@@ -70,12 +68,9 @@ export function venueDisplayZones(place: VillageVenue, room: SceneView) {
     return {
       ...zone,
       name: exterior ? "Entrance" : zone.name,
-      known,
       allowed,
       restricted,
       accessLabel,
-      image: known ? zone.image : null,
-      description: known ? zone.description : "",
       isPrivate: zone.kind === "private-residence",
     };
   });
