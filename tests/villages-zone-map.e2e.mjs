@@ -141,37 +141,43 @@ try {
     const map = f.page.locator(".villages-zone-map");
     await expect(map.locator("[data-layout-zone]")).toHaveCount(7);
     await node(map, "exterior").press("ArrowRight");
+    await expect.poll(() => f.requests.length).toBe(1);
+    f.seed.settings.venues[0].zoneLayout = f.requests[0].body.positions;
+    await f.reply(0);
+    await expect(f.page.getByText("Saving layout…", { exact: true })).toHaveCount(0);
     await map.getByRole("button", { name: "Connect Zones", exact: true }).click();
     await node(map, "zone:1").click();
     await node(map, "zone:2").click();
-    await map.getByRole("button", { name: "Done connecting", exact: true }).click();
-    await f.page.getByRole("button", { name: "Save layout", exact: true }).click();
-    await expect.poll(() => f.requests.length).toBe(1);
-    assert.equal(f.requests[0].path, "/api/villages/venues/A%20%2F%20venue/layout");
-    assert.equal(f.requests[0].method, "PUT");
-    const body = f.requests[0].body;
+    await expect.poll(() => f.requests.length).toBe(2);
+    const body = f.requests[1].body;
+    assert.equal(f.requests[1].path, "/api/villages/venues/A%20%2F%20venue/layout");
+    assert.equal(f.requests[1].method, "PUT");
     assert.equal(body.positions.exterior.x, 1);
     assert.equal(body.connections.length, 7);
     assert.ok(body.connections.find((z) => z.id === "zone:1").connectedTo.includes("zone:2"));
-    assert.ok(!JSON.stringify(body).includes("description"), "Layout request excludes interiors");
-    f.seed.settings.venues[0].zoneLayout = body.positions;
+    assert.ok(!JSON.stringify(body).includes("description"), "Layout excludes interiors");
     f.seed.settings.venues[0].zones.forEach(
       (zone) => (zone.connectedTo = body.connections.find((row) => row.id === zone.id).connectedTo),
     );
-    await f.reply(0);
-    await expect(f.page.getByRole("button", { name: "Save layout", exact: true })).toBeDisabled();
-    await node(map, "exterior").press("ArrowRight");
-    await f.page.getByRole("button", { name: "Cancel layout changes", exact: true }).click();
-    await expect(f.page.getByRole("button", { name: "Save layout", exact: true })).toBeDisabled();
-    await map.getByRole("button", { name: "Connect Zones", exact: true }).click();
-    await map
-      .getByRole("button", { name: /Remove connection Entrance to Room 3|Remove connection Room 3 to Entrance/ })
-      .click();
-    await expect(f.page.getByRole("alert")).toHaveCount(0);
-    await f.page.getByRole("button", { name: "Save layout", exact: true }).click();
+    await f.reply(1);
+    await expect(f.page.getByText("Saving layout…", { exact: true })).toHaveCount(0);
+    await map.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(f.page.getByRole("button", { name: "Save layout", exact: true })).toHaveCount(0);
+    await expect(f.page.getByRole("button", { name: "Cancel layout changes", exact: true })).toHaveCount(0);
+    await map.getByRole("button", { name: "Disconnect Zones", exact: true }).click();
+    await node(map, "exterior").click();
+    await node(map, "zone:3").click();
     await expect(f.page.getByRole("alert")).toHaveText("Cannot save Venue layout: Unreachable Zones.");
-    assert.equal(f.requests.length, 1, "unreachable layout is rejected without a save request");
-    await f.page.getByRole("button", { name: "Cancel layout changes", exact: true }).click();
+    assert.equal(f.requests.length, 2, "unreachable layout is rejected without a save request");
+    await map.getByRole("button", { name: "Connect Zones", exact: true }).click();
+    await node(map, "zone:3").click();
+    await node(map, "zone:2").click();
+    await expect.poll(() => f.requests.length).toBe(3);
+    const next = f.requests[2].body;
+    f.seed.settings.venues[0].zones.forEach(
+      (zone) => (zone.connectedTo = next.connections.find((row) => row.id === zone.id).connectedTo),
+    );
+    await f.reply(2);
     await expect(f.page.getByRole("alert")).toHaveCount(0);
     for (const width of [1366, 736, 390, 320]) {
       await f.page.setViewportSize({ width, height: 1000 });

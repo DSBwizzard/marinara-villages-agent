@@ -4,6 +4,7 @@ import { snapshot as base } from "./villages-scene-browser.fixture.mjs";
 const source = `
 import {createRoot} from "react-dom/client";
 import {useState} from "react";
+import {ConfirmationProvider} from "./packages/villages/src/client/shared/confirmation.js";
 import {ProjectsPanel} from "./packages/villages/src/client/features/projects/ProjectsPanel.js";
 import {useProjectsController} from "./packages/villages/src/client/features/projects/useProjectsController.js";
 import {syncVillagesStyles} from "./packages/villages/src/client/entry/styles.js";
@@ -16,7 +17,7 @@ function Harness(){
   debugEnabled onReturn={()=>{}} onMap={()=>{}} onVenue={id=>window.lastVisit=id}
   onPeople={()=>window.peopleOpened=true} onPlaceOnMap={id=>window.lastPlacement=id}/></div>;
 }
-const root=createRoot(document.getElementById("root"));root.render(<Harness/>);
+const root=createRoot(document.getElementById("root"));root.render(<ConfirmationProvider><Harness/></ConfirmationProvider>);
 `;
 let bundle;
 export function currentProject(id, kind = "new-venue") {

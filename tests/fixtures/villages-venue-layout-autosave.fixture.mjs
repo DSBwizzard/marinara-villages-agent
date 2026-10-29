@@ -17,12 +17,12 @@ import {VenueScreen} from './packages/villages/src/client/features/venues/VenueS
 import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
  const [snapshot,setSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('a'),[venueSection,setVenueSection]=useState('zones'),[venueZoneKey,setVenueZoneKey]=useState('exterior');
- const [busy,setBusy]=useState(false),[venueEditBusy,setVenueEditBusy]=useState(false),[venueEditError,setVenueEditError]=useState(''),[venueEditNotice,setVenueEditNotice]=useState(''),[venueEditDraft,setVenueEditDraft]=useState(null),[placeProblem,setPlaceProblem]=useState(null);
+ const [room,setRoom]=useState(null),[busy,setBusy]=useState(false),[venueEditBusy,setVenueEditBusy]=useState(false),[venueEditError,setVenueEditError]=useState(''),[venueEditNotice,setVenueEditNotice]=useState(''),[venueEditDraft,setVenueEditDraft]=useState(null),[placeProblem,setPlaceProblem]=useState(null);
  const ports={snapshot,screen,venueId,venuePage:'view',venueZoneKey,setSnapshot,setBusy,setSettingsError:()=>{},setVenueEditBusy,setVenueEditError,setVenueEditNotice,setVenueEditDraft,setVenueProposalDraft:()=>{},setPlaceProblem};
  const commands=useVenueScreenCommands(ports);
- window.h={read:()=>({snapshot,screen,venueId,layouts:commands.venueLayouts}),reset:()=>setSnapshot({...window.seed,isFounded:false}),refound:()=>setSnapshot(window.seed),snapshot:next=>setSnapshot(next)};
+ window.h={scene:setRoom,read:()=>({snapshot,screen,venueId,layouts:commands.venueLayouts}),reset:()=>setSnapshot({...window.seed,isFounded:false}),refound:()=>setSnapshot(window.seed),snapshot:next=>setSnapshot(next)};
  const openPlace=place=>{setVenueId(place.id);setScreen('venue')};
- return <><pre id="state">{JSON.stringify(window.h.read())}</pre>{screen==='venue'?<VenueScreen controller={{...ports,...commands,venueSection,setVenueSection,setVenueZoneKey,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,placeProblem,busy,room:null,roomBusy:false,homeBuildings:[],placeBusyId:'',nameOfCharacter:id=>id,standingAt:()=>[],setScreen,
+ return <><pre id="state">{JSON.stringify(window.h.read())}</pre>{screen==='venue'?<VenueScreen controller={{...ports,...commands,venueSection,setVenueSection,setVenueZoneKey,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,placeProblem,busy,room,roomBusy:false,homeBuildings:[],placeBusyId:'',nameOfCharacter:id=>id,standingAt:()=>[],setScreen,
  goHome:()=>setScreen('home'),openMenu:()=>setScreen('menu'),openPlace,leaveVenue:()=>setScreen('home'),openRoom:async()=>{},planVenueRenovation:()=>{},openVenueProject:()=>{},openVenueRequests:()=>{},drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},retryWork:async()=>{},setPlayerMovePrivateZoneId:()=>{},setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{}}}/>:<button onClick={()=>openPlace(snapshot.settings.venues[0])}>Return to Places</button>}</>;
 }
 createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProvider><Harness/></ConfirmationProvider></StrictMode>);
@@ -135,16 +135,19 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect(tile()).toHaveAttribute("style", /left: 2%; top: 1%;/);
     // Unreachable connection changes are rejected inline without requesting a save.
     await page.getByRole("button", { name: "Connect Zones", exact: true }).click();
-    await page.getByRole("button", { name: "Remove connection common to Entrance", exact: true }).click();
+    await page.getByRole("button", { name: "Disconnect Zones", exact: true }).click();
+    await page.locator('[data-layout-zone="common"]').click();
+    await tile().click();
     await expect(page.getByRole("alert")).toContainText("Unreachable Zones");
     assert.equal(requests.length, 2);
     // A new connection automatically saves.
+    await page.getByRole("button", { name: "Connect Zones", exact: true }).click();
     await page.locator('[data-layout-zone="common"]').click();
     await page.locator('[data-layout-zone="other"]').click();
     await expect.poll(() => requests.length).toBe(3);
     await reply(2);
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
-    await page.getByRole("button", { name: "Done connecting", exact: true }).click();
+    await page.getByRole("button", { name: "Done", exact: true }).click();
     await tile().press("ArrowRight");
     await expect.poll(() => requests.length).toBe(4);
     await reply(3, { fail: true });
@@ -221,6 +224,20 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
         .connectedTo.includes("class:workplace"),
     );
     await expect(page.locator(".villages-zone-map svg line")).toHaveCount(3);
+    await page.getByRole("button", { name: "Disconnect Zones", exact: true }).click();
+    await page.locator('[data-layout-zone="class:community"]').click();
+    await page.locator('[data-layout-zone="class:workplace"]').click();
+    await expect.poll(() => requests.length).toBe(12);
+    await reply(11);
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await expect(page.locator(".villages-zone-map svg line")).toHaveCount(2);
+    await page.evaluate(() => window.h.scene({ id: "scene", status: "active", placeId: "b", zoneId: "exterior" }));
+    await expect(tile()).toHaveAttribute("data-draggable", "false");
+    await expect(page.getByRole("button", { name: "Connect Zones", exact: true })).toHaveCount(0);
+    await tile().press("ArrowRight");
+    await page.locator('[data-layout-zone="class:workplace"]').click();
+    await expect(page.locator('[data-layout-zone="class:workplace"]')).toHaveAttribute("aria-pressed", "true");
+    assert.equal(requests.length, 12, "Scene prevents layout writes while still allowing selection");
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
     await context.close();

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -48,72 +48,126 @@ function ZoneName({
   zone,
   controller,
   onDirtyChange,
-  onBusyChange,
+  saveRef,
 }: {
   place: VillageVenue;
   zone: VenueDisplayZone;
   controller: VenueScreenController;
   onDirtyChange(dirty: boolean): void;
-  onBusyChange(busy: boolean): void;
+  saveRef: Ref<{ save(): Promise<boolean> }>;
 }) {
   const [name, setName] = useState(zone.name);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef<Promise<boolean> | null>(null);
+  useLayoutEffect(() => {
+    pending.current = null;
+  }, [controller.snapshot.isFounded]);
+  const cancelled = useRef(false);
+  const titleButton = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  useLayoutEffect(() => {
+    if (!editing && restoreFocus.current) {
+      restoreFocus.current = false;
+      titleButton.current?.focus();
+    }
+  }, [editing]);
   const lifetime = useVillageMutationLifetime(controller.snapshot.isFounded, setBusy);
-  return (
-    <form
-      autoComplete="off"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        const claim = lifetime.begin();
-        if (!claim) return;
-        claim.onRetire = () => {
+  const save = (): Promise<boolean> => {
+    if (pending.current) return pending.current;
+    if (cancelled.current || name.trim() === zone.name) {
+      setEditing(false);
+      onDirtyChange(false);
+      return Promise.resolve(true);
+    }
+    if (!name.trim()) {
+      setError("Give the Zone a name.");
+      return Promise.resolve(false);
+    }
+    const claim = lifetime.begin();
+    if (!claim) return Promise.resolve(false);
+    claim.onRetire = () => {
+      setBusy(false);
+    };
+    setBusy(true);
+    setError("");
+    const operation: Promise<boolean> = (async () => {
+      try {
+        const saved = await controller.saveVenueZone(place.id, zone.id, { name: name.trim() });
+        if (!lifetime.owns(claim)) return false;
+        if (saved) {
+          setEditing(false);
+          onDirtyChange(false);
+        } else setError("The Zone name could not be saved.");
+        return saved;
+      } catch {
+        if (lifetime.owns(claim)) setError("The Zone name could not be saved.");
+        return false;
+      } finally {
+        if (pending.current === operation) pending.current = null;
+        if (lifetime.finish(claim)) {
           setBusy(false);
-          onBusyChange(false);
-        };
-        setBusy(true);
-        onBusyChange(true);
-        setNotice("");
-        try {
-          const saved = await controller.saveVenueZone(place.id, zone.id, { name: name.trim() });
-          if (lifetime.owns(claim) && saved) {
-            setNotice("Zone name saved.");
-            onDirtyChange(false);
-          }
-        } catch {
-          if (lifetime.owns(claim)) setNotice("The zone name could not be saved. Try again.");
-        } finally {
-          if (lifetime.finish(claim)) {
-            setBusy(false);
-            onBusyChange(false);
-          }
         }
-      }}
-    >
-      <label className={`${ELEMENT_TAG}-label`}>
-        Zone name
-        <input
-          autoComplete="off"
-          className={`${ELEMENT_TAG}-notice-input`}
-          maxLength={100}
-          value={name}
-          disabled={busy}
-          onChange={(event) => {
-            setName(event.target.value);
-            onDirtyChange(event.target.value.trim() !== zone.name);
-            setNotice("");
-          }}
-        />
-      </label>
-      <button
-        type="submit"
-        className={`${ELEMENT_TAG}-button`}
-        disabled={busy || !name.trim() || name.trim() === zone.name}
-      >
-        {busy ? "Saving…" : "Save zone name"}
-      </button>
-      {notice ? <p role="status">{notice}</p> : null}
-    </form>
+      }
+    })();
+    pending.current = operation;
+    return operation;
+  };
+  useImperativeHandle(saveRef, () => ({ save }));
+  return (
+    <div className={`${ELEMENT_TAG}-zone-title`}>
+      <h2>
+        {editing ? (
+          <input
+            aria-label="Zone name"
+            autoFocus
+            autoComplete="off"
+            maxLength={100}
+            value={name}
+            disabled={busy}
+            onChange={(event) => {
+              setName(event.target.value);
+              onDirtyChange(event.target.value.trim() !== zone.name);
+              setError("");
+            }}
+            onBlur={() => void save()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                restoreFocus.current = true;
+                void save();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                restoreFocus.current = true;
+                cancelled.current = true;
+                setName(zone.name);
+                setEditing(false);
+                setError("");
+                onDirtyChange(false);
+              }
+            }}
+          />
+        ) : (
+          <button
+            ref={titleButton}
+            type="button"
+            aria-label={`Rename ${zone.name}`}
+            onClick={() => {
+              cancelled.current = false;
+              setName(zone.name);
+              setEditing(true);
+            }}
+          >
+            {zone.name}
+            <span aria-hidden="true"> ✎</span>
+          </button>
+        )}
+      </h2>
+      {busy ? <small role="status">Saving name…</small> : null}
+      {error ? <p role="alert">{error}</p> : null}
+    </div>
   );
 }
 
@@ -132,17 +186,19 @@ function ZoneArtwork({
   const spaceClass = zone.kind === "exterior" ? undefined : zone.venueClass;
   return (
     <>
-      {zone.image ? (
-        <img
-          className={`${ELEMENT_TAG}-venue-profile-image`}
-          src={zone.image.url}
-          alt={`${zone.name} at ${place.name}`}
-        />
-      ) : (
-        <div className={`${ELEMENT_TAG}-venue-image-empty`}>
-          {zone.known ? "No artwork yet" : "Artwork has not been shared with you"}
-        </div>
-      )}
+      <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
+        {zone.image ? (
+          <img
+            className={`${ELEMENT_TAG}-venue-profile-image`}
+            src={zone.image.url}
+            alt={`${zone.name} at ${place.name}`}
+          />
+        ) : (
+          <div className={`${ELEMENT_TAG}-venue-image-empty`}>
+            {zone.known ? "No artwork yet" : "Artwork has not been shared with you"}
+          </div>
+        )}
+      </div>
       {zone.known ? (
         <div className={`${ELEMENT_TAG}-row`}>
           {zone.pictureRetryAvailable &&
@@ -333,8 +389,8 @@ function AssignedVillagers({
 export function VenueScreen({ controller }: { controller: VenueScreenController }) {
   const confirmVillages = useConfirmation();
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
-  const [zoneNameSaving, setZoneNameSaving] = useState(false);
   const [zoneEditorKey, setZoneEditorKey] = useState(0);
+  const zoneNameEditor = useRef<{ save(): Promise<boolean> }>(null);
   const {
     snapshot,
     venueId,
@@ -360,7 +416,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     [venueId, venueZoneKey, venueSection],
   );
   const navigation = useVillageMutationLifetime(snapshot?.isFounded, undefined, navigationSelection);
-  const navigationBusy = zoneNameSaving || controller.venueEditBusy;
+  const navigationBusy = controller.venueEditBusy;
   const canLeave = async () => {
     if (navigationBusy) return false;
     const draft = controller.venueEditDraft;
@@ -368,7 +424,12 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     if (!venueNameDirty && !zoneNameDirty) return true;
     const claim = navigation.begin();
     if (!claim) return false;
-    const accepted = await confirmVillages("Discard unsaved changes?");
+    if (zoneNameDirty && !(await zoneNameEditor.current?.save())) {
+      navigation.finish(claim);
+      return false;
+    }
+    if (!navigation.owns(claim)) return false;
+    const accepted = !venueNameDirty || (await confirmVillages("Discard unsaved changes?"));
     if (!navigation.owns(claim)) return false;
     navigation.finish(claim);
     if (!accepted) return false;
@@ -597,7 +658,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                     zone={selected}
                     controller={controller}
                     onDirtyChange={setZoneNameDirty}
-                    onBusyChange={setZoneNameSaving}
+                    saveRef={zoneNameEditor}
                   />
                 ) : (
                   <h2>{selected.name}</h2>

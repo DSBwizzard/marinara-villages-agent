@@ -303,20 +303,36 @@ export async function verifyVenueScreenLifetimes(browser) {
     for (const strict of [true]) {
       {
         const f = await mount(strict, width, { page: "view" });
+        await f.page.getByRole("button", { name: /^Rename / }).click();
+        await f.page.getByLabel("Zone name", { exact: true }).fill("Retained name");
+        await f.page.getByLabel("Zone name", { exact: true }).press("Tab");
+        await expect.poll(() => f.requests.length).toBe(1);
+        await f.reply(0, { fail: true });
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toHaveValue("Retained name");
+        await expect(f.page.getByRole("alert").filter({ hasText: "The Zone name could not be saved" })).toBeVisible();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
+        await expect.poll(() => f.requests.length).toBe(2);
+        await f.reply(1);
+        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeFocused();
+        await f.finish();
+      }
+      {
+        const f = await mount(strict, width, { page: "view" });
+        await f.page.getByRole("button", { name: /^Rename / }).click();
         await f.page.getByLabel("Zone name", { exact: true }).fill("Renamed Zone");
-        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => {
           window.h.reset();
           window.h.refound();
         });
-        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
-        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeEnabled();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(0);
-        await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeDisabled();
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
+        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeVisible();
         await f.finish();
       }
       for (const kind of kinds)

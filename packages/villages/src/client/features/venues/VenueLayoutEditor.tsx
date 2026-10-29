@@ -22,6 +22,7 @@ export function VenueLayoutEditor({
 }) {
   const [problem, setProblem] = useState("");
   const pending = controller.venueLayouts[place.id];
+  const sceneActive = !!controller.room && controller.room.status !== "closed";
   const draft = pending?.change;
   const rows = materializeConnections(zones).map((zone) => ({
     ...zone,
@@ -43,14 +44,16 @@ export function VenueLayoutEditor({
   return (
     <>
       <ZoneMap
+        enableDisconnectMode
+        key={sceneActive ? "scene" : "editing"}
         zones={rows}
         positions={draft?.positions ?? place.zoneLayout}
         selectedId={selectedId}
         onSelect={onSelect}
         disabled={controller.venueEditBusy}
-        onPositions={(positions) => change({ ...current, positions })}
+        onPositions={sceneActive ? undefined : (positions) => change({ ...current, positions })}
         onConnections={
-          place.accessView?.canManage
+          place.accessView?.canManage && !sceneActive
             ? (zones) =>
                 change({
                   ...current,
@@ -60,6 +63,7 @@ export function VenueLayoutEditor({
         }
         labels={(zone) => <ZoneAccessLabels zone={zone} />}
       />
+      {sceneActive ? <p role="status">End the Scene to edit the layout.</p> : null}
       {problem ? <p role="alert">{problem}</p> : null}
       {pending?.saving ? <p role="status">Saving layout…</p> : null}
       {pending?.error ? <p role="alert">{pending.error}</p> : null}

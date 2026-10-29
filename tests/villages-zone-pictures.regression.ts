@@ -293,6 +293,7 @@ zone().image = null;
 zone().picture = { base: null };
 zone().initialImageAttemptedAt = "";
 const venueCommands = createVenueCommands({
+  withSceneNavigation: (operation) => operation(),
   readVillageState: imagePorts.readVillageState,
   mutateVillageState: imagePorts.mutateVillageState,
   buildVillageSnapshot: imagePorts.buildVillageSnapshot!,

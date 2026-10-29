@@ -13,6 +13,11 @@ import {
   type VenueCommandPorts,
 } from "../packages/villages/src/server/features/venues/venue-service.js";
 import { configureVenueCommands, venueCommands } from "../packages/villages/src/server/features/venues/services.js";
+import { createSceneNavigation } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { resolveZoneLayout, zoneLayoutKey } from "../packages/villages/src/shared/helpers/zone-layout.js";
+import { materializeConnections } from "../packages/villages/src/shared/helpers/zone-contact.js";
+import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 
 // Synthetic independent stores; no Engine runtime, host bindings or providers.
 function fixture(name: string) {
@@ -24,6 +29,7 @@ function fixture(name: string) {
   const events: string[] = [];
   const result = { name } as VillageSnapshot;
   const ports: VenueCommandPorts = {
+    withSceneNavigation: (operation) => operation(),
     async readVillageState() {
       events.push("read");
       return structuredClone(state);
@@ -51,6 +57,42 @@ function fixture(name: string) {
 }
 
 async function main() {
+  {
+    const f = fixture("Layout Scene lock");
+    const navigation = createSceneNavigation();
+    f.ports.withSceneNavigation = navigation.serializeNavigation;
+    let scene: Pick<VenueScene, "id" | "placeId" | "zoneId" | "zoneGrants"> | null = null;
+    f.ports.sceneQueries = () => ({ activeVenueSession: async () => scene });
+    const venue = f.state.venues[0];
+    const zones = materializeConnections(venueZones(venue));
+    const change = {
+      base: zoneLayoutKey(zones, venue.zoneLayout),
+      positions: resolveZoneLayout(zones.map((z) => z.id)),
+      connections: zones.map((z) => ({ id: z.id, connectedTo: z.connectedTo! })),
+    };
+    const commands = createVenueCommands(f.ports);
+    scene = { id: "scene", placeId: "another-venue", zoneId: "exterior", zoneGrants: [] };
+    const before = structuredClone(venue);
+    await assert.rejects(commands.updateVenueZoneLayout(venue.id, change), /End the active Scene/);
+    assert.deepEqual(venue, before, "Scene anywhere blocks layout writes");
+    scene = null;
+    let release!: () => void;
+    const entry = navigation.serializeNavigation(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      scene = { id: "new-scene", placeId: venue.id, zoneId: "exterior", zoneGrants: [] };
+    });
+    await Promise.resolve();
+    const save = commands.updateVenueZoneLayout(venue.id, change);
+    release();
+    await entry;
+    await assert.rejects(save, /End the active Scene/);
+    assert.deepEqual(venue, before, "Scene entry admitted first blocks an already queued layout save");
+    scene = null;
+    await commands.updateVenueZoneLayout(venue.id, change);
+    assert.deepEqual(venue.zoneLayout, change.positions, "editing resumes after the Scene ends");
+  }
   const first = fixture("First"),
     second = fixture("Second");
   let resume!: () => void;

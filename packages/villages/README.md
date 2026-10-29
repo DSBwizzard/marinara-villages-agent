@@ -73,6 +73,8 @@ A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces
 
 In Places, Zone positions and connections save automatically. The layout sits beside the selected Zone editor on desktop and above it on phones. You can move between menus while a layout saves. Connections must keep every Zone reachable from the Entrance; invalid changes show an inline error. A failed save retains the layout; the next layout change retries saving.
 
+Select a Zone to view its title and artwork. Click its title to rename it; Enter or leaving the title saves, and Escape cancels. Entrance keeps its fixed name. Artwork fits a reserved frame without resizing the editor. Connect Zones and Disconnect Zones each let you select two tiles to change their passage. End the active Scene before moving tiles or changing connections; viewing and selecting Zones remains available during a Scene.
+
 Entering a private space requires permission. Knowing that a room exists, being friends with someone, or hearing a sound from it does not grant access or reveal its contents. An invitation permits entry; use **Move** when you want to go there. The [Venue and Zone reference](venue-zones.md) covers detailed access and sound rules.
 
 On a phone, use portrait orientation. Places opens as a drawer, and Venue editing opens as a sheet.

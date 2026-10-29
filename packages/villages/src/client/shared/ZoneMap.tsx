@@ -12,6 +12,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   disabled = false,
   labels,
   toolbar,
+  enableDisconnectMode = false,
 }: {
   zones: T[];
   positions?: ZoneLayout;
@@ -22,10 +23,10 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   disabled?: boolean;
   labels?(zone: T): ReactNode;
   toolbar?: ReactNode;
+  enableDisconnectMode?: boolean;
 }) {
-  const [connecting, setConnecting] = useState(false),
+  const [mode, setMode] = useState<"connect" | "disconnect" | null>(null),
     [first, setFirst] = useState<string | null>(null);
-  const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<ZoneLayout | null>(null);
   const drag = useRef<{
     id: string;
@@ -66,12 +67,12 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
     );
   const select = (id: string) => {
     if (disabled) return;
-    if (connecting && onConnections) {
+    if (mode && onConnections) {
       if (!first || !zones.some((z) => z.id === first)) setFirst(id);
       else if (first === id) setFirst(null);
       else {
-        if (!contactNeighborIds(rows, first).includes(id)) updateConnection(first, id, true);
-        setNotice(`${name(first)} connected to ${name(id)}.`);
+        const connected = contactNeighborIds(rows, first).includes(id);
+        if (connected !== (mode === "connect")) updateConnection(first, id, mode === "connect");
         setFirst(null);
       }
     } else onSelect?.(id);
@@ -82,18 +83,30 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
         <div className="villages-zone-map-toolbar">
           {toolbar}
           {onConnections ? (
-            <button
-              type="button"
-              disabled={disabled}
-              aria-pressed={connecting}
-              onClick={() => {
-                setConnecting(!connecting);
-                setFirst(null);
-                setNotice("");
-              }}
-            >
-              {connecting ? "Done connecting" : "Connect Zones"}
-            </button>
+            <>
+              {((enableDisconnectMode ? ["connect", "disconnect"] : ["connect"]) as ("connect" | "disconnect")[]).map(
+                (action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    disabled={disabled}
+                    aria-pressed={mode === action}
+                    onClick={() => {
+                      setMode(mode === action ? null : action);
+                      setFirst(null);
+                    }}
+                  >
+                    {mode === action
+                      ? enableDisconnectMode
+                        ? "Done"
+                        : "Done connecting"
+                      : action === "connect"
+                        ? "Connect Zones"
+                        : "Disconnect Zones"}
+                  </button>
+                ),
+              )}
+            </>
           ) : null}
         </div>
       ) : null}
@@ -145,7 +158,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
             }}
             onPointerMove={(event) => {
               const current = drag.current;
-              if (!current || current.pointer !== event.pointerId || !onPositions || connecting || disabled) return;
+              if (!current || current.pointer !== event.pointerId || !onPositions || mode || disabled) return;
               const dx = event.clientX - current.startX,
                 dy = event.clientY - current.startY;
               if (!current.moved && Math.hypot(dx, dy) < 5) return;
@@ -158,7 +171,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               if (!zonePositionFits(current.layout, zone.id, position)) return;
               current.layout = { ...current.layout, [zone.id]: position };
               setPreview(current.layout);
-              setNotice("");
             }}
             onPointerUp={(event) => {
               const current = drag.current;
@@ -183,11 +195,16 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
             }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
-                setConnecting(false);
+                setMode(null);
                 setFirst(null);
                 return;
               }
-              if (!onPositions || disabled || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key))
+              if (
+                !onPositions ||
+                mode ||
+                disabled ||
+                !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)
+              )
                 return;
               event.preventDefault();
               const amount = event.shiftKey ? 5 : 1;
@@ -197,7 +214,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               };
               if (zonePositionFits(layout, zone.id, position)) {
                 onPositions({ ...layout, [zone.id]: position });
-                setNotice("");
               }
             }}
           >
@@ -206,9 +222,14 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
           </button>
         ))}
       </div>
-      {connecting ? <p role="status">{first ? `Connect ${name(first)} to…` : "Select two Zones to connect."}</p> : null}
-      {notice ? <p role="status">{notice}</p> : null}
-      {onConnections && connecting && pairs.length ? (
+      {mode && onConnections ? (
+        <p role="status">
+          {first
+            ? `${mode === "connect" ? "Connect" : "Disconnect"} ${name(first)} ${mode === "connect" ? "to" : "from"}…`
+            : `Select two Zones to ${mode}.`}
+        </p>
+      ) : null}
+      {onConnections && !enableDisconnectMode && mode === "connect" && pairs.length ? (
         <ul className="villages-zone-map-connections" aria-label="Connections">
           {pairs.map(([a, b]) => (
             <li key={JSON.stringify([a, b])}>
