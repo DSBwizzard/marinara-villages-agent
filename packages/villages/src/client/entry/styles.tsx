@@ -2471,6 +2471,11 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-setup-visual > .${ELEMENT_TAG}-setup-map-shell { flex: 1 1 auto; min-height: 0; }
 .villages-founding-backdrop { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; background:#070b1bd9; }
 .villages-founding-dialog { width:min(42rem,94vw); max-height:90dvh; display:flex; flex-direction:column; background:#14213c; border:1px solid #596b9b; border-radius:1rem; color:#f3f5ff; overflow:hidden; }
+.villages-founding-dialog[data-headerless="true"] { width:min(26rem,calc(100vw - 2rem)); height:fit-content; min-height:0; max-height:calc(100dvh - 2rem); margin:auto; padding:1rem; gap:1rem; box-sizing:border-box; border:1px solid #596b9b; border-radius:.75rem; overflow:auto; font-size:1rem; }
+.villages-founding-dialog[data-headerless="true"] > p { margin:0; line-height:1.4; }
+.villages-founding-dialog[data-headerless="true"] .villages-zone-map-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin:0; }
+.villages-founding-dialog[data-headerless="true"] .villages-zone-map-actions button { flex:1; min-height:44px; margin:0; padding:.55rem .65rem; border:1px solid #65799c; border-radius:.5rem; background:#1f3050; color:inherit; font-size:.95rem; font-weight:normal; cursor:pointer; }
+dialog.villages-founding-dialog:not([open]) { display:none; }
 .villages-founding-dialog footer button:last-child {background:#7461d5;}
 .villages-founding-dialog header,.villages-founding-dialog footer { flex:none; padding:1rem; background:#192c4c; }
 .villages-founding-dialog footer { display:flex; gap:.5rem; flex-wrap:wrap; }

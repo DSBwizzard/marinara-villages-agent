@@ -128,7 +128,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect(page.getByRole("alert")).toHaveCount(0);
     await leave();
     const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
-    await expect(dialog).toContainText("Some Zones aren’t connected to Entrance");
+    await expect(dialog).toContainText("Some Zones cannot be reached.");
     await dialog.getByRole("button", { name: "Keep editing", exact: true }).click();
     await expect(tile()).toHaveAttribute("style", /left: 2%;/);
     assert.equal(requests.length, 0);
@@ -144,7 +144,9 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await tile().press("ArrowRight");
     await page.getByRole("button", { name: "Manage", exact: true }).click();
     await expect.poll(() => requests.length).toBe(1);
-    await expect(page.getByRole("button", { name: "Zones", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: "About", exact: true }).click();
+    await expect(page.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     await page.evaluate(() =>
       window.h.snapshot({
         ...window.h.read().snapshot,
@@ -152,7 +154,8 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
       }),
     );
     await reply(0);
-    await expect(page.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await expect(page.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     assert.equal((await read()).snapshot.settings.name, "Newer name");
     await page.getByRole("button", { name: "Zones", exact: true }).click();
     await expect(tile()).toHaveAttribute("style", /left: 1%;/);
@@ -160,7 +163,9 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await tile().press("ArrowRight");
     await leave();
     await expect.poll(() => requests.length).toBe(2);
+    await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
     await reply(1, { fail: true });
+    await back();
     await expect(page.getByRole("alert")).toContainText("Layout unavailable");
     await expect(tile()).toHaveAttribute("style", /left: 2%;/);
     await leave();
@@ -168,6 +173,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await reply(2);
     await expect.poll(() => requests.length).toBe(4);
     await reply(3);
+    await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
     await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
     await back();
     await expect(tile()).toHaveAttribute("style", /left: 2%;/);
@@ -175,6 +181,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await leave();
     await expect.poll(() => requests.length).toBe(5);
     await reply(4, { fail: true, committed: true });
+    await back();
     await expect(page.getByRole("alert")).toBeVisible();
     await modify();
     await pair("exterior", "common");
@@ -214,6 +221,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await page.evaluate(() => window.h.refound());
     await reply(6);
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
+    await back();
     await expect(tile()).toHaveAttribute("style", /left: 0%;/);
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);

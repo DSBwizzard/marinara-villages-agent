@@ -80,7 +80,7 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
     <ConfirmationContext.Provider value={service}>
       {children}
       {confirmation ? (
-        <ModalDialog title="Confirm" compact onClose={() => decide(false)}>
+        <ModalDialog title="Confirm" compact headerless onClose={() => decide(false)}>
           <p>{confirmation.message}</p>
           <div className="villages-zone-map-actions">
             <button type="button" autoFocus onClick={() => decide(false)}>

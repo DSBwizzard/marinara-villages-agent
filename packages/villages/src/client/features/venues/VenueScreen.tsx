@@ -417,7 +417,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     [venueId, venueZoneKey, venueSection],
   );
   const navigation = useVillageMutationLifetime(snapshot?.isFounded, undefined, navigationSelection);
-  const navigationBusy = controller.venueEditBusy || !!controller.venueLayouts[venueId ?? ""]?.saving;
+  const navigationBusy = controller.venueEditBusy;
   const canLeave = async (keepLayout = false) => {
     if (navigationBusy) return false;
     const draft = controller.venueEditDraft;
@@ -440,10 +440,10 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     if (layout && place) {
       const invalid = connectionProblem(layout.change.connections);
       if (invalid) {
-        const discard = await confirmVillages(
-          "Some Zones aren’t connected to Entrance. Discard layout changes and leave?",
-          { cancel: "Keep editing", confirm: "Discard and leave" },
-        );
+        const discard = await confirmVillages("Some Zones cannot be reached.", {
+          cancel: "Keep editing",
+          confirm: "Discard and leave",
+        });
         if (!navigation.owns(claim) || !discard) {
           navigation.finish(claim);
           return false;
@@ -452,9 +452,8 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           navigation.finish(claim);
           return false;
         }
-      } else if ((!room || room.status === "closed") && !(await controller.commitVenueZoneLayout(place.id))) {
-        navigation.finish(claim);
-        return false;
+      } else if (!room || room.status === "closed") {
+        void controller.commitVenueZoneLayout(place.id);
       }
       if (!navigation.owns(claim)) return false;
     }
