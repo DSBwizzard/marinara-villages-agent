@@ -6,7 +6,11 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
-import { capturedSceneCalendar, readSceneHalt } from "../packages/villages/src/server/domain/rules/scene-halt.js";
+import {
+  capturedSceneCalendar,
+  readSceneBoundary,
+  readSceneHalt,
+} from "../packages/villages/src/server/domain/rules/scene-halt.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { runCase } from "../scripts/test-cases.mjs";
 
@@ -67,6 +71,28 @@ await runCase("scene-halt/calendar", () => {
   assert.throws(() => readSceneHalt(appointment("2026-10-16", 1440), choice, "Lunch tomorrow", []));
 });
 await runCase("scene-halt/evidence", () => {
+  const lines = [{ content: "Aqua dies.", speakerId: "aqua" }];
+  const violation = { reason: "condition", source: "draft", quote: "Aqua dies.", appointments: [] };
+  assert.deepEqual(readSceneBoundary(violation, choice, "Hello", lines), { source: "draft", outcome: "halt-state" });
+  assert.throws(() => readSceneBoundary({ ...violation, source: "player" }, choice, "Hello", lines));
+  assert.throws(() => readSceneBoundary(violation, choice, "Aqua dies.", [{ ...lines[0], speakerId: "player" }]));
+  assert.throws(() => readSceneBoundary({ ...violation, source: undefined }, choice, "Hello", lines));
+  assert.throws(() => readSceneBoundary({ ...violation, appointments: undefined }, choice, "Hello", lines));
+  assert.equal(readSceneBoundary(clear, choice, "I could stop time", []), null);
+  const appointment = { source: "player", date: "2026-10-13", minute: 780, quote: "Lunch" };
+  assert.deepEqual(readSceneBoundary({ ...violation, appointments: [appointment] }, choice, "Lunch", lines), {
+    source: "player",
+    outcome: "halt-appointment",
+  });
+  assert.deepEqual(
+    readSceneBoundary({ ...clear, appointments: [{ ...appointment, source: "draft" }] }, choice, "Hello", [
+      { content: "Lunch", speakerId: "aqua" },
+    ]),
+    {
+      source: "draft",
+      outcome: "halt-appointment",
+    },
+  );
   for (const [reason, outcome] of [
     ["time", "halt-time"],
     ["activity", "halt-time"],

@@ -24,7 +24,12 @@ import {
 } from "../../domain/rules/resident-actions.js";
 import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
-import { readSceneHalt, SCENE_HALT_INSTRUCTION } from "../../domain/rules/scene-halt.js";
+import {
+  readSceneBoundary,
+  readSceneHalt,
+  SCENE_BOUNDARY_INSTRUCTION,
+  SCENE_HALT_INSTRUCTION,
+} from "../../domain/rules/scene-halt.js";
 import {
   readSemanticEffects,
   semanticContext,
@@ -496,21 +501,25 @@ export function createSemanticService(ports: SemanticPorts) {
         " Use numeric indexes matching evidence draft:N for Wish evidence. Existing goals keep exact IDs; genuinely new social desires use new:local-key. Memory learners must witness all supporting context. " +
         (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
         " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
-        (context.preservation ? SCENE_HALT_INSTRUCTION : ""),
+        (context.preservation
+          ? SCENE_HALT_INSTRUCTION + (context.preservation.sceneBoundaryVersion === 1 ? SCENE_BOUNDARY_INSTRUCTION : "")
+          : ""),
       (raw, hash, savedInput): SemanticExchange => {
         if (savedInput.context.preservation) {
-          const outcome = readSceneHalt(
-            raw.halt,
-            savedInput.context.preservation,
-            savedInput.message,
-            savedInput.evidence,
-          );
+          const finding =
+            savedInput.context.preservation.sceneBoundaryVersion === 1
+              ? readSceneBoundary(raw.halt, savedInput.context.preservation, savedInput.message, savedInput.evidence)
+              : null;
+          const outcome =
+            savedInput.context.preservation.sceneBoundaryVersion === 1
+              ? finding?.outcome
+              : readSceneHalt(raw.halt, savedInput.context.preservation, savedInput.message, savedInput.evidence);
           if (outcome)
             return {
               version: 2,
               sourceHash: hash,
               checkpointKey: "",
-              turnOutcome: outcome,
+              ...(finding?.source === "draft" ? { draftBoundaryViolation: finding } : { turnOutcome: outcome }),
               authority: { physical: false, access: false, projects: false, standing: false },
               effects: {},
               access: null,

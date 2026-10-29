@@ -92,7 +92,7 @@ People hear what reaches them through the connected spaces. Addressing one perso
 
 Each Zone has room for four villagers; your Persona does not use a villager slot. If a requested change in occupancy cannot be completed, Villages keeps your input as an editable draft and shows a notice. The whole turn stays outside the Scene, including any other dialogue in that input. It will not reveal a private reason such as unseen occupants.
 
-If you see **HALT**, the proposed turn has not entered the story. Read the notice and rewrite your draft. Ordinary refusals can still happen within the story; HALT holds the entire turn for a boundary the game cannot safely resolve.
+If you see **HALT**, the proposed turn has not entered the story. Read the notice and rewrite your draft. Ordinary refusals can still happen within the story; HALT holds the entire turn for a boundary the game cannot safely resolve. If the generated reply introduces an unsupported outcome, Villages tries one replacement and checks it again. If that fails, your input stays saved for Retry. Character abilities remain part of their identity; their enacted consequences must fit what Villages can support.
 
 ### Take breaks without losing the moment
 

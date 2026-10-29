@@ -1279,6 +1279,9 @@ export function createSceneCommands({
             ? admission.operation.input
             : {
                 occurrenceVersion: 1,
+                ...(admission.semanticVersion === 2
+                  ? { sceneBoundaryVersion: 1, chosenAt: villageNow().toISOString() }
+                  : {}),
                 writingContractVersion: 3,
                 castLimitVersion: 1,
                 soundHopVersion: 1,
@@ -1865,6 +1868,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         : sceneWritingCapabilities(await readVillageState(), scene)
       : undefined;
     const payload = {
+      ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.sceneBoundaryVersion === 1
+          ? { sceneBoundaryVersion: 1 }
+          : {}
+        : !prior && scene.semanticVersion === 2
+          ? { sceneBoundaryVersion: 1 }
+          : {}),
       ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.preservationVersion === 1
           ? { preservationVersion: 1, chosenAt: scene.operation.input.chosenAt }

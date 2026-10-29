@@ -2124,6 +2124,105 @@ try {
     semanticExchangeAnswer = oldExchange;
   }
 
+  // A valid negative check is retained; only generated world-boundary failures earn one replacement.
+  for (const scenario of ["success", "repeat", "greeting"]) {
+    const repeat = scenario === "repeat",
+      greeting = scenario === "greeting";
+    const retained = clone(records),
+      oldIntent = clone(semanticIntentAnswer),
+      oldExchange = clone(semanticExchangeAnswer);
+    if (greeting) {
+      state().status = "opening";
+      state().lines = [];
+      state().submissions = [];
+    }
+    const beforeLines = clone(state().lines),
+      beforeCalls = modelCalls,
+      beforeWriting = narrationCalls;
+    const bad = "Aqua dies.",
+      good = "Aqua watches the water.";
+    semanticIntentAnswer = {
+      status: "resolved",
+      instructions: "",
+      action: null,
+      movement: null,
+      timeline: greeting ? [] : [{ kind: "action", text: "*waits quietly*" }],
+    };
+    answer = { playerSpeechCapture: { status: "silent", utterances: [] }, segments: [{ text: bad }] };
+    const adjudicate = () => {
+      semanticExchangeAnswer = {
+        ...oldExchange,
+        halt: { reason: "condition", source: "draft", quote: bad, appointments: [] },
+      };
+      if (!repeat) {
+        answer = { playerSpeechCapture: { status: "silent", utterances: [] }, segments: [{ text: good }] };
+        beforeSemanticResponse = () => {
+          semanticExchangeAnswer = { ...oldExchange, halt: { reason: "none", quote: "", appointments: [] } };
+        };
+      }
+    };
+    beforeSemanticResponse = adjudicate;
+    const payload = {
+      sessionId: scene.id,
+      submissionId: "boundary-repair-" + scenario,
+      message: greeting ? "" : "*waits quietly*",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: state().sceneRevision,
+    };
+    const route = greeting ? "/api/villages/rooms/greet" : "/api/villages/rooms/turn";
+    const result = await app.inject({ method: "POST", url: route, payload });
+    assert.equal(result.statusCode, repeat ? 502 : 200, result.body);
+    assert.equal(narrationCalls, beforeWriting + 2);
+    assert.equal(modelCalls, beforeCalls + (repeat ? 3 : 4), "identical bad evidence reuses its adjudication");
+    assert(!state().lines.some((line: any) => line.content === bad));
+    if (repeat) assert(state().operation.checkpoints["scene-boundary-replacement"]);
+    const after = modelCalls;
+    const replay = await app.inject({ method: "POST", url: route, payload });
+    assert.equal(modelCalls, after, "duplicate sends cannot buy another replacement");
+    if (repeat) {
+      assert.deepEqual(state().lines, beforeLines);
+      assert.match(result.body, /generated reply exceeded/);
+      // Simulate a provider-complete replacement whose completion checkpoint was not persisted.
+      const rawReplacement = Object.entries(state().operation.attempts).find(
+        ([key]) => key.startsWith("writing-completion:") && key.includes("-boundary:"),
+      );
+      assert(rawReplacement);
+      (rawReplacement[1] as any).status = "complete";
+      const rawAnswer = JSON.parse((rawReplacement[1] as any).result.content);
+      rawAnswer.segments = [{ text: good }];
+      (rawReplacement[1] as any).result.content = JSON.stringify(rawAnswer);
+      const rawCalls = modelCalls,
+        rawWriting = narrationCalls;
+      await stop!();
+      app = Fastify();
+      await start();
+      assert.equal(narrationCalls, rawWriting, "restart reuses a completed replacement without dispatch");
+      assert.equal(modelCalls, rawCalls, "startup cannot buy a missing System check");
+      assert(
+        Object.keys(state().operation.checkpoints).some(
+          (key) => key.startsWith("writing-completion:") && key.endsWith("-boundary"),
+        ),
+        "raw replacement is checkpointed during local recovery",
+      );
+      answer = { playerSpeechCapture: { status: "silent", utterances: [] }, segments: [{ text: good }] };
+      semanticExchangeAnswer = { ...oldExchange, halt: { reason: "none", quote: "", appointments: [] } };
+      const retried = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: { ...payload, retryOfAttemptId: state().operation.attemptId },
+      });
+      assert.equal(retried.statusCode, 200, retried.body);
+      assert.equal(narrationCalls, beforeWriting + 2, "explicit retry after restart reuses the completed writer");
+      assert.equal(modelCalls, rawCalls + 1, "explicit retry buys only the missing System check");
+    } else assert.equal(replay.statusCode, 200, replay.body);
+    records.clear();
+    for (const [key, value] of clone(retained)) records.set(key, value);
+    semanticIntentAnswer = oldIntent;
+    semanticExchangeAnswer = oldExchange;
+    beforeSemanticResponse = undefined;
+  }
+
   // Preservation boundaries use the real packaged admission, storage and recovery owners.
   {
     const retained = clone(records),
@@ -2195,8 +2294,12 @@ try {
       await reset();
       semanticExchangeAnswer.halt =
         reason === "appointment"
-          ? { reason: "none", quote: "", appointments: [{ date: "2026-10-13", minute: 780, quote: "Hello." }] }
-          : { reason, quote: "two months" };
+          ? {
+              reason: "none",
+              quote: "",
+              appointments: [{ source: "player", date: "2026-10-13", minute: 780, quote: "Hello." }],
+            }
+          : { reason, source: "player", quote: "two months" };
       const before = clone(state()),
         worldBefore = clone(records.get("villages-village").data),
         calls = modelCalls;
@@ -2240,7 +2343,7 @@ try {
       assert.equal(modelCalls, calls + 2, "replay does not regenerate");
     }
     await reset();
-    semanticExchangeAnswer.halt = { reason: "time", quote: "two months" };
+    semanticExchangeAnswer.halt = { reason: "time", source: "player", quote: "two months" };
     const farewell = await app.inject({
       method: "POST",
       url: "/api/villages/rooms/leave",
@@ -2257,7 +2360,7 @@ try {
     assert.deepEqual(state().lines, sourceLines);
     await reset();
     const death = "I start walking away before I slip, hit my head, and die";
-    semanticExchangeAnswer.halt = { reason: "condition", quote: "hit my head, and die" };
+    semanticExchangeAnswer.halt = { reason: "condition", source: "player", quote: "hit my head, and die" };
     answer = {
       playerSpeechCapture: { status: "silent", segments: [] },
       segments: [{ speakerId: "aqua", text: "Go steady." }],
