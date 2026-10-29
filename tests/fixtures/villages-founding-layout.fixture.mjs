@@ -557,6 +557,18 @@ export async function verifyFoundingLayout(group) {
             `Footer retains its place in the form: ${JSON.stringify({ before, footerAfter, initial, after })}`,
           );
           assert.ok(Math.abs(before.height - footerAfter.height) <= 1, "Footer controls retain their height");
+          if (width === 390 && height < 700) {
+            await page.evaluate((offset) => {
+              Object.defineProperty(visualViewport, "offsetTop", { configurable: true, value: offset });
+              visualViewport.dispatchEvent(new Event("scroll"));
+            }, viewport.height - reducedHeight);
+            await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+            await expect(container).toHaveAttribute("data-founding-keyboard", "true");
+            await page.evaluate(() => {
+              delete visualViewport.offsetTop;
+              visualViewport.dispatchEvent(new Event("scroll"));
+            });
+          }
           const reachable = async (control) => {
             await control.focus();
             await expect

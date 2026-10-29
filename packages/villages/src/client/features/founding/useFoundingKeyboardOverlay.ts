@@ -74,7 +74,11 @@ export function useFoundingKeyboardOverlay(root: RefObject<HTMLElement | null>, 
           viewport ? viewport.offsetTop + viewport.height : window.innerHeight,
           keyboard?.boundingRect.height ? keyboard.boundingRect.top : height,
         );
-        const inset = Math.max(0, height - bottom);
+        const inset = Math.max(
+          0,
+          height - (viewport?.height ?? window.innerHeight),
+          keyboard?.boundingRect.height ?? 0,
+        );
         if (inset < 1) {
           if (covered || !node.contains(document.activeElement)) restore();
           return;
