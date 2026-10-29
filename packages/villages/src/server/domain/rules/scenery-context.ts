@@ -1,5 +1,6 @@
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { badRequest } from "./errors.js";
+import { MAX_IMAGE_PROMPT_LENGTH } from "./image-generation-rules.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
 import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
 import { resolveVenueZone } from "./venue-zones.js";
@@ -17,7 +18,7 @@ export function sceneryPrompt(required: string[], optional: string[], style = ""
     .join("\n");
   const preserved = essential.filter(Boolean).join("\n");
   const parts = required.filter(Boolean);
-  const budget = 4000 - framing.length - preserved.length - parts.length - 2;
+  const budget = MAX_IMAGE_PROMPT_LENGTH - framing.length - preserved.length - parts.length - 2;
   if (budget < 0)
     throw badRequest("The complete starting situations do not fit the image prompt. No image was requested.");
   // Keep short scene instructions intact and share the remaining room between long descriptions.
@@ -35,7 +36,8 @@ export function sceneryPrompt(required: string[], optional: string[], style = ""
     framing,
     preserved,
   ].join("\n");
-  for (const part of optional) if (part && prompt.length + part.length + 1 <= 4000) prompt += "\n" + part;
+  for (const part of optional)
+    if (part && prompt.length + part.length + 1 <= MAX_IMAGE_PROMPT_LENGTH) prompt += "\n" + part;
   return prompt;
 }
 export function sceneryCardsContext(
@@ -113,18 +115,7 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     venue.residentIds,
     venue.workerIds,
     venue.imageContext,
-    zone
-      ? [
-          zone.name,
-          zone.purpose,
-          zone.roomSpecification,
-          zone.description,
-          zone.state.condition,
-          zone.state.items,
-          zone.state.publicFacts,
-          zone.image,
-        ]
-      : null,
+    zone ? [zone.name, zone.purpose, zone.roomSpecification, zone.description, zone.image] : null,
   ]);
 }
 

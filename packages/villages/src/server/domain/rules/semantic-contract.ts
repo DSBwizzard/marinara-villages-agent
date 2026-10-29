@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -78,7 +79,7 @@ export function semanticContext(
       ? {
           time: {
             capturedAt: scene.continuity.capturedAt,
-            rule: "Real time between replies does not elapse in this Scene. Interpret the captured moment and its witnessed developments. Live access, stock, Project revisions and conditions still govern writes.",
+            rule: "Real time between replies does not elapse in this Scene. Interpret the captured moment and its witnessed developments. Live authority and revisions still govern writes.",
           },
         }
       : {}),
@@ -144,7 +145,11 @@ export function semanticContext(
             ownerId: zone.ownerId,
             access: zone.access,
             ...(zone.id === scene.zoneId || scene.semanticIntent?.timeline.some((step) => step.zoneId === zone.id)
-              ? { state: venueZones(venue!).find((row) => row.id === zone.id)?.state ?? zone.state }
+              ? {
+                  description: zone.description,
+                  revision: zone.state.revision,
+                  recentContext: recentPlaceText(zone.state, scene.continuity?.capturedAt ?? scene.startedAt),
+                }
               : {}),
           }))
       : [],
@@ -180,7 +185,6 @@ export function semanticContext(
         constructionStatus: row.constructionStatus,
       })),
       residences: state.residences.filter((row) => row.status === "pending"),
-      edits: venue?.editProposals?.filter((row) => !row.declined),
     },
   };
 }
@@ -204,7 +208,7 @@ export function semanticImmediate(value: unknown, lines: readonly VenueReplyLine
     contactEnd: raw.contactEnd.map((row) => source(row)),
     semanticPlayerMoves: raw.playerMoves ?? [],
   };
-  for (const key of ["residenceRequest", "residenceDecision", "venueRequest", "editApproval", "sceneEnded"])
+  for (const key of ["residenceRequest", "residenceDecision", "venueRequest", "sceneEnded"])
     if (raw[key] !== undefined && raw[key] !== null) result[key] = source(raw[key]);
   if (raw.moves.length > 16 || raw.departures.length > 16 || raw.contactEnd.length > 16)
     throw badGateway("System event limit exceeded.");

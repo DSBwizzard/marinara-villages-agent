@@ -29,7 +29,7 @@ async function main() {
     description: "A shared building.",
     presentation: { image: null, x: 0.5, y: 0.5 },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    state: { condition: "standing", furniture: [], publicFacts: [], updatedAt: stamp },
+    state: { revision: 0, recent: null, updatedAt: stamp },
     zones: [
       { ...defaultVenueSpace("community"), id: "exterior", name: "Entrance", kind: "exterior", seen: true },
       { ...defaultVenueSpace("community"), id: "common", name: "Common Space", kind: "public", seen: true },
@@ -70,7 +70,7 @@ async function main() {
     },
   });
   const world = coerceVillageState({
-    version: 6,
+    version: 7,
     ...defaultVillageState(),
     seed: "attendance-fixture",
     foundedAt: stamp,

@@ -8,6 +8,7 @@ import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.
 import { sceneReadyForRetirement, sceneRetirementSourceIsValid } from "../../domain/rules/scene-retirement.js";
 import { SCENE_TERMINAL_KIND } from "./scene-terminal.js";
 import { createHash } from "node:crypto";
+import { releasePhysicalOutcomes } from "../../domain/rules/venue-scene-state.js";
 
 export interface SceneRetirementPorts {
   villagesDocuments(): Pick<CapabilityDocumentStore, "getById" | "list" | "remove" | "update">;
@@ -84,7 +85,10 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
           return true;
         });
         if (!removed) return false;
-        await ports.mutateVillageMemoryState((state) => releaseSceneMemories(state, scene));
+        await ports.mutateVillageMemoryState((state) => {
+          releaseSceneMemories(state, scene);
+          releasePhysicalOutcomes(state, scene.id);
+        });
         await ports.removeInterpretationDiagnostics(id);
         return true;
       }),
@@ -99,6 +103,11 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
       const responses = await ports.villagesDocuments().list(VILLAGES_PACKAGE_ID, "generation-response");
       const memoryState = await ports.readVillageMemoryState();
       const releasable: string[] = [];
+      const physicalScenes = new Set(
+        Object.values(memoryState.exchangeReceipts)
+          .filter((row) => row.domain === "physical" && row.physicalOutcome)
+          .map((row) => row.sceneId),
+      );
       for (const row of terminals) {
         const data = row.data as { version?: unknown; sceneId?: unknown; villageSeed?: unknown };
         if (data.version !== 1 || typeof data.sceneId !== "string" || typeof data.villageSeed !== "string") continue;
@@ -108,11 +117,15 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         if (!terminal || terminal.villageSeed !== data.villageSeed) continue;
         await ports.withLateResponseWork(data.sceneId, () => removeLateResponses(data.sceneId as string, responses));
         await ports.removeInterpretationDiagnostics(data.sceneId);
-        if (memoryState.memoryScenes[data.sceneId]) releasable.push(data.sceneId);
+        if (memoryState.memoryScenes[data.sceneId] || physicalScenes.has(data.sceneId)) releasable.push(data.sceneId);
       }
       if (releasable.length)
         await ports.mutateVillageMemoryState((state) => {
-          if (state.seed === memoryState.seed) for (const id of releasable) delete state.memoryScenes[id];
+          if (state.seed === memoryState.seed)
+            for (const id of releasable) {
+              delete state.memoryScenes[id];
+              releasePhysicalOutcomes(state, id);
+            }
         });
     });
     const records = await ports.villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);

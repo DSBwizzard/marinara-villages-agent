@@ -1,7 +1,7 @@
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { asRecord } from "./coerce.js";
-import { shape } from "./project-structure.js";
+import { structuralShape as shape } from "./project-structure.js";
 import { sceneContinuityView } from "./scene-continuity.js";
 import { wishFingerprint } from "./social-wishes.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
@@ -47,8 +47,8 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
       live = find(current);
     if (!old || !live || wishFingerprint(old) !== wishFingerprint(live)) return true;
   }
-  if (reply.sceneChange) {
-    const change = reply.sceneChange as VenueSceneChange;
+  if (reply.placeUpdate) {
+    const change = reply.placeUpdate as VenueSceneChange;
     const zoneId = String(asRecord(reply.physicalContext).zoneId ?? scene.zoneId ?? "exterior");
     const live = liveVenue && resolveVenueZone(liveVenue, zoneId);
     const old = oldVenue && resolveVenueZone(oldVenue, zoneId);
@@ -73,35 +73,20 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
       workers: zone.kind === "staff" ? [...(venue.workerIds ?? [])].sort() : [],
     });
     if (!same(controllers(liveVenue, live), controllers(oldVenue, old))) return true;
-    // Compare only affected values, not the entire room or Village revision.
-    if (
-      (change.conditionBefore !== undefined && !same(live.state.condition, old.state.condition)) ||
-      (change.featureId &&
-        !same(
-          live.state.features.find((row) => row.id === change.featureId),
-          old.state.features.find((row) => row.id === change.featureId),
-        )) ||
-      (change.publicFactBefore && !live.state.publicFacts.includes(change.publicFactBefore)) ||
-      (change.resolveTraceId &&
-        !same(
-          live.state.traces.find((row) => row.id === change.resolveTraceId),
-          old.state.traces.find((row) => row.id === change.resolveTraceId),
-        ))
-    )
-      return true;
+    if (live.state.revision !== old.state.revision || live.description !== old.description) return true;
     try {
       const copy = { ...current, venues: structuredClone(current.venues) };
       applyVenueSceneChange(
         copy,
         scene.placeId,
         change,
-        "halt-preflight",
+        scene.id,
         scene.startedAt,
         scene.spaceClass,
         scene.area,
         scene.privateOwnerId,
         zoneId,
-        false,
+        reply.physicalContext as import("../../../shared/contracts/place-continuity.js").PlaceEvidence,
       );
     } catch {
       return true;
@@ -182,13 +167,6 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
       )
         return true;
     }
-  }
-  const edit = asRecord(reply.editApprovalSignal);
-  if (edit.proposalId) {
-    const proposal = liveVenue?.editProposals?.find((row) => row.id === edit.proposalId);
-    if (!proposal || proposal.declined || !proposal.requiredIds.includes(String(edit.residentId))) return true;
-    const zone = proposal.zoneId && liveVenue && resolveVenueZone(liveVenue, proposal.zoneId);
-    if (zone && zone.state.updatedAt !== proposal.baseUpdatedAt) return true;
   }
   return false;
 }

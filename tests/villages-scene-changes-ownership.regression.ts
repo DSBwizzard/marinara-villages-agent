@@ -64,7 +64,7 @@ function submission(id: string, sequence: number): VenueSubmission {
 }
 function fixture(name: string) {
   const world = coerceVillageState({
-    version: 6,
+    version: 7,
     ...defaultVillageState(),
     seed: name,
     foundedAt: stamp,
@@ -80,7 +80,7 @@ function fixture(name: string) {
     ],
   });
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "same",
     processingVersion: 1,
     villageSeed: name,

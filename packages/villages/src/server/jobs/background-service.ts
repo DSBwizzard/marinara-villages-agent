@@ -43,7 +43,7 @@ const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
   "villages-background-" + backgroundRevision([work.kind, work.subjectId]);
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);
 export function retireBackgroundResident(state: VillageState, characterId: string): void {
-  for (const kind of ["agenda", "translation", "wish", "adaptation"] as const)
+  for (const kind of ["agenda", "translation", "wish"] as const)
     delete state.backgroundReceipts[slotId({ kind, subjectId: characterId })];
 }
 export interface BackgroundWorkPorts {

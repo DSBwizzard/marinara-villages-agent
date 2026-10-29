@@ -34,7 +34,7 @@ function place(id: string, residentCharacterId: string | null = null): VillageVe
     presentation: { image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId, homeKind: residentCharacterId ? "cottage" : null },
     capabilities: [],
-    state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
+    state: { revision: 0, recent: null, updatedAt: "" },
   } as VillageVenue;
 }
 
@@ -207,7 +207,7 @@ assert.equal(overnight.Monday?.at(-1)?.activity, "Keeping watch");
 assert.equal(overnight.Tuesday?.[0]?.endMinute, 360, "an overnight source continues into the next day");
 const recovered = coerceVillageState({
   ...defaultVillageState(),
-  version: 6,
+  version: 7,
   wishSystemVersion: 3,
   villagers: [
     {
@@ -293,7 +293,7 @@ agenda.activeDay = {
 };
 const captured = captureSceneAttendance(village, "square", beforeSeven);
 const scene = coerceSession({
-  version: 2,
+  version: 3,
   id: "clock-scene",
   placeId: "square",
   status: "active",

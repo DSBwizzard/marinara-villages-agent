@@ -77,7 +77,7 @@ export function draftRenovationProject(
     lifecycle: lifecycle(venueId, change),
   };
   project.lifecycle!.changedZoneIds = changedZoneIds(venue, change);
-  project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds);
+  project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds, change);
   project.lifecycle!.affectedIds = renovationAffectedIds(venue, change, project.lifecycle!.changedZoneIds);
   state.projects.push(project);
   return project;

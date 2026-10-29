@@ -108,9 +108,7 @@ export function movedAttentionContacts(venue: VillageVenue, before: VenueScene, 
   const neighbors = contactNeighbors(venue, after.zoneId ?? "exterior", after);
   const contacts = (before.doorwayContacts ?? []).filter(
     (entry) =>
-      entry.delivery !== "device" &&
-      entry.playerZoneId === before.zoneId &&
-      contactPosition(before, entry.characterId) === entry.characterZoneId,
+      entry.playerZoneId === before.zoneId && contactPosition(before, entry.characterId) === entry.characterZoneId,
   );
   const speakerId = latestAttentionSpeaker(before);
   if (speakerId && before.activeIds.includes(speakerId) && !contacts.some((entry) => entry.characterId === speakerId)) {

@@ -23,7 +23,7 @@ import { validateProjectSpeech } from "../packages/villages/src/server/domain/ru
 await runCase("scene-retirement/eligibility", () => {
   const world = defaultVillageState();
   world.seed = "test-village";
-  const closed = coerceSession({ version: 2, id: "scene", villageSeed: world.seed, status: "closed" });
+  const closed = coerceSession({ version: 3, id: "scene", villageSeed: world.seed, status: "closed" });
   assert.equal(sceneRetirementSourceIsValid(closed), true);
   assert.equal(
     sceneRetirementSourceIsValid({ ...closed, submissions: [{ id: "turn", processing: { version: 99 } }] }),
@@ -95,7 +95,7 @@ await runCase("scene-retirement/eligibility", () => {
 await runCase("scene-retirement/project-evidence", () => {
   const stamp = "2026-10-27T12:00:00.000Z";
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     villageSeed: "world",
     status: "closed",
@@ -178,7 +178,7 @@ await runCase("scene-retirement/project-citations", () => {
     content: i === 80 ? "I’ll lead the work and I agree to the plan." : `Line ${i}`,
   }));
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     villageSeed: "world",
     status: "closed",
@@ -237,7 +237,7 @@ await runCase("scene-retirement/evidence-window", async () => {
   for (let i = 0; i < 25; i++) {
     const stamp = new Date(Date.UTC(2026, 9, 1 + i)).toISOString();
     await index.save(
-      coerceSession({ version: 2, id: `s${i}`, villageSeed: "world", status: "closed", startedAt: stamp }),
+      coerceSession({ version: 3, id: `s${i}`, villageSeed: "world", status: "closed", startedAt: stamp }),
       1,
     );
   }
@@ -246,14 +246,14 @@ await runCase("scene-retirement/evidence-window", async () => {
   assert.equal(scenes[0].id, "s24");
   assert.equal(scenes.at(-1)?.id, "s5");
   await index.save(
-    coerceSession({ id: "s24", villageSeed: "world", status: "closed", startedAt: scenes[0].startedAt }),
+    coerceSession({ version: 3, id: "s24", villageSeed: "world", status: "closed", startedAt: scenes[0].startedAt }),
     3,
   );
   await assert.rejects(() => index.save(scenes[0], 2), /source changed/);
   assert.equal((await index.read("world"))[0].id, "s24");
   assert.deepEqual(await index.read("another-world"), []);
   await assert.rejects(
-    () => index.save(coerceSession({ id: "other", villageSeed: "another-world", status: "closed" }), 1),
+    () => index.save(coerceSession({ version: 3, id: "other", villageSeed: "another-world", status: "closed" }), 1),
     /Village changed/,
   );
   const corrupted = data as { scenes: { scene: { placeName: string } }[] };
@@ -264,7 +264,7 @@ await runCase("scene-retirement/evidence-window", async () => {
 
 await runCase("scene-retirement/terminal", () => {
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     villageSeed: "world",
     status: "closed",
@@ -335,7 +335,7 @@ await runCase("scene-retirement/terminal", () => {
 
 await runCase("scene-retirement/operation-status", async () => {
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     villageSeed: "world",
     status: "closed",
@@ -364,7 +364,7 @@ await runCase("scene-retirement/notice-dismissal", async () => {
   const world = defaultVillageState();
   world.seed = "world";
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     villageSeed: "world",
     status: "closed",
@@ -394,8 +394,26 @@ await runCase("scene-retirement/notice-dismissal", async () => {
 await runCase("scene-retirement/publication", async () => {
   const world = defaultVillageState();
   world.seed = "world";
-  const scene = coerceSession({ version: 2, id: "scene", villageSeed: "world", status: "closed" });
+  const scene = coerceSession({ version: 3, id: "scene", villageSeed: "world", status: "closed" });
   const revision = 1;
+  world.exchangeReceipts["venue-chat:scene:turn"] = {
+    id: "venue-chat:scene:turn",
+    sceneId: "scene",
+    submissionId: "turn",
+    domain: "physical",
+    at: "2026-10-28T12:00:00.000Z",
+    status: "applied",
+    evidenceIds: [],
+    reason: "Saved",
+    physicalOutcome: {
+      id: "venue-chat:scene:turn",
+      venueId: "cafe",
+      venueName: "Cafe",
+      text: "Shelves installed",
+      at: "2026-10-28T12:00:00.000Z",
+    },
+  };
+  const proof = () => world.exchangeReceipts["venue-chat:scene:turn"];
   let present = true;
   let failEvidence = false;
   let active = "";
@@ -465,21 +483,41 @@ await runCase("scene-retirement/publication", async () => {
   sceneConflict = true;
   assert.equal(await service.retire("scene"), false);
   assert.equal(present, true, "a Scene revision conflict keeps the Scene");
+  assert.ok(proof().physicalOutcome, "failed retirement retains frozen Scene replay proof");
   assert.equal(responsePresent, true, "the purchased late response remains recoverable");
   sceneConflict = false;
   calls.length = 0;
   assert.equal(await service.retire("scene"), true);
   assert.deepEqual(calls, ["evidence", "receipt", "remove", "remove-late", "diagnostics"]);
   assert.equal(present, false);
+  assert.equal(proof().physicalOutcome, undefined, "actual retirement releases full physical payload");
+  assert.equal(proof().status, "applied", "replay protection survives retirement");
 });
 
 await runCase("scene-retirement/restart-cleanup", async () => {
   const world = defaultVillageState();
   world.seed = "world";
   const terminal = terminalForScene(
-    coerceSession({ version: 2, id: "scene", villageSeed: "world", status: "closed" }),
+    coerceSession({ version: 3, id: "scene", villageSeed: "world", status: "closed" }),
     1,
   );
+  world.exchangeReceipts["venue-chat:scene:turn"] = {
+    id: "venue-chat:scene:turn",
+    sceneId: "scene",
+    submissionId: "turn",
+    domain: "physical",
+    at: "2026-10-28T12:00:00.000Z",
+    status: "applied",
+    evidenceIds: [],
+    reason: "Saved",
+    physicalOutcome: {
+      id: "venue-chat:scene:turn",
+      venueId: "cafe",
+      venueName: "Cafe",
+      text: "Shelves installed",
+      at: "2026-10-28T12:00:00.000Z",
+    },
+  };
   let diagnosticExists = true,
     fail = true,
     responseExists = true;
@@ -529,6 +567,11 @@ await runCase("scene-retirement/restart-cleanup", async () => {
   fail = false;
   await service.retireSettled();
   assert.equal(diagnosticExists, false, "restart retries diagnostics after source deletion");
+  assert.equal(
+    world.exchangeReceipts["venue-chat:scene:turn"].physicalOutcome,
+    undefined,
+    "terminal cleanup releases physical proof even without a Memory reservation",
+  );
 });
 
 await runCase("scene-retirement/fence", async () => {

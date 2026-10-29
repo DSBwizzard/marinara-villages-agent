@@ -28,14 +28,7 @@ export function venueSpaceFor(
       venueClass,
       description: place.description,
       image: place.presentation.image,
-      state: {
-        condition: place.state.condition,
-        items: place.state.furniture,
-        publicFacts: place.state.publicFacts,
-        features: place.state.features ?? [],
-        traces: place.state.traces ?? [],
-        updatedAt: place.state.updatedAt,
-      },
+      state: place.state,
     }
   );
 }

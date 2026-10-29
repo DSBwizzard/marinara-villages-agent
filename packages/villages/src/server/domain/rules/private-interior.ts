@@ -5,15 +5,19 @@ export function isPrivateInterior(zone: Pick<VillageVenueZone, "kind">): boolean
   return ["private-residence", "staff", "restricted"].includes(zone.kind);
 }
 
-/** Physical appearance only: Features and bookkeeping never request a redraw. */
+/** Physical prose only; administrative revisions never request a redraw. */
 export function privateInteriorKey(zone: Pick<VillageVenueZone, "description" | "state">): string {
-  return JSON.stringify([zone.description, zone.state.condition, zone.state.items, zone.state.publicFacts]);
+  return JSON.stringify([zone.description]);
 }
 
-export function observePrivateInterior(zone: VillageVenueZone, observedAt: string): void {
+export function observePrivateInterior(
+  zone: VillageVenueZone,
+  observedAt: string,
+  observed: Pick<VillageVenueZone, "description" | "state"> = zone,
+): void {
   zone.seen = true;
   if (!isPrivateInterior(zone)) return;
-  zone.lastObserved = { description: zone.description, state: structuredClone(zone.state), observedAt };
+  zone.lastObserved = { description: observed.description, state: structuredClone(observed.state), observedAt };
 }
 
 /** Finishing changes constraints; preparation reconciles the saved interior once. */

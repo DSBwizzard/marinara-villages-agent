@@ -45,8 +45,7 @@ export function openingRenovationFingerprint(venues: readonly VillageVenue[], te
         space.ownerId,
         space.controllerIds,
         space.description,
-        space.state.condition,
-        space.state.features,
+        space.state.revision,
       ]),
     )
     .digest("hex");

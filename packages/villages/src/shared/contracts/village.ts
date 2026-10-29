@@ -86,7 +86,6 @@ export type BackgroundWork = {
     | "wish"
     | "personal-mail"
     | "social-recovery"
-    | "adaptation"
     | "starting-ties"
     | "schedule-influence";
   subjectId: string;
@@ -121,7 +120,7 @@ export type ReturnCatchupView = {
 };
 
 export type VillageSnapshot = {
-  sceneChanges?: { sceneId: string; revision: string };
+  placeUpdates?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
   opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;
@@ -392,14 +391,7 @@ export type VillageVenue = {
     freezePicture?: boolean;
     pictureRetryAvailable?: boolean;
     image: VillageVenueImage | null;
-    state: {
-      condition: string;
-      items: string[];
-      publicFacts: string[];
-      features: NonNullable<VillageVenue["state"]["features"]>;
-      traces: NonNullable<VillageVenue["state"]["traces"]>;
-      updatedAt: string;
-    };
+    state: import("./place-continuity.js").PlaceContinuity;
   }>;
   residenceCapacity?: number;
   residentIds?: string[];
@@ -420,21 +412,9 @@ export type VillageVenue = {
       access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
       accessView?: import("../helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
-      adaptationPending?: boolean;
       initialImageAttemptedAt?: string;
     }
   >;
-  editProposals?: Array<{
-    id: string;
-    target: "shared" | "private";
-    privateSpaceId?: string;
-    zoneId?: string;
-    ownerId: string;
-    proposed: NonNullable<VillageVenue["spaces"]>[number];
-    requiredIds: string[];
-    approvedIds: string[];
-    declined: boolean;
-  }>;
   playerSeenShared?: boolean;
   playerSeenPublic?: boolean;
   playerSeenPrivateIds?: string[];
@@ -453,14 +433,7 @@ export type VillageVenue = {
   };
   capabilities: string[];
   workerIds?: string[];
-  state: {
-    condition: string;
-    furniture: string[];
-    publicFacts: string[];
-    features?: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-    traces?: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-    updatedAt: string;
-  };
+  state: import("./place-continuity.js").PlaceContinuity;
 };
 
 /**
@@ -744,7 +717,7 @@ export type RoomLine = {
   viaDoorway?: boolean;
   /** Local cast after this line's completed movement; never unseen Zone attendance. */
   physicalIdsAfter?: string[];
-  remoteDelivery?: "loud" | "device";
+  remoteDelivery?: "loud";
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
   beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";

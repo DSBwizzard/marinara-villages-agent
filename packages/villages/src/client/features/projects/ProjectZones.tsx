@@ -122,7 +122,7 @@ export function ProjectZones({
         ...zone,
         access: draftZonePolicy(venue, zone, personal),
         image: null,
-        state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+        state: { revision: 0, updatedAt: "", recent: null },
       };
       setNewRows(
         personal ? (venue.spaces ?? []) : [...(venue.spaces ?? []), area],
@@ -308,7 +308,7 @@ export function ProjectZones({
                       autoComplete="off"
                       aria-label="Room Specification"
                       rows={4}
-                      maxLength={1000}
+                      maxLength={4000}
                       value={selected.roomSpecification ?? ""}
                       onChange={(event) => patch({ roomSpecification: event.target.value })}
                     />
@@ -320,7 +320,7 @@ export function ProjectZones({
                       autoComplete="off"
                       aria-label="Zone Appearance"
                       rows={4}
-                      maxLength={1000}
+                      maxLength={4000}
                       value={selected.description}
                       onChange={(event) => patch({ description: event.target.value })}
                     />

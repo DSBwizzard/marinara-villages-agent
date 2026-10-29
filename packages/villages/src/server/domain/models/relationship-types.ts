@@ -147,6 +147,11 @@ export type SocialPlan = {
   status: "planned" | "completed" | "cancelled";
 };
 export type SocialEncounter = {
+  placeUpdate?: import("../../../shared/contracts/place-continuity.js").PlaceUpdate | null;
+  physicalContext?: import("../../../shared/contracts/place-continuity.js").PlaceEvidence & {
+    zoneId: string;
+    segment: number;
+  };
   wishChanges?: unknown[];
   semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   memoryChanges?: unknown;

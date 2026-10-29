@@ -63,7 +63,7 @@ function commandFixture(
     notice: { id: "same-notice", kind: "venue", text: label + " saved effect" },
   };
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "same-scene",
     villageSeed: world.seed,
     placeId: "same-place",
@@ -238,7 +238,7 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
         id: "villages-venue-visit-same",
         revision: 1,
         data: {
-          version: 2,
+          version: 3,
           id: "same",
           placeId: "same-place",
           placeName: name,

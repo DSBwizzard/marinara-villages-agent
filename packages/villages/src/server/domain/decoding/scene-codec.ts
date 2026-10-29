@@ -36,7 +36,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   const raw = asRecord(value),
     facts = asRecord(raw.facts);
   if (
-    raw.version !== 2 ||
+    raw.version !== 3 ||
     typeof raw.seed !== "string" ||
     facts.seed !== raw.seed ||
     typeof raw.capturedAt !== "string" ||
@@ -49,7 +49,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   // This is an already-captured projection, not an old world to migrate.
   const decoded = coerceVillageState({
     ...facts,
-    version: 6,
+    version: 7,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
   });
@@ -59,7 +59,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     sceneContinuityFields.map((key) => [key, decoded[key]]),
   ) as SceneContinuity["facts"];
   return {
-    version: 2,
+    version: 3,
     seed: raw.seed,
     capturedAt: raw.capturedAt,
     receiptIds: [...raw.receiptIds] as string[],
@@ -69,6 +69,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
 
 export function coerceSession(value: unknown): VenueScene {
   const raw = savedVenueClassRecord(value);
+  if (raw.version !== 3) throw conflict("Unsupported Scene format. Its saved data is preserved.");
   if (
     raw.spinoff &&
     (typeof raw.spinoff !== "object" ||
@@ -116,7 +117,7 @@ export function coerceSession(value: unknown): VenueScene {
                   ],
                 }
               : {}),
-            ...(row.remoteDelivery === "loud" || row.remoteDelivery === "device"
+            ...(row.remoteDelivery === "loud"
               ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
               : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
@@ -158,7 +159,7 @@ export function coerceSession(value: unknown): VenueScene {
         .filter((line) => line.id && line.content)
     : [];
   return {
-    version: 2,
+    version: 3,
     ...(raw.spinoff ? { spinoff: structuredClone(raw.spinoff) as VenueScene["spinoff"] } : {}),
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
@@ -468,7 +469,7 @@ export function coerceSession(value: unknown): VenueScene {
               wishMemory: asString(row.wishMemory),
               ...(row.action ? { action: row.action as VenueActionResult } : {}),
               ...(row.actionReplyDone === true ? { actionReplyDone: true } : {}),
-              ...(row.sceneChange ? { sceneChange: row.sceneChange as VenueSceneChange } : {}),
+              ...(row.placeUpdate ? { placeUpdate: row.placeUpdate as VenueSceneChange } : {}),
               ...(row.residenceSignal
                 ? { residenceSignal: row.residenceSignal as VenueSubmission["residenceSignal"] }
                 : {}),
@@ -480,9 +481,6 @@ export function coerceSession(value: unknown): VenueScene {
                 : {}),
               ...(Array.isArray(row.accessEvents)
                 ? { accessEvents: structuredClone(row.accessEvents).slice(0, 64) as SavedAccessEvent[] }
-                : {}),
-              ...(row.editApprovalSignal
-                ? { editApprovalSignal: row.editApprovalSignal as VenueSubmission["editApprovalSignal"] }
                 : {}),
               ...(row.semanticReady === true ? { semanticReady: true } : {}),
               ...(Array.isArray(row.semanticContinuedDomains)

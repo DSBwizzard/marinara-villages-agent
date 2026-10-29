@@ -71,6 +71,10 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 
 A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In founding or the Venue's **Zones** page, drag the Zones to arrange them without overlap. Managers can choose their connections; drawing distance changes neither movement nor sound. Browse a Venue to see what is known about it, then choose **Visit** to enter.
 
+Each Zone, including the Entrance, keeps one current description. Physical changes belong to Projects, evidenced gameplay, or **REPAIR**. Small unfinished physical work can remain in that description: shelves waiting for brackets are different from a promise to build shelves, which belongs in Memories. Completed work updates the same account while preserving unrelated details. There is no separate Features list or possession inventory.
+
+A Zone can also retain one short recent arrangement, such as cups left after tea. It fades after about a Village day. Unrelated new activity does not extend that window; deliberately maintaining the whole arrangement can renew it. Looking at a place or mentioning it does not refresh it. Ordinary temporary use requires valid access; enduring alterations also need evidenced authority over that Zone. Already scheduled resident encounters use the same rules without a new activity scheduler. A residence move changes who lives there and who controls access; it does not automatically rewrite the room or transport belongings.
+
 Entering a private space requires permission. Knowing that a room exists, being friends with someone, or hearing a sound from it does not grant access or reveal its contents. An invitation permits entry; use **Move** when you want to go there. The [Venue and Zone reference](venue-zones.md) covers detailed access and sound rules.
 
 On a phone, use portrait orientation. Places opens as a drawer, and Venue editing opens as a sheet.
@@ -128,6 +132,8 @@ Open **REPAIR** from the main menu. Choose **Memories**, **People**, **Places**,
 
 Edit a record, then use **Review changes** to check **Before / After** and **Affected records** before saving. **Modify** edits a memory's text. **Forget** shows the saved memory as read-only text and lets you select who forgets it; **Review forgetting** shows the effect before saving. Switching back to Modify keeps your unfinished edit. Memory changes apply only to selected people who already know the detail; the review shows each person's current wording. A memory about someone does not give that person knowledge of it. **Add memory** shows the new text and who will remember it, with the source recorded as **Added by you**. Physical facts, access, character context, relationships and authoritative progress have separate editors. Historical Scene corrections are annotations. Saved-effect recovery replays retained work without requesting new model responses.
 
+**Places → Zone** edits the current description and recent context, and can clear or deliberately renew that context. Undo restores the earlier expiry rather than starting another day. Corrections do not invent actions, consent, or character knowledge.
+
 **Repair history** keeps the changes and offers **Review undo** where a safe inverse is available. Undo refuses to overwrite later changes to affected records. Consequential repairs save a checkpoint automatically; you can also name a manual checkpoint. Checkpoints retain independent copies of saved world data. Restoration has its own review and saves the current world first. Current time, spending and replay protection remain current, so elapsed Projects may complete when play resumes.
 
 Opening REPAIR and applying ordinary corrections preserve your unfinished Scene, captured context, and drafts. Whole-world restoration requires the current Scene and pending recovery work to be settled. A restored checkpoint can reopen its saved idle Scene with its frozen context; a draft from another Scene remains available to copy.
@@ -138,7 +144,7 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 
 The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
 
-This refactor uses Village format 6. An unfounded format-5 record containing only setup settings can continue; records with residents, venues, history, pending work, or retired Wishes/Mailbox data remain stored and are rejected without conversion.
+This build requires a fresh format-7 Village. Older worlds and setup records remain stored and are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
@@ -158,7 +164,7 @@ A Venue supports up to six non-Entrance Zones, two Classes, and four residents. 
 
 Scene navigation can open the map; **Return to Scene** restores your draft. Conclude the current Scene before starting another.
 
-Scenery styles apply to future pictures. Zone artwork shows the space as known through an authorized visit; artwork does not create gameplay facts. First discovery of a private space can request one picture. A failed picture does not automatically retry; later regeneration is deliberate.
+Zone artwork follows the durable description; incidental recent arrangements do not trigger redraws. Scenery styles apply to future pictures. Zone artwork shows the space as known through an authorized visit; artwork does not create gameplay facts. First discovery of a private space can request one picture. A failed picture does not automatically retry; later regeneration is deliberate.
 
 Sprite setup lets you choose expressions, facing, inclusion, defaults, and framing. **Add without sprites** remains available. Analysis uses the vision connection you choose and saves completed suggestions as it goes. Review the set and choose **Add villager with sprites** or **Use sprites** to accept it. Closing the editor or saving framing does not approve the set.
 
@@ -205,6 +211,6 @@ In **General Settings**, choose your connections. **Writing Settings** control p
 
 **Send on Enter** defaults Off. Normally, Enter adds a newline. When enabled, Enter sends and Shift+Enter adds a newline.
 
-Progress saves as you play, and refresh restores it. The current test build uses **Village format 6** and **Scene format 2**. Empty, unfounded format-5 setup records retain their settings and lorebook selection; ordinary saves persist the current format. Played format-5 worlds and earlier formats require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
+Progress saves as you play, and refresh restores it. The current test build uses **Village format 7** and **Scene format 3**. Older worlds, setup records, Scenes and checkpoints require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
 
 Installed package files remain on the Marinara server, but model-driven play still needs a working connection to your configured provider. Before changing or removing a test installation, arrange a backup and confirm how to keep its world with the server operator. **Reset the village and start over** is a separate destructive action.

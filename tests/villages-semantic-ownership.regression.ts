@@ -97,7 +97,7 @@ async function main() {
       staging: { prose: "render-only ".repeat(80) },
     }));
     const historyScene = {
-      version: 2,
+      version: 3,
       id: "supper",
       activeIds: ["a", "b", "c"],
       lines: rows,
@@ -219,7 +219,7 @@ async function main() {
   const state = defaultVillageState();
   state.seed = "synthetic-semantic";
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     placeId: "none",
     status: "active",
@@ -650,7 +650,6 @@ async function main() {
         movement: false,
         residences: false,
         residenceDecision: false,
-        editApproval: false,
       },
     }),
     venueSavedCheckpoint: () => capturedWriting as any,
@@ -746,7 +745,7 @@ async function main() {
     "Code retains exact saved speech without asking the checker to reconstruct the pitch",
   );
   const savedIndexed = coerceSession({
-    version: 2,
+    version: 3,
     ...scene,
     submissions: [
       {
@@ -1071,7 +1070,6 @@ async function main() {
             movement: false,
             residences: false,
             residenceDecision: false,
-            editApproval: false,
           },
         }),
         semantic: {
@@ -1133,7 +1131,7 @@ async function main() {
   assert.throws(() => continueSemanticDomain(turn, "wishes"), /Only a failed/);
   assert.equal(semanticBlocker(pendingScene), "Updates pending.");
   assert.equal(
-    coerceSession({ version: 2, ...scene, semanticVersion: undefined }).semanticVersion,
+    coerceSession({ version: 3, ...scene, semanticVersion: undefined }).semanticVersion,
     undefined,
     "legacy Scenes are not upgraded on read",
   );
@@ -1890,7 +1888,6 @@ async function main() {
         movement: false,
         residences: false,
         residenceDecision: false,
-        editApproval: false,
       },
     }),
   });
@@ -2008,7 +2005,7 @@ async function main() {
   calls.length = 0;
   await actionWriter.generate(actionScene, "A quiet conversation", "chat", "", null);
   const decodedReceipt = coerceSession({
-    version: 2,
+    version: 3,
     ...actionScene,
     submissions: [{ id: "saved", residentActionReceipt: actionResult.residentActionReceipt }],
   }).submissions[0]!.residentActionReceipt;
@@ -2029,7 +2026,6 @@ async function main() {
         movement: false,
         residences: false,
         residenceDecision: false,
-        editApproval: false,
       },
     }),
   }).generate(actionScene, "A quiet conversation", "chat", "", null);
@@ -2367,7 +2363,7 @@ async function main() {
       },
     ] as any;
     const requestScene = coerceSession({
-      version: 2,
+      version: 3,
       id: "request-roster",
       placeId: "house",
       placeName: "House",

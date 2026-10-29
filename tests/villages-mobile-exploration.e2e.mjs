@@ -58,7 +58,7 @@ const place = (id, x, y) => ({
   capabilities: [],
   presentation: { mapId: "map-house", image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-  state: { condition: "sound", furniture: [], publicFacts: [], updatedAt: now },
+  state: { revision: 0, recent: null, updatedAt: now },
 });
 const snapshot = {
   status: "ready",

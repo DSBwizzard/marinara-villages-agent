@@ -409,7 +409,7 @@ export function personalSpaceDraft(): PrivateDraft {
     venueClass: "residence",
     description: "",
     image: null,
-    state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+    state: { revision: 0, updatedAt: "", recent: null },
   };
 }
 export function PrivateSpaceFields({

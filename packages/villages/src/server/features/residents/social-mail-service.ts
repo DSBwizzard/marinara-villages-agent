@@ -373,6 +373,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     const at = input.sourceAt,
       submissionId = semanticHash([input.messageId, bundle]).slice(0, 24);
     const scene = coerceSession({
+      version: 3,
       id: "offscreen:mail:" + input.sourceHash.slice(0, 24),
       villageSeed: input.seed,
       status: "closed",

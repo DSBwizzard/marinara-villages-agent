@@ -89,6 +89,7 @@ await runCase("social-wishes/source", () => {
     reason: "They have the actual desired conversation.",
   });
   const scene = coerceSession({
+    version: 3,
     id: "s0",
     villageSeed: sequenced.seed,
     lines: [],
@@ -309,6 +310,7 @@ await runCase("social-wishes/conditions", () => {
 await runCase("social-wishes/continuity", () => {
   const world = wishWorld();
   const scene = coerceSession({
+    version: 3,
     id: "scene",
     villageSeed: world.seed,
     startedAt: wishTime(),

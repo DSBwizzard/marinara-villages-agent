@@ -52,7 +52,7 @@ export function venue(id = "cafe", role: "community" | "residence" = "community"
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { mapId: "map-projects", image: null, x: 0.2, y: 0.2 },
     capabilities: [],
-    state: { condition: "", furniture: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+    state: { revision: 0, recent: null, updatedAt: "" },
   };
   initializeVenueAccess(result);
   result.access!.managerIds = ["a"];

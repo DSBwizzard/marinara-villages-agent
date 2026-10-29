@@ -167,7 +167,6 @@ export type VenueViewZone = {
   locked: boolean;
   canEnter: boolean;
   accessLabel: string;
-  adaptationPending?: boolean;
 };
 
 /** One pin drawn over the town map. */

@@ -86,6 +86,8 @@ async function seed(f: ReturnType<typeof fixture>, count = 1) {
     at: memoryTime(),
     evidenceIds: [],
     reason: "global-gallery:physical-owner",
+    committedAt: memoryTime(),
+    status: "applied",
   };
   reserveMemoryScene(s, "frozen", memoryTime());
   await f.repository.mutateAuthority(

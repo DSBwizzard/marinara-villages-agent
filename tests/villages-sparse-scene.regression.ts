@@ -201,7 +201,6 @@ const unavailable = {
   movement: false,
   residences: false,
   residenceDecision: false,
-  editApproval: false,
 };
 const minimal = compactSceneContract(context, unavailable).join("\n");
 assert.doesNotMatch(
@@ -211,18 +210,18 @@ assert.doesNotMatch(
 assert.match(minimal, /venueRequest/, "spontaneous available proposals survive ordinary conversation");
 const full = compactSceneContract(
   { ...context, wishes: true, projects: true, invitationZones: "common" },
-  { management: true, movement: true, residences: true, residenceDecision: true, editApproval: true },
+  { management: true, movement: true, residences: true, residenceDecision: true },
 ).join("\n");
 assert.match(full, /wishChanges/);
 assert.match(full, /projectSpeech/);
 assert.match(full, /manage-access/);
 assert.match(full, /residenceRequest/);
-assert.match(full, /editApproval/);
+assert.doesNotMatch(full, /editApproval/);
 // Mechanical budget excludes authored cards, writing guidance, world facts and history.
 // All capabilities remain described; compaction cannot trade away their availability.
 const reliableFull = reliableSceneContract(
   { ...context, residentControlled: true, staging: true, wishes: true, projects: true, invitationZones: "common" },
-  { management: true, movement: true, residences: true, residenceDecision: true, editApproval: true },
+  { management: true, movement: true, residences: true, residenceDecision: true },
 ).join("\n");
 assert(
   reliableFull.length + PLAYER_CAPTURE_CONTRACT.length <= 8000,
@@ -235,7 +234,6 @@ for (const field of [
   "manage-access",
   "residenceRequest",
   "residenceDecision",
-  "editApproval",
   "sound",
   "relationshipChanges",
   "memoryChanges",
@@ -473,11 +471,16 @@ for (const supplied of [
   ]) {
     const core = {
       segments: [{ kind: "dialogue", speakerId: "rosa", text: "I will bluff if I please." }],
-      sceneChange: { happened: true, narration: "The stone moves." },
+      placeUpdate: {
+        happened: true,
+        narration: "The stone moves.",
+        expectedRevision: 0,
+        recent: { text: "A stone beside the wall." },
+      },
     };
     const result = normalizeRecoverableSceneReply({ ...core, [field]: "malformed" });
     assert.deepEqual(result.raw.segments, core.segments);
-    assert.deepEqual(result.raw.sceneChange, core.sceneChange);
+    assert.deepEqual(result.raw.placeUpdate, core.placeUpdate);
     assert.equal(result.failures[domain as keyof typeof result.failures]?.kind, "metadata");
     assert.equal(result.raw[field], undefined);
     assert.equal((result.failures[domain as keyof typeof result.failures]?.proposal as any)[field], "malformed");

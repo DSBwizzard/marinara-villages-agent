@@ -5,7 +5,7 @@ import { REPAIR_STYLES } from "./repair-styles.js";
 const topics: { id: RepairTopic; name: string; description: string }[] = [
   { id: "memories", name: "Memories", description: "Edit, add, or forget a memory." },
   { id: "people", name: "People", description: "Villagers, their memories, and character details." },
-  { id: "places", name: "Places", description: "Venues, Zones, objects, homes, and access." },
+  { id: "places", name: "Places", description: "Venues, Zones, homes, and access." },
   { id: "world", name: "World & history", description: "Setting, founding details, and Scene corrections." },
   { id: "progress", name: "Progress", description: "Wishes, Projects, Pursuits, and saved work." },
   { id: "restore", name: "Backups & repairs", description: "Review repairs, undo, or restore a checkpoint." },

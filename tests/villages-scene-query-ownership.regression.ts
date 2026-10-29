@@ -58,7 +58,7 @@ function turn(id: string, extra: Partial<VenueSubmission> = {}): VenueSubmission
 }
 function scene(id = "same", name = "A Venue"): VenueScene {
   return coerceSession({
-    version: 2,
+    version: 3,
     id,
     placeId: "venue",
     placeName: name,
@@ -88,7 +88,7 @@ function ownedScene(owner: string): VenueScene {
 }
 function fixture(name: string) {
   const world = coerceVillageState({
-    version: 6,
+    version: 7,
     ...defaultVillageState(),
     seed: name,
     foundedAt: stamp,

@@ -305,14 +305,11 @@ import {
   configureResidences,
   decideVillageResidence,
   proposeVillageResidence,
-  retryResidencePrivateSpaceAdaptation,
 } from "../features/venues/residences.js";
 import { assertVenueImageAccess, configureVenueCommands, setVillageVenueImage } from "../features/venues/services.js";
 import { createVenueRequests } from "../features/venues/venue-request-service.js";
 import { configureVenueRequests, queueVillageVenueRequest } from "../features/venues/venue-requests.js";
 import { createVenueCommands } from "../features/venues/venue-service.js";
-import { createVenueZoneEdits } from "../features/venues/zone-edit-service.js";
-import { applyResidenceEditApproval, configureVenueZoneEdits } from "../features/venues/zone-edits.js";
 import { createVillageSnapshot } from "../features/world/snapshot-service.js";
 import { buildVillageSnapshot, configureVillageSnapshot } from "../features/world/snapshot.js";
 import { createWorldCoordination } from "../features/world/village-service.js";
@@ -806,7 +803,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       readVillageSnapshot: readVillageMemorySnapshot,
       readVillageState: readVillageMemoryState,
       queueVillageVenueRequest,
-      applyResidenceEditApproval,
     }),
   );
   const releaseSceneProgress = configureSceneProgress(
@@ -922,18 +918,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     readNativeScheduleSnapshot,
   });
   const releaseResidentAgendas = configureResidentAgendas(residentAgendas);
-  const residences = createResidences({
-    readVillageState,
-    mutateVillageState,
-    buildVillageSnapshot,
-    outsideVenueOperation: operations.outsideVenueOperation,
-    preparePrivateSpaces,
-    readVillageLore,
-    queueBackgroundJob,
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-  });
+  const residences = createResidences({ mutateVillageState, buildVillageSnapshot });
   const releaseResidences = configureResidences(residences);
   const releasePersonaCache = configurePersonaCache(
     createPersonaCache({ readVillageState, mutateVillageState, findPlayerPersona }),
@@ -1065,9 +1050,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesLogger,
     }),
   );
-  const releaseZoneEdits = configureVenueZoneEdits(
-    createVenueZoneEdits({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
-  );
   const releaseFoundingSuggestions = configureFoundingSuggestions(
     createFoundingSuggestions({
       villagesDocuments,
@@ -1136,7 +1118,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     villagesLogger,
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
-    retryResidencePrivateSpaceAdaptation,
     backfillAgendas,
     refreshVillagerRemaps,
     preparePrivateSpaces,
@@ -1171,7 +1152,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["personal-mail", personalMail.handler],
         ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
-        ["adaptation", bindActivationService(residences.adaptationBackgroundHandler)],
         ["resident-planning", bindActivationService(residentPlanning.handler)],
       ],
     }),
@@ -1241,7 +1221,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseInterpretationSettings();
     releaseFoundingSuggestions();
     releaseTownMap();
-    releaseZoneEdits();
     releaseSignatures();
     releaseSprites();
     releaseSpriteSetup();

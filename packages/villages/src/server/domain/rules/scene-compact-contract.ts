@@ -1,4 +1,5 @@
 import type { VenueScene } from "../models/scene-model.js";
+import { PLACE_UPDATE_INSTRUCTION } from "./zone-continuity.js";
 import type { VillageState } from "../models/world.js";
 import { accessManagementPrompt } from "./access-speech.js";
 import { conflict } from "./errors.js";
@@ -17,7 +18,6 @@ export type SceneWritingCapabilities = {
   movement: boolean;
   residences: boolean;
   residenceDecision: boolean;
-  editApproval: boolean;
 };
 
 export function compactSceneContract(c: VenueResponseContext, capabilities: SceneWritingCapabilities): string[] {
@@ -43,18 +43,13 @@ ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
     capabilities.management
       ? `Optional roomEvents may include {kind:"manage-access",actorId,venueId,evidence:[],command:{action,zoneId,...}} for actual explicit management speech. Actions: zone-policy with complete policy; venue-policy with managerIds/visitorHours; lift-ban with banId; exception with permissionId/banIds; revoke with permissionId; destinations with visitorId and home/sleep/work Zone IDs. Use listed authority/IDs, retain unchanged fields, zoneId:null means Venue. No operationId/expectedRevision/sceneId. Guest entry or suggestions change no policy.`
       : "",
-    c.conversational
-      ? `Resolve submitted local physical attempts in this reply. sceneChange:{happened:true,narration,conditionBefore,conditionAfter,featureId,featureText,publicFactBefore,publicFactAfter,resolveTraceId,addItem,removeItem,transferTo,traceKind,traceText,recipientId,sceneNote}. Omit unused fields. Replacements need exact old IDs/values; conditionAfter is complete. Pickups/handoffs remove listed inventory; transferTo is player or physically present resident, not a remote listener. recipientId is for notes only; notes need a known recipient. New traces need kind/text. sceneNote is temporary layout, never a lasting repair. Locks persist. No invented supplies, consent, elsewhere-deeds, promises-as-results or lasting change without valid metadata. Failure gets narration only. ${c.residentControlled ? "Lasting Residence edits require all required residents' explicit approval of the exact proposal; entry is not edit approval." : ""}`
-      : "",
+    c.conversational ? PLACE_UPDATE_INSTRUCTION : "",
     c.conversational
       ? `Spontaneous proposals can be expressed in speech. Capture venueRequest:{source:0,name,classes:["workplace|community|other"]} for a NEW public Venue, one or two classes. Source means the complete segment; do not repeat speakerId or quote. Approval starts planning, not construction; accepted commitments remain binding until withdrawn.`
       : "",
     capabilities.residences ? `Optional residenceRequest:{source:0,venueId} for a listed available Residence.` : "",
     capabilities.residenceDecision
       ? `Optional residenceDecision:{source:0,approved} for a pending player move request.`
-      : "",
-    capabilities.editApproval
-      ? `Optional editApproval:{source:0,proposalId,approved} for a listed exact edit proposal.`
       : "",
     c.projects
       ? `Optional interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover all eligible current main speech; uncertainty and short contextual answers remain uncertain/potential. Optional projectSpeech:[{projectId,kind:"approval|builder|requirements",speakerId,citations:[{segment:0}],checklist:[{category:"structure|equipment|finish",title,needed,citation}]}]. Code supplies exact cited quotes (at most 1200 characters) and current revision. For longer speech supply a supported quote explicitly; never omit conditions or negation. Checklist citation indexes its citations array. Speech is no completed work.`
@@ -89,15 +84,12 @@ export function sceneWritingCapabilities(state: VillageState, scene: VenueScene)
     residenceDecision: state.residences.some(
       (move) => move.status === "pending" && move.requestedBy === "player" && actors.includes(move.characterId),
     ),
-    editApproval: !!venue?.editProposals?.some(
-      (proposal) => !proposal.declined && proposal.requiredIds.some((id) => actors.includes(id)),
-    ),
   };
 }
 
 /** A malformed captured manifest cannot silently acquire newly available capabilities. */
 export function readSceneWritingCapabilities(value: unknown): SceneWritingCapabilities {
-  const keys = ["management", "movement", "residences", "residenceDecision", "editApproval"];
+  const keys = ["management", "movement", "residences", "residenceDecision"];
   if (
     !value ||
     typeof value !== "object" ||
@@ -137,17 +129,13 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
       ? 'roomEvents may include {kind:"manage-access",actorId,venueId,evidence:[],command:{action,zoneId,...}} for explicit management speech. Actions:zone-policy(complete policy),venue-policy(managerIds/visitorHours),lift-ban(banId),exception(permissionId/banIds),revoke(permissionId),destinations(visitorId,home/sleep/work Zone IDs). Listed authority/IDs only; retain unchanged fields; zoneId:null means Venue. No operationId/expectedRevision/sceneId. Guest entry/suggestions change no policy.'
       : "",
     c.conversational
-      ? "Resolve local physical attempts now. Lasting results need sceneChange:{happened:true,narration,conditionBefore,conditionAfter,featureId,featureText,publicFactBefore,publicFactAfter,resolveTraceId,addItem,removeItem,transferTo,traceKind,traceText,recipientId,sceneNote}. Exact old IDs/preconditions; complete conditionAfter. Pickup/handoff removes stock; transferTo:player/local resident. recipientId:notes only. New trace needs kind/text; sceneNote:temporary layout,never repair. Preserve locks. No invented supplies/consent/elsewhere deeds/promises. Unsupported attempt=failure narration,no change." +
-        (c.residentControlled
-          ? " Residence edits need every required resident’s explicit approval of exact proposal; entry is not approval."
-          : "")
+      ? 'placeUpdate:{happened:true,segment,actorIds:[],consent:[{actorId,segment?,lineId?,quote?}],narration,expectedRevision,edits:[{before,after}],append?,recent?:{text,renew?}} nominates a completed local deed with real actors/supplies. Cite current action narration; consent cites controller dialogue or accepted earlier Scene lineId perceived by actors. Player consent:segment:"player",quote:exact current input. Access permits temporary use; enduring changes need controller authority. Preserve unrelated description with unique exact edits/additions(max4000); promises belong in Memories. Recent:one complete paragraph(max600),empty clears. Unrelated activity keeps its 24h deadline; renew only deliberate maintenance/reestablishment of the WHOLE arrangement,never viewing/mentioning. System independently reviews; never narrate unsupported results.'
       : "",
     c.conversational
       ? 'Spontaneous proposals:venueRequest:{source:0,name,classes:["workplace|community|other"]} for NEW public Venue,1–2 classes. Approval starts planning,never construction; accepted commitments bind until withdrawn.'
       : "",
     capabilities.residences ? "residenceRequest:{source:0,venueId},listed available Residence only." : "",
     capabilities.residenceDecision ? "residenceDecision:{source:0,approved},pending player move only." : "",
-    capabilities.editApproval ? "editApproval:{source:0,proposalId,approved},listed exact proposal only." : "",
     c.projects
       ? 'interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover eligible current main speech; short/contextual/uncertain answers stay potential/uncertain. projectSpeech:[{projectId,kind:"approval|builder|requirements",speakerId,citations:[{segment:0}],checklist:[{category:"structure|equipment|finish",title,needed,citation}]}]. Code supplies full quotes(max1200 chars)/revision; longer speech needs explicit supported quote retaining conditions/negation. Checklist citation indexes citations. Speech is no completed work.'
       : "",

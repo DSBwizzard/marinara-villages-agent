@@ -14,6 +14,10 @@ export function shape(zone: VillageZoneDraft) {
     zone.roomSpecification ?? "",
   ];
 }
+/** Current physical prose can change without changing the recorded structure. */
+export function structuralShape(zone: VillageZoneDraft) {
+  return shape({ ...zone, description: "" });
+}
 export function changedZoneIds(venue: VillageVenue, change?: VillageProjectChange | null): string[] {
   if (!change?.zones) return [];
   const old = (venue.zones ?? []).filter((zone) => zone.kind !== "exterior");
@@ -31,7 +35,11 @@ export function changedZoneIds(venue: VillageVenue, change?: VillageProjectChang
       JSON.stringify(next.find((zone) => zone.id === id) && shape(next.find((zone) => zone.id === id)!)),
   );
 }
-export function venueDesignHash(venue: VillageVenue, zoneIds: readonly string[] = []): string {
+export function venueDesignHash(
+  venue: VillageVenue,
+  zoneIds: readonly string[] = [],
+  change?: VillageProjectChange | null,
+): string {
   return createHash("sha256")
     .update(
       JSON.stringify([
@@ -45,7 +53,16 @@ export function venueDesignHash(venue: VillageVenue, zoneIds: readonly string[] 
             const zone = venue.zones?.find((zone) => zone.id === id);
             if (!zone) return [id, null];
             const privateInterior = ["private-residence", "staff", "restricted"].includes(zone.kind);
-            return shape(privateInterior ? { ...zone, name: "", description: "" } : zone);
+            const draft = change?.zones?.find((row) => row.id === id);
+            const replacing =
+              !!change &&
+              (!draft ||
+                !draft.preserveDescription ||
+                (draft.roomSpecification !== undefined && draft.roomSpecification !== zone.roomSpecification));
+            return [
+              structuralShape(privateInterior ? { ...zone, name: "" } : zone),
+              replacing ? zone.description : null,
+            ];
           }),
       ]),
     )

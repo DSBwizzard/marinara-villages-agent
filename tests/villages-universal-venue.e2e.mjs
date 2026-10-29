@@ -33,7 +33,7 @@ try {
     place.occupancy = { playerHome: false, residentCharacterId: "mara", homeKind: null };
     place.form = "A converted warehouse";
     place.description = "A home beside the village mill.";
-    const state = { condition: "", items: [], features: [], publicFacts: [], traces: [], updatedAt: "" };
+    const state = { revision: 0, recent: null, updatedAt: "" };
     const access = (allowed, mode = "permission-required") => ({
       decision: {
         allowed,

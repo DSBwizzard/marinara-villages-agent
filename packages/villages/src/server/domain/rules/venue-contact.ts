@@ -4,11 +4,12 @@ import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { AttentionPlan } from "./scene-attention.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
+import { badRequest } from "./errors.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
-import { canInviteToZone, canOccupyZone, venueInZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { canInviteToZone, canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 
-export type ContactDelivery = "voice" | "loud" | "device";
+export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
   attention?: AttentionPlan;
   physicalTargetId?: string;
@@ -17,19 +18,16 @@ export type ContactIntent = {
   boundaryZoneId: string;
   quote: string;
   delivery?: ContactDelivery;
-  deviceFeatureId?: string;
 };
 export type DoorwayContact = {
   characterId: string;
   playerZoneId: string;
   characterZoneId: string;
   delivery?: ContactDelivery;
-  deviceFeatureId?: string;
 };
 export function readContactDelivery(value: unknown, message: string): ContactDelivery {
   const row = asRecord(value);
-  if (row.delivery === "device" && /\b(?:intercom|speakerphone|telephone|communication device|radio)\b/iu.test(message))
-    return "device";
+  if (row.delivery === "device") throw badRequest("Device links are not supported by Contact.");
   const citation = asTrimmedString(row.deliveryQuote) || message;
   const loud =
     /\b(?:shout|shouting|yell|yelling|holler|hollering|scream|screaming|loudly|raise\s+my\s+voice|top\s+of\s+my\s+lungs)\b/iu;
@@ -38,15 +36,6 @@ export function readContactDelivery(value: unknown, message: string): ContactDel
   return normalize(message).includes(normalize(citation)) && loud.test(citation) && !hypothetical.test(citation)
     ? "loud"
     : "voice";
-}
-/** A device must already exist in the player's visible Zone; prose cannot conjure a connection. */
-export function contactDevice(venue: VillageVenue, origin: string, featureId: string): boolean {
-  return !!venueInZone(venue, origin).state.features?.some(
-    (feature) =>
-      feature.id === featureId &&
-      !/\b(?:broken|disconnected|nonfunctional|non-functional|out of order)\b/iu.test(feature.text) &&
-      /\b(?:intercom|speakerphone|telephone|communication device|two-way radio)\b/iu.test(feature.text),
-  );
 }
 /** Sound reach is eligibility, never proof of hearing. Entry permissions do not block a voice. */
 export function contactReach(
@@ -200,7 +189,6 @@ export function readContactIntent(value: unknown, message: string): ContactInten
     boundaryZoneId: asTrimmedString(row.boundaryZoneId),
     quote,
     delivery: readContactDelivery(row, message),
-    ...(asTrimmedString(row.deviceFeatureId) ? { deviceFeatureId: asTrimmedString(row.deviceFeatureId) } : {}),
   };
 }
 export function contactSpeech(

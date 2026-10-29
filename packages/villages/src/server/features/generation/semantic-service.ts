@@ -1,4 +1,5 @@
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
+import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
@@ -273,8 +274,7 @@ export function createSemanticService(ports: SemanticPorts) {
                 ? venueInZone(venue, String(actionZone || scene.zoneId))
                 : venueInArea(venue, scene.area, scene.spaceClass, scene.privateOwnerId)
               : undefined,
-            scene.activeIds,
-            state.villagers.map((person) => person.characterId),
+            scene.continuity?.capturedAt ?? scene.startedAt,
           );
     if (raw.action !== null && !action) throw badGateway("System prepared action is incomplete.");
     if (
@@ -392,7 +392,7 @@ export function createSemanticService(ports: SemanticPorts) {
       },
       'Interpret current player intent and plausible supported action outcomes. Return {sourceHash,status:"resolved|unresolved",reason,instructions,action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:exact input span,targetId?,delivery?:"ordinary|whisper|shout"}]}. Timeline spans follow source order and cover meaningful input; code binds offsets. Never turn quoted/hypothetical words or private thoughts into actual speech. ' +
         INTENT_TIMELINE_RULE +
-        "action, when justified, is a sceneChange object {happened:true,narration,conditionBefore?,conditionAfter?,featureId?,featureText?,publicFactBefore?,publicFactAfter?,resolveTraceId?,addItem?,removeItem?,transferTo?,traceKind?,traceText?,recipientId?,sceneNote?}. " +
+        PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:") +
         "Only existing supported effects and current reachable targets. Do not create resources without established source/capability. Required resident consent absent from evidence means requires-response in instructions and no completed action. " +
         "Only the explicit Move action changes the player Zone. Movement within context.zoneId, including walking toward furniture or people, is kind:action without a Zone change. For an actual player attempt to cross Zones in this input, identify it as kind:movement with its exact destination zoneId so code can block the turn; never complete it in the draft. Quoted, hypothetical and requested travel is not a completed crossing. Multiple persistent physical steps needing intermediate receipts or unsupported effects remain unresolved. " +
         "Instructions identify actual speech/delivery, addressees, thoughts, plans, action order and prepared outcomes for Narration; they are not character speech. No action means action:null. Conversational input is resolved. Unknown necessary meaning is unresolved.",
@@ -471,12 +471,13 @@ export function createSemanticService(ports: SemanticPorts) {
         (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
         "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
         'Review every draft segment for claims that the player spoke, acted, felt or committed. Include indirect narration such as "Your greeting carries across the room" or a resident reacting to words the player never said. A Scene arrival establishes only presence and entry, not a greeting or other voluntary action. If a current player claim is unsupported by the current input or already established Scene evidence, return consistent:false and playerAgencyViolation:{segment:zero-based draft index,quote:"exact excerpt asserting the unsupported claim"}. Otherwise return playerAgencyViolation:null. Distinguish a resident addressing the player, hypothetical speech, and a response to actual player input from invented player actions. Do not reject established prior actions or mere observation. ' +
-        "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported sceneChange, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
+        PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:") +
+        "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported placeUpdate, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
         "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures and contactEnd sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact. " +
         (context.preservation
           ? "Only the player's Conclude ends this Scene; never return sceneEnded. "
           : "Ending an in-person visit is sceneEnded:{source} with exact resident farewell speech, or omit the event when unsupported. ") +
-        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, venueRequest:{source,name,classes}, editApproval:{source,proposalId,approved}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
+        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, venueRequest:{source,name,classes}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
         (actionContractV2
           ? ""
           : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
@@ -689,7 +690,7 @@ export function createSemanticService(ports: SemanticPorts) {
         )
           throw new IncompleteOpeningPitch();
         Object.assign(effects, immediate);
-        effects.sceneChange = raw.action ?? null;
+        effects.placeUpdate = raw.action ?? null;
         effects.memoryContexts = {
           [savedInput.context._memoryWrite.protection.fingerprint]: savedInput.context._memoryWrite,
         };

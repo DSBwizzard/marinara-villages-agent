@@ -33,7 +33,7 @@ function deferred() {
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({
-    version: 6,
+    version: 7,
     ...defaultVillageState(),
     seed: "same-seed",
     name: label,
@@ -156,7 +156,7 @@ async function main() {
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
   const marker = fixture("marker");
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "active",
     villageSeed: marker.world.seed,
     status: "active",
@@ -169,21 +169,21 @@ async function main() {
   });
   scene.submissions.push({ id: "late", changeSequence: 1, semanticReady: false } as any);
   marker.setScene(scene);
-  const revision = (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision;
+  const revision = (await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision;
   assert.equal(
-    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
+    (await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision,
     revision,
     "idle snapshots do not restart the feed",
   );
   scene.submissions[0]!.semanticReady = true;
-  const ready = (await marker.service.buildVillageSnapshot(now)).sceneChanges!;
+  const ready = (await marker.service.buildVillageSnapshot(now)).placeUpdates!;
   assert.equal(ready.sceneId, scene.id);
   assert.notEqual(ready.revision, revision, "late readiness reopens delivery without a processing sequence change");
   marker.world.exchangeReceipts.foreign = { id: "foreign", sceneId: "elsewhere", noticeSequence: 1 } as any;
-  assert.equal((await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision, ready.revision);
+  assert.equal((await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision, ready.revision);
   marker.world.exchangeReceipts.own = { id: "own", sceneId: scene.id, noticeSequence: 2 } as any;
   assert.notEqual(
-    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
+    (await marker.service.buildVillageSnapshot(now)).placeUpdates!.revision,
     ready.revision,
     "late own-Scene notice is delivered through shared refresh",
   );

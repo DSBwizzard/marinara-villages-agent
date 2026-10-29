@@ -1,3 +1,6 @@
+import { bindPlaceEvidence } from "./zone-continuity.js";
+import { applyVenueSceneChange, readVenueSceneChange } from "./venue-scene-state.js";
+import { venueInZone } from "./venue-zones.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { RelationshipEvidenceLine, SocialEncounter } from "../models/relationship-types.js";
 import type { SocialOutboxEntry } from "../models/social-outbox-model.js";
@@ -6,6 +9,8 @@ import { agendaBlocksFor } from "./agenda-week.js";
 import { asRecord } from "./coerce.js";
 import { parseRelationshipProposals } from "./relationship-review.js";
 import { canEnter } from "./social-rules.js";
+
+export const encounterPhysicalId = (sourceId: string) => `venue-chat:offscreen:${sourceId}:${sourceId}`;
 
 export function readEncounter(
   value: unknown,
@@ -59,9 +64,13 @@ export function readEncounter(
     return null;
   const lines: RelationshipEvidenceLine[] = raw.lines.map((value, index) => {
     const line = asRecord(value);
+    const narration = line.kind === "narration";
     if (
-      typeof line.speakerId !== "string" ||
-      !actors.includes(line.speakerId) ||
+      (line.kind !== undefined && !["dialogue", "narration"].includes(String(line.kind))) ||
+      Object.keys(line).some((key) => !["speakerId", "text", "kind"].includes(key)) ||
+      (narration
+        ? line.speakerId !== undefined && line.speakerId !== ""
+        : typeof line.speakerId !== "string" || !actors.includes(line.speakerId)) ||
       typeof line.text !== "string" ||
       !line.text.trim() ||
       line.text.length > 600
@@ -69,15 +78,40 @@ export function readEncounter(
       throw new Error("Invalid structured social encounter.");
     return {
       id: `${entry.id}:line:${index}`,
-      speakerId: line.speakerId,
+      speakerId: narration ? "" : String(line.speakerId),
       role: "assistant",
       content: line.text.trim(),
-      kind: "dialogue",
+      kind: narration ? "narration" : "dialogue",
       heardBy: [...actors],
       playerHeard: false,
     };
   });
-  if (new Set(lines.map((line) => line.speakerId)).size < 2) return null;
+  if (new Set(lines.filter((line) => line.kind === "dialogue").map((line) => line.speakerId)).size < 2) return null;
+  if (lines.some((line) => line.kind === "narration") && raw.physicalConsistent !== true)
+    throw new Error("The encounter's narrated outcomes need independent System validation.");
+  if (raw.placeUpdate && !entry.admitted) throw new Error("Physical encounter admission is missing.");
+  if (raw.placeUpdate && raw.semanticVersion !== 2) throw new Error("Physical encounter meaning is unverified.");
+  const placeUpdate = readVenueSceneChange(raw.placeUpdate, venueInZone(venue, zoneId), entry.at);
+  const physicalContext = placeUpdate
+    ? bindPlaceEvidence(raw.placeUpdate, lines, {
+        zoneId,
+        positions: Object.fromEntries(actors.map((id) => [id, zoneId])),
+        playerPresent: false,
+      })
+    : undefined;
+  if (placeUpdate)
+    applyVenueSceneChange(
+      { ...village, venues: structuredClone(village.venues) },
+      venue.id,
+      placeUpdate,
+      "offscreen:" + entry.id,
+      entry.at,
+      undefined,
+      "public",
+      "",
+      zoneId,
+      physicalContext,
+    );
   // The model cites local indexes; convert only within this saved encounter, never into an archive.
   const proposed = asRecord(raw.relationshipReview);
   const { review, rejections } = parseRelationshipProposals(
@@ -119,6 +153,8 @@ export function readEncounter(
         }
       : {}),
     wishChanges: Array.isArray(raw.wishChanges) ? raw.wishChanges : [],
+    placeUpdate,
+    physicalContext,
     id: entry.id,
     at: entry.at,
     venueId: venue.id,

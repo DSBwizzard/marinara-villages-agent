@@ -27,7 +27,7 @@ export type VenueLine = {
   viaDoorway?: boolean;
   /** Server-projected local cast after a validated movement in this line. */
   physicalIdsAfter?: string[];
-  remoteDelivery?: "loud" | "device";
+  remoteDelivery?: "loud";
   contactHidden?: boolean;
   attentionEvidence?: boolean;
   contactReport?: boolean;
@@ -89,9 +89,12 @@ export type VenueSubmission = {
   physicalOutcomeVersion?: 1;
   requestMode?: "act" | "fulfill";
   movement?: { operationId: string; originZoneId: string; destinationZoneId: string; transitionLineId: string };
-  sceneChange?: VenueSceneChange;
+  placeUpdate?: VenueSceneChange;
   semanticPlayerMoves?: import("../rules/semantic-timeline.js").SemanticPlayerMove[];
-  physicalContext?: { zoneId: string; witnessIds: string[]; segment: number };
+  physicalContext?: import("../../../shared/contracts/place-continuity.js").PlaceEvidence & {
+    zoneId: string;
+    segment: number;
+  };
   residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
   venueRequestSignal?: {
     characterId: string;
@@ -121,13 +124,6 @@ export type VenueSubmission = {
     quote: string;
     sourceLineId?: string;
     accessRevision?: number;
-  };
-  editApprovalSignal?: {
-    proposalId: string;
-    residentId: string;
-    approved: boolean;
-    quote: string;
-    sourceLineId?: string;
   };
   semanticReady?: boolean;
   semanticConclude?: boolean;
@@ -165,7 +161,7 @@ export type VenueScene = {
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
   spinoff?: import("./spinoff-model.js").VillageSpinoff;
-  version: 2;
+  version: 3;
   processingVersion?: 1;
   changeSequence?: number;
   villageSeed?: string;
@@ -228,7 +224,7 @@ export type VenueScene = {
     remoteIds: string[];
     /** Selected writers only; physical attendance and witnesses remain independent. */
     actorIds?: string[];
-    delivery?: "voice" | "loud" | "device";
+    delivery?: "voice" | "loud";
   };
   departedIds?: string[];
   /** Server-only destinations for validated forced departures, never another Scene's cast. */
@@ -277,7 +273,7 @@ export type VenueReplyLine = {
   heardBy: string[];
   viaDoorway?: boolean;
   physicalIdsAfter?: string[];
-  remoteDelivery?: "loud" | "device";
+  remoteDelivery?: "loud";
   contactHidden?: boolean;
   contactReport?: boolean;
   expression?: string;

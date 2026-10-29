@@ -1,4 +1,7 @@
+import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import { createHash } from "node:crypto";
+import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
+import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -29,6 +32,7 @@ import {
   planningAllowance,
   readResidentPlanningProposal,
   residentPlanningOpportunity,
+  residentEncounterPlace,
   type ResidentPlanningContext,
 } from "../../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
@@ -310,6 +314,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
                 name: encounterZone.name,
                 kind: encounterZone.kind,
                 description: encounterZone.description,
+                revision: encounterZone.state.revision,
+                recentContext: recentPlaceText(encounterZone.state, opportunity.startsAt),
               },
             },
           }
@@ -425,6 +431,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     for (const raw of [encounter, mail])
       if (raw && typeof raw === "object")
         for (const key of [
+          "placeUpdate",
+          "physicalConsistent",
           "semanticVersion",
           "semanticSourceHash",
           "memoryChanges",
@@ -448,7 +456,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
             RELATIONSHIP_REVIEW_INSTRUCTION +
             (mail
               ? " The recipient is player; disclosures wait for reading. Mail cannot grant access or create actionable invitations. Return permissions:[] for mail."
-              : " The player is absent: disclosures must be empty.") +
+              : " The player is absent: disclosures must be empty. Physical Memory facts need the exact possibleMemoryEffects.physical.id with validated-event support and a supported matching placeUpdate. Return consistent:true only when every narrated physical outcome is supported by the admitted local actors, current description, supplies, authority and event time. Otherwise consistent:false; never repair the source by pretending a completed deed was only a plan. " +
+                PLACE_UPDATE_INSTRUCTION) +
             " Use numeric zero-based lineIds. context.state is both captured and live social baseline. sceneAfter/liveAfter coincide. Return the memoryChanges array under the native Memory contract. " +
             SCENE_MEMORY_INSTRUCTION +
             " " +
@@ -466,7 +475,17 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               .map((r) => ({ characterId: r.characterId, wishes: r.wishes })),
             memory: nativeMemory.envelope,
             now: context.moment.instant,
-            zones: context.catchup ? (context.catchupPlace ? [context.catchupPlace] : []) : context.venues,
+            place:
+              context.catchupPlace ??
+              residentEncounterPlace(context.venues, context.opportunity, context.moment.instant),
+            possibleMemoryEffects: mail
+              ? {}
+              : {
+                  physical: {
+                    id: encounterPhysicalId(context.opportunity.id + ":social"),
+                    domainRef: { kind: "physical", id: context.opportunity.venueId },
+                  },
+                },
           }),
         },
       ];
@@ -493,6 +512,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
       )
         throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
+      if (!mail && lines.some((line) => asRecord(line).kind === "narration") && interpreted?.consistent !== true)
+        throw new Error("The encounter contains unsupported physical outcomes; its source is retained.");
+      record.placeUpdate = mail ? null : (interpreted?.placeUpdate ?? null);
+      record.physicalConsistent = !mail && interpreted?.consistent === true;
       record.relationshipReview = review;
       record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
       record.semanticVersion = 2;

@@ -1,51 +1,21 @@
-import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
-import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
-import type { outsideVenueOperation } from "../../adapters/operations/operation-context.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import type { Handler } from "../../domain/models/background-model.js";
-import type { VillageResidence, VillageSnapshot, VillageVenue } from "../../domain/models/world.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import type { VillageResidence, VillageSnapshot } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
-import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { completeResidenceMove } from "../../domain/rules/residence-move.js";
-import { personalDestinationSpace } from "../../domain/rules/venue-authoring.js";
 import { assertResidencePrivateDestination } from "../../domain/rules/venue-layout.js";
 import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
 import { residenceCharacterId, residenceVenueId } from "../../domain/rules/world-input.js";
-import type { queueBackgroundJob } from "../../jobs/background-work.js";
-import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
-import type { completeWithRoom } from "../generation/model-requests.js";
-import type { villagesConnectionIdFor } from "../settings/connections.js";
 import type { buildVillageSnapshot } from "../world/snapshot.js";
-import type { mutateVillageState, readVillageState } from "../world/village-store.js";
+import type { mutateVillageState } from "../world/village-store.js";
 export interface ResidencePorts {
-  readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
-  outsideVenueOperation: typeof outsideVenueOperation;
-  preparePrivateSpaces: typeof preparePrivateSpaces;
-  readVillageLore: typeof readVillageLore;
-  queueBackgroundJob: typeof queueBackgroundJob;
-  villagesLanguageModels: typeof villagesLanguageModels;
-  villagesConnectionIdFor: typeof villagesConnectionIdFor;
-  completeWithRoom: typeof completeWithRoom;
 }
-/** Own residence transitions and archived private-space adaptation through specific connections. */
+/** Residence assignment changes access and ownership, never the physical room. */
 export function createResidences(ports: ResidencePorts) {
-  const {
-    readVillageState,
-    mutateVillageState,
-    buildVillageSnapshot,
-    outsideVenueOperation,
-    preparePrivateSpaces,
-    readVillageLore,
-    queueBackgroundJob,
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-  } = ports;
+  const { mutateVillageState, buildVillageSnapshot } = ports;
+
   async function movePlayerToResidence(venueId: string, privateZoneId = ""): Promise<void> {
     const at = villageNow().toISOString();
     await mutateVillageState((state) => {
@@ -72,15 +42,7 @@ export function createResidences(ports: ResidencePorts) {
             { zone: structuredClone(personal), archivedAt: at },
           ].slice(-64);
           personal.ownerId = undefined;
-          personal.seen = false;
-          personal.image = null;
-          personal.preparation = undefined;
-          personal.adaptationPending = false;
-          personal.description = personal.purpose || "Vacant residential Private Space.";
-          personal.state.publicFacts = [];
-          personal.state.traces = [];
           current.playerInvitations = current.playerInvitations?.filter((invite) => invite.zoneId !== personal.id);
-          current.editProposals = current.editProposals?.filter((proposal) => proposal.zoneId !== personal.id);
         }
         current.occupancy.playerHome = false;
       }
@@ -201,165 +163,22 @@ export function createResidences(ports: ResidencePorts) {
     characterValue: unknown,
     force = false,
     now = villageNow(),
-    queueAdaptation = true,
+    _queueAdaptation = true,
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
-    let moved = false;
     await mutateVillageState((state) => {
       // Only the winning mutation attempt can authorize post-save preparation.
-      moved = false;
-      moved = completeResidenceMove(state, characterId, force, now);
+      completeResidenceMove(state, characterId, force, now);
     });
-    if (moved && queueAdaptation) {
-      await retryResidencePrivateSpaceAdaptation(characterId);
-      outsideVenueOperation(() => {
-        void preparePrivateSpaces().catch(() => {});
-      });
-    }
     return buildVillageSnapshot(now);
   }
 
-  function adaptationRevision(venue: VillageVenue, characterId: string): string {
-    const room = personalDestinationSpace(venue, characterId);
-    return backgroundRevision([
-      venue.id,
-      venue.name,
-      venue.form,
-      room?.description,
-      room?.roomSpecification,
-      room?.state.items,
-      room?.state.features,
-      room?.adaptationSourceArchiveAt,
-    ]);
-  }
-
-  /** One bounded System call moves only portable personal details from the archived room. */
-  async function retryResidencePrivateSpaceAdaptation(characterValue: unknown): Promise<VillageSnapshot> {
-    const characterId = residenceCharacterId(characterValue);
-    const village = await readVillageState();
-    const destination = village.venues.find((venue) => venueResidentIds(venue).includes(characterId));
-    const room = destination && personalDestinationSpace(destination, characterId);
-    if (!destination || !room || !room.adaptationPending) return buildVillageSnapshot();
-    const archive = village.venues
-      .flatMap((venue) => venue.archivedPrivateSpaces ?? [])
-      .find((entry) => entry.ownerId === characterId && entry.archivedAt === room.adaptationSourceArchiveAt);
-    if (!archive) return buildVillageSnapshot();
-    const card = village.villagers.find((person) => person.characterId === characterId)?.cardSnapshot;
-    const lore = await readVillageLore(
-      village.selectedLorebookIds,
-      [village.setting, destination.form, card?.name, card?.personality].filter(Boolean).join("\n"),
-      undefined,
-      village.loreTokenBudget,
-    );
-    await queueBackgroundJob({
-      kind: "adaptation",
-      subjectId: characterId,
-      seed: village.seed,
-      revision: adaptationRevision(destination, characterId),
-      finite: true,
-      label: "Adapt " + destination.name + "'s Private Space",
-      input: {
-        characterId,
-        destination,
-        archive,
-        card,
-        lore,
-        roomRevision: adaptationRevision(destination, characterId),
-        capturedAt: village.villagers.find((resident) => resident.characterId === characterId)?.cardSnapshot.capturedAt,
-      },
-    });
-    return buildVillageSnapshot();
-  }
-
-  const adaptationBackgroundHandler: Handler = {
-    async generate(input) {
-      const { characterId, destination, archive, card, lore } = input;
-      const model = await villagesLanguageModels().resolveForRequest({
-        connectionId: await villagesConnectionIdFor("system"),
-      });
-      const messages = [
-        {
-          role: "system" as const,
-          content: `Choose portable personal elements from the archived Private Space and adapt its description to the new Residence form, destinationRoomSpecification and saved destinationRoom. Preserve the destination's structure, equipment and physical condition. Never copy shared furnishings or invent possessions. Return JSON only: {"description":"brief room description","items":["exact portable item from input"],"featureIds":["exact portable feature id from input"]}. Keep the result grounded and concise.`,
-        },
-        {
-          role: "user" as const,
-          content: JSON.stringify({
-            resident: characterId,
-            personality: card?.personality,
-            lore,
-            destination: destination.name,
-            destinationForm: destination.form,
-            destinationRoomSpecification: personalDestinationSpace(destination, characterId)?.roomSpecification,
-            destinationRoom: personalDestinationSpace(destination, characterId)?.description,
-            destinationItems: personalDestinationSpace(destination, characterId)?.state.items,
-            archivedDescription: archive.space.description.slice(0, 500),
-            archivedItems: archive.space.state.items.slice(0, 24),
-            archivedFeatures: archive.space.state.features
-              .map((feature) => ({ id: feature.id, text: feature.text }))
-              .slice(0, 5),
-          }),
-        },
-      ];
-      const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1000, 1000) });
-      const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 1000, {
-        responseFormat: { type: "json_object" },
-        retryEmpty: false,
-        temperature: 0.4,
-        debugMode: false,
-      });
-      const answer = extractModelJsonObject(completion);
-      const description = boundText(answer?.description, MAX_VENUE_DESCRIPTION_LENGTH).trim();
-      if (!description) throw new Error("Private space adaptation returned no description.");
-      const selectedItems: unknown[] = Array.isArray(answer?.items) ? answer.items : [];
-      const items = archive.space.state.items.filter((item) => selectedItems.includes(item));
-      const featureIds = Array.isArray(answer?.featureIds) ? answer.featureIds : [];
-      const features = archive.space.state.features.filter((feature) => featureIds.includes(feature.id));
-
-      return { description, items, features };
-    },
-    valid: (state, input) =>
-      state.villagers.some(
-        (resident) =>
-          resident.characterId === input.characterId && resident.cardSnapshot.capturedAt === input.capturedAt,
-      ) &&
-      state.venues
-        .find(
-          (venue) =>
-            venue.id === input.destination.id && adaptationRevision(venue, input.characterId) === input.roomRevision,
-        )
-        ?.privateSpaces?.some(
-          (space) =>
-            space.ownerId === input.characterId &&
-            space.adaptationPending &&
-            space.adaptationSourceArchiveAt === input.archive.archivedAt,
-        ) === true,
-    apply(state, input, result) {
-      const { characterId, destination, archive } = input;
-      const { description, items, features } = result;
-
-      const currentVenue = state.venues.find((venue) => venue.id === destination.id);
-      const current = currentVenue && personalDestinationSpace(currentVenue, characterId);
-      if (!current?.adaptationPending || current.adaptationSourceArchiveAt !== archive.archivedAt) return;
-      current.description = description;
-      current.state.items =
-        currentVenue?.layoutVersion === 1 ? [...new Set([...current.state.items, ...items])] : items;
-      current.state.features =
-        currentVenue?.layoutVersion === 1
-          ? [...new Map([...current.state.features, ...features].map((feature) => [feature.id, feature])).values()]
-          : features;
-      current.state.updatedAt = villageNow().toISOString();
-      current.adaptationPending = false;
-    },
-  };
   return {
     movePlayerToResidence,
     proposeVillageResidence,
     approveVillageResidence,
     decideVillageResidence,
     completeVillageResidence,
-    retryResidencePrivateSpaceAdaptation,
-    adaptationBackgroundHandler,
   };
 }
 export type Residences = ReturnType<typeof createResidences>;

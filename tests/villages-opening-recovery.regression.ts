@@ -41,12 +41,12 @@ state.venues = [
     presentation: { x: 0.5, y: 0.5, image: null },
     occupancy: { playerHome: false, residentCharacterId: null },
     spaces: [defaultVenueSpace("community", "A common room")],
-    state: { condition: "Open", publicFacts: [], furniture: [], updatedAt: "" },
+    state: { revision: 0, updatedAt: "", recent: null },
   },
 ] as any;
 const old = new Date(Date.now() - 3_600_000).toISOString();
 let saved = coerceSession({
-  version: 2,
+  version: 3,
   id: "gathering",
   placeId: "community",
   placeName: "Meeting Hall",
@@ -250,7 +250,7 @@ console.log(
     },
   };
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "commitment",
     placeId: "venue",
     status: "active",

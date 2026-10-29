@@ -28,12 +28,6 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
   }
   const archivedAt = new Date(now).toISOString();
   const oldPrivate = old && personalDestinationSpace(old, characterId);
-  const needsAdaptation = Boolean(
-    oldPrivate &&
-    (oldPrivate.state.items.length ||
-      oldPrivate.state.features.length ||
-      oldPrivate.description !== `A private space for this resident at ${old?.name}.`),
-  );
   if (old) {
     const allOwned = old.privateSpaces?.filter((space) => space.ownerId === characterId) ?? [];
     if (allOwned.length) {
@@ -47,23 +41,9 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
       if (old.layoutVersion === 1) {
         for (const zone of old.zones?.filter((zone) => zone.ownerId === characterId) ?? []) {
           zone.ownerId = undefined;
-          zone.seen = false;
-          zone.lastObserved = undefined;
-          zone.initialImageAttemptedAt = undefined;
-          zone.imageInteriorKey = undefined;
-          zone.state.items = [];
-          zone.state.features = zone.state.features.filter((feature) => feature.sourceCharacterId !== characterId);
-          zone.state.publicFacts = [];
-          zone.state.traces = [];
-          zone.preparation = undefined;
-          zone.adaptationPending = false;
-          zone.adaptationSourceArchiveAt = "";
-          zone.image = null;
-          zone.description = zone.roomSpecification || zone.purpose || "Vacant residential Private Space.";
         }
         const ownedIds = new Set(allOwned.map((space) => space.id));
         old.playerInvitations = old.playerInvitations?.filter((invitation) => !ownedIds.has(invitation.zoneId ?? ""));
-        old.editProposals = old.editProposals?.filter((proposal) => !ownedIds.has(proposal.zoneId ?? ""));
       }
     }
     old.residentIds = venueResidentIds(old).filter((id) => id !== characterId);
@@ -81,16 +61,8 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
         { zone: structuredClone(zone), archivedAt },
       ].slice(-64);
     zone.ownerId = characterId;
-    zone.image = null;
-    zone.imageInteriorKey = undefined;
-    zone.initialImageAttemptedAt = undefined;
-    zone.lastObserved = undefined;
     destination.destinations ??= {};
     destination.destinations[characterId] = { sleep: zone.id };
-    zone.seen = false;
-    zone.preparation = needsAdaptation ? undefined : { status: "pending" };
-    zone.adaptationPending = needsAdaptation;
-    zone.adaptationSourceArchiveAt = needsAdaptation ? archivedAt : "";
   }
   destination.occupancy.residentCharacterId = destination.residentIds[0] ?? null;
   residence.venueId = destination.id;

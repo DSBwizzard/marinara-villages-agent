@@ -16,9 +16,8 @@ import {
 } from "../../adapters/time/clock-gate.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { MemoryCandidate } from "../../domain/models/memories.js";
-import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/models/world.js";
+import type { VillageSnapshot, VillageState } from "../../domain/models/world.js";
 import { calendarReplay } from "../../domain/rules/clock-recovery.js";
-import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { MEMORY_TEXT_LIMIT } from "../../domain/rules/memory-integrity.js";
 import { memoryTerms } from "../../domain/rules/memory-protection.js";
@@ -26,17 +25,15 @@ import { captureReturnContext } from "../../domain/rules/return-catchup-capture.
 import { discoverReturnBatch, recordReturnVisibility } from "../../domain/rules/return-catchup-state.js";
 import { inspectMemoryCandidates, projectMemories } from "../../domain/rules/memory-views.js";
 import type { reconcileProjectLifecycles } from "../../domain/rules/project-lifecycle-rules.js";
-import { venueZones } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import {
   correctVillageMemory as applyCorrection,
   forgetVillageMemory as applyForget,
 } from "../../domain/rules/village-memories.js";
-import { villagerPlaceView } from "../../domain/rules/village-projections.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { preparePrivateSpaces } from "../../jobs/private-space-preparation.js";
 import type { backfillAgendas, refreshVillagerRemaps, rollActiveAgendas } from "../residents/resident-agendas.js";
-import type { completeVillageResidence, retryResidencePrivateSpaceAdaptation } from "../venues/residences.js";
+import type { completeVillageResidence } from "../venues/residences.js";
 import type { buildVillageSnapshot } from "./snapshot.js";
 import type { mutateVillageState, readVillageState } from "./village-store.js";
 
@@ -50,7 +47,6 @@ export interface WorldCoordinationPorts {
   villagesLogger: typeof villagesLogger;
   outsideVenueOperation: typeof outsideVenueOperation;
   completeVillageResidence: typeof completeVillageResidence;
-  retryResidencePrivateSpaceAdaptation: typeof retryResidencePrivateSpaceAdaptation;
   backfillAgendas: typeof backfillAgendas;
   refreshVillagerRemaps: typeof refreshVillagerRemaps;
   preparePrivateSpaces: typeof preparePrivateSpaces;
@@ -69,7 +65,6 @@ export function createWorldCoordination({
   villagesLogger,
   outsideVenueOperation,
   completeVillageResidence,
-  retryResidencePrivateSpaceAdaptation,
   backfillAgendas,
   refreshVillagerRemaps,
   preparePrivateSpaces,
@@ -196,63 +191,11 @@ export function createWorldCoordination({
     // These are deterministic reconciliation rules. They run for both the live
     // timer and restart catch-up, irrespective of background pace.
     await rollActiveAgendas(now);
-    await mutateVillageState(
-      (state) => {
-        const storedMs = Date.parse(state.simulatedThrough);
-        if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
-        state.lastKnownTimeZone = moment.timeZone;
-        for (const venue of state.venues) {
-          for (const zone of venueZones(venue)) {
-            const remaining = [] as NonNullable<VillageVenue["state"]["traces"]>;
-            for (const trace of zone.state.traces ?? []) {
-              if (trace.expiresAt && Date.parse(trace.expiresAt) <= currentMs) continue;
-              if (trace.kind === "scene-note") {
-                remaining.push(trace);
-                continue;
-              }
-              const created = Date.parse(trace.createdAt);
-              if (!Number.isFinite(created) || currentMs - created < 60_000) {
-                remaining.push(trace);
-                continue;
-              }
-              const present = state.villagers.filter((villager) => {
-                const destination = villagerPlaceView(state, villager, null, moment.minuteOfDay, now);
-                return destination?.id === venue.id && destination.zoneId === zone.id;
-              });
-              const finders = present.filter((villager) =>
-                trace.kind === "note"
-                  ? villager.characterId === trace.recipientId
-                  : !(trace.seenBy ?? []).includes(villager.characterId),
-              );
-              for (const finder of finders) {
-                const id = `${trace.id}:found:${finder.characterId}`;
-                rememberDomainFact(state, {
-                  id,
-                  at: moment.instant,
-                  recordedAt: moment.instant,
-                  subjects: [finder.characterId],
-                  knowers: [finder.characterId],
-                  text:
-                    trace.kind === "note"
-                      ? `${finder.cardSnapshot.name} found a note at ${venue.name}: ${trace.text}`
-                      : `${finder.cardSnapshot.name} noticed ${trace.text} at ${venue.name}.`,
-                });
-              }
-              if (trace.kind !== "note" || finders.length === 0)
-                remaining.push({
-                  ...trace,
-                  seenBy: [...new Set([...(trace.seenBy ?? []), ...finders.map((finder) => finder.characterId)])],
-                });
-            }
-            zone.state.traces = remaining;
-          }
-        }
-      },
-      {
-        memories: (world) =>
-          world.venues.some((venue) => venueZones(venue).some((zone) => !!zone.state.traces?.length)),
-      },
-    );
+    await mutateVillageState((state) => {
+      const storedMs = Date.parse(state.simulatedThrough);
+      if (!Number.isFinite(storedMs) || currentMs > storedMs) state.simulatedThrough = moment.instant;
+      state.lastKnownTimeZone = moment.timeZone;
+    });
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
@@ -260,10 +203,6 @@ export function createWorldCoordination({
     outsideVenueOperation(() => {
       void preparePrivateSpaces().catch(() => {});
     });
-    const pendingRooms = (await readVillageState()).venues.flatMap(
-      (venue) => venue.privateSpaces?.filter((room) => room.adaptationPending).map((room) => room.ownerId) ?? [],
-    );
-    for (const characterId of new Set(pendingRooms)) await retryResidencePrivateSpaceAdaptation(characterId);
     const withAgendas = await backfillAgendas(await readVillageState(), now);
     await refreshVillagerRemaps(withAgendas, now);
     await reconcileResidentPlanning?.(now);
