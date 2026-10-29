@@ -32,7 +32,6 @@ function fixture() {
   room.access!.managerIds = ["a"];
   room.access!.memberIds = ["b"];
   room.seen = true;
-  room.lastObserved = { description: room.description, state: structuredClone(room.state), observedAt: at };
   let state = coerceVillageState({
     ...defaultVillageState(),
     seed: "encounter-place",
@@ -192,19 +191,17 @@ await runCase("encounter-places/evidence", async () => {
   assert.throws(() => readEncounter(source, f.state().socialOutbox![0], f.state()), /validation/);
 });
 await runCase("encounter-places/settlement", async () => {
-  const f = fixture(),
-    prior = structuredClone(f.zone().lastObserved);
+  const f = fixture();
   await f.api.processSocialOutbox(await f.snapshot());
   assert.equal(f.state().socialOutbox!.length, 0);
   assert.equal(f.zone().state.revision, 1);
   assert.match(f.zone().description, /White walls\. Two windows\. An oak table\./);
   assert.match(f.zone().description, /Shelves are installed/);
-  assert.deepEqual(f.zone().lastObserved, prior, "unseen resident activity never refreshes player observation");
   assert.equal(
     villageSettings(await f.snapshot(), { name: "Player", missing: false } as any).venues[0].zones!.find(
       (z) => z.id === "common",
     )!.description,
-    prior!.description,
+    f.zone().description,
   );
   assert.equal(f.state().venueEvents.length, 0, "hidden deed narration never becomes a public room feed");
   assert.ok(

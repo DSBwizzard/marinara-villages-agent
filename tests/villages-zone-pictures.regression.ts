@@ -207,8 +207,8 @@ privateZone.picture = {
 const projected = villageSettings(hidden, { name: "Player", description: "", personaId: "", missing: false }, null);
 assert.equal(projected.automaticZonePictures, false);
 assert.doesNotMatch(JSON.stringify(projected), /secret-base|secret-room-record|secret-attempt/);
-assert.equal(projected.venues[0]!.zones![1]!.image, null);
-assert.equal((projected.venues[0]!.zones![1] as { pictureRetryAvailable?: boolean }).pictureRetryAvailable, false);
+assert.equal(projected.venues[0]!.zones![1]!.image?.id, image.id, "unvisited artwork is visible");
+assert.equal((projected.venues[0]!.zones![1] as { pictureRetryAvailable?: boolean }).pictureRetryAvailable, true);
 await assert.rejects(readZonePictureReference({ ...image, url: "https://example.invalid/private.png" }));
 
 state = fixture();

@@ -78,7 +78,7 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
             ...startingZone(venue, true),
             name: proposal.privateName,
             purpose: proposal.privatePurpose,
-            description: venue.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
+            description: proposal.privateDescription ?? "",
             connectedTo: links("private:base") ?? ["common:base"],
           },
         ]

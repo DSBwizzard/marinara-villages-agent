@@ -88,7 +88,6 @@ export function QuickStartVenues({
   useEffect(() => setSaveAttempted(false), [open, selectedId]);
   const personal = !!selected?.privateSpaces?.some((zone) => zone.id === zoneId);
   const zone = [...(selected?.spaces ?? []), ...(selected?.privateSpaces ?? [])].find((row) => row.id === zoneId);
-  const hiddenPrivate = !!zone && personal && zone.venueClass === "residence" && zone.ownerId !== "player";
   const area = zoneId === "exterior" ? "exterior" : personal ? "private" : "interior";
   const image = zoneId === "exterior" ? selected?.presentation.image : zone?.image;
   const zoneIds = [
@@ -403,58 +402,41 @@ export function QuickStartVenues({
                         </label>
                       </>
                     ) : null}
-                    {hiddenPrivate ? (
+                    <div className="villages-quick-zone-appearance">
                       <label>
-                        Room specification · optional
+                        Long-term details
                         <textarea
                           autoComplete="off"
-                          aria-label="Room Specification"
-                          value={zone?.roomSpecification ?? ""}
+                          aria-label="Long-term details"
+                          {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
+                          value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
                           maxLength={1000}
                           rows={3}
                           onChange={(event) =>
-                            zone && patchZone(true, zone.id, { roomSpecification: event.target.value })
+                            zoneId === "exterior"
+                              ? onPatch({ ...selected, description: event.target.value })
+                              : zone && patchZone(personal, zone.id, { description: event.target.value })
                           }
                         />
+                        {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
                       </label>
-                    ) : (
-                      <div className="villages-quick-zone-appearance">
-                        <label>
-                          Long-term details
-                          <textarea
-                            autoComplete="off"
-                            aria-label="Long-term details"
-                            {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
-                            value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
-                            maxLength={1000}
-                            rows={3}
-                            onChange={(event) =>
-                              zoneId === "exterior"
-                                ? onPatch({ ...selected, description: event.target.value })
-                                : zone && patchZone(personal, zone.id, { description: event.target.value })
-                            }
+                      <button
+                        type="button"
+                        className="villages-quick-zone-image"
+                        aria-label={image ? "Edit Zone artwork" : "Artwork"}
+                        onClick={() => setArtworkOpen(true)}
+                      >
+                        {image ? (
+                          <img
+                            src={image.url}
+                            alt={`Artwork for ${zoneId === "exterior" ? "Entrance" : zone?.name || "Zone"}`}
                           />
-                          {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
-                        </label>
-                        <button
-                          type="button"
-                          className="villages-quick-zone-image"
-                          aria-label={image ? "Edit Zone artwork" : "Artwork"}
-                          onClick={() => setArtworkOpen(true)}
-                        >
-                          {image ? (
-                            <img
-                              src={image.url}
-                              alt={`Artwork for ${zoneId === "exterior" ? "Entrance" : zone?.name || "Zone"}`}
-                            />
-                          ) : (
-                            "Artwork"
-                          )}
-                        </button>
-                      </div>
-                    )}
+                        ) : (
+                          "Artwork"
+                        )}
+                      </button>
+                    </div>
                   </fieldset>
-                  {hiddenPrivate ? <p>The resident’s private interior stays hidden until authorized entry.</p> : null}
                 </>
               )}
             </section>
@@ -466,7 +448,7 @@ export function QuickStartVenues({
                 {saveError ? "Return to Venues" : "Done"}
               </button>
             </footer>
-            {artworkOpen && !hiddenPrivate ? (
+            {artworkOpen ? (
               <QuickStartZoneArtwork
                 image={image}
                 name={zoneId === "exterior" ? "Entrance" : zone?.name || "Zone"}

@@ -388,7 +388,7 @@ export async function verifyFoundingLayout(group) {
                     commonDescription: "A table beside a window.",
                     privateName: "Bedroom",
                     privatePurpose: "Personal resting space",
-                    privateDescription: row.residentCharacterId ? "" : "A comfortable hammock.",
+                    privateDescription: "A comfortable hammock.",
                   })),
                 }),
               ),
@@ -1263,9 +1263,9 @@ export async function verifyFoundingLayout(group) {
         await inspector.getByLabel("Long-term details", { exact: true }).fill("My hammock and traveling journal.");
         await open(1);
         await zone("Private");
-        await expect(inspector.getByLabel("Long-term details", { exact: true })).toHaveCount(0);
+        await expect(inspector.getByLabel("Room Specification", { exact: true })).toHaveCount(0);
         await inspector
-          .getByLabel("Room Specification", { exact: true })
+          .getByLabel("Long-term details", { exact: true })
           .fill("A small bedroom with a garden-facing window.");
         await capture("resident-room-specification");
         await mapView();
@@ -1617,7 +1617,7 @@ export async function verifyFoundingLayout(group) {
         assert.equal(foundingPayload.venues[0].description, "A blue door beside the telescope corridor.");
         assert.equal(foundingPayload.venues[0].privateSpaces[0].description, "My hammock and traveling journal.");
         assert.equal(
-          foundingPayload.venues[1].privateSpaces[0].roomSpecification,
+          foundingPayload.venues[1].privateSpaces[0].description,
           "A small bedroom with a garden-facing window.",
         );
         assert.ok(
@@ -1626,8 +1626,8 @@ export async function verifyFoundingLayout(group) {
         assert.ok(
           foundingPayload.venues
             .slice(1, -1)
-            .every((venue) => venue.privateSpaces.every((room) => room.description === "" && room.image === null)),
-          "private contents stay hidden",
+            .every((venue) => venue.privateSpaces.every((room) => !!room.description && room.image === null)),
+          "resident interior details survive founding",
         );
         assert.equal(errors.length, 0, JSON.stringify(errors));
         console.log(`Founding v2: ${width}x${height}, ${homeCount} villagers, saved/resumed, validated.`);

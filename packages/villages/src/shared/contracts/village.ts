@@ -378,8 +378,6 @@ export type VillageVenue = {
     connectedTo?: string[];
     id: string;
     roomSpecification?: string;
-    imageOutdated?: boolean;
-    observedAt?: string;
     name?: string;
     ownerId?: string;
     purpose?: string;

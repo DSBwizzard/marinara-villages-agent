@@ -368,10 +368,10 @@ async function main() {
         .find((venue) => venue.id === outside.id)!
         .archivedZones!.some((entry) => entry.zone.id === "common:shelter"),
     );
-    // Preserve undiscovered text without placing it into a public project draft.
+    // A specification-only renovation preserves the existing physical description.
     const proposalState = structuredClone(current);
     const target = proposalState.venues.find((venue) => venue.id === vacant.id)!;
-    target.zones![1]!.description = "Unseen personal secret";
+    target.zones![1]!.description = "An established resident room";
     const proposal = draftRenovationProject(proposalState, target.id, {
       detail: "Improve structure",
       zones: target.zones!.filter((zone) => zone.kind !== "exterior").map((zone) => ({ ...zone, description: "" })),
@@ -382,7 +382,7 @@ async function main() {
       villageSettings(proposalState, { name: "Player", personaAvailable: false } as never, null).venues.find(
         (venue) => venue.id === target.id,
       )!.zones![1]!.description,
-      "",
+      "An established resident room",
     );
     await createRenovationProject(outside.id, {
       title: "Base sleeping nook",

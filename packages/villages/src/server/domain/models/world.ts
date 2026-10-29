@@ -531,8 +531,6 @@ export type PrivateSpacePreparation = {
   attempt?: number;
 };
 export type VillageVenueZone = VillageVenueSpace & {
-  lastObserved?: { description: string; state: VillageVenueSpace["state"]; observedAt: string };
-  imageInteriorKey?: string;
   access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
   accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
   relationshipAccess?: boolean;
@@ -561,8 +559,6 @@ export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
 >;
 
 export type VillagePrivateSpace = VillageVenueSpace & {
-  lastObserved?: VillageVenueZone["lastObserved"];
-  imageInteriorKey?: string;
   preparation?: PrivateSpacePreparation;
   ownerId: string;
   /** A first-entry picture is attempted once; later drawing is player controlled. */

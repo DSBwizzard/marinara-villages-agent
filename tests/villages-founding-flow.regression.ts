@@ -1010,7 +1010,7 @@ async function foundingConnectionOwnership() {
       if (operation === "suggest") {
         const suggestions = (result.value as { venues: Array<Record<string, unknown>> }).venues;
         assert.equal(suggestions.length, 3);
-        assert(suggestions.every((venue) => !("privateDescription" in venue) && !("x" in venue)));
+        assert(suggestions.every((venue) => !("x" in venue)));
       }
       if (operation === "image" || operation === "upload") assert.equal((result.value as { id: string }).id, "A-image");
       if (operation === "names") assert.deepEqual(result.value, ["A Hall", "A Court", "A Garden"]);
@@ -1103,17 +1103,15 @@ async function foundingArchitecturePrompts() {
   }
   const before = prompts.length;
   assert.equal(galleryCalls, before);
-  await assert.rejects(
-    service.generateFoundingVenueImage({
-      venue,
-      area: "private",
-      privateOwnerId: "resident",
-      zoneAppearance: "Hidden contents",
-      setting: "Resort",
-    }),
-    /Hidden personal spaces/,
-  );
-  assert.equal(prompts.length, before, "hidden resident space sends no image request");
+  await service.generateFoundingVenueImage({
+    venue,
+    area: "private",
+    privateOwnerId: "resident",
+    zoneAppearance: "A furnished resident room",
+    setting: "Resort",
+  });
+  assert.equal(prompts.length, before + 1, "resident artwork can be generated during founding");
+  assert.match(prompts.at(-1)!, /A furnished resident room/);
   const overflowing = {
     ...venue,
     name: "n".repeat(100),
@@ -1131,17 +1129,17 @@ async function foundingArchitecturePrompts() {
     zoneAppearance: "a".repeat(1000),
     sceneryArtStyle: "v".repeat(600),
   });
-  assert.equal(prompts.length, before + 1, "long authored details still permit an image request");
+  assert.equal(prompts.length, before + 2, "long authored details still permit an image request");
   const fitted = prompts.at(-1)!;
   assert.ok(fitted.length <= 8000);
   assert.ok(fitted.includes("v".repeat(600)), "the full art style survives prompt fitting");
   assert.ok(fitted.includes("Venue form defines the whole place"));
   assert.ok(fitted.includes("Do not invent or show adjoining rooms"));
   assert.deepEqual(overflowing, original, "prompt fitting preserves the authored draft");
-  assert.equal(galleryCalls, before + 1);
+  assert.equal(galleryCalls, before + 2);
 
   console.log(
-    "Founding images: shared architecture across Exterior/Common/player Private; resident Private guard retained.",
+    "Founding images: shared architecture across Exterior/Common/player Private; resident Private artwork available.",
   );
 }
 

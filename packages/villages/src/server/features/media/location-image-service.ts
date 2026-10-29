@@ -2,7 +2,6 @@ import { MAX_IMAGE_PROMPT_LENGTH } from "../../domain/rules/image-generation-rul
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { createHash } from "node:crypto";
 import { zonePictureBaseline, zonePictureChanges, zonePictureContext } from "../../domain/rules/zone-picture.js";
-import { privateInteriorKey } from "../../domain/rules/private-interior.js";
 import type { resolveVillageImageEditing } from "./image-generation.js";
 import type { readZonePictureReference } from "../../adapters/engine/zone-picture-reference.js";
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
@@ -384,7 +383,6 @@ export function createLocationImages(ports: LocationImagePorts) {
         if (!current || current.picture?.claim !== claim) return;
         current.image = image;
         current.picture = { base, baseline, context: entryContext, attempted: claim };
-        if (isPrivateInterior(current)) current.imageInteriorKey = privateInteriorKey(current);
       });
     } catch (error) {
       await mutateVillageState((state) => {
