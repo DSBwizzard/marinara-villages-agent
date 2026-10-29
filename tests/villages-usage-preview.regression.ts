@@ -110,7 +110,7 @@ globalThis.fetch = async () =>
   );
 const state = coerceVillageState({
   ...defaultVillageState(),
-  version: 6,
+  version: 7,
   wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",

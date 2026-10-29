@@ -63,11 +63,10 @@ state.venues = [
         name: "Clearing",
         kind: "exterior",
         description: "A clearing with a bench.",
-        state: { condition: "undeveloped", furniture: ["bench"], features: [], publicFacts: [], traces: [] },
+        state: { revision: 0, updatedAt: "", recent: null },
       },
     ],
-    state: { condition: "undeveloped", furniture: ["bench"], features: [], publicFacts: [], traces: [] },
-    editProposals: [],
+    state: { revision: 0, updatedAt: "", recent: null },
   },
 ] as any;
 state.memories = addMemory(state.memories, {
@@ -178,7 +177,7 @@ const release = configureVillagesRuntime({
 async function run() {
   try {
     const scene: any = {
-      version: 2,
+      version: 3,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",
@@ -240,11 +239,10 @@ async function run() {
     assert.ok(!prompt.includes("Pending player requests to move:"));
     for (const field of [
       "contactIntent",
-      "sceneChange",
+      "placeUpdate",
       "residenceRequest",
       "residenceDecision",
       "venueRequest",
-      "editApproval",
       "memoryChanges",
       "relationshipChanges",
       "wishChanges",
@@ -257,7 +255,7 @@ async function run() {
     assert.ok(prompt.includes("contextual entry cautions remain meaningful"));
     assert.ok(prompt.includes("Only an authorized controller"));
     assert.ok(prompt.includes("Targeting is intent, not isolation"));
-    assert.ok(prompt.includes("Never narrate a lasting change without a valid sceneChange"));
+    assert.ok(prompt.includes("narration cannot assert unsupported results"));
     assert.ok(prompt.includes("Every knower must directly witness EVERY cited line"));
     assert.ok(prompt.includes("sceneAfter"));
     assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes("liveAfter"));
@@ -280,8 +278,12 @@ async function run() {
     const controlled = String(
       (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages[0].content,
     );
-    assert.ok(controlled.includes("every required resident's explicit approval of the exact Zone edit proposal"));
-    assert.ok(controlled.includes("Entry is not edit consent"));
+    assert.ok(
+      controlled.includes("Lasting changes need explicit current-controller consent grounded in witnessed evidence."),
+    );
+    assert.ok(
+      controlled.includes("Valid access permits ordinary temporary use; enduring edits need controller authority"),
+    );
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(

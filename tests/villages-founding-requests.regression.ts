@@ -107,7 +107,7 @@ console.log("Founding request budgets, full identity, explicit Routine contract 
 
 const state = coerceVillageState({
   ...defaultVillageState(),
-  version: 6,
+  version: 7,
   seed: "revision-fixture",
   setting: "Shared place",
   villagers: [
@@ -126,10 +126,14 @@ const state = coerceVillageState({
   venues: [{ id: "hall", name: "Hall" }],
 });
 const before = foundingTaskRevision(state, "a", "routine");
-state.venues[0].state.condition = "Changed condition";
-assert.notEqual(foundingTaskRevision(state, "a", "routine"), before, "place conditions fence stale responses");
+state.venues[0].zones![0].description = "Changed exterior.";
+assert.notEqual(
+  foundingTaskRevision(state, "a", "routine"),
+  before,
+  "the current physical description fences stale responses",
+);
 const facts = foundingTaskRevision(state, "a", "routine");
-state.venues[0].state.publicFacts = ["A new verified fact"];
+state.venues[0].zones![0].description += " A new established detail.";
 assert.notEqual(foundingTaskRevision(state, "a", "routine"), facts);
 const identity = foundingTaskRevision(state, "a", "routine");
 state.villagers[0].cardSnapshot.backstory = "Changed authored history";

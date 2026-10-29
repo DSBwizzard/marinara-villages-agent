@@ -1,4 +1,5 @@
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
+import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
 import { projectRelationshipProfiles } from "../../domain/rules/relationship-knowledge.js";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
 import type { readVillageState } from "../world/village-store.js";
@@ -34,7 +35,15 @@ export function createRelationships(ports: RelationshipPorts) {
     return {
       recovery: (village.socialOutbox ?? [])
         .filter((row) => !!row.error)
-        .map((row) => ({ id: row.id, message: row.error!, reinterpretRequired: !!row.reinterpretRequired })),
+        .map((row) => ({
+          id: row.id,
+          message: row.error!,
+          reinterpretRequired: !!row.reinterpretRequired,
+          canSkip:
+            !row.catchupBatchId &&
+            !state?.applied[row.id] &&
+            village.exchangeReceipts[encounterPhysicalId(row.id)]?.status !== "applied",
+        })),
       processing: ((await ports.backgroundWorkSummaries?.()) ?? [])
         .filter((row) => ["starting-ties", "resident-planning", "personal-mail", "social-recovery"].includes(row.kind))
         .map((row) => ({

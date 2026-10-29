@@ -79,9 +79,8 @@ export function coerceProposal(payload: Record<string, unknown>): { venues: Vill
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       capabilities: [],
       state: {
-        condition: "",
-        furniture: [],
-        publicFacts: [],
+        revision: 0,
+        recent: null,
         updatedAt: "",
       },
     });

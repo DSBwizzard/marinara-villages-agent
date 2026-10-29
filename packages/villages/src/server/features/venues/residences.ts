@@ -19,8 +19,3 @@ export async function decideVillageResidence(...args: Parameters<Residences["dec
 export async function completeVillageResidence(...args: Parameters<Residences["completeVillageResidence"]>) {
   return binding.get().completeVillageResidence(...args);
 }
-export async function retryResidencePrivateSpaceAdaptation(
-  ...args: Parameters<Residences["retryResidencePrivateSpaceAdaptation"]>
-) {
-  return binding.get().retryResidencePrivateSpaceAdaptation(...args);
-}

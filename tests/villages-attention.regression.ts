@@ -67,11 +67,8 @@ const house: any = {
   residenceCapacity: 1,
   capabilities: [],
   state: {
-    condition: "standing",
-    furniture: ["pebble"],
-    features: [],
-    traces: [],
-    publicFacts: [],
+    revision: 0,
+    recent: null,
     updatedAt: stamp,
   },
   zones: [
@@ -81,7 +78,7 @@ const house: any = {
     { ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"), id: "office", name: "Secret Office", kind: "staff" },
   ],
 };
-house.zones[0].state.items = ["pebble"];
+house.zones[0].description = "A pebble beside the house.";
 state.venues = [house];
 state.villagers = [
   ["local", "exterior"],
@@ -473,13 +470,15 @@ const release = configureVillagesRuntime({
                 text: "ANOTHER PRIVATE SECRET",
                 heardBy: ["local", "listener"],
               });
-            if (behavior === "pickup" || behavior === "remote-handoff") {
+            if (behavior === "remote-handoff") {
               result.segments.push({ kind: "narration", text: "The pebble is picked up.", heardBy: ["local"] });
-              result.sceneChange = {
+              result.placeUpdate = {
                 happened: true,
+                segment: result.segments.length - 1,
+                actorIds: [behavior === "pickup" ? "player" : "listener"],
                 narration: "The pebble is picked up.",
-                removeItem: "pebble",
-                transferTo: behavior === "pickup" ? "player" : "listener",
+                expectedRevision: 0,
+                recent: { text: "The pebble has been picked up." },
               };
             }
             if (behavior === "step-out") {
@@ -1120,7 +1119,7 @@ try {
   const pickupMessage = "I pick up the pebble. I throw a rock at the window.";
   const handoffBefore = { ...counts };
   await assert.rejects(send(scene, "remote-handoff", pickupMessage));
-  assert.ok(records.get("villages-village").data.venues[0].zones[0].state.items.includes("pebble"));
+  assert.equal(records.get("villages-village").data.venues[0].zones[0].state.recent, null);
   behavior = "pickup";
   const pickupHeld = await activeVenueSession();
   const pickup = await send(pickupHeld, "remote-handoff", pickupMessage, undefined, pickupHeld!.operation!.attemptId);
@@ -1130,8 +1129,12 @@ try {
     "known rejected Scene metadata reuses the compact result",
   );
   assert.equal(counts.scene, handoffBefore.scene + 2);
-  assert.equal(pickup.session.submissions.at(-1)!.physicalOutcomeVersion, 1);
-  assert.ok(!records.get("villages-village").data.venues[0].zones[0].state.items.includes("pebble"));
+  assert.equal(pickup.session.submissions.at(-1)!.physicalOutcomeVersion, undefined);
+  assert.equal(
+    records.get("villages-village").data.venues[0].zones[0].state.recent,
+    null,
+    "unvalidated metadata cannot establish physical truth",
+  );
   const pickupBeforeReplay = { ...counts };
   await send(pickup.session, "remote-handoff", pickupMessage);
   assert.deepEqual(counts, pickupBeforeReplay);

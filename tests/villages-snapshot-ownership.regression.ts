@@ -33,7 +33,7 @@ function deferred() {
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({
-    version: 6,
+    version: 7,
     ...defaultVillageState(),
     seed: "same-seed",
     name: label,
@@ -156,7 +156,7 @@ async function main() {
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
   const marker = fixture("marker");
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "active",
     villageSeed: marker.world.seed,
     status: "active",

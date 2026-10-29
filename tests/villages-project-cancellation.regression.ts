@@ -15,7 +15,7 @@ for (const mode of ["cancel", "complete", "removed-zone"]) {
   const id = mode === "removed-zone" ? await renovation(f, { zones: [] }) : await f.newProject();
   if (mode !== "removed-zone") await f.service.startProjectConstruction(id, f.body(id), now);
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "worksite-scene",
     villageSeed: f.state().seed,
     placeId: f.get(id).venueId,
@@ -53,7 +53,7 @@ for (const mode of ["cancel", "complete", "removed-zone"]) {
       at: new Date().toISOString(),
       processing,
       action: { happened: true, narration: "The player leaves a mark on the site." },
-      sceneChange: { narration: "A mark is left.", sceneNote: "A fresh mark." },
+      placeUpdate: { narration: "A mark is left.", expectedRevision: 0, recent: { text: "A fresh mark." } },
       physicalOutcomeVersion: 1,
       replyLineIds: ["reply"],
       areaAtTurn: "outside",

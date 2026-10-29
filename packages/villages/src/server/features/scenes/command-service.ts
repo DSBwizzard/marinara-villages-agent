@@ -40,7 +40,7 @@ import {
   projectSpeechContexts,
   validateProjectSpeech,
 } from "../../domain/rules/project-interpretation.js";
-import { shape as projectZoneShape } from "../../domain/rules/project-structure.js";
+import { structuralShape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
 import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
@@ -92,7 +92,6 @@ import {
 } from "../../domain/rules/venue-access.js";
 import {
   contactCanEnter,
-  contactDevice,
   contactNeighbors,
   contactPath,
   contactPosition,
@@ -210,7 +209,6 @@ export interface SceneCommandPorts {
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
   queueVillageVenueRequest: typeof import("../venues/venue-requests.js").queueVillageVenueRequest;
-  applyResidenceEditApproval: typeof import("../venues/zone-edits.js").applyResidenceEditApproval;
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
@@ -270,7 +268,6 @@ export function createSceneCommands({
   readVillageSnapshot,
   readVillageState,
   queueVillageVenueRequest,
-  applyResidenceEditApproval,
   semantic,
 }: SceneCommandPorts) {
   /** Only this explicit request may replace missing/invalid metadata with another interpretation. */
@@ -925,7 +922,11 @@ export function createSceneCommands({
           }).allowed)
       )
         return;
-      observePrivateInterior(zone, villageNow().toISOString());
+      const capturedVenue =
+        session.continuity && sceneContinuityView(state, session).venues.find((row) => row.id === venue.id);
+      const observed = capturedVenue ? resolveVenueZone(capturedVenue, zone.id) : zone;
+      if (!observed) return;
+      observePrivateInterior(zone, session.continuity?.capturedAt ?? villageNow().toISOString(), observed);
       admitted = true;
     });
     if (!admitted) return;
@@ -1178,7 +1179,7 @@ export function createSceneCommands({
       openingIntroductionResidentId: introduction,
       openingGatheringId: gathering ? village.opening!.id : undefined,
       pendingAccessClaim: initialPermissionId,
-      version: 2,
+      version: 3,
       sceneRevision: 0,
       processingVersion: 1,
       semanticVersion: 2,
@@ -1405,11 +1406,11 @@ export function createSceneCommands({
           wishContexts: reply.wishContexts,
           semanticProvenance: reply.semanticProvenance,
           physicalContext: reply.physicalContext,
-          ...(reply.sceneChange
+          ...(reply.placeUpdate
             ? {
-                sceneChange: reply.sceneChange,
+                placeUpdate: reply.placeUpdate,
                 physicalOutcomeVersion: 1 as const,
-                action: { happened: true, ...reply.sceneChange },
+                action: { happened: true, ...reply.placeUpdate },
                 areaAtTurn: state.area,
                 zoneIdAtTurn: state.zoneId,
                 privateOwnerIdAtTurn: state.privateOwnerId,
@@ -1427,7 +1428,6 @@ export function createSceneCommands({
                 projectSpeech: reply.projectSpeech,
                 projectInterpretationVersion: 1 as const,
                 invitationSignal: reply.invitationSignal ?? undefined,
-                editApprovalSignal: reply.editApprovalSignal ?? undefined,
                 residenceSignal: reply.residenceSignal ?? undefined,
                 venueRequestSignal: reply.venueRequestSignal ?? undefined,
               }
@@ -1455,11 +1455,6 @@ export function createSceneCommands({
           greeting.venueRequestSignal.sourceLineId = sourceLineId(
             greeting.venueRequestSignal.characterId,
             greeting.venueRequestSignal.quote,
-          );
-        if (greeting.editApprovalSignal)
-          greeting.editApprovalSignal.sourceLineId = sourceLineId(
-            greeting.editApprovalSignal.residentId,
-            greeting.editApprovalSignal.quote,
           );
         state.accompanying = [
           ...(state.accompanying ?? []).filter(
@@ -1494,17 +1489,6 @@ export function createSceneCommands({
       await writeInterpretationDiagnostics(id, reply.roomInterpretation.traces).catch(() => {});
     }
     if (reply.invitationSignal) await recordSpokenInvitation(greeted, reply.invitationSignal);
-    if (reply.editApprovalSignal) {
-      const approval = reply.editApprovalSignal;
-      const quote = approval.quote.replace(/\s+/gu, " ").toLowerCase();
-      if (
-        greeted.lines.some(
-          (line) =>
-            line.speakerId === approval.residentId && line.content.replace(/\s+/gu, " ").toLowerCase().includes(quote),
-        )
-      )
-        await applyResidenceEditApproval(greeted.placeId, approval.proposalId, approval.residentId, approval.approved);
-    }
     await markZoneSeen(greeted, false);
     await processSavedExchange(id, "greeting");
     const turn = (await readSession(id)).submissions.find((row) => row.id === "greeting");
@@ -1615,9 +1599,6 @@ export function createSceneCommands({
         contactPosition(scene, entry.characterId) === entry.characterZoneId,
     );
     const delivery = intent.delivery ?? established?.delivery ?? "voice";
-    const deviceFeatureId = intent.deviceFeatureId ?? established?.deviceFeatureId ?? "";
-    if (delivery === "device" && !contactDevice(venue, origin, deviceFeatureId))
-      throw badRequest("That communication device is not an established feature in your current Zone.");
     let boundary = intent.boundaryZoneId || (delivery === "voice" ? established?.characterZoneId : "") || "";
     if (!boundary && neighbors.length === 1) boundary = neighbors[0]!;
     if (!boundary && intent.targetId) {
@@ -2198,10 +2179,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const responseTargetId = input.targetId || (session.activeIds.length === 1 ? session.activeIds[0]! : "");
     let attention: AttentionPlan | undefined;
     const interactionVersion = venueOperationInput()?.interactionScopeVersion;
-    const acousticContact =
-      interactionVersion === 5 &&
-      input.mode === "contact" &&
-      readContactDelivery(input.contact ?? {}, input.message) !== "device";
+    const acousticContact = interactionVersion === 5 && input.mode === "contact";
     if (
       acousticContact &&
       (!input.contact?.boundaryZoneId ||
@@ -2323,7 +2301,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
               boundaryZoneId: input.contact?.boundaryZoneId ?? "",
               quote: input.message,
               delivery: readContactDelivery(input.contact ?? {}, input.message),
-              deviceFeatureId: input.contact?.deviceFeatureId,
             }
           : null;
     if (!explicitSceneActions() && !contactIntentUsed && (input.mode === "chat" || input.mode === "ask")) {
@@ -2336,8 +2313,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           entry.playerZoneId !== session.zoneId ||
           contactPosition(session, entry.characterId) !== entry.characterZoneId
         )
-          return false;
-        if (entry.delivery === "device" && !contactDevice(venue, session.zoneId!, entry.deviceFeatureId ?? ""))
           return false;
         return contactReach(village, venue, session.zoneId!, entry.delivery ?? "voice").includes(entry.characterZoneId);
       });
@@ -2361,7 +2336,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           boundaryZoneId: selected.delivery && selected.delivery !== "voice" ? "" : selected.characterZoneId,
           quote: input.message,
           delivery: selected.delivery ?? "voice",
-          deviceFeatureId: selected.deviceFeatureId,
         };
     }
     const routesZoneEvents =
@@ -2376,12 +2350,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         })
       : session;
     if (interactionVersion === 6 && input.mode === "contact") {
-      if (
-        (session.semanticVersion === 2
-          ? input.contact?.delivery
-          : readContactDelivery(input.contact ?? {}, input.message)) === "device"
-      )
-        throw badRequest("Use a direct call or sound in Say / Do; device links are not part of Zone sound routing.");
       if (
         input.contact?.boundaryZoneId &&
         !contactNeighbors(
@@ -2623,7 +2591,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
                   playerZoneId: state.zoneId ?? "exterior",
                   characterZoneId: contactPosition(state, id),
                   delivery: contactIntentUsed?.delivery ?? "voice",
-                  ...(contactIntentUsed?.deviceFeatureId ? { deviceFeatureId: contactIntentUsed.deviceFeatureId } : {}),
                 })),
             ].filter(
               (entry, index, all) => all.findIndex((other) => other.characterId === entry.characterId) === index,
@@ -2729,11 +2696,11 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           accessEvents: savedAccessEvents(reply.roomInterpretation),
           ...(reply.residentActionReceipt ? { residentActionReceipt: reply.residentActionReceipt } : {}),
           requestMetrics: venueRequestMetrics(),
-          ...(reply.sceneChange
+          ...(reply.placeUpdate
             ? {
-                sceneChange: reply.sceneChange,
+                placeUpdate: reply.placeUpdate,
                 physicalOutcomeVersion: 1 as const,
-                action: { happened: true, ...reply.sceneChange },
+                action: { happened: true, ...reply.placeUpdate },
                 actionReplyDone: true,
               }
             : {}),
@@ -2764,20 +2731,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
                           ? line.kind === "narration"
                           : line.speakerId === reply.invitationSignal?.residentId) &&
                         line.content.toLowerCase().includes(reply.invitationSignal.quote.toLowerCase()),
-                    )?.id,
-                },
-              }
-            : {}),
-          ...(reply.editApprovalSignal
-            ? {
-                editApprovalSignal: {
-                  ...reply.editApprovalSignal,
-                  sourceLineId: reply.lines
-                    .map((line, index) => ({ line, id: replyLineIds[index] }))
-                    .find(
-                      ({ line }) =>
-                        line.speakerId === reply.editApprovalSignal?.residentId &&
-                        line.content.toLowerCase().includes(reply.editApprovalSignal.quote.toLowerCase()),
                     )?.id,
                 },
               }
@@ -3275,19 +3228,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           ),
         );
     }
-    if (submission.editApprovalSignal) {
-      const signal = submission.editApprovalSignal;
-      const quote = signal.quote.replace(/\s+/gu, " ").toLowerCase();
-      if (
-        session.lines.some(
-          (line) =>
-            line.id === signal.sourceLineId &&
-            line.speakerId === signal.residentId &&
-            line.content.replace(/\s+/gu, " ").toLowerCase().includes(quote),
-        )
-      )
-        await applyResidenceEditApproval(session.placeId, signal.proposalId, signal.residentId, signal.approved);
-    }
     if (submission.residenceSignal) {
       const signal = submission.residenceSignal;
       if (signal.kind === "request") {
@@ -3565,7 +3505,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     await publish();
   }
   async function applyVenueTurnChange(session: VenueScene, submission: VenueSubmission): Promise<void> {
-    if (!submission.sceneChange) return;
+    if (!submission.placeUpdate) return;
     const area = submission.areaAtTurn ?? session.area;
     const zoneId = submission.physicalContext?.zoneId ?? submission.zoneIdAtTurn ?? session.zoneId;
     const witnesses = submission.physicalContext?.witnessIds ?? submission.activeIdsAtTurn ?? [];
@@ -3576,7 +3516,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       if (session.villageSeed && state.seed !== session.villageSeed) return;
       if (
         state.venueEvents.some((event) => event.id === id) ||
-        state.exchangeReceipts[id]?.physicalOutcome ||
+        state.exchangeReceipts[id]?.status === "applied" ||
         state.exchangeReceipts[id]?.status === "rejected"
       )
         return;
@@ -3605,7 +3545,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       if (
         submission.semanticProvenance?.preservationVersion === 1 &&
         sceneHaltWorldConflict(session, state, {
-          sceneChange: submission.sceneChange,
+          placeUpdate: submission.placeUpdate,
           physicalContext: submission.physicalContext,
         })
       ) {
@@ -3663,7 +3603,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         return;
       const change = readVenueSceneChange(
-        { happened: true, ...submission.sceneChange },
+        { happened: true, ...submission.placeUpdate },
         (() => {
           const place = sceneContinuityView(state, session).venues.find((entry) => entry.id === session.placeId);
           return place
@@ -3672,27 +3612,21 @@ Keep dialogue attributed to the target. The server conveys it through the messen
               : venueInArea(place, area, session.spaceClass, privateOwnerId)
             : undefined;
         })(),
-        witnesses,
-        state.villagers.map((person) => person.characterId),
+        submission.at || session.startedAt,
       );
       if (!change) return;
       const at = submission.at || villageNow().toISOString();
-      const committedAt =
-        submission.semanticProvenance?.preservationVersion === 1 ||
-        submission.semanticProvenance?.occurrenceVersion === 1
-          ? villageNow().toISOString()
-          : at;
-      applyVenueSceneChange(
+      const after = applyVenueSceneChange(
         state,
         session.placeId,
         change,
-        submission.id,
-        committedAt,
+        session.id,
+        at,
         session.spaceClass,
         area,
         privateOwnerId,
         zoneId,
-        !!session.continuity && submission.semanticProvenance?.preservationVersion !== 1,
+        submission.physicalContext,
       );
       const venue = state.venues.find((place) => place.id === session.placeId)!;
       state.venueEvents = [
@@ -3710,10 +3644,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
                   happened: true,
                   ...change,
                   submissionId: submission.id,
-                  witnessIds: [...witnesses],
-                  ...(change.removeItem && change.transferTo
-                    ? { itemTransfer: { itemName: change.removeItem, recipientId: change.transferTo } }
-                    : {}),
+                  witnessIds: ["player", ...witnesses],
+                  after,
                 },
               }
             : {}),

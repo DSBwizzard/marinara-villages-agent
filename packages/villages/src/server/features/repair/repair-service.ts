@@ -99,6 +99,7 @@ function restoredReceipts(
         submissionId: row.submissionId,
         domain: row.domain,
         at: row.at,
+        committedAt: row.committedAt ?? row.at,
         status: "rejected",
         evidenceIds: [],
         reason: "Superseded by checkpoint restoration",
@@ -119,10 +120,17 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
     for (const wish of person.wishes)
       wish.revision = Math.max(wish.revision, live?.wishes.find((w) => w.id === wish.id)?.revision ?? 0) + 1;
   }
-  for (const venue of prior.venues)
+  for (const venue of prior.venues) {
+    const currentVenue = current.venues.find((v) => v.id === venue.id);
+    for (const zone of venue.zones ?? []) {
+      const savedRevision = zone.state.revision;
+      zone.state.revision =
+        Math.max(savedRevision, currentVenue?.zones?.find((z) => z.id === zone.id)?.state.revision ?? 0) + 1;
+    }
     if (venue.access)
       venue.access.revision =
         Math.max(venue.access.revision, current.venues.find((v) => v.id === venue.id)?.access?.revision ?? 0) + 1;
+  }
 }
 function assertSettledSocial(state: VillageState) {
   if (state.socialMailOutbox?.length || state.socialOutbox?.some((row) => !row.processed))

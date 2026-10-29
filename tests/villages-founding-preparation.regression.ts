@@ -47,7 +47,7 @@ function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 6,
+    version: 7,
     wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",
@@ -299,9 +299,7 @@ async function main() {
     assert.ok(stages.includes("residents:saving:aqua"));
     assert.equal(state.townMapImage, fixture().townMapImage);
     assert.ok(
-      privatePreparationRooms(state).every(
-        ({ zone }) => zone.state.items.length <= 4 && zone.state.publicFacts.length <= 4,
-      ),
+      privatePreparationRooms(state).every(({ zone }) => zone.description.length <= 4000 && zone.state.recent === null),
     );
 
     // Independent tasks survive each other's failure; retries never repeat successes.

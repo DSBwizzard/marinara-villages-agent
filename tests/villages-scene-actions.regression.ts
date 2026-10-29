@@ -13,7 +13,8 @@ const venue = {
     { id: "exterior", name: "Exterior", kind: "exterior" },
     { id: "hall", name: "Common Space", kind: "public" },
   ],
-  state: { condition: "leaky", furniture: ["teapot"], features: [], publicFacts: [], traces: [] },
+  description: "A leaky roof. A teapot on the table.",
+  state: { revision: 0, updatedAt: "", recent: null },
 } as unknown as VillageVenue;
 for (const row of samples.movement) {
   // The local path never makes a model request. The optional nomination is independently bound to player words.
@@ -37,15 +38,17 @@ for (const person of ["first", "second", "third"] as const)
     const verb = tense === "past" ? "moved" : person === "third" ? "moves" : "move";
     assert.equal(line, `${subject} ${verb} from Exterior to Common Space.`);
   }
-for (const transferTo of ["player", "tina"]) {
-  const change = readVenueSceneChange(
-    { happened: true, narration: "The teapot is handed over.", removeItem: "teapot", transferTo },
-    venue,
-    ["tina"],
-    ["tina", "bob"],
-  );
-  assert.equal(change?.transferTo, transferTo);
-}
+const change = readVenueSceneChange(
+  {
+    happened: true,
+    narration: "The teapot is moved.",
+    expectedRevision: 0,
+    recent: { text: "The teapot is in the cupboard." },
+  },
+  venue,
+  "2026-10-28T12:00:00.000Z",
+);
+assert.equal(change?.recent?.text, "The teapot is in the cupboard.");
 for (const change of [
   { removeItem: "missing", transferTo: "player" },
   { removeItem: "teapot", transferTo: "remote" },
@@ -53,6 +56,4 @@ for (const change of [
   { traceKind: "note", traceText: "Hello" },
 ])
   assert.throws(() => readVenueSceneChange({ happened: true, narration: "Unsupported.", ...change }, venue, ["tina"]));
-console.log(
-  "Scene actions: labeled movement, nomination binding, six writing styles and transfer/trace validation passed",
-);
+console.log("Scene actions: movement, writing styles, bounded physical admission and rejected legacy fields passed");

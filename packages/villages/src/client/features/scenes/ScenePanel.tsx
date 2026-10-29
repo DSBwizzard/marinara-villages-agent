@@ -1444,13 +1444,9 @@ export function RoomPanel({
                   )
                     ? room.lines.find(
                         (line) => line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
-                      )?.remoteDelivery === "device"
-                      ? " · over the intercom"
-                      : room.lines.find(
-                            (line) => line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
-                          )?.remoteDelivery === "loud"
-                        ? " · calling from inside"
-                        : " · through the doorway"
+                      )?.remoteDelivery === "loud"
+                      ? " · calling from inside"
+                      : " · through the doorway"
                     : ""}
                 </p>
               )}

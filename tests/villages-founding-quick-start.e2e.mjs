@@ -300,8 +300,8 @@ try {
       await sheet.getByLabel("Venue Name", { exact: true }).fill("My Last Ride");
       await capture("residence");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
-      await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toHaveCount(1);
-      await expect(sheet.getByLabel("Exterior appearance", { exact: true })).toBeVisible();
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveCount(1);
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toBeVisible();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Zone access", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Used for", { exact: true })).toHaveCount(0);
@@ -312,7 +312,7 @@ try {
       await selectZone("common:base");
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveValue("Front cabin");
       await sheet.getByLabel("Zone name", { exact: true }).fill("My cabin");
-      await expect(sheet.getByLabel("Appearance", { exact: true })).toBeVisible();
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toBeVisible();
       await expect(sheet.getByText(/Zone \d+ of \d+/)).toHaveCount(0);
       await sheet.getByRole("button", { name: "Public access", exact: true }).click();
       await expect(sheet.getByRole("button", { name: "Public access", exact: true })).toHaveAttribute(
@@ -362,14 +362,16 @@ try {
       await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeFocused();
       if (viewport.width === 390) {
         await page.evaluate(() => (document.documentElement.style.fontSize = "20px"));
-        const appearance = await sheet.getByLabel("Appearance", { exact: true }).boundingBox();
+        const appearance = await sheet.getByLabel("Long-term details", { exact: true }).boundingBox();
         const footer = await sheet.getByRole("button", { name: "Done", exact: true }).boundingBox();
         assert.ok(appearance.y + appearance.height <= footer.y, "the complete Zone form fits a phone with larger text");
         await capture("zone-large-text");
         await page.evaluate(() => (document.documentElement.style.fontSize = ""));
       }
       await selectZone("private:base");
-      await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A padded berth behind a curtain.");
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveValue(
+        "A padded berth behind a curtain.",
+      );
       await expect(sheet.getByText(/Access:|Invitation required|Visitors need permission/)).toHaveCount(0);
       const dimensions = await sheet.evaluate((node) => ({
         width: node.clientWidth,
@@ -406,7 +408,7 @@ try {
       await openVenue("buster");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone("private:base");
-      await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveCount(0);
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveCount(0);
       await expect(sheet.getByLabel("Room Specification", { exact: true })).toBeVisible();
       await expect(sheet.getByText(/private interior stays hidden/)).toBeVisible();
       await expect(sheet.getByLabel("Zone artwork")).toHaveCount(0);
@@ -423,10 +425,10 @@ try {
       await expect(sheet.getByRole("tab", { name: "Venue", exact: true })).toHaveAttribute("aria-selected", "true");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await expect(sheet.getByLabel("Used for", { exact: true })).toHaveValue("");
-      await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("");
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveValue("");
       await sheet.getByLabel("Zone name", { exact: true }).fill("Kitchen");
       await sheet.getByLabel("Used for", { exact: true }).fill("Cooking");
-      await sheet.getByLabel("Appearance", { exact: true }).fill("A sunny kitchen.");
+      await sheet.getByLabel("Long-term details", { exact: true }).fill("A sunny kitchen.");
       await page.evaluate(() => window.clearProblem());
       await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
       const artwork = page.getByRole("dialog", { name: "Artwork for Kitchen", exact: true });
@@ -485,7 +487,7 @@ try {
       await openVenue("player");
       await sheet.getByRole("tab", { name: "Zone", exact: true }).click();
       await selectZone(added.id);
-      await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A sunny kitchen.");
+      await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveValue("A sunny kitchen.");
       await expect(
         sheet.getByRole("tabpanel").getByRole("img", { name: "Artwork for Kitchen", exact: true }),
       ).toBeVisible();

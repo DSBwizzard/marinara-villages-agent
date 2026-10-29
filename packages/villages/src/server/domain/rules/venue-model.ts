@@ -37,7 +37,7 @@ export function defaultVenueSpace(venueClass: VillageVenueClass, description = "
     venueClass,
     description,
     image: null,
-    state: { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" },
+    state: { revision: 0, recent: null, updatedAt: "" },
   };
 }
 
@@ -47,14 +47,7 @@ export function venueSpaces(venue: VillageVenue): VillageVenueSpace[] {
     : venueClasses(venue).map((venueClass) => ({
         ...defaultVenueSpace(venueClass, venue.description),
         image: venue.presentation.image,
-        state: {
-          condition: venue.state.condition,
-          items: venue.state.furniture,
-          publicFacts: venue.state.publicFacts,
-          features: venue.state.features ?? [],
-          traces: venue.state.traces ?? [],
-          updatedAt: venue.state.updatedAt,
-        },
+        state: venue.state,
       }));
 }
 
@@ -66,15 +59,7 @@ export function venueInSpace(venue: VillageVenue, venueClass: VillageVenueClass)
     ...venue,
     description: space.description,
     presentation: { ...venue.presentation, image: space.image ?? venue.presentation.image },
-    state: {
-      ...venue.state,
-      condition: space.state.condition,
-      furniture: space.state.items,
-      publicFacts: space.state.publicFacts,
-      features: space.state.features,
-      traces: space.state.traces,
-      updatedAt: space.state.updatedAt,
-    },
+    state: space.state,
   };
 }
 
@@ -86,19 +71,13 @@ export function venueInArea(
   privateOwnerId = "",
 ): VillageVenue {
   if (area === "outside") {
-    const state = venue.exteriorState ?? defaultVenueSpace("residence").state;
+    const exterior = venue.zones?.find((zone) => zone.kind === "exterior");
+    const state = exterior?.state ?? venue.exteriorState ?? defaultVenueSpace("residence").state;
     return {
       ...venue,
-      description: venue.form || `The approach to ${venue.name}.`,
-      state: {
-        ...venue.state,
-        condition: state.condition,
-        furniture: state.items,
-        publicFacts: state.publicFacts,
-        features: state.features,
-        traces: state.traces,
-        updatedAt: state.updatedAt,
-      },
+      description: exterior?.description ?? venue.description,
+      presentation: { ...venue.presentation, image: exterior ? exterior.image : venue.presentation.image },
+      state,
     };
   }
   if (area === "private") {
@@ -108,15 +87,7 @@ export function venueInArea(
       ...venue,
       description: space.description,
       presentation: { ...venue.presentation, image: space.image },
-      state: {
-        ...venue.state,
-        condition: space.state.condition,
-        furniture: space.state.items,
-        publicFacts: space.state.publicFacts,
-        features: space.state.features,
-        traces: space.state.traces,
-        updatedAt: space.state.updatedAt,
-      },
+      state: space.state,
     };
   }
   return spaceClass ? venueInSpace(venue, spaceClass) : venue;

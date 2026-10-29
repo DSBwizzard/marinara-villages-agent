@@ -1,3 +1,4 @@
+import { MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import type { findVillagerCard } from "../../adapters/engine/catalog.js";
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
@@ -5,6 +6,7 @@ import type { decodeVillageImageDataUrl } from "../../adapters/engine/image-file
 import type { readVillageLore, readVillageVisualLore } from "../../adapters/engine/lorebooks.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { VillageState, VillageVenueImage } from "../../domain/models/world.js";
+import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
@@ -148,7 +150,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "For villager Private Space suggest only names and structural purposes; never descriptions, images, objects or resident secrets. For the player's included Private Space also supply privateDescription: a short visible physical description. Identify the player's residence by its absent residentCharacterId.",
             'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"player residence only","connections":[["exterior","common:base"]]}]}.',
             'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
-            "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 1000.",
+            "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 4000.",
             `Return exactly ${requestedRows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Return only the requested template rows.`,
           ].join("\n"),
         },
@@ -274,9 +276,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           "Player-written names, form, exterior and interior descriptions are authoritative. Never replace or redefine them.",
           "Use shared starting circumstances selectively for plausible initial condition; do not invent completed player actions or repeat the premise in every Venue.",
           "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
-          'Return JSON only: {"venues":[{"id":"...","condition":"...","items":["..."],"publicFacts":["..."],"features":["..."]}]}.',
+          'Return JSON only: {"venues":[{"id":"...","addition":"brief grounded observable physical details to append"}]}.',
           "Respect the actual layout. Exterior-only venues have no interior. A Private Space can be the entire interior with no Common Space. Seed only observable exterior/Common Space details, never private contents.",
-          "Use short concrete details. Empty lists and an empty condition are valid where nothing is established.",
+          "Use short concrete additions. Empty addition is valid. Never repeat or replace supplied descriptions; complete description plus addition must fit4000 characters.",
         ].join("\n"),
       },
       { role: "user", content: JSON.stringify({ setting, lore, venues: rows }) },
@@ -290,7 +292,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
       savedRequest: {
-        key: "founding-venue-details:" + village.seed,
+        key: "founding-venue-details:" + village.seed + ":" + backgroundRevision(messages),
         retry: !!village.foundingPreparation?.retryActions?.length,
         valid: (result) => {
           const payload = extractModelJsonObject(result);
@@ -316,20 +318,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     for (const row of rows) {
       const result = generated.map(record).find((candidate) => candidate.id === row.id);
       if (!result) throw badRequest("The model did not return every founding Venue.");
-      const lines = (key: string, max: number) =>
-        Array.isArray(result[key])
-          ? (result[key] as unknown[])
-              .filter((item): item is string => typeof item === "string")
-              .map((item) => item.trim().slice(0, 300))
-              .filter(Boolean)
-              .slice(0, max)
-          : [];
-      details[row.id] = {
-        condition: asTrimmedString(result.condition).slice(0, 300),
-        items: lines("items", 20),
-        publicFacts: lines("publicFacts", 20),
-        features: lines("features", 5),
-      };
+      const addition = asTrimmedString(result.addition);
+      if (addition.length > MAX_VENUE_DESCRIPTION_LENGTH) throw badRequest("Shorten the initial physical details.");
+      details[row.id] = { addition };
     }
     return details;
   }
@@ -346,11 +337,15 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             row.residentCharacterId,
           ])[row.residentCharacterId];
     const area = input.area === "private" ? "private" : input.area === "interior" ? "interior" : "exterior";
-    const selectedAppearance = asTrimmedString(input.zoneAppearance).slice(0, 1000);
+    if (
+      [input.zoneAppearance, input.privateDescription].some((value) => typeof value === "string" && value.length > 4000)
+    )
+      throw badRequest("Zone descriptions must be at most 4000 characters.");
+    const selectedAppearance = asTrimmedString(input.zoneAppearance);
     const areaDescription =
       selectedAppearance ||
       (area === "private"
-        ? asTrimmedString(input.privateDescription).slice(0, 1000)
+        ? asTrimmedString(input.privateDescription)
         : area === "exterior"
           ? row.description
           : row.spaceDescription);

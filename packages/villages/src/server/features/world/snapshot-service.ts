@@ -223,7 +223,10 @@ export function createVillageSnapshot({
                 player,
                 residenceAccess,
                 sceneAccessContext(residenceAccess, sceneWorld),
-                now,
+                new ZonedDate(
+                  residenceAccess.continuity?.capturedAt ?? residenceAccess.startedAt,
+                  sceneWorld.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+                ),
               ).venues.find((venue) => venue.id === capturedVenue.id)!,
             },
           }

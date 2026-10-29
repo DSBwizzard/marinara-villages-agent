@@ -161,7 +161,11 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       if (project.kind !== "renovation" || !venue) throw conflict("Choose a finished Venue.");
       project.lifecycle.change = readRenovationChange(state, venue, row);
       project.lifecycle.changedZoneIds = changedZoneIds(venue, project.lifecycle.change);
-      project.lifecycle.baseDesignHash = venueDesignHash(venue, project.lifecycle.changedZoneIds);
+      project.lifecycle.baseDesignHash = venueDesignHash(
+        venue,
+        project.lifecycle.changedZoneIds,
+        project.lifecycle.change,
+      );
       project.title = asTrimmedString(row.title).slice(0, 100) || project.title;
       project.lifecycle.revision++;
       renew(state, project);
@@ -210,7 +214,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     if (missingProjectAgreements(state, project).length) throw conflict("Obtain the necessary agreements first.");
     if (project.kind === "renovation") {
       const venue = state.venues.find((venue) => venue.id === project.venueId)!;
-      if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds))
+      if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
         throw conflict(
           resume
             ? "The Venue design changed. Cancel this Project and plan the current layout."

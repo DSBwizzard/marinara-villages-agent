@@ -197,12 +197,12 @@ async function main() {
     nextTransitionAt: "2026-09-11T16:31:00.000Z",
   };
   const setting = "A mill town at the foot of a ridge.";
-  const village = coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, setting });
+  const village = coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, setting });
   const exteriorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
     }).venues[0]!,
@@ -216,7 +216,7 @@ async function main() {
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
     }).venues[0]!,
@@ -241,7 +241,7 @@ async function main() {
       village,
       coerceVillageState({
         ...defaultVillageState(),
-        version: 6,
+        version: 7,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "" }],
       }).venues[0]!,
@@ -254,7 +254,7 @@ async function main() {
   const factual = buildLocationPrompt(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       setting,
       foundingDetails: "Built beside the ridge",
@@ -262,25 +262,27 @@ async function main() {
     }),
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       venues: [
         {
           id: "mill",
           name: "the mill pond",
           form: "a stone watermill",
-          description: "A stone mill beside shallow water with a new roof.",
-          exteriorState: {
-            condition: "weathered but sound",
-            items: ["oak workbench"],
-            publicFacts: ["the wheel turns east"],
-          },
-          state: {
-            condition: "a private interior repair",
-            furniture: ["a hidden cabinet"],
-            publicFacts: ["a Private Space fact"],
-            updatedAt: "",
-          },
+          description:
+            "A stone mill beside shallow water with a new roof. Weathered but sound, with an oak workbench; the wheel turns east.",
+          exteriorState: { revision: 0, updatedAt: "", recent: null },
+          state: { revision: 0, updatedAt: "", recent: null },
+          spaces: [
+            {
+              id: "common",
+              name: "Mill",
+              venueClass: "community",
+              description: "A private interior repair. A hidden cabinet. A Private Space fact.",
+              image: null,
+              state: { revision: 0, updatedAt: "", recent: null },
+            },
+          ],
         },
       ],
     }).venues[0]!,
@@ -289,7 +291,7 @@ async function main() {
   for (const fact of [
     "a stone watermill",
     "A stone mill beside shallow water",
-    "weathered but sound",
+    "Weathered but sound",
     "oak workbench",
     "the wheel turns east",
     "new roof",
@@ -301,7 +303,7 @@ async function main() {
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       venues: [
         {
@@ -311,11 +313,17 @@ async function main() {
           classes: ["residence"],
           residentIds: ["bob"],
           description: "a brick porch beneath ivy",
-          state: {
-            condition: "a secret interior leak",
-            furniture: ["hidden room chest"],
-            publicFacts: ["Private Space fact"],
-          },
+          state: { revision: 0, updatedAt: "", recent: null },
+          privateSpaces: [
+            {
+              id: "private:bob",
+              ownerId: "bob",
+              venueClass: "residence",
+              description: "A secret interior leak. A hidden room chest. Private Space fact.",
+              image: null,
+              state: { revision: 0, updatedAt: "", recent: null },
+            },
+          ],
         },
       ],
     }).venues[0]!,
@@ -328,7 +336,7 @@ async function main() {
       village,
       coerceVillageState({
         ...defaultVillageState(),
-        version: 6,
+        version: 7,
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "   " }],
       }).venues[0]!,
@@ -340,13 +348,13 @@ async function main() {
   const chatty = buildLocationPrompt(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       setting: "y".repeat(MAX_SETTING_LENGTH + 200),
     }),
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "" }],
     }).venues[0]!,
@@ -354,7 +362,7 @@ async function main() {
   );
   assert.ok(chatty.includes("y".repeat(MAX_SETTING_LENGTH)), "the full authored description survives assembly");
   assert.throws(
-    () => sceneryPrompt([], [], "", [chatty]),
+    () => sceneryPrompt([], [], "", [chatty + "x".repeat(8000)]),
     /do not fit the image prompt/,
     "the request fitter refuses an oversized required description rather than silently dropping its ending",
   );
@@ -367,7 +375,7 @@ async function main() {
   const venuesWith = (image: unknown) =>
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", presentation: { image } }],
     }).venues;
@@ -413,7 +421,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 6,
+      version: 7,
       wishSystemVersion: 3,
       venues: [{ name: "  ", presentation: { image: picture } }],
     }).venues,
@@ -429,7 +437,7 @@ async function main() {
   // name is not a place at all — its name is the whole of what the translation
   // list can say about it.
   const placesOf = (entries: unknown[]) =>
-    coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, venues: entries }).venues;
+    coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, venues: entries }).venues;
   const house = (id: string, characterId: string | null, extra: Record<string, unknown> = {}) => ({
     id,
     name: "",
@@ -451,7 +459,6 @@ async function main() {
       "constructionStatus",
       "description",
       "destinations",
-      "editProposals",
       "exteriorState",
       "form",
       "id",
@@ -932,7 +939,7 @@ async function main() {
     false,
     "failed detail seeding cannot claim a successful required receipt",
   );
-  assert.equal((await readVillageState()).venues[0]?.state.condition, "", "seed failure leaves details empty");
+  assert.equal((await readVillageState()).venues[0]?.state.recent, null, "seed failure leaves recent context empty");
   assert.equal(
     founded.json().settings.venues.filter((venue: any) => venue.classes.includes("community")).length,
     1,
@@ -943,11 +950,8 @@ async function main() {
   const editedHome = await put("/api/villages/locations/venue/player-home", {
     description: "A snug home overlooking the square.",
   });
-  assert.equal(editedHome.statusCode, 200, "Edit Room accepts a home without a custom name");
-  assert.equal(
-    editedHome.json().settings.venues.find((venue: any) => venue.id === "player-home").description,
-    "A snug home overlooking the square.",
-  );
+  assert.equal(editedHome.statusCode, 400, "direct physical edits are retired");
+  assert.match(editedHome.json().error, /Project/);
   const movedOccupiedHome = await put("/api/villages/locations/venue/millie-home", {
     presentation: { x: 0.9, y: 0.9 },
   });
@@ -1460,7 +1464,7 @@ async function mediaConnectionOwnership() {
       let held = false;
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 6,
+        version: 7,
         wishSystemVersion: 3,
         seed: "equal-media-seed",
         timeZone: "UTC",

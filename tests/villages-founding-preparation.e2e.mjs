@@ -34,7 +34,7 @@ try {
             name: "Signal Loft",
             kind: "private-residence",
             description: "",
-            state: { items: [], publicFacts: [] },
+            state: { revision: 0, recent: null, updatedAt: "" },
           },
         ],
       },

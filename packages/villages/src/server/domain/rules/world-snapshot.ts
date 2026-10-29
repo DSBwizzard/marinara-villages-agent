@@ -2,6 +2,7 @@ import { copyDate } from "../../../shared/helpers/zoned-date.js";
 import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
 import { isPrivateInterior, privateInteriorKey } from "./private-interior.js";
+import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -41,7 +42,7 @@ import { relationshipZoneController } from "./relationship-rules.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
 import { projectVenueAccess, projectZoneAccess } from "./venue-access.js";
 import { villageVenueLimit } from "./venue-capacity.js";
-import { legacyZoneId, venueZones, zoneClosed } from "./venue-zones.js";
+import { venueZones, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
 
@@ -221,7 +222,7 @@ export function villageSettings(
                 }),
               ),
             };
-      const blankState = { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" };
+      const blankState = { revision: 0, recent: null, updatedAt: "" };
       const zones = venueZones(venue).map((originalZone) => {
         const zone = {
           ...originalZone,
@@ -264,6 +265,12 @@ export function villageSettings(
               ...(observed
                 ? { description: observed.description, state: observed.state, observedAt: observed.observedAt }
                 : {}),
+              state: {
+                ...(observed?.state ?? zone.state),
+                recent: recentPlaceText(observed?.state ?? zone.state, now.getTime())
+                  ? (observed?.state ?? zone.state).recent
+                  : null,
+              },
               imageOutdated: !!(
                 observed &&
                 zone.image &&
@@ -280,8 +287,6 @@ export function villageSettings(
               pictureRetryAvailable: false,
               state: blankState,
               initialImageAttemptedAt: undefined,
-              adaptationPending: undefined,
-              adaptationSourceArchiveAt: undefined,
             };
       });
       const visibleIds = new Set(
@@ -305,37 +310,11 @@ export function villageSettings(
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],
-        state: primary
-          ? {
-              ...venue.state,
-              condition: primary.state.condition,
-              furniture: primary.state.items,
-              publicFacts: primary.state.publicFacts,
-              features: primary.state.features,
-              traces: primary.state.traces,
-            }
-          : { ...venue.state, condition: "", furniture: [], publicFacts: [], features: [], traces: [] },
+        state: primary?.state ?? { revision: 0, updatedAt: "", recent: null },
         spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
         privateSpaces: zones
           .filter((zone) => zone.kind === "private-residence")
           .map((zone) => ({ ...zone, ownerId: zone.ownerId! })),
-        editProposals: venue.editProposals
-          ?.filter((proposal) =>
-            visibleIds.has(proposal.zoneId ?? legacyZoneId(venue, proposal.target, "residence", proposal.ownerId)),
-          )
-          .map((proposal) => ({
-            ...proposal,
-            proposed: {
-              ...proposal.proposed,
-              access: undefined,
-              accessView: undefined,
-              controllerIds: undefined,
-              lastObserved: undefined,
-              imageInteriorKey: undefined,
-              picture: undefined,
-              pictureRevision: undefined,
-            },
-          })),
       };
     }),
     homeBuildingNames: village.homeBuildingNames,

@@ -37,7 +37,7 @@ export function legacyVenueZones(venue: VillageVenue): VillageVenueZone[] {
     ...venueSpaces({
       ...venue,
       presentation: venue.presentation ?? { mapId: "", image: null, x: null, y: null },
-      state: { condition: "", furniture: [], publicFacts: [], updatedAt: "", ...venue.state },
+      state: { revision: 0, updatedAt: "", recent: null },
     }).map((space) => ({
       ...space,
       name: "Common Space",
@@ -136,7 +136,6 @@ export function zoneClosed(
 ): boolean {
   if (zone.kind === "exterior") return false;
   if (zone.preparation && zone.preparation.status !== "ready") return true;
-  if (zone.adaptationPending) return true;
   if (venue.constructionStatus === "worksite") return true;
   return (state.projects ?? []).some((project) => {
     if (
@@ -210,18 +209,10 @@ export function venueInZone(venue: VillageVenue, zoneId: string): VillageVenue {
     ...venue,
     description: zone.description,
     presentation: { ...venue.presentation, image: zone.image },
-    state: {
-      ...venue.state,
-      condition: zone.state.condition,
-      furniture: zone.state.items,
-      publicFacts: zone.state.publicFacts,
-      features: zone.state.features,
-      traces: zone.state.traces,
-      updatedAt: zone.state.updatedAt,
-    },
+    state: zone.state,
   };
 }
-/** Reconcile only legacy adapters that changed during this transaction. */
+/** Zones own physical truth; adapters below are derived views. */
 export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVenue): void {
   if (venue.access && previous) {
     for (const zone of venue.zones ?? [])
@@ -246,24 +237,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
           );
       }
   }
-  if (previous && JSON.stringify(previous.state) !== JSON.stringify(venue.state)) {
-    const primary = venue.spaces?.find((space) => space.venueClass !== "residence") ?? venue.spaces?.[0];
-    const zone = primary && venue.zones?.find((entry) => entry.id === primary.id);
-    const oldZone = zone && previous.zones?.find((entry) => entry.id === zone.id);
-    if (primary && zone && JSON.stringify(zone) === JSON.stringify(oldZone))
-      primary.state = {
-        condition: venue.state.condition,
-        items: venue.state.furniture,
-        publicFacts: venue.state.publicFacts,
-        features: venue.state.features ?? [],
-        traces: venue.state.traces ?? [],
-        updatedAt: venue.state.updatedAt,
-      };
-  }
-  const legacy = legacyVenueZones(venue),
-    oldLegacy = previous ? legacyVenueZones(previous) : [];
-  const old = previous?.zones ?? [];
-  let zones = venue.zones ?? legacy;
+  let zones = venue.zones ?? legacyVenueZones(venue);
   if (
     venue.layoutVersion !== 1 &&
     venue.occupancy.playerHome &&
@@ -296,8 +270,6 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
       controllerIds: [],
       ownerId: undefined,
       initialImageAttemptedAt: "",
-      adaptationPending: false,
-      adaptationSourceArchiveAt: "",
     });
   }
   zones = zones.filter(
@@ -307,25 +279,6 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
       venueResidentIds(venue).includes(zone.ownerId ?? "") ||
       (zone.ownerId === "player" && venue.occupancy.playerHome),
   );
-  for (const adapter of legacy) {
-    const priorAdapter = oldLegacy.find((zone) => zone.id === adapter.id);
-    const index = zones.findIndex((zone) => zone.id === adapter.id);
-    if (index < 0) {
-      if (venue.layoutVersion === 1) continue;
-      zones.push(adapter);
-      continue;
-    }
-    if (!previous) continue;
-    const priorZone = old.find((zone) => zone.id === adapter.id);
-    if (priorZone && JSON.stringify(priorZone) !== JSON.stringify(zones[index])) continue;
-    if (!priorAdapter || JSON.stringify(priorAdapter) !== JSON.stringify(adapter))
-      zones[index] = {
-        ...zones[index]!,
-        ...adapter,
-        name: zones[index]!.name,
-        seen: zones[index]!.seen || (adapter.seen && !priorAdapter?.seen),
-      };
-  }
   // Legacy occupancy adapters can provision a previously implicit personal/staff area.
   // Materialize that existing legacy behavior only; authored layoutVersion=1 maps are never inferred.
   if (venue.layoutVersion !== 1 && zones.some((zone) => zone.connectedTo !== undefined)) {
@@ -348,16 +301,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
     .filter((zone) => zone.kind === "private-residence")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
   const primary = venue.spaces.find((zone) => zone.venueClass !== "residence") ?? venue.spaces[0];
-  if (primary)
-    venue.state = {
-      ...venue.state,
-      condition: primary.state.condition,
-      furniture: primary.state.items,
-      publicFacts: primary.state.publicFacts,
-      features: primary.state.features,
-      traces: primary.state.traces,
-      updatedAt: primary.state.updatedAt,
-    };
+  venue.state = primary?.state ?? exterior?.state ?? { revision: 0, updatedAt: "", recent: null };
   venue.playerSeenShared = zones.some((zone) => zone.kind === "shared-residence" && zone.seen);
   venue.playerSeenPublic = zones.some((zone) => zone.kind === "public" && zone.seen);
   venue.playerSeenPrivateIds = zones
@@ -370,8 +314,10 @@ export function zoneControllerIds(venue: VillageVenue, zone: VillageVenueZone | 
   if (venue.access) return zoneManagers(venue, zone);
   if (zone.kind === "staff") return [...(venue.workerIds ?? [])];
   if (zone.kind === "restricted") return [...(zone.controllerIds ?? [])];
-  if (zone.kind === "private-residence") return zone.ownerId && zone.ownerId !== "player" ? [zone.ownerId] : [];
-  return zone.kind === "shared-residence" ? venueResidentIds(venue) : [];
+  if (zone.kind === "private-residence") return zone.ownerId ? [zone.ownerId] : [];
+  return zone.kind === "shared-residence"
+    ? [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])]
+    : [];
 }
 export function privateTarget(
   venue: VillageVenue,

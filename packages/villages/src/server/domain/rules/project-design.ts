@@ -43,7 +43,10 @@ export function readRenovationChange(state: VillageState, venue: VillageVenue, v
       throw badRequest("Give each Zone a unique ID, name and kind.");
     if (previous?.ownerId && (raw.ownerId !== previous.ownerId || kind !== previous.kind))
       throw conflict("Resident moves assign occupied rooms.");
-    const description = boundText(raw.description, 1000).trim();
+    const description = asTrimmedString(raw.description);
+    const roomSpecification = asTrimmedString(raw.roomSpecification);
+    if (roomSpecification.length > 4000) throw badRequest("Room specification must be at most 4000 characters.");
+    if (description.length > 4000) throw badRequest("Zone description must be at most 4000 characters.");
     return {
       id,
       name,
@@ -52,7 +55,7 @@ export function readRenovationChange(state: VillageState, venue: VillageVenue, v
       description,
       preserveDescription: !description && !!previous,
       purpose: boundText(raw.purpose, 240),
-      ...(raw.roomSpecification !== undefined ? { roomSpecification: boundText(raw.roomSpecification, 1000) } : {}),
+      ...(raw.roomSpecification !== undefined ? { roomSpecification } : {}),
       ownerId: asTrimmedString(raw.ownerId) || undefined,
       controllerIds: Array.isArray(raw.controllerIds)
         ? raw.controllerIds.filter((id): id is string => typeof id === "string")
@@ -124,11 +127,8 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     capabilities: [],
     exteriorState: entrance.state,
     state: {
-      condition: "Under construction",
-      furniture: [],
-      publicFacts: [],
-      features: [],
-      traces: [],
+      revision: 0,
+      recent: null,
       updatedAt: project.updatedAt,
     },
   };

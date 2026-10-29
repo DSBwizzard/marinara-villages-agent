@@ -1,4 +1,5 @@
 import { LIVE_MEMORY_INSTRUCTION } from "./live-exchange.js";
+import { PLACE_UPDATE_INSTRUCTION } from "./zone-continuity.js";
 /** Internal writing contract; validators and saved-exchange schemas remain authoritative. */
 export type VenueResponseContext = {
   opening: boolean;
@@ -74,7 +75,7 @@ export function buildVenueResponseContract(context: VenueResponseContext): strin
       ? 'interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}] classifies Project consent, lead commitment or withdrawal. Include eligible current main dialogue segments using zero-based indexes. Potential targets use supplied Project IDs. Short contextual answers and ambiguity use uncertain or potential. Never grants approval or completed work. Omit private side/whisper segments.'
       : "",
     context.contactFacts
-      ? 'contactIntent:{kind:"knock|call",targetId,boundaryZoneId,quote,delivery:"voice|loud|device",deliveryQuote,deviceFeatureId} for a CURRENT deliberate knock/call or doorway follow-up in the player\'s words. Unknown target/boundary may be empty. Loud/device delivery needs current-word evidence; deviceFeatureId must exist visibly in this Zone. Normal voice reaches adjacent Zones; loud calls may reach farther, never guaranteeing hearing. Ordinary speech remains local. Historical/hypothetical/quoted mentions are not contact. Server routes the attempt: do not narrate remote answers, movement, invitations, or silence yet. ' +
+      ? 'contactIntent:{kind:"knock|call",targetId,boundaryZoneId,quote,delivery:"voice|loud",deliveryQuote} for a CURRENT deliberate knock/call or doorway follow-up in the player\'s words. Unknown target/boundary may be empty. Loud delivery needs current-word evidence. Normal voice reaches adjacent Zones; loud calls may reach farther, never guaranteeing hearing. Ordinary speech remains local. Historical/hypothetical/quoted mentions are not contact. Server routes the attempt: do not narrate remote answers, movement, invitations, or silence yet. ' +
         context.contactFacts
       : "",
     "Zones that may be invited into: " + context.invitationZones,
@@ -91,13 +92,11 @@ export function buildVenueResponseContract(context: VenueResponseContext): strin
           : "",
     'Only an authorized controller can invite or dismiss through natural dialogue or an unambiguous named gesture; preserve contextual cautions. One-visit permission and unconditional standing invitations are distinct. Silence, an open door alone, quotations and third-party permission establish nothing. Entry grants no edit/inviting authority or automatic movement. Optional invitation:{speakerId,venueId,zoneId,scope:"shared|private",ownerId,timing:"now|later",accompanies,quote}; accompanies=true requires an explicit offer to accompany. Server separately interprets and validates permission.',
     context.residentControlled && context.conversational
-      ? "This resident-controlled Residence requires every required resident's explicit approval of the exact Zone edit proposal before sceneChange or any lasting change. Entry is not edit consent."
+      ? "Lasting changes need explicit current-controller consent grounded in witnessed evidence."
       : "",
+    context.conversational ? PLACE_UPDATE_INSTRUCTION : "",
     context.conversational
-      ? 'Resolve player physical actions in this SAME reply, including current first-person past tense ("I fixed the drip"). Speech about deeds, unsupported elsewhere-claims, promises, and impossible attempts have no physical effect. sceneChange:{happened:true,narration:"short past-tense public result",conditionBefore,conditionAfter,featureId,featureText,publicFactBefore,publicFactAfter,resolveTraceId,addItem,removeItem,transferTo,traceKind,traceText,recipientId,sceneNote}. Omit unused fields; replacements/resolutions need exact old values/IDs, conditionAfter is complete. Actual pickups/handoffs remove exact listed inventory and set transferTo to "player" or a resident physically in this Zone; remote speech cannot receive an item. recipientId belongs only to a note, never a transfer. New traces need traceKind and traceText; notes need a known resident recipientId. sceneNote is temporary layout only, never a lasting repair. A locked feature may change; its lock remains. Never narrate a lasting change without a valid sceneChange, invent exceptional supplies/consent, or treat a reaction as physical evidence. Failure gets narration and no sceneChange.'
-      : "",
-    context.conversational
-      ? 'Spontaneous speech signals: residenceRequest:{speakerId,venueId,quote} for an available Residence; residenceDecision:{speakerId,approved,quote} for their pending player move; venueRequest:{speakerId,name,classes:["workplace|community|other"],quote} for a NEW public Venue (one or two classes); editApproval:{speakerId,proposalId,approved,quote} for a listed exact proposal. Omit unused signals. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.'
+      ? 'Spontaneous speech signals: residenceRequest:{speakerId,venueId,quote} for an available Residence; residenceDecision:{speakerId,approved,quote} for their pending player move; venueRequest:{speakerId,name,classes:["workplace|community|other"],quote} for a NEW public Venue (one or two classes); Omit unused signals. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.'
       : "",
     context.projects
       ? 'Optional projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}] requires exact witnessed speaker dialogue about a supplied Project and revision. Approval and volunteering are independent and can share one exchange. No speech starts or completes work.'

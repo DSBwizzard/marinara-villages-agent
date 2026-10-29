@@ -1,6 +1,6 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes
+// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
@@ -122,6 +122,55 @@ async function fixture() {
     read: () => repo.readAuthority({ memories: true }),
   };
 }
+await runCase("repair/place-continuity", async () => {
+  const f = await fixture();
+  const old = {
+    text: "Tea and plates.",
+    occurredAt: "2026-10-01T10:00:00.000Z",
+    expiresAt: "2026-10-02T10:00:00.000Z",
+  };
+  await f.repo.mutateAuthority((s) => {
+    const place = venue();
+    const zone = place.zones!.find((z) => z.id === "common")!;
+    zone.description = "";
+    zone.state.recent = old;
+    s.venues = [place];
+  });
+  const id = repairId("zone", "cafe", "common");
+  const record = await f.api.inspect(id);
+  const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
+  const request = {
+    recordId: id,
+    values,
+    operationId: "renew",
+    action: "renew-recent",
+    knowers: [],
+    expectedRecord: record.token!,
+  };
+  const review = await f.api.prepare(request);
+  assert.deepEqual((await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state.recent, old);
+  await f.api.apply(review.id);
+  const renewed = (await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state;
+  assert.notEqual(renewed.recent!.expiresAt, old.expiresAt);
+  const inverse = await f.api.undo(review.id, "undo-renew");
+  await f.api.apply(inverse.id);
+  const restored = (await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state;
+  assert.deepEqual(restored.recent, old);
+  assert.ok(restored.revision > renewed.revision);
+  const current = await f.api.inspect(id);
+  const clear = await f.api.prepare({
+    ...request,
+    operationId: "clear",
+    action: "clear-recent",
+    expectedRecord: current.token!,
+  });
+  await f.api.apply(clear.id);
+  assert.equal((await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state.recent, null);
+  await f.repo.mutateAuthority((s) => {
+    s.venues[0].zones!.find((z) => z.id === "common")!.description = "Later gameplay.";
+  });
+  await assert.rejects(() => f.api.undo(clear.id, "unsafe-undo"), /changed|later/i);
+});
 const edit = (recordId: string, values: RepairRequest["values"], operationId = "first-repair"): RepairRequest => ({
   recordId,
   values,
@@ -664,10 +713,13 @@ await runCase("repair/domain-editors", async () => {
   );
   const physical = await f.api.inspect(repairId("zone", "cafe", "common"));
   const physicalValues = Object.fromEntries(physical.fields.map((field) => [field.key, field.value]));
-  physicalValues.condition = "The roof is sound.";
+  physicalValues.description = "A shared room. The roof is sound.";
   const roof = await f.prepare(edit(physical.id, physicalValues, "fix-roof"));
   await f.api.apply(roof.id);
-  assert.equal((await f.read()).venues[0].zones?.find((z) => z.id === "common")?.state.condition, "The roof is sound.");
+  assert.equal(
+    (await f.read()).venues[0].zones?.find((z) => z.id === "common")?.description,
+    "A shared room. The roof is sound.",
+  );
   assert.ok((await f.api.index()).checkpoints.length >= 2);
   const legacyCheckpoint = [...f.rows.values()].find((row) => row.kind === "repair-checkpoint")!;
   legacyCheckpoint.data.private = true;
@@ -691,7 +743,7 @@ await runCase("repair/domain-editors", async () => {
       connectedTo: ["common"],
       ownerId,
     });
-  oldHome.zones!.find((z) => z.id === "bedroom")!.state.items = ["A red scarf"];
+  oldHome.zones!.find((z) => z.id === "bedroom")!.description = "A red scarf rests here.";
   await f.repo.mutateAuthority((s) => {
     s.venues = [oldHome, newHome];
   });
@@ -702,15 +754,15 @@ await runCase("repair/domain-editors", async () => {
   const housed = await f.read();
   assert.ok(housed.venues.find((v) => v.id === "new-home")?.residentIds?.includes("a"));
   assert.deepEqual(
-    housed.venues.find((v) => v.id === "old-home")?.zones?.find((z) => z.id === "bedroom")?.state.items,
-    ["A red scarf"],
+    housed.venues.find((v) => v.id === "old-home")?.zones?.find((z) => z.id === "bedroom")?.description,
+    "A red scarf rests here.",
   );
 });
 await runCase("repair/retained-scenes", async () => {
   const f = await fixture(),
     stamp = memoryTime(10);
   const scene: any = {
-    version: 2,
+    version: 3,
     id: "held-scene",
     sceneRevision: 4,
     status: "active",
@@ -772,10 +824,26 @@ await runCase("repair/retained-scenes", async () => {
         submissionId: "later",
         domain: "physical",
         at: stamp,
+        committedAt: stamp,
         status: "applied",
         reason: "Future physical proof",
         evidenceIds: ["later"],
-        physicalOutcome: { id: "future-proof" } as any,
+        physicalOutcome: {
+          id: "future",
+          venueId: "venue",
+          venueName: "Venue",
+          zoneId: "exterior",
+          text: "A later change",
+          at: stamp,
+          actionReceipt: {
+            happened: true,
+            submissionId: "later",
+            narration: "A later change",
+            expectedRevision: 0,
+            witnessIds: [],
+            after: { description: "Later physical account", state: { revision: 1, updatedAt: stamp, recent: null } },
+          },
+        },
       };
     },
     { memories: true },
@@ -806,7 +874,7 @@ await runCase("repair/correction-retained", async () => {
     name: "Library",
     description: "",
     data: {
-      version: 2,
+      version: 3,
       id: "corrected",
       villageSeed: "repair-world",
       status: "closed",
@@ -831,7 +899,7 @@ await runCase("repair/restored-evidence", async () => {
   const f = await fixture(),
     stamp = memoryTime(10);
   const scene = {
-    version: 2,
+    version: 3,
     id: "restored",
     villageSeed: "repair-world",
     status: "closed",

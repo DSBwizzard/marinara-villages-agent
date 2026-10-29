@@ -56,7 +56,7 @@ world.villagers = ["local", "near", "far"].map((id) => ({
 const village = coerceVillageState(world);
 const venue = village.venues[0];
 const base = coerceSession({
-  version: 2,
+  version: 3,
   id: "events",
   villageSeed: world.seed,
   placeId: "house",
@@ -680,7 +680,6 @@ let capturedManifest: unknown = {
   movement: true,
   residences: false,
   residenceDecision: false,
-  editApproval: false,
 };
 let wireOverride: string | undefined;
 let narrationFinish = "stop";
@@ -840,7 +839,6 @@ capturedManifest = {
   movement: true,
   residences: false,
   residenceDecision: false,
-  editApproval: false,
 };
 const step = "He crosses the courtyard to stand a little closer.";
 const noopWire = (moves: unknown[], text = step) =>

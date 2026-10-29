@@ -179,7 +179,7 @@ assert.ok(
   ),
   "starting circumstances survive visual prompt fitting intact",
 );
-assert.throws(() => sceneryPrompt(["A room"], [], "", ["x".repeat(4001)]), /No image was requested/);
+assert.throws(() => sceneryPrompt(["A room"], [], "", ["x".repeat(8001)]), /No image was requested/);
 const refresh = createResidentCards({
   readVillageState: async () => structuredClone(state),
   mutateVillageState: async (change) => {

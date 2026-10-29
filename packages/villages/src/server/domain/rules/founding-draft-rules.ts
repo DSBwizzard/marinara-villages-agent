@@ -94,15 +94,15 @@ export function parseFoundingVenueSuggestions(
       name: text("name", 100, true),
       form: text("form", 240, true),
       venueType: text("venueType", 100),
-      description: text("description", 1000, true),
+      description: text("description", 4000, true),
       layout: layout as FoundingVenueSuggestion["layout"],
       commonName: text("commonName", 100, layout === "common" || layout === "both"),
       commonPurpose: text("commonPurpose", 240, !!template && (layout === "common" || layout === "both")),
-      commonDescription: text("commonDescription", 1000, layout === "common" || layout === "both"),
+      commonDescription: text("commonDescription", 4000, layout === "common" || layout === "both"),
       privateName: text("privateName", 100, layout === "private" || layout === "both"),
       privatePurpose: text("privatePurpose", 240, layout === "private" || layout === "both"),
       ...(venue?.venueClass === "residence" && !venue.residentCharacterId && (layout === "private" || layout === "both")
-        ? { privateDescription: text("privateDescription", 1000, true) }
+        ? { privateDescription: text("privateDescription", 4000, true) }
         : {}),
     };
   });
@@ -134,13 +134,15 @@ export function rowsOf(value: unknown): DraftRow[] {
       throw badRequest("Choose a founding Venue Class.");
     const id = asTrimmedString(row.id).slice(0, 100);
     if (!id) throw badRequest("A founding venue needs an id.");
+    if ([row.description, row.spaceDescription].some((value) => typeof value === "string" && value.length > 4000))
+      throw badRequest("Zone descriptions must be at most 4000 characters.");
     return {
       id,
       name: asTrimmedString(row.name).slice(0, 100),
       venueType: asTrimmedString(row.venueType).slice(0, 100),
       form: asTrimmedString(row.form).slice(0, 240),
-      description: asTrimmedString(row.description).slice(0, 1000),
-      spaceDescription: asTrimmedString(row.spaceDescription).slice(0, 1000),
+      description: asTrimmedString(row.description),
+      spaceDescription: asTrimmedString(row.spaceDescription),
       venueClass: venueClass as DraftRow["venueClass"],
       residentCharacterId: asTrimmedString(row.residentCharacterId).slice(0, 100),
       layout: asTrimmedString(row.layout),
@@ -150,8 +152,5 @@ export function rowsOf(value: unknown): DraftRow[] {
 }
 
 export type SeededFoundingVenueDetails = {
-  condition: string;
-  items: string[];
-  publicFacts: string[];
-  features: string[];
+  addition: string;
 };

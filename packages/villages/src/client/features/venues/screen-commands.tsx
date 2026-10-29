@@ -1,23 +1,12 @@
 import { useLayoutEffect, useMemo, useRef } from "react";
-import type { VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import type { AccessCommand } from "../../../shared/helpers/venue-access.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { venueSpaceFor } from "../../shared/venue.js";
-import { editableVenueFields } from "./edit-fields.js";
 import type { ZoneLayoutChange } from "../../../shared/helpers/zone-layout.js";
 import type { VenuesState } from "./useVenuesState.js";
 
-function editorDraftKey(draft: VillageVenue, classes: readonly VenueClass[]) {
-  return JSON.stringify([
-    draft.classes,
-    draft.residenceCapacity,
-    draft.state,
-    draft.description,
-    editableVenueFields(draft, classes),
-  ]);
-}
 function proposalDraftKey(draft: NonNullable<VenuesState["venueProposalDraft"]>) {
   return JSON.stringify([draft.classes, draft.capacity, draft.title, draft.description]);
 }
@@ -81,21 +70,6 @@ export function useVenueScreenCommands(ports: {
       };
     return claim;
   };
-  const refreshEditor = (
-    place: VillageVenue,
-    submitted: string,
-    classes: readonly VenueClass[],
-    next: VillageSnapshot,
-    notice: string,
-  ) => {
-    setSnapshot(next);
-    const updated = next.settings.venues.find((entry) => entry.id === place.id);
-    if (updated)
-      setVenueEditDraft((current) =>
-        current?.id === place.id && editorDraftKey(current, classes) === submitted ? structuredClone(updated) : current,
-      );
-    setVenueEditNotice(notice);
-  };
   const setZonePictureFrozen = async (place: VillageVenue, zoneId: string, frozen: boolean) => {
     if (!isCurrentVenue(place.id)) return;
     const claim = beginGlobal();
@@ -141,7 +115,7 @@ export function useVenueScreenCommands(ports: {
     try {
       const next = await request<VillageSnapshot>("/locations/venue/" + encodeURIComponent(place.id), {
         method: "PUT",
-        body: JSON.stringify({ name: place.name, description: place.description, imageContext }),
+        body: JSON.stringify({ name: place.name, imageContext }),
       });
       if (global.owns(claim)) setSnapshot(next);
     } catch (cause) {
@@ -195,123 +169,6 @@ export function useVenueScreenCommands(ports: {
       return false;
     } finally {
       if (editor.finish(claim)) setVenueEditBusy(false);
-    }
-  };
-  const saveVenueDetails = async (
-    place: VillageVenue,
-    venueEditDraft: VillageVenue | null,
-    occupiedResidence: boolean,
-    classes: readonly VenueClass[],
-  ) => {
-    if (!isCurrentVenue(place.id) || !venueEditDraft || venueEditDraft.id !== place.id) return;
-    const claim = editor.begin();
-    if (!claim) return;
-    let started = false;
-    claim.onRetire = () => {
-      if (started) setVenueEditBusy(false);
-    };
-    try {
-      if (
-        venueEditDraft.form !== place.form ||
-        JSON.stringify(venueEditDraft.classes) !== JSON.stringify(place.classes) ||
-        JSON.stringify(venueEditDraft.workerIds ?? []) !== JSON.stringify(place.workerIds ?? []) ||
-        JSON.stringify(venueEditDraft.state) !== JSON.stringify(place.state) ||
-        venueEditDraft.presentation.x !== place.presentation.x ||
-        venueEditDraft.presentation.y !== place.presentation.y
-      ) {
-        setVenueEditError("Physical edits and map moves need an earned route. Edit only the name or description here.");
-        return;
-      }
-      if (occupiedResidence) {
-        const draftFields = editableVenueFields(venueEditDraft, classes);
-        const currentFields = editableVenueFields(place, classes);
-        const sharedIndex = classes.indexOf("residence");
-        const roomChanges =
-          (sharedIndex >= 0 &&
-            JSON.stringify(draftFields.spaces[sharedIndex]) !== JSON.stringify(currentFields.spaces[sharedIndex])) ||
-          JSON.stringify(draftFields.privateSpaces) !== JSON.stringify(currentFields.privateSpaces);
-        if (roomChanges && !window.confirm("Saving Venue details will discard unsaved Zone changes. Continue?")) return;
-      }
-      if (!editor.owns(claim)) return;
-      const submitted = editorDraftKey(venueEditDraft, classes);
-      started = true;
-      setVenueEditBusy(true);
-      setVenueEditError("");
-      setVenueEditNotice("");
-      const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          name: venueEditDraft.name,
-          venueType: venueEditDraft.venueType,
-          description: venueEditDraft.description,
-        }),
-      });
-      if (editor.owns(claim)) refreshEditor(place, submitted, classes, next, "Venue details saved.");
-    } catch (cause) {
-      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The Venue could not be saved."));
-    } finally {
-      if (editor.finish(claim) && started) setVenueEditBusy(false);
-    }
-  };
-  const proposeRoomEdit = async (
-    place: VillageVenue,
-    venueEditDraft: VillageVenue | null,
-    classes: readonly VenueClass[],
-    target: "shared" | "private",
-    ownerId = "",
-  ) => {
-    if (!isCurrentVenue(place.id) || !venueEditDraft || venueEditDraft.id !== place.id) return;
-    const claim = editor.begin();
-    if (!claim) return;
-    let started = false;
-    claim.onRetire = () => {
-      if (started) setVenueEditBusy(false);
-    };
-    try {
-      const space =
-        target === "private"
-          ? venueEditDraft.privateSpaces?.find((entry) => entry.ownerId === ownerId)
-          : venueSpaceFor(venueEditDraft, "residence");
-      if (!space) return;
-      const remainingDraft = structuredClone(venueEditDraft);
-      if (target === "shared")
-        remainingDraft.spaces = remainingDraft.spaces?.map((entry) =>
-          entry.venueClass === "residence" ? venueSpaceFor(place, "residence") : entry,
-        );
-      else
-        remainingDraft.privateSpaces = remainingDraft.privateSpaces?.map((entry) =>
-          entry.ownerId === ownerId
-            ? (place.privateSpaces?.find((current) => current.ownerId === ownerId) ?? entry)
-            : entry,
-        );
-      if (
-        JSON.stringify(editableVenueFields(remainingDraft, classes)) !==
-          JSON.stringify(editableVenueFields(place, classes)) &&
-        !window.confirm("Submitting this Zone edit will discard other unsaved changes. Continue?")
-      )
-        return;
-      if (!editor.owns(claim)) return;
-      const submitted = editorDraftKey(venueEditDraft, classes);
-      started = true;
-      setVenueEditBusy(true);
-      setVenueEditError("");
-      setVenueEditNotice("");
-      const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(place.id)}/edit-proposals`, {
-        method: "POST",
-        body: JSON.stringify({ target, ownerId, description: space.description, state: space.state }),
-      });
-      if (editor.owns(claim))
-        refreshEditor(
-          place,
-          submitted,
-          classes,
-          next,
-          `${target === "private" ? "Private Space" : "Common Space"} edit proposed.`,
-        );
-    } catch (cause) {
-      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "That Zone edit could not be proposed."));
-    } finally {
-      if (editor.finish(claim) && started) setVenueEditBusy(false);
     }
   };
   const requestPlayerMove = async (placeId: string, playerMovePrivateZoneId: string) => {
@@ -369,7 +226,7 @@ export function useVenueScreenCommands(ports: {
     if (!claim) return false;
     try {
       const next = await request<VillageSnapshot>(
-        `/venues/${encodeURIComponent(placeId)}/zones/${encodeURIComponent(zoneId)}`,
+        `/venues/${encodeURIComponent(placeId)}/zones/${encodeURIComponent(zoneId)}/name`,
         {
           method: "PUT",
           body: JSON.stringify(body),
@@ -446,8 +303,6 @@ export function useVenueScreenCommands(ports: {
     saveVenueImageContext,
     setZonePictureFrozen,
     retryZonePicture,
-    saveVenueDetails,
-    proposeRoomEdit,
     requestPlayerMove,
     changeVenueAccess,
     retryPrivateSpacePreparation,

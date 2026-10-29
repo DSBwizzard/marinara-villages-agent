@@ -1,6 +1,7 @@
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
 import type { VillageProject, VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
+import { readPlaceDescription } from "./zone-continuity.js";
 import { asRecord } from "./coerce.js";
 import { rememberDomainFact } from "./domain-memories.js";
 import { badRequest, conflict } from "./errors.js";
@@ -8,7 +9,7 @@ import { prepareRenovatedPrivateInterior } from "./private-interior.js";
 import { effectiveRenovationChange, validateRenovationDesign } from "./project-design.js";
 import { venueDesignHash } from "./project-structure.js";
 import { validImage } from "./project-terms.js";
-import { boundText, MAX_VENUE_DESCRIPTION_LENGTH } from "./prompt-preset.js";
+import { boundText } from "./prompt-preset.js";
 import { validateConnections } from "./space-connections.js";
 import { readBaseVenueLayout, validateLayoutZones } from "./venue-layout.js";
 import { defaultVenueSpace } from "./venue-model.js";
@@ -45,7 +46,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
     venue.constructionStatus = "complete";
   } else {
     const change = effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds);
-    if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds))
+    if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
       throw conflict("The Venue design changed. Cancel this Project and plan the current layout.");
     validateRenovationDesign(state, venue, change);
     const old = venueZones(venue);
@@ -75,6 +76,8 @@ export function completeProject(state: VillageState, project: VillageProject, at
               : previous?.preparation,
         };
         prepareRenovatedPrivateInterior(zone, previous);
+        if (previous && zone.description !== previous.description)
+          zone.state = { ...previous.state, revision: previous.state.revision + 1, updatedAt: at };
         return zone;
       }),
     ];
@@ -85,7 +88,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
     venue.playerInvitations = venue.playerInvitations?.filter(
       (entry) => !retired.some((zone) => zone.id === entry.zoneId),
     );
-    venue.editProposals = venue.editProposals?.filter((entry) => !retired.some((zone) => zone.id === entry.zoneId));
   }
   venue.layoutVersion = 1;
   venue.spaces = venue.zones!.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
@@ -93,7 +95,6 @@ export function completeProject(state: VillageState, project: VillageProject, at
     .zones!.filter((zone) => zone.kind === "private-residence")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
   venue.state.updatedAt = at;
-  venue.state.condition = "complete";
   flow.phase = "complete";
   flow.completedAt = at;
   flow.blockedReason = "";
@@ -114,7 +115,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
 export function readProjectPlan(value: unknown, venue: VillageVenue): NonNullable<VillageProject["plan"]> {
   const row = asRecord(value);
   const form = boundText(row.form, MAX_PHYSICAL_DESIGN_LENGTH).trim();
-  const exteriorDescription = boundText(row.exteriorDescription, MAX_VENUE_DESCRIPTION_LENGTH).trim();
+  const exteriorDescription = readPlaceDescription(row.exteriorDescription).trim();
   if (!form || !exteriorDescription || row.layoutVersion !== 1)
     throw badRequest("Define the Physical design, layout and Entrance before work starts.");
   const capacity = Number(row.capacity ?? 1);

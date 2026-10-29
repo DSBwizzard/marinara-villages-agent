@@ -205,12 +205,12 @@ export function FoundingWorkspace({
       placement: "",
       name: "Venue Name",
       form: "Physical Form",
-      description: "Exterior Description",
+      description: "Long-term details",
       layout: "Include Common Space",
       assignment: "",
       "zone-name": "Zone Name",
       "zone-purpose": "Zone Used For",
-      "zone-appearance": "Zone Appearance",
+      "zone-appearance": "Long-term details",
       controller: "Zone Controllers",
     };
     const containers = [...(inspector.current?.querySelectorAll<HTMLElement>("[data-zone-id]") ?? [])].filter(
@@ -636,9 +636,9 @@ export function FoundingWorkspace({
                           <div className="villages-workspace-box-field">
                             <div className="villages-founding-field-heading">
                               <label className="villages-workspace-caption" htmlFor={tabId + "Exterior-description"}>
-                                Exterior and Approach
+                                Long-term details
                               </label>
-                              <FoundingHelp label="Exterior and Approach">
+                              <FoundingHelp label="Long-term details">
                                 Describe the entrance, approach and visible exterior of this Venue.
                               </FoundingHelp>
                             </div>
@@ -646,8 +646,8 @@ export function FoundingWorkspace({
                               <textarea
                                 autoComplete="off"
                                 id={tabId + "Exterior-description"}
-                                aria-label="Exterior Description"
-                                placeholder="Zone Appearance"
+                                aria-label="Long-term details"
+                                placeholder="Long-term details"
                                 rows={3}
                                 maxLength={1000}
                                 disabled={locked}
@@ -744,9 +744,9 @@ export function FoundingWorkspace({
                               <div className="villages-workspace-box-field">
                                 <div className="villages-founding-field-heading">
                                   <label className="villages-workspace-caption" htmlFor={tabId + "Zone-appearance"}>
-                                    Zone Appearance
+                                    Long-term details
                                   </label>
-                                  <FoundingHelp label="Zone Appearance">
+                                  <FoundingHelp label="Long-term details">
                                     Describe the visible interior of this space.
                                   </FoundingHelp>
                                 </div>
@@ -754,8 +754,8 @@ export function FoundingWorkspace({
                                   <textarea
                                     autoComplete="off"
                                     id={tabId + "Zone-appearance"}
-                                    aria-label="Zone Appearance"
-                                    placeholder="Zone Appearance"
+                                    aria-label="Long-term details"
+                                    placeholder="Long-term details"
                                     rows={3}
                                     maxLength={1000}
                                     disabled={locked}

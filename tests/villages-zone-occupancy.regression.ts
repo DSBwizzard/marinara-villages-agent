@@ -59,7 +59,7 @@ function fixture(count: number) {
   });
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 6,
+    version: 7,
     seed: "capacity",
     foundedAt: stamp,
     setupAt: stamp,
@@ -151,7 +151,7 @@ assert.equal(zoneActivityFits(state, ids.slice(0, 4), "hall", "b", 720, 780, at)
 assert.equal(zoneActivityFits(state, ids.slice(0, 2), "home0", "exterior", 720, 780, at), true);
 
 const scene = coerceSession({
-  version: 2,
+  version: 3,
   id: "crowd",
   villageSeed: state.seed,
   placeId: "hall",
@@ -207,7 +207,7 @@ assert.equal(
   });
   resolveVenueZone(venue, "a")!.connectedTo!.push("hidden");
   const saved = coerceSession({
-    version: 2,
+    version: 3,
     ...scene,
     activeIds: ids.slice(0, 4),
     sceneAttendance: captureSceneAttendance(state, venue.id, at),
@@ -368,22 +368,28 @@ applyAccessCommand(
 assert.equal(contactCanEnter(state, venue, "b", "player", scene), false);
 assert.equal(venue.access!.bans[0].id, "outside-ban");
 
-// An older Scene can save a later ordinary property update, but cannot revive a removed target/item.
+// A Scene retains its accepted change while stale writes cannot replace later live state.
 const paint = resolveVenueZone(venue, "a")!;
-paint.state.condition = "blue motorcycle";
+paint.description = "A blue motorcycle.";
+paint.state.revision = 0;
 scene.continuity = captureSceneContinuity(state, scene, at.getTime());
 const red = readVenueSceneChange(
   {
     happened: true,
     narration: "The motorcycle is painted red.",
-    conditionBefore: "blue motorcycle",
-    conditionAfter: "red motorcycle",
+    expectedRevision: 0,
+    edits: [{ before: "blue", after: "red" }],
   },
-  { ...venue, state: { ...venue.state, condition: "blue motorcycle" } },
+  paint as any,
+  stamp,
 )!;
-paint.state.condition = "yellow motorcycle";
-applyVenueSceneChange(state, "hall", red, "red", stamp, "community", "public", "", "a", true);
-assert.equal(paint.state.condition, "red motorcycle", "red saved after yellow wins");
+const evidence = {
+  actorIds: [ids[0]],
+  witnessIds: ids,
+  consentIds: [],
+  positions: Object.fromEntries(ids.map((id) => [id, "a"])),
+};
+const after = applyVenueSceneChange(state, "hall", red, scene.id, stamp, "community", "public", "", "a", evidence);
 state.venueEvents.push({
   id: "venue-chat:crowd:red",
   venueId: "hall",
@@ -391,33 +397,17 @@ state.venueEvents.push({
   zoneId: "a",
   text: red.narration,
   at: stamp,
-  actionReceipt: { ...red, happened: true, submissionId: "red", witnessIds: ids.slice(0, 4) },
+  actionReceipt: { ...red, happened: true, submissionId: "red", witnessIds: ids.slice(0, 4), after },
 });
 scene.submissions.push({ id: "red" } as any);
-paint.state.condition = "yellow motorcycle";
-assert.equal(resolveVenueZone(sceneContinuityView(state, scene).venues[0], "a")!.state.condition, "red motorcycle");
+paint.description = "A yellow motorcycle.";
+paint.state.revision++;
+assert.equal(resolveVenueZone(sceneContinuityView(state, scene).venues[0], "a")!.description, "A red motorcycle.");
+assert.throws(() =>
+  applyVenueSceneChange(state, "hall", red, scene.id, stamp, "community", "public", "", "a", evidence),
+);
 scene.status = "closed";
-assert.equal(
-  paint.state.condition,
-  "yellow motorcycle",
-  "ending the Scene does not replay red over a later yellow save",
-);
-assert.throws(
-  () =>
-    applyVenueSceneChange(
-      state,
-      "hall",
-      { narration: "Take vanished paint", removeItem: "paint" },
-      "missing",
-      stamp,
-      "community",
-      "public",
-      "",
-      "a",
-      true,
-    ),
-  /no longer here/,
-);
+assert.equal(paint.description, "A yellow motorcycle.", "closing never replays an old change over current truth");
 
 // Captured consent cannot modify a Zone that now belongs to someone else.
 {
@@ -425,9 +415,9 @@ assert.throws(
     venue = state.venues[0];
   const zone = resolveVenueZone(venue, "a")!;
   zone.ownerId = ids[0];
-  zone.state.condition = "blue motorcycle";
+  zone.description = "blue motorcycle";
   const saved = coerceSession({
-    version: 2,
+    version: 3,
     ...scene,
     id: "ownership-fence",
     status: "active",
@@ -453,13 +443,13 @@ assert.throws(
     zoneIdAtTurn: "a",
     activeIdsAtTurn: ids,
     semanticProvenance: { version: 2 },
-    sceneChange: {
+    placeUpdate: {
       narration: "Painted red.",
-      conditionBefore: "blue motorcycle",
-      conditionAfter: "red motorcycle",
+      expectedRevision: 0,
+      edits: [{ before: "blue motorcycle", after: "red motorcycle" }],
     },
   } as any);
-  assert.equal(resolveVenueZone(state.venues[0], "a")!.state.condition, "blue motorcycle");
+  assert.equal(resolveVenueZone(state.venues[0], "a")!.description, "blue motorcycle");
   assert.equal(state.exchangeReceipts["venue-chat:ownership-fence:red"].status, "rejected");
   assert.match(state.exchangeReceipts["venue-chat:ownership-fence:red"].reason!, /changed/);
 }
@@ -467,7 +457,7 @@ assert.throws(
 // Village polling and Scene navigation survive background removal of the captured current Zone.
 {
   const { state, ids } = fixture(4);
-  const saved = coerceSession({ version: 2, ...scene, id: "removed-zone", status: "active", continuity: undefined });
+  const saved = coerceSession({ version: 3, ...scene, id: "removed-zone", status: "active", continuity: undefined });
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
   state.venues[0].zones = state.venues[0].zones!.filter((zone) => zone.id !== "a");
   resolveVenueZone(state.venues[0], "b")!.closed = true;
@@ -498,7 +488,7 @@ assert.throws(
   initializeVenueAccess(venue);
   venue.access!.managerIds = [ids[0]];
   const saved = coerceSession({
-    version: 2,
+    version: 3,
     ...scene,
     id: "access-recovery",
     status: "active",
@@ -609,7 +599,7 @@ assert.throws(
     ...neutralRelationship(ids[0], "player"),
     connection: "Friends",
   };
-  const saved = coerceSession({ version: 2, ...scene, id: "friendship", status: "active", continuity: undefined });
+  const saved = coerceSession({ version: 3, ...scene, id: "friendship", status: "active", continuity: undefined });
   saved.continuity = captureSceneContinuity(state, saved, at.getTime());
   assert.equal(contactCanEnter(state, venue, "b", "player", saved), false);
   state.relationshipContext.receipts.friend = {
@@ -631,9 +621,9 @@ assert.throws(
     venue = state.venues[0];
   initializeVenueAccess(venue);
   venue.access!.managerIds = [ids[1]];
-  resolveVenueZone(venue, "b")!.adaptationPending = true;
+  resolveVenueZone(venue, "b")!.preparation = { status: "pending" };
   let saved = coerceSession({
-    version: 2,
+    version: 3,
     ...scene,
     id: "forced",
     status: "active",

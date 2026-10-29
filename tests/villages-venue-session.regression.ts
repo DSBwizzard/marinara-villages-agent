@@ -8,7 +8,6 @@ import {
   renderPlayerBackgroundWritingContext,
 } from "../packages/villages/src/server/domain/rules/player-background.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { physicalVenueEvents } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import {
   venueReplyIntegrity,
@@ -90,10 +89,9 @@ import {
   saveVillageWriting,
 } from "../packages/villages/src/server/features/settings/narration-settings.js";
 import { setVillageVenueImage, updateVillageVenue } from "../packages/villages/src/server/features/venues/services.js";
-import { proposeResidenceSpaceEdit } from "../packages/villages/src/server/features/venues/zone-edits.js";
 import { buildVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import { reconcileVillage, resetVillage } from "../packages/villages/src/server/features/world/village.js";
+import { resetVillage } from "../packages/villages/src/server/features/world/village.js";
 
 // These tests deliberately retry failed calls. Supply explicit authorization under the new contract.
 async function sendVenueTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
@@ -229,9 +227,9 @@ let malformedGreetingOnce = false;
 let openingSegmentsOnce: Record<string, unknown>[] | null = null;
 let emptyOpeningFailures = 0;
 let failReplyOnce = false;
-let sceneActionFixture: Record<string, unknown> | null = null;
-let failEffectWriteFor = "";
-let failReceiptBookkeepingFor = "";
+const sceneActionFixture: Record<string, unknown> | null = null;
+const failEffectWriteFor = "";
+const failReceiptBookkeepingFor = "";
 let failActReplyOnce = false;
 let quietActReplyOnce = false;
 let narrationOnlyOnce = false;
@@ -1346,7 +1344,7 @@ const venue = (id: string) => ({
   presentation: { image: null, x: 0.5, y: 0.5 },
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   capabilities: [],
-  state: { condition: "quiet", furniture: [], publicFacts: [], updatedAt: "" },
+  state: { revision: 0, recent: null, updatedAt: "" },
 });
 const card = (id: string) => ({
   id,
@@ -1503,10 +1501,7 @@ async function main() {
       state.setting = "A quiet village";
       state.venues = [venue("park"), venue("empty")];
       state.venues[0]!.classes = ["workplace"];
-      state.venues[0]!.state.publicFacts = ["The old gate opens at sunrise."];
-      state.venues[0]!.state.features = [
-        { id: "old-gate", text: "A weathered iron gate", sourceCharacterId: "", locked: false, updatedAt: "" },
-      ];
+      state.venues[0]!.description += " A weathered iron gate opens at sunrise.";
       state.venues[1]!.classes = ["residence"];
       state.villagers = [
         {
@@ -1533,44 +1528,9 @@ async function main() {
           ingestSchedule: false,
         },
       ] as any;
-      state.venues[0]!.state.furniture = ["old armchair"];
-    });
-    const features = Array.from({ length: 5 }, (_, index) => ({
-      id: `draft-${index}`,
-      text: `Feature ${index + 1}`,
-      locked: index === 0 || index === 1,
-    }));
-    await mutateVillageState((state) => {
-      const park = state.venues.find((place) => place.id === "park")!;
-      park.workerIds = ["bob"];
-      park.state.features = features;
     });
     let park = (await readVillageState({ memories: true })).venues.find((place) => place.id === "park")!;
-    assert.equal(park.state.features?.length, 5);
-    assert.deepEqual(park.state.furniture, ["old armchair"], "ordinary furniture is never squeezed into feature slots");
-    assert.deepEqual(park.workerIds, ["bob"]);
-    await assert.rejects(
-      () => updateVillageVenue("park", { state: { features: [...features, { text: "Sixth" }] } }),
-      /only name and description/u,
-    );
-    await assert.rejects(() => updateVillageVenue("park", { workerIds: ["outsider"] }), /only name and description/u);
-    const lockedId = park.state.features![0]!.id;
-    await assert.rejects(
-      () =>
-        updateVillageVenue("park", {
-          state: {
-            features: park.state.features?.map((feature) =>
-              feature.id === lockedId
-                ? { ...feature, text: "Player replaced the first feature", locked: false }
-                : feature,
-            ),
-          },
-        }),
-      /only name and description/u,
-    );
-    park = (await readVillageState({ memories: true })).venues.find((place) => place.id === "park")!;
-    assert.equal(park.state.features?.[0]?.id, lockedId, "blocked edits keep a feature's stable identity");
-    assert.equal(park.state.features?.[0]?.locked, true, "the editor cannot unlock a physical feature");
+    await assert.rejects(() => updateVillageVenue("park", { description: "A replaced physical account." }), /Project/);
     await mutateVillageState((state) => {
       state.venues.find((venue) => venue.id === "empty")!.occupancy.playerHome = true;
     });
@@ -1603,22 +1563,18 @@ async function main() {
       targetId: "",
       submissionId: "empty-action",
     });
-    assert.equal(emptyAction.action?.happened, true);
+    assert.equal(emptyAction.action, null, "unvalidated narration has no stored physical receipt");
     assert.equal(emptyAction.session.lines.at(-1)?.content, "The player sets down a cup.");
     await endVenueSession(empty.id);
     await mutateVillageState((state) => {
       state.venues.find((venue) => venue.id === "empty")!.occupancy.playerHome = false;
     });
     const undiscoveredPark = (await buildVillageSnapshot()).settings.venues.find((place) => place.id === "park")!;
-    assert.equal(undiscoveredPark.state.condition, "", "initial condition stays hidden before a public visit");
-    assert.deepEqual(undiscoveredPark.state.publicFacts, []);
-    assert.deepEqual(undiscoveredPark.state.features, []);
+    assert.equal(undiscoveredPark.state.recent, null);
     const callsAfterEmpty = calls;
     let group = (await enterVenue("park"))!;
     const discoveredPark = (await buildVillageSnapshot()).settings.venues.find((place) => place.id === "park")!;
-    assert.equal(discoveredPark.state.condition, "quiet", "the first public visit reveals initial condition");
-    assert.deepEqual(discoveredPark.state.publicFacts, ["The old gate opens at sunrise."]);
-    assert.ok(discoveredPark.state.features?.[0]?.text, "the first public visit reveals features");
+    assert.match(discoveredPark.description, /weathered iron gate/);
     assert.equal(group.status, "opening", "Go inside returns the venue before greeting generation");
     assert.equal(calls, callsAfterEmpty, "entry itself spends no model call");
     assert.equal((await activeVenueSession())?.status, "opening", "reload restores the opening room without blocking");
@@ -1644,9 +1600,9 @@ async function main() {
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
     assert.equal(defaultVillageState().sendOnEnter, false);
-    assert.equal(coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }).sendOnEnter, false);
+    assert.equal(coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3 }).sendOnEnter, false);
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3, sendOnEnter: "true" })
+      coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, sendOnEnter: "true" })
         .sendOnEnter,
       false,
     );
@@ -1655,13 +1611,13 @@ async function main() {
     assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
     await assert.rejects(() => setVillageSendOnEnter("true"), /must be on or off/u);
     assert.deepEqual(
-      coerceVillageState({ ...defaultVillageState(), version: 6, wishSystemVersion: 3 }).narrationStyle,
+      coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3 }).narrationStyle,
       defaultVillageState().narrationStyle,
     );
     assert.deepEqual(
       coerceVillageState({
         ...defaultVillageState(),
-        version: 6,
+        version: 7,
         wishSystemVersion: 3,
         narrationStyle: {
           tense: "past",
@@ -2162,10 +2118,10 @@ async function main() {
       }),
     );
     if (measuringCosts) return;
-    assert.equal(action.action?.happened, true);
+    assert.equal(action.action, null);
     const projectActionEvidence = await readProjectTurnEvidence(group.id, "group-action");
     assert.ok(Number.isFinite(Date.parse(projectActionEvidence.at)), "live Act evidence keeps its timestamp");
-    assert.equal(projectActionEvidence.action?.happened, true);
+    assert.equal(projectActionEvidence.action, null);
     assert.equal(calls - beforeAction, 1, "new legacy Act uses the shared Chat reply without a System action request");
     assert.ok(
       (await activeVenueSession())?.lines.some((line) => line.content === "The player sets down a cup."),
@@ -2184,7 +2140,7 @@ async function main() {
     assert.ok(
       !(await readVillageState({ memories: true })).venues
         .find((place) => place.id === "park")
-        ?.state.furniture.includes("wall"),
+        ?.zones?.some((zone) => zone.description.includes("lifted wall")),
     );
     const beforeRejectedAct = await activeVenueSession();
     const beforeRejectedActEvents = (await readVillageState({ memories: true })).venueEvents.length;
@@ -2203,302 +2159,7 @@ async function main() {
     assert.equal(venueReplyCalls - beforeRejectedActCalls, 1);
     assert.equal((await activeVenueSession())?.lines.length, beforeRejectedAct?.lines.length);
     assert.equal((await readVillageState({ memories: true })).venueEvents.length, beforeRejectedActEvents);
-    failActReplyOnce = true;
-    const beforeUncertainAction = calls;
-    const beforeUncertainLines = (await activeVenueSession())!.lines.length;
-    await assert.rejects(
-      () =>
-        sendVenueTurn({
-          sessionId: group.id,
-          message: "Set down a lantern",
-          mode: "act",
-          targetId: "",
-          submissionId: "uncertain-action",
-        }),
-      /action reply unavailable/u,
-    );
-    assert.equal(
-      (await readVillageState({ memories: true })).venues
-        .find((place) => place.id === "park")
-        ?.state.furniture.filter((item) => item === "lantern").length,
-      0,
-      "a failed reaction leaves the physical action uncommitted",
-    );
-    assert.equal((await activeVenueSession())?.lines.length, beforeUncertainLines);
-    quietActReplyOnce = true;
-    const completedQuietAction = await sendVenueTurn({
-      sessionId: group.id,
-      message: "Set down a lantern",
-      mode: "act",
-      targetId: "",
-      submissionId: "uncertain-action",
-    });
-    assert.equal(calls - beforeUncertainAction, 2, "explicit retry repeats only the uncommitted Narration request");
-    assert.ok(
-      completedQuietAction.session.lines.some(
-        (line) => line.content === "Bob makes room for the lantern on the table.",
-      ),
-    );
-    assert.equal(
-      (await readVillageState({ memories: true })).venues
-        .find((place) => place.id === "park")
-        ?.state.furniture.filter((item) => item === "lantern").length,
-      1,
-      "an uncertain reply never applies the item twice",
-    );
-    for (const [message, submissionId] of [
-      ["Leave a note for Tina", "note-action"],
-      ["Spill tea", "spill-action"],
-      ["Open the window", "window-action"],
-    ]) {
-      await sendVenueTurn({ sessionId: group.id, message, mode: "act", targetId: "", submissionId });
-    }
-    let traces =
-      (await readVillageState({ memories: true })).venues.find((place) => place.id === "park")?.state.traces ?? [];
-    assert.deepEqual(
-      traces.map((trace) => trace.kind),
-      ["note", "stain", "open-window"],
-    );
-    await mutateVillageState((state) => {
-      for (const trace of state.venues.find((place) => place.id === "park")?.state.traces ?? []) {
-        trace.createdAt = new Date(Date.now() - 120_000).toISOString();
-      }
-      state.backgroundPace = "off";
-    });
-    await reconcileVillage({ now: new Date() });
-    const discovered = await readVillageState({ memories: true });
-    traces = discovered.venues.find((place) => place.id === "park")?.state.traces ?? [];
-    assert.ok(
-      !traces.some((trace) => trace.kind === "note"),
-      "an addressed note resolves after its recipient finds it",
-    );
-    assert.ok(
-      traces.some((trace) => trace.kind === "stain"),
-      "a stain persists after discovery",
-    );
-    assert.ok(
-      traces.some((trace) => trace.kind === "open-window"),
-      "other trace kinds persist after discovery",
-    );
-    assert.ok(
-      discovered.memories.records.some(
-        (entry) => entry.text.includes("Meet me by the bridge.") && !!entry.knowers.tina,
-      ),
-      "the recipient remembers the found note",
-    );
-    await sendVenueTurn({
-      sessionId: group.id,
-      message: "Clean the spill",
-      mode: "act",
-      targetId: "",
-      submissionId: "cleanup-action",
-    });
-    traces =
-      (await readVillageState({ memories: true })).venues.find((place) => place.id === "park")?.state.traces ?? [];
-    assert.ok(!traces.some((trace) => trace.kind === "stain"), "cleaning resolves the active stain");
-    assert.ok(
-      traces.some((trace) => trace.kind === "open-window"),
-      "unrelated traces remain",
-    );
-    await mutateVillageState((state) => {
-      const room = state.venues.find((place) => place.id === "park")!;
-      room.state.condition = "a ceiling drip";
-      room.state.traces!.push({
-        id: "trace:drip",
-        kind: "leak",
-        text: "water drips from the ceiling",
-        recipientId: "",
-        createdAt: new Date().toISOString(),
-      });
-      const space = room.spaces?.find((entry) => entry.venueClass === "workplace");
-      if (space) {
-        space.state.condition = room.state.condition;
-        space.state.traces = [...room.state.traces!];
-      }
-    });
-    // Outside setup changes belong to a new Scene, rather than rewriting the open snapshot.
-    await endVenueSession(group.id);
-    group = await greetVenue((await enterVenue("park")).id);
-    const beforeChatRepair = calls;
-    const chatRepair = await sendVenueTurn({
-      sessionId: group.id,
-      message: "I fixed the ceiling drip",
-      mode: "chat",
-      targetId: "",
-      submissionId: "chat-repair",
-    });
-    assert.equal(calls - beforeChatRepair, 1, "a Chat repair uses its existing one reply call");
-    assert.equal(chatRepair.recordEvents.filter((event) => event.kind === "venue").length, 1);
-    park = (await readVillageState({ memories: true })).venues.find((place) => place.id === "park")!;
-    assert.equal(park.state.condition, "a dry ceiling");
-    assert.ok(!park.state.traces?.some((trace) => trace.id === "trace:drip"));
-    const beforeRepairReplay = calls;
-    await sendVenueTurn({
-      sessionId: group.id,
-      message: "I fixed the ceiling drip",
-      mode: "chat",
-      targetId: "",
-      submissionId: "chat-repair",
-    });
-    assert.equal(calls, beforeRepairReplay, "a repair retry neither regenerates nor reapplies the deed");
-    const repairProof = (await readVillageState({ memories: true })).venueEvents.find(
-      (event) => event.actionReceipt?.submissionId === "chat-repair",
-    )!;
-    assert.equal(repairProof.actionReceipt?.conditionAfter, "a dry ceiling");
-    assert.deepEqual(repairProof.actionReceipt?.witnessIds, ["bob", "tina"]);
-    assert.equal(repairProof.zoneId, chatRepair.session.zoneId);
 
-    async function stock(item: string) {
-      await mutateVillageState((state) => {
-        const venue = state.venues.find((place) => place.id === "park")!;
-        if (!venue.state.furniture.includes(item)) venue.state.furniture.push(item);
-        const space = venue.spaces?.find((entry) => entry.venueClass === "workplace");
-        if (space && !space.state.items.includes(item)) space.state.items.push(item);
-        const zone = venue.zones?.find((zone) => zone.id === chatRepair.session.zoneId);
-        if (zone && !zone.state.items.includes(item)) zone.state.items.push(item);
-      });
-      await endVenueSession(group.id);
-      group = await greetVenue((await enterVenue("park")).id);
-    }
-    const transferProofs = [];
-    for (const mode of ["chat", "act", "fulfill"] as const) {
-      await stock("teapot");
-      sceneActionFixture = {
-        happened: true,
-        narration: "The player hands the teapot to Tina.",
-        removeItem: "teapot",
-        transferTo: "tina",
-      };
-      const id = `shared-handoff-${mode}`;
-      const beforeNarration = venueReplyCalls;
-      const sent = await sendVenueTurn({
-        sessionId: group.id,
-        message: "I hand the teapot to Tina",
-        mode,
-        targetId: mode === "fulfill" ? "tina" : "",
-        submissionId: id,
-      });
-      assert.equal(venueReplyCalls - beforeNarration, 1, "all current modes use one Scene response generation");
-      const savedTurn = sent.session.submissions.find((turn) => turn.id === id)!;
-      assert.equal(savedTurn.mode, "chat");
-      assert.equal(savedTurn.requestMode, mode === "chat" ? undefined : mode);
-      assert.equal(savedTurn.verdict, null, "Fulfill uses cited finite checks, not an inline legacy verdict");
-      assert.equal(savedTurn.wishId, "");
-      assert.equal(savedTurn.wishMemory, "");
-      assert.equal(savedTurn.wishInterpretationProof, undefined);
-      assert.ok(!savedTurn.requestMetrics?.some((request) => request.stage.includes("wish-verdict")));
-      const event = (await readVillageState({ memories: true })).venueEvents.find(
-        (event) => event.actionReceipt?.submissionId === id,
-      )!;
-      const { submissionId: _id, ...proof } = event.actionReceipt!;
-      transferProofs.push(proof);
-      assert.deepEqual(proof.itemTransfer, { itemName: "teapot", recipientId: "tina" });
-      const before = calls;
-      const replayed = await sendVenueTurn({
-        sessionId: group.id,
-        message: "I hand the teapot to Tina",
-        mode,
-        targetId: mode === "fulfill" ? "tina" : "",
-        submissionId: id,
-      });
-      assert.equal(calls, before);
-      assert.deepEqual(replayed.recordEvents, sent.recordEvents, "replay preserves notice identities");
-    }
-    assert.deepEqual(transferProofs[0], transferProofs[1], "Chat and fresh Act write equivalent outcomes");
-    assert.deepEqual(transferProofs[0], transferProofs[2], "fresh Fulfill preserves the shared physical path");
-    await stock("timber");
-    sceneActionFixture = {
-      happened: true,
-      narration: "The player picks up the timber.",
-      removeItem: "timber",
-      transferTo: "player",
-    };
-    await sendVenueTurn({
-      sessionId: group.id,
-      message: "I pick up the timber",
-      mode: "chat",
-      targetId: "",
-      submissionId: "shared-pickup",
-    });
-    assert.deepEqual(
-      (await readVillageState({ memories: true })).venueEvents.find(
-        (event) => event.actionReceipt?.submissionId === "shared-pickup",
-      )!.actionReceipt?.itemTransfer,
-      { itemName: "timber", recipientId: "player" },
-    );
-    for (const [label, message, change] of [
-      ["promise", "I will repair the pipe", { conditionBefore: "a dry ceiling", conditionAfter: "repaired" }],
-      ["elsewhere", "I repaired the pipe elsewhere", { conditionBefore: "a dry ceiling", conditionAfter: "repaired" }],
-      ["absent-recipient", "I hand the cup to Buster", { removeItem: "cup", transferTo: "buster" }],
-      ["missing-stock", "I pick up the diamond", { removeItem: "diamond", transferTo: "player" }],
-    ] as const) {
-      sceneActionFixture = { happened: true, narration: "An unsupported effect.", ...change };
-      const before = (await activeVenueSession())!.lines.length;
-      await assert.rejects(() =>
-        sendVenueTurn({
-          sessionId: group.id,
-          message,
-          mode: "chat",
-          targetId: "",
-          submissionId: `unsupported-${label}`,
-        }),
-      );
-      assert.equal((await activeVenueSession())!.lines.length, before);
-      assert.ok(
-        !(await readVillageState({ memories: true })).venueEvents.some(
-          (event) => event.actionReceipt?.submissionId === `unsupported-${label}`,
-        ),
-      );
-      // Explicitly cancel the rejected operation before the next independent fixture.
-      await continueVenueWithoutGreeting(group.id);
-    }
-    for (const stage of ["effect", "bookkeeping"]) {
-      const id = `physical-interruption-${stage}`;
-      await stock("spare cup");
-      sceneActionFixture = {
-        happened: true,
-        narration: "The player picks up the spare cup.",
-        removeItem: "spare cup",
-        transferTo: "player",
-      };
-      if (stage === "effect") failEffectWriteFor = id;
-      else failReceiptBookkeepingFor = id;
-      await sendVenueTurn({
-        sessionId: group.id,
-        message: "I pick up the spare cup",
-        mode: "chat",
-        targetId: "",
-        submissionId: id,
-      });
-      if (stage === "effect")
-        assert.equal(
-          (await activeVenueSession())!.submissions.find((turn) => turn.id === id)!.processing?.domains.wishes.status,
-          "pending",
-          "Wish checks wait for committed physical evidence",
-        );
-      if (stage === "bookkeeping")
-        await mutateVillageState((state) => {
-          state.venueEvents = state.venueEvents.filter((event) => event.actionReceipt?.submissionId !== id);
-        });
-      failEffectWriteFor = failReceiptBookkeepingFor = "";
-      const before = calls;
-      await sendVenueTurn({
-        sessionId: group.id,
-        message: "I pick up the spare cup",
-        mode: "chat",
-        targetId: "",
-        submissionId: id,
-      });
-      assert.equal(calls, before, "storage recovery reuses the saved reply");
-      assert.equal(
-        physicalVenueEvents(await readVillageState({ memories: true })).filter(
-          (event) => event.actionReceipt?.submissionId === id,
-        ).length,
-        1,
-        "effect and receipt apply once",
-      );
-    }
-    sceneActionFixture = null;
     await settleBackgroundWork();
     const fixtureKey = key("villages", `villages-venue-visit-${group.id}`);
     const originalRecords = structuredClone([...records]);
@@ -2594,10 +2255,7 @@ async function main() {
       submissionId: "chat-tables",
     });
     park = (await readVillageState({ memories: true })).venues.find((place) => place.id === "park")!;
-    assert.equal(
-      park.state.traces?.find((trace) => trace.kind === "scene-note")?.text,
-      "The tables stand beside the wall.",
-    );
+    assert.equal(Object.hasOwn(park.state, "traces"), false);
     const beforeClaims = (await readVillageState({ memories: true })).venueEvents.length;
     await sendVenueTurn({
       sessionId: group.id,
@@ -2618,7 +2276,6 @@ async function main() {
       beforeClaims,
       "speech about a deed and an impossible attempt create no physical events",
     );
-    assert.match(lastVenueSystem, /Current condition: a dry ceiling/u);
     assert.doesNotMatch(lastVenueSystem, /a ceiling drip|water drips from the ceiling/u);
     assert.ok((await activeVenueSession())!.recap.length <= 600, "long visits keep a bounded recap");
     assert.ok(
@@ -2955,8 +2612,7 @@ async function main() {
       lastSimulatedAt: featureMoment.instant,
       forced: false,
     });
-    const unlockedFeatureId = featureVenue.state.features![0]!.id;
-    featureProposal = { who: "bob", venueId: "park", featureId: unlockedFeatureId, text: "Bob repainted the wall" };
+    featureProposal = null;
     for (const playerBackground of [DEFAULT_PLAYER_BACKGROUND, "", null]) {
       const roleContext = { ...featureContext(), playerBackground, playerPersonaName: "Robin" };
       await proposeResidentChoices(roleContext as any);
@@ -3217,11 +2873,7 @@ async function main() {
     const roomBefore = (await readVillageState({ memories: true })).venues
       .find((place) => place.id === "home")!
       .spaces!.find((space) => space.venueClass === "residence")!;
-    await updateVillageVenue("home", { description: "A quiet exterior." });
-    assert.equal(
-      (await readVillageState({ memories: true })).venues.find((place) => place.id === "home")?.description,
-      "A quiet exterior.",
-    );
+    await assert.rejects(() => updateVillageVenue("home", { description: "A quiet exterior." }), /Project/);
     // Requests authored outside a Scene are available to the next captured Scene.
     const revisitHome = async (privateRoom = false) => {
       await endVenueSession(outside.id);
@@ -3246,36 +2898,10 @@ async function main() {
         await moveVenueZone(outside.id, "private:bob");
       }
     };
-    const proposed = await proposeResidenceSpaceEdit("home", {
-      target: "shared",
-      description: "A warm Common Space.",
-      state: { condition: "warm", items: ["cup"] },
-    });
-    assert.equal(proposed.settings.venues.find((place) => place.id === "home")?.editProposals?.length, 1);
     await revisitHome();
-    await assert.rejects(() => updateVillageVenue("home", { form: "A quiet home." }), /only name and description/u);
-    await sendVenueTurn({
-      sessionId: outside.id,
-      message: "Bob approves the edit",
-      mode: "chat",
-      targetId: "",
-      submissionId: "bob-edit-approval",
-    });
+    await assert.rejects(() => updateVillageVenue("home", { form: "A quiet home." }), /Project/);
     let home = (await readVillageState({ memories: true })).venues.find((place) => place.id === "home")!;
-    assert.equal(
-      home.spaces?.find((space) => space.venueClass === "residence")?.description,
-      roomBefore.description,
-      "one of two residents cannot change the Common Space",
-    );
-    await sendVenueTurn({
-      sessionId: outside.id,
-      message: "Tina approves the edit",
-      mode: "chat",
-      targetId: "",
-      submissionId: "tina-edit-approval",
-    });
-    home = (await readVillageState({ memories: true })).venues.find((place) => place.id === "home")!;
-    assert.equal(home.spaces?.find((space) => space.venueClass === "residence")?.description, "A warm Common Space.");
+    assert.equal(home.spaces?.find((space) => space.venueClass === "residence")?.description, roomBefore.description);
     await setVillageVenueImage(
       "home",
       { id: "shared-image", ref: "global-gallery:shared-image", url: "/shared.webp" },
@@ -3287,7 +2913,6 @@ async function main() {
       "shared-image",
       "a visited Residence image belongs to the player and changes immediately",
     );
-    assert.equal(home.editProposals?.length, 0, "the image does not create a resident approval proposal");
     assert.equal(
       (await readVillageState({ memories: true })).venues
         .find((place) => place.id === "home")
@@ -3329,13 +2954,6 @@ async function main() {
       "later visits cannot claim another automatic draw, even after a failed first draw",
     );
     const privateBefore = home.privateSpaces?.find((space) => space.ownerId === "bob")?.description;
-    await proposeResidenceSpaceEdit("home", { target: "private", ownerId: "bob", description: "Bob's snug nook." });
-    assert.equal(
-      (await readVillageState({ memories: true })).venues
-        .find((place) => place.id === "home")
-        ?.privateSpaces?.find((space) => space.ownerId === "bob")?.description,
-      privateBefore,
-    );
     await setVillageVenueImage(
       "home",
       { id: "private-image", ref: "global-gallery:private-image", url: "/private.webp" },
@@ -3343,30 +2961,10 @@ async function main() {
       "bob",
     );
     assert.equal(
-      (await readVillageState({ memories: true })).venues.find((place) => place.id === "home")?.editProposals?.length,
-      1,
-      "changing an image does not add a second room proposal",
-    );
-    await revisitHome(true);
-    await sendVenueTurn({
-      sessionId: outside.id,
-      message: "Bob approves the edit",
-      mode: "chat",
-      targetId: "",
-      submissionId: "bob-private-approval",
-    });
-    assert.equal(
       (await readVillageState({ memories: true })).venues
         .find((place) => place.id === "home")
         ?.privateSpaces?.find((space) => space.ownerId === "bob")?.description,
-      "Bob's snug nook.",
-    );
-    assert.equal(
-      (await readVillageState({ memories: true })).venues
-        .find((place) => place.id === "home")
-        ?.privateSpaces?.find((space) => space.ownerId === "bob")?.image?.id,
-      "private-image",
-      "resident approval of room text does not overwrite a player-chosen image",
+      privateBefore,
     );
     await leaveVenueSession(outside.id, "home-leave");
     await assert.rejects(
@@ -3386,43 +2984,7 @@ async function main() {
       "private-image",
       "discovery preserves artwork without granting future room actions",
     );
-    const persistedForMigration = await readVillageState({ memories: true });
-    const homeForMigration = persistedForMigration.venues.find((place) => place.id === "home")!;
-    const roomForMigration = homeForMigration.privateSpaces!.find((space) => space.ownerId === "bob")!;
-    const migrated = coerceVillageState({
-      ...defaultVillageState(),
-      version: 6,
-      wishSystemVersion: 3,
-      ...persistedForMigration,
-      venues: persistedForMigration.venues.map((place) =>
-        place.id === "home"
-          ? {
-              ...place,
-              editProposals: [
-                {
-                  id: "legacy-image-proposal",
-                  target: "private",
-                  ownerId: "bob",
-                  baseUpdatedAt: roomForMigration.state.updatedAt,
-                  proposed: {
-                    ...roomForMigration,
-                    image: { id: "older-image", ref: "global-gallery:older-image", url: "/older.webp" },
-                  },
-                  requiredIds: ["bob"],
-                  approvedIds: [],
-                  declined: false,
-                  createdAt: new Date().toISOString(),
-                },
-              ],
-            }
-          : place,
-      ),
-    });
-    assert.equal(
-      migrated.venues.find((place) => place.id === "home")?.editProposals?.length,
-      0,
-      "legacy image-only proposals are retired when persisted state is read",
-    );
+
     await mutateVillageState((state) => {
       for (const resident of state.villagers.filter((person) => ["bob", "tina"].includes(person.characterId))) {
         resident.agenda!.day.forEach((block) => (block.zoneId = "exterior"));
@@ -3571,15 +3133,12 @@ async function main() {
       submissionId: "home-outside-sign",
     });
     const exteriorChanged = (await readVillageState({ memories: true })).venues.find((place) => place.id === "home")!;
-    assert.deepEqual(exteriorChanged.exteriorState?.items, ["sign"]);
-    assert.deepEqual(exteriorChanged.spaces?.find((space) => space.venueClass === "residence")?.state.items, ["cup"]);
+    assert.equal(Object.hasOwn(exteriorChanged.exteriorState!, "items"), false);
     await endVenueSession(emptyOutside.id);
     await mutateVillageState((state) => {
       const oldHome = state.venues.find((place) => place.id === "home")!;
       const oldRoom = oldHome.privateSpaces!.find((space) => space.ownerId === "bob")!;
       oldRoom.description = `A private space for this resident at ${oldHome.name}.`;
-      oldRoom.state.items = [];
-      oldRoom.state.features = [];
       state.venues.push({
         ...venue("new-home"),
         classes: ["residence"],

@@ -14,7 +14,6 @@ import type { VillageVenue, VillageVillager } from "../packages/villages/src/ser
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import {
-  contactDevice,
   contactNeighbors,
   contactPath,
   contactPosition,
@@ -53,11 +52,8 @@ function venue(id: string, classes: VillageVenue["classes"] = ["community"]): Vi
     residenceCapacity: 1,
     capabilities: [],
     state: {
-      condition: "standing",
-      furniture: [],
-      publicFacts: [],
-      features: [],
-      traces: [],
+      revision: 0,
+      recent: null,
       updatedAt: stamp,
     },
   };
@@ -529,7 +525,7 @@ async function explicitActionChecks() {
     await discardVenueVisitDebug(scene.id);
   }
   assert.deepEqual(contactReach(saved, house, "exterior", "loud", "common", true), ["common"]);
-  assert.deepEqual(contactReach(saved, house, "exterior", "device", "common", true), ["common"]);
+  assert.throws(() => readContactDelivery({ delivery: "device" }, "I use an intercom."), /not supported/);
   scene = await open();
   failSave = true;
   const recoveryCalls = calls;
@@ -767,55 +763,28 @@ async function main() {
     assert.equal(readContactDelivery({}, "If I shout for Alex, would he hear?"), "voice");
     assert.ok(!contactReach(saved, house, "exterior", "voice").includes("office"));
     assert.ok(contactReach(saved, house, "exterior", "loud").includes("office"));
-    assert.equal(contactDevice(house, "exterior", "invented"), false);
-    await mutateVillageState((current) => {
-      current.venues[0]!.zones!.find((zone) => zone.id === "exterior")!.state.features!.push({
-        id: "intercom",
-        text: "A working two-way intercom connects the rooms.",
-        locked: true,
-      });
-    });
     scene = await open();
     const deviceMessage = "I use the intercom to ask Alex if he is listening.";
-    const device = await submitTurn({
-      sessionId: scene.id,
-      message: deviceMessage,
-      mode: "contact",
-      targetId: "alex",
-      submissionId: "device-adjacent",
-      contact: {
-        kind: "call",
-        targetId: "alex",
-        boundaryZoneId: "common",
-        quote: deviceMessage,
-        delivery: "device",
-        deviceFeatureId: "intercom",
-      },
-    });
-    assert.deepEqual(device.session.activeIds, []);
-    assert.equal(device.session.lines.at(-1)!.remoteDelivery, "device");
-    assert.equal(contactPosition(device.session, "alex"), "office");
-    assert.doesNotMatch(prompts.at(-1)!, /Possible remote listeners:.*alex/);
-    const inventedCalls = [providerCalls, providerResolves];
+    const deviceCalls = [providerCalls, providerResolves];
     await assert.rejects(
       submitTurn({
         sessionId: scene.id,
         message: deviceMessage,
         mode: "contact",
         targetId: "alex",
-        submissionId: "invented-device",
+        submissionId: "retired-device",
         contact: {
           kind: "call",
           targetId: "alex",
           boundaryZoneId: "common",
           quote: deviceMessage,
           delivery: "device",
-          deviceFeatureId: "invented",
+          deviceFeatureId: "intercom",
         },
       }),
-      /not an established feature/,
+      /not supported/,
     );
-    assert.deepEqual([providerCalls, providerResolves], inventedCalls);
+    assert.deepEqual([providerCalls, providerResolves], deviceCalls, "retired device requests never dispatch");
     await discardVenueVisitDebug(scene.id);
 
     behavior = "move";

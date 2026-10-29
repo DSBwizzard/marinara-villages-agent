@@ -171,7 +171,7 @@ const settings = villageSettings(
   null,
 );
 assert.ok(
-  settings.venues[0].privateSpaces?.every((zone) => !zone.description && !zone.image && !zone.state.items.length),
+  settings.venues[0].privateSpaces?.every((zone) => !zone.description && !zone.image && zone.state.recent === null),
   "unseen private interiors never reach the client",
 );
 console.log(

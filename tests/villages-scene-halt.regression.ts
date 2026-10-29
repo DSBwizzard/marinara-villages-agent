@@ -18,7 +18,7 @@ const choice = { chosenAt: "2026-10-15T20:00:00Z", timeZone: "America/Los_Angele
 const clear = { reason: "none", quote: "", appointments: [] };
 await runCase("scene-halt/captured-calendar", () => {
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     startedAt: "2026-10-19T14:00:00.000Z",
     lines: [{ content: "Thursday. Early Thursday." }],
   });
@@ -136,9 +136,9 @@ await runCase("scene-halt/world", () => {
       ],
     },
   ] as any;
-  world.venues[0].zones![0].state.condition = "A folded cloth lies here.";
+  world.venues[0].zones![0].description = "A folded cloth lies here.";
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "scene",
     villageSeed: world.seed,
     placeId: "house",
@@ -151,17 +151,26 @@ await runCase("scene-halt/world", () => {
   });
   scene.continuity = captureSceneContinuity(world, scene, Date.parse(scene.startedAt));
   const change = {
-    sceneChange: {
+    placeUpdate: {
       narration: "You unfold the cloth.",
-      conditionBefore: "A folded cloth lies here.",
-      conditionAfter: "The cloth is unfolded.",
+      expectedRevision: 0,
+      edits: [{ before: "A folded cloth lies here.", after: "The cloth is unfolded." }],
+    },
+    physicalContext: {
+      zoneId: "exterior",
+      actorIds: ["player"],
+      witnessIds: [],
+      consentIds: [],
+      positions: { player: "exterior" },
+      segment: 0,
     },
   };
   assert.equal(sceneHaltWorldConflict(scene, world, change), false);
   const current = structuredClone(world);
   current.name = "An unrelated change";
   assert.equal(sceneHaltWorldConflict(scene, current, change), false);
-  current.venues[0].zones![0].state.condition = "The cloth has been removed.";
+  current.venues[0].zones![0].description = "The cloth has been removed.";
+  current.venues[0].zones![0].state.revision++;
   assert.equal(
     sceneHaltWorldConflict(scene, current, {}),
     false,

@@ -13,17 +13,6 @@ export function claimZonePictureEntry(scene: Pick<VenueScene, "pictureEvaluatedZ
 export function zonePicturePhysicalRecord(zone: VillageVenueZone) {
   return {
     description: zone.description,
-    condition: zone.state.condition,
-    items: zone.state.items,
-    facts: zone.state.publicFacts,
-    features: zone.state.features.map((feature) => feature.text),
-    traces: zone.state.traces
-      .filter(
-        (trace) =>
-          ["stain", "open-window", "dropped-object", "damage", "decoration", "repair"].includes(trace.kind) &&
-          (!trace.recipientId || trace.recipientId === "player"),
-      )
-      .map((trace) => `${trace.kind}: ${trace.text}`),
   };
 }
 export function zonePictureContext(state: VillageState, venue: VillageVenue, zone: VillageVenueZone): string {

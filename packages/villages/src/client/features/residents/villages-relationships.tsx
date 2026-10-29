@@ -52,6 +52,29 @@ export function VillagesRelationships({
     refresh();
     return () => controller.abort();
   }, [request, suppliedView, inspect, visible, backgroundRevision]);
+  async function recoverEncounter(row: NonNullable<RelationshipInspectView["recovery"]>[number], skip = false) {
+    const key = row.id + ":" + row.reinterpretRequired + ":" + skip;
+    recoveryIdentity.current[key] ??= createVillagesClientId();
+    setSaving(true);
+    setError("");
+    try {
+      setDebug(
+        await request<RelationshipInspectView>("/relationships/outbox/" + encodeURIComponent(row.id) + "/recovery", {
+          method: "POST",
+          body: JSON.stringify({
+            requestId: recoveryIdentity.current[key],
+            reinterpret: row.reinterpretRequired,
+            skip,
+          }),
+        }),
+      );
+      delete recoveryIdentity.current[key];
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Recovery failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
   const view = suppliedView === undefined ? localView : suppliedView;
   return (
     <section className={prefix + "-overlay villages-relationships"} aria-label="Relationships">
@@ -149,36 +172,14 @@ export function VillagesRelationships({
                 <article key={row.id}>
                   <h4>Encounter needs recovery</h4>
                   <p>{row.message}</p>
-                  <button
-                    type="button"
-                    disabled={saving}
-                    onClick={async () => {
-                      const key = row.id + ":" + row.reinterpretRequired;
-                      recoveryIdentity.current[key] ??= createVillagesClientId();
-                      setSaving(true);
-                      try {
-                        setDebug(
-                          await request<RelationshipInspectView>(
-                            "/relationships/outbox/" + encodeURIComponent(row.id) + "/recovery",
-                            {
-                              method: "POST",
-                              body: JSON.stringify({
-                                requestId: recoveryIdentity.current[key],
-                                reinterpret: row.reinterpretRequired,
-                              }),
-                            },
-                          ),
-                        );
-                        delete recoveryIdentity.current[key];
-                      } catch (cause) {
-                        setError(cause instanceof Error ? cause.message : "Recovery failed.");
-                      } finally {
-                        setSaving(false);
-                      }
-                    }}
-                  >
+                  <button type="button" disabled={saving} onClick={() => void recoverEncounter(row)}>
                     {row.reinterpretRequired ? "Reinterpret saved encounter" : "Replay delivery"}
                   </button>
+                  {row.canSkip ? (
+                    <button type="button" disabled={saving} onClick={() => void recoverEncounter(row, true)}>
+                      Skip encounter
+                    </button>
+                  ) : null}
                   <details>
                     <summary>Source</summary>
                     <code>{row.id}</code>

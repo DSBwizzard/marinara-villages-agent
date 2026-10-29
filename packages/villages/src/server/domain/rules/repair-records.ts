@@ -1,4 +1,9 @@
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
+import {
+  MAX_PLACE_DESCRIPTION,
+  MAX_RECENT_PLACE_CONTEXT,
+  RECENT_PLACE_DURATION,
+} from "../../../shared/helpers/place-continuity.js";
 import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import type { RepairField, RepairRecord, RepairRequest } from "../../../shared/contracts/repair.js";
 import type { MemoryKnower } from "../models/memories.js";
@@ -255,9 +260,8 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
       );
   }
   for (const venue of state.venues) {
-    add(["venue", venue.id], "places", venue.name, "Venue description and map placement", [
+    add(["venue", venue.id], "places", venue.name, "Venue identity and map placement", [
       text("name", "Name", venue.name),
-      text("description", "Description", venue.description),
       text("form", "Physical form", venue.form ?? ""),
       ...(["x", "y"] as const)
         .filter((key) => venue.presentation[key] !== null)
@@ -277,15 +281,20 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         `${venue.name} · ${zone.name}`,
         "Zone physical state",
         [
-          text("description", "Description", zone.description),
-          text("condition", "Condition", zone.state.condition),
-          text("items", "Objects (one per line)", zone.state.items.join("\n")),
-          text("publicFacts", "Recorded facts (one per line)", zone.state.publicFacts.join("\n")),
-          ...zone.state.features.map((f) => text(`feature:${f.id}`, "Feature", f.text)),
-          ...zone.state.traces.map((t) => text(`trace:${t.id}`, t.kind === "note" ? "Note" : "Physical trace", t.text)),
+          text("description", "Long-term details", zone.description),
+          text("recent", "Short-term details", zone.state.recent?.text ?? ""),
         ],
         {
-          source: [`Owner: ${people.find((p) => p.id === zone.ownerId)?.name ?? "Unassigned"}`],
+          revision: zone.state.revision,
+          source: [
+            `Owner: ${people.find((p) => p.id === zone.ownerId)?.name ?? "Unassigned"}`,
+            ...(zone.state.recent ? [`Short-term details expire: ${zone.state.recent.expiresAt}`] : []),
+          ],
+          actions: [
+            { id: "correct", label: "Modify" },
+            { id: "clear-recent", label: "Clear short-term details" },
+            ...(zone.state.recent ? [{ id: "renew-recent", label: "Renew for one day" }] : []),
+          ],
           related: state.projects
             .filter((p) => p.venueId === venue.id)
             .map((p) => ({ id: repairId("project", p.id), title: p.title })),
@@ -563,10 +572,9 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         agenda.plannedDays = {};
       } else if (kind === "venue") {
         const v = state.venues.find((v) => v.id === id)!;
-        if (!str("name") || str("name").length > 100 || str("description").length > 1000 || str("form").length > 240)
+        if (!str("name") || str("name").length > 100 || str("form").length > 240)
           throw badRequest("Shorten the Venue details.");
         v.name = str("name");
-        v.description = str("description");
         v.form = str("form");
         if (Object.hasOwn(values, "x")) v.presentation.x = Number(values.x);
         if (Object.hasOwn(values, "y")) v.presentation.y = Number(values.y);
@@ -576,20 +584,22 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         v.layoutVersion = 1;
         const z = v.zones.find((z) => z.id === sub)!;
         if (kind === "zone") {
-          if (
-            str("description").length > 1000 ||
-            str("condition").length > 1000 ||
-            lines(values.items).some((l) => l.length > 240)
-          )
+          if (str("description").length > MAX_PLACE_DESCRIPTION || str("recent").length > MAX_RECENT_PLACE_CONTEXT)
             throw badRequest("Shorten the Zone details.");
           z.description = str("description");
-          z.state.condition = str("condition");
-          z.state.items = lines(values.items);
-          z.state.publicFacts = lines(values.publicFacts);
+          const summary = str("recent").trim();
+          if (request.action === "clear-recent" || !summary) z.state.recent = null;
+          else {
+            const renew = request.action === "renew-recent" || !z.state.recent;
+            const occurredAt = renew ? at : z.state.recent!.occurredAt;
+            z.state.recent = {
+              text: summary,
+              occurredAt,
+              expiresAt: new Date(Date.parse(occurredAt) + RECENT_PLACE_DURATION).toISOString(),
+            };
+          }
+          z.state.revision++;
           z.state.updatedAt = at;
-          for (const feature of z.state.features) feature.text = str(`feature:${feature.id}`);
-          for (const trace of z.state.traces)
-            if (Object.hasOwn(values, `trace:${trace.id}`)) trace.text = str(`trace:${trace.id}`);
         } else if (kind === "access") {
           const ids = ["player", ...state.villagers.map((p) => p.characterId)],
             managers = ids.filter((p) => values[`manager:${p}`] === true),

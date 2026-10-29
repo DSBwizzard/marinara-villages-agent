@@ -141,14 +141,24 @@ export function assertSceneMovementCapacity(scene: VenueScene, moves: readonly C
   }
 }
 
+export function residentPositionsAt(
+  scene: VenueScene,
+  moves: readonly ContactMove[],
+  segment: number,
+): Record<string, string> {
+  return Object.fromEntries(
+    sceneResidentIds(scene).map((id) => {
+      const move = moves.find(
+        (entry) => entry.characterId === id && entry.segment !== undefined && entry.segment <= segment,
+      );
+      return [id, move?.zoneId ?? contactPosition(scene, id)];
+    }),
+  );
+}
 export function residentLocalIdsAt(scene: VenueScene, moves: ContactMove[], segment: number): string[] {
-  const ids = sceneResidentIds(scene);
-  return ids.filter((id) => {
-    const move = moves.find(
-      (entry) => entry.characterId === id && entry.segment !== undefined && entry.segment <= segment,
-    );
-    return (move?.zoneId ?? contactPosition(scene, id)) === (scene.zoneId ?? "exterior");
-  });
+  return Object.entries(residentPositionsAt(scene, moves, segment))
+    .filter(([, zoneId]) => zoneId === (scene.zoneId ?? "exterior"))
+    .map(([id]) => id);
 }
 
 export function residentMovementPrompt(
@@ -212,8 +222,7 @@ export function applyResidentMovementTimeline(
     } else {
       const speakerZone = positions.get(line.speakerId) ?? "";
       const unchangedChannel =
-        (scene.contactGeneration?.delivery === "loud" || scene.contactGeneration?.delivery === "device") &&
-        speakerZone === contactPosition(scene, line.speakerId);
+        scene.contactGeneration?.delivery === "loud" && speakerZone === contactPosition(scene, line.speakerId);
       if (
         !scene.contactGeneration?.acoustics &&
         !scene.contactGeneration?.zoneEvents &&

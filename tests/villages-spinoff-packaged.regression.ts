@@ -46,7 +46,7 @@ village.villagers = [
   },
 ] as unknown as typeof village.villagers;
 const scene = coerceSession({
-  version: 2,
+  version: 3,
   id: "source",
   placeId: "market",
   placeName: "Market",

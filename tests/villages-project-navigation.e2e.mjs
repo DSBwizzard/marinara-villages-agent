@@ -344,10 +344,12 @@ try {
         .getByRole("navigation", { name: "Project Zones" })
         .getByRole("button", { name: /Entrance/ })
         .click();
-    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("");
-    await page.getByLabel("Entrance", { exact: true }).first().fill("A narrow gate beside the old oak.");
+    await expect(page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue("");
+    await page.getByLabel("Long-term details", { exact: true }).first().fill("A narrow gate beside the old oak.");
     await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
-    await expect(page.getByLabel("Entrance", { exact: true }).first()).toHaveValue("A narrow gate beside the old oak.");
+    await expect(page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue(
+      "A narrow gate beside the old oak.",
+    );
     await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
     await expect(page.getByRole("button", { name: "Full design", exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Save design", exact: true }).click();
@@ -368,7 +370,7 @@ try {
         .getByRole("navigation", { name: "Project Zones" })
         .getByRole("button", { name: /Entrance/ })
         .click();
-    await expect(reopened.page.getByLabel("Entrance", { exact: true }).first()).toHaveValue(
+    await expect(reopened.page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue(
       "A narrow gate beside the old oak.",
     );
     await reopened.page.close();
@@ -395,9 +397,9 @@ try {
     await limit.page.getByRole("button", { name: "Remove Zone", exact: true }).click();
     await limit.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
     await limit.page.getByLabel("Zone Name", { exact: true }).fill("Quiet room");
-    if (width < 700) await limit.page.getByRole("button", { name: "Appearance", exact: true }).click();
+    if (width < 700) await limit.page.getByRole("button", { name: "Long-term details", exact: true }).click();
     await limit.page.getByLabel("Room Specification", { exact: true }).fill("A quiet canvas alcove.");
-    await expect(limit.page.getByLabel("Zone Appearance", { exact: true })).toHaveCount(0);
+    await expect(limit.page.getByLabel("Long-term details", { exact: true })).toHaveCount(0);
     await limit.page.getByRole("button", { name: "Save design", exact: true }).click();
     await expect.poll(() => limit.calls.length).toBe(1);
     assert.equal(limit.calls[0].body.spaces.length, 5);
@@ -422,7 +424,7 @@ try {
     await restricted.page.getByRole("button", { name: "Zones", exact: true }).click();
     await restricted.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
     await restricted.page.getByLabel("Zone Name", { exact: true }).fill("Archive");
-    if (width < 700) await restricted.page.getByRole("button", { name: "Appearance", exact: true }).click();
+    if (width < 700) await restricted.page.getByRole("button", { name: "Long-term details", exact: true }).click();
     await restricted.page.getByLabel("Room Specification", { exact: true }).fill("Shelves and a reading desk.");
     if (width < 700) await restricted.page.getByRole("button", { name: "Options", exact: true }).click();
     if (width < 700) await restricted.page.getByRole("button", { name: "Controllers", exact: true }).click();

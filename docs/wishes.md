@@ -32,6 +32,6 @@ Each Wish is a compact selectable entry. Known Wishes contains only information 
 
 ## Prototype boundary
 
-This replacement requires Village format 6. Earlier worlds are rejected with an explicit fresh-Village message. There is no conversion, adoption of legacy Wish responses, or retention of the old Wish/Pursuit implementation. This boundary does not authorize deletion or replacement of another running world's storage.
+This replacement requires Village format 7. Earlier worlds are rejected with an explicit fresh-Village message. There is no conversion, adoption of legacy Wish responses, or retention of the old Wish/Pursuit implementation. This boundary does not authorize deletion or replacement of another running world's storage.
 
 Provider-free regressions establish source authority, privacy, replay, revision guards, retention and UI behavior. They do not establish live-model characterization or judgment quality; those require playtesting of the isolated preview.

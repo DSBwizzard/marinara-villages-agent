@@ -196,14 +196,7 @@ export function calculateDraftPins(ports: {
       venueClass: "residence" | "workplace" | "community" | "other";
       description: string;
       image: import("../../../shared/contracts/village").VillageVenueImage;
-      state: {
-        condition: string;
-        items: string[];
-        publicFacts: string[];
-        features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-        traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-        updatedAt: string;
-      };
+      state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
     };
     personal?: {
       id: string;
@@ -216,14 +209,7 @@ export function calculateDraftPins(ports: {
       venueClass: "residence" | "workplace" | "community" | "other";
       description: string;
       image: import("../../../shared/contracts/village").VillageVenueImage;
-      state: {
-        condition: string;
-        items: string[];
-        publicFacts: string[];
-        features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-        traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-        updatedAt: string;
-      };
+      state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
     } & {
       ownerId: string;
       name?: string;
@@ -231,7 +217,6 @@ export function calculateDraftPins(ports: {
       access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
       accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
       controllerIds?: string[];
-      adaptationPending?: boolean;
       initialImageAttemptedAt?: string;
     };
   }>;
@@ -251,14 +236,7 @@ export function calculateDraftPins(ports: {
           venueClass: "residence" | "workplace" | "community" | "other";
           description: string;
           image: import("../../../shared/contracts/village").VillageVenueImage;
-          state: {
-            condition: string;
-            items: string[];
-            publicFacts: string[];
-            features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-            traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-            updatedAt: string;
-          };
+          state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
         };
         personal?: {
           id: string;
@@ -271,14 +249,7 @@ export function calculateDraftPins(ports: {
           venueClass: "residence" | "workplace" | "community" | "other";
           description: string;
           image: import("../../../shared/contracts/village").VillageVenueImage;
-          state: {
-            condition: string;
-            items: string[];
-            publicFacts: string[];
-            features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-            traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-            updatedAt: string;
-          };
+          state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
         } & {
           ownerId: string;
           name?: string;
@@ -286,7 +257,6 @@ export function calculateDraftPins(ports: {
           access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
           accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
           controllerIds?: string[];
-          adaptationPending?: boolean;
           initialImageAttemptedAt?: string;
         };
       }

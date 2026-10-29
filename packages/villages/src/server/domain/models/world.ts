@@ -494,26 +494,6 @@ export type VillageVenueImage = {
  * the places a villager's week is translated against.
  */
 /** A durable place where the player or a villager can literally be. */
-export type VillageVenueFeature = {
-  id: string;
-  text: string;
-  sourceCharacterId: string;
-  locked: boolean;
-  updatedAt: string;
-};
-
-export type VillageVenueTrace = {
-  id: string;
-  /** A short scene label, such as note, stain, open-window, or dropped-object. */
-  kind: string;
-  text: string;
-  recipientId: string;
-  createdAt: string;
-  seenBy?: string[];
-  /** Temporary scene details expire; ordinary unresolved traces do not. */
-  expiresAt?: string;
-};
-
 export type VillageVenueClass = "residence" | "workplace" | "community" | "other";
 
 /** One class contributes one enterable scene. The venue remains one map place. */
@@ -537,14 +517,7 @@ export type VillageVenueSpace = {
   roomSpecification?: string;
   description: string;
   image: VillageVenueImage | null;
-  state: {
-    condition: string;
-    items: string[];
-    publicFacts: string[];
-    features: VillageVenueFeature[];
-    traces: VillageVenueTrace[];
-    updatedAt: string;
-  };
+  state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
 };
 
 export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
@@ -572,8 +545,6 @@ export type VillageVenueZone = VillageVenueSpace & {
   ownerId?: string;
   seen?: boolean;
   initialImageAttemptedAt?: string;
-  adaptationPending?: boolean;
-  adaptationSourceArchiveAt?: string;
 };
 export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   VillageVenueZone,
@@ -596,25 +567,9 @@ export type VillagePrivateSpace = VillageVenueSpace & {
   ownerId: string;
   /** A first-entry picture is attempted once; later drawing is player controlled. */
   initialImageAttemptedAt?: string;
-  adaptationPending?: boolean;
-  adaptationSourceArchiveAt?: string;
 };
 
-export type VillageVenueEditProposal = {
-  id: string;
-  target: "shared" | "private";
-  privateSpaceId?: string;
-  zoneId?: string;
-  ownerId: string;
-  baseUpdatedAt: string;
-  proposed: VillageVenueSpace & { name?: string; purpose?: string };
-  requiredIds: string[];
-  approvedIds: string[];
-  declined: boolean;
-  createdAt: string;
-};
-
-/** An active structural change occupies one of the venue's two slots. */
+/** Physical state belongs to its Zones. */
 export type VillageVenue = {
   zoneLayout?: import("../../../shared/helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
@@ -660,7 +615,6 @@ export type VillageVenue = {
   playerSeenPublic?: boolean;
   playerSeenPrivateIds?: string[];
   archivedPrivateSpaces?: { ownerId: string; archivedAt: string; space: VillagePrivateSpace }[];
-  editProposals?: VillageVenueEditProposal[];
   /** Player-approved exterior description. */
   description: string;
   category: string;
@@ -679,17 +633,10 @@ export type VillageVenue = {
   };
   /** Future job integrations can add capabilities without inventing locations. */
   capabilities: string[];
-  /** Only assigned workers, or the resident of a home, may edit unlocked features. */
+  /** Assigned workers retain their existing access and activity roles. */
   workerIds?: string[];
   /** Durable physical state visible to the village by default. */
-  state: {
-    condition: string;
-    furniture: string[];
-    publicFacts: string[];
-    features?: VillageVenueFeature[];
-    traces?: VillageVenueTrace[];
-    updatedAt: string;
-  };
+  state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
 };
 
 /** A compact reference used anywhere a current literal location is required. */
@@ -707,26 +654,12 @@ export type VillageVenueEvent = {
   zoneId?: string;
   text: string;
   at: string;
-  actionReceipt?: {
+  actionReceipt?: import("../../../shared/contracts/place-continuity.js").PlaceUpdate & {
     submissionId: string;
     happened: boolean;
     narration: string;
-    addItem?: string;
-    removeItem?: string;
-    traceKind?: string;
-    traceText?: string;
-    recipientId?: string;
-    resolveTraceId?: string;
-    conditionBefore?: string;
-    conditionAfter?: string;
-    featureId?: string;
-    featureText?: string;
-    publicFactBefore?: string;
-    publicFactAfter?: string;
-    sceneNote?: string;
     witnessIds?: string[];
-    transferTo?: string;
-    itemTransfer?: { itemName: string; recipientId: string };
+    after: import("../../../shared/contracts/place-continuity.js").PlaceAfter;
   };
 };
 
@@ -742,7 +675,6 @@ export type VillageVenueView = {
   name: string;
   image: VillageVenueImage | null;
   position: VillageVenuePosition;
-  condition: string;
   residentCharacterId: string | null;
   playerHome: boolean;
   homeKind: HomeBuildingKind | null;
@@ -1009,7 +941,7 @@ export type VillageState = {
   socialOutbox?: import("./social-outbox-model.js").SocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  version: 6;
+  version: 7;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;

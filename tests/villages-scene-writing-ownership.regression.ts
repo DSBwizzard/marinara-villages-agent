@@ -30,7 +30,7 @@ function fixture(label: string) {
   world.name = label;
   world.foundedAt = world.setupAt = stamp;
   const scene = coerceSession({
-    version: 2,
+    version: 3,
     id: "same-scene",
     placeId: "same-place",
     placeName: "Common room",

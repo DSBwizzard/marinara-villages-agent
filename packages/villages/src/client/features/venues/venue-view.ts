@@ -15,11 +15,8 @@ export function venueDisplayZones(place: VillageVenue, room: SceneView) {
           description: place.form || place.description,
           image: place.presentation.image,
           state: place.exteriorState ?? {
-            condition: "",
-            items: [],
-            publicFacts: [],
-            features: [],
-            traces: [],
+            revision: 0,
+            recent: null,
             updatedAt: "",
           },
         },

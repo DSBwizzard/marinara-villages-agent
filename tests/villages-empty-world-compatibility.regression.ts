@@ -5,83 +5,47 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
-const legacy = {
-  ...defaultVillageState(),
-  version: 5,
-  name: "Saved draft",
-  setting: "A seaside village",
-  selectedLorebookIds: ["test-book"],
-  foundedAt: "2026-10-26T12:00:00Z",
-  seed: "existing-seed",
-  venueMail: [],
-  projectWishOutbox: [],
-  sceneWishProtections: {},
-  wishRefillIntents: {},
-};
-const before = structuredClone(legacy);
-const expected = structuredClone(legacy) as Record<string, unknown>;
-expected.version = 6;
-for (const key of ["venueMail", "projectWishOutbox", "sceneWishProtections", "wishRefillIntents"]) delete expected[key];
-assert.deepEqual(coerceVillageState(legacy), coerceVillageState(expected));
-assert.deepEqual(legacy, before, "Compatibility reads do not rewrite saved data");
-for (const patch of [
-  { setupAt: "2026-10-26T12:00:00Z" },
-  { villagers: [{}] },
-  { venues: [{}] },
-  { projects: [{}] },
-  { venueMail: [{}] },
-  { projectWishOutbox: [{}] },
-  { sceneWishProtections: { scene: {} } },
-  { wishRefillIntents: { wish: {} } },
-  { development: {} },
-  { foundingPreparation: {} },
-  { opening: {} },
-  { socialOutbox: [{}] },
-  { backgroundReceipts: { request: {} } },
-  { exchangeReceipts: { request: {} } },
-  { semanticRequestReceipts: { request: "saved" } },
-  { memoryHead: {} },
-  { memoryScenes: { scene: {} } },
-  { memories: { format: 1, revision: 1, records: [] } },
-  { projects: {} },
-  { venueMail: "[]" },
-  { sceneWishProtections: [] },
-]) {
-  assert.throws(() => coerceVillageState({ ...legacy, ...patch }), /Unsupported Village format/);
+// Fresh-world contract: neither an empty setup nor a played old world is converted.
+for (const version of [0, 5, 6]) {
+  for (const played of [false, true]) {
+    const state = {
+      ...defaultVillageState(),
+      version,
+      name: "Saved draft",
+      seed: "original",
+      selectedLorebookIds: ["test-book"],
+      setupAt: played ? "2026-10-26T12:00:00Z" : "",
+    };
+    const before = structuredClone(state);
+    assert.throws(() => coerceVillageState(state), /Unsupported Village format/);
+    assert.deepEqual(state, before);
+    const { memories: _memories, memoryScenes: _scenes, memoryReceipts: _receipts, ...root } = state;
+    const record = {
+      id: "villages-village",
+      packageId: "villages",
+      kind: "village",
+      revision: 7,
+      data: { ...root, memoryHead: null },
+    };
+    const saved = structuredClone(record);
+    let writes = 0;
+    const repository = createVillageRepository(
+      () =>
+        ({
+          getById: async () => structuredClone(record),
+          update: async () => {
+            writes++;
+            throw Error("Must not rewrite incompatible data");
+          },
+        }) as any,
+    );
+    await assert.rejects(() => repository.readAuthority(), /Unsupported Village format/);
+    await assert.rejects(() => repository.mutateAuthority(() => {}), /Unsupported Village format/);
+    assert.equal(writes, 0);
+    assert.deepEqual(record, saved);
+  }
 }
-const { memories: _memories, memoryScenes: _scenes, memoryReceipts: _receipts, ...root } = legacy;
-let record: any = {
-  id: "villages-village",
-  packageId: "villages",
-  kind: "village",
-  revision: 7,
-  data: { ...root, memoryHead: null },
-};
-const original = structuredClone(record);
-let writes = 0;
-const store: any = {
-  getById: async (_package: string, id: string) => (id === record.id ? structuredClone(record) : null),
-  list: async () => [],
-  update: async (input: any) => {
-    assert.equal(input.expectedRevision, record.revision);
-    writes++;
-    record = { ...record, ...structuredClone(input), revision: record.revision + 1 };
-    return structuredClone(record);
-  },
-};
-const repository = createVillageRepository(() => store);
-assert.equal((await repository.readAuthority()).version, 6);
-assert.deepEqual(record, original, "The real root reader also preserves the v5 record");
-assert.equal(writes, 0);
-await repository.mutateAuthority(() => {});
-assert.equal(record.data.version, 6, "Only an ordinary checked mutation persists the current format");
-assert.equal(record.data.seed, legacy.seed);
-assert.deepEqual(record.data.selectedLorebookIds, ["test-book"]);
-assert.equal(record.revision, 8);
-assert.equal(writes, 1);
-record.data = { ...original.data, venueMail: [{ id: "saved-mail" }] };
-await assert.rejects(repository.readAuthority(), /Unsupported Village format/);
-assert.equal(writes, 1, "Rejected played/retired data is never rewritten");
-console.log(
-  "Empty legacy Village settings survive read and CAS save; played, retired and malformed state remains protected.",
-);
+assert.equal(coerceVillageState(undefined).version, 7);
+const fresh = coerceVillageState(defaultVillageState());
+assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(fresh))), fresh);
+console.log("Fresh worlds reload; incompatible setup and played worlds remain untouched.");

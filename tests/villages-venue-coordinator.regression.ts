@@ -72,6 +72,7 @@ function seed(id: string) {
     description: "",
     revision: 1,
     data: {
+      version: 3,
       id,
       status: "active",
       sceneRevision: 0,
@@ -280,7 +281,7 @@ async function main() {
     }
 
     seed("slow-greeting");
-    row("slow-greeting").data = coerceSession({ version: 2, ...row("slow-greeting").data, status: "opening" });
+    row("slow-greeting").data = coerceSession({ version: 3, ...row("slow-greeting").data, status: "opening" });
     const world = defaultVillageState();
     const greetingWork = createSceneWork();
     let stage = deferred<void>();
@@ -378,7 +379,7 @@ async function main() {
     } as any);
     await retryCommands.greetVenue("v3-opening-retry", "saved-opening-attempt");
     seed("v3-replay");
-    row("v3-replay").data = coerceSession({ version: 2, ...row("v3-replay").data, semanticVersion: 2 });
+    row("v3-replay").data = coerceSession({ version: 3, ...row("v3-replay").data, semanticVersion: 2 });
     const replayCommands = createSceneCommands({
       runtimeDebug() {},
       readSession,
@@ -1195,7 +1196,7 @@ async function main() {
     assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], failed);
     seed("typed-review");
     row("typed-review").data = coerceSession({
-      version: 2,
+      version: 3,
       ...row("typed-review").data,
       semanticVersion: 2,
       processingVersion: 1,

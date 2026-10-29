@@ -41,7 +41,7 @@ const slot: DocumentSlot<ProjectEvidenceIndex> = {
         throw new Error("Saved Project evidence is invalid; Scene cleanup is deferred.");
       if (typeof entry.digest !== "string" || entry.digest !== evidenceDigest(raw))
         throw new Error("Saved Project evidence is invalid; Scene cleanup is deferred.");
-      if (raw.version !== 2 || raw.status !== "closed" || raw.villageSeed !== data.seed || !raw.id)
+      if (raw.version !== 3 || raw.status !== "closed" || raw.villageSeed !== data.seed || !raw.id)
         throw new Error("Saved Project evidence is invalid; Scene cleanup is deferred.");
       return { revision: Number(entry.revision), digest: entry.digest, scene: coerceSession(raw) };
     });

@@ -10,7 +10,7 @@ import { createPrivateSpacePreparation } from "../packages/villages/src/server/j
 async function main() {
   const world = coerceVillageState({
     ...defaultVillageState(),
-    version: 6,
+    version: 7,
     seed: "fixture",
     name: "Test",
     setting: "Test",
@@ -143,17 +143,20 @@ async function main() {
   failDiagnostics = false;
   response = {
     ...response,
-    content: JSON.stringify({ rooms: [{ ...valid.rooms[0], facts: ["Dry"] }] }).replace('["Dry"]', '["Dry"'),
+    content: JSON.stringify({ rooms: [{ ...valid.rooms[0], description: "Ordinary shelves. Dry." }] }).replace(
+      '"id":"space",',
+      '"id":"space"',
+    ),
     finishReason: "stop",
   };
   await service.retryPrivateSpaces();
   assert.equal(zone.preparation?.status, "ready");
-  assert.equal(zone.description, "Ordinary shelves");
-  assert.deepEqual(
-    zone.state.publicFacts,
-    ["Dry"],
+  assert.equal(
+    zone.description,
+    "Ordinary shelves. Dry.",
     "Syntax repair still goes through normal room validation and application",
   );
+  assert.equal(zone.state.recent, null);
   const beforeReady = calls;
   await service.preparePrivateSpaces();
   assert.equal(calls, beforeReady);
