@@ -17,6 +17,7 @@ const source = defaultVillageState();
 const home = venueDraft({ name: "Home", description: "A blue door", classes: ["residence"] }, null);
 home.id = "home";
 home.layoutVersion = 1;
+home.residentIds = ["resident"];
 home.zones = [
   {
     ...defaultVenueSpace("residence", "A blue door"),
