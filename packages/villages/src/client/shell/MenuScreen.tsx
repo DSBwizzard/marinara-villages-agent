@@ -1,3 +1,4 @@
+import { useConfirmation } from "../shared/confirmation.js";
 import { useCallback, useState } from "react";
 import { renderProgressDebugPage } from "../features/background/ProgressDebugPage.js";
 import { ReturnCatchupDebug } from "../features/background/ReturnCatchupDebug.js";
@@ -16,6 +17,7 @@ import type { MenuScreenController } from "./menu-contracts.js";
 import { MENU_PAGE_TITLES } from "./navigation.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
+  const confirmVillages = useConfirmation(controller.menuPage);
   const {
     backgroundPanel,
     connections,
@@ -86,16 +88,17 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
   }, []);
   const pendingDrafts = Object.values(localDrafts);
   const navigationBusy = pendingDrafts.some((entry) => entry.busy);
-  const canLeave = () =>
-    !navigationBusy && (!pendingDrafts.some((entry) => entry.dirty) || window.confirm("Leave with unsaved changes?"));
-  const goHome: typeof rawGoHome = () => {
-    if (canLeave()) rawGoHome();
+  const canLeave = async () =>
+    !navigationBusy &&
+    (!pendingDrafts.some((entry) => entry.dirty) || (await confirmVillages("Leave with unsaved changes?")));
+  const goHome: typeof rawGoHome = async () => {
+    if (await canLeave()) rawGoHome();
   };
-  const openMenu: typeof rawOpenMenu = (page) => {
-    if (canLeave()) rawOpenMenu(page);
+  const openMenu: typeof rawOpenMenu = async (page) => {
+    if (await canLeave()) rawOpenMenu(page);
   };
-  const openPlace: typeof rawOpenPlace = (place) => {
-    if (canLeave()) rawOpenPlace(place);
+  const openPlace: typeof rawOpenPlace = async (place) => {
+    if (await canLeave()) rawOpenPlace(place);
   };
 
   if (screen === "menu" && menuPage === "projects" && snapshot) {
@@ -149,9 +152,9 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
       { page: "repair", label: "REPAIR" },
       { page: "progress", label: "Debug" },
     ];
-    const chooseSection = (page: MenuPage) => {
+    const chooseSection = async (page: MenuPage) => {
       if (page === selected) return true;
-      if (!canLeave()) return false;
+      if (!(await canLeave())) return false;
       rawOpenMenu(page);
       return true;
     };
@@ -177,7 +180,10 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             value={selected}
             disabled={navigationBusy}
             onChange={(event) => {
-              if (!chooseSection(event.currentTarget.value as MenuPage)) event.currentTarget.value = selected;
+              const picker = event.currentTarget;
+              const next = picker.value as MenuPage;
+              picker.value = selected;
+              void chooseSection(next);
             }}
           >
             {sections.map(({ page, label }) => (
@@ -206,8 +212,8 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
                 disabled={navigationBusy}
-                onClick={() => {
-                  if (canLeave()) setScreen("room");
+                onClick={async () => {
+                  if (await canLeave()) setScreen("room");
                 }}
               >
                 Back to Scene

@@ -1,4 +1,5 @@
 import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
+import { useConfirmation } from "../../shared/confirmation.js";
 import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
@@ -226,6 +227,7 @@ export function useRemoveVenue(ports: {
   setVenuesDraft: React.Dispatch<SetStateAction<VillageVenue[]>>;
   snapshot: VillageSnapshot;
 }) {
+  const confirmVillages = useConfirmation();
   const { setBusy, setSettingsError, setSnapshot, setVenuesDraft, snapshot } = ports;
   const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
@@ -267,7 +269,7 @@ export function useRemoveVenue(ports: {
           affected || dependencies.workerCharacterIds.length || dependencies.remapCount || dependencies.eventCount
             ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, ${dependencies.remapCount} schedule moves, and ${dependencies.eventCount} World changes. Delete it?`
             : `Delete ${existing.name}?`;
-        if (!window.confirm(note) || !lifetime.owns(claim)) return;
+        if (!(await confirmVillages(note)) || !lifetime.owns(claim)) return;
         const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(id)}`, {
           method: "DELETE",
           body: JSON.stringify({ confirmed: true }),
@@ -281,7 +283,7 @@ export function useRemoveVenue(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot, setBusy, setSettingsError, setSnapshot, setVenuesDraft, lifetime],
+    [snapshot, setBusy, setSettingsError, setSnapshot, setVenuesDraft, lifetime, confirmVillages],
   );
 }
 

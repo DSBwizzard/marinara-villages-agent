@@ -309,6 +309,7 @@ export function createFoundingExitSetupDraft(ports: {
   };
 }
 export function createFoundingNewSetupDraft(ports: {
+  readonly confirmVillages: (message: string) => Promise<boolean>;
   readonly draftBlocked: FoundingState["draftBlocked"];
   readonly draftRevision: FoundingState["draftRevision"];
   readonly draftSaveQueue: FoundingState["draftSaveQueue"];
@@ -334,6 +335,7 @@ export function createFoundingNewSetupDraft(ports: {
 }) {
   return async () => {
     const {
+      confirmVillages,
       draftBlocked,
       draftRevision,
       draftSaveQueue,
@@ -357,7 +359,7 @@ export function createFoundingNewSetupDraft(ports: {
     if (setupMapBusy || setupVenueBusy || setupSuggestionsBusy) return;
     if (
       savedSetupDraft &&
-      !window.confirm("Discard this saved founding draft and its artwork? Your founded village is unchanged.")
+      !(await confirmVillages("Discard this saved founding draft and its artwork? Your founded village is unchanged."))
     )
       return;
     try {

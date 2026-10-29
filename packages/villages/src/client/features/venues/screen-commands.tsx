@@ -6,7 +6,8 @@ import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { venueSpaceFor } from "../../shared/venue.js";
 import { editableVenueFields } from "./edit-fields.js";
-import type { ZoneLayoutChange } from "../../../shared/helpers/zone-layout.js";
+import { useVenueLayoutAutosave } from "./layout-autosave.js";
+import { useConfirmation } from "../../shared/confirmation.js";
 import type { VenuesState } from "./useVenuesState.js";
 
 function editorDraftKey(draft: VillageVenue, classes: readonly VenueClass[]) {
@@ -39,6 +40,7 @@ export function useVenueScreenCommands(ports: {
   setVenueProposalDraft: VenuesState["setVenueProposalDraft"];
   setPlaceProblem: VenuesState["setPlaceProblem"];
 }) {
+  const confirmVillages = useConfirmation();
   const {
     setBusy,
     setSettingsError,
@@ -173,30 +175,7 @@ export function useVenueScreenCommands(ports: {
       if (editor.finish(claim)) setVenueEditBusy(false);
     }
   };
-  const saveVenueZoneLayout = async (place: VillageVenue, change: ZoneLayoutChange): Promise<boolean> => {
-    if (!isCurrentVenue(place.id)) return false;
-    const claim = editor.begin();
-    if (!claim) return false;
-    claim.onRetire = () => setVenueEditBusy(false);
-    setVenueEditBusy(true);
-    setVenueEditError("");
-    setVenueEditNotice("");
-    try {
-      const next = await request<VillageSnapshot>(`/venues/${encodeURIComponent(place.id)}/layout`, {
-        method: "PUT",
-        body: JSON.stringify(change),
-      });
-      if (!editor.owns(claim)) return false;
-      setSnapshot(next);
-      setVenueEditNotice("Layout saved.");
-      return true;
-    } catch (cause) {
-      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The layout could not be saved."));
-      return false;
-    } finally {
-      if (editor.finish(claim)) setVenueEditBusy(false);
-    }
-  };
+  const layoutAutosave = useVenueLayoutAutosave({ snapshot: ports.snapshot, setSnapshot });
   const saveVenueDetails = async (
     place: VillageVenue,
     venueEditDraft: VillageVenue | null,
@@ -230,7 +209,11 @@ export function useVenueScreenCommands(ports: {
           (sharedIndex >= 0 &&
             JSON.stringify(draftFields.spaces[sharedIndex]) !== JSON.stringify(currentFields.spaces[sharedIndex])) ||
           JSON.stringify(draftFields.privateSpaces) !== JSON.stringify(currentFields.privateSpaces);
-        if (roomChanges && !window.confirm("Saving Venue details will discard unsaved Zone changes. Continue?")) return;
+        if (
+          roomChanges &&
+          !(await confirmVillages("Saving Venue details will discard unsaved Zone changes. Continue?"))
+        )
+          return;
       }
       if (!editor.owns(claim)) return;
       const submitted = editorDraftKey(venueEditDraft, classes);
@@ -287,7 +270,7 @@ export function useVenueScreenCommands(ports: {
       if (
         JSON.stringify(editableVenueFields(remainingDraft, classes)) !==
           JSON.stringify(editableVenueFields(place, classes)) &&
-        !window.confirm("Submitting this Zone edit will discard other unsaved changes. Continue?")
+        !(await confirmVillages("Submitting this Zone edit will discard other unsaved changes. Continue?"))
       )
         return;
       if (!editor.owns(claim)) return;
@@ -441,7 +424,7 @@ export function useVenueScreenCommands(ports: {
     }
   };
   return {
-    saveVenueZoneLayout,
+    ...layoutAutosave,
     saveVenueName,
     saveVenueImageContext,
     setZonePictureFrozen,

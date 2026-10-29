@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useConfirmation } from "../../shared/confirmation.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
@@ -210,7 +211,7 @@ function AssignedVillagers({
 }: {
   place: VillageVenue;
   controller: VenueScreenController;
-  canLeave(): boolean;
+  canLeave(): Promise<boolean>;
   navigationBusy: boolean;
 }) {
   const [housing, setHousing] = useState(false);
@@ -264,8 +265,8 @@ function AssignedVillagers({
             type="button"
             className={`${ELEMENT_TAG}-button`}
             disabled={navigationBusy}
-            onClick={() => {
-              if (canLeave()) openVenueRequests(place.id);
+            onClick={async () => {
+              if (await canLeave()) openVenueRequests(place.id);
             }}
           >
             View housing requests
@@ -330,8 +331,7 @@ function AssignedVillagers({
 }
 
 export function VenueScreen({ controller }: { controller: VenueScreenController }) {
-  const [layoutDirty, setLayoutDirty] = useState(false);
-  const [layoutEditorKey, setLayoutEditorKey] = useState(0);
+  const confirmVillages = useConfirmation();
   const [zoneNameDirty, setZoneNameDirty] = useState(false);
   const [zoneNameSaving, setZoneNameSaving] = useState(false);
   const [zoneEditorKey, setZoneEditorKey] = useState(0);
@@ -356,16 +356,12 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
   } = controller;
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
   const navigationBusy = zoneNameSaving || controller.venueEditBusy;
-  const canLeave = (keepLayout = false) => {
+  const canLeave = async () => {
     if (navigationBusy) return false;
     const draft = controller.venueEditDraft;
     const venueNameDirty = !!draft && draft.id === place?.id && draft.name !== place.name;
-    if (!venueNameDirty && !zoneNameDirty && (keepLayout || !layoutDirty)) return true;
-    if (!window.confirm("Discard unsaved changes?")) return false;
-    if (!keepLayout && layoutDirty) {
-      setLayoutDirty(false);
-      setLayoutEditorKey((value) => value + 1);
-    }
+    if (!venueNameDirty && !zoneNameDirty) return true;
+    if (!(await confirmVillages("Discard unsaved changes?"))) return false;
     if (venueNameDirty) controller.setVenueEditDraft(null);
     if (zoneNameDirty) {
       setZoneNameDirty(false);
@@ -373,8 +369,8 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     }
     return true;
   };
-  const back = () => {
-    if (!canLeave()) return;
+  const back = async () => {
+    if (!(await canLeave())) return;
     leaveVenue();
     if (room && room.status !== "closed") setScreen("room");
   };
@@ -402,17 +398,17 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     activeScene && room.placeId === place.id
       ? setScreen("room")
       : void openRoom(place, undefined, "", "outside", exterior?.id);
-  const selectPlace = (id: string) => {
+  const selectPlace = async (id: string) => {
     if (id === place.id) return true;
-    if (!canLeave()) return false;
+    if (!(await canLeave())) return false;
     const next = snapshot.settings.venues.find((venue) => venue.id === id);
     if (!next) return false;
     setZoneNameDirty(false);
     controller.openPlace(next);
     return true;
   };
-  const navigate = (destination: WorkspaceDestination) => {
-    if (destination === "places" || !canLeave()) return;
+  const navigate = async (destination: WorkspaceDestination) => {
+    if (destination === "places" || !(await canLeave())) return;
     if (destination === "people") {
       controller.openMenu("villagers");
       return;
@@ -430,8 +426,9 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
         <select
           disabled={navigationBusy}
           value={place.id}
-          onChange={(event) => {
-            if (!selectPlace(event.target.value)) event.currentTarget.value = place.id;
+          onChange={async (event) => {
+            const select = event.currentTarget;
+            if (!(await selectPlace(select.value))) select.value = place.id;
           }}
         >
           {snapshot.settings.venues.map((entry) => (
@@ -482,8 +479,8 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
               key={section}
               disabled={navigationBusy}
               aria-pressed={venueSection === section}
-              onClick={() => {
-                if (section === venueSection || !canLeave()) return;
+              onClick={async () => {
+                if (section === venueSection || !(await canLeave())) return;
                 setZoneNameDirty(false);
                 setVenueSection(section);
               }}
@@ -569,14 +566,13 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           {venueSection === "zones" && selected ? (
             <section aria-label="Zones">
               <VenueLayoutEditor
-                key={place.id + ":" + layoutEditorKey}
+                key={place.id}
                 place={place}
                 controller={controller}
-                onDirtyChange={setLayoutDirty}
                 zones={zones}
                 selectedId={selected.id}
-                onSelect={(id) => {
-                  if (id === selected.id || !canLeave(true)) return;
+                onSelect={async (id) => {
+                  if (id === selected.id || !(await canLeave())) return;
                   setZoneNameDirty(false);
                   setVenueZoneKey(id);
                 }}
@@ -633,8 +629,8 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   type="button"
                   className={`${ELEMENT_TAG}-venue-primary`}
                   disabled={navigationBusy}
-                  onClick={() => {
-                    if (canLeave()) planVenueRenovation(place);
+                  onClick={async () => {
+                    if (await canLeave()) planVenueRenovation(place);
                   }}
                 >
                   Plan a renovation →

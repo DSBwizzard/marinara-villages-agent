@@ -228,19 +228,28 @@ try {
     await expect(layout.locator("svg line")).toHaveCount(3);
     await layout.locator('[data-layout-zone="workshop"]').click();
     await profile.getByLabel("Zone name", { exact: true }).fill("Unsent Zone name");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await chooseVenue(otherId, "The Harbour");
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Unsent Zone name");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page
       .getByRole("navigation", { name: "Village navigation" })
       .getByRole("button", { name: "People", exact: true })
       .click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Unsent Zone name");
-    page.once("dialog", (dialog) => dialog.accept());
     await page
       .getByRole("navigation", { name: "Village navigation" })
       .getByRole("button", { name: "People", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Continue", exact: true })
       .click();
     const peopleBook = page.getByRole("dialog", { name: "People", exact: true });
     await expect(peopleBook).toBeVisible();
@@ -343,15 +352,24 @@ try {
     await expect(profile.getByRole("button", { name: "Regenerate artwork" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await chooseVenue(otherId, "The Harbour");
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
     if (width < 700) await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
-    page.once("dialog", (dialog) => dialog.dismiss());
     await profile.getByRole("button", { name: "Plan a renovation →", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
     holdVenueSave = true;
     await profile.getByRole("button", { name: "Save name", exact: true }).click();

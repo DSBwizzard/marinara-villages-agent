@@ -15,6 +15,7 @@ import {useVenueScreenCommands} from './packages/villages/src/client/features/ve
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
 import {VenueAccessPanel} from './packages/villages/src/client/features/venues/villages-venue-access.js';
 import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
 const [snapshot,rawSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('A / venue'),[venuePage,setVenuePage]=useState(window.page),[venueZoneKey,setVenueZoneKey]=useState(window.initialZone);
 const [busy,rawBusy]=useState(false),[settingsError,rawSettingsError]=useState(''),[venueEditBusy,rawEditBusy]=useState(false),[venueEditError,rawEditError]=useState(''),[venueEditNotice,rawNotice]=useState(''),
@@ -30,7 +31,7 @@ player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>
 zone:()=>commands.saveVenueZone(place.id,venueZoneKey,window.zoneBody),residence:()=>commands.proposeResidenceMove('resident / A','target / B',' private / target '),
 proposal:()=>commands.submitVenueProposal(place,venueProposalDraft),pace:()=>pace('quiet')};
 const capture=p=>{window.pending.push(Promise.resolve(p).then(value=>({value}),cause=>({error:cause.message})));return window.pending.length-1};
-const run=kind=>capture(actions[kind]());const ui=Object.fromEntries(Object.entries(commands).map(([key,fn])=>[key,(...args)=>{const p=fn(...args);capture(p);return p}]));
+const run=kind=>capture(actions[kind]());const ui=Object.fromEntries(Object.entries(commands).map(([key,fn])=>[key,typeof fn==='function'?(...args)=>{const p=fn(...args);capture(p);return p}:fn]));
 const jump=({id=venueId,page=venuePage,zone=venueZoneKey,active=true}={})=>flushSync(()=>{setVenueId(id);setVenuePage(page);setVenueZoneKey(zone);setScreen(active?'venue':'home');
 const v=window.seed.settings.venues.find(v=>v.id===id);rawDraft(v?{...structuredClone(v),name:'Draft '+id}:null);rawProposal(structuredClone(window.proposal));rawEditError('B marker');rawNotice('B marker');rawSettingsError('B marker');rawProblem({id,text:'B marker'});});
 window.h={run,cross:kinds=>kinds.forEach(run),retain:kind=>{window.old=actions[kind]},old:()=>capture(window.old()),jump,
@@ -50,8 +51,8 @@ venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenue
 {place && editorZone && venuePage==='view' ? <details><summary>Access options</summary><VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /></details> : null}
 </>;
 }
-window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};window.confirms=[];window.confirm=message=>{window.confirms.push(message);window.confirmHook?.();return window.confirmAnswer};
-const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
+window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};
+const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><ConfirmationProvider><Harness/></ConfirmationProvider></StrictMode>:<ConfirmationProvider><Harness/></ConfirmationProvider>);
 `,
     },
     bundle: true,
@@ -189,7 +190,15 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       accessCommand,
       zoneBody,
       read,
-      run: (kind) => page.evaluate((kind) => window.h.run(kind), kind),
+      run: async (kind, autoConfirm = true) => {
+        const index = await page.evaluate((kind) => window.h.run(kind), kind);
+        if (autoConfirm) {
+          await page.evaluate(() => new Promise(requestAnimationFrame));
+          const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
+          if (await dialog.count()) await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        }
+        return index;
+      },
       settle: (index) => page.evaluate((index) => window.pending[index], index),
       reply: async (index, options = {}) => {
         const snapshot = structuredClone(seed);
@@ -444,14 +453,19 @@ export async function verifyVenueScreenLifetimes(browser) {
             window.h.edit({
               privateSpaces: window.draft.privateSpaces.map((s) => ({ ...s, description: "Changed room" })),
             });
-          if (mode.startsWith("cancel")) window.confirmAnswer = false;
-          if (mode === "retireConfirm") window.confirmHook = () => window.h.jump({ id: "B / venue" });
         }, mode);
-        await f.run(["cancelZone", "retireConfirm"].includes(mode) ? "shared" : "details");
+        await f.run(["cancelZone", "retireConfirm"].includes(mode) ? "shared" : "details", false);
+        if (mode !== "physical") {
+          await expect(f.page.getByRole("dialog", { name: "Confirm", exact: true })).toBeVisible();
+          if (mode === "retireConfirm") await f.page.evaluate(() => window.h.jump({ id: "B / venue" }));
+          await f.page
+            .getByRole("button", { name: mode === "retireConfirm" ? "Continue" : "Cancel", exact: true })
+            .click();
+        }
         await f.settle(0);
         assert.equal(f.requests.length, 0);
         if (mode === "physical") assert.match((await f.read()).venueEditError, /Physical edits and map moves/);
-        else assert.equal((await f.page.evaluate(() => window.confirms)).length, 1);
+        else await expect(f.page.getByRole("dialog", { name: "Confirm", exact: true })).toHaveCount(0);
         await f.finish();
       }
       {

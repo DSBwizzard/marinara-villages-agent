@@ -55,6 +55,10 @@ try {
       failUnassign = false,
       failLibrary = false;
     page.on("pageerror", (error) => errors.push(error.message));
+    page.on("dialog", (dialog) => {
+      errors.push("Unexpected browser dialog: " + dialog.type());
+      void dialog.dismiss();
+    });
     let manager = {
       version: 1,
       artwork: [],
@@ -327,25 +331,32 @@ try {
       await host.evaluate((element) => (element.style.width = ""));
       await expect(page.locator(".vsm-artwork")).toHaveCSS("display", "grid");
     }
+    await page.reload();
+    await page.addScriptTag({ content: residentsBundle });
+    await openManager();
+    await page.getByRole("button", { name: /Composed.png/ }).click();
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     assert.equal(
       await page.evaluate(() => {
         const event = new Event("beforeunload", { cancelable: true });
         window.dispatchEvent(event);
         return event.defaultPrevented;
       }),
-      true,
-      "closing the browser warns about unsaved drafts",
+      false,
+      "closing the browser does not invoke a browser confirmation",
     );
-    let rejectedLeave = false;
-    page.once("dialog", async (dialog) => {
-      rejectedLeave = true;
-      await dialog.dismiss();
-    });
     await page.getByRole("button", { name: "← Back to profile", exact: true }).click();
-    assert.equal(rejectedLeave, true);
+    await expect(page.getByRole("dialog", { name: "Confirm", exact: true })).toBeVisible();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page.getByRole("button", { name: "← Back to profile", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
@@ -521,11 +532,17 @@ try {
     await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
     await page.getByRole("button", { name: "Close library" }).click();
     await page.getByLabel("More artwork actions").click();
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page.getByRole("button", { name: "Remove artwork" }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toHaveCount(1);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Remove artwork" }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Continue", exact: true })
+      .click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toHaveCount(0);
     await page.getByRole("button", { name: "Character library" }).click();
     await expect(page.getByRole("checkbox", { name: "full_native.png", exact: true })).toBeEnabled();
@@ -548,8 +565,11 @@ try {
       const remainingArtwork = manager.artwork.length - 1;
       await page.locator(".vsm-artwork button").first().click();
       await page.getByLabel("More artwork actions").click();
-      page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: "Remove artwork" }).click();
+      await page
+        .getByRole("dialog", { name: "Confirm", exact: true })
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
       await expect(page.locator(".vsm-artwork button")).toHaveCount(remainingArtwork);
     }
     await expect(page.getByText(/No sprites assigned yet/)).toBeVisible();

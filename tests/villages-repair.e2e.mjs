@@ -12,11 +12,12 @@ const bundle = await build({
     resolveDir: process.cwd(),
     contents: `
 import {createRoot} from 'react-dom/client';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 import {useVillageController} from './packages/villages/src/client/shell/useVillageController.js';
 import {MenuScreen} from './packages/villages/src/client/shell/MenuScreen.js';
 function Harness(){const c=useVillageController({element:document.getElementById('root')});window.repairController=c;
 return <><button onClick={()=>c.openMenu('index')}>Open main menu</button>{c.screen==='menu'?<MenuScreen controller={c}/>:<textarea aria-label="Scene draft" value={c.roomDraft} onChange={e=>c.setRoomDraft(e.target.value)}/>}</>}
-createRoot(document.getElementById('root')).render(<Harness/>);`,
+createRoot(document.getElementById('root')).render(<ConfirmationProvider><Harness/></ConfirmationProvider>);`,
   },
   bundle: true,
   write: false,
@@ -328,7 +329,8 @@ try {
       stdin: {
         loader: "tsx",
         resolveDir: process.cwd(),
-        contents: `import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async()=>null);return <RepairPage controller={c} onBack={()=>{}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
+        contents: `import {createRoot} from 'react-dom/client';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async()=>null);return <RepairPage controller={c} onBack={()=>{}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
       },
       bundle: true,
       write: false,

@@ -1,3 +1,4 @@
+import { useConfirmation } from "../../shared/confirmation.js";
 import { useCallback, useRef, type SetStateAction } from "react";
 import {
   isSceneTurnOutcome,
@@ -525,6 +526,7 @@ export function useDiscardRoomDebug(ports: {
     SetStateAction<"menu" | "venue" | "home" | "setup" | "resume" | "preparing" | "room" | "person">
   >;
 }) {
+  const confirmVillages = useConfirmation(ports.room?.id);
   const {
     debugDiscardEnabled,
     loadSnapshot,
@@ -542,7 +544,9 @@ export function useDiscardRoomDebug(ports: {
   return useCallback(async () => {
     if (!room?.id || !debugDiscardEnabled || roomBusy) return;
     if (
-      !window.confirm("DEBUG: Discard this Scene and its transcript? Completed effects and villager memories remain.")
+      !(await confirmVillages(
+        "DEBUG: Discard this Scene and its transcript? Completed effects and villager memories remain.",
+      ))
     )
       return;
     setRoomBusy(true);
@@ -561,6 +565,7 @@ export function useDiscardRoomDebug(ports: {
       setRoomBusy(false);
     }
   }, [
+    confirmVillages,
     room?.id,
     debugDiscardEnabled,
     roomBusy,

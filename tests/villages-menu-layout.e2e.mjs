@@ -239,14 +239,20 @@ try {
         const worldName = main.getByRole("textbox", { name: "Village world", exact: true });
         const original = await worldName.inputValue();
         await worldName.fill("An unsaved world name");
-        page.once("dialog", (dialog) => dialog.dismiss());
         await selectSection("visual");
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
+          .click();
         await expect(worldName).toHaveValue("An unsaved world name");
         if (mobile) await expect(picker).toHaveValue("village");
-        page.once("dialog", (dialog) => dialog.dismiss());
         await page
           .getByRole("navigation", { name: "Village navigation" })
           .getByRole("button", { name: "Map", exact: true })
+          .click();
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
           .click();
         await expect(worldName).toHaveValue("An unsaved world name");
         holdWorldSave = true;
@@ -267,14 +273,20 @@ try {
         const mapName = main.getByRole("textbox", { name: "Map name", exact: true });
         await expect(mapName).toBeEnabled();
         await mapName.fill("An unsaved map name");
-        page.once("dialog", (dialog) => dialog.dismiss());
         await selectSection("advanced");
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
+          .click();
         await expect(mapName).toHaveValue("An unsaved map name");
         if (mobile) await expect(picker).toHaveValue("village");
-        page.once("dialog", (dialog) => dialog.dismiss());
         await page
           .getByRole("navigation", { name: "Village navigation" })
           .getByRole("button", { name: "Projects", exact: true })
+          .click();
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
           .click();
         await expect(mapName).toHaveValue("An unsaved map name");
         holdMapSave = true;

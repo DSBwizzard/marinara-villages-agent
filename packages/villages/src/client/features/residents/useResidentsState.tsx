@@ -52,7 +52,7 @@ export function useResidentsState() {
 
   const [spriteManagerId, setSpriteManagerId] = useState<string | null>(null);
 
-  const spriteLeaveGuard = useRef<(() => boolean) | null>(null);
+  const spriteLeaveGuard = useRef<(() => Promise<boolean>) | null>(null);
 
   const spriteProfileScroll = useRef(0);
 

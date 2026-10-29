@@ -1,3 +1,4 @@
+import { ConfirmationProvider } from "../shared/confirmation.js";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ExplorationScreen } from "../features/exploration/ExplorationScreen.js";
 import { FoundingScreen } from "../features/founding/FoundingScreen.js";
@@ -15,6 +16,14 @@ import { useVillageController } from "./useVillageController.js";
 import { VillagesFrame } from "./VillagesFrame.js";
 
 export function VillagesView({ element }: { element: HTMLElement }) {
+  return (
+    <ConfirmationProvider>
+      <VillagesContent element={element} />
+    </ConfirmationProvider>
+  );
+}
+
+function VillagesContent({ element }: { element: HTMLElement }) {
   const controller = useVillageController({ element });
   type Origin = { screen: typeof controller.screen; menuPage: typeof controller.menuPage; focus: HTMLElement | null };
   const [origin, setOrigin] = useState<Origin | null>(null);
@@ -58,8 +67,8 @@ export function VillagesView({ element }: { element: HTMLElement }) {
         );
       controller.openMenu(tab);
     },
-    openPerson: (person: Parameters<typeof controller.openPerson>[0]) => {
-      const opened = controller.openPerson(person);
+    openPerson: async (person: Parameters<typeof controller.openPerson>[0]) => {
+      const opened = await controller.openPerson(person);
       if (opened) begin();
       return opened;
     },
@@ -107,12 +116,12 @@ export function VillagesView({ element }: { element: HTMLElement }) {
     );
     return () => window.clearTimeout(timer);
   }, [origin, phase, setMenuPage, setScreen, setPersonProfile, setProfileInspection, setSpriteManagerId]);
-  const close = () => {
-    if (controller.spriteLeaveGuard.current && !controller.spriteLeaveGuard.current()) return;
+  const close = async () => {
+    if (controller.spriteLeaveGuard.current && !(await controller.spriteLeaveGuard.current())) return;
     setPhase("closing");
   };
-  const directory = () => {
-    if (controller.spriteLeaveGuard.current && !controller.spriteLeaveGuard.current()) return;
+  const directory = async () => {
+    if (controller.spriteLeaveGuard.current && !(await controller.spriteLeaveGuard.current())) return;
     const actor = controller.personProfile?.actorId;
     controller.setSpriteManagerId(null);
     controller.setProfileInspection(null);

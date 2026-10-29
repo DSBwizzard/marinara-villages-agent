@@ -7,6 +7,7 @@ import { chromium } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { verifyVenueScreenLifetimes } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
+import { verifyVenueLayoutAutosave } from "./fixtures/villages-venue-layout-autosave.fixture.mjs";
 const browser = await chromium.launch({
   headless: true,
 });
@@ -140,6 +141,7 @@ try {
       await runCase("venues/layout/" + layout + "/" + width, async () => {});
     }
   await runCase("venues/screen-lifetimes", () => verifyVenueScreenLifetimes(browser));
+  await runCase("venues/layout-autosave", () => verifyVenueLayoutAutosave(browser));
   console.log("Selected Venue layout and screen-lifetime scenarios passed; the case report records exact coverage.");
 } finally {
   await browser.close();
