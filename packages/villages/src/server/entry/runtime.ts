@@ -1032,7 +1032,13 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseVenueCommands = configureVenueCommands(
-    createVenueCommands({ readVillageState, mutateVillageState, buildVillageSnapshot, sceneQueries }),
+    createVenueCommands({
+      readVillageState,
+      mutateVillageState,
+      buildVillageSnapshot,
+      sceneQueries,
+      withSceneNavigation: (operation) => sceneWork().serializeNavigation(operation),
+    }),
   );
   const releaseLocationImages = configureLocationImages(
     createLocationImages({

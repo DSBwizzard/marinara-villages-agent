@@ -4,7 +4,7 @@ import type { AccessCommand } from "../../../shared/helpers/venue-access.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import type { ZoneLayoutChange } from "../../../shared/helpers/zone-layout.js";
+import { useVenueLayoutDraft } from "./layout-draft.js";
 import type { VenuesState } from "./useVenuesState.js";
 
 function proposalDraftKey(draft: NonNullable<VenuesState["venueProposalDraft"]>) {
@@ -147,30 +147,7 @@ export function useVenueScreenCommands(ports: {
       if (editor.finish(claim)) setVenueEditBusy(false);
     }
   };
-  const saveVenueZoneLayout = async (place: VillageVenue, change: ZoneLayoutChange): Promise<boolean> => {
-    if (!isCurrentVenue(place.id)) return false;
-    const claim = editor.begin();
-    if (!claim) return false;
-    claim.onRetire = () => setVenueEditBusy(false);
-    setVenueEditBusy(true);
-    setVenueEditError("");
-    setVenueEditNotice("");
-    try {
-      const next = await request<VillageSnapshot>(`/venues/${encodeURIComponent(place.id)}/layout`, {
-        method: "PUT",
-        body: JSON.stringify(change),
-      });
-      if (!editor.owns(claim)) return false;
-      setSnapshot(next);
-      setVenueEditNotice("Layout saved.");
-      return true;
-    } catch (cause) {
-      if (editor.owns(claim)) setVenueEditError(messageFrom(cause, "The layout could not be saved."));
-      return false;
-    } finally {
-      if (editor.finish(claim)) setVenueEditBusy(false);
-    }
-  };
+  const layoutDraft = useVenueLayoutDraft({ snapshot: ports.snapshot, setSnapshot });
   const requestPlayerMove = async (placeId: string, playerMovePrivateZoneId: string) => {
     if (!isCurrentVenue(placeId)) return;
     const claim = player.begin();
@@ -298,7 +275,7 @@ export function useVenueScreenCommands(ports: {
     }
   };
   return {
-    saveVenueZoneLayout,
+    ...layoutDraft,
     saveVenueName,
     saveVenueImageContext,
     setZonePictureFrozen,

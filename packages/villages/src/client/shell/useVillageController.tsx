@@ -1,3 +1,4 @@
+import { useConfirmation } from "../shared/confirmation.js";
 import { useLayoutEffect, useRef, useState } from "react";
 import type { TownMapView, VillageVenue } from "../../shared/contracts/village.js";
 import { useResidentsRetryWork } from "../features/background/actions.js";
@@ -783,7 +784,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupSuggestionsClaim,
   });
 
+  const confirmVillages = useConfirmation(snapshot?.settings.maps?.[0]?.id);
   const newSetupDraft = createFoundingNewSetupDraft({
+    confirmVillages,
     draftBlocked,
     draftRevision,
     draftSaveQueue,

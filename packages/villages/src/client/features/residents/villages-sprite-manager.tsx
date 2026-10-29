@@ -1,3 +1,4 @@
+import { useConfirmation } from "../../shared/confirmation.js";
 import { downloadSpriteImage } from "../../shared/image-download.js";
 import {
   type SpriteArtwork,
@@ -18,7 +19,7 @@ type Props = {
   onSaved: (snapshot: unknown) => void;
   onBack: () => void;
   backLabel?: string;
-  onLeaveGuard: (guard: (() => boolean) | null) => void;
+  onLeaveGuard: (guard: (() => Promise<boolean>) | null) => void;
 };
 type Saved = {
   manager: SpriteManagerState;
@@ -103,6 +104,7 @@ export function SpriteManager({
   onLeaveGuard,
   backLabel = "← Back to Villagers",
 }: Props) {
+  const confirmVillages = useConfirmation(villager.characterId);
   const base = `/villagers/${encodeURIComponent(villager.characterId)}/sprites/manager`;
   const [manager, setManager] = useState<SpriteManagerState | null>(null);
   const [busy, setBusy] = useState(false),
@@ -114,6 +116,63 @@ export function SpriteManager({
   const [selectedId, setSelectedId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [contexts, setContexts] = useState<Record<string, Pick<Draft, "expressionId" | "view">>>({});
+  const [draftsReady, setDraftsReady] = useState(false);
+  const [draftStorageError, setDraftStorageError] = useState("");
+  const draftStorageKey = `villages-sprite-drafts:${villager.characterId}`;
+  useEffect(() => {
+    if (!manager || draftsReady) return;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(draftStorageKey) ?? "null");
+      const restored: Record<string, Draft> = {};
+      const restoredContexts: Record<string, Pick<Draft, "expressionId" | "view">> = {};
+      for (const artwork of manager.artwork) {
+        const row = saved?.[artwork.id];
+        const value = row?.draft;
+        if (!value || row.signature !== JSON.stringify([artwork.source.sha256, artwork.rendered.url, artwork.frame]))
+          continue;
+        if (
+          ![value.expressionId, value.name, value.useWhen].every((item) => typeof item === "string") ||
+          !["front", "side"].includes(value.view) ||
+          !["front", "left", "right"].includes(value.direction) ||
+          !value.frame ||
+          !["x", "y", "width", "height", "scale", "offsetX", "offsetY"].every((key) =>
+            Number.isFinite(value.frame[key]),
+          )
+        )
+          continue;
+        restored[artwork.id] = value;
+        if (row.context && typeof row.context.expressionId === "string" && ["front", "side"].includes(row.context.view))
+          restoredContexts[artwork.id] = row.context;
+      }
+      setDrafts(restored);
+      setContexts(restoredContexts);
+    } catch {
+      setDraftStorageError("Saved Sprite Manager edits could not be restored on this device.");
+    }
+    setDraftsReady(true);
+  }, [manager, draftsReady, draftStorageKey]);
+  useEffect(() => {
+    if (!manager || !draftsReady) return;
+    try {
+      const saved = Object.fromEntries(
+        manager.artwork
+          .filter((artwork) => drafts[artwork.id])
+          .map((artwork) => [
+            artwork.id,
+            {
+              signature: JSON.stringify([artwork.source.sha256, artwork.rendered.url, artwork.frame]),
+              draft: drafts[artwork.id],
+              context: contexts[artwork.id],
+            },
+          ]),
+      );
+      if (Object.keys(saved).length) sessionStorage.setItem(draftStorageKey, JSON.stringify(saved));
+      else sessionStorage.removeItem(draftStorageKey);
+      setDraftStorageError("");
+    } catch {
+      setDraftStorageError("Sprite edits cannot be retained on this device. Keep this page open until they are saved.");
+    }
+  }, [manager, draftsReady, draftStorageKey, drafts, contexts]);
   const [pixels, setPixels] = useState<{ url: string; image: SpritePixels } | null>(null);
   const [pixelError, setPixelError] = useState("");
   const [preview, setPreview] = useState<{
@@ -210,26 +269,27 @@ export function SpriteManager({
     });
     return () => cancelAnimationFrame(task);
   }, [source, frame]);
-  function mayLeave() {
+  async function mayLeave() {
     if (inFlight.current) return false;
-    return (
-      !dirtyCount ||
-      window.confirm("Discard unsaved Sprite Manager changes and leave? Your saved artwork will stay in use.")
-    );
+    if (!dirtyCount) return true;
+    if (
+      !(await confirmVillages("Discard unsaved Sprite Manager changes and leave? Your saved artwork will stay in use."))
+    )
+      return false;
+    if (inFlight.current) return false;
+    try {
+      sessionStorage.removeItem(draftStorageKey);
+    } catch {
+      /* Saving remains available in this interface. */
+    }
+    setDrafts({});
+    setContexts({});
+    return true;
   }
   useEffect(() => {
     onLeaveGuard(mayLeave);
     return () => onLeaveGuard(null);
   });
-  useEffect(() => {
-    if (!dirtyCount && !busy) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirtyCount, busy]);
   useEffect(() => {
     if (libraryOpen) libraryDialog.current?.showModal();
     else if (libraryDialog.current?.open) {
@@ -336,6 +396,11 @@ export function SpriteManager({
   }
   const feedback = (
     <>
+      {draftStorageError ? (
+        <p role="alert" className="vsm-feedback vsm-feedback-error">
+          {draftStorageError}
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="vsm-feedback vsm-feedback-error">
           {error}
@@ -368,8 +433,8 @@ export function SpriteManager({
         <button
           aria-label={backLabel}
           disabled={busy}
-          onClick={() => {
-            if (mayLeave()) onBack();
+          onClick={async () => {
+            if (await mayLeave()) onBack();
           }}
         >
           {backLabel === "← Back to profile" ? "← Profile" : backLabel.replace("← Back to ", "← ")}
@@ -382,8 +447,8 @@ export function SpriteManager({
         <div className="vsm-toolbar">
           <button
             disabled={busy || !manager}
-            onClick={() => {
-              if (mayLeave()) setSetupOpen(true);
+            onClick={async () => {
+              if (await mayLeave()) setSetupOpen(true);
             }}
           >
             Import character sprites
@@ -582,12 +647,12 @@ export function SpriteManager({
                         <button
                           className="vsm-danger"
                           disabled={busy}
-                          onClick={() => {
+                          onClick={async () => {
                             const count = manager.assignments.filter((item) => item.artworkId === selected.id).length;
                             if (
-                              !window.confirm(
+                              !(await confirmVillages(
                                 `Remove ${selected.name}? This removes its ${count} Scene ${count === 1 ? "assignment" : "assignments"} and any unsaved edits to this image.`,
-                              )
+                              ))
                             )
                               return;
                             closeMoreActions();

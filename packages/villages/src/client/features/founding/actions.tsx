@@ -1,3 +1,4 @@
+import { useConfirmation } from "../../shared/confirmation.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
@@ -39,12 +40,15 @@ export function useSuggestPlaces(ports: {
   setVenuesDraft: React.Dispatch<SetStateAction<VillageVenue[]>>;
   snapshot: VillageSnapshot;
 }) {
+  const confirmVillages = useConfirmation(ports.snapshot?.settings.maps?.[0]?.id);
   const { setBusy, setSettingsError, setVenuesDraft, snapshot } = ports;
   return useCallback(async () => {
     if (
       snapshot &&
       destinationPlaces(snapshot.settings.venues).length > 0 &&
-      !window.confirm("Replace the current places with new suggestions? This removes places you created or approved.")
+      !(await confirmVillages(
+        "Replace the current places with new suggestions? This removes places you created or approved.",
+      ))
     )
       return;
     setBusy(true);
@@ -71,7 +75,7 @@ export function useSuggestPlaces(ports: {
     } finally {
       setBusy(false);
     }
-  }, [setBusy, setSettingsError, setVenuesDraft, snapshot]);
+  }, [confirmVillages, setBusy, setSettingsError, setVenuesDraft, snapshot]);
 }
 
 export function usePickSetupTownMap(ports: {

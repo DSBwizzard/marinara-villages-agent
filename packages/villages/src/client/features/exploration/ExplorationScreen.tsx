@@ -83,15 +83,6 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       return false;
     }
   };
-  useEffect(() => {
-    if (!markerDraft || JSON.stringify(markerDraft.placements) === markerDraft.original) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [markerDraft]);
   const places = (snapshot?.settings.venues ?? []).filter((venue) => venue.presentation.mapId === selectedMap?.id);
   const startMarkers = () => {
     if (!selectedMap || !snapshot) return;

@@ -44,6 +44,7 @@ export type VillageVenueDeletionDependencies = {
 
 /** Effectful reads remain explicit: Scene queries can reconcile an existing visit. */
 export interface VenueCommandPorts {
+  withSceneNavigation<T>(operation: () => Promise<T>): Promise<T>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
@@ -58,6 +59,7 @@ export function createVenueCommands({
   mutateVillageState,
   buildVillageSnapshot,
   sceneQueries,
+  withSceneNavigation,
 }: VenueCommandPorts) {
   async function imageTarget(
     body: { venueId?: unknown; zoneId?: unknown; privateSpaceId?: unknown; privateOwnerId?: unknown } | undefined,
@@ -458,12 +460,16 @@ export function createVenueCommands({
   }
 
   async function updateVenueZoneLayout(venueId: string, value: unknown): Promise<VillageSnapshot> {
-    await mutateVillageState((state) => {
-      const venue = state.venues.find((entry) => entry.id === venueId);
-      if (!venue) throw notFound("That Venue no longer exists.");
-      applyVenueZoneLayout(state, venue, value);
+    return withSceneNavigation(async () => {
+      if (await sceneQueries().activeVenueSession())
+        throw conflict("End the active Scene before editing Zone positions or connections.");
+      await mutateVillageState((state) => {
+        const venue = state.venues.find((entry) => entry.id === venueId);
+        if (!venue) throw notFound("That Venue no longer exists.");
+        applyVenueZoneLayout(state, venue, value);
+      });
+      return buildVillageSnapshot();
     });
-    return buildVillageSnapshot();
   }
 
   async function renameVillageZone(venueId: string, zoneId: string, value: unknown): Promise<VillageSnapshot> {

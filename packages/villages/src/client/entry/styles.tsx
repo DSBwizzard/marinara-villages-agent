@@ -2471,6 +2471,11 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-setup-visual > .${ELEMENT_TAG}-setup-map-shell { flex: 1 1 auto; min-height: 0; }
 .villages-founding-backdrop { position:fixed; inset:0; z-index:1000; display:flex; align-items:center; justify-content:center; background:#070b1bd9; }
 .villages-founding-dialog { width:min(42rem,94vw); max-height:90dvh; display:flex; flex-direction:column; background:#14213c; border:1px solid #596b9b; border-radius:1rem; color:#f3f5ff; overflow:hidden; }
+.villages-founding-dialog[data-headerless="true"] { width:min(26rem,calc(100vw - 2rem)); height:fit-content; min-height:0; max-height:calc(100dvh - 2rem); margin:auto; padding:1rem; gap:1rem; box-sizing:border-box; border:1px solid #596b9b; border-radius:.75rem; overflow:auto; font-size:1rem; }
+.villages-founding-dialog[data-headerless="true"] > p { margin:0; line-height:1.4; }
+.villages-founding-dialog[data-headerless="true"] .villages-zone-map-actions { display:flex; flex-wrap:wrap; gap:.5rem; margin:0; }
+.villages-founding-dialog[data-headerless="true"] .villages-zone-map-actions button { flex:1; min-height:44px; margin:0; padding:.55rem .65rem; border:1px solid #65799c; border-radius:.5rem; background:#1f3050; color:inherit; font-size:.95rem; font-weight:normal; cursor:pointer; }
+dialog.villages-founding-dialog:not([open]) { display:none; }
 .villages-founding-dialog footer button:last-child {background:#7461d5;}
 .villages-founding-dialog header,.villages-founding-dialog footer { flex:none; padding:1rem; background:#192c4c; }
 .villages-founding-dialog footer { display:flex; gap:.5rem; flex-wrap:wrap; }
@@ -3552,9 +3557,32 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-venue-section p { margin:.25rem 0; }
 .${ELEMENT_TAG}-venue-section > label { display:grid; gap:.4rem; width:100%; }
 .${ELEMENT_TAG}-venue-section input, .${ELEMENT_TAG}-venue-section select { width:100%; box-sizing:border-box; }
-.${ELEMENT_TAG}-venue-zone-details { padding:1rem; background:var(--popover); border:1px solid var(--border); border-radius:.75rem; }
-.${ELEMENT_TAG}-venue-zone-heading { display:flex; justify-content:space-between; align-items:start; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
-.${ELEMENT_TAG}-venue-zone-heading small { display:block; }
+.${ELEMENT_TAG}-venue-zones-workspace { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:1rem; align-items:start; }
+.${ELEMENT_TAG}-venue-zones-layout { min-width:0; }
+.${ELEMENT_TAG}-venue-zones-layout .villages-zone-map { margin:0; }
+.${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-toolbar { margin-top:0; }
+.${ELEMENT_TAG}-venue-zone-details { min-width:0; height:clamp(540px,70dvh,720px); box-sizing:border-box; overflow:auto; padding:1rem; background:var(--popover); border:1px solid var(--border); border-radius:.75rem; display:flex; flex-direction:column; gap:.75rem; }
+.${ELEMENT_TAG}-venue-zone-details > * { flex-shrink:0; }
+.${ELEMENT_TAG}-venue-zone-details h2 { margin:0; font-size:1.35rem; line-height:1.4; }
+.${ELEMENT_TAG}-zone-title h2 > :is(button,input) { display:block; box-sizing:border-box; width:100%; margin:0; min-height:1.4em; padding:0; border:0; border-radius:0; background:transparent; color:inherit; font:inherit; text-align:left; }
+.${ELEMENT_TAG}-zone-title h2 > button { cursor:text; }
+.${ELEMENT_TAG}-zone-title h2 > button span { font-size:.7em; opacity:.6; }
+.${ELEMENT_TAG}-zone-title h2 > input { outline-offset:3px; }
+.${ELEMENT_TAG}-zone-artwork-frame { width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
+.${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { display:block; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
+.${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
+.${ELEMENT_TAG}-zone-artwork-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; align-items:stretch; }
+.${ELEMENT_TAG}-zone-artwork-actions > button { min-width:0; width:100%; min-height:44px; margin:0; padding:.5rem .2rem; font-size:.8rem; line-height:1.2; white-space:nowrap; }
+.${ELEMENT_TAG}-zone-artwork-actions > .${ELEMENT_TAG}-zone-artwork-retry { grid-column:1/-1; }
+.${ELEMENT_TAG}-zone-access-details small { display:block; }
+@media(max-width:700px) {
+ .${ELEMENT_TAG}-venue-zones-workspace { grid-template-columns:minmax(0,1fr); gap:.75rem; }
+ .${ELEMENT_TAG}-venue-zone-details { padding:.75rem; }
+ .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-canvas { height:300px; }
+ .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-tile small { display:none; }
+ .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-tile strong { font-size:.8rem; line-height:1.15; white-space:normal; overflow-wrap:anywhere; }
+ .${ELEMENT_TAG}-zone-artwork-frame { height:180px; }
+}
 .${ELEMENT_TAG}-zone-picture-freeze { display:flex; align-items:center; gap:.5rem; min-height:44px; width:fit-content; margin-bottom:.25rem; cursor:pointer; }
 .${ELEMENT_TAG}-zone-picture-freeze input { width:1.15rem; height:1.15rem; margin:0; }
 .${ELEMENT_TAG}-venue-assignments { margin:0; padding:0; list-style:none; width:100%; }

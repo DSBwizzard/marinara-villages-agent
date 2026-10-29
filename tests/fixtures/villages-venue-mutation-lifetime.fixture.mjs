@@ -14,6 +14,7 @@ export async function verifyVenueMutationLifetimes(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useSaveVenue,useRemoveVenue,useDecideVenueRequest} from './packages/villages/src/client/features/venues/actions.js';
 import {useSaveBackgroundPace,useSaveSettings} from './packages/villages/src/client/features/settings/actions.js';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
  const [snapshot,rawSnapshot]=useState(window.seed),[busy,rawBusy]=useState(false),[error,rawError]=useState(''),
  [venueEditDraft,rawEditor]=useState(window.draft),[venuesDraft,rawRows]=useState(window.initialRows),
@@ -37,8 +38,7 @@ function Harness(){
  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error,editor:venueEditDraft,rows:venuesDraft.map(v=>({id:v.id,name:v.name})),edits:requestEdits,menu})};
  return <pre id='state'>{JSON.stringify(window.h.read())}</pre>;
 }window.pending=[];window.acks=0;window.confirms=[];window.calls={snapshot:0,busy:0,error:0,editor:0,rows:0,edits:0,menu:0};
-window.confirm=note=>{window.confirms.push(note);window.onConfirm();return window.acceptConfirm!==false};
-const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
+const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><ConfirmationProvider><Harness/></ConfirmationProvider></StrictMode>:<ConfirmationProvider><Harness/></ConfirmationProvider>);
 `,
     },
     bundle: true,
@@ -129,6 +129,26 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
                 : snapshot,
           ),
         });
+        const dependencies = { ...emptyDependencies, ...options.dependencies };
+        if (
+          requests[index].path.endsWith("/dependencies") &&
+          !options.fail &&
+          !dependencies.roomPresent &&
+          !dependencies.playerHome &&
+          !dependencies.residentCharacterIds.length &&
+          (await page.locator("#state").count()) &&
+          (await state()).setting === "A"
+        ) {
+          const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
+          await expect(dialog).toBeVisible();
+          const note = await dialog.locator("p").textContent();
+          const accept = await page.evaluate((note) => {
+            window.confirms.push(note);
+            window.onConfirm();
+            return window.acceptConfirm !== false;
+          }, note);
+          await dialog.getByRole("button", { name: accept ? "Continue" : "Cancel", exact: true }).click();
+        }
       },
       finish: async () => {
         assert.deepEqual(errors, []);

@@ -338,8 +338,8 @@ export function ResidentsScreen({
         )}
       </div>
     );
-    const back = () => {
-      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+    const back = async () => {
+      if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return;
       setSpriteManagerId(null);
       setProfileInspection(null);
       setPersonProfile(null);

@@ -211,7 +211,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.dialogueColor]))
               : {}
           }
-          picture={venuePictureOf(sceneVenues, room)}
+          picture={venuePictureOf(room.status === "closed" ? sceneVenues : (snapshot?.settings.venues ?? []), room)}
           draft={roomDraft}
           mode={roomMode}
           legacyRecovery={legacyRecovery?.sceneId === room.id ? legacyRecovery : null}

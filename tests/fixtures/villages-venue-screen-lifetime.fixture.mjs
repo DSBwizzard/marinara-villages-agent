@@ -15,6 +15,7 @@ import {useVenueScreenCommands} from './packages/villages/src/client/features/ve
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
 import {VenueAccessPanel} from './packages/villages/src/client/features/venues/villages-venue-access.js';
 import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
 const [snapshot,rawSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('A / venue'),[venuePage,setVenuePage]=useState(window.page),[venueZoneKey,setVenueZoneKey]=useState(window.initialZone);
 const [busy,rawBusy]=useState(false),[settingsError,rawSettingsError]=useState(''),[venueEditBusy,rawEditBusy]=useState(false),[venueEditError,rawEditError]=useState(''),[venueEditNotice,rawNotice]=useState(''),
@@ -26,9 +27,9 @@ const ports={snapshot,screen,venueId,venuePage,venueZoneKey,venueEditDraft,venue
 const commands=useVenueScreenCommands(ports),pace=useSaveBackgroundPace(ports),place=snapshot.settings.venues.find(v=>v.id===venueId);
 const actions={name:()=>commands.saveVenueName(place,venueEditDraft.name),image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>commands.changeVenueAccess(place.id,window.accessCommand),retry:()=>commands.retryPrivateSpacePreparation(),
 zone:()=>commands.saveVenueZone(place.id,venueZoneKey,window.zoneBody),residence:()=>commands.proposeResidenceMove('resident / A','target / B',' private / target '),
-proposal:()=>commands.submitVenueProposal(place,venueProposalDraft),pace:()=>pace('quiet')};
+layout:()=>commands.commitVenueZoneLayout(place.id),discard:()=>commands.discardVenueZoneLayout(place.id),proposal:()=>commands.submitVenueProposal(place,venueProposalDraft),pace:()=>pace('quiet')};
 const capture=p=>{window.pending.push(Promise.resolve(p).then(value=>({value}),cause=>({error:cause.message})));return window.pending.length-1};
-const run=kind=>capture(actions[kind]());const ui=Object.fromEntries(Object.entries(commands).map(([key,fn])=>[key,(...args)=>{const p=fn(...args);capture(p);return p}]));
+const run=kind=>capture(actions[kind]());const ui=Object.fromEntries(Object.entries(commands).map(([key,fn])=>[key,typeof fn==='function'?(...args)=>{const p=fn(...args);capture(p);return p}:fn]));
 const jump=({id=venueId,page=venuePage,zone=venueZoneKey,active=true}={})=>flushSync(()=>{setVenueId(id);setVenuePage(page);setVenueZoneKey(zone);setScreen(active?'venue':'home');
 const v=window.seed.settings.venues.find(v=>v.id===id);rawDraft(v?{...structuredClone(v),name:'Draft '+id}:null);rawProposal(structuredClone(window.proposal));rawEditError('B marker');rawNotice('B marker');rawSettingsError('B marker');rawProblem({id,text:'B marker'});});
 window.h={run,cross:kinds=>kinds.forEach(run),retain:kind=>{window.old=actions[kind]},old:()=>capture(window.old()),jump,
@@ -48,8 +49,8 @@ venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenue
 {place && editorZone && venuePage==='view' ? <details><summary>Access options</summary><VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /></details> : null}
 </>;
 }
-window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};window.confirms=[];window.confirm=message=>{window.confirms.push(message);window.confirmHook?.();return window.confirmAnswer};
-const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
+window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};
+const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><ConfirmationProvider><Harness/></ConfirmationProvider></StrictMode>:<ConfirmationProvider><Harness/></ConfirmationProvider>);
 `,
     },
     bundle: true,
@@ -179,7 +180,15 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       accessCommand,
       zoneBody,
       read,
-      run: (kind) => page.evaluate((kind) => window.h.run(kind), kind),
+      run: async (kind, autoConfirm = true) => {
+        const index = await page.evaluate((kind) => window.h.run(kind), kind);
+        if (autoConfirm) {
+          await page.evaluate(() => new Promise(requestAnimationFrame));
+          const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
+          if (await dialog.count()) await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        }
+        return index;
+      },
       settle: (index) => page.evaluate((index) => window.pending[index], index),
       reply: async (index, options = {}) => {
         const snapshot = structuredClone(seed);
@@ -256,20 +265,36 @@ export async function verifyVenueScreenLifetimes(browser) {
     for (const strict of [true]) {
       {
         const f = await mount(strict, width, { page: "view" });
+        await f.page.getByRole("button", { name: /^Rename / }).click();
+        await f.page.getByLabel("Zone name", { exact: true }).fill("Retained name");
+        await f.page.getByLabel("Zone name", { exact: true }).press("Tab");
+        await expect.poll(() => f.requests.length).toBe(1);
+        await f.reply(0, { fail: true });
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toHaveValue("Retained name");
+        await expect(f.page.getByRole("alert").filter({ hasText: "The Zone name could not be saved" })).toBeVisible();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
+        await expect.poll(() => f.requests.length).toBe(2);
+        await f.reply(1);
+        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeFocused();
+        await f.finish();
+      }
+      {
+        const f = await mount(strict, width, { page: "view" });
+        await f.page.getByRole("button", { name: /^Rename / }).click();
         await f.page.getByLabel("Zone name", { exact: true }).fill("Renamed Zone");
-        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => {
           window.h.reset();
           window.h.refound();
         });
-        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
-        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeEnabled();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(0);
-        await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeDisabled();
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
+        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeVisible();
         await f.finish();
       }
       for (const kind of kinds)
@@ -396,7 +421,6 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.deepEqual(s.venueProposalDraft, before.venueProposalDraft);
         await f.finish();
       }
-
       for (const hydrate of [false, true]) {
         const f = await mount(strict, width, hydrate ? { hydrate: true } : { founded: false });
         await f.run("name");

@@ -1,3 +1,4 @@
+import { ConfirmationProvider } from "../../packages/villages/src/client/shared/confirmation.js";
 import { createRoot } from "react-dom/client";
 import type { ReactNode } from "react";
 import { syncVillagesStyles } from "../../packages/villages/src/client/entry/styles.js";
@@ -19,7 +20,11 @@ export function installFeature(render: (controller: ReturnType<typeof useVillage
     class extends HTMLElement {
       connectedCallback() {
         syncVillagesStyles();
-        createRoot(this).render(<App element={this} />);
+        createRoot(this).render(
+          <ConfirmationProvider>
+            <App element={this} />
+          </ConfirmationProvider>,
+        );
       }
     },
   );

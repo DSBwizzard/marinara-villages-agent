@@ -227,17 +227,10 @@ try {
     await expect(layout.locator("[data-layout-zone]")).toHaveCount(4);
     await expect(layout.locator("svg line")).toHaveCount(3);
     await layout.locator('[data-layout-zone="workshop"]').click();
+    await profile.getByRole("button", { name: "Rename Workshop", exact: true }).click();
     await profile.getByLabel("Zone name", { exact: true }).fill("Unsent Zone name");
-    page.once("dialog", (dialog) => dialog.dismiss());
-    await chooseVenue(otherId, "The Harbour");
-    await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Unsent Zone name");
-    page.once("dialog", (dialog) => dialog.dismiss());
-    await page
-      .getByRole("navigation", { name: "Village navigation" })
-      .getByRole("button", { name: "People", exact: true })
-      .click();
-    await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Unsent Zone name");
-    page.once("dialog", (dialog) => dialog.accept());
+    await profile.getByLabel("Zone name", { exact: true }).press("Escape");
+    await expect(profile.getByRole("button", { name: "Rename Workshop", exact: true })).toBeVisible();
     await page
       .getByRole("navigation", { name: "Village navigation" })
       .getByRole("button", { name: "People", exact: true })
@@ -246,7 +239,7 @@ try {
     await expect(peopleBook).toBeVisible();
     await peopleBook.getByRole("button", { name: "Close ×", exact: true }).click();
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
-    await expect(profile.getByLabel("Zone name", { exact: true })).toHaveValue("Workshop");
+    await expect(profile.getByRole("button", { name: "Rename Workshop", exact: true })).toBeVisible();
     await layout.locator('[data-layout-zone="exterior"]').click();
     await expect(layout.locator('[data-layout-zone="exterior"]')).toContainText("Entrance");
     await expect(profile.getByText("Exterior", { exact: true })).toHaveCount(0);
@@ -254,6 +247,16 @@ try {
     await expect(profile.getByText("Access options", { exact: true })).toHaveCount(0);
     await layout.locator('[data-layout-zone="alcove"]').click();
     const detail = profile.locator(`.${prefix}-venue-zone-details`);
+    const mapBounds = await layout.boundingBox();
+    const editorBounds = await detail.boundingBox();
+    assert.ok(mapBounds && editorBounds);
+    if (width > 700) {
+      assert.ok(mapBounds.x + mapBounds.width <= editorBounds.x, "desktop layout sits left of selected Zone editor");
+      assert.ok(Math.abs(mapBounds.y - editorBounds.y) < 4, "desktop columns align at the top");
+    } else {
+      assert.ok(mapBounds.y + mapBounds.height <= editorBounds.y, "phone editor follows layout");
+    }
+    await expect(layout.locator('[data-layout-zone="alcove"]')).toHaveAttribute("aria-pressed", "true");
     await expect(detail.getByText("Private", { exact: true })).toBeVisible();
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
@@ -262,7 +265,7 @@ try {
     place.zones[1].accessView = access(true);
     place.zones[2].accessView = access(true);
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(detail.getByText("Open to you", { exact: true })).toBeVisible();
+    await expect(detail.getByText("Open to you", { exact: true })).toHaveCount(0);
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private", { exact: true })).toBeVisible();
     await layout.locator('[data-layout-zone="bay"]').click();
@@ -276,8 +279,8 @@ try {
     assert.equal(writes.at(-1).path, "/api/villages/locations/venue/image/freeze");
     assert.deepEqual(writes.at(-1).body, { venueId: place.id, zoneId: "bay", frozen: true });
     const freezeBox = await detail.locator(`.${prefix}-zone-picture-freeze`).boundingBox();
-    const headingBox = await detail.getByRole("heading", { name: "Main Bay", exact: true }).boundingBox();
-    assert.ok(freezeBox.y + freezeBox.height <= headingBox.y + 1, "freeze is above the Zone heading");
+    const headingBox = await detail.getByRole("heading", { name: "Main Bay" }).boundingBox();
+    assert.ok(headingBox.y + headingBox.height <= freezeBox.y + 1, "Zone name appears before artwork options");
     await freeze.click();
     await expect(freeze).not.toBeChecked();
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
@@ -286,11 +289,15 @@ try {
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-freeze-${width}.png`),
       });
     }
-    await expect(detail.getByText("Open to you", { exact: true })).toBeVisible();
+    await expect(detail.getByText("Open to you", { exact: true })).toHaveCount(0);
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private", { exact: true })).toHaveCount(0);
+    const emptyEditor = await detail.boundingBox();
+    const emptyFrame = await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox();
     await detail.getByRole("button", { name: "Regenerate artwork", exact: true }).click();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeVisible();
+    assert.equal((await detail.boundingBox()).height, emptyEditor.height, "artwork never resizes editor");
+    assert.equal((await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox()).height, emptyFrame.height);
     assert.deepEqual(writes.at(-1), {
       path: "/api/villages/locations/venue/image",
       body: { venueId: place.id, spaceClass: "residence", privateOwnerId: "", zoneId: "bay" },
@@ -306,27 +313,70 @@ try {
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
+    const actionBoxes = await Promise.all(
+      ["Regenerate artwork", "Upload artwork", "Remove artwork"].map((name) =>
+        detail.getByRole("button", { name, exact: true }).boundingBox(),
+      ),
+    );
+    assert.ok(
+      actionBoxes.every(
+        (box) => Math.abs(box.y - actionBoxes[0].y) < 1 && Math.abs(box.width - actionBoxes[0].width) < 1,
+      ),
+      "artwork actions share one aligned row at every viewport",
+    );
+    const actions = detail.locator(`.${prefix}-zone-artwork-actions`);
+    assert.ok(
+      await actions
+        .locator("button")
+        .evaluateAll((buttons) => buttons.every((button) => button.scrollWidth <= button.clientWidth + 1)),
+      "short artwork labels fit their buttons",
+    );
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
+      await actions.screenshot({
+        path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-artwork-actions-${width}.png`),
+      });
+    await expect(detail.getByText("An open living area.", { exact: true })).toHaveCount(0);
+    for (const [w, h] of [
+      [120, 600],
+      [1600, 200],
+    ]) {
+      await detail.locator("img").evaluate(
+        async (img, { w, h }) => {
+          img.src =
+            "data:image/svg+xml," +
+            encodeURIComponent(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="teal"/></svg>`,
+            );
+          await img.decode();
+        },
+        { w, h },
+      );
+      assert.equal(
+        (await detail.boundingBox()).height,
+        emptyEditor.height,
+        "portrait and wide artwork keep editor height",
+      );
+      assert.equal(
+        (await detail.boundingBox()).width,
+        emptyEditor.width,
+        "portrait and wide artwork keep editor width",
+      );
+    }
     await detail.getByRole("button", { name: "Remove artwork", exact: true }).click();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toHaveCount(0);
     assert.equal(writes.at(-1).body.zoneId, "bay");
+    await detail.getByRole("button", { name: "Rename Main Bay", exact: true }).click();
     await detail.getByLabel("Zone name", { exact: true }).fill("  ");
-    await expect(detail.getByRole("button", { name: "Save zone name", exact: true })).toBeDisabled();
+    await detail.getByLabel("Zone name", { exact: true }).press("Enter");
+    await expect(detail.getByRole("alert")).toContainText("Give the Zone a name");
     await detail.getByLabel("Zone name", { exact: true }).fill("Harbour Lounge");
     holdZoneSave = true;
-    await detail.getByRole("button", { name: "Save zone name", exact: true }).click();
+    await layout.locator('[data-layout-zone="exterior"]').click();
     await expect.poll(() => !!heldZoneSave).toBe(true);
-    await expect(
-      page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People", exact: true }),
-    ).toBeDisabled();
-    await expect(tabs.getByRole("button", { name: "About", exact: true })).toBeDisabled();
-    if (width < 700) await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toBeDisabled();
-    else
-      await expect(
-        page.getByRole("group", { name: "Venues" }).getByRole("button", { name: /^The Harbour/ }),
-      ).toBeDisabled();
+    await expect(layout.locator('[data-layout-zone="bay"]')).toHaveAttribute("aria-pressed", "true");
     await fulfill(heldZoneSave, { json: snapshot });
     holdZoneSave = false;
-    await expect(detail.getByRole("heading", { name: "Harbour Lounge", exact: true })).toBeVisible();
+    await expect(layout.locator('[data-layout-zone="exterior"]')).toHaveAttribute("aria-pressed", "true");
     assert.deepEqual(writes.at(-1), {
       path: `/api/villages/venues/${place.id}/zones/bay/name`,
       body: { name: "Harbour Lounge" },
@@ -335,7 +385,7 @@ try {
     await layout.locator('[data-layout-zone="exterior"]').click();
     await expect(detail.getByLabel("Zone name", { exact: true })).toHaveCount(0);
     await layout.locator('[data-layout-zone="bay"]').click();
-    await expect(detail.getByLabel("Zone name", { exact: true })).toHaveValue("Harbour Lounge");
+    await expect(detail.getByRole("button", { name: "Rename Harbour Lounge", exact: true })).toBeVisible();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await expect(profile.getByRole("heading", { name: "Assigned Villagers", exact: true })).toBeVisible();
     await expect(profile.getByRole("button", { name: "View housing requests" })).toBeVisible();
@@ -343,15 +393,24 @@ try {
     await expect(profile.getByRole("button", { name: "Regenerate artwork" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await chooseVenue(otherId, "The Harbour");
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
     if (width < 700) await expect(page.getByRole("combobox", { name: "Venue", exact: true })).toHaveValue(place.id);
-    page.once("dialog", (dialog) => dialog.dismiss());
     await profile.getByRole("button", { name: "Plan a renovation →", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(profile.getByLabel("Venue name", { exact: true })).toHaveValue("Renamed warehouse");
     holdVenueSave = true;
     await profile.getByRole("button", { name: "Save name", exact: true }).click();
