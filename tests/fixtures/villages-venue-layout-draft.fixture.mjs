@@ -123,7 +123,12 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await page.locator('[data-layout-zone="common"]').click();
     assert.equal(requests.length, 0, "edits and selecting Zones never save");
     await modify();
-    await pair("exterior", "common");
+    await expect(map.locator('[data-layout-zone][aria-pressed="true"]')).toHaveCount(0);
+    await tile().click();
+    await expect(map.locator('[data-layout-zone][aria-pressed="true"]')).toHaveCount(1);
+    await expect(tile()).toHaveAttribute("aria-pressed", "true");
+    await page.locator('[data-layout-zone="common"]').click();
+    await expect(map.locator('[data-layout-zone][aria-pressed="true"]')).toHaveCount(0);
     await expect(map.locator("svg line")).toHaveCount(1);
     await expect(page.getByRole("alert")).toHaveCount(0);
     await leave();

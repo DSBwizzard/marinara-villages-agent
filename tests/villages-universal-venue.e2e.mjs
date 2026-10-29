@@ -265,7 +265,7 @@ try {
     place.zones[1].accessView = access(true);
     place.zones[2].accessView = access(true);
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await expect(detail.getByText("Open to you", { exact: true })).toBeVisible();
+    await expect(detail.getByText("Open to you", { exact: true })).toHaveCount(0);
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private", { exact: true })).toBeVisible();
     await layout.locator('[data-layout-zone="bay"]').click();
@@ -289,7 +289,7 @@ try {
         path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-freeze-${width}.png`),
       });
     }
-    await expect(detail.getByText("Open to you", { exact: true })).toBeVisible();
+    await expect(detail.getByText("Open to you", { exact: true })).toHaveCount(0);
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private", { exact: true })).toHaveCount(0);
     const emptyEditor = await detail.boundingBox();
@@ -313,6 +313,29 @@ try {
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
+    const actionBoxes = await Promise.all(
+      ["Regenerate artwork", "Upload artwork", "Remove artwork"].map((name) =>
+        detail.getByRole("button", { name, exact: true }).boundingBox(),
+      ),
+    );
+    assert.ok(
+      actionBoxes.every(
+        (box) => Math.abs(box.y - actionBoxes[0].y) < 1 && Math.abs(box.width - actionBoxes[0].width) < 1,
+      ),
+      "artwork actions share one aligned row at every viewport",
+    );
+    const actions = detail.locator(`.${prefix}-zone-artwork-actions`);
+    assert.ok(
+      await actions
+        .locator("button")
+        .evaluateAll((buttons) => buttons.every((button) => button.scrollWidth <= button.clientWidth + 1)),
+      "short artwork labels fit their buttons",
+    );
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
+      await actions.screenshot({
+        path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-artwork-actions-${width}.png`),
+      });
+    await expect(detail.getByText("An open living area.", { exact: true })).toHaveCount(0);
     for (const [w, h] of [
       [120, 600],
       [1600, 200],

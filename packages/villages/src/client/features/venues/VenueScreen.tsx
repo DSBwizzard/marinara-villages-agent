@@ -9,8 +9,8 @@ import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../
 import { WorkspaceShell, type WorkspaceDestination } from "../../shared/WorkspaceShell.js";
 import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
-import { ZoneAccessLabels } from "./VenueLayout.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
+import { ZoneAccessLabels } from "./VenueLayout.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const { venueEditDraft, setVenueEditDraft, venueEditBusy, saveVenueName } = controller;
@@ -201,13 +201,13 @@ function ZoneArtwork({
         )}
       </div>
       {zone.known ? (
-        <div className={`${ELEMENT_TAG}-row`}>
+        <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
           {zone.pictureRetryAvailable &&
           !zone.freezePicture &&
           controller.snapshot.settings.automaticZonePictures !== false ? (
             <button
               type="button"
-              className={`${ELEMENT_TAG}-button`}
+              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-zone-artwork-retry`}
               disabled={disabled}
               onClick={() => void controller.retryZonePicture(place, zone.id)}
             >
@@ -216,19 +216,21 @@ function ZoneArtwork({
           ) : null}
           <button
             type="button"
+            aria-label="Regenerate artwork"
             className={`${ELEMENT_TAG}-button`}
             disabled={disabled}
             onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
           >
-            Regenerate artwork
+            Generate
           </button>
           <button
             type="button"
+            aria-label="Upload artwork"
             className={`${ELEMENT_TAG}-button`}
             disabled={disabled}
             onClick={() => upload.current?.click()}
           >
-            Upload artwork
+            Upload
           </button>
           <input
             autoComplete="off"
@@ -247,11 +249,12 @@ function ZoneArtwork({
           {zone.image ? (
             <button
               type="button"
+              aria-label="Remove artwork"
               className={`${ELEMENT_TAG}-button`}
               disabled={disabled}
               onClick={() => void dropPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
             >
-              Remove artwork
+              Remove
             </button>
           ) : null}
         </div>
@@ -699,12 +702,11 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                   />
                   Freeze picture
                 </label>
-                <div className={`${ELEMENT_TAG}-venue-zone-heading`}>
-                  <div>
-                    <ZoneAccessLabels zone={selected} />
+                {selected.isPrivate || selected.restricted || !selected.allowed ? (
+                  <div className={`${ELEMENT_TAG}-zone-access-details`}>
+                    <ZoneAccessLabels zone={selected} hideOpen />
                   </div>
-                </div>
-                {selected.description ? <p>{selected.description}</p> : null}
+                ) : null}
                 {selected.preparation?.status === "failed" ? (
                   <button
                     type="button"

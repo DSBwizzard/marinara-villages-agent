@@ -130,7 +130,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               width: `${ZONE_TILE.width}%`,
               height: `${ZONE_TILE.height}%`,
             }}
-            aria-pressed={first === zone.id || selectedId === zone.id}
+            aria-pressed={connecting ? first === zone.id : selectedId === zone.id}
             aria-label={name(zone.id)}
             title={name(zone.id)}
             onClick={(event) => {

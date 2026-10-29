@@ -3571,6 +3571,10 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-zone-artwork-frame { width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { display:block; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
+.${ELEMENT_TAG}-zone-artwork-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4rem; align-items:stretch; }
+.${ELEMENT_TAG}-zone-artwork-actions > button { min-width:0; width:100%; min-height:44px; margin:0; padding:.5rem .2rem; font-size:.8rem; line-height:1.2; white-space:nowrap; }
+.${ELEMENT_TAG}-zone-artwork-actions > .${ELEMENT_TAG}-zone-artwork-retry { grid-column:1/-1; }
+.${ELEMENT_TAG}-zone-access-details small { display:block; }
 @media(max-width:700px) {
  .${ELEMENT_TAG}-venue-zones-workspace { grid-template-columns:minmax(0,1fr); gap:.75rem; }
  .${ELEMENT_TAG}-venue-zone-details { padding:.75rem; }
@@ -3579,8 +3583,6 @@ ${VILLAGES_FORGING_STYLES}
  .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-tile strong { font-size:.8rem; line-height:1.15; white-space:normal; overflow-wrap:anywhere; }
  .${ELEMENT_TAG}-zone-artwork-frame { height:180px; }
 }
-.${ELEMENT_TAG}-venue-zone-heading { display:flex; justify-content:space-between; align-items:start; gap:.75rem; flex-wrap:wrap; margin-bottom:1rem; }
-.${ELEMENT_TAG}-venue-zone-heading small { display:block; }
 .${ELEMENT_TAG}-zone-picture-freeze { display:flex; align-items:center; gap:.5rem; min-height:44px; width:fit-content; margin-bottom:.25rem; cursor:pointer; }
 .${ELEMENT_TAG}-zone-picture-freeze input { width:1.15rem; height:1.15rem; margin:0; }
 .${ELEMENT_TAG}-venue-assignments { margin:0; padding:0; list-style:none; width:100%; }
