@@ -114,6 +114,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         "",
         encounter.zoneId,
         encounter.physicalContext,
+        entry.admitted?.narrative?.conditions,
       );
       const outcome = {
         id,
@@ -356,7 +357,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
             saved.processed = true;
           }
           state.socialOutbox = state.socialOutbox?.filter((row) => !row.processed);
-          releasePhysicalOutcomes(state, "offscreen:" + entry.id);
+          releasePhysicalOutcomes(state, "offscreen:" + entry.id, !!entry.catchupBatchId);
         });
       } catch (error) {
         await mutateVillageState((state) => {

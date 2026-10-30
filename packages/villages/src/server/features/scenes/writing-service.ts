@@ -115,6 +115,7 @@ import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
 import { buildVenueResponseContract } from "../../domain/rules/venue-response-contract.js";
 import { venueFoundingBackground } from "../../domain/rules/venue-scene-context.js";
 import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
+import { environmentObservations } from "../../domain/rules/narrative-environment.js";
 import { venueReplyIntegrity } from "../../domain/rules/venue-turn-integrity.js";
 import {
   buildVenueSceneBlocks,
@@ -264,6 +265,7 @@ export function createSceneWriting({
     const now = session.continuity ? new Date(session.continuity.capturedAt) : villageNow();
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
+      environment: village.narrative,
       seed: village.seed,
       timeZone: village.timeZone || undefined,
       now: session.sceneAttendance ? new Date(session.sceneAttendance.capturedAt) : new Date(session.startedAt),
@@ -551,6 +553,9 @@ export function createSceneWriting({
       identity: blocksFor([...profiles]),
       circumstances: blocksFor([
         `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
+        village.narrative
+          ? `Captured effective weather: ${moment.weather}. Locally perceivable environmental circumstances: ${JSON.stringify(environmentObservations(village.narrative, moment.instant, session.placeId, session.zoneId ?? "exterior"))}. These are outward circumstances, never proof everyone previously knew them. Ordinary-use restrictions permit only legally authorized inspection/corrective work and safe egress; do not invent consent, supplies, completed repairs or reopen on a promise. Actual supported physical repairs may clear matching conditions; all other restrictions remain.`
+          : "",
         `Authoritative encounter calendar: ${JSON.stringify(capturedSceneCalendar(session, village.timeZone || moment.timeZone))}. Calendar answers and relative dates use this captured date, weekday and local time. Earlier dialogue can contain mistakes and cannot override it. Real time between replies is not fictional waiting.`,
         `The player is ${player.name}. ${player.description}`,
         renderPlayerBackgroundWritingContext(
@@ -1454,7 +1459,7 @@ export function createSceneWriting({
           );
         if (placeUpdate)
           applyVenueSceneChange(
-            { ...village, venues: structuredClone(village.venues) },
+            { ...village, venues: structuredClone(village.venues), narrative: structuredClone(village.narrative) },
             session.placeId,
             placeUpdate,
             session.id,
@@ -1464,6 +1469,7 @@ export function createSceneWriting({
             session.privateOwnerId,
             physicalContext?.zoneId,
             physicalContext,
+            village.narrative?.conditions,
           );
       } catch (cause) {
         if (!semanticResult) await rejectVenueCompletion();

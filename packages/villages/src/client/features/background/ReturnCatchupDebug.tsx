@@ -90,11 +90,13 @@ export function ReturnCatchupDebug({ snapshot }: { snapshot: VillageSnapshot | n
         ? "An opportunity was skipped"
         : record.status !== "settled"
           ? "An activity is unfinished"
-          : text(reflection.reason)
-            ? `${people} reflected`
-            : list(encounter.lines).length
-              ? `${people} met`
-              : "A quiet moment";
+          : entry.kind === "world"
+            ? text(object(outcome.development).occurrence) || "A quiet world review"
+            : text(reflection.reason)
+              ? `${people} reflected`
+              : list(encounter.lines).length
+                ? `${people} met`
+                : "A quiet moment";
     return { entry, record, reflection, encounter, title };
   });
   const selected = events.find(({ entry }) => entry.id === selectedId);

@@ -1,4 +1,5 @@
 import { openingPresence } from "./opening-presence.js";
+import { ordinaryUseRestricted } from "./narrative-environment.js";
 import { zoneActivityFits } from "./venue-presence.js";
 import { hashString } from "./village-clock.js";
 import { calendarAt } from "../../../shared/helpers/zoned-date.js";
@@ -20,6 +21,7 @@ export function canEnter(
 ): boolean {
   const venue = village.venues.find((place) => place.id === venueId),
     zone = venue && resolveVenueZone(venue, zoneId);
+  if (ordinaryUseRestricted(village.narrative, at.toISOString(), venueId, zoneId)) return false;
   if (venue?.access)
     return (
       !!zone &&
@@ -27,6 +29,7 @@ export function canEnter(
         at,
         relationships: village.relationshipContext,
         unavailable: !!zone && zoneClosed(village, venue, zone),
+        environment: village.narrative,
       }).allowed
     );
   return (

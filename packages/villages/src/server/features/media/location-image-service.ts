@@ -111,6 +111,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     );
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
+      environment: village.narrative,
       seed: village.seed,
       now: villageNow(),
     });

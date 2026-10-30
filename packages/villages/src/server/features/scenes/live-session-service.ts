@@ -128,6 +128,7 @@ export function createLiveScenes({
           ...sceneAccessContext(session, state),
           accepting: true,
           unavailable: zoneClosed(state, current, target),
+          environment: state.narrative,
         });
         if (decision.allowed) claimVisitPermission(current, decision.permissionId, session.id);
       });

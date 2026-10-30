@@ -1,4 +1,5 @@
 import { legacyContactNeighborIds } from "../../../shared/helpers/zone-contact.js";
+import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   VillageState,
   VillageVenue,
@@ -107,6 +108,20 @@ export function canOccupyZone(
   context?: import("./venue-access.js").AccessContext,
 ): boolean {
   if (venue.access) return evaluateZoneAccess(venue, zone, actorId, context).allowed;
+  if (
+    context?.environment &&
+    ordinaryUseRestricted(context.environment, (context.at ?? new Date()).toISOString(), venue.id, zone.id) &&
+    !zoneControllerIds(venue, zone).includes(actorId) &&
+    !Object.values(context.relationships?.grants ?? {}).some(
+      (grant) =>
+        grant.active &&
+        !grant.revoked &&
+        grant.visitorId === actorId &&
+        grant.venueId === venue.id &&
+        grant.zoneId === zone.id,
+    )
+  )
+    return false;
   if (zone.kind === "exterior" || zone.kind === "public") return true;
   if (actorId === "player" && venue.occupancy.playerHome && zone.kind === "shared-residence") return true;
   if (zone.kind === "private-residence")
@@ -152,11 +167,13 @@ export function chooseAgendaZone(
   actorId: string,
   activity = "",
   requestedId = "",
-  state?: Pick<VillageState, "projects" | "relationshipContext">,
+  state?: Pick<VillageState, "projects" | "relationshipContext" | "narrative">,
   accessContext?: import("./venue-access.js").AccessContext,
 ): VillageVenueZone {
   const eligible = venueZones(venue).filter(
     (zone) =>
+      (!ordinaryUseRestricted(state?.narrative, (accessContext?.at ?? new Date()).toISOString(), venue.id, zone.id) ||
+        /repair|inspect|restore|clear|correct/iu.test(activity)) &&
       (venue.access
         ? evaluateZoneAccess(venue, zone, actorId, {
             ...accessContext,

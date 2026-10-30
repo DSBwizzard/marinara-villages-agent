@@ -109,6 +109,7 @@ export function createSpinoffs(ports: SpinoffPorts) {
       throw conflict("The original Scene time is unavailable. Start a new Scene first.");
     const moment = deriveVillageMoment({
       foundedAt: presentation.foundedAt,
+      environment: presentation.narrative,
       seed: village.seed,
       now: at,
       timeZone: presentation.timeZone,

@@ -59,7 +59,12 @@ function preferredVillagerPlace(
   village: VillageState,
   villager: VillageVillager,
   _routine: NativeRoutine | null,
-  minuteOfDay = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() }).minuteOfDay,
+  minuteOfDay = deriveVillageMoment({
+    foundedAt: village.foundedAt,
+    environment: village.narrative,
+    seed: village.seed,
+    now: new Date(),
+  }).minuteOfDay,
   at = new Date(),
 ): VillagePlaceView | null {
   const staged = openingPresence(village, villager.characterId);
@@ -179,7 +184,12 @@ export function villagerPlaceView(
   village: VillageState,
   villager: VillageVillager,
   _routine: NativeRoutine | null,
-  minuteOfDay = deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: new Date() }).minuteOfDay,
+  minuteOfDay = deriveVillageMoment({
+    foundedAt: village.foundedAt,
+    environment: village.narrative,
+    seed: village.seed,
+    now: new Date(),
+  }).minuteOfDay,
   at = new Date(),
 ): VillagePlaceView | null {
   return villagePresence(village, minuteOfDay, at).get(villager.characterId) ?? null;

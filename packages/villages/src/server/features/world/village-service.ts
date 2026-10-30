@@ -41,6 +41,7 @@ export interface WorldCoordinationPorts {
   readVillageAuthority: typeof import("./village-store.js").readVillageAuthority;
   mutateMemoryAuthority: (update: (state: VillageState) => void) => Promise<void>;
   reconcileResidentPlanning?: (now: Date) => Promise<void>;
+  reconcileNarrative?: (now: Date) => Promise<void>;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
@@ -59,6 +60,7 @@ export function createWorldCoordination({
   readVillageAuthority,
   mutateMemoryAuthority,
   reconcileResidentPlanning,
+  reconcileNarrative,
   readVillageState,
   mutateVillageState,
   buildVillageSnapshot,
@@ -109,6 +111,7 @@ export function createWorldCoordination({
   }
   async function reconcileAt(options: { now?: Date; advanceTime?: VillageTimeAdvance }): Promise<VillageSnapshot> {
     await assertVillageClockWrite();
+    if (!options.advanceTime) await reconcileNarrative?.(options.now ?? villageNow());
     if (options.advanceTime) {
       const request = options.advanceTime;
       const departure = await readVillageAuthority({ memories: true });
@@ -183,6 +186,7 @@ export function createWorldCoordination({
     recorded = await readVillageState();
     const moment = deriveVillageMoment({
       foundedAt: recorded.foundedAt,
+      environment: recorded.narrative,
       seed: recorded.seed,
       timeZone: recorded.timeZone || undefined,
       now,

@@ -6,7 +6,7 @@ import { localDateKey, planningAllowance } from "./resident-planning.js";
 export type EventAttemptLedger = {
   highWaterDate: string;
   lastAttemptAt: string;
-  attempts: { id: string; date: string; at: string; batchId?: string }[];
+  attempts: { id: string; date: string; at: string; batchId?: string; origin?: "resident" | "world" | "scene" }[];
 };
 export const emptyEventAttempts = (): EventAttemptLedger => ({ highWaterDate: "", lastAttemptAt: "", attempts: [] });
 export function activityDate(state: Pick<VillageState, "timeZone">, now: Date): string {
@@ -63,6 +63,7 @@ export function reserveEventAttempt(
   date: string,
   now: number,
   batchId?: string,
+  origin: "resident" | "world" | "scene" = "resident",
 ): void {
   const ledger = (state.eventAttempts ??= emptyEventAttempts());
   if (batchId && (state.returnCatchup?.batch?.id !== batchId || state.returnCatchup.batch.status !== "running"))
@@ -77,7 +78,7 @@ export function reserveEventAttempt(
     throw new Error("Automatic resident activity budget is unavailable.");
   ledger.highWaterDate = date;
   ledger.lastAttemptAt = new Date(now).toISOString();
-  ledger.attempts.push({ id, date, at: ledger.lastAttemptAt, ...(batchId ? { batchId } : {}) });
+  ledger.attempts.push({ id, date, at: ledger.lastAttemptAt, origin, ...(batchId ? { batchId } : {}) });
   // Retain the current day and a small audit window; highWaterDate prevents replay of retired days.
   ledger.attempts = ledger.attempts.filter((row) => row.date >= date.slice(0, 7) + "-01");
 }

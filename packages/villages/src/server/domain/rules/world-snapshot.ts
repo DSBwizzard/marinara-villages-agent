@@ -96,6 +96,7 @@ export function projectVillager(
 export function villageMomentView(village: VillageState, now: Date, nextTransitionAt?: string): VillageMomentView {
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
+    environment: village.narrative,
     seed: village.seed,
     timeZone: village.timeZone || undefined,
     now,
@@ -121,6 +122,7 @@ export function villageMomentView(village: VillageState, now: Date, nextTransiti
 export function exactSnapshotTransition(village: VillageState, now: Date): string {
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
+    environment: village.narrative,
     seed: village.seed,
     timeZone: village.timeZone || undefined,
     now,
@@ -164,6 +166,7 @@ export function villageSettings(
     promptBoxMaxLength: VILLAGES_PROMPT_BOX_MAX_LENGTH,
     macros: VILLAGE_PRESET_MACROS,
     backgroundPace: village.backgroundPace,
+    narrativeConsequence: village.narrativeConsequence ?? "gentle",
     backgroundPaces: ["off", "quiet", "balanced", "lively"],
     characterSpeechColors: village.characterSpeechColors,
     sendOnEnter: village.sendOnEnter,
@@ -212,8 +215,12 @@ export function villageSettings(
                     village,
                     resident,
                     null,
-                    deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: previewAt })
-                      .minuteOfDay,
+                    deriveVillageMoment({
+                      foundedAt: village.foundedAt,
+                      environment: village.narrative,
+                      seed: village.seed,
+                      now: previewAt,
+                    }).minuteOfDay,
                     previewAt,
                   );
                   return destination?.id === venue.id && destination.zoneId
@@ -248,6 +255,7 @@ export function villageSettings(
                 sceneId: context?.sceneId ?? "next-visit-preview",
                 accepting: true,
                 unavailable: zoneClosed(village, venue, originalZone),
+                environment: village.narrative,
                 relationships: village.relationshipContext,
               })
             : undefined,

@@ -128,7 +128,10 @@ export function useSaveBackgroundPace(ports: {
   const { setBusy, setSettingsError, setSnapshot } = ports;
   const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
-    async (backgroundPace: VillageBackgroundPace) => {
+    async (
+      backgroundPace: VillageBackgroundPace,
+      narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence,
+    ) => {
       const claim = lifetime.begin();
       if (!claim) return;
       setBusy(true);
@@ -136,7 +139,7 @@ export function useSaveBackgroundPace(ports: {
       try {
         const saved = await request<VillageSnapshot>("/settings", {
           method: "PATCH",
-          body: JSON.stringify({ backgroundPace }),
+          body: JSON.stringify(narrativeConsequence === undefined ? { backgroundPace } : { narrativeConsequence }),
         });
         if (lifetime.owns(claim)) setSnapshot(saved);
       } catch (cause) {

@@ -78,6 +78,7 @@ export function createVenueRequests({
     decision.status = approved ? "approved" : "denied";
     const moment = deriveVillageMoment({
       foundedAt: state.foundedAt,
+      environment: state.narrative,
       seed: state.seed,
       timeZone: state.timeZone || undefined,
       now,

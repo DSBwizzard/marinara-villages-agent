@@ -90,7 +90,10 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
         jobs: await Promise.all(
           (period.opportunities ?? []).map(async (opportunity) => ({
             opportunityId: opportunity.id,
-            activity: await backgroundJobSnapshot("resident-planning", returnCatchupSubject(period.id, opportunity.id)),
+            activity: await backgroundJobSnapshot(
+              opportunity.kind === "world" ? "world-development" : "resident-planning",
+              returnCatchupSubject(period.id, opportunity.id),
+            ),
             interpretation: await backgroundJobSnapshot("social-recovery", opportunity.id + ":social"),
           })),
         ),

@@ -49,6 +49,8 @@ export function retireBackgroundResident(state: VillageState, characterId: strin
     delete state.backgroundReceipts[slotId({ kind, subjectId: characterId })];
 }
 export interface BackgroundWorkPorts {
+  readVillageAuthority?: () => Promise<VillageState>;
+  mutateVillageAuthority?: (update: (state: VillageState) => void) => Promise<void>;
   villagesDocuments(): CapabilityDocumentStore;
   villagesLogger(): CapabilityRuntimeLogger;
   readVillageState: typeof readVillageState;
@@ -116,11 +118,16 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   async function cancelReturnCatchup(batchId: string): Promise<void> {
     if (!/^[a-zA-Z0-9-]{1,100}$/.test(batchId)) throw badRequest("Choose a Village catch-up.");
-    await withCatchupAdmission(() =>
-      mutateVillageState((state) => {
+    await withCatchupAdmission(async () => {
+      const before = await (ports.readVillageAuthority ?? readVillageState)();
+      const pendingSocial = before.socialOutbox?.some((entry) => !entry.processed && entry.catchupBatchId === batchId);
+      const mutate = pendingSocial ? mutateVillageState : (ports.mutateVillageAuthority ?? mutateVillageState);
+      await mutate((state) => {
         const batch = state.returnCatchup?.batch;
         if (!batch || batch.id !== batchId) throw conflict("Village catch-up changed. Refresh its status.");
         if (["completed", "cancelled"].includes(batch.status)) return;
+        if (state.narrative?.claims)
+          state.narrative.claims = state.narrative.claims.filter((row) => row.batchId !== batchId);
         const pending =
           state.socialOutbox?.filter((entry) => !entry.processed && entry.catchupBatchId === batchId) ?? [];
         if (returnCatchupHasCommittedEffects(state, batchId))
@@ -136,8 +143,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         }
         batch.status = "cancelled";
         delete state.returnCatchup!.capture;
-      }),
-    );
+      });
+    });
     ports.activityChanged?.();
   }
   async function readJob(id: string): Promise<Job | null> {
@@ -209,7 +216,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       });
   }
   async function retireLegacyFounding(job: Job): Promise<void> {
-    const state = await readVillageState(),
+    const state = await (ports.readVillageAuthority ?? readVillageState)(),
       task = state.foundingPreparation?.tasks?.[job.subjectId]?.routine;
     if (state.seed !== job.seed || task?.status !== "completed" || task.receipt !== task.revision) return;
     await retainFoundingJob(job);
@@ -440,17 +447,25 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const id = asRecord(input.entry).catchupBatchId;
       return typeof id === "string" && id ? id : undefined;
     }
-    if (job.kind !== "resident-planning") return undefined;
+    if (!["resident-planning", "world-development"].includes(job.kind)) return undefined;
     if (asRecord(input.context).catchup !== true) return undefined;
     if (typeof input.catchupBatchId !== "string" || !input.catchupBatchId)
       throw new Obsolete("Catch-up work has no batch identity.");
     return input.catchupBatchId;
   }
   function readForJob(job: Job): Promise<VillageState> {
+    if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority) return ports.readVillageAuthority();
     return readVillageState(catchupBatchId(job) ? { memories: true } : undefined);
+  }
+  function mutateForJob(job: Job, update: (state: VillageState) => void): Promise<unknown> {
+    return handlers.get(job.kind)?.authority === "raw" && ports.mutateVillageAuthority
+      ? ports.mutateVillageAuthority(update)
+      : mutateVillageState(update);
   }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;
+    if (job.kind === "world-development" && state.backgroundPace === "off")
+      throw new Paused("Pace is Off. The admitted world source is preserved.");
     const batchId = catchupBatchId(job),
       batch = state.returnCatchup?.batch;
     const holding = batch && !["completed", "cancelled"].includes(batch.status);
@@ -514,7 +529,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         }
         if (work.expectedAttempt !== undefined && work.expectedAttempt !== (previous?.attempt ?? 0))
           throw conflict("Background work changed. Refresh before requesting more resident activity.");
-        if (work.kind === "resident-planning" && running.has(id) && previous) return previous;
+        if (["resident-planning", "world-development"].includes(work.kind) && running.has(id) && previous)
+          return previous;
         if (
           ["personal-mail", "social-recovery"].includes(work.kind) &&
           previous?.seed === work.seed &&
@@ -522,7 +538,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         )
           return previous;
         if (
-          ["story", "resident-planning"].includes(work.kind) &&
+          ["story", "resident-planning", "world-development"].includes(work.kind) &&
           work.automaticDate &&
           previous?.seed === work.seed &&
           ["failed", "interrupted"].includes(previous.status)
@@ -530,7 +546,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           return previous;
         if (
           work.automaticDate &&
-          !["story", "resident-planning"].includes(work.kind) &&
+          !["story", "resident-planning", "world-development"].includes(work.kind) &&
           previous?.seed === work.seed &&
           previous?.highWaterDate &&
           work.automaticDate <= previous.highWaterDate
@@ -574,7 +590,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
     const runOwner = owner;
-    const recorded = await readVillageState();
+    const recorded = await readForJob(job);
     if (recorded.backgroundReceipts[id] === job.id) {
       await changeJob(id, (current) => ({
         ...current!,
@@ -653,22 +669,34 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
         checkCurrent(job!, await readForJob(job!));
-        if (job!.kind === "resident-planning" && job!.automaticDate && (!job!.retrying || catchupBatchId(job!))) {
+        if (
+          ["resident-planning", "world-development"].includes(job!.kind) &&
+          job!.automaticDate &&
+          (!job!.retrying || catchupBatchId(job!))
+        ) {
           if (!job!.retrying && job!.requests >= 2)
             throw new Error("Automatic resident activity may make at most two principal requests.");
-          await mutateVillageState((state) => {
+          await mutateForJob(job!, (state) => {
             if (state.seed !== job!.seed) throw new Obsolete("Village identity changed.");
             const actual = new ZonedDate(
               villageNow().toISOString(),
               state.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
             );
             const reserved = state.eventAttempts?.attempts.some((row) => row.id === job!.id);
+            if (!reserved && !activityDispatched(job!)) handlers.get(job!.kind)!.reserve?.(state, job!.input, job!.id);
             if (!reserved && !activityDispatched(job!) && localDateKey(actual) !== job!.automaticDate)
               throw new Obsolete("Automatic resident opportunity belongs to an earlier day.");
             // A later month's admission can prune the original ledger row. The
             // same saved job's purchased request remains proof, not a new review.
             if (reserved || !activityDispatched(job!))
-              reserveEventAttempt(state, job!.id, job!.automaticDate!, villageNow().getTime(), catchupBatchId(job!));
+              reserveEventAttempt(
+                state,
+                job!.id,
+                job!.automaticDate!,
+                villageNow().getTime(),
+                catchupBatchId(job!),
+                job!.kind === "world-development" ? "world" : "resident",
+              );
           });
           ports.activityChanged?.();
         }
@@ -998,7 +1026,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (job.retrying && pausedConnections.has(job.connectionId)) await clearConnectionPause(job.connectionId);
       stage = "application";
       let partialFailure: WorkFailure | undefined;
-      await mutateVillageState((state) => {
+      await mutateForJob(job!, (state) => {
         if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
         if (state.backgroundReceipts[id] === job!.id) return;
         checkCurrent(job!, state);
@@ -1272,8 +1300,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       } else if (
         (asRecord(job.input).foundingContract === 1 ||
           (job.kind === "agenda" &&
-            (await readVillageState()).foundingPreparation?.status !== "ready" &&
-            !!(await readVillageState()).foundingPreparation)) &&
+            (await (ports.readVillageAuthority ?? readVillageState)()).foundingPreparation?.status !== "ready" &&
+            !!(await (ports.readVillageAuthority ?? readVillageState)()).foundingPreparation)) &&
         !job.hasResult &&
         ["queued", "paused", "running"].includes(job.status)
       ) {
@@ -1288,7 +1316,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
     const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
-    const state = await readVillageState();
+    const state = await (ports.readVillageAuthority ?? readVillageState)();
     const summaries: BackgroundSummary[] = [];
     const discardedReceipts: string[] = [];
     let removed = 0;
@@ -1296,6 +1324,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const job = record.data as Job;
       const retired =
         job?.kind !== "resident-planning" &&
+        job?.kind !== "world-development" &&
         job?.kind !== "story" &&
         job?.kind !== "starting-ties" &&
         job?.kind !== "personal-mail" &&
@@ -1311,6 +1340,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           if (await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
             const subjectGone =
               job?.kind !== "resident-planning" &&
+              job?.kind !== "world-development" &&
               job?.kind !== "story" &&
               job?.kind !== "personal-mail" &&
               job?.kind !== "social-recovery" &&
@@ -1340,7 +1370,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       });
     }
     if (discardedReceipts.length)
-      await mutateVillageState((current) => {
+      await (ports.mutateVillageAuthority ?? mutateVillageState)((current) => {
         for (const id of discardedReceipts)
           if (current.backgroundReceipts[id] === state.backgroundReceipts[id]) delete current.backgroundReceipts[id];
       });

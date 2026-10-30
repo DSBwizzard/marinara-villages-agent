@@ -121,6 +121,7 @@ export function contactCanEnter(
         ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
         accepting: characterId === "player",
         unavailable: !!zone && zoneClosed(state, venue, zone),
+        environment: state.narrative,
       }).allowed
     );
   return (

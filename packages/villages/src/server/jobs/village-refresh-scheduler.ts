@@ -6,8 +6,10 @@ import { onVillageClockAdvance, villageNow } from "../adapters/time/clock-gate.j
 import type { VillageState } from "../domain/models/world.js";
 import { agendaBlocksFor } from "../domain/rules/agenda-week.js";
 import { nextEventAttemptAt } from "../domain/rules/event-attempts.js";
+import { arrangementActivityAt } from "../domain/rules/activity-arbitration.js";
+import { nextEnvironmentDeadline } from "../domain/rules/narrative-environment.js";
 import { nextClockChangeAt } from "../domain/rules/village-clock.js";
-import { readVillageAuthority } from "../features/world/village-store.js";
+import { readVillageAuthority, readVillageSnapshot } from "../features/world/village-store.js";
 import { reconcileVillage } from "../features/world/village.js";
 import { hasVillagePresence } from "./background-work.js";
 
@@ -46,8 +48,13 @@ export function villageSchedulerDelayMs(
 ): number {
   if (!Number.isFinite(now.getTime())) return REFRESH_MAX_DELAY_MS;
   const deadlines = [nextClockChangeAt(now).getTime()];
+  const environment = nextEnvironmentDeadline(village?.narrative, now.getTime());
+  if (environment !== null) deadlines.push(environment);
   if (village?.backgroundPace) {
-    const activity = nextEventAttemptAt(village as VillageState, now);
+    let activity = nextEventAttemptAt(village as VillageState, now);
+    const arrangement = arrangementActivityAt(village as VillageState, now);
+    if (activity !== null && arrangement !== null && arrangement > now.getTime() && activity <= arrangement)
+      activity = arrangement;
     if (activity !== null && activityNotBefore !== Number.POSITIVE_INFINITY)
       deadlines.push(activity > now.getTime() ? activity : Math.max(now.getTime(), activityNotBefore));
   }
@@ -92,7 +99,7 @@ export function startVillageRefreshScheduler(
     if (timer) clearTimeout(timer);
     timer = null;
     try {
-      const village = await readVillageAuthority();
+      const village = await readVillageSnapshot().catch(() => readVillageAuthority());
       if (stopped || revision !== armRevision) return;
       const now = villageNow();
       const activityNotBefore = hasVillagePresence()

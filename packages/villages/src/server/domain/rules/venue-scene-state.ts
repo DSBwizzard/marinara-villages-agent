@@ -2,6 +2,7 @@ import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueEvent }
 import type { PlaceAfter, PlaceEvidence, PlaceUpdate } from "../../../shared/contracts/place-continuity.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { conflict } from "./errors.js";
+import { clearRepairedConditions } from "./narrative-development.js";
 import { applyPlaceUpdate, assertPlaceAuthority, readPlaceUpdate } from "./zone-continuity.js";
 import { canOccupyZone, legacyZoneId, resolveVenueZone, zoneClosed, zoneControllerIds } from "./venue-zones.js";
 
@@ -19,7 +20,9 @@ export function physicalVenueEvents(state: VillageState): VillageVenueEvent[] {
   ];
 }
 /** Only a completed, retired source may release its full replay payload. */
-export function releasePhysicalOutcomes(state: VillageState, sceneId: string): void {
+export function releasePhysicalOutcomes(state: VillageState, sceneId: string, keepNarrative = false): void {
+  if (state.narrative && !keepNarrative)
+    state.narrative.receipts = state.narrative.receipts.filter((row) => row.sourceId !== sceneId);
   const ids = new Set<string>();
   for (const receipt of Object.values(state.exchangeReceipts))
     if (receipt.domain === "physical" && receipt.sceneId === sceneId) {
@@ -48,6 +51,7 @@ export function applyVenueSceneChange(
   privateOwnerId = "",
   zoneId?: string,
   evidence?: PlaceEvidence,
+  admittedConditions?: import("../models/narrative-model.js").NarrativeCondition[],
 ): PlaceAfter {
   const venue = state.venues.find((place) => place.id === placeId);
   if (!venue) throw conflict("That place is no longer in the Village.");
@@ -71,6 +75,19 @@ export function applyVenueSceneChange(
   )
     throw conflict("Physical actions need valid access and actual local actors.");
   const after = applyPlaceUpdate(zone, change, at);
+  if (
+    change.conditionClears?.some(
+      (clear) =>
+        !admittedConditions?.some(
+          (condition) =>
+            condition.id === clear.id &&
+            condition.revision === clear.expectedRevision &&
+            condition.venueId === placeId &&
+            condition.zoneId === zone.id,
+        ),
+    )
+  )
+    throw conflict("The corrective work names a condition outside its captured source.");
   const enduring = after.description !== zone.description;
   const controllers = enduring ? zoneControllerIds(venue, zone) : [];
   if (enduring && (zone.kind === "staff" || zone.kind === "restricted") && !controllers.length)
@@ -85,5 +102,6 @@ export function applyVenueSceneChange(
   }
   zone.description = after.description;
   zone.state = after.state;
+  clearRepairedConditions(state, placeId, zone.id, change.conditionClears, sceneId, at);
   return structuredClone(after);
 }

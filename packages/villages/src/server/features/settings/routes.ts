@@ -19,6 +19,7 @@ import { previewVillageBurst } from "./usage-preview.js";
 import {
   setScenerySettings,
   setVillageBackgroundPace,
+  setVillageNarrativeConsequence,
   setVillageCharacterSpeechColors,
   setVillageLoreSettings,
   setVillageName,
@@ -219,6 +220,7 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       townMapView?: unknown;
       homeBuildingNames?: unknown;
       backgroundPace?: unknown;
+      narrativeConsequence?: unknown;
       storyPace?: unknown; // Compatibility with an already-open older client.
       characterSpeechColors?: unknown;
       sendOnEnter?: unknown;
@@ -255,6 +257,8 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       if (body.setting !== undefined) snapshot = await setVillageSetting(body.setting);
       if (body.backgroundPace !== undefined || body.storyPace !== undefined)
         snapshot = await setVillageBackgroundPace(body.backgroundPace ?? body.storyPace);
+      if (body.narrativeConsequence !== undefined)
+        snapshot = await setVillageNarrativeConsequence(body.narrativeConsequence);
       if (body.sendOnEnter !== undefined) snapshot = await setVillageSendOnEnter(body.sendOnEnter);
       if (body.spriteVariantsEnabled !== undefined)
         snapshot = await setVillageSpriteVariantsEnabled(body.spriteVariantsEnabled);

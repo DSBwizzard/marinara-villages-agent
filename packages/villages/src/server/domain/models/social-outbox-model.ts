@@ -18,5 +18,5 @@ export type SocialOutboxEntry = {
   reinterpretRequired?: boolean;
   reinterpreted?: boolean;
   admitted?: Pick<import("./world.js").VillageState, "villagers" | "venues" | "residences" | "timeZone"> &
-    Partial<Pick<import("./world.js").VillageState, "projects" | "opening">>;
+    Partial<Pick<import("./world.js").VillageState, "projects" | "opening" | "narrative">>;
 };

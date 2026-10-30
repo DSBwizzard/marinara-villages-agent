@@ -108,6 +108,16 @@ function restoredReceipts(
   return { ...result, ...saved };
 }
 function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
+  if (prior.narrative) {
+    prior.narrative.revision = Math.max(prior.narrative.revision, current.narrative?.revision ?? 0) + 1;
+    prior.narrative.weatherRevision =
+      Math.max(prior.narrative.weatherRevision, current.narrative?.weatherRevision ?? 0) + 1;
+    if (prior.narrative.weather) prior.narrative.weather.revision = prior.narrative.weatherRevision;
+    for (const key of ["situations", "conditions"] as const)
+      for (const row of prior.narrative[key])
+        row.revision =
+          Math.max(row.revision, current.narrative?.[key].find((item) => item.id === row.id)?.revision ?? 0) + 1;
+  }
   prior.zonePictureBudget = structuredClone(current.zonePictureBudget);
   prior.zonePictureEpoch = Math.max(prior.zonePictureEpoch ?? 0, current.zonePictureEpoch ?? 0) + 1;
   for (const map of prior.maps)
@@ -469,6 +479,25 @@ export function createRepairService(ports: RepairPorts) {
     await store(docId(CHECKPOINT, id), CHECKPOINT, data);
     return { id, title, at: data.at, records: rows.length };
   }
+  async function retireWorldJob(row: Doc, at: string) {
+    const job = row.data as import("../../domain/models/background-model.js").Job;
+    if (job.kind !== "world-development") throw conflict("This held source is not a world review.");
+    const historyId = "villages-background-history-" + job.id + "-" + job.attempt;
+    if (!(await documents.getById(PKG, historyId))) await store(historyId, "background-history", structuredClone(job));
+    await documents.update({
+      id: row.id,
+      packageId: PKG,
+      expectedRevision: row.revision,
+      data: {
+        ...job,
+        status: "obsolete",
+        error: "Environmental source retired by an explicit saved-state correction; paid evidence is retained.",
+      },
+      name: row.name,
+      description: row.description,
+      updatedAt: at,
+    });
+  }
   async function applyRecord(record: RepairRecord, request: RepairRequest) {
     const [kind, id, sub] = repairParts(record.id),
       now = villageNow((await repository.readAuthority()).clock?.advanceMs),
@@ -553,6 +582,15 @@ export function createRepairService(ports: RepairPorts) {
         },
         now,
       );
+    } else if (kind === "narrative-claim") {
+      const claim = (await repository.readAuthority()).narrative?.claims?.find((row) => row.id === id);
+      const job = (await documents.list(PKG, "background-work")).find(
+        (row) => (row.data as { id?: string }).id === claim?.attemptId,
+      );
+      if (!claim || !job || !["failed", "interrupted", "obsolete"].includes((job.data as { status: string }).status))
+        throw conflict("Wait for the environmental request to settle before rejecting it.");
+      await retireWorldJob(job, at);
+      await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at));
     } else
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at), {
         memories: ["memory", "new-memory"].includes(kind),
@@ -603,9 +641,20 @@ export function createRepairService(ports: RepairPorts) {
           "This record changed after you opened it. Reopen it to review the current value; your draft is kept.",
         );
       const [kind, id] = repairParts(record.id),
-        consequential = ["zone", "access", "permission", "home", "project", "wish", "venue", "saved-domain"].includes(
-          kind,
-        );
+        consequential = [
+          "zone",
+          "access",
+          "permission",
+          "home",
+          "project",
+          "wish",
+          "venue",
+          "saved-domain",
+          "narrative-claim",
+          "narrative-condition",
+          "narrative-weather",
+          "narrative-situation",
+        ].includes(kind);
       let before: HistoryData["memoryBefore"], addedText: string | undefined;
       if (kind === "memory") {
         const target = state.memories.records.find((r) => r.id === id)!,
@@ -720,8 +769,11 @@ export function createRepairService(ports: RepairPorts) {
       ...(before ? { memoryBefore: before, memoryGuard: simulation.value.memoryGuard } : {}),
       ...(inverse && !before
         ? {
-            undoWrites: simulation.transaction.writes.filter((w) =>
-              ["village", ...GAME_KINDS].includes((w.before ?? w.after)!.kind),
+            undoWrites: simulation.transaction.writes.filter(
+              (w) =>
+                ["village", ...GAME_KINDS].includes((w.before ?? w.after)!.kind) ||
+                (kind === "narrative-claim" &&
+                  ["background-work", "background-history"].includes((w.before ?? w.after)!.kind)),
             ),
           }
         : {}),
@@ -964,6 +1016,8 @@ export function createRepairService(ports: RepairPorts) {
           )
         )
           throw conflict("Resolve pending background work before restoring this checkpoint.");
+        if ((row.data as { kind?: string }).kind === "world-development" && job.status === "failed")
+          await retireWorldJob(row, new Date().toISOString());
       }
       const checkpointPointer = checkpointData.documents.find((r) => r.kind === "venue-active");
       const checkpointSceneId = (checkpointPointer?.data as { sessionId?: string })?.sessionId;
@@ -1015,6 +1069,7 @@ export function createRepairService(ports: RepairPorts) {
         "semanticRequestReceipts",
         "semanticContinuations",
         "backgroundPace",
+        "narrativeConsequence",
         "selectedLorebookIds",
         "loreTokenBudget",
       ])
@@ -1037,6 +1092,7 @@ export function createRepairService(ports: RepairPorts) {
       const restored = coerceVillageState({ ...data, ...payload });
       assertSettledSocial(restored);
       advanceRestoredRevisions(restored, state);
+      if (restored.narrative) restored.narrative.claims = [];
       for (const venue of restored.venues) {
         const live = state.venues.find((v) => v.id === venue.id);
         if (venue.access && live?.access)
