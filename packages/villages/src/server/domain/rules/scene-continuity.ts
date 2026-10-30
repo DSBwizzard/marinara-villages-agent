@@ -1,6 +1,6 @@
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
-import { replaySceneRelationships } from "./relationship-rules.js";
+import { replaySceneRelationships, immutableRelationshipState, coerceRelationshipState } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
 import { extendSceneNarrative } from "./scene-narrative-effects.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -73,10 +73,19 @@ export const sceneContinuityFields = [
 export type SceneContinuity = {
   version: 3;
   seed: string;
+  setupAt: string;
   capturedAt: string;
   receiptIds: string[];
   facts: Pick<VillageState, (typeof sceneContinuityFields)[number]>;
 };
+/** Captured relationship history is immutable; copying other facts must not duplicate it. */
+export function cloneSceneFacts(facts: SceneContinuity["facts"]): SceneContinuity["facts"] {
+  const { relationshipContext, ...rest } = facts;
+  return {
+    ...structuredClone(rest),
+    relationshipContext: relationshipContext ? immutableRelationshipState(facts.seed, relationshipContext) : undefined,
+  };
+}
 
 /** Exact after-values retained atomically with an accepted effect. Server-only. */
 export type SceneEffectFacts = {
@@ -115,12 +124,13 @@ export function visibleSceneContinuity(scene: VenueScene): string {
 export function captureSceneContinuity(state: VillageState, scene: VenueScene, now: number): SceneContinuity {
   const capturedAt = new Date(scene.sceneAttendance?.capturedAt || scene.startedAt || now).toISOString();
   reserveMemoryScene(state, scene.id, capturedAt);
-  const facts = structuredClone(
-    Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])),
-  ) as SceneContinuity["facts"];
+  const facts = cloneSceneFacts(
+    Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])) as SceneContinuity["facts"],
+  );
   return {
     version: 3,
     seed: state.seed,
+    setupAt: state.setupAt,
     capturedAt,
     receiptIds: physicalVenueEvents(state)
       .map((row) => row.id)
@@ -135,7 +145,10 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
   if (!context || context.seed !== current.seed || scene.villageSeed !== current.seed) return current;
   const view = {
     ...current,
-    ...structuredClone(context.facts),
+    ...cloneSceneFacts(context.facts),
+    relationshipContext: context.facts.relationshipContext
+      ? coerceRelationshipState(context.seed, context.facts.relationshipContext)
+      : undefined,
     narrative: structuredClone(context.facts.narrative),
     ...(includeMemories
       ? {

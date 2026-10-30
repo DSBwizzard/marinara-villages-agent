@@ -7,6 +7,7 @@ import {
   decodeRelationshipPagesSync,
 } from "../../packages/villages/src/server/adapters/storage/relationship-pages.js";
 import { relationshipWorldKey } from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   encodeMemoryPages,
   decodeMemoryPagesSync,
@@ -47,6 +48,10 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
     async getById(pkg, id) {
       if (virtual.has(id)) return structuredClone(virtual.get(id));
       const row = await store.getById(pkg, id);
+      if (row?.kind === "venue-visit" && (row.data as any)?.version === 3) {
+        const world = (await store.getById(pkg, "villages-village"))?.data as any;
+        return { ...row, id, packageId: pkg, data: authorSceneFixture(virtual, row.data, world) };
+      }
       if (row?.kind === "relationships" && (row.data as any)?.version === 3) {
         const world = (await store.getById(pkg, "villages-village"))!.data as any;
         const data = authorRelationshipFixture(virtual, row.data, world);
@@ -105,6 +110,21 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (input.id === "villages-village" || input.kind === "relationships") await ensure(input.data);
       return store.create(input);
     },
+    async list(pkg, kind) {
+      const records = await store.list(pkg, kind);
+      if (kind !== "venue-visit" && kind !== "relationships") return records;
+      const world = (await store.getById(pkg, "villages-village"))?.data as any;
+      return records.map((row) => ({
+        ...row,
+        packageId: row.packageId ?? pkg,
+        data:
+          kind === "venue-visit"
+            ? authorSceneFixture(virtual, row.data, world)
+            : (row.data as any)?.version === 3
+              ? authorRelationshipFixture(virtual, row.data, world)
+              : row.data,
+      }));
+    },
     async update(input) {
       if (input.id === "villages-village" || (input.data as any)?.format === 4) await ensure(input.data);
       return store.update(input);
@@ -117,6 +137,37 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
   wrappers.set(store, result);
   wrapped.add(result);
   return result;
+}
+export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { seed?: string; setupAt?: string }): any {
+  if (!raw || Object.hasOwn(raw, "storageFormat") || raw.version !== 3) return raw;
+  const scene = {
+    ...raw,
+    villageSeed: Object.hasOwn(raw, "villageSeed") ? raw.villageSeed : world?.seed || undefined,
+    storageFormat: 4,
+  };
+  if (scene.continuity) {
+    const context = scene.continuity,
+      scope = { seed: context.seed, setupAt: context.setupAt ?? world?.setupAt ?? "" },
+      { relationshipContext, ...facts } = context.facts,
+      head = relationshipContext ? authorRelationshipFixture(rows, relationshipContext, scope).head : null;
+    scene.continuity = { ...context, ...scope, facts, relationshipHead: head };
+  }
+  if (scene.operation?.snapshot)
+    scene.operation = { ...scene.operation, snapshot: authorSceneFixture(rows, scene.operation.snapshot, world) };
+  return scene;
+}
+export function fixtureSceneState(raw: any, rows: Map<string, any>) {
+  if (!raw?.storageFormat) return coerceSession(raw);
+  const { storageFormat: _format, ...scene } = raw;
+  if (raw.continuity) {
+    const { relationshipHead, ...context } = raw.continuity;
+    const root = relationshipHead ? rows.get(relationshipHead.id)!.data : null;
+    const relationships = root
+      ? decodeRelationshipPagesSync(JSON.parse(root.payload), root.world, (id) => rows.get(id)?.data ?? null).value
+      : undefined;
+    scene.continuity = { ...context, facts: { ...context.facts, relationshipContext: relationships } };
+  }
+  return coerceSession(scene);
 }
 /** Author logical current-contract fixtures directly in the current physical layout. */
 export function authorRelationshipFixture(

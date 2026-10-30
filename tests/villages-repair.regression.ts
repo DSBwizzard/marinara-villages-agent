@@ -2,6 +2,7 @@ import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
 // Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
 import assert from "node:assert/strict";
+import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
@@ -61,6 +62,8 @@ async function fixture() {
       return [...rows.values()].filter((r) => r.kind === kind).map(clone);
     },
     async create(input: any) {
+      if (input.kind === "venue-visit")
+        input = { ...input, data: authorSceneFixture(rows, input.data, rows.get("villages-village")?.data) };
       await hook?.("before-create", input.id);
       assert.ok(!rows.has(input.id), input.id);
       const row = { ...clone(input), revision: 1 };
@@ -71,6 +74,8 @@ async function fixture() {
     async update(input: any) {
       await hook?.("before-update", input.id);
       const old = rows.get(input.id);
+      if (old?.kind === "venue-visit")
+        input = { ...input, data: authorSceneFixture(rows, input.data, rows.get("villages-village")?.data) };
       if (!old || old.revision !== input.expectedRevision) return null;
       const row = { ...old, ...clone(input), revision: old.revision + 1 };
       rows.set(row.id, row);
@@ -422,7 +427,7 @@ await runCase("repair/relationship-history", async () => {
   assert.equal(restarted.eventSequence, 42, "Checkpoint restoration cannot rewind relationship publication order");
   assert.ok(restarted.edges[key].revision > 100);
   assert.equal(restarted.edges[key].connection, "Original connection");
-  const retainedScene = coerceSession((await f.gate.documents.getById("villages", frozenId))!.data);
+  const retainedScene = fixtureSceneState((await f.gate.documents.getById("villages", frozenId))!.data, f.rows);
   const retainedView = sceneContinuityView(
     { ...(await f.read()), relationshipContext: restarted },
     retainedScene,
@@ -1095,6 +1100,7 @@ await runCase("repair/privacy", async () => {
   assert.ok(!projectMemories(untouched.memories, ["player"]).some((r) => r.text.includes("hidden brass compass")));
   const stamp = memoryTime(10),
     archived = {
+      version: 3,
       id: "private-archive",
       status: "closed",
       placeName: "Workshop",
@@ -1104,7 +1110,7 @@ await runCase("repair/privacy", async () => {
       operation: { internal: "Private runtime sentinel" },
     };
   await f.gate.documents.create({
-    id: "private-archive",
+    id: "villages-venue-visit-private-archive",
     packageId: "villages",
     kind: "venue-visit",
     name: "Workshop",

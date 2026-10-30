@@ -15,7 +15,13 @@ import {
 const rows = new Map([
   [
     "villages-venue-visit-esm",
-    { id: "villages-venue-visit-esm", revision: 1, data: { sceneRevision: 0, status: "active" } },
+    {
+      id: "villages-venue-visit-esm",
+      kind: "venue-visit",
+      packageId: "villages",
+      revision: 1,
+      data: { storageFormat: 4, version: 3, id: "esm", villageSeed: "esm-world", sceneRevision: 0, status: "active" },
+    },
   ],
 ]);
 const documents = {

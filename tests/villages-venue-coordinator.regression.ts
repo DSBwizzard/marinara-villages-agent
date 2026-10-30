@@ -1,4 +1,4 @@
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import {
   venueSavedCheckpoint,
@@ -99,6 +99,17 @@ const paid = (answer = "answer") =>
 
 async function main() {
   try {
+    seed("mismatched-owner");
+    row("mismatched-owner").data.id = "another-scene";
+    await readVenueOperation("mismatched-owner");
+    const mismatched = structuredClone(records);
+    await assert.rejects(
+      coordinateVenue("mismatched-owner", "turn", "turn", {}, 0, undefined, () => paid()),
+      /identity/,
+    );
+    assert.deepEqual(records, mismatched, "An internal Scene-ID mismatch cannot persist operation admission");
+    assert.equal(calls, 0, "An invalid owner cannot purchase model work");
+    records.delete("villages-venue-visit-mismatched-owner");
     // Real completion fingerprints and persisted raw responses survive a reasoning-policy upgrade.
     let policyCalls = 0;
     const efforts: unknown[] = [];
@@ -180,6 +191,7 @@ async function main() {
       const id = "expired-" + evidence;
       seed(id);
       row(id).data = { ...structuredClone(expired.data), id };
+      row(id).data.operation.snapshot.id = id;
       if (evidence === "submission") row(id).data.submissions = [{ id: "turn" }];
       else if (evidence === "navigation") row(id).data.navigationReceipts = [{ id: "turn" }];
       else row(id).data.operation.checkpoints[evidence] = { saved: true };
@@ -1288,7 +1300,10 @@ async function main() {
         venueOperationSignal,
         rejectVenueCompletion,
       } as any);
-      const scene = { ...coerceSession(row("typed-review").data), operation: { input: typedInput } } as any;
+      const scene = {
+        ...fixtureSceneState(row("typed-review").data, records),
+        operation: { input: typedInput },
+      } as any;
       const result = await restoredService.exchange(scene, "Hello", story.lines as any, null, story.residentActions);
       await changeSession("typed-review", (current) => {
         current.lines.push({

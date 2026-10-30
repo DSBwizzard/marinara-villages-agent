@@ -17,21 +17,23 @@ export type DocumentSlot<T> = {
 export type HydratedDocumentSlot<T> = Omit<DocumentSlot<T>, "coerce"> & {
   coerce(data: unknown, expectedRevision?: number): Promise<T>;
 };
+export type DocumentSlotFactory<T> = (documents: CapabilityDocumentStore) => DocumentSlot<T> | HydratedDocumentSlot<T>;
 /** A mutation captures its document store once, then retains it across CAS retries. */
 export function createDocumentMutator(getDocuments: () => CapabilityDocumentStore) {
   async function mutateDocument<T>(
     documentId: string,
-    slot: DocumentSlot<T> | HydratedDocumentSlot<T>,
+    slot: DocumentSlot<T> | HydratedDocumentSlot<T> | DocumentSlotFactory<T>,
     mutate: (state: T) => void | false | Promise<void | false>,
   ): Promise<void> {
     return withRepairWork(() => performMutation(documentId, slot, mutate));
   }
   async function performMutation<T>(
     documentId: string,
-    slot: DocumentSlot<T> | HydratedDocumentSlot<T>,
+    input: DocumentSlot<T> | HydratedDocumentSlot<T> | DocumentSlotFactory<T>,
     mutate: (state: T) => void | false | Promise<void | false>,
   ): Promise<void> {
     const documents = getDocuments();
+    const slot = typeof input === "function" ? input(documents) : input;
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
       const record = await documents.getById(VILLAGES_PACKAGE_ID, documentId);
       if (record && slot.encode)

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createSceneRepository } from "../packages/villages/src/server/adapters/storage/scene-repository.js";
 import {
@@ -64,7 +65,7 @@ function fixture(name: string, rejectRetired = true) {
       kind: id === ACTIVE_ID ? "venue-active" : SESSION_KIND,
       name,
       description: name,
-      data: structuredClone(data),
+      data: id === ACTIVE_ID ? structuredClone(data) : authorSceneFixture(records, structuredClone(data)),
       revision,
       createdAt: stamp,
       updatedAt: stamp,
@@ -186,7 +187,11 @@ async function main() {
     1,
     "the supplied mutator captures its store once across retries",
   );
-  assert.deepEqual(f.records.get(SESSION_PREFIX + "same")!.data, saved, "returned state belongs to winning attempt");
+  assert.deepEqual(
+    fixtureSceneState(f.records.get(SESSION_PREFIX + "same")!.data, f.records),
+    coerceSession(saved),
+    "returned state belongs to winning attempt",
+  );
   await assert.rejects(
     f.repository.changeSession("missing", () => assert.fail("missing Scene must not call mutation")),
     /no longer available/,
@@ -195,6 +200,7 @@ async function main() {
   assert.equal((await f.repository.readActive()).sessionId, "same", "unrelated pointer remains selected");
   f.collide(() => {
     const prior = f.records.get(ACTIVE_ID)!;
+    f.put(SESSION_PREFIX + "replacement", scene("replacement", "Replacement Venue"));
     f.put(ACTIVE_ID, { sessionId: "replacement", placeId: "new-venue" }, prior.revision + 1);
   });
   await f.repository.clearActivePointer("same");
@@ -233,7 +239,10 @@ async function main() {
   first.gate.resolve();
   assert.equal((await work).placeName, "A saved");
   assert(first.owners.every((owner) => owner === a));
-  assert.equal(coerceSession(second.records.get(SESSION_PREFIX + "same")!.data).placeName, "B Venue");
+  assert.equal(
+    fixtureSceneState(second.records.get(SESSION_PREFIX + "same")!.data, second.records).placeName,
+    "B Venue",
+  );
   a.run(releaseA);
   a.run(releaseOpsA);
   a.dispose();
@@ -269,7 +278,7 @@ async function main() {
   retired.dispose();
   old.gate.resolve();
   await assert.rejects(pending, /Original Scene storage unavailable/);
-  assert.equal(coerceSession(old.records.get(SESSION_PREFIX + "same")!.data).placeName, "Old Venue");
+  assert.equal(fixtureSceneState(old.records.get(SESSION_PREFIX + "same")!.data, old.records).placeName, "Old Venue");
   assert(!old.calls.some((c) => c.startsWith("update:")));
   clearRetired();
   const disposed = createActivationScope(),

@@ -2,6 +2,31 @@ import { createExchangeProcessing } from "../decoding/exchange-codec.js";
 import type { VenueScene } from "../models/scene-model.js";
 import { notFound } from "./errors.js";
 import { sceneFingerprint } from "./scene-record.js";
+import { asRecord } from "./coerce.js";
+import { isImmutableRelationshipState } from "./relationship-rules.js";
+
+function mutationSnapshot(session: VenueScene) {
+  const bodies: object[] = [];
+  function context(value: unknown) {
+    const raw = asRecord(value),
+      facts = asRecord(raw.facts);
+    if (!isImmutableRelationshipState(facts.relationshipContext)) return value;
+    bodies.push(facts.relationshipContext);
+    return { ...raw, facts: { ...facts, relationshipContext: undefined } };
+  }
+  const snapshot = session.operation?.snapshot;
+  const value = {
+    ...session,
+    continuity: context(session.continuity),
+    operation: session.operation
+      ? {
+          ...session.operation,
+          snapshot: snapshot ? { ...snapshot, continuity: context(snapshot.continuity) } : snapshot,
+        }
+      : undefined,
+  };
+  return { text: JSON.stringify(value), bodies };
+}
 
 /** Apply the saved Scene rules independently of document reads, writes, and CAS retries. */
 export function applySceneMutation(
@@ -10,7 +35,7 @@ export function applySceneMutation(
   change: (session: VenueScene) => void,
 ): void | false {
   if (session.id !== id) throw notFound("That Scene is no longer available.");
-  const snapshot = JSON.stringify(session);
+  const snapshot = mutationSnapshot(session);
   const before = sceneFingerprint(session);
   const priorChanges = new Map(
     session.submissions.map((turn) => [
@@ -39,5 +64,11 @@ export function applySceneMutation(
     if (priorChanges.get(turn.id) !== JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]))
       turn.changeSequence = session.changeSequence = (session.changeSequence ?? 0) + 1;
   if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
-  if (snapshot === JSON.stringify(session)) return false;
+  const after = mutationSnapshot(session);
+  if (
+    snapshot.text === after.text &&
+    snapshot.bodies.length === after.bodies.length &&
+    snapshot.bodies.every((body, i) => body === after.bodies[i])
+  )
+    return false;
 }

@@ -103,7 +103,13 @@ function fixture() {
     ],
     [
       "villages-venue-visit-source",
-      { id: "villages-venue-visit-source", packageId: "villages", kind: "venue-visit", data: scene, revision: 1 },
+      {
+        id: "villages-venue-visit-source",
+        packageId: "villages",
+        kind: "venue-visit",
+        data: { ...scene, storageFormat: 4 },
+        revision: 1,
+      },
     ],
   ]);
   let failSceneWrite = false;

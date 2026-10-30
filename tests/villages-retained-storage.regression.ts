@@ -1,5 +1,6 @@
 // Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication
 import assert from "node:assert/strict";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -49,6 +50,8 @@ async function fixture() {
       return [...rows.values()].filter((r) => r.kind === kind).map((r) => structuredClone(r));
     },
     async create(input: any) {
+      if (input.kind === "venue-visit")
+        input = { ...input, data: authorSceneFixture(rows, input.data, rows.get("villages-village")?.data) };
       assert.ok(!rows.has(input.id));
       const row = { ...structuredClone(input), revision: 1 };
       rows.set(row.id, row);

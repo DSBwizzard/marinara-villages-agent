@@ -53,7 +53,7 @@ import {
 import { completeVillageResidence } from "../packages/villages/src/server/features/venues/residences.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments, authorSceneFixture } from "./helpers/village-storage.fixture.js";
 
 import { changeVenueAccess } from "../packages/villages/src/server/features/venues/services.js";
 
@@ -1216,7 +1216,7 @@ async function main() {
     records.set("villages-venue-visit-" + banScene.id, {
       id: "villages-venue-visit-" + banScene.id,
       kind: "venue-visit",
-      data: banScene,
+      data: authorSceneFixture(records, banScene, await readVillageState()),
       revision: 1,
     });
     failAccessWrite = true;
@@ -1291,7 +1291,11 @@ async function main() {
     records.set("villages-venue-visit-" + oldReply.id, {
       id: "villages-venue-visit-" + oldReply.id,
       kind: "venue-visit",
-      data: oldReply,
+      data: authorSceneFixture(
+        records,
+        { ...oldReply, continuity: undefined, operation: undefined },
+        await readVillageState(),
+      ),
       revision: 1,
     });
     await processSavedExchange(oldReply.id, "old-reply-turn");
