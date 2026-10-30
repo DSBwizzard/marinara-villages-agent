@@ -45,6 +45,10 @@ export function createSceneNarrative(ports: {
     async reserve(scene: VenueScene, grant: NarrativeAdmission) {
       let admitted = false;
       await ports.mutate(async (state) => {
+        if (state.narrative?.claims?.some((row) => row.id === grant.id)) {
+          admitted = reserveSceneNarrative(state, scene, grant, ports.now());
+          return;
+        }
         // Recheck accepted arrangements inside the same reservation transaction.
         let relationships: VillageState["relationshipContext"];
         try {

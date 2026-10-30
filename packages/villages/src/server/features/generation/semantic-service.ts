@@ -1,6 +1,6 @@
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
-import { SCENE_DEVELOPMENT_REVIEW, WORLD_DEVELOPMENT_REVIEW } from "../../domain/rules/narrative-prompts.js";
+import { SCENE_DEVELOPMENT_REVIEW, SCENE_DEVELOPMENT_SCHEMA } from "../../domain/rules/narrative-prompts.js";
 import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
@@ -94,7 +94,7 @@ export function createSemanticService(ports: SemanticPorts) {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
-    const key = `semantic-v2:${stage}:${semanticHash([1, identity.residentActionsOmitted === true, identity.message, identity.evidence, ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : [])])}`;
+    const key = `semantic-v2:${stage}:${semanticHash([1, identity.residentActionsOmitted === true, identity.message, identity.evidence, ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []), ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : [])])}`;
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
@@ -450,7 +450,7 @@ export function createSemanticService(ports: SemanticPorts) {
         : "") +
         (narrativeGrant !== undefined
           ? SCENE_DEVELOPMENT_REVIEW +
-            (narrativeGrant ? " Environmental development schema and bounds: " + WORLD_DEVELOPMENT_REVIEW : "")
+            (narrativeGrant ? " Environmental development schema and bounds: " + SCENE_DEVELOPMENT_SCHEMA : "")
           : "") +
         (residentActions
           ? (actionContractV2

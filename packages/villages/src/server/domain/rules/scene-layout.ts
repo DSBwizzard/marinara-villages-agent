@@ -14,25 +14,26 @@ import { extendSceneNarrative } from "./scene-narrative-effects.js";
 export function sceneAccessState(state: VillageState, scene: VenueScene): VillageState {
   const facts = scene.continuity?.facts;
   const narrative = structuredClone(facts?.narrative);
-  if (facts)
-    for (const turn of scene.submissions) extendSceneNarrative({ ...state, venues: [], narrative }, state, scene, turn);
-  if (narrative)
-    for (const receipt of state.narrative?.receipts ?? []) {
-      if (receipt.source !== "action" || receipt.sourceId !== scene.id) continue;
-      const applied = Object.values(state.exchangeReceipts).some(
-        (proof) =>
-          proof.sceneId === scene.id &&
-          proof.domain === "physical" &&
-          proof.status === "applied" &&
-          scene.submissions.some((turn) => turn.id === proof.submissionId) &&
-          receipt.physical.some(
-            (after) =>
-              after.venueId === proof.physicalOutcome?.venueId &&
-              after.zoneId === proof.physicalOutcome?.zoneId &&
-              after.state.revision === proof.physicalOutcome?.actionReceipt?.after.state.revision,
-          ),
-      );
-      if (applied) mergeNarrativeAfter(narrative, receipt.after);
+  if (facts && narrative)
+    for (const turn of scene.submissions) {
+      extendSceneNarrative({ ...state, venues: [], narrative }, state, scene, turn);
+      for (const receipt of state.narrative?.receipts ?? []) {
+        if (receipt.source !== "action" || receipt.sourceId !== scene.id) continue;
+        const applied = Object.values(state.exchangeReceipts).some(
+          (proof) =>
+            proof.sceneId === scene.id &&
+            proof.submissionId === turn.id &&
+            proof.domain === "physical" &&
+            proof.status === "applied" &&
+            receipt.physical.some(
+              (after) =>
+                after.venueId === proof.physicalOutcome?.venueId &&
+                after.zoneId === proof.physicalOutcome?.zoneId &&
+                after.state.revision === proof.physicalOutcome?.actionReceipt?.after.state.revision,
+            ),
+        );
+        if (applied) mergeNarrativeAfter(narrative, receipt.after);
+      }
     }
   return facts && scene.villageSeed === state.seed
     ? {

@@ -125,14 +125,21 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
     );
   }
   for (const claim of state.narrative?.claims ?? [])
-    add(["narrative-claim", claim.id], "world", claim.sceneId ? "Held Scene introduction" : "Held world proposal", claim.zoneId, [], {
-      actions: [{ id: "reject", label: "Reject saved proposal" }],
-      source: [
-        "Source: " + claim.id,
-        "Purchased request: " + claim.attemptId,
-        "Rejection retains request evidence and consumed allowance.",
-      ],
-    });
+    add(
+      ["narrative-claim", claim.id],
+      "world",
+      claim.sceneId ? "Held Scene introduction" : "Held world proposal",
+      claim.zoneId,
+      [],
+      {
+        actions: [{ id: "reject", label: "Reject saved proposal" }],
+        source: [
+          "Source: " + claim.id,
+          "Purchased request: " + claim.attemptId,
+          "Rejection retains request evidence and consumed allowance.",
+        ],
+      },
+    );
   const people = [
     { id: "player", name: "Your Persona" },
     ...state.villagers.map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),

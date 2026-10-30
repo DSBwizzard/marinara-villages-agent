@@ -1353,7 +1353,8 @@ export function createSceneCommands({
     if (session.openingIntroductionResidentId && reply.openingSignal?.kind !== "pitch")
       throw conflict("The introduction is incomplete. Retry or leave and return.");
     validateCurrentRoomInvitation(reply, greetingVillage);
-    if (reply.narrativeSource?.development) provisionalSceneNarrative(greetingVillage, greetingVillage, reply.narrativeSource);
+    if (reply.narrativeSource?.development)
+      provisionalSceneNarrative(greetingVillage, greetingVillage, reply.narrativeSource);
     const greeted = await changeSession(id, (state) => {
       signal.throwIfAborted();
       if (state.status !== "opening") return;

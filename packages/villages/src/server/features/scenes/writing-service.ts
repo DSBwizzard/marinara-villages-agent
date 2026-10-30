@@ -797,8 +797,14 @@ export function createSceneWriting({
     const ordinary = captured?.ordinary ?? fitVenueWritingMessages(model, blocks, input, maxTokens);
     if (introduction)
       blocks.push({ text: SCENE_DEVELOPMENT_WRITING + " Immutable local admission: " + JSON.stringify(introduction) });
-    const fitted =
-      captured?.fitted ?? (introduction ? fitVenueWritingMessages(model, blocks, input, maxTokens) : ordinary);
+    let fitted = captured?.fitted ?? ordinary;
+    if (!captured && introduction) {
+      try {
+        fitted = fitVenueWritingMessages(model, blocks, input, maxTokens);
+      } catch {
+        /* An optional introduction that does not fit cannot block the ordinary turn. */
+      }
+    }
     if (captured) loreInspection = captured.loreInspection;
     else if (loreInspection) {
       let index = 0;
@@ -953,7 +959,13 @@ export function createSceneWriting({
     }
     const dispatch = narrativeVersion
       ? await venueCheckpoint("narrative-dispatch:" + requestKey, async () => {
-          const grant = !replacement && offer && (await sceneNarrative!.reserve(session, offer)) ? offer : null;
+          const grant =
+            !replacement &&
+            offer &&
+            fitted.messages.some((row) => row.content.includes(SCENE_DEVELOPMENT_WRITING)) &&
+            (await sceneNarrative!.reserve(session, offer))
+              ? offer
+              : null;
           return { grant, fitted: grant ? fitted : ordinary };
         })
       : undefined;
@@ -1269,9 +1281,9 @@ export function createSceneWriting({
         : null;
     if (semanticResult?.draftBoundaryViolation)
       throw new GeneratedSceneBoundary(semanticResult.draftBoundaryViolation.outcome);
-    if (semanticResult?.turnOutcome === "occupancy-unavailable") throw new UnavailableResidentMovement();
     if (semanticResult?.turnOutcome) {
       await sceneNarrative?.retire(session, narrativeGrant);
+      if (semanticResult.turnOutcome === "occupancy-unavailable") throw new UnavailableResidentMovement();
       throw new HaltedSceneTurn(semanticResult.turnOutcome);
     }
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
