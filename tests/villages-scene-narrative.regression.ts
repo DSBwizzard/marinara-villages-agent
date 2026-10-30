@@ -223,6 +223,25 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   assert.equal(state.eventAttempts!.attempts.length, 1, "Quiet consumes its shared opportunity.");
   assert.equal(state.narrative!.conditions.length, 0);
 }
+{
+  const { state, scene } = fixture(),
+    grant = offerSceneNarrative(state, scene, "scene:scene:greeting", now)!;
+  reserveSceneNarrative(state, scene, grant, now);
+  const service = createSceneNarrative({
+    read: async () => state,
+    mutate: async (work) => {
+      await work(state);
+    },
+    relationships: async () => ({}) as any,
+    now: () => now,
+  });
+  await service.discard(scene);
+  await service.discard(scene);
+  assert.equal(state.narrative!.claims!.length, 0);
+  assert.equal(state.narrative!.receipts.filter((row) => row.rejected).length, 1);
+  assert.equal(state.eventAttempts!.attempts.length, 1);
+  assert.throws(() => settleSceneNarrative(state, scene, { grant, development: development(grant) }), /rejected/);
+}
 
 // Actual Narration + System calls, checkpoint-write gap and exact provider-free replay.
 for (const variant of ["normal", "gap", "race-boundary"] as const) {

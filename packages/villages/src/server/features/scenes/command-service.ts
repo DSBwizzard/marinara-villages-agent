@@ -3887,6 +3887,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     await cancelVenueOperation(id);
     const session = await requireLiveVenueSession(id);
     work.abortGreeting(id);
+    await sceneNarrative?.discard(session);
     await changeSession(id, (state) => {
       if (state.status === "closed") return;
       state.status = "closed";

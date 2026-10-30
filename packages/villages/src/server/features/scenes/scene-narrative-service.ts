@@ -74,6 +74,27 @@ export function createSceneNarrative(ports: {
     async retire(scene: VenueScene, grant: NarrativeAdmission | undefined | null) {
       if (grant) await ports.mutate((state) => settleSceneNarrative(state, scene, { grant, development: null }, true));
     },
+    async discard(scene: VenueScene) {
+      // The existing coordinator must fence/cancel the Scene before this explicit discard.
+      await ports.mutate((state) => {
+        if (state.seed !== scene.villageSeed || !state.narrative) return;
+        const claims = state.narrative.claims?.filter((row) => row.sceneId === scene.id) ?? [];
+        for (const claim of claims) {
+          if (!state.narrative.receipts.some((row) => row.id === claim.id))
+            state.narrative.receipts.push({
+              id: claim.id,
+              sourceId: claim.id,
+              source: "scene",
+              at: ports.now().toISOString(),
+              rejected: true,
+              occurrence: "Uncommitted introduction discarded with its Scene.",
+              after: { situations: [], conditions: [] },
+              physical: [],
+            });
+        }
+        state.narrative.claims = state.narrative.claims?.filter((row) => row.sceneId !== scene.id);
+      });
+    },
   };
 }
 export type SceneNarrative = ReturnType<typeof createSceneNarrative>;
