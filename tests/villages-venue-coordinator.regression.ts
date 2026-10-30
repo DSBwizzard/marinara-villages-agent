@@ -1238,8 +1238,8 @@ async function main() {
     const interruptedClose = structuredClone(row("abandon").data.operation);
     assert.deepEqual(
       interruptedClose.checkpoints["abandoned-request"],
-      failed,
-      "Failed request and saved writing remain recoverable",
+      { ...failed, snapshot: null },
+      "Abandoned request retains exact input/response/accounting evidence without an inactive Scene snapshot",
     );
     let closeWrites = 0;
     await coordinateVenue(
@@ -1257,7 +1257,7 @@ async function main() {
     );
     assert.equal(closeWrites, 1, "Admitted close can recover after a storage failure without paid work");
     assert.equal(row("abandon").data.status, "closed");
-    assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], failed);
+    assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], { ...failed, snapshot: null });
     seed("typed-review");
     row("typed-review").data = coerceSession({
       version: 3,

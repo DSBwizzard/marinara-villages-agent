@@ -210,13 +210,15 @@ saved.submissions = [
     openingSignal: { kind: "first-use", residentId: "", quote: "The film begins.", playerQuote: "We watch together." },
   },
 ];
+const queryPages = new Map<string, any>();
 const queries = createSceneQueryService({
   readSession: async () => saved,
   readVillageState: async () => state,
   villagesDocuments: () => ({
+    getById: async (_packageId: string, id: string) => structuredClone(queryPages.get(id) ?? null),
     list: async (_packageId: string, kind: string) => {
       assert.equal(kind, SESSION_KIND);
-      return [{ data: authorSceneFixture(new Map(), saved, state) }];
+      return [{ data: authorSceneFixture(queryPages, saved, state) }];
     },
   }),
 } as any);

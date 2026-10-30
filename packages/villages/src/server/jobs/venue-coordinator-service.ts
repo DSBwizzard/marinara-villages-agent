@@ -668,7 +668,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                 "OPERATION_INTERRUPTED",
                 "The failed request changed. Review the Scene before ending it.",
               );
-            abandoned = structuredClone(prior);
+            abandoned = { ...structuredClone(prior), snapshot: null };
             acknowledgeUnknownAttempts(data, prior);
           }
           if (options.replaceOfOperationId) {
