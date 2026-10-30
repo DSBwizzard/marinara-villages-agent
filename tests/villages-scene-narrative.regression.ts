@@ -157,6 +157,36 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     /contradictory/,
   );
   const source = { grant, development: readSceneNarrativeReview(review, grant, lines, null) };
+  const actorUpdate = {
+    narration: "You secure the sign.",
+    expectedRevision: grant.targets[0]!.state.revision + 1,
+    appearanceChanged: true,
+    edits: [{ before: "The sign hangs from one loose bracket.", after: "The sign is secure." }],
+  };
+  assert.equal(
+    sceneHaltWorldConflict(scene, state, {
+      narrativeSource: source,
+      placeUpdate: actorUpdate,
+      physicalContext: {
+        zoneId: scene.zoneId,
+        actorIds: ["player"],
+        consentIds: [],
+        witnessIds: ["player"],
+        positions: { player: scene.zoneId },
+      },
+    }),
+    false,
+    "A supported actor action can use the exact environmental after-state.",
+  );
+  assert.equal(
+    sceneHaltWorldConflict(scene, state, {
+      narrativeSource: source,
+      placeUpdate: actorUpdate,
+      physicalContext: { zoneId: scene.zoneId, actorIds: ["invented"], consentIds: [], witnessIds: [], positions: {} },
+    }),
+    true,
+    "An introduction cannot supply actor presence or physical authority.",
+  );
   const before = JSON.stringify(state);
   assert.equal(sceneHaltWorldConflict(scene, state, { narrativeSource: source }), false);
   assert.equal(JSON.stringify(state), before);
@@ -181,13 +211,28 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   assert.deepEqual(coerceSession({ ...scene, operation: undefined }).submissions[0]!.narrativeSource, source);
   assert.equal(JSON.stringify(publicSceneResponse(scene)).includes("narrativeSource"), false);
 }
+{
+  const { state, scene } = fixture(),
+    grant = offerSceneNarrative(state, scene, "scene:scene:greeting", now)!;
+  const paused = structuredClone(state);
+  paused.backgroundPace = "off";
+  assert.equal(offerSceneNarrative(paused, scene, grant.id, now), null);
+  assert.equal(reserveSceneNarrative(state, scene, grant, now), true);
+  settleSceneNarrative(state, scene, { grant, development: null });
+  assert.equal(state.narrative!.claims!.length, 0);
+  assert.equal(state.eventAttempts!.attempts.length, 1, "Quiet consumes its shared opportunity.");
+  assert.equal(state.narrative!.conditions.length, 0);
+}
 
 // Actual Narration + System calls, checkpoint-write gap and exact provider-free replay.
-{
+for (const variant of ["normal", "gap", "race-boundary"] as const) {
   const { state, scene } = fixture(),
     checkpoints = new Map<string, any>();
   let requests = 0,
-    failReservationAck = true;
+    failReservationAck = variant === "gap",
+    narrationCalls = 0,
+    systemCalls = 0;
+  const raceBoundary = variant === "race-boundary";
   const checkpoint = async <T>(key: string, work: () => Promise<T>): Promise<T> => {
     if (checkpoints.has(key)) return structuredClone(checkpoints.get(key));
     const result = await work();
@@ -207,6 +252,13 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     relationships: async () => ({ socialPlans: [] }) as any,
     now: () => now,
   });
+  if (raceBoundary) {
+    const reserve = sceneNarrative.reserve;
+    sceneNarrative.reserve = async (...args) => {
+      reserveEventAttempt(state, "resident-race", activityDate(state, now), now.getTime());
+      return reserve(...args);
+    };
+  }
   const model: any = {
     model: "fixture",
     connectionId: "fixture",
@@ -223,24 +275,39 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   const complete: any = async (_model: any, messages: any) => {
     requests++;
     if (!messages[0].content.startsWith("You interpret Villages gameplay.")) {
-      assert.match(messages[0].content, /Immutable local admission/);
+      narrationCalls++;
+      if (raceBoundary) assert.doesNotMatch(messages[0].content, /Immutable local admission/);
+      else assert.match(messages[0].content, /Immutable local admission/);
       return {
         finishReason: "stop",
         content: JSON.stringify({
           playerSpeechCapture: { status: "silent", utterances: [] },
-          segments: [{ kind: "narration", text: "A gust loosens the hall sign." }],
+          segments: [
+            {
+              kind: "narration",
+              text: raceBoundary
+                ? narrationCalls === 1
+                  ? "Everyone dies."
+                  : "The room is quiet."
+                : "A gust loosens the hall sign.",
+            },
+          ],
           residentActions: [],
         }),
       };
     }
     const packet = JSON.parse(messages[1].content);
+    systemCalls++;
     return {
       finishReason: "stop",
       content: JSON.stringify({
         sourceHash: packet.sourceHash,
         consistent: true,
         playerAgencyViolation: null,
-        halt: { reason: "none", quote: "", appointments: [] },
+        halt:
+          raceBoundary && systemCalls === 1
+            ? { reason: "condition", source: "draft", quote: "Everyone dies.", appointments: [] }
+            : { reason: "none", quote: "", appointments: [] },
         intent: { status: "resolved", reason: "", instructions: "", action: null, movement: null, timeline: [] },
         authority: { physical: false, access: false, projects: false, standing: false, social: false },
         action: null,
@@ -251,12 +318,14 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
         projectSpeech: [],
         access: [],
         events: { moves: [], departures: [], contactEnd: [] },
-        narrativeIntroduction: {
-          status: "introduced",
-          segment: 0,
-          quote: "A gust loosens the hall sign.",
-          development: development(packet.input.narrativeGrant),
-        },
+        narrativeIntroduction: raceBoundary
+          ? { status: "quiet", development: null }
+          : {
+              status: "introduced",
+              segment: 0,
+              quote: "A gust loosens the hall sign.",
+              development: development(packet.input.narrativeGrant),
+            },
         residentActionReview: {
           version: 1,
           additionalActions: [],
@@ -291,10 +360,20 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     refreshZoneParticipants: async (row: any) => row,
     interpretRoomReply: () => assert.fail("No additional interpretation"),
   } as SceneWritingPorts);
-  await assert.rejects(writer.generate(scene, "", "greet", "", null), /checkpoint write failed/);
-  assert.equal(requests, 0);
-  assert.equal(state.eventAttempts!.attempts.length, 1);
+  if (variant === "gap") {
+    await assert.rejects(writer.generate(scene, "", "greet", "", null), /checkpoint write failed/);
+    assert.equal(requests, 0);
+    assert.equal(state.eventAttempts!.attempts.length, 1);
+  }
   const reply = await writer.generate(scene, "", "greet", "", null);
+  if (raceBoundary) {
+    assert.equal(reply.narrativeSource, undefined);
+    assert.equal(requests, 4, "Only the existing HALT replacement pair is dispatched after the ordinary pair.");
+    await writer.generate(scene, "", "greet", "", null);
+    assert.equal(requests, 4);
+    assert.equal(state.eventAttempts!.attempts.length, 1);
+    continue;
+  }
   assert.ok(reply.narrativeSource?.development);
   assert.equal(requests, 2, "One existing Narration and one existing System call; no environmental generation call.");
   const replay = await writer.generate(scene, "", "greet", "", null);

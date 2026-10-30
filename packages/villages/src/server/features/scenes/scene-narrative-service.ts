@@ -44,9 +44,11 @@ export function createSceneNarrative(ports: {
     },
     async reserve(scene: VenueScene, grant: NarrativeAdmission) {
       let admitted = false;
+      let proof: NonNullable<NonNullable<VillageState["narrative"]>["claims"]>[number] | null = null;
       await ports.mutate(async (state) => {
         if (state.narrative?.claims?.some((row) => row.id === grant.id)) {
           admitted = reserveSceneNarrative(state, scene, grant, ports.now());
+          if (admitted) proof = structuredClone(state.narrative!.claims!.find((row) => row.id === grant.id)!);
           return;
         }
         // Recheck accepted arrangements inside the same reservation transaction.
@@ -61,9 +63,10 @@ export function createSceneNarrative(ports: {
         if (admitted) {
           state.eventAttempts = candidate.eventAttempts;
           state.narrative = candidate.narrative;
+          proof = structuredClone(state.narrative!.claims!.find((row) => row.id === grant.id)!);
         }
       });
-      return admitted;
+      return proof;
     },
     async settle(scene: VenueScene, source: SceneNarrativeSource | undefined) {
       if (source) await ports.mutate((state) => settleSceneNarrative(state, scene, source));

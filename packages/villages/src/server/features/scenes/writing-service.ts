@@ -879,7 +879,7 @@ export function createSceneWriting({
         if (replacement.requestKey !== requestKey) throw new GeneratedSceneBoundary(replacement.outcome);
         await sceneNarrative?.retire(
           args[0],
-          venueSavedCheckpoint?.<NarrativeAdmission | null>("narrative-offer:" + requestKey),
+          venueSavedCheckpoint?.<{ grant: NarrativeAdmission | null }>("narrative-dispatch:" + requestKey)?.grant,
         );
         await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
         try {
@@ -959,14 +959,13 @@ export function createSceneWriting({
     }
     const dispatch = narrativeVersion
       ? await venueCheckpoint("narrative-dispatch:" + requestKey, async () => {
-          const grant =
+          const proof =
             !replacement &&
             offer &&
             fitted.messages.some((row) => row.content.includes(SCENE_DEVELOPMENT_WRITING)) &&
-            (await sceneNarrative!.reserve(session, offer))
-              ? offer
-              : null;
-          return { grant, fitted: grant ? fitted : ordinary };
+            (await sceneNarrative!.reserve(session, offer));
+          const grant = proof ? offer : null;
+          return { grant, proof: proof || null, fitted: grant ? fitted : ordinary };
         })
       : undefined;
     const narrativeGrant = dispatch?.grant;
@@ -1514,8 +1513,12 @@ export function createSceneWriting({
             development: semanticResult?.effects.narrativeDevelopment as SceneNarrativeSource["development"],
           }
         : undefined;
+      const narrativeAuthority =
+        dispatch?.proof && village.narrative
+          ? { ...village, narrative: { ...village.narrative, claims: [dispatch.proof] } }
+          : village;
       const physicalVillage = narrativeSource
-        ? provisionalSceneNarrative(sceneContinuityView(village, session), village, narrativeSource)
+        ? provisionalSceneNarrative(sceneContinuityView(village, session), narrativeAuthority, narrativeSource)
         : village;
       const physicalVenue = physicalVillage.venues.find((row) => row.id === session.placeId);
       let placeUpdate: ReturnType<typeof readVenueSceneChange> = null;
