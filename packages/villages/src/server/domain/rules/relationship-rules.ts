@@ -8,6 +8,7 @@ import type {
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { asRecord } from "./coerce.js";
+import { immutableMemoryValue } from "./memory-integrity.js";
 import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
 export class SocialRevisionConflict extends Error {}
@@ -68,8 +69,8 @@ export function neutralRelationship(fromId: string, toId: string): RelationshipE
 export function relationshipFor(state: RelationshipState | undefined, fromId: string, toId: string): RelationshipEdge {
   return state?.edges[relationshipKey(fromId, toId)] ?? neutralRelationship(fromId, toId);
 }
-export function coerceRelationshipState(seed: string, value: unknown): RelationshipState {
-  const raw = asRecord(structuredClone(value));
+function validatedRelationshipState(seed: string, value: unknown): RelationshipState {
+  const raw = asRecord(value);
   if (value === undefined) return defaultRelationshipState(seed);
   if (raw.seed !== seed)
     throw new Error("The saved relationships belong to another Village. Their history is preserved.");
@@ -79,6 +80,22 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
     );
   // Package-owned documents have already passed the source and schema validator.
   const state = { ...defaultRelationshipState(seed), ...raw, seed, version: 3 } as RelationshipState;
+  // Header field order must survive warm publication, cold hydration and inline capture comparisons.
+  state.edges = Object.fromEntries(
+    Object.entries(state.edges).map(([id, edge]) => [id, { ...neutralRelationship(edge.fromId, edge.toId), ...edge }]),
+  );
+  state.mailThreads = Object.fromEntries(
+    Object.entries(state.mailThreads).map(([id, thread]) => [
+      id,
+      {
+        id: thread.id,
+        participantIds: thread.participantIds,
+        revision: thread.revision,
+        messages: thread.messages,
+        ...thread,
+      },
+    ]),
+  );
   const sequences = new Set<number>();
   if (
     !Number.isSafeInteger(raw.eventSequence) ||
@@ -96,24 +113,83 @@ export function coerceRelationshipState(seed: string, value: unknown): Relations
   }
   return state;
 }
+const immutableStates = new WeakSet<object>();
+/** Captured relationships are exact immutable values, not authority for a later live mutation. */
+export function immutableRelationshipState(seed: string, value: unknown): RelationshipState {
+  if (value && typeof value === "object" && immutableStates.has(value) && (value as RelationshipState).seed === seed)
+    return value as RelationshipState;
+  const state = immutableMemoryValue(validatedRelationshipState(seed, value));
+  immutableStates.add(state);
+  return state;
+}
+export function coerceRelationshipState(seed: string, value: unknown): RelationshipState {
+  // Only mutable containers detach. Published history leaves remain immutable and retain page identity.
+  const source = immutableRelationshipState(seed, value);
+  return {
+    ...source,
+    edges: Object.fromEntries(
+      Object.entries(source.edges).map(([id, edge]) => [
+        id,
+        {
+          ...edge,
+          expectations: [...edge.expectations],
+          concerns: [...edge.concerns],
+          experiences: [...edge.experiences],
+          records: { ...edge.records },
+        },
+      ]),
+    ),
+    intentions: { ...source.intentions },
+    intentionRevisions: { ...source.intentionRevisions },
+    intentionReceipts: { ...source.intentionReceipts },
+    grants: { ...source.grants },
+    receipts: { ...source.receipts },
+    applied: { ...source.applied },
+    disclosureReceipts: { ...source.disclosureReceipts },
+    sharedRecords: { ...source.sharedRecords },
+    reviewedActorIds: [...source.reviewedActorIds],
+    startingTies: [...source.startingTies],
+    startingActorIds: [...source.startingActorIds],
+    initializationConflicts: [...source.initializationConflicts],
+    mailDeliveries: { ...source.mailDeliveries },
+    mailThreads: Object.fromEntries(
+      Object.entries(source.mailThreads).map(([id, thread]) => [
+        id,
+        {
+          ...thread,
+          participantIds: [...thread.participantIds],
+          messages: [...thread.messages],
+        },
+      ]),
+    ),
+    socialPlans: [...source.socialPlans],
+    socialEncounters: [...source.socialEncounters],
+  };
+}
 /** Absence and elapsed time are not social events. Only explicit permissions affect access. */
 export function reconcileRelationships(
   state: RelationshipState,
   village: Pick<VillageState, "villagers" | "venues" | "projects"> & Partial<Pick<VillageState, "clock">>,
   _now = Date.now(),
-): void {
+): boolean {
   const residents = new Set(village.villagers.map((person) => person.characterId));
-  for (const grant of Object.values(state.grants)) {
+  let changed = false;
+  for (const [id, grant] of Object.entries(state.grants)) {
     const venue = village.venues.find((place) => place.id === grant.venueId);
     const zone = venue && resolveVenueZone(venue, grant.zoneId);
-    grant.active =
+    const active =
       !grant.revoked &&
       !!venue &&
       !!zone &&
       residents.has(grant.controllerId) &&
       (grant.visitorId === "player" || residents.has(grant.visitorId)) &&
       canInviteToZone(venue, zone, grant.controllerId);
+    if (active !== grant.active) {
+      state.grants[id] = { ...grant, active };
+      changed = true;
+    }
   }
+  return changed;
 }
 export function relationshipZoneController(
   state: RelationshipState | undefined,
@@ -136,12 +212,12 @@ export function relationshipZoneController(
   );
 }
 function project(base: RelationshipEdge, update: RelationshipUpdate, receiptId: string, at: string): RelationshipEdge {
-  const after = structuredClone(base);
+  const after = { ...base, records: { ...base.records }, experiences: [...base.experiences] };
   Object.assign(after, {
     connection: update.connection,
     stance: update.stance,
-    expectations: update.expectations,
-    concerns: update.concerns,
+    expectations: [...update.expectations],
+    concerns: [...update.concerns],
     revision: base.revision + 1,
     updatedAt: at,
   });

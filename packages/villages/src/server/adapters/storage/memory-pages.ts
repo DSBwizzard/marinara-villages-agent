@@ -13,6 +13,8 @@ type Page = { type: "text"; text: string } | { type: "block"; content: Ref } | {
 type Entry = [string, unknown];
 type Group = { entries: Entry[]; ref: Ref };
 type Tree = { groups: Group[]; levels: Ref[][]; root: Ref | null };
+export type HistoryPageTree = Tree;
+export type HistoryPageRef = Ref;
 type Scene = { header: unknown; before: Tree; effects: Tree };
 export type MemoryPageLayout = {
   records: Tree;
@@ -32,8 +34,8 @@ export const pageDigest = (text: string) => createHash("sha256").update(text).di
 const equalRefs = (a: Ref[], b?: Ref[]) => !!b && a.length === b.length && a.every((r, i) => r.id === b[i].id);
 const entries = (value: Record<string, unknown>): Entry[] => Object.entries(value);
 
-/** Memory-specific immutable pages. Only changed blocks and their bounded directory path serialize. */
-export function encodeMemoryPages(value: MemoryPayload, world: string, previous?: MemoryPageLayout) {
+/** Shared private-history primitives; typed payload owners define their own manifests. */
+export function createHistoryPageWriter(world: string) {
   const pages = new Map<string, MemoryPageData>();
   let serializedBytes = 0;
   function page(node: Page, height: number): Ref {
@@ -96,6 +98,19 @@ export function encodeMemoryPages(value: MemoryPayload, world: string, previous?
       ),
     };
   }
+  return {
+    tree,
+    pages,
+    get serializedBytes() {
+      return serializedBytes;
+    },
+  };
+}
+
+/** Memory-specific manifest and nested Scene preimages. */
+export function encodeMemoryPages(value: MemoryPayload, world: string, previous?: MemoryPageLayout) {
+  const writer = createHistoryPageWriter(world);
+  const { tree, pages } = writer;
   const records = tree(
     value.memories.records.map((r) => [r.id, r]),
     previous?.records,
@@ -121,7 +136,12 @@ export function encodeMemoryPages(value: MemoryPayload, world: string, previous?
     scenes: scenes.root,
     receipts: receipts.root,
   };
-  return { manifest, pages, layout: { records, scenes, receipts, sceneValues }, serializedBytes };
+  return {
+    manifest,
+    pages,
+    layout: { records, scenes, receipts, sceneValues },
+    serializedBytes: writer.serializedBytes,
+  };
 }
 
 function readRef(raw: unknown, world: string): Ref | null {
@@ -138,6 +158,7 @@ function readRef(raw: unknown, world: string): Ref | null {
   );
   return raw as Ref;
 }
+export const readHistoryPageRef = readRef;
 /** Strict native envelope: text is opaque, and structural nodes contain only page identities. */
 export function validateMemoryPageData(data: unknown, id: string): asserts data is MemoryPageData {
   const identity = /^villages-memory-page-([a-f0-9]{32})-([a-f0-9]{64})$/.exec(id);
@@ -173,12 +194,7 @@ export function validateMemoryPageData(data: unknown, id: string): asserts data 
     for (const child of node.children) memoryRequire(readRef(child, data.world), "invalid history child");
   }
 }
-function* memoryPageDecoder(raw: unknown, world: string) {
-  memoryObject(raw, ["format", "revision", "records", "scenes", "receipts"]);
-  memoryRequire(
-    raw.format === 2 && Number.isSafeInteger(raw.revision) && raw.revision >= 0,
-    "invalid history directory",
-  );
+export function createHistoryPageReader(world: string) {
   const seen = new Map<string, Page>();
   function* load(ref: Ref): Generator<string, Page, MemoryPageData | null> {
     if (seen.has(ref.id)) return seen.get(ref.id)!;
@@ -252,10 +268,27 @@ function* memoryPageDecoder(raw: unknown, world: string) {
     }
     return { root, groups, levels: list.levels };
   }
+  const rows = (value: Tree) => value.groups.flatMap((group) => group.entries);
+  return {
+    tree,
+    rows,
+    get pageIds() {
+      return [...seen.keys()];
+    },
+  };
+}
+
+function* memoryPageDecoder(raw: unknown, world: string) {
+  memoryObject(raw, ["format", "revision", "records", "scenes", "receipts"]);
+  memoryRequire(
+    raw.format === 2 && Number.isSafeInteger(raw.revision) && raw.revision >= 0,
+    "invalid history directory",
+  );
+  const reader = createHistoryPageReader(world);
+  const { tree, rows } = reader;
   const records = yield* tree(raw.records),
     scenes = yield* tree(raw.scenes),
     receipts = yield* tree(raw.receipts);
-  const rows = (value: Tree) => value.groups.flatMap((group) => group.entries);
   const sceneValues = new Map<string, Scene>();
   const memoryScenes: Record<string, unknown> = {};
   for (const [id, header] of rows(scenes)) {
@@ -281,7 +314,7 @@ function* memoryPageDecoder(raw: unknown, world: string) {
       memoryReceipts: Object.fromEntries(rows(receipts)),
     } as MemoryPayload,
     layout: { records, scenes, receipts, sceneValues } as MemoryPageLayout,
-    pageIds: [...seen.keys()],
+    pageIds: reader.pageIds,
   };
 }
 export async function decodeMemoryPages(
@@ -353,8 +386,8 @@ export function createMemoryPageTracer(get: (id: string) => Promise<MemoryPageDa
     return value;
   }
   async function scenes(ref: Ref, world: string) {
-    if (sceneTrees.has(ref.id)) return;
     const node = await walk(ref, world);
+    if (sceneTrees.has(ref.id)) return;
     sceneTrees.add(ref.id);
     memoryRequire(node.type !== "text", "invalid history Scene directory");
     if (node.type === "branch") {
@@ -393,5 +426,22 @@ export function createMemoryPageTracer(get: (id: string) => Promise<MemoryPageDa
     if (scene) await scenes(scene, world);
     return new Set(nodes.keys());
   }
-  return { trace };
+  async function traceTrees(values: unknown[], world: string) {
+    for (const value of values) {
+      const ref = readRef(value, world);
+      if (ref) await walk(ref, world);
+    }
+    return new Set(nodes.keys());
+  }
+  async function readNode(value: unknown, world: string) {
+    const ref = readRef(value, world);
+    memoryRequire(ref, "missing history node reference");
+    return immutableMemoryValue(await walk(ref, world));
+  }
+  async function readText(value: unknown, world: string) {
+    const ref = readRef(value, world);
+    memoryRequire(ref, "missing history content reference");
+    return text(ref, world);
+  }
+  return { trace, traceTrees, readNode, readText };
 }

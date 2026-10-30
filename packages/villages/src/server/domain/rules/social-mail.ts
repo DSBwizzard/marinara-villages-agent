@@ -25,7 +25,9 @@ export function queuePersonalMessage(
   if (prior) {
     if (prior.text !== text || prior.toId !== residentId)
       throw conflict("This request ID already belongs to a different message.");
-    return prior;
+    const source = mutablePersonalMessage(state, threadId, prior.id);
+    if (!source) throw conflict("The retained message belongs to another thread.");
+    return source;
   }
   if (
     thread.messages.some(
@@ -51,11 +53,24 @@ export function requireMailSource(
   threadId: string,
   messageId: string,
 ): { thread: SocialMailThread; message: SocialMailMessage } {
-  const thread = state.mailThreads[threadId],
-    message = thread?.messages.find((row) => row.id === messageId);
+  const thread = state.mailThreads[threadId];
+  const message = mutablePersonalMessage(state, threadId, messageId);
   if (!thread || !message || !thread.participantIds.includes("player"))
     throw badRequest("That personal message is unavailable.");
   return { thread, message };
+}
+/** Detach only the chosen letter before a known mutation, preserving all other published message leaves. */
+export function mutablePersonalMessage(
+  state: RelationshipState,
+  threadId: string,
+  messageId: string,
+): SocialMailMessage | undefined {
+  const thread = state.mailThreads[threadId],
+    index = thread?.messages.findIndex((row) => row.id === messageId) ?? -1;
+  if (!thread || index < 0) return undefined;
+  const current = thread.messages[index];
+  if (Object.isFrozen(current)) return (thread.messages[index] = { ...current });
+  return current;
 }
 export function beginMailDelivery(state: RelationshipState, threadId: string, messageId: string): void {
   const { message } = requireMailSource(state, threadId, messageId);
@@ -89,7 +104,7 @@ export function readPersonalThread(
 ): void {
   const thread = state.mailThreads[threadId];
   if (!thread || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
-  for (const message of thread.messages) {
+  for (const [index, message] of thread.messages.entries()) {
     if (
       message.toId !== "player" ||
       !state.mailDeliveries[message.id] ||
@@ -97,7 +112,7 @@ export function readPersonalThread(
       (messageIds && !messageIds.includes(message.id))
     )
       continue;
-    message.readAt = at;
+    thread.messages[index] = { ...message, readAt: at };
   }
 }
 export const withoutMailDisclosures = (review: RelationshipReview): RelationshipReview => ({

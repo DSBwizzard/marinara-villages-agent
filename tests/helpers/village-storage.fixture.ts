@@ -3,6 +3,11 @@ import { createHash } from "node:crypto";
 import { emptyMemoryPayload } from "../../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
+  encodeRelationshipPages,
+  decodeRelationshipPagesSync,
+} from "../../packages/villages/src/server/adapters/storage/relationship-pages.js";
+import { relationshipWorldKey } from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import {
   encodeMemoryPages,
   decodeMemoryPagesSync,
   MEMORY_PAGE_KIND,
@@ -22,7 +27,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       Object.entries(raw).filter(([k]) => !["memories", "memoryScenes", "memoryReceipts"].includes(k)),
     );
   async function ensure(data: unknown) {
-    const head = (data as any)?.memoryHead;
+    const head = (data as any)?.memoryHead ?? (data as any)?.head;
     if (!head || !virtual.has(head.id)) return;
     // All virtual page documents are committed before a real root may reference them.
     for (const [id, row] of virtual) {
@@ -42,6 +47,11 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
     async getById(pkg, id) {
       if (virtual.has(id)) return structuredClone(virtual.get(id));
       const row = await store.getById(pkg, id);
+      if (row?.kind === "relationships" && (row.data as any)?.version === 3) {
+        const world = (await store.getById(pkg, "villages-village"))!.data as any;
+        const data = authorRelationshipFixture(virtual, row.data, world);
+        return { ...row, id, packageId: pkg, data };
+      }
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
@@ -92,11 +102,11 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       return { ...metadata, data: { ...strip(state), memoryHead: head } };
     },
     async create(input) {
-      if (input.id === "villages-village") await ensure(input.data);
+      if (input.id === "villages-village" || input.kind === "relationships") await ensure(input.data);
       return store.create(input);
     },
     async update(input) {
-      if (input.id === "villages-village") await ensure(input.data);
+      if (input.id === "villages-village" || (input.data as any)?.format === 4) await ensure(input.data);
       return store.update(input);
     },
     async remove(pkg, id, revision) {
@@ -107,6 +117,37 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
   wrappers.set(store, result);
   wrapped.add(result);
   return result;
+}
+/** Author logical current-contract fixtures directly in the current physical layout. */
+export function authorRelationshipFixture(
+  rows: Map<string, any>,
+  value: any,
+  scope: { seed: string; setupAt: string },
+) {
+  const world = relationshipWorldKey(scope),
+    encoded = encodeRelationshipPages(value, world),
+    payload = JSON.stringify(encoded.manifest),
+    digest = createHash("sha256").update(payload).digest("hex"),
+    head = { id: "villages-relationship-history-" + world + "-" + digest, digest };
+  const put = (id: string, kind: string, data: unknown) =>
+    rows.set(id, {
+      id,
+      packageId: "villages",
+      kind,
+      data,
+      revision: 1,
+      name: "Fixture history",
+      description: "",
+      createdAt: scope.setupAt,
+      updatedAt: scope.setupAt,
+    });
+  for (const [id, data] of encoded.pages) put(id, MEMORY_PAGE_KIND, data);
+  put(head.id, "relationship-payload", { format: 1, world, payload });
+  return { format: 4, seed: scope.seed, setupAt: scope.setupAt, head };
+}
+export function fixtureRelationshipState(row: any, rows: Map<string, any>) {
+  const body = rows.get(row.data.head.id).data;
+  return decodeRelationshipPagesSync(JSON.parse(body.payload), body.world, (id) => rows.get(id)?.data ?? null).value;
 }
 /** Synchronous fixture inspection; protocol regressions use the real repository. */
 export function storedVillage(rows: Map<string, any>) {

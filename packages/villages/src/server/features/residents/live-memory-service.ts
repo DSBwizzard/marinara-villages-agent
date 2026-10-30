@@ -245,16 +245,19 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       for (const id of receiptIds) {
         const receipt = state.receipts[id];
         if (!receipt || receipt.noticeSequence) continue;
-        receipt.sceneId = scene.id;
-        receipt.submissionId = turn.id;
-        receipt.committedAt = now().toISOString();
-        receipt.noticeSequence = ++state.noticeSequence;
+        state.receipts[id] = {
+          ...receipt,
+          sceneId: scene.id,
+          submissionId: turn.id,
+          committedAt: now().toISOString(),
+          noticeSequence: ++state.noticeSequence,
+        };
       }
       for (const item of fresh.review.intentions ?? []) {
-        const receipt = state.intentionReceipts[scene.id + ":" + turn.id + ":intentions:" + item.actorId];
+        const id = scene.id + ":" + turn.id + ":intentions:" + item.actorId,
+          receipt = state.intentionReceipts[id];
         if (receipt) {
-          receipt.sceneId = scene.id;
-          receipt.submissionId = turn.id;
+          state.intentionReceipts[id] = { ...receipt, sceneId: scene.id, submissionId: turn.id };
         }
       }
     });

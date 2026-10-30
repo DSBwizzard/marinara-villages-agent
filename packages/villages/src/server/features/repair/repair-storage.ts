@@ -12,6 +12,7 @@ import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity
 import { conflict } from "../../domain/rules/errors.js";
 import type { RepairDocument, RepairWrite } from "../../adapters/storage/repair-gate.js";
 import { createRepairSnapshots } from "../../adapters/storage/repair-snapshot-store.js";
+import { readRelationshipRoot, relationshipDocumentId } from "../../adapters/storage/relationship-payload-store.js";
 
 export const REPAIR_HISTORY_KIND = "repair-history",
   REPAIR_CHECKPOINT_KIND = "repair-checkpoint",
@@ -86,7 +87,10 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
         row.id === "villages-village" && owns(row.data as VillageState, owner),
         "snapshot Village ownership changed",
       );
-    else
+    else if (row.kind === "relationships") {
+      const root = readRelationshipRoot(row.data, owner);
+      memoryRequire(row.id === relationshipDocumentId(root.seed), "snapshot relationship ownership changed");
+    } else
       for (const key of ["seed", "villageSeed"])
         if (Object.hasOwn(row.data, key))
           memoryRequire(row.data[key] === owner.seed, "snapshot source belongs to another Village");

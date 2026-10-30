@@ -642,7 +642,11 @@ try {
   const secondPoll = await app.inject({ url: "/background/catchup" });
   assert.equal(secondPoll.statusCode, 200, secondPoll.body);
   const settled = await readVillageMemorySnapshot();
-  assert.equal(settled.returnCatchup?.batch?.records?.[0]?.status, "settled");
+  assert.equal(
+    settled.returnCatchup?.batch?.records?.[0]?.status,
+    "settled",
+    JSON.stringify({ outbox: settled.socialOutbox, batch: settled.returnCatchup?.batch }),
+  );
   assert.ok(
     projectMemories(settled.memories, ["a"]).some((memory) => memory.text === "B agreed to a walk tomorrow."),
     JSON.stringify({
