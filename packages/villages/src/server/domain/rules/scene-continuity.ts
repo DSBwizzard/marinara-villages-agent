@@ -1,6 +1,6 @@
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
-import { relationshipKey } from "./relationship-rules.js";
+import { replaySceneRelationships } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
 import { extendSceneNarrative } from "./scene-narrative-effects.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -200,19 +200,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
         view.relationshipContext.intentionRevisions[receipt.actorId] = receipt.sceneRevision;
         view.relationshipContext.intentionReceipts[id] = structuredClone(receipt);
       }
-    const baseReceipts = new Set(Object.keys(view.relationshipContext.receipts));
-    const ordered = scene.submissions.flatMap((turn) =>
-      Object.values(current.relationshipContext!.receipts).filter((receipt) => receipt.submissionId === turn.id),
-    );
-    for (const receipt of ordered) {
-      if (receipt.sceneId !== scene.id || baseReceipts.has(receipt.id)) continue;
-      const key = relationshipKey(receipt.fromId, receipt.toId);
-      view.relationshipContext.edges[key] = structuredClone(receipt.sceneAfter);
-      for (const record of Object.values(receipt.sceneAfter.records))
-        if (record.kind === "agreement" || record.kind === "commitment")
-          view.relationshipContext.sharedRecords[record.id] = structuredClone(record);
-      view.relationshipContext.receipts[receipt.id] = structuredClone(receipt);
-    }
+    replaySceneRelationships(view.relationshipContext, current.relationshipContext, scene);
   }
 
   // Replay only already-committed physical receipts, in transcript order.

@@ -115,8 +115,11 @@ export type RelationshipReceipt = {
   fromId: string;
   toId: string;
   beforeRevision: number;
-  sceneAfter: RelationshipEdge;
-  liveAfter: RelationshipEdge;
+  sequence: number;
+  sceneBeforeRevision: number;
+  /** Omitted when both interpretations of this event are identical. */
+  sceneAfter?: RelationshipUpdate;
+  liveAfter: RelationshipUpdate;
   reason: string;
   at: string;
   sourceId: string;
@@ -168,7 +171,8 @@ export type SocialEncounter = {
 export type RelationshipState = {
   clockShiftMs?: number;
   noticeSequence: number;
-  version: 2;
+  eventSequence: number;
+  version: 3;
   seed: string;
   edges: Record<string, RelationshipEdge>;
   intentions: Record<string, SocialIntention[]>;

@@ -16,25 +16,21 @@ export const relationshipKey = (fromId: string, toId: string): string => JSON.st
 /** Captured relationships plus only this Scene's accepted relationship receipts. */
 export function sceneRelationshipView(
   current: RelationshipState | undefined,
-  scene: Pick<VenueScene, "id" | "continuity">,
+  scene: Pick<VenueScene, "id" | "continuity" | "submissions">,
 ) {
   if (!scene.continuity) return current;
   const view = structuredClone(scene.continuity.facts.relationshipContext);
   if (!view || !current) return view;
-  for (const receipt of Object.values(current.receipts)) {
-    if (receipt.sceneId !== scene.id || view.receipts[receipt.id]) continue;
-    const key = relationshipKey(receipt.fromId, receipt.toId);
-    view.edges[key] = structuredClone(receipt.sceneAfter);
-    view.receipts[receipt.id] = structuredClone(receipt);
-  }
+  replaySceneRelationships(view, current, scene);
   return view;
 }
 export const permissionKey = (controllerId: string, visitorId: string, venueId: string, zoneId: string): string =>
   JSON.stringify([controllerId, visitorId, venueId, zoneId]);
 export function defaultRelationshipState(seed: string): RelationshipState {
   return {
-    version: 2,
+    version: 3,
     noticeSequence: 0,
+    eventSequence: 0,
     seed,
     edges: {},
     intentions: {},
@@ -74,13 +70,31 @@ export function relationshipFor(state: RelationshipState | undefined, fromId: st
 }
 export function coerceRelationshipState(seed: string, value: unknown): RelationshipState {
   const raw = asRecord(structuredClone(value));
-  if (!Object.keys(raw).length || raw.seed !== seed) return defaultRelationshipState(seed);
-  if (raw.version !== 2)
+  if (value === undefined) return defaultRelationshipState(seed);
+  if (raw.seed !== seed)
+    throw new Error("The saved relationships belong to another Village. Their history is preserved.");
+  if (raw.version !== 3)
     throw new Error(
       "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
     );
   // Package-owned documents have already passed the source and schema validator.
-  return { ...defaultRelationshipState(seed), ...raw, seed, version: 2 } as RelationshipState;
+  const state = { ...defaultRelationshipState(seed), ...raw, seed, version: 3 } as RelationshipState;
+  const sequences = new Set<number>();
+  if (
+    !Number.isSafeInteger(raw.eventSequence) ||
+    Number(raw.eventSequence) < 0 ||
+    !raw.receipts ||
+    Array.isArray(raw.receipts) ||
+    typeof raw.receipts !== "object"
+  )
+    throw new Error("The saved relationship event directory is unreadable. Its history is preserved.");
+  for (const [id, receipt] of Object.entries(state.receipts)) {
+    validateReceipt(receipt);
+    if (receipt.id !== id || receipt.sequence > state.eventSequence || sequences.has(receipt.sequence))
+      throw new Error("The saved relationship event order is unreadable. Its history is preserved.");
+    sequences.add(receipt.sequence);
+  }
+  return state;
 }
 /** Absence and elapsed time are not social events. Only explicit permissions affect access. */
 export function reconcileRelationships(
@@ -135,7 +149,86 @@ function project(base: RelationshipEdge, update: RelationshipUpdate, receiptId: 
   after.experiences = [...new Set([...after.experiences, receiptId])];
   return after;
 }
-/** One atomic social-document write records both exact projections of the same witnessed event. */
+function validateReceipt(receipt: RelationshipReceipt) {
+  const update = (value: RelationshipUpdate) =>
+    value &&
+    typeof value.connection === "string" &&
+    typeof value.stance === "string" &&
+    Array.isArray(value.expectations) &&
+    Array.isArray(value.concerns) &&
+    Array.isArray(value.records) &&
+    !Object.hasOwn(value, "experiences");
+  if (
+    !receipt ||
+    !Number.isSafeInteger(receipt.sequence) ||
+    receipt.sequence < 1 ||
+    ![receipt.beforeRevision, receipt.sceneBeforeRevision].every(
+      (value) => Number.isSafeInteger(value) && value >= 0,
+    ) ||
+    !update(receipt.liveAfter) ||
+    (receipt.sceneAfter !== undefined && !update(receipt.sceneAfter))
+  )
+    throw new Error("The saved relationship event is unreadable. Its history is preserved.");
+}
+/** Extend only the captured predecessor with this event's exact accepted Scene interpretation. */
+export function replaySceneRelationships(
+  state: RelationshipState,
+  current: RelationshipState,
+  scene: Pick<VenueScene, "id" | "submissions">,
+): void {
+  if (state.seed !== current.seed)
+    throw new Error("Captured relationships belong to another Village. Their history is preserved.");
+  const submissions = new Set(scene.submissions.map((turn) => turn.id));
+  const pending = Object.values(current.receipts)
+    .filter(
+      (receipt) =>
+        receipt.sceneId === scene.id &&
+        !!receipt.submissionId &&
+        submissions.has(receipt.submissionId) &&
+        !state.receipts[receipt.id],
+    )
+    .sort((a, b) => a.sequence - b.sequence);
+  const revisions = new Map<string, number>(),
+    sequences = new Set<number>();
+  // Validate the entire event chain before changing the disposable captured view.
+  for (const receipt of pending) {
+    validateReceipt(receipt);
+    const key = relationshipKey(receipt.fromId, receipt.toId),
+      expected = revisions.get(key) ?? relationshipFor(state, receipt.fromId, receipt.toId).revision;
+    if (
+      expected !== receipt.sceneBeforeRevision ||
+      receipt.sequence <= state.eventSequence ||
+      sequences.has(receipt.sequence)
+    )
+      throw new SocialRevisionConflict(
+        "The captured relationship predecessor is missing or forked. Its saved event is preserved.",
+      );
+    revisions.set(key, expected + 1);
+    sequences.add(receipt.sequence);
+  }
+  for (const receipt of pending) {
+    const key = relationshipKey(receipt.fromId, receipt.toId),
+      update = structuredClone(receipt.sceneAfter ?? receipt.liveAfter);
+    const edge = (state.edges[key] ??= neutralRelationship(receipt.fromId, receipt.toId));
+    Object.assign(edge, {
+      connection: update.connection,
+      stance: update.stance,
+      expectations: update.expectations,
+      concerns: update.concerns,
+      revision: receipt.sceneBeforeRevision + 1,
+      updatedAt: receipt.at,
+    });
+    for (const record of update.records) {
+      edge.records[record.id] = record;
+      if (record.kind === "agreement" || record.kind === "commitment")
+        state.sharedRecords[record.id] = structuredClone(record);
+    }
+    edge.experiences.push(receipt.id);
+    state.receipts[receipt.id] = structuredClone(receipt);
+    state.eventSequence = receipt.sequence;
+  }
+}
+/** One atomic write records exact event updates, without copying the predecessor's entire history. */
 export function applyRelationshipReview(
   state: RelationshipState,
   review: RelationshipReview,
@@ -170,6 +263,7 @@ export function applyRelationshipReview(
   }
   const pairs = new Set<string>();
   const sharedUpdates = new Map<string, string>();
+  const sharedSceneUpdates = new Map<string, string>();
   for (const change of review.changes) {
     if (state.applied[change.id]) continue;
     const key = relationshipKey(change.fromId, change.toId);
@@ -199,13 +293,25 @@ export function applyRelationshipReview(
       if ((current?.revision ?? 0) !== record.revision - 1)
         throw new SocialRevisionConflict("Shared social terms changed during interpretation.");
     }
+    for (const record of change.sceneAfter.records) {
+      if (record.kind !== "agreement" && record.kind !== "commitment") continue;
+      const fingerprint = JSON.stringify({
+        ...record,
+        participants: [...record.participants].sort(),
+        evidenceIds: [...record.evidenceIds].sort(),
+      });
+      if (sharedSceneUpdates.has(record.id) && sharedSceneUpdates.get(record.id) !== fingerprint)
+        throw new Error("Conflicting interpretations of the same captured shared social terms.");
+      sharedSceneUpdates.set(record.id, fingerprint);
+      if ((sceneState?.sharedRecords[record.id]?.revision ?? 0) !== record.revision - 1)
+        throw new SocialRevisionConflict("Captured shared social terms changed during interpretation.");
+    }
   }
   for (const change of review.changes) {
     if (state.applied[change.id]) continue;
     const before = structuredClone(relationshipFor(state, change.fromId, change.toId));
     const sceneBefore = structuredClone(relationshipFor(sceneState, change.fromId, change.toId));
     const liveAfter = project(before, change.liveAfter, change.id, at);
-    const sceneAfter = project(sceneBefore, change.sceneAfter, change.id, at);
     state.edges[relationshipKey(change.fromId, change.toId)] = liveAfter;
     for (const record of change.liveAfter.records)
       if (record.kind === "agreement" || record.kind === "commitment")
@@ -215,8 +321,12 @@ export function applyRelationshipReview(
       fromId: change.fromId,
       toId: change.toId,
       beforeRevision: before.revision,
-      sceneAfter,
-      liveAfter,
+      sequence: ++state.eventSequence,
+      sceneBeforeRevision: sceneBefore.revision,
+      ...(JSON.stringify(change.sceneAfter) === JSON.stringify(change.liveAfter)
+        ? {}
+        : { sceneAfter: structuredClone(change.sceneAfter) }),
+      liveAfter: structuredClone(change.liveAfter),
       reason: change.reason,
       at,
       sourceId,

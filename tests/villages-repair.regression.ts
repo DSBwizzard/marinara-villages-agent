@@ -1,7 +1,14 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import {
+  coerceRelationshipState,
+  defaultRelationshipState,
+  neutralRelationship,
+  relationshipKey,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -308,6 +315,56 @@ await runCase("repair/review-retirement-recovery", async () => {
   assert.equal((await f.read()).setting, "Committed once");
   assert.equal((await f.api.index()).historyTotal, 1);
   assert.equal([...f.rows.values()].filter((row) => row.kind === "repair-plan").length, 0);
+});
+await runCase("repair/relationship-history", async () => {
+  const f = await fixture(),
+    seed = (await f.read()).seed,
+    stamp = memoryTime(10);
+  const id = "villages-relationships-" + createHash("sha256").update(seed).digest("hex").slice(0, 24);
+  const social = defaultRelationshipState(seed),
+    key = relationshipKey("aqua", "player");
+  social.edges[key] = { ...neutralRelationship("aqua", "player"), revision: 4, connection: "Original connection" };
+  await f.gate.documents.create({
+    id,
+    packageId: "villages",
+    kind: "relationships",
+    name: "Relationships",
+    description: "",
+    data: social,
+    createdAt: stamp,
+    updatedAt: stamp,
+  });
+  const cp = await f.api.createCheckpoint("Relationship baseline", "relationship-baseline");
+  const correction = await f.prepare(
+    edit(
+      repairId("relationship", "aqua", "player"),
+      {
+        connection: "Corrected",
+        stance: "",
+        expectations: "",
+        concerns: "",
+      },
+      "correct-relationship",
+    ),
+  );
+  await f.api.apply(correction.id, correction.token);
+  const changedRevision = f.rows.get(id).data.edges[key].revision;
+  const undo = await f.api.undo(correction.id, "undo-relationship");
+  await f.api.apply(undo.id, undo.token);
+  assert.equal(f.rows.get(id).data.edges[key].connection, "Original connection");
+  assert.ok(f.rows.get(id).data.edges[key].revision > changedRevision);
+  const current = await f.gate.documents.getById("villages", id),
+    later = structuredClone(current.data);
+  later.eventSequence = 42;
+  later.edges[key].revision = 100;
+  await f.gate.documents.update({ ...current, expectedRevision: current.revision, data: later });
+  const restore = await f.api.restore(cp.id, "restore-relationship-baseline");
+  await f.api.apply(restore.id, restore.token);
+  f.reopen();
+  const restarted = coerceRelationshipState(seed, (await f.gate.documents.getById("villages", id)).data);
+  assert.equal(restarted.eventSequence, 42, "Checkpoint restoration cannot rewind relationship publication order");
+  assert.ok(restarted.edges[key].revision > 100);
+  assert.equal(restarted.edges[key].connection, "Original connection");
 });
 await runCase("repair/memory-undo", async () => {
   const f = await fixture();

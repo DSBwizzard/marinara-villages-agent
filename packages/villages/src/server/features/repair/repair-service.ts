@@ -968,8 +968,9 @@ export function createRepairService(ports: RepairPorts) {
             const value = structuredClone(write.before),
               stamp = new Date().toISOString();
             if (value.kind === "relationships") {
-              const previous = value.data as { edges: Record<string, { revision: number; updatedAt: string }> },
+              const previous = value.data as import("../../domain/models/relationship-types.js").RelationshipState,
                 live = current?.data as typeof previous | undefined;
+              previous.eventSequence = Math.max(previous.eventSequence, live?.eventSequence ?? 0);
               for (const [key, edge] of Object.entries(previous.edges)) {
                 edge.revision = Math.max(edge.revision, live?.edges[key]?.revision ?? 0) + 1;
                 edge.updatedAt = stamp;
@@ -1231,6 +1232,7 @@ export function createRepairService(ports: RepairPorts) {
             throw conflict("Complete the checkpoint’s starting-relationship review before using it for restoration.");
           social.applied = { ...live?.applied, ...social.applied };
           social.noticeSequence = Math.max(social.noticeSequence, live?.noticeSequence ?? 0);
+          social.eventSequence = Math.max(social.eventSequence, live?.eventSequence ?? 0);
           for (const key of Object.keys(social.intentionRevisions))
             social.intentionRevisions[key] =
               Math.max(social.intentionRevisions[key], live?.intentionRevisions[key] ?? 0) + 1;

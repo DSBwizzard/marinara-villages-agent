@@ -42,7 +42,7 @@ See [Scene privacy](scene-response-privacy.md), [System responsibilities](system
 
 ## Saved work and compatibility
 
-The current runtime uses Village format 9, Scene/continuity format 3 and relationship format 2. Immutable Memory pages are a fresh-world change: older played worlds and setup records are rejected without conversion or writes. Existing saved data must remain in its independent storage with its matching runtime. There is no migration, history backfill, dual write or old memory reader. A compact Village CAS publishes one immutable history directory reference with matching mechanics. Bounded pages hold the collection, active sparse memory preimages and memory-only receipts; ordinary world reads do not load them. Publication intents preserve concurrent preparation and ambiguous recovery. Owner-aware idle housekeeping reclaims superseded immutable roots, pages, snapshots and retired Undo bodies; checkpoints share immutable heads and transitive pages. Scene attachment is a separate resumable stage. See [Memories](memories-core.md).
+The current runtime uses Village format 9, Scene/continuity format 3 and relationship format 3. Immutable Memory pages are a fresh-world change: older played worlds and setup records are rejected without conversion or writes. Existing saved data must remain in its independent storage with its matching runtime. There is no migration, history backfill, dual write or old memory reader. A compact Village CAS publishes one immutable history directory reference with matching mechanics. Bounded pages hold the collection, active sparse memory preimages and memory-only receipts; ordinary world reads do not load them. Publication intents preserve concurrent preparation and ambiguous recovery. Owner-aware idle housekeeping reclaims superseded immutable roots, pages, snapshots and retired Undo bodies; checkpoints share immutable heads and transitive pages. Scene attachment is a separate resumable stage. See [Memories](memories-core.md).
 
 Saved generation, validation, committed effects and Scene bookkeeping are distinct stages. Claims precede provider dispatch; completed responses and effect receipts support local replay. Compare-and-swap retries reuse saved output and preserve request accounting.
 
@@ -62,14 +62,14 @@ The user-approved storage growth and recovery overhaul is a one-time exception: 
 
 Scheduling labels and failure messages do not establish that evidence is disposable. The domain recovery classification checks saved work and uncertainty before accepting a terminal label:
 
-| Disposition | Required evidence and behavior |
-| --- | --- |
-| Pending | Accepted work is queued, running or paused. Retain its admission and continuation; an explicit pause does not authorize dispatch. |
-| Recoverable | A saved reply, result or partially committed effect permits useful continuation. Reuse purchased output before considering a replacement request. |
-| Uncertain | A dispatched request, effect or publication has no conclusive outcome. Retain its reconciliation evidence and replay guards; do not automatically purchase a duplicate. |
-| Completed | Required effects and publication are acknowledged and no continuation remains. An inconsistent completed label cannot override retained unfinished evidence. |
-| Failed | The attempt ended conclusively without saved work or an unresolved obligation. Ordinary diagnostics can eventually be retired independently of replay protection. |
-| Safely abandoned | Dispatch/callback authority is fenced and committed effects reconciled. An obsolete label alone does not prove this disposition. |
+| Disposition      | Required evidence and behavior                                                                                                                                          |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Pending          | Accepted work is queued, running or paused. Retain its admission and continuation; an explicit pause does not authorize dispatch.                                       |
+| Recoverable      | A saved reply, result or partially committed effect permits useful continuation. Reuse purchased output before considering a replacement request.                       |
+| Uncertain        | A dispatched request, effect or publication has no conclusive outcome. Retain its reconciliation evidence and replay guards; do not automatically purchase a duplicate. |
+| Completed        | Required effects and publication are acknowledged and no continuation remains. An inconsistent completed label cannot override retained unfinished evidence.            |
+| Failed           | The attempt ended conclusively without saved work or an unresolved obligation. Ordinary diagnostics can eventually be retired independently of replay protection.       |
+| Safely abandoned | Dispatch/callback authority is fenced and committed effects reconciled. An obsolete label alone does not prove this disposition.                                        |
 
 Compaction requires a terminal disposition, preserved accounting/replay protection and an owner for every still-needed piece of evidence. Full receipt deletion additionally requires a durable closed scope, epoch or high-water rule that rejects every possible replay, and no remaining reference. Age, a failure label and diagnostic retention limits are insufficient. These requirements precede the later compaction implementation; the current background cleanup only adds a guard against discarding pending, recoverable or uncertain records. It does not enable new pruning or paid retries.
 
@@ -81,15 +81,15 @@ Unapplied REPAIR reviews are administrative previews produced by simulation. The
 
 Ownership is explicit and world-scoped. Do not infer references by scanning arbitrary player/model prose. Current storage uses existing payload intents, operation records and captured facts; later storage changes must preserve these owner obligations before adding deletion:
 
-| Owner | Protected dependencies and release boundary |
-| --- | --- |
-| Current authority and meaningful retained history | Current facts, exact evidence, individual knowers, corrections, resolutions and Forget suppression. No automatic history expiration or lifetime cap. |
-| Active/frozen Scene | Captured attendance, privacy, facts, accepted own effects, evidence and media. Release only after established retirement and transfer of retained evidence ownership. |
-| Departure capture and unfinished catch-up | Exact historical facts, admissions and unsettled outcomes. Release after settlement or proven safe abandonment; retained outcomes remain owned by history. |
-| Unfinished or uncertain operation | Admission, saved paid replies, commit/publication evidence and assets. Release only after reconciliation and terminal disposition. |
-| Available repair Undo | Exact inverse dependencies and assets. Retain the ten most recently committed successful repair payloads; consumed Undo does not resurrect older payloads. Permanent repair headers preserve changes, audiences and Undo provenance after availability ends. |
-| Automatic/manual checkpoint | The complete transitive snapshot and media dependencies. Retain ten automatic checkpoints by committed publication order; manual checkpoints remain until explicitly deleted. Recovery/explicit holds override ordinary eviction. |
-| Saved evidence and replay protection | Exact cited sources and information that rejects duplicate effects. Release only after ownership transfer or a proven replay fence with no remaining reference. |
+| Owner                                             | Protected dependencies and release boundary                                                                                                                                                                                                                  |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Current authority and meaningful retained history | Current facts, exact evidence, individual knowers, corrections, resolutions and Forget suppression. No automatic history expiration or lifetime cap.                                                                                                         |
+| Active/frozen Scene                               | Captured attendance, privacy, facts, accepted own effects, evidence and media. Release only after established retirement and transfer of retained evidence ownership.                                                                                        |
+| Departure capture and unfinished catch-up         | Exact historical facts, admissions and unsettled outcomes. Release after settlement or proven safe abandonment; retained outcomes remain owned by history.                                                                                                   |
+| Unfinished or uncertain operation                 | Admission, saved paid replies, commit/publication evidence and assets. Release only after reconciliation and terminal disposition.                                                                                                                           |
+| Available repair Undo                             | Exact inverse dependencies and assets. Retain the ten most recently committed successful repair payloads; consumed Undo does not resurrect older payloads. Permanent repair headers preserve changes, audiences and Undo provenance after availability ends. |
+| Automatic/manual checkpoint                       | The complete transitive snapshot and media dependencies. Retain ten automatic checkpoints by committed publication order; manual checkpoints remain until explicitly deleted. Recovery/explicit holds override ordinary eviction.                            |
+| Saved evidence and replay protection              | Exact cited sources and information that rejects duplicate effects. Release only after ownership transfer or a proven replay fence with no remaining reference.                                                                                              |
 
 Publication protects existing and proposed dependencies before creating bodies, validates them, then publishes through the existing CAS/repair fence. Ambiguous or interrupted publication retains its intent. Cleanup may release superseded data only after new ownership commits, and must recheck owner revisions and outstanding intents under the same fence before deletion. A writer cannot attach a new reference concurrently with that deletion. Missing, corrupt or unknown ownership defers cleanup. Restore validates/protects its dependencies before publication and cannot rewind operation epochs or replay protection. Startup reconciles unfinished publication/repair journals before cleanup.
 
@@ -102,6 +102,8 @@ Storage admission is shared by canonical Engine backend identity across replacem
 One initial idle sweep recovers allocations from an earlier activation. Later sweeps are coalesced after approximately the greater of 1 MiB or the prior live footprint has been allocated. This footprint includes retained owner metadata as well as immutable bodies, so many manual checkpoints do not cause increasingly frequent full owner scans. Estimates are activation-local and may safely overcount failed creates; no routine persistent counter writes or new scheduler are needed. Ordinary saves below that allocation budget do not scan retained history. Cleanup does not expire meaningful Memories, correspondence, Wishes, relationship or repair history, remove manual checkpoint headers, or delete media assets.
 
 See [response recovery](scene-response-recovery.md), [Scene continuity recovery](scene-continuity-recovery.md) and the [generation lifecycle](generation-pipeline.md).
+
+Relationship format 3 retains exact event updates and independent Scene/live predecessor revisions. It never embeds a growing predecessor edge in each receipt. Identical Scene/live updates share one stored patch; applying it to different predecessors still preserves their distinct histories. Both Scene views admit only their own retained submission IDs, order events by the relationship publication sequence, validate complete predecessor chains, and apply updates to one detached captured view. Missing or forked predecessors hold recovery before any patch is applied. Inherited records, individual knowers, exact evidence and shared terms remain intact. Checkpoint restoration and Undo cannot rewind the publication sequence; their live revision increases do not rewrite frozen Scene predecessors. Old or wrong-world relationship records fail closed without conversion.
 
 ## Engine and validation
 
