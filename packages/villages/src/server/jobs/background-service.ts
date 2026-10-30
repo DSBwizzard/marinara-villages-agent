@@ -8,7 +8,12 @@ import type { withUsagePurpose } from "../adapters/models/usage-ledger.js";
 import type { measurePipeline } from "../adapters/observability/pipeline-metrics.js";
 import type { runtimeDebug } from "../adapters/observability/runtime-debug.js";
 import type { BackgroundContext } from "../adapters/operations/background-context-service.js";
-import { createDocumentMutator } from "../adapters/storage/document-store.js";
+import {
+  backgroundResponseClaim,
+  validateBackgroundJobRecord,
+  backgroundResponseStore,
+  nativeBackgroundJob,
+} from "../adapters/storage/background-responses.js";
 import {
   assertVillageClockWrite,
   clockAdministration,
@@ -148,93 +153,103 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     });
     ports.activityChanged?.();
   }
-  async function readJob(id: string): Promise<Job | null> {
-    const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, id);
+  async function readJob(id: string, documents = villagesDocuments()): Promise<Job | null> {
+    const record = await documents.getById(VILLAGES_PACKAGE_ID, id);
     if (!record) return null;
-    const job = structuredClone(record.data) as Job;
+    if (record.id !== id || record.packageId !== VILLAGES_PACKAGE_ID)
+      throw new Error("Background job record identity changed.");
+    validateBackgroundJobRecord(record);
+    const job = await backgroundResponseStore(documents).decode(record.data);
     if (!job || !Array.isArray(job.steps) || typeof job.id !== "string" || !handlers.has(job.kind))
       throw new Error("The saved background job could not be read. Restore it from a backup.");
     return job;
   }
-  const lateResponseId = (job: Job, index: number) =>
-    "villages-generation-response-" +
-    backgroundRevision([job.id, job.attempt, index, job.steps[index]?.key, job.steps[index]?.fingerprint]);
-  async function adoptLateResponses(id: string, original: Job): Promise<Job> {
+  function countResponse(job: Job, response: Awaited<ReturnType<BackgroundCompletion>>) {
+    const tokens =
+      response.usage?.totalTokens ??
+      (response.usage?.promptTokens !== undefined && response.usage?.completionTokens !== undefined
+        ? response.usage.promptTokens + response.usage.completionTokens
+        : undefined);
+    if (tokens !== undefined) job.tokens = (job.tokens ?? 0) + tokens;
+    else job.usageComplete = false;
+  }
+  async function adoptLateResponses(id: string, original: Job, documents = villagesDocuments()): Promise<Job> {
+    if (running.has(id)) return original;
+    const responses = backgroundResponseStore(documents);
     let job = original;
     for (const [index, step] of original.steps.entries()) {
-      const receiptId = lateResponseId(original, index);
-      const receipt = asRecord((await villagesDocuments().getById(VILLAGES_PACKAGE_ID, receiptId))?.data);
-      if (receipt.status !== "complete" || receipt.jobId !== original.id || receipt.fingerprint !== step.fingerprint)
-        continue;
-      job = await changeJob(id, (current) => {
-        if (
-          !current ||
-          current.id !== original.id ||
-          current.attempt !== original.attempt ||
-          current.steps[index]?.fingerprint !== step.fingerprint
-        )
-          throw new Obsolete("The saved response belongs to another background attempt.");
-        if (current.steps[index].status !== "completed") {
-          current.steps[index] = {
-            ...current.steps[index],
-            status: "completed",
-            lateResponse: true,
-            response: structuredClone(receipt.result) as Awaited<ReturnType<BackgroundCompletion>>,
-          };
-          current.failedStep = null;
-        }
-        return current;
-      });
-      await createDocumentMutator(villagesDocuments)(
-        receiptId,
-        {
-          kind: "generation-response",
-          name: "Saved background response",
-          description: "Private raw provider evidence",
-          coerce: (raw) => asRecord(raw),
-          label: () => "Saved background response",
+      if (step.status === "completed") continue;
+      const saved = await responses.pending(original, index);
+      if (!saved) continue;
+      job = await changeJob(
+        id,
+        (current) => {
+          if (
+            !current ||
+            current.id !== original.id ||
+            current.attempt !== original.attempt ||
+            current.steps[index]?.fingerprint !== step.fingerprint
+          )
+            throw new Obsolete("The saved response belongs to another background attempt.");
+          if (current.steps[index].status !== "completed") {
+            current.steps[index] = {
+              ...current.steps[index],
+              status: "completed",
+              lateResponse: true,
+              response: saved.response,
+              responseRef: saved.ref,
+              ...(current.steps[index].timing
+                ? { timing: { ...current.steps[index].timing!, outcome: "complete" } }
+                : {}),
+            };
+            countResponse(current, saved.response);
+            current.failedStep = null;
+          }
+          return current;
         },
-        (value) => {
-          if (value.status !== "complete") return false;
-          value.status = "consumed";
-        },
+        documents,
       );
     }
     return job;
   }
-  async function retainFoundingJob(job: Job): Promise<void> {
+  async function retainFoundingJob(job: Job, documents = villagesDocuments()): Promise<void> {
     const historyId = "villages-background-history-" + job.id + "-" + job.attempt;
-    if (!(await villagesDocuments().getById(VILLAGES_PACKAGE_ID, historyId)))
-      await villagesDocuments().create({
+    if (!(await documents.getById(VILLAGES_PACKAGE_ID, historyId)))
+      await documents.create({
         id: historyId,
         packageId: VILLAGES_PACKAGE_ID,
         kind: "background-history",
         name: "Retained founding request",
         description: "Legacy request and billing evidence",
-        data: job,
+        data: nativeBackgroundJob(job),
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
   }
   async function retireLegacyFounding(job: Job): Promise<void> {
+    const documents = villagesDocuments();
     const state = await (ports.readVillageAuthority ?? readVillageState)(),
       task = state.foundingPreparation?.tasks?.[job.subjectId]?.routine;
     if (state.seed !== job.seed || task?.status !== "completed" || task.receipt !== task.revision) return;
-    await retainFoundingJob(job);
-    await changeJob(slotId(job), (current) => {
-      if (!current || current.id !== job.id || current.attempt !== job.attempt || running.has(slotId(job)))
-        throw conflict("Legacy founding job changed during recovery.");
-      return {
-        ...current,
-        status: "obsolete",
-        error: "Replaced by independent founding tasks.",
-        steps: [],
-        settings: {},
-        input: null,
-        result: undefined,
-        hasResult: false,
-      };
-    });
+    await retainFoundingJob(job, documents);
+    await changeJob(
+      slotId(job),
+      (current) => {
+        if (!current || current.id !== job.id || current.attempt !== job.attempt || running.has(slotId(job)))
+          throw conflict("Legacy founding job changed during recovery.");
+        return {
+          ...current,
+          status: "obsolete",
+          error: "Replaced by independent founding tasks.",
+          steps: [],
+          settings: {},
+          input: null,
+          result: undefined,
+          hasResult: false,
+        };
+      },
+      documents,
+    );
   }
   async function backgroundStatus(
     kind: BackgroundKind,
@@ -245,13 +260,23 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     if (expectedInputId !== undefined && asRecord(job?.input).id !== expectedInputId) return null;
     return job?.status ?? null;
   }
-  async function changeJob(id: string, change: (job: Job | null) => Job): Promise<Job> {
-    const documents = villagesDocuments();
+  async function changeJob(
+    id: string,
+    change: (job: Job | null) => Job,
+    documents = villagesDocuments(),
+  ): Promise<Job> {
+    const responses = backgroundResponseStore(documents);
     for (let attempt = 0; attempt < 8; attempt++) {
       const record = await documents.getById(VILLAGES_PACKAGE_ID, id);
+      if (record) {
+        if (record.id !== id || record.packageId !== VILLAGES_PACKAGE_ID)
+          throw new Error("Background job record identity changed.");
+        validateBackgroundJobRecord(record);
+      }
       await assertVillageClockWrite();
-      const next = change(record ? (structuredClone(record.data) as Job) : null);
-      if (record && JSON.stringify(next) === JSON.stringify(record.data)) return structuredClone(next);
+      const next = change(record ? await responses.decode(record.data) : null);
+      const data = nativeBackgroundJob(next);
+      if (record && JSON.stringify(data) === JSON.stringify(record.data)) return next;
       const stamp = new Date().toISOString();
       if (record) {
         const updated = await documents.update({
@@ -260,10 +285,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           expectedRevision: record.revision,
           name: next.label,
           description: "Villages background generation checkpoint",
-          data: next,
+          data,
           updatedAt: stamp,
         });
-        if (updated) return structuredClone(next);
+        if (updated) return next;
       } else {
         try {
           await documents.create({
@@ -272,11 +297,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             kind: KIND,
             name: next.label,
             description: "Villages background generation checkpoint",
-            data: next,
+            data,
             createdAt: stamp,
             updatedAt: stamp,
           });
-          return structuredClone(next);
+          return next;
         } catch (error) {
           if (!(await documents.getById(VILLAGES_PACKAGE_ID, id))) throw error;
         }
@@ -284,8 +309,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     throw new Error("Background work kept changing while it was saved.");
   }
-  async function persistConnectionPause(connectionId: string, paused: boolean, assertActive = () => {}): Promise<void> {
-    const documents = villagesDocuments();
+  async function persistConnectionPause(
+    connectionId: string,
+    paused: boolean,
+    assertActive = () => {},
+    documents = villagesDocuments(),
+  ): Promise<void> {
     const id = "villages-background-connection-" + backgroundRevision(connectionId);
     for (let attempt = 0; attempt < 8; attempt++) {
       const current = await documents.getById(VILLAGES_PACKAGE_ID, id);
@@ -323,13 +352,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     throw new Error("Connection recovery could not be saved.");
   }
-  async function clearConnectionPause(connectionId: string): Promise<void> {
-    await persistConnectionPause(connectionId, false);
-    const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
+  async function clearConnectionPause(connectionId: string, documents = villagesDocuments()): Promise<void> {
+    await persistConnectionPause(connectionId, false, undefined, documents);
+    const records = await documents.list(VILLAGES_PACKAGE_ID, KIND);
     for (const record of records) {
       const other = record.data as Job;
       if (other.connectionId === connectionId && other.connectionPaused)
-        await changeJob(record.id, (current) => ({ ...current!, connectionPaused: false }));
+        await changeJob(record.id, (current) => ({ ...current!, connectionPaused: false }), documents);
     }
     pausedConnections.delete(connectionId);
   }
@@ -489,24 +518,24 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     )
       throw new Obsolete("This work is no longer needed.");
   }
-  function launch(id: string): void {
+  function launch(id: string, documents = villagesDocuments()): void {
     if (stopped || running.has(id)) return;
     const logger = villagesLogger();
-    const task = runJob(id)
+    const task = runJob(id, documents)
       .catch((error) => {
         logger.warn("[villages] background work could not be saved: %s", String(error));
       })
       .finally(() => {
         ports.activityChanged?.();
         if (running.get(id) === task) running.delete(id);
-        if (relaunch.delete(id)) launch(id);
+        if (relaunch.delete(id)) launch(id, documents);
       });
     running.set(id, task);
   }
-  function queueBackgroundJob(work: BackgroundInput): Promise<void> {
+  function queueBackgroundJob(work: BackgroundInput, documents = villagesDocuments()): Promise<void> {
     const id = slotId(work);
     const existing = reserving.get(id);
-    if (existing) return existing.then(() => queueBackgroundJob(work));
+    if (existing) return existing.then(() => queueBackgroundJob(work, documents));
     // Reserve before the first read or write: all callers share one admission.
     const task = (async () => {
       if (stopped) {
@@ -514,62 +543,70 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Error("Letter processing is unavailable. Try again when Villages is running.");
         return;
       }
-      const previous = await readJob(id);
+      const previous = await readJob(id, documents);
       if (
         previous &&
         previous.id !== jobId(work) &&
         asRecord(work.input).foundingContract === 1 &&
         asRecord(previous.input).foundingContract !== 1
       ) {
-        await retainFoundingJob(previous);
+        await retainFoundingJob(previous, documents);
       }
-      await changeJob(id, (previous) => {
-        if (previous?.id === jobId(work)) {
-          if (work.finite && !previous.finite) previous.finite = true;
-          return previous;
-        }
-        if (work.expectedAttempt !== undefined && work.expectedAttempt !== (previous?.attempt ?? 0))
-          throw conflict("Background work changed. Refresh before requesting more resident activity.");
-        if (["resident-planning", "world-development"].includes(work.kind) && running.has(id) && previous)
-          return previous;
-        if (
-          ["personal-mail", "social-recovery"].includes(work.kind) &&
-          previous?.seed === work.seed &&
-          ["queued", "running"].includes(previous.status)
-        )
-          return previous;
-        if (
-          ["story", "resident-planning", "world-development"].includes(work.kind) &&
-          work.automaticDate &&
-          previous?.seed === work.seed &&
-          ["failed", "interrupted"].includes(previous.status)
-        )
-          return previous;
-        if (
-          work.automaticDate &&
-          !["story", "resident-planning", "world-development"].includes(work.kind) &&
-          previous?.seed === work.seed &&
-          previous?.highWaterDate &&
-          work.automaticDate <= previous.highWaterDate
-        )
-          return previous;
-        if (running.has(id) && previous) {
-          superseded.add(previous.id);
-          previous.replacement = structuredClone(work);
-          return previous;
-        }
-        return fresh(work, previous);
-      });
-      launch(id);
+      await changeJob(
+        id,
+        (previous) => {
+          if (previous?.id === jobId(work)) {
+            if (work.finite && !previous.finite) previous.finite = true;
+            return previous;
+          }
+          if (work.expectedAttempt !== undefined && work.expectedAttempt !== (previous?.attempt ?? 0))
+            throw conflict("Background work changed. Refresh before requesting more resident activity.");
+          if (["resident-planning", "world-development"].includes(work.kind) && running.has(id) && previous)
+            return previous;
+          if (
+            ["personal-mail", "social-recovery"].includes(work.kind) &&
+            previous?.seed === work.seed &&
+            ["queued", "running"].includes(previous.status)
+          )
+            return previous;
+          if (
+            ["story", "resident-planning", "world-development"].includes(work.kind) &&
+            work.automaticDate &&
+            previous?.seed === work.seed &&
+            ["failed", "interrupted"].includes(previous.status)
+          )
+            return previous;
+          if (
+            work.automaticDate &&
+            !["story", "resident-planning", "world-development"].includes(work.kind) &&
+            previous?.seed === work.seed &&
+            previous?.highWaterDate &&
+            work.automaticDate <= previous.highWaterDate
+          )
+            return previous;
+          if (running.has(id) && previous) {
+            superseded.add(previous.id);
+            previous.replacement = structuredClone(work);
+            return previous;
+          }
+          return fresh(work, previous);
+        },
+        documents,
+      );
+      launch(id, documents);
     })().finally(() => reserving.delete(id));
     reserving.set(id, task);
     return task;
   }
-  async function runJob(id: string): Promise<void> {
-    return withVillageClockWork(() => measurePipeline("background work", { jobId: id }, () => runMeasuredJob(id)));
+  async function runJob(id: string, documents: CapabilityDocumentStore): Promise<void> {
+    return withVillageClockWork(() =>
+      measurePipeline("background work", { jobId: id }, () => runMeasuredJob(id, documents)),
+    );
   }
-  async function runMeasuredJob(id: string): Promise<void> {
-    let job = await readJob(id);
+  async function runMeasuredJob(id: string, documents: CapabilityDocumentStore): Promise<void> {
+    const responses = backgroundResponseStore(documents);
+    const updateJob = (update: Parameters<typeof changeJob>[1]) => changeJob(id, update, documents);
+    let job = await readJob(id, documents);
     if (
       job &&
       (job.kind === "translation" ||
@@ -577,7 +614,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           typeof asRecord(asRecord(job.input).context).name === "string" &&
           !asRecord(asRecord(job.input).context).card))
     ) {
-      await changeJob(id, (current) => ({
+      await updateJob((current) => ({
         ...current!,
         status: "obsolete",
         error: "Legacy schedule translation and detailed Agenda generation are retired.",
@@ -586,14 +623,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       return;
     }
     if (job?.kind === "story") {
-      await retireStory(id);
+      await retireStory(id, documents);
       return;
     }
     if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
     const runOwner = owner;
     const recorded = await readForJob(job);
     if (recorded.backgroundReceipts[id] === job.id) {
-      await changeJob(id, (current) => ({
+      await updateJob((current) => ({
         ...current!,
         status: "completed",
         steps: [],
@@ -614,7 +651,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       (job.steps.some((step) => step.status === "running") ||
         Object.values(job.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching"))
     ) {
-      await changeJob(id, (current) => ({
+      await updateJob((current) => ({
         ...current!,
         status: "interrupted",
         error: "Generation was interrupted. This request may already have incurred costs.",
@@ -662,7 +699,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if ((!job!.finite || catchupBatchId(job!)) && !hasVillagePresence())
           throw new Paused("Waiting until Villages is visible.");
         if (pausedConnections.has(model.connectionId) && !job!.retrying) {
-          job = await changeJob(id, (current) => ({
+          job = await updateJob((current) => ({
             ...current!,
             connectionId: model.connectionId,
             connectionPaused: true,
@@ -701,13 +738,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           });
           ports.activityChanged?.();
         }
-        job = await changeJob(id, (current) => {
+        job = await updateJob((current) => {
           if (current?.id !== job!.id || superseded.has(current.id)) throw new Obsolete("This job was replaced.");
           if (current.steps[index]?.status === "running") throw new Paused("This request is already reserved.");
           current.status = "running";
           current.owner = runOwner;
           current.connectionId = model.connectionId;
           current.steps[index] = { key: options.checkpointId, fingerprint, status: "running" };
+          current.steps[index].responseClaim = backgroundResponseClaim(current, index);
           if (!catchupBatchId(job!)) current.requests++;
           return current;
         });
@@ -724,7 +762,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           outcome: "pending" as const,
           firstResponseMs: null,
         };
-        job = await changeJob(id, (current) => {
+        job = await updateJob((current) => {
           if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
             throw new Obsolete("Request timing ownership changed.");
           current.steps[index]!.timing = timing;
@@ -758,7 +796,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                   checkCurrent(job!, await readForJob(job!));
                   assertActive();
                   if (!hasVillagePresence()) throw new Paused("Waiting until Villages is visible.");
-                  job = await changeJob(id, (current) => {
+                  job = await updateJob((current) => {
                     if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
                       throw new Obsolete("Request admission ownership changed.");
                     current.requests++;
@@ -771,7 +809,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                     controller.signal.aborted ||
                     superseded.has(runJobId)
                   ) {
-                    job = await changeJob(id, (current) => {
+                    job = await updateJob((current) => {
                       if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
                         throw new Obsolete("Request admission ownership changed.");
                       current.requests = Math.max(0, current.requests - 1);
@@ -791,34 +829,17 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           response = await request;
         } catch (error) {
           if (error instanceof Paused || error instanceof Obsolete) throw error;
-          const receiptId = lateResponseId(job!, index);
-          const documents = villagesDocuments();
+          const lateResponses = backgroundResponseStore(documents);
+          const physicalJob = job!;
           retainLateProviderResponse(error, (value) =>
-            createDocumentMutator(() => documents)(
-              receiptId,
-              {
-                kind: "generation-response",
-                name: "Saved background response",
-                description: "Private raw provider evidence",
-                coerce: (raw) => asRecord(raw),
-                label: () => "Saved background response",
-              },
-              (receipt) => {
-                if (receipt.status) return false;
-                Object.assign(receipt, {
-                  status: "complete",
-                  jobId: runJobId,
-                  attempt: runAttempt,
-                  fingerprint,
-                  result: structuredClone(value),
-                });
-              },
-            ),
+            lateResponses
+              .publish(physicalJob, index, value as Awaited<ReturnType<BackgroundCompletion>>)
+              .then(() => {}),
           );
           assertActive();
           const connectionIssue = connectionFailureKind(error, !!options.responseFormat);
           const pause = connectionIssue === "configuration";
-          await changeJob(id, (current) => {
+          await updateJob((current) => {
             if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
               throw new Obsolete("Request outcome ownership changed.");
             assertActive();
@@ -833,7 +854,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             return current;
           });
           if (pause) {
-            await persistConnectionPause(model.connectionId, true, assertActive);
+            await persistConnectionPause(model.connectionId, true, assertActive, documents);
             assertActive();
             pausedConnections.add(model.connectionId);
           }
@@ -850,15 +871,18 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             requestedOutputTokens: maxTokens,
           });
         }
-        if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
         stage = "response-storage";
-        job = await changeJob(id, (current) => {
+        const savedResponse = await responses.publish(job!, index, response);
+        if (owner !== runOwner || stopped) throw new Paused("Background generation stopped.");
+        job = await updateJob((current) => {
           if (current?.id !== job!.id || current.owner !== runOwner) throw new Obsolete("This job was replaced.");
           current.steps[index] = {
             key: options.checkpointId,
             fingerprint,
             status: "completed",
-            response,
+            response: savedResponse.response,
+            responseRef: savedResponse.ref,
+            responseClaim: current.steps[index].responseClaim,
             timing: {
               ...hostTiming,
               hostFinishedAt: new Date().toISOString(),
@@ -867,20 +891,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             },
             ...(options.responseFormat ? { responseDiagnostics: responseDiagnostics(model, response, maxTokens) } : {}),
           };
-          const tokens =
-            response.usage?.totalTokens ??
-            (response.usage?.promptTokens !== undefined && response.usage?.completionTokens !== undefined
-              ? response.usage.promptTokens + response.usage.completionTokens
-              : undefined);
-          if (tokens !== undefined) current.tokens = (current.tokens ?? 0) + tokens;
-          else current.usageComplete = false;
+          countResponse(current, response);
           return current;
         });
         dispatched = false;
         stage = "generation";
         if (job!.retrying) {
           try {
-            await clearConnectionPause(model.connectionId);
+            await clearConnectionPause(model.connectionId, documents);
           } catch {
             throw new Paused("The response is saved, but connection recovery could not be saved.");
           }
@@ -914,7 +932,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           10_000 - Object.values(job!.optionalAttempts ?? {}).reduce((sum, attempt) => sum + attempt.elapsedMs, 0),
         );
         if (!allowance) return undefined;
-        job = await changeJob(id, (current) => {
+        job = await updateJob((current) => {
           assertOwner();
           if (
             !current ||
@@ -960,7 +978,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         assertOwner();
         checkCurrent(job!, await readForJob(job!));
         // Persistence/ownership errors propagate: they never authorize a System request.
-        job = await changeJob(id, (current) => {
+        job = await updateJob((current) => {
           assertOwner();
           if (
             !current ||
@@ -1000,7 +1018,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const expectedOwner = job!.owner;
       const value = key in (job!.settings ?? {}) ? job!.settings[key] : await create();
       assertOwner();
-      job = await changeJob(id, (current) => {
+      job = await updateJob((current) => {
         assertOwner();
         if (
           !current ||
@@ -1022,9 +1040,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         const result = await backgroundCalls.run(complete, () => handlers.get(job!.kind)!.generate(job!.input));
         if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
         stage = "storage";
-        job = await changeJob(id, (current) => ({ ...current!, result, hasResult: true }));
+        job = await updateJob((current) => ({ ...current!, result, hasResult: true }));
       }
-      if (job.retrying && pausedConnections.has(job.connectionId)) await clearConnectionPause(job.connectionId);
+      if (job.retrying && pausedConnections.has(job.connectionId))
+        await clearConnectionPause(job.connectionId, documents);
       stage = "application";
       let partialFailure: WorkFailure | undefined;
       await mutateForJob(job!, (state) => {
@@ -1036,7 +1055,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (!partialFailure) state.backgroundReceipts[id] = job!.id;
       });
       if (partialFailure) {
-        job = await changeJob(id, (current) => ({
+        job = await updateJob((current) => ({
           ...current!,
           partialResult: true,
           failedStep: lastIndex >= 0 ? lastIndex : null,
@@ -1047,7 +1066,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const appliedInput = job.input;
       const appliedFinite = job.finite;
       const wasRetry = job.retrying;
-      job = await changeJob(id, (current) => ({
+      job = await updateJob((current) => ({
         ...current!,
         completedCount: current!.steps.length,
         status: "completed",
@@ -1072,7 +1091,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (owner !== runOwner || stopped) return;
       if (isVillageClockError(error)) {
         await clockAdministration(() =>
-          changeJob(id, (current) => {
+          updateJob((current) => {
             if (!current) throw new Obsolete("This job was removed.");
             if (
               current.id !== runJobId ||
@@ -1097,7 +1116,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         paused = error instanceof Paused;
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 300);
       const failedInput = job.input;
-      job = await changeJob(id, (current) => {
+      job = await updateJob((current) => {
         if (
           !current ||
           current.id !== runJobId ||
@@ -1160,7 +1179,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     if (job.replacement && !stopped && owner === runOwner) {
       const replacement = job.replacement;
-      await changeJob(id, () => fresh(replacement, job));
+      await updateJob(() => fresh(replacement, job));
       superseded.delete(job.id);
       relaunch.add(id);
     }
@@ -1176,21 +1195,23 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
   }
   async function retryBackgroundJob(id: string, expectedAttempt: number, actionId: string): Promise<void> {
+    const documents = villagesDocuments();
     if (stopped) throw new Error("Background work is stopped.");
     if (recoveryError) {
-      await recoverBackgroundWork();
+      await recoverBackgroundWork(documents);
       recoveryError = false;
     }
     if (!/^villages-background-[a-f0-9]{64}$/.test(id) || !/^[a-zA-Z0-9-]{1,100}$/.test(actionId))
       throw badRequest("Invalid background retry.");
     // A newer validator may understand a previously rejected, purchased reply.
     // Recovery is pure and deliberate; an invalid reply still uses the normal retry path.
-    const foundPrior = await readJob(id);
+    const foundPrior = await readJob(id, documents);
     if (foundPrior?.kind === "story") {
-      await retireStory(id);
+      await retireStory(id, documents);
       throw conflict("The former feed generator is retired. This work cannot be retried.");
     }
-    const savedPrior = foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior) : foundPrior;
+    const savedPrior =
+      foundPrior && !running.has(id) ? await adoptLateResponses(id, foundPrior, documents) : foundPrior;
     let recovered: { result: unknown } | undefined;
     if (
       savedPrior &&
@@ -1204,100 +1225,118 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     // Apply a saved partial response before discarding its bad rows. A lost effect
     // acknowledgement must not cause valid, purchased answers to be regenerated.
-    await changeJob(id, (job) => {
-      if (!job) throw new Error("That background job no longer exists.");
-      if (job.retryActions.includes(actionId)) return job;
-      if (job.attempt !== expectedAttempt || !["failed", "interrupted", "paused"].includes(job.status))
-        throw conflict("That job changed. Refresh its status before retrying.");
-      if (running.has(id)) throw conflict("That job is still finishing.");
-      job.attemptHistory = [
-        ...(job.attemptHistory ?? []),
-        {
-          attempt: job.attempt,
-          requests: job.requests,
-          tokens: job.usageComplete ? job.tokens : null,
-          failure: job.failure,
-          steps: job.steps.map(({ key, status, timing, responseDiagnostics }) => ({
-            key,
-            status,
-            timing,
-            responseDiagnostics,
-          })),
-        },
-      ].slice(-8);
-      if (recovered && job.id === savedPrior?.id) {
-        job.result = recovered.result;
-        job.hasResult = true;
-      } else if (job.failedStep !== null) job.steps.splice(job.failedStep);
-      else if (job.steps.at(-1)?.status === "running") job.steps.pop();
-      job.failedStep = null;
-      if (job.partialResult) {
-        job.hasResult = false;
-        job.result = undefined;
-        job.partialResult = false;
-      }
-      job.failure = undefined;
-      job.failedAt = undefined;
-      job.attempt++;
-      job.owner = owner;
-      job.status = "queued";
-      job.error = "";
-      job.retrying = true;
-      job.finite = true;
-      job.retryActions = [...job.retryActions, actionId].slice(-32);
-      return job;
-    });
-    launch(id);
+    await changeJob(
+      id,
+      (job) => {
+        if (!job) throw new Error("That background job no longer exists.");
+        if (job.retryActions.includes(actionId)) return job;
+        if (job.attempt !== expectedAttempt || !["failed", "interrupted", "paused"].includes(job.status))
+          throw conflict("That job changed. Refresh its status before retrying.");
+        if (running.has(id)) throw conflict("That job is still finishing.");
+        job.attemptHistory = [
+          ...(job.attemptHistory ?? []),
+          {
+            attempt: job.attempt,
+            requests: job.requests,
+            tokens: job.usageComplete ? job.tokens : null,
+            failure: job.failure,
+            steps: job.steps.map(({ key, status, timing, responseDiagnostics }) => ({
+              key,
+              status,
+              timing,
+              responseDiagnostics,
+            })),
+          },
+        ].slice(-8);
+        if (recovered && job.id === savedPrior?.id) {
+          job.result = recovered.result;
+          job.hasResult = true;
+        } else if (job.failedStep !== null) job.steps.splice(job.failedStep);
+        else if (job.steps.at(-1)?.status === "running") job.steps.pop();
+        job.failedStep = null;
+        if (job.partialResult) {
+          job.hasResult = false;
+          job.result = undefined;
+          job.partialResult = false;
+        }
+        job.failure = undefined;
+        job.failedAt = undefined;
+        job.attempt++;
+        job.owner = owner;
+        job.status = "queued";
+        job.error = "";
+        job.retrying = true;
+        job.finite = true;
+        job.retryActions = [...job.retryActions, actionId].slice(-32);
+        return job;
+      },
+      documents,
+    );
+    launch(id, documents);
   }
-  async function retireStory(id: string): Promise<void> {
-    await changeJob(id, (job) => {
-      if (!job || job.kind !== "story" || job.status === "obsolete") return job;
-      return { ...job, status: "obsolete", error: "The former feed generator is retired.", replacement: undefined };
-    });
+  async function retireStory(id: string, documents = villagesDocuments()): Promise<void> {
+    await changeJob(
+      id,
+      (job) => {
+        if (!job || job.kind !== "story" || job.status === "obsolete") return job;
+        return { ...job, status: "obsolete", error: "The former feed generator is retired.", replacement: undefined };
+      },
+      documents,
+    );
   }
-  async function recoverBackgroundWork(): Promise<void> {
+  async function recoverBackgroundWork(documents = villagesDocuments()): Promise<void> {
     if (stopped) return;
+    const responses = backgroundResponseStore(documents);
     const recoveryOwner = owner;
-    const connections = await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-connection");
+    const connections = await documents.list(VILLAGES_PACKAGE_ID, "background-connection");
     if (stopped || owner !== recoveryOwner) return;
     for (const record of connections)
       if (typeof (record.data as any)?.connectionId === "string")
         pausedConnections.add((record.data as any).connectionId);
-    const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
+    const records = await documents.list(VILLAGES_PACKAGE_ID, KIND);
     for (const record of records) {
       if (stopped || owner !== recoveryOwner) return;
-      const job = await adoptLateResponses(record.id, record.data as Job);
+      validateBackgroundJobRecord(record);
+      const original = await responses.decode(record.data);
+      const interruptedDispatch =
+        original.owner !== owner &&
+        (original.steps.some((step) => step.status === "running") ||
+          Object.values(original.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching"));
+      const job = await adoptLateResponses(record.id, original, documents);
       if (job.kind === "story") {
-        await retireStory(record.id);
+        await retireStory(record.id, documents);
         continue;
       }
       if (job.kind === "translation" && !["completed", "obsolete"].includes(job.status)) {
-        await changeJob(record.id, (current) => ({
-          ...current!,
-          status: "obsolete",
-          error: "Schedule translation is retired.",
-          replacement: undefined,
-        }));
+        await changeJob(
+          record.id,
+          (current) => ({
+            ...current!,
+            status: "obsolete",
+            error: "Schedule translation is retired.",
+            replacement: undefined,
+          }),
+          documents,
+        );
         continue;
       }
       if (job.connectionPaused) pausedConnections.add(job.connectionId);
-      if (
-        job.owner !== owner &&
-        (job.steps?.some((step) => step.status === "running") ||
-          Object.values(job.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching")) &&
-        !["completed", "obsolete"].includes(job.status)
-      ) {
-        await changeJob(record.id, (current) => ({
-          ...current!,
-          status: "interrupted",
-          owner,
-          error: "Generation was interrupted. This request may already have incurred costs.",
-          failure: {
-            cause: "unknown_request",
-            stage: "recovery",
-            message: "Generation was interrupted. This request may already have incurred costs.",
-          },
-        }));
+      if (interruptedDispatch && !["completed", "obsolete"].includes(job.status)) {
+        await changeJob(
+          record.id,
+          (current) => ({
+            ...current!,
+            status: "interrupted",
+            owner,
+            error: "Generation was interrupted. This request may already have incurred costs.",
+            failure: {
+              cause: "unknown_request",
+              stage: "recovery",
+              message: "Generation was interrupted. This request may already have incurred costs.",
+            },
+          }),
+          documents,
+        );
       } else if (
         (asRecord(job.input).foundingContract === 1 ||
           (job.kind === "agenda" &&
@@ -1306,17 +1345,22 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         !job.hasResult &&
         ["queued", "paused", "running"].includes(job.status)
       ) {
-        await changeJob(record.id, (current) => ({
-          ...current!,
-          status: "interrupted",
-          owner,
-          error: "Preparation interrupted. Retry deliberately.",
-        }));
-      } else if (["queued", "paused", "running"].includes(job.status)) launch(record.id);
+        await changeJob(
+          record.id,
+          (current) => ({
+            ...current!,
+            status: "interrupted",
+            owner,
+            error: "Preparation interrupted. Retry deliberately.",
+          }),
+          documents,
+        );
+      } else if (["queued", "paused", "running"].includes(job.status)) launch(record.id, documents);
     }
   }
   async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
-    const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
+    const documents = villagesDocuments();
+    const records = await documents.list(VILLAGES_PACKAGE_ID, KIND);
     const state = await (ports.readVillageAuthority ?? readVillageState)();
     const summaries: BackgroundSummary[] = [];
     const discardedReceipts: string[] = [];
@@ -1324,6 +1368,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     for (const record of records) {
       // Unknown evidence is retained without making every other summary unavailable.
       if (!isBackgroundRecoveryRecord(record.data)) continue;
+      try {
+        validateBackgroundJobRecord(record);
+      } catch {
+        continue;
+      }
       const job = record.data;
       const retired =
         job?.kind !== "resident-planning" &&
@@ -1343,7 +1392,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         // Explicit Reset ends the prior world's ownership; a removed subject alone does not.
         const disposable = job.seed !== state.seed || ["completed", "failed", "abandoned"].includes(recovery);
         if (disposable && removed++ < 8 && !running.has(record.id))
-          if (await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
+          if (await documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
             const subjectGone =
               job?.kind !== "resident-planning" &&
               job?.kind !== "world-development" &&
@@ -1411,11 +1460,19 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     while (reserving.size || running.size) await Promise.all([...reserving.values(), ...running.values()]);
   }
   async function previewBackgroundJobs(_defaultBatchSize?: number) {
-    const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, KIND);
-    return records.flatMap((record) => {
+    const documents = villagesDocuments(),
+      responses = backgroundResponseStore(documents);
+    const records = await documents.list(VILLAGES_PACKAGE_ID, KIND);
+    const previews = [];
+    for (const record of records) {
       const job = record.data as Job;
-      if (!job || !Array.isArray(job.steps)) return [];
-      const recovered = recoverSavedResult(job);
+      validateBackgroundJobRecord(record);
+      const recovered =
+        !job.hasResult &&
+        ["failed", "interrupted", "paused"].includes(job.status) &&
+        handlers.get(job.kind)?.recoverSavedResult
+          ? recoverSavedResult(await responses.decode(job))
+          : undefined;
       const completedSteps =
         job.completedCount ||
         job.steps.filter((step, i) => step.status === "completed" && (i !== job.failedStep || recovered)).length;
@@ -1423,32 +1480,31 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const blocks = Array.isArray(context.blocks) ? context.blocks.length : 0;
       const planned =
         job.kind === "agenda" ? agendaRequestCount(VILLAGE_WEEKDAYS) : job.kind === "translation" ? 0 : null;
-      return [
-        {
-          id: record.id,
-          seed: job.seed,
-          kind: job.kind,
-          subjectId: job.subjectId,
-          status: job.status,
-          label: job.label,
-          input: job.input,
-          settings: job.settings ?? {},
-          completedSteps,
-          remainingRequests:
-            ["completed", "obsolete"].includes(job.status) || job.hasResult || recovered
-              ? 0
-              : planned === null
-                ? null
-                : remainingRequests(planned, completedSteps),
-          cause: job.finite
-            ? "Player-requested generation"
-            : job.kind === "translation"
-              ? "Deprecated translation: no new requests"
-              : "Automatic: village time or resident agenda update",
-          remainingBlocks: job.kind === "translation" ? blocks : null,
-        },
-      ];
-    });
+      previews.push({
+        id: record.id,
+        seed: job.seed,
+        kind: job.kind,
+        subjectId: job.subjectId,
+        status: job.status,
+        label: job.label,
+        input: job.input,
+        settings: job.settings ?? {},
+        completedSteps,
+        remainingRequests:
+          ["completed", "obsolete"].includes(job.status) || job.hasResult || recovered
+            ? 0
+            : planned === null
+              ? null
+              : remainingRequests(planned, completedSteps),
+        cause: job.finite
+          ? "Player-requested generation"
+          : job.kind === "translation"
+            ? "Deprecated translation: no new requests"
+            : "Automatic: village time or resident agenda update",
+        remainingBlocks: job.kind === "translation" ? blocks : null,
+      });
+    }
+    return previews;
   }
   return {
     cancelReturnCatchup,
@@ -1456,7 +1512,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     retireLegacyFounding,
     backgroundJobSnapshot: (kind: BackgroundKind, subjectId: string) => readJob(slotId({ kind, subjectId })),
     backgroundLegacyFounding: async (subjectId: string, seed: string, revision: string) => {
-      const current = await readJob(slotId({ kind: "agenda", subjectId }));
+      const documents = villagesDocuments(),
+        responses = backgroundResponseStore(documents);
+      const current = await readJob(slotId({ kind: "agenda", subjectId }), documents);
       if (
         current?.seed === seed &&
         current.status !== "obsolete" &&
@@ -1464,8 +1522,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         asRecord(current.input).foundingContract !== 1
       )
         return current;
-      const rows = await villagesDocuments().list(VILLAGES_PACKAGE_ID, "background-history");
-      return (
+      const rows = await documents.list(VILLAGES_PACKAGE_ID, "background-history");
+      const saved =
         rows
           .map((row) => row.data as Job)
           .sort((a, b) => b.attempt - a.attempt)
@@ -1476,8 +1534,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               job.subjectId === subjectId &&
               job.revision === revision &&
               asRecord(job.input).foundingContract !== 1,
-          ) ?? null
-      );
+          ) ?? null;
+      if (saved) validateBackgroundJobRecord(rows.find((row) => row.data === saved)!);
+      return saved ? responses.decode(saved) : null;
     },
     backgroundStatus,
     hasVillagePresence,

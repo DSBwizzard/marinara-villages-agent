@@ -589,7 +589,7 @@ async function main() {
     const interrupted = await summary("shutdown");
     await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-shutdown");
     await settleBackgroundWork();
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 1, "deliberate recovery reuses the reply saved after shutdown");
 
     await reset();
     await queueBackgroundJob(work("saved", ["saved"]));

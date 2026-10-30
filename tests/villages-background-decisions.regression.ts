@@ -59,7 +59,7 @@ function fixture(
     model: "synthetic",
     chatComplete: async () => {
       systemCalls++;
-      return { content: "system", usage: { totalTokens: 1 } };
+      return { content: "system", finishReason: "stop", usage: { totalTokens: 1 } };
     },
   };
   const service = createBackgroundWork({

@@ -53,6 +53,11 @@ import {
 } from "../../adapters/storage/relationship-payload-store.js";
 import { createRepairStorage, repairStorageId } from "./repair-storage.js";
 import { readSceneResponseReceipt, sceneResponseReceiptId } from "../../adapters/storage/scene-response-receipts.js";
+import {
+  validateBackgroundResponse,
+  validateBackgroundResponseOwners,
+  validateBackgroundJobRecord,
+} from "../../adapters/storage/background-responses.js";
 
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const PACKAGE = "villages",
@@ -299,7 +304,10 @@ export async function collectRetainedStorage(gate: RepairGate) {
       if (Object.hasOwn(value.history, "writeRefs")) await writes(value.history.writeRefs, view, value.history);
     }
     async function sourceOwners(row: RepairDocument, view: Scope) {
-      if (row.kind === "village") {
+      if (["background-work", "background-history"].includes(row.kind)) {
+        validateBackgroundJobRecord(row);
+        for (const id of await validateBackgroundResponseOwners(row.data, view.lookup)) marked.add(id);
+      } else if (row.kind === "village") {
         memoryObject(row.data);
         memoryRequire(
           row.id === "villages-village" &&
@@ -401,6 +409,10 @@ export async function collectRetainedStorage(gate: RepairGate) {
     const physical = scope();
     for (const row of await listed("generation-response")) {
       memoryObject(row.data);
+      if (row.data.purpose === "background") {
+        validateBackgroundResponse(row);
+        continue;
+      }
       if (row.data.purpose !== "scene") {
         memoryRequire(
           row.data.purpose === "standalone-generation" ||
@@ -445,6 +457,8 @@ export async function collectRetainedStorage(gate: RepairGate) {
       await sourceOwners(row, physical);
     }
     for (const row of await listed("venue-visit")) await sourceOwners(row, physical);
+    for (const kind of ["background-work", "background-history"])
+      for (const row of await listed(kind)) await sourceOwners(row, physical);
     const active = await readActiveSceneOwner(documents);
     if (active.scene) await sourceOwners(active.scene, physical);
     if (root) {

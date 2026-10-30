@@ -7,6 +7,8 @@ import {
 } from "../packages/villages/src/server/domain/rules/work-recovery.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
+import { authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 
 function job(patch: Partial<Job> = {}): Job {
   return {
@@ -92,14 +94,20 @@ assert.equal(workRecoveryState({ ...terminal, uncertain: true }), "uncertain");
 const state = defaultVillageState();
 state.seed = "retention";
 const rows = new Map<string, any>();
-function save(id: string, patch: Partial<Job> = {}) {
+const aliases = new Map<string, string>();
+const remainingJobs = () =>
+  [...rows.entries()].filter(([, row]) => row.kind === "background-work").map(([id]) => aliases.get(id) ?? id);
+function save(alias: string, patch: Partial<Job> = {}) {
+  const data = authorBackgroundFixture(rows, job({ id: alias, subjectId: alias, ...patch })) as Job;
+  const id = "villages-background-" + backgroundRevision([data.kind, data.subjectId]);
+  aliases.set(id, alias);
   rows.set(id, {
     id,
     packageId: "villages",
     kind: "background-work",
     revision: 1,
     updatedAt: "2000-01-01T00:00:00.000Z",
-    data: job({ id, ...patch }),
+    data,
   });
 }
 save("reply", { status: "obsolete", steps: [savedReply] });
@@ -150,25 +158,22 @@ const background = createBackgroundWork({
 await background.backgroundWorkSummaries();
 await background.backgroundWorkSummaries();
 assert.equal(reads, 2);
-assert.deepEqual(
-  [...rows.keys()],
-  [
-    "reply",
-    "partial",
-    "uncertain",
-    "paused",
-    "malformed",
-    "empty-object",
-    "malformed-step",
-    "malformed-steps",
-    "malformed-optional",
-    "array-discriminant",
-  ],
-);
+assert.deepEqual(remainingJobs(), [
+  "reply",
+  "partial",
+  "uncertain",
+  "paused",
+  "malformed",
+  "empty-object",
+  "malformed-step",
+  "malformed-steps",
+  "malformed-optional",
+  "array-discriminant",
+]);
 state.seed = "explicit-reset";
 await background.backgroundWorkSummaries();
 assert.deepEqual(
-  [...rows.keys()],
+  remainingJobs(),
   ["malformed", "empty-object", "malformed-step", "malformed-steps", "malformed-optional", "array-discriminant"],
   "Explicit Reset releases known prior-world records; corrupt ownership remains protected.",
 );

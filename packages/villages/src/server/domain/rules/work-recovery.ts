@@ -54,6 +54,7 @@ export function isBackgroundRecoveryRecord(value: unknown): value is Job {
         typeof step.status === "string" &&
         ["running", "completed"].includes(step.status) &&
         (step.response == null || record(step.response)) &&
+        (step.responseRef === undefined || record(step.responseRef)) &&
         (step.timing === undefined ||
           (record(step.timing) &&
             typeof step.timing.outcome === "string" &&
@@ -88,14 +89,19 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
     pending,
     uncertain:
       !pending &&
-      (steps.some((step) => step.status === "running" || (step.timing?.outcome === "unknown" && !step.response)) ||
+      (steps.some(
+        (step) =>
+          step.status === "running" || (step.timing?.outcome === "unknown" && !step.response && !step.responseRef),
+      ) ||
         optional.some((attempt) => ["dispatching", "unknown"].includes(attempt.status)) ||
-        (job.failure?.cause === "unknown_request" && !job.hasResult && !steps.some((step) => step.response))),
+        (job.failure?.cause === "unknown_request" &&
+          !job.hasResult &&
+          !steps.some((step) => step.response || step.responseRef))),
     savedWork:
       !!job.hasResult ||
       !!job.partialResult ||
       job.result !== undefined ||
-      steps.some((step) => step.response != null) ||
+      steps.some((step) => step.response != null || step.responseRef != null) ||
       optional.some((attempt) => attempt.result !== undefined),
     completed: job.status === "completed",
     // Obsolete is a scheduling label, not proof that every external callback/effect was reconciled.

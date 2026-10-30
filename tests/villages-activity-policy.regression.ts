@@ -150,7 +150,7 @@ const model: any = {
   model: "fixture",
   chatComplete: async () => {
     calls++;
-    return { content: "ok" };
+    return { content: "ok", finishReason: "stop" };
   },
 };
 const service = createBackgroundWork({

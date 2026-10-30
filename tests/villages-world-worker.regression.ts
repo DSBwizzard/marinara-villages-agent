@@ -53,13 +53,14 @@ const model: any = {
     requests++;
     if (requests % 2)
       return {
+        finishReason: "stop",
         content: JSON.stringify({
           quiet: false,
           proposal: { occurrence: "Drizzle collects beneath a window.", reason: "Changing harbor weather." },
         }),
       };
     if (failApply) state.narrativeConsequence = "gentle";
-    return { content: JSON.stringify({ consistent: true, development: proposal }) };
+    return { content: JSON.stringify({ consistent: true, development: proposal }), finishReason: "stop" };
   },
 };
 let documents: any;
