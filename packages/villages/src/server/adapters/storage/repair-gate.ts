@@ -115,7 +115,20 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
           throw conflict("The repair recovery record is invalid.");
         controlRevision = row.revision;
         epoch = saved.epoch;
-        if (saved.pending) await replay({ ...saved.pending, writes: decodeRepairWrites(saved.pending.writes) });
+        if (Object.hasOwn(saved, "pending")) {
+          const pending = saved.pending;
+          if (
+            !pending ||
+            typeof pending !== "object" ||
+            Array.isArray(pending) ||
+            Object.getPrototypeOf(pending) !== Object.prototype ||
+            typeof pending.id !== "string" ||
+            !pending.id.trim() ||
+            !Object.hasOwn(pending, "writes")
+          )
+            throw conflict("The repair recovery record is invalid.");
+          await replay({ id: pending.id, writes: decodeRepairWrites(pending.writes) });
+        }
       })().catch((error) => {
         ready = undefined;
         throw error;

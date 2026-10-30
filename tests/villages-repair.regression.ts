@@ -662,6 +662,14 @@ await runCase("repair/journal-integrity", async () => {
     "Validate the entire journal before its first effect.",
   );
   assert.ok(f.rows.get("villages-repair-control").data.pending, "Malformed recovery is held rather than discarded.");
+  for (const pending of [false, 0, null, { writes: [] }, { id: "", writes: [] }, { id: "missing-writes" }]) {
+    const control = f.rows.get("villages-repair-control");
+    control.data = { version: 2, epoch: 1, pending };
+    const saved = structuredClone(control);
+    f.reopen();
+    await assert.rejects(f.read(), /repair recovery record is invalid/);
+    assert.deepEqual(f.rows.get(control.id), saved, "Malformed outer journals remain held byte-for-byte.");
+  }
 
   const reviewFixture = await fixture();
   const review = await reviewFixture.prepare(
