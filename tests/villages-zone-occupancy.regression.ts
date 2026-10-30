@@ -605,13 +605,16 @@ assert.equal(paint.description, "A yellow motorcycle.", "closing never replays a
   state.relationshipContext.receipts.friend = {
     id: "friend",
     sceneId: saved.id,
+    submissionId: "friendship-turn",
     fromId: ids[0],
     toId: "player",
     beforeRevision: 0,
-    sceneAfter: { ...neutralRelationship(ids[0], "player"), connection: "Close friends", revision: 1 },
-    liveAfter: { ...neutralRelationship(ids[0], "player"), connection: "Close friends", revision: 1 },
+    sceneBeforeRevision: 0,
+    sequence: ++state.relationshipContext.eventSequence,
+    liveAfter: { connection: "Close friends", stance: "", expectations: [], concerns: [], records: [] },
     at: stamp,
   } as any;
+  saved.submissions.push({ id: "friendship-turn" } as any);
   assert.equal(contactCanEnter(state, venue, "b", "player", saved), false, "Entry still requires explicit permission");
 }
 

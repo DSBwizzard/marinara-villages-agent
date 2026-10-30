@@ -87,7 +87,15 @@ export function contactPosition(scene: VenueScene, characterId: string): string 
 export function sceneAccessContext(
   scene: Pick<
     VenueScene,
-    "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId" | "continuity" | "villageSeed"
+    | "id"
+    | "startedAt"
+    | "sceneAttendance"
+    | "accompanying"
+    | "departedIds"
+    | "zoneId"
+    | "continuity"
+    | "villageSeed"
+    | "submissions"
   >,
   state: VillageState,
 ): AccessContext {
