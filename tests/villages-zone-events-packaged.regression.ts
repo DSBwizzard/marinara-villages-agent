@@ -223,6 +223,9 @@ const model = {
       const response = intent
         ? semanticIntentAnswer
         : {
+            ...(Object.hasOwn(packet.input, "narrativeGrant")
+              ? { narrativeIntroduction: { status: "quiet", development: null } }
+              : {}),
             halt: { reason: "none", quote: "", appointments: [] },
             immediateResidentMoves: [],
             ...semanticExchangeAnswer,

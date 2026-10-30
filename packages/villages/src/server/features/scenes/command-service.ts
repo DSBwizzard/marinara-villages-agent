@@ -60,6 +60,7 @@ import {
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
+import { provisionalSceneNarrative } from "../../domain/rules/scene-narrative-effects.js";
 import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
 import { captureSceneLayout, sceneLayoutVenue } from "../../domain/rules/scene-layout.js";
 import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
@@ -126,6 +127,7 @@ import { acousticInstructions } from "./acoustic-prompt.js";
 import { interpretAttention } from "./attention-interpretation.js";
 import { type SceneReply } from "./writing.js";
 export interface SceneCommandPorts {
+  sceneNarrative?: import("./scene-narrative-service.js").SceneNarrative;
   applySavedStartingTies?: () => Promise<void>;
   withVillageSceneAcceptance?: typeof import("../world/village-store.js").withVillageSceneAcceptance;
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
@@ -210,6 +212,7 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  sceneNarrative,
   applySavedStartingTies,
   withVillageSceneAcceptance,
   interpretRoomDraft,
@@ -1261,7 +1264,7 @@ export function createSceneCommands({
             : {
                 occurrenceVersion: 1,
                 ...(admission.semanticVersion === 2
-                  ? { sceneBoundaryVersion: 1, chosenAt: villageNow().toISOString() }
+                  ? { sceneBoundaryVersion: 1, narrativeIntroductionVersion: 1, chosenAt: villageNow().toISOString() }
                   : {}),
                 writingContractVersion: 3,
                 castLimitVersion: 1,
@@ -1314,6 +1317,7 @@ export function createSceneCommands({
     if (session.status !== "opening") {
       const saved = session.submissions.find((row) => row.id === "greeting");
       if (saved?.semanticProvenance?.version === 2 && !saved.semanticReady) {
+        await sceneNarrative?.settle(session, saved.narrativeSource);
         await processSavedExchange(id, saved.id);
         await applyVenueRequests(session, saved);
         await settleSemanticAuthority(session, saved);
@@ -1349,6 +1353,8 @@ export function createSceneCommands({
     if (session.openingIntroductionResidentId && reply.openingSignal?.kind !== "pitch")
       throw conflict("The introduction is incomplete. Retry or leave and return.");
     validateCurrentRoomInvitation(reply, greetingVillage);
+    if (reply.narrativeSource?.development)
+      provisionalSceneNarrative(greetingVillage, greetingVillage, reply.narrativeSource);
     const greeted = await changeSession(id, (state) => {
       signal.throwIfAborted();
       if (state.status !== "opening") return;
@@ -1385,6 +1391,7 @@ export function createSceneCommands({
           wishProposalError: wishes.error,
           wishContexts: reply.wishContexts,
           semanticProvenance: reply.semanticProvenance,
+          narrativeSource: reply.narrativeSource,
           physicalContext: reply.physicalContext,
           ...(reply.placeUpdate
             ? {
@@ -1461,6 +1468,7 @@ export function createSceneCommands({
       state.status = "active";
     });
     if (reply.semanticProvenance?.version === 2) {
+      await sceneNarrative?.settle(greeted, reply.narrativeSource);
       const greeting = greeted.submissions.find((row) => row.id === "greeting");
       if (greeting) await applySavedAccessEvents(greeted, greeting);
     }
@@ -1831,6 +1839,13 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       : undefined;
     const payload = {
       ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.narrativeIntroductionVersion === 1
+          ? { narrativeIntroductionVersion: 1 }
+          : {}
+        : !prior && scene.semanticVersion === 2
+          ? { narrativeIntroductionVersion: 1 }
+          : {}),
+      ...(scene.operation?.id === input.submissionId
         ? scene.operation.input.sceneBoundaryVersion === 1
           ? { sceneBoundaryVersion: 1 }
           : {}
@@ -2063,6 +2078,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         throw conflict("That submission ID belongs to a different line.");
       if (prior.movement) return { session, verdict: null, action: null, recordEvents: [] };
+      await sceneNarrative?.settle(session, prior.narrativeSource);
       try {
         await processSavedExchange(session.id, prior.id);
       } catch (error) {
@@ -2362,6 +2378,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           });
         if (saved.operation) saved.operation.turnOutcome = outcome;
       });
+      await sceneNarrative?.retire(session, reply?.narrativeSource?.grant);
       return unavailableTurnResult(updated, input.submissionId);
     };
     let reply: SceneReply;
@@ -2488,6 +2505,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       );
     }
     const commitTurn = async (current: VillageState) => {
+      if (reply.narrativeSource?.development) provisionalSceneNarrative(current, current, reply.narrativeSource);
       if (venueOperationInput()?.preservationVersion === 1 && sceneHaltWorldConflict(session, current, reply))
         throw new HaltedSceneTurn("halt-world");
       applicationVillage = current;
@@ -2671,6 +2689,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           wishProposalError: wishChanges.error,
           wishContexts: reply.wishContexts,
           semanticProvenance: reply.semanticProvenance,
+          narrativeSource: reply.narrativeSource,
           semanticPlayerMoves: reply.semanticPlayerMoves,
           ...(session.semanticVersion === 2 && reply.sceneEnded ? { semanticConclude: true } : {}),
           physicalContext: reply.physicalContext,
@@ -2758,6 +2777,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       throw error;
     }
     const submission = updated.submissions.find((entry) => entry.id === input.submissionId)!;
+    await sceneNarrative?.settle(updated, submission.narrativeSource);
     // Settle witnessed policy/boundary changes before this reply's visit or standing grants.
     if (reply.roomInterpretation) await recordRoomAccessEvents(updated, reply.roomInterpretation);
     try {
@@ -3348,6 +3368,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
 
   async function settleSemanticAuthority(scene: VenueScene, turn: VenueSubmission, allowProjectRecovery = true) {
     if (turn.semanticProvenance?.version !== 2) return;
+    await sceneNarrative?.settle(scene, turn.narrativeSource);
     const retainStandingAccess = async () => {
       const authority = await readVillageState();
       const receipts = Object.values(authority.exchangeReceipts).filter(
@@ -3866,6 +3887,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     await cancelVenueOperation(id);
     const session = await requireLiveVenueSession(id);
     work.abortGreeting(id);
+    await sceneNarrative?.discard(session);
     await changeSession(id, (state) => {
       if (state.status === "closed") return;
       state.status = "closed";

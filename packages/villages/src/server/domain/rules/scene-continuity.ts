@@ -2,6 +2,7 @@ import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
 import { relationshipKey } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
+import { extendSceneNarrative } from "./scene-narrative-effects.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
@@ -223,6 +224,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
   );
   for (const turn of scene.submissions) {
     const event = physical.get(`venue-chat:${scene.id}:${turn.id}`);
+    extendSceneNarrative(view, current, scene, turn);
     const change = event?.actionReceipt;
     const venue = view.venues.find((row) => row.id === scene.placeId);
     if (!change || !venue) continue;

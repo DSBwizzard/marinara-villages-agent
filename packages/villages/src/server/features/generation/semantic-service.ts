@@ -1,5 +1,8 @@
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
+import { SCENE_DEVELOPMENT_REVIEW, SCENE_DEVELOPMENT_SCHEMA } from "../../domain/rules/narrative-prompts.js";
+import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
+import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
@@ -79,6 +82,17 @@ const SYSTEM_CURRENT_SCENE =
 const INTENT_TIMELINE_RULE =
   "Only movement rows carry zoneId; omit it on speech, thought, action and context rows. The current Zone is context.zoneId. Resolved timelines must cover the entire input in source order, including every clause and punctuation. Only whitespace and surrounding quotation marks may fall between spans. Keep roleplay wrappers inside action/context spans and internal apostrophes inside words. Use context rows for other source text; never drop a clause. ";
 
+function semanticCheckpointKey(stage: string, identity: Record<string, unknown>): string {
+  return `semantic-v2:${stage}:${semanticHash([
+    1,
+    identity.residentActionsOmitted === true,
+    identity.message,
+    identity.evidence,
+    ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []),
+    ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : []),
+  ])}`;
+}
+
 export function createSemanticService(ports: SemanticPorts) {
   async function ask<Input, Result>(
     stage: string,
@@ -91,7 +105,7 @@ export function createSemanticService(ports: SemanticPorts) {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
-    const key = `semantic-v2:${stage}:${semanticHash([1, identity.residentActionsOmitted === true, identity.message, identity.evidence, ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : [])])}`;
+    const key = semanticCheckpointKey(stage, identity);
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
@@ -409,6 +423,7 @@ export function createSemanticService(ports: SemanticPorts) {
     prepared: SemanticIntent | null,
     residentActions?: ResidentAccessAction[],
     residentActionsOmitted = false,
+    narrativeGrant?: NarrativeAdmission | null,
   ): Promise<SemanticExchange> {
     const state = await ports.readVillageState();
     const sceneState = sceneContinuityView(state, scene);
@@ -437,12 +452,17 @@ export function createSemanticService(ports: SemanticPorts) {
         evidence,
         prepared,
         context,
+        ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
       (residentActionsOmitted
         ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
         : "") +
+        (narrativeGrant !== undefined
+          ? SCENE_DEVELOPMENT_REVIEW +
+            (narrativeGrant ? " Environmental development schema and bounds: " + SCENE_DEVELOPMENT_SCHEMA : "")
+          : "") +
         (residentActions
           ? (actionContractV2
               ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
@@ -599,6 +619,13 @@ export function createSemanticService(ports: SemanticPorts) {
           };
         }
         const effects = readSemanticEffects(raw, hash);
+        if (savedInput.narrativeGrant !== undefined)
+          effects.narrativeDevelopment = readSceneNarrativeReview(
+            raw.narrativeIntroduction,
+            savedInput.narrativeGrant,
+            lines,
+            raw.action,
+          );
         if (savedInput.context.opening) {
           const opening = savedInput.context.opening;
           const signalRequired = Boolean(opening.proposal || opening.firstUse);
@@ -860,7 +887,7 @@ export function createSemanticService(ports: SemanticPorts) {
         return {
           version: 2,
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: `semantic-v2:exchange:${semanticHash([1, savedInput.residentActionsOmitted === true, savedInput.message, savedInput.evidence, ...(savedInput.residentActions ? [savedInput.residentActions] : [])])}`,
+          checkpointKey: semanticCheckpointKey("exchange", savedInput),
           sourceHash: hash,
           authority,
           effects,

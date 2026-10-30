@@ -103,7 +103,16 @@ export type NarrativeReceipt = {
   physical: (PlaceAfter & { venueId: string; zoneId: string; appearanceChanged: boolean })[];
 };
 export type NarrativeState = {
-  claims?: { id: string; attemptId: string; venueId: string; zoneId: string; fingerprint: string; batchId?: string }[];
+  claims?: {
+    id: string;
+    attemptId: string;
+    venueId: string;
+    zoneId: string;
+    fingerprint: string;
+    batchId?: string;
+    sceneId?: string;
+    submissionId?: string;
+  }[];
   version: 1;
   adoptedAt: string;
   revision: number;

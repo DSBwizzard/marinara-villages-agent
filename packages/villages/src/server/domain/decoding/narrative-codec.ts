@@ -83,6 +83,10 @@ export function readNarrativeState(value: unknown): NarrativeState | undefined {
       string(c.attemptId, 600);
       string(c.fingerprint, 128);
       if (c.batchId !== undefined) string(c.batchId, 100);
+      if (c.sceneId !== undefined) {
+        string(c.sceneId, 300);
+        string(c.submissionId, 300);
+      }
     }
   time(r.adoptedAt);
   number(r.revision);

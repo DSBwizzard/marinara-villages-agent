@@ -584,6 +584,21 @@ export function createRepairService(ports: RepairPorts) {
       );
     } else if (kind === "narrative-claim") {
       const claim = (await repository.readAuthority()).narrative?.claims?.find((row) => row.id === id);
+      if (claim?.sceneId) {
+        const scene = (await documents.list(PKG, "venue-visit")).find(
+          (row) => (row.data as { id?: string }).id === claim.sceneId,
+        )?.data as import("../../domain/models/scene-model.js").VenueScene | undefined;
+        if (
+          !scene ||
+          scene.operation?.status === "running" ||
+          scene.submissions.some((turn) => turn.id === claim.submissionId)
+        )
+          throw conflict(
+            "Recover the saved Scene outcome before rejecting this source. Uncommitted settled requests can be rejected here.",
+          );
+        await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at));
+        return;
+      }
       const job = (await documents.list(PKG, "background-work")).find(
         (row) => (row.data as { id?: string }).id === claim?.attemptId,
       );

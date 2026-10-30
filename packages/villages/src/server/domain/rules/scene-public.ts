@@ -118,6 +118,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "semanticConclude",
             "semanticPlayerMoves",
             "physicalContext",
+            "narrativeSource",
             "semanticContinuedDomains",
             "semanticIntent",
             "semanticProvenance",

@@ -3,6 +3,7 @@ import type { VillageState, VillageVenue } from "../models/world.js";
 import { asRecord } from "./coerce.js";
 import { structuralShape as shape } from "./project-structure.js";
 import { sceneContinuityView } from "./scene-continuity.js";
+import { provisionalSceneNarrative, type SceneNarrativeSource } from "./scene-narrative-effects.js";
 import { wishFingerprint } from "./social-wishes.js";
 import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
@@ -15,7 +16,16 @@ const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState, value: unknown): boolean {
   if (scene.villageSeed && scene.villageSeed !== current.seed) return true;
   const reply = asRecord(value);
-  const captured = sceneContinuityView(current, scene, false);
+  let captured = sceneContinuityView(current, scene, false);
+  if (reply.narrativeSource) {
+    try {
+      const source = reply.narrativeSource as SceneNarrativeSource;
+      captured = provisionalSceneNarrative(captured, current, source);
+      current = provisionalSceneNarrative(current, current, source);
+    } catch {
+      return true;
+    }
+  }
   const liveVenue = current.venues.find((row) => row.id === scene.placeId);
   const oldVenue = captured.venues.find((row) => row.id === scene.placeId);
   const created = new Set<string>();
