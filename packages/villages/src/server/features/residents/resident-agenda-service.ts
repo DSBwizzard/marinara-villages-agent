@@ -26,6 +26,7 @@ import {
 } from "../../domain/rules/owned-routine.js";
 import { remapVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
+import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
 import {
   deriveVillageMoment,
@@ -275,8 +276,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     villager.agenda = {
       ...agenda,
       plannedDays: Object.fromEntries(
-        Object.entries(previous?.plannedDays ?? {}).filter(([key]) =>
-          (previous?.socialActivities ?? []).some((entry) => entry.dateKey === key),
+        Object.entries(previous?.plannedDays ?? {}).filter(
+          ([key]) =>
+            (previous?.socialActivities ?? []).some((entry) => entry.dateKey === key) ||
+            (previous?.reservations ?? []).some((entry) => entry.dateKey === key),
         ),
       ),
       socialActivities: previous?.socialActivities ?? [],
@@ -298,6 +301,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       planRoutineDays(state, now);
       activateVillagerDay(villager, now, state);
     }
+    projectAgendaReservations(state);
   }
 
   /** Discover missing agendas. The coordinator retains failures across dates and throttles provider requests. */
@@ -332,6 +336,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
             if (
               key === resident.agenda.activeDay?.dateKey ||
+              (resident.agenda.reservations ?? []).some((activity) => activity.dateKey === key) ||
               (resident.agenda.socialActivities ?? []).some((activity) => activity.dateKey === key)
             )
               continue;

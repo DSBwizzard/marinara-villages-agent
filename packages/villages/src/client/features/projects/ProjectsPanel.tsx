@@ -84,6 +84,13 @@ export function ProjectsPanel({
   const tabId = useId();
   const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
   const person = (id: string) => people.find((person) => person.id === id)?.name ?? id;
+  const focusTime = (at: string) =>
+    new Date(at).toLocaleString(undefined, {
+      timeZone: snapshot.village.timeZone || undefined,
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    });
   const editable = project?.status === "planning",
     resumable = project?.status === "paused";
   const sceneActive = !!room && room.status !== "closed";
@@ -853,19 +860,35 @@ export function ProjectsPanel({
               {tab === "Overview & Progress" && detailPage === "Progress" ? (
                 <div className="vp-columns">
                   <section className="vp-panel">
-                    <h3>Progress</h3>
-                    {project.status === "working" && flow.workOrder ? (
-                      <>
-                        <span className="vp-label">Completes</span>
-                        <time className="vp-deadline" dateTime={flow.workOrder.completesAt}>
-                          {new Date(flow.workOrder.completesAt).toLocaleString()}
-                        </time>
-                      </>
+                    {editable || flow.workOrder ? (
+                      <Facts
+                        rows={[
+                          ...(editable ? [["Duration", "24 hours"] as [string, string]] : []),
+                          ...(project.status === "working" && flow.workOrder
+                            ? [["Completes", focusTime(flow.workOrder.completesAt)] as [string, string]]
+                            : []),
+                          ...(resumable && flow.workOrder
+                            ? [
+                                ["Remaining", Math.ceil(flow.workOrder.remainingMs / 60_000) + " minutes"] as [
+                                  string,
+                                  string,
+                                ],
+                              ]
+                            : []),
+                          ...(editable || flow.workOrder?.focus ? [["Lead focus", "6 hours"] as [string, string]] : []),
+                          ...(flow.workOrder?.focus?.nextPeriod
+                            ? [
+                                [
+                                  "Next work period",
+                                  focusTime(flow.workOrder.focus.nextPeriod.startsAt) +
+                                    " – " +
+                                    focusTime(flow.workOrder.focus.nextPeriod.endsAt),
+                                ] as [string, string],
+                              ]
+                            : []),
+                        ]}
+                      />
                     ) : null}
-                    {resumable && flow.workOrder ? (
-                      <p>{Math.ceil(flow.workOrder.remainingMs / 60_000)} minutes remaining</p>
-                    ) : null}
-                    {editable ? <p>24 hours from Start.</p> : null}
                   </section>
                   <section className="vp-panel">
                     <h3>Project actions</h3>

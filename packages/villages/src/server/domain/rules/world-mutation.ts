@@ -1,4 +1,5 @@
 import type { VillageState, VillageVenue } from "../models/world.js";
+import { projectAgendaReservations } from "./project-focus.js";
 import { reconcileOpening } from "./opening-project.js";
 import { refreshProjectAgreements } from "./project-lifecycle-rules.js";
 import { initializeVenueAccess, reconcileVenueAccess } from "./venue-access.js";
@@ -96,6 +97,7 @@ export function normalizeVillageMutation(
     }
   }
   refreshProjectAgreements(state);
+  projectAgendaReservations(state);
   if (state.foundedAt.length === 0) state.foundedAt = sources.now().toISOString();
   if (state.seed.length === 0) state.seed = sources.seed();
   // Relationship authority lives in its own seed-scoped document, never the village DTO.
