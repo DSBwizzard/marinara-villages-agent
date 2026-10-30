@@ -169,6 +169,8 @@ await runCase("retained-storage/relationship-owners", async () => {
   f.rows.get(id).kind = "unknown";
   const invalidOwner = structuredClone(f.rows);
   await assert.rejects(api.readRelationshipState(scope.seed), /owner identity/);
+  await assert.rejects(f.api.inspect(repairId("relationship", "aqua", "player")), /owner identity/);
+  await assert.rejects(f.api.createCheckpoint("Invalid owner", "invalid-owner"), /owner identity/);
   await assert.rejects(
     api.mutateRelationships(scope.seed, (state) => {
       state.noticeSequence++;

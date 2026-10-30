@@ -51,6 +51,14 @@ export function readRelationshipRoot(raw: unknown, expected?: RelationshipScope)
   assertRelationshipWorld(head, scope);
   return { format: 4, ...scope, head };
 }
+export function readRelationshipOwner(row: { id: string; kind: string; data: unknown }, expected?: RelationshipScope) {
+  const root = readRelationshipRoot(row.data, expected);
+  memoryRequire(
+    row.id === relationshipDocumentId(root.seed) && row.kind === "relationships",
+    "invalid relationship owner identity",
+  );
+  return root;
+}
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 export function relationshipPayloadData(row: { id: string; kind: string; data: unknown }) {
   const identity = HEAD.exec(row.id),

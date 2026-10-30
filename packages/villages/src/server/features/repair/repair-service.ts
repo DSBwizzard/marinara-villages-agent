@@ -25,6 +25,7 @@ import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
 import {
   relationshipPayloadStore,
   readRelationshipRoot,
+  readRelationshipOwner,
   relationshipDocumentId,
   type RelationshipScope,
 } from "../../adapters/storage/relationship-payload-store.js";
@@ -216,10 +217,21 @@ export function createRepairService(ports: RepairPorts) {
     codec = createRepairTransactionCodec(gate.raw);
   const read = () => repository.readAuthority({ memories: true });
   const relationshipPayloads = relationshipPayloadStore(documents);
-  async function socialData(row: Pick<RepairDocument, "data"> | null | undefined, owner: RelationshipScope) {
+  async function socialData(
+    row: Pick<RepairDocument, "id" | "kind" | "data"> | null | undefined,
+    owner: RelationshipScope,
+  ) {
     if (!row) return defaultRelationshipState(owner.seed);
-    const root = readRelationshipRoot(row.data, owner);
+    const root = readRelationshipOwner(row, owner);
     return relationshipPayloads.read(root.head, root);
+  }
+  async function currentSocial(owner: RelationshipScope) {
+    const row = await documents.getById(PKG, relationshipDocumentId(owner.seed));
+    if (row) {
+      if (row.packageId !== PKG) throw conflict("Invalid relationship owner identity.");
+      readRelationshipOwner(row, owner);
+    }
+    return row;
   }
   async function socialRootData(
     value: RelationshipState,
@@ -319,8 +331,7 @@ export function createRepairService(ports: RepairPorts) {
       result = worldRepairRecords(state, includeMemories, personId);
     if (personId && personId !== "player" && !state.villagers.some((p) => p.characterId === personId))
       throw notFound("Choose a villager from People.");
-    const relationshipId = relationshipDocumentId(state.seed);
-    const saved = await documents.getById(PKG, relationshipId),
+    const saved = await currentSocial(state),
       social = await socialData(saved, state);
     for (const edge of Object.values(social.edges)) {
       const name = (id: string) =>
@@ -543,6 +554,11 @@ export function createRepairService(ports: RepairPorts) {
     rows.push(copy(root));
     // The copied root owns its immutable Memory head and all transitive pages.
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
+    const social = await currentSocial(state),
+      listed = rows.find((row) => row.id === relationshipDocumentId(state.seed));
+    if (repairDocumentDigest(listed ?? null) !== repairDocumentDigest(social ? copy(social) : null))
+      throw conflict("The current relationship owner is missing from the checkpoint sources.");
+    await socialData(social, state);
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
@@ -1144,6 +1160,7 @@ export function createRepairService(ports: RepairPorts) {
       const checkpointPointer = checkpointDocuments.find((r) => r.kind === "venue-active");
       const checkpointSceneId = (checkpointPointer?.data as { sessionId?: string })?.sessionId;
       let current: Doc[] = [];
+      await currentSocial(state);
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
       current = storage.worldSources(current, state, false);
       for (const savedScene of [...current, ...checkpointDocuments].filter((r) => r.kind === "venue-visit")) {
