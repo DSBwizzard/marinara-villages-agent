@@ -48,6 +48,57 @@ export type WishLine = {
   kind?: string;
   contactReport?: boolean;
 };
+const authorityOwner = z
+  .object({
+    actorId: z.string().min(1),
+    capturedAt: z.string(),
+    creationFingerprint: z
+      .string()
+      .regex(/^[a-f0-9]{32}$/)
+      .optional(),
+    expected: z.array(
+      z.object({ wishId: z.string().min(1), fingerprint: z.string().regex(/^[a-f0-9]{32}$/) }).strict(),
+    ),
+  })
+  .strict();
+const wishAuthority = z.object({ version: z.literal(1), owners: z.array(authorityOwner) }).strict();
+export type WishAuthority = z.infer<typeof wishAuthority>;
+export function readWishAuthority(value: unknown): WishAuthority {
+  const parsed = wishAuthority.parse(value);
+  if (
+    new Set(parsed.owners.map((owner) => owner.actorId)).size !== parsed.owners.length ||
+    parsed.owners.some((owner) => new Set(owner.expected.map((wish) => wish.wishId)).size !== owner.expected.length)
+  )
+    throw new WishInterpretationError("Ambiguous saved Wish authority.");
+  return parsed;
+}
+/** Application needs exact guards, while model reinterpretation owns its separate complete frozen context. */
+export function captureWishAuthority(
+  residents: { characterId: string; cardSnapshot: { capturedAt: string }; wishes: SocialWish[] }[],
+  changes: SocialWishChange[],
+): WishAuthority {
+  const actorIds = [...new Set(changes.map((row) => row.actorId))];
+  return readWishAuthority({
+    version: 1,
+    owners: actorIds.flatMap((actorId) => {
+      const owner = residents.find((resident) => resident.characterId === actorId);
+      if (!owner) return [];
+      const targets = new Set(changes.filter((row) => row.actorId === actorId).map((row) => row.wishId));
+      return [
+        {
+          actorId,
+          capturedAt: owner.cardSnapshot.capturedAt,
+          ...(changes.some((row) => row.actorId === actorId && row.intent === "create")
+            ? { creationFingerprint: hash(owner.wishes) }
+            : {}),
+          expected: owner.wishes
+            .filter((wish) => targets.has(wish.id))
+            .map((wish) => ({ wishId: wish.id, fingerprint: wishFingerprint(wish) })),
+        },
+      ];
+    }),
+  });
+}
 export type WishSource = {
   id: string;
   kind: SocialWish["origin"]["kind"];
@@ -57,7 +108,7 @@ export type WishSource = {
   currentLineIds: string[];
   changes: unknown;
   /** Authority captured before this source was written or interpreted. */
-  residents: Pick<VillageVillager, "characterId" | "cardSnapshot" | "wishes">[];
+  authority: WishAuthority;
   learn: boolean;
 };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
@@ -168,10 +219,11 @@ export function applyWishSource(
     disclosures: WishDisclosure[] = [];
   const aliases = new Map<string, string>();
   const disclosedHere = new Map<string, string>();
-  const creationBaselines = new Map(source.residents.map((r) => [r.characterId, hash(r.wishes)]));
+  const authority = readWishAuthority(source.authority);
+  const creationBaselines = new Map(authority.owners.map((owner) => [owner.actorId, owner.creationFingerprint]));
   const expected = new Map(
-    source.residents.flatMap((r) =>
-      (r.wishes ?? []).map((w) => [r.characterId + ":" + w.id, wishFingerprint(w)] as const),
+    authority.owners.flatMap((owner) =>
+      owner.expected.map((wish) => [owner.actorId + ":" + wish.wishId, wish.fingerprint] as const),
     ),
   );
   const current = new Set(source.currentLineIds);
@@ -190,12 +242,12 @@ export function applyWishSource(
       continue;
     }
     const resident = state.villagers.find((r) => r.characterId === row.actorId);
-    const captured = source.residents.find((r) => r.characterId === row.actorId);
+    const captured = authority.owners.find((owner) => owner.actorId === row.actorId);
     const refs = row.evidence.map((ref) => (typeof ref === "number" ? source.currentLineIds[ref] : ref));
     const lines = refs.map((ref) => source.lines.find((line) => line.id === ref));
     let wish = resident?.wishes.find((w) => w.id === wishId);
     let rejection = "";
-    if (!resident || !captured || resident.cardSnapshot.capturedAt !== captured.cardSnapshot.capturedAt)
+    if (!resident || !captured || resident.cardSnapshot.capturedAt !== captured.capturedAt)
       rejection = "Wish owner changed.";
     else if (
       lines.some((l) => !l || !l.heardBy.includes(row.actorId) || l.contactReport || l.kind === "side") ||
@@ -209,7 +261,10 @@ export function applyWishSource(
       rejection = "Only the owner can establish or change this desire.";
     else if (row.intent === "create" && (!row.wishId.startsWith("new:") || !row.desire))
       rejection = "New Wish has no source-local identity or desire.";
-    else if (row.intent === "create" && creationBaselines.get(row.actorId) !== hash(resident.wishes))
+    else if (
+      row.intent === "create" &&
+      (!captured.creationFingerprint || creationBaselines.get(row.actorId) !== hash(resident.wishes))
+    )
       rejection = "Resident desires changed since this source was captured.";
     else if (
       ["create", "reveal"].includes(row.intent) &&
@@ -289,7 +344,7 @@ export function applyWishSource(
             });
           }
           expected.set(row.actorId + ":" + wish.id, wishFingerprint(wish));
-          creationBaselines.set(row.actorId, hash(resident.wishes));
+          if (captured.creationFingerprint) creationBaselines.set(row.actorId, hash(resident.wishes));
           const ownerText = row.intent === "create" ? wish.wish : (row.condition ?? row.approach ?? row.reason);
           rememberDomainFact(state, {
             id,

@@ -26,7 +26,7 @@ import { sameRelationshipContext } from "../../domain/rules/world-context-copy.j
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { encounterPhysicalId, readEncounter } from "../../domain/rules/social-encounter.js";
 import { projectSocialActivities, reconcileSocialPlans, socialPlanValid } from "../../domain/rules/social-rules.js";
-import { applyWishSource } from "../../domain/rules/social-wishes.js";
+import { applyWishSource, captureWishAuthority, readSocialWishChanges } from "../../domain/rules/social-wishes.js";
 import { settleStandingAccess } from "../../domain/rules/venue-access.js";
 import { WorkFailureError } from "../../domain/rules/work-failure.js";
 import type { mutateVillageState } from "../world/village-store.js";
@@ -320,7 +320,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                   lines: encounter.lines.map((l) => ({ ...l, playerHeard: false, contactHidden: true })),
                   currentLineIds: encounter.lines.map((l) => l.id),
                   changes: encounter.wishChanges ?? [],
-                  residents: captured,
+                  authority: captureWishAuthority(captured, readSocialWishChanges(encounter.wishChanges ?? [])),
                   learn: false,
                 });
               } catch (error) {

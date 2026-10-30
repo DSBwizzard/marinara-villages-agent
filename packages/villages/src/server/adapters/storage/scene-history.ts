@@ -24,7 +24,7 @@ import {
   type RelationshipScope,
 } from "./relationship-payload-store.js";
 
-export const SCENE_STORAGE_FORMAT = 5;
+export const SCENE_STORAGE_FORMAT = 6;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
 const associations = new WeakMap<RelationshipState, { scope: RelationshipScope; head: RelationshipHead }>();
 const identity = (head: RelationshipHead) => head.id + ":" + head.digest;

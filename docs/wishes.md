@@ -24,6 +24,8 @@ The existing System interpretation proposes source-bound changes. Code verifies 
 
 Creation IDs and effect receipts are derived from immutable source identities. Replaying saved work does not create another desire, repeat a notice or purchase another interpretation. Existing Scene, encounter and mail outboxes retain their independent recovery boundaries. A stale source cannot revive a changed or withdrawn desire.
 
+Scene turns retain one compact application authority: owner incarnation, fingerprints of targeted Wishes, and a complete-array fingerprint only when proposing creation. Ordered accepted changes advance local guards without changing that saved baseline. Each turn separately retains its complete frozen Wish context for explicit System reinterpretation; application guards never replace the exact evidence or context needed to judge meaning. Mail replies bind the original admission plus their own committed source effects.
+
 Scenes retain their captured situation and receive immutable after-values from their own committed Wish changes, including newly created Wishes. Background changes cannot rewrite that encounter. Live authority governs subsequent world writes.
 
 The notebook projects independently eligible player memories. First disclosure requires the owner's exact communicated desire. Other changes cannot expose an unknown private goal. Later private motives, conditions and results do not fill gaps in the player's knowledge. Mail freezes eligible disclosure facts at delivery and publishes them locally on reading.
@@ -32,6 +34,6 @@ Each Wish is a compact selectable entry. Known Wishes contains only information 
 
 ## Prototype boundary
 
-This replacement requires Village format 7. Earlier worlds are rejected with an explicit fresh-Village message. There is no conversion, adoption of legacy Wish responses, or retention of the old Wish/Pursuit implementation. This boundary does not authorize deletion or replacement of another running world's storage.
+The current build requires a fresh Village as described in [saved-state contracts](architecture-migration.md#saved-work-and-compatibility). There is no conversion, adoption of legacy Wish responses, or retention of the old Wish/Pursuit implementation. This boundary does not authorize deletion or replacement of another running world's storage.
 
 Provider-free regressions establish source authority, privacy, replay, revision guards, retention and UI behavior. They do not establish live-model characterization or judgment quality; those require playtesting of the isolated preview.

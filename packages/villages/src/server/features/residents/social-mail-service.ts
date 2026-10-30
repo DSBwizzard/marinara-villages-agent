@@ -52,6 +52,7 @@ import {
 } from "../../domain/rules/social-mail.js";
 import {
   applyWishSource,
+  captureWishAuthority,
   publishWishDisclosure,
   readSocialWishChanges,
   SOCIAL_WISH_INSTRUCTION,
@@ -483,7 +484,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         lines,
         currentLineIds: bundle === "reply" ? [replyId] : [sourceId],
         changes: rows,
-        residents: captured,
+        authority: captureWishAuthority(captured, readSocialWishChanges(rows)),
         learn: false,
       }).disclosures;
     });

@@ -25,6 +25,7 @@ import {
 import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
 import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
 import { correspondenceTestClient } from "./helpers/mailbox.fixture.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 const village = defaultVillageState();
 village.seed = "mail";
 village.foundedAt = new Date().toISOString();
@@ -1063,6 +1064,50 @@ for (const failPublication of [false, true]) {
   assert.equal(known.at, readAt);
   assert.equal(village.socialMailOutbox?.length, 0);
   assert.equal(calls, before, "Publication and recovery are provider-free");
+}
+
+// The reply binds the original admission plus committed source facts, including after interrupted publication.
+{
+  const wish = fixtureWish({ wish: "Exchange friendly letters" }, "mail-conversation");
+  village.villagers[0].wishes.push(wish);
+  await service.send({ residentId: "ada", requestId: "wish-source-reply", text: "We are exchanging letters." });
+  active = queued.at(-1).input;
+  const result = await service.handler.generate(active);
+  const proposal = {
+    actorId: "ada",
+    wishId: wish.id,
+    intent: "progress" as const,
+    evidence: [0],
+    reason: "A friendly written exchange.",
+  };
+  result.sourceWishChanges = [proposal];
+  result.replyWishChanges = [{ ...proposal, reason: "Ada replies to the friendly letter." }];
+  service.handler.apply(village, active, result, { retrying: false });
+  const sourceId = "mail:" + active.messageId + ":source";
+  afterWorldCommit = async function failAfterSource() {
+    if (!Object.values(village.exchangeReceipts).some((receipt) => receipt.sceneId === sourceId)) {
+      afterWorldCommit = failAfterSource;
+      return;
+    }
+    throw Error("Connection lost after source Wish commit");
+  };
+  const beforeReplay = calls;
+  await service.processOutbox(await snapshot());
+  assert.equal(village.villagers[0].wishes.find((row) => row.id === wish.id)!.history.length, 1);
+  assert(village.socialMailOutbox?.some((row) => row.id === active.messageId && row.error));
+  await service.retry(active.threadId, active.messageId, "replay-wish-source-reply");
+  const settled = village.villagers[0].wishes.find((row) => row.id === wish.id)!;
+  assert.equal(settled.history.length, 2, "Reply authority includes the committed source's updated Wish revision");
+  assert.equal(settled.revision, wish.revision + 2);
+  assert.equal(active.admitted.villagers[0].wishes.find((row) => row.id === wish.id)!.history.length, 0);
+  const receipts = Object.values(village.exchangeReceipts).filter((receipt) =>
+    receipt.sceneId.startsWith("mail:" + active.messageId + ":"),
+  );
+  assert.equal(receipts.length, 2);
+  assert(receipts.every((receipt) => receipt.status === "applied"));
+  await service.processOutbox(await snapshot());
+  assert.equal(village.villagers[0].wishes.find((row) => row.id === wish.id)!.history.length, 2);
+  assert.equal(calls, beforeReplay, "Committed source replay and reply application reuse purchased meaning");
 }
 
 // Malformed retained reply metadata offers interpretation recovery, while preserving delivery.

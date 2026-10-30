@@ -161,6 +161,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "wishInterpretationProof",
             "wishProposals",
             "wishContexts",
+            "wishAuthority",
             "liveProposals",
             "interpretationHistory",
             "requestMetrics",

@@ -16,7 +16,12 @@ import {
 import { extractModelJsonObject } from "../../../domain/rules/json-reply.js";
 import { sceneEvidencePerception } from "../../../domain/rules/scene-evidence-perception.js";
 import { semanticContinued } from "../../../domain/rules/semantic-continuity.js";
-import { applyWishSource, knownSocialWishes, newSocialWish } from "../../../domain/rules/social-wishes.js";
+import {
+  applyWishSource,
+  knownSocialWishes,
+  newSocialWish,
+  readWishAuthority,
+} from "../../../domain/rules/social-wishes.js";
 import { completionFailure, metadataFailure, WorkFailureError } from "../../../domain/rules/work-failure.js";
 type Ports = {
   readVillageState: typeof import("../../world/village-store.js").readVillageState;
@@ -106,11 +111,13 @@ export function createWishes(ports: Ports) {
     const turn = scene.submissions.find((r) => r.id === submissionId);
     if (!turn) throw new Error("Wish source unavailable.");
     if (turn.wishProposalError) throw new WorkFailureError(metadataFailure(turn.wishProposalError));
+    const proposals = turn.wishProposals ?? [];
+    if (!proposals.length) return { status: "applied" as const, reason: "No Wish changes", receiptIds: [] };
+    const authority = readWishAuthority(turn.wishAuthority);
     let result: ReturnType<typeof applyWishSource> | undefined;
     await ports.mutateVillageState(
       (state) => {
         if (state.seed !== scene.villageSeed || semanticContinued(state, scene.id, submissionId, "wishes")) return;
-        const proposals = turn.wishProposals ?? [];
         result = applyWishSource(state, {
           id: scene.id + ":turn:" + submissionId,
           kind: scene.id.startsWith("offscreen:") ? "encounter" : "scene",
@@ -130,8 +137,8 @@ export function createWishes(ports: Ports) {
               ].filter(Boolean),
             ),
           ],
-          changes: proposals.map((p) => p.change),
-          residents: proposals[0]?.captured ?? [],
+          changes: proposals,
+          authority,
           learn: !scene.id.startsWith("offscreen:"),
         });
       },
