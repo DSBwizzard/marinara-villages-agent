@@ -180,14 +180,12 @@ export async function readSceneRetirementSource(documents: Pick<CapabilityDocume
   return { ...raw, lines, submissions };
 }
 export async function readSceneTranscriptIndex(documents: Pick<CapabilityDocumentStore, "getById">, value: unknown) {
-  const {
-    storageFormat: _format,
-    transcript: _transcript,
-    submissionHistory: _submissions,
-    continuity: _context,
-    ...source
-  } = await readSceneRetirementSource(documents, value);
-  return coerceSession(source);
+  const scene = await readSceneWorkIndex(documents, value);
+  const { lines } = await sceneTranscriptStore(documents as CapabilityDocumentStore).read(
+    readSceneTranscriptHead((value as Record<string, any>).transcript, scene),
+    scene,
+  );
+  return { ...scene, lines };
 }
 /** Backlog and recovery enumeration need mechanics, not transcript or frozen relationship hydration. */
 export function readSceneIndex(value: unknown): Omit<VenueScene, "continuity"> {

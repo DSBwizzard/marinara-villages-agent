@@ -953,6 +953,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     });
   }
   async function readVenueOperation(id: string, operationId?: string) {
+    const read = () => readVenueOperationOnce(id, operationId);
+    return ports.withRepairWork ? ports.withRepairWork(read) : read();
+  }
+  async function readVenueOperationOnce(id: string, operationId?: string) {
     const documents = villagesDocuments(),
       record = await documents.getById(VILLAGES_PACKAGE_ID, prefix + id);
     if (!record) {
@@ -1027,6 +1031,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       : null;
   }
   async function recoverVenueOperations(recover: (id: string, operation: VenueOperation) => Promise<unknown>) {
+    const work = () => recoverVenueOperationsOnce(recover);
+    return ports.withRepairWork ? ports.withRepairWork(work) : work();
+  }
+  async function recoverVenueOperationsOnce(recover: (id: string, operation: VenueOperation) => Promise<unknown>) {
     accepting = true;
     const documents = villagesDocuments(),
       records = await documents.list(VILLAGES_PACKAGE_ID, "venue-visit");

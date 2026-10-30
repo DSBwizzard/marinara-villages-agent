@@ -37,11 +37,27 @@ async function savedContextOwnership() {
         sceneId,
         {
           id: sceneId,
+          packageId: "villages",
+          kind: "venue-visit",
           revision: 1,
           data: {
+            version: 3,
+            id: "s",
             lines: [
-              { id: label + "-player", role: "user" },
-              { id: label + "-reply", role: "assistant" },
+              {
+                id: label + "-player",
+                role: "user",
+                content: "An exact question",
+                speakerId: "player",
+                at: "2026-10-30T12:00:00.000Z",
+              },
+              {
+                id: label + "-reply",
+                role: "assistant",
+                content: "An exact reply",
+                speakerId: "resident",
+                at: "2026-10-30T12:00:00.000Z",
+              },
             ],
             submissions: [{ id: "turn", replyLineIds: [label + "-reply"] }],
           },
@@ -244,7 +260,7 @@ async function savedContextOwnership() {
   let clearCurrent = () => {};
   try {
     const pending = saveInterpretationContext("s", batch, "turn");
-    const refused = assert.rejects(pending, /not configured/);
+    const refused = assert.rejects(pending, /not configured|no longer active/);
     await retired.entered.promise;
     clearCurrent = installDefaultActivation(current.scope, () => {});
     retired.release();
@@ -372,12 +388,18 @@ async function main() {
   } as any);
   try {
     records.set("villages-venue-visit-s", {
+      id: "villages-venue-visit-s",
+      packageId: "villages",
+      kind: "venue-visit",
+      revision: 1,
       data: {
+        version: 3,
+        id: "s",
         lines: [
-          { id: "p-old", role: "user" },
-          { id: "r-old", role: "assistant" },
-          { id: "p-new", role: "user" },
-          { id: "r-new", role: "assistant" },
+          { id: "p-old", role: "user", content: "Can I enter?", speakerId: "player" },
+          { id: "r-old", role: "assistant", content: "Over there.", speakerId: "a" },
+          { id: "p-new", role: "user", content: "A later question", speakerId: "player" },
+          { id: "r-new", role: "assistant", content: "A later answer", speakerId: "a" },
         ],
         submissions: [
           { id: "first", replyLineIds: ["r-old"] },
@@ -416,6 +438,14 @@ async function main() {
     batch.results[0].outcome = "invite-now";
     await saveInterpretationContext("s", batch, "first");
     assert.deepEqual((await contextualChecks("s", [pending]))[0].essentialEvidenceIds, []);
+    records.get("villages-venue-visit-s").data.id = "foreign";
+    const unchanged = structuredClone(records);
+    await assert.rejects(saveInterpretationContext("s", batch, "first"), /invalid Scene evidence owner/);
+    assert.deepEqual(
+      records,
+      unchanged,
+      "A foreign Scene body cannot save references under the requested Scene identity",
+    );
     console.log("Exact pending references, witness restrictions and positive resolution passed");
   } finally {
     release();

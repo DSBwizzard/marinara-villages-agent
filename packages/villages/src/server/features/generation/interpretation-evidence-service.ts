@@ -2,6 +2,9 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { InterpretationCheck } from "../../domain/models/interpretation-check-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
+import { readSceneTranscriptIndex } from "../../adapters/storage/scene-history.js";
+import { withRepairWork } from "../../adapters/storage/repair-gate.js";
+import { memoryRequire } from "../../domain/rules/memory-integrity.js";
 export type InterpretationEvidencePorts = {
   VILLAGES_PACKAGE_ID: string;
   villagesDocuments(): Pick<CapabilityDocumentStore, "getById">;
@@ -35,15 +38,19 @@ export function createInterpretationEvidence(ports: InterpretationEvidencePorts)
   }
 
   async function saveInterpretationContext(sceneId: string, batch: InterpretationBatch, submissionId?: string) {
-    const row = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, "villages-venue-visit-" + sceneId);
-    const scene = row?.data as
-      { lines?: { id: string; role: string }[]; submissions?: { id?: string; replyLineIds?: string[] }[] } | undefined;
-    if (!scene?.lines) return;
-    const previous = await villagesDocuments().getById(
-      VILLAGES_PACKAGE_ID,
-      "villages-interpretation-context-" + sceneId,
+    const documents = villagesDocuments(),
+      row = await documents.getById(VILLAGES_PACKAGE_ID, "villages-venue-visit-" + sceneId);
+    if (!row) return;
+    memoryRequire(
+      row.id === "villages-venue-visit-" + sceneId &&
+        row.packageId === VILLAGES_PACKAGE_ID &&
+        row.kind === "venue-visit" &&
+        (row.data as { id?: string } | null)?.id === sceneId,
+      "invalid Scene evidence owner",
     );
+    const previous = await documents.getById(VILLAGES_PACKAGE_ID, "villages-interpretation-context-" + sceneId);
     if (!previous && !batch.results.some((result) => result.outcome === "unresolved")) return;
+    const scene = await readSceneTranscriptIndex(documents, row.data);
     const replyIds =
       (submissionId ? scene.submissions?.find((turn) => turn.id === submissionId) : scene.submissions?.at(-1))
         ?.replyLineIds ?? [];
@@ -75,6 +82,10 @@ export function createInterpretationEvidence(ports: InterpretationEvidencePorts)
     });
   }
 
-  return { contextualChecks, saveInterpretationContext };
+  return {
+    contextualChecks,
+    saveInterpretationContext: (sceneId: string, batch: InterpretationBatch, submissionId?: string) =>
+      withRepairWork(() => saveInterpretationContext(sceneId, batch, submissionId)),
+  };
 }
 export type InterpretationEvidenceService = ReturnType<typeof createInterpretationEvidence>;

@@ -7,6 +7,7 @@ import { notFound } from "../../domain/rules/errors.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
 import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
 import { legacyZoneId } from "../../domain/rules/venue-zones.js";
+import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 export interface SceneQueryPorts {
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
@@ -141,6 +142,6 @@ export function createSceneQueryService({
     }
     return backlog;
   }
-  return { readProjectTurnEvidence, progressBacklog };
+  return { readProjectTurnEvidence, progressBacklog: () => withRepairWork(progressBacklog) };
 }
 export type SceneQueryService = ReturnType<typeof createSceneQueryService>;

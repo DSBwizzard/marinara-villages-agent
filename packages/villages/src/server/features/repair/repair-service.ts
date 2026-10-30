@@ -691,9 +691,10 @@ export function createRepairService(ports: RepairPorts) {
     } else if (kind === "narrative-claim") {
       const claim = (await repository.readAuthority()).narrative?.claims?.find((row) => row.id === id);
       if (claim?.sceneId) {
-        const scene = (await documents.list(PKG, "venue-visit")).find(
+        const source = (await documents.list(PKG, "venue-visit")).find(
           (row) => (row.data as { id?: string }).id === claim.sceneId,
-        )?.data as import("../../domain/models/scene-model.js").VenueScene | undefined;
+        );
+        const scene = source && (await readSceneWorkIndex(documents, source.data));
         if (
           !scene ||
           scene.operation?.status === "running" ||

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   createRepairGate,
+  createRepairAdmission,
   configureRepairGate,
 } from "../../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createDocumentMutator } from "../../packages/villages/src/server/adapters/storage/document-store.js";
@@ -39,7 +40,8 @@ export function sceneHistoryFixture() {
     remove: async (_pkg: string, id: string, revision: number) =>
       rows.get(id)?.revision === revision && rows.delete(id),
   };
-  const gate = createRepairGate(documents),
+  const admission = createRepairAdmission(),
+    gate = createRepairGate(documents, admission),
     release = configureRepairGate(gate);
   const mutateDocument = createDocumentMutator(() => gate.documents);
   const repository = createSceneRepository({ villagesDocuments: () => gate.documents, mutateDocument });
@@ -47,6 +49,7 @@ export function sceneHistoryFixture() {
     rows,
     documents,
     gate,
+    admission,
     repository,
     mutateDocument,
     release,
