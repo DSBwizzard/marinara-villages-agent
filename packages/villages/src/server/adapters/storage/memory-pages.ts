@@ -77,11 +77,15 @@ export function createHistoryPageWriter(world: string) {
     const content = directory(chunks).root!;
     return page({ type: "block", content }, 0);
   }
-  function tree(rows: Entry[], prior?: Tree): Tree {
+  function tree(rows: Entry[], prior?: Tree, itemsPerBlock = ITEMS): Tree {
+    memoryRequire(
+      Number.isInteger(itemsPerBlock) && itemsPerBlock >= 1 && itemsPerBlock <= ITEMS,
+      "invalid history block size",
+    );
     const groups: Group[] = [];
-    for (let i = 0; i < rows.length; i += ITEMS) {
-      const selected = rows.slice(i, i + ITEMS),
-        old = prior?.groups[i / ITEMS];
+    for (let i = 0; i < rows.length; i += itemsPerBlock) {
+      const selected = rows.slice(i, i + itemsPerBlock),
+        old = prior?.groups[i / itemsPerBlock];
       groups.push(
         old &&
           selected.length === old.entries.length &&

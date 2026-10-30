@@ -167,12 +167,15 @@ const documents = {
       failedSaveId &&
       saveFault &&
       input.id === "villages-venue-visit-" + scene.id &&
-      (saveFaultStage === "rejection" ? row.data.rejectedSubmissions : row.data.submissions)?.some(
-        (turn: any) => turn.id === failedSaveId,
-      ) &&
-      !(saveFaultStage === "rejection" ? prior.data.rejectedSubmissions : prior.data.submissions)?.some(
-        (turn: any) => turn.id === failedSaveId,
-      )
+      (saveFaultStage === "rejection"
+        ? row.data.rejectedSubmissions
+        : fixtureSceneState(row.data, records).submissions
+      )?.some((turn: any) => turn.id === failedSaveId) &&
+      !(
+        saveFaultStage === "rejection"
+          ? prior.data.rejectedSubmissions
+          : fixtureSceneState(prior.data, records).submissions
+      )?.some((turn: any) => turn.id === failedSaveId)
         ? saveFault
         : "";
     if (fault) saveFault = "";
@@ -949,10 +952,20 @@ try {
   assert.equal(endedFailed.statusCode, 200, endedFailed.body);
   assert.equal(records.get(failedCloseKey).data.status, "closed");
   assert.deepEqual(fixtureSceneState(records.get(failedCloseKey).data, records).lines, originalLines);
-  assert.deepEqual(records.get(failedCloseKey).data.operation.checkpoints["abandoned-request"], originalFailed);
+  assert.deepEqual(records.get(failedCloseKey).data.operation.checkpoints["abandoned-request"], {
+    ...originalFailed,
+    snapshot: null,
+  });
   assert.doesNotMatch(endedFailed.body, /abandoned-request|writing-completion|snapshot/);
   const endedAgain = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
   assert.equal(endedAgain.statusCode, 200, endedAgain.body);
+  const abandoned = fixtureSceneState(records.get(failedCloseKey).data, records).operation!.checkpoints[
+    "abandoned-request"
+  ] as any;
+  assert.equal(abandoned.snapshot, null);
+  assert.deepEqual(abandoned.input, originalFailed.input);
+  assert.deepEqual(abandoned.checkpoints, originalFailed.checkpoints);
+  assert.deepEqual(abandoned.attempts, originalFailed.attempts);
   assert.equal(modelCalls, beforeFailedClose, "Ending and replaying failed Scene makes no provider calls");
   captureRecoveryAnswers = [
     {},

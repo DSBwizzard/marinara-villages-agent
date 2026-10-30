@@ -107,11 +107,12 @@ for (const count of [1000, 10_000, 25_000]) {
     const original = structuredClone(rows.get("villages-venue-visit-frozen").data),
       head = sceneHistoryOwners(original)[0].head;
     assert.equal(original.storageFormat, SCENE_STORAGE_FORMAT);
-    assert.throws(
-      () => sceneHistoryOwners({ ...original, storageFormat: 5 }),
-      /unsupported Scene storage format/,
-      "The old wrapped Wish proposal format has no legacy reader",
-    );
+    for (const storageFormat of [5, 6])
+      assert.throws(
+        () => sceneHistoryOwners({ ...original, storageFormat }),
+        /unsupported Scene storage format/,
+        "Old Wish proposal and inline submission formats have no legacy reader",
+      );
     assert.equal(Object.hasOwn(original.continuity.facts, "relationshipContext"), false);
     assert.throws(() => coerceSession(original), /hydration/);
     const markerless = structuredClone(original);

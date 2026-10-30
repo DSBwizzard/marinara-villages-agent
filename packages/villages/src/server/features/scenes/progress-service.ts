@@ -1,3 +1,4 @@
+import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
 import { applyOpeningExchange } from "../../domain/rules/opening-project.js";
@@ -128,7 +129,7 @@ export function createSceneProgress({
             });
         });
       await changeSession(sessionId, (saved) => {
-        const turn = saved.submissions.find((entry) => entry.id === submissionId);
+        const turn = mutableSceneSubmission(saved, submissionId);
         if (turn) {
           turn.progressProcessedAt ||= villageNow().toISOString();
           turn.progressError = "";
@@ -136,7 +137,7 @@ export function createSceneProgress({
       });
     } catch (error) {
       await changeSession(sessionId, (saved) => {
-        const turn = saved.submissions.find((entry) => entry.id === submissionId);
+        const turn = mutableSceneSubmission(saved, submissionId);
         if (turn && !turn.progressProcessedAt) turn.progressError = String(error).slice(0, 300);
       });
       throw error;
@@ -175,7 +176,7 @@ export function createSceneProgress({
       return;
     await mutateVillageState((state) => applyOpeningExchange(state, scene, turn));
     await changeSession(scene.id, (saved) => {
-      const entry = saved.submissions.find((entry) => entry.id === turn.id);
+      const entry = mutableSceneSubmission(saved, turn.id);
       if (entry) entry.openingProcessedAt ||= villageNow().toISOString();
     });
   }
@@ -188,7 +189,7 @@ export function createSceneProgress({
     if (turn?.movement) return;
     if (!turn?.processing) return processSavedProgressSubmission(sessionId, submissionId);
     const village = await readVillageState();
-    const processing = turn.processing;
+    const processing = structuredClone(turn.processing);
     const evidenceContext = turn.liveProposals ? createLiveEvidenceContext(scene, turn.liveProposals) : undefined;
     const exchangeLineIds = new Set(processing.lineIds);
     const valid =
@@ -284,7 +285,7 @@ export function createSceneProgress({
     const recordEvents = await receiptForTurn(scene, turn, false);
     if (updates.size)
       await changeSession(scene.id, (saved) => {
-        const entry = saved.submissions.find((entry) => entry.id === turn.id);
+        const entry = mutableSceneSubmission(saved, turn.id);
         if (entry?.processing?.seed !== processing.seed) return;
         entry.recordEvents = recordEvents;
         for (const [domain, result] of updates) {

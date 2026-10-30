@@ -23,6 +23,7 @@ import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneRevision } from "../rules/scene-revision.js";
 import { reuseSceneLine } from "../rules/scene-transcript.js";
 import { readWishAuthority } from "../rules/social-wishes.js";
+import { reuseSceneSubmission } from "../rules/scene-submissions.js";
 import type { ContactIntent, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import { coerceExchangeProcessing } from "./exchange-codec.js";
@@ -73,7 +74,11 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
 
 export function coerceSession(value: unknown): VenueScene {
   const raw = savedVenueClassRecord(value);
-  if (Object.hasOwn(raw, "storageFormat") || Object.hasOwn(raw, "transcript"))
+  if (
+    Object.hasOwn(raw, "storageFormat") ||
+    Object.hasOwn(raw, "transcript") ||
+    Object.hasOwn(raw, "submissionHistory")
+  )
     throw conflict("Stored Scene history requires explicit hydration.");
   if (raw.version !== 3) throw conflict("Unsupported Scene format. Its saved data is preserved.");
   if (
@@ -345,6 +350,8 @@ export function coerceSession(value: unknown): VenueScene {
     submissions: Array.isArray(raw.submissions)
       ? raw.submissions
           .map((value) => {
+            const shared = reuseSceneSubmission(value, participantIds);
+            if (shared) return shared;
             const row = asRecord(value);
             return {
               id: asTrimmedString(row.id),

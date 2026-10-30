@@ -8,7 +8,7 @@ import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/
 import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { fixtureAcousticModel, fixtureLocalAttention } from "./fixtures/villages-attention.fixture.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
@@ -178,7 +178,11 @@ const release = configureVillagesRuntime({
         return row;
       },
       async update(input: any) {
-        if (failSave && input.data.submissions?.some((entry: any) => entry.id === "crash")) {
+        if (
+          failSave &&
+          input.id.startsWith("villages-venue-visit-") &&
+          fixtureSceneState(input.data, records).submissions.some((entry: any) => entry.id === "crash")
+        ) {
           failSave = false;
           throw new Error("save interrupted");
         }
@@ -384,7 +388,7 @@ async function submitTurn(input: Parameters<typeof submitTurnRaw>[0]) {
   if (
     input.mode === "contact" &&
     saved.operation?.id !== input.submissionId &&
-    !saved.submissions.some((turn: any) => turn.id === input.submissionId)
+    !fixtureSceneState(saved, records).submissions.some((turn: any) => turn.id === input.submissionId)
   ) {
     const attemptId = "legacy-contact-" + input.submissionId;
     saved.operation = {

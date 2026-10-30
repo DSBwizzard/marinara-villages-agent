@@ -14,6 +14,11 @@ import type { RelationshipIdentity } from "../../packages/villages/src/server/do
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { SCENE_STORAGE_FORMAT } from "../../packages/villages/src/server/adapters/storage/scene-history.js";
 import {
+  encodeSceneSubmissions,
+  decodeSceneSubmissionsSync,
+  readSceneSubmissionHead,
+} from "../../packages/villages/src/server/adapters/storage/scene-submission-pages.js";
+import {
   encodeSceneTranscript,
   decodeSceneTranscriptSync,
   readSceneTranscriptHead,
@@ -47,6 +52,8 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       (data as any)?.returnCatchup?.capture?.world?.relationshipHead,
       (data as any)?.transcript?.lines,
       (data as any)?.operation?.snapshot?.transcript?.lines,
+      (data as any)?.submissionHistory?.submissions,
+      (data as any)?.operation?.snapshot?.submissionHistory?.submissions,
       (data as any)?.continuity?.relationshipHead,
       (data as any)?.operation?.snapshot?.continuity?.relationshipHead,
     ];
@@ -173,9 +180,10 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
     villageSeed: Object.hasOwn(raw, "villageSeed") ? raw.villageSeed : world?.seed || undefined,
     storageFormat: SCENE_STORAGE_FORMAT,
   };
-  const normalized = coerceSession({ ...raw, continuity: undefined, operation: undefined, submissions: [] });
+  const normalized = coerceSession({ ...raw, continuity: undefined, operation: undefined });
   const encoded = encodeSceneTranscript(normalized.lines, scene);
-  for (const [id, data] of encoded.pages)
+  const submissions = encodeSceneSubmissions(normalized.submissions, scene);
+  for (const [id, data] of [...encoded.pages, ...submissions.pages])
     rows.set(id, {
       id,
       packageId: "villages",
@@ -188,6 +196,8 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
       updatedAt: raw.startedAt ?? "",
     });
   scene.transcript = encoded.head;
+  scene.submissionHistory = submissions.head;
+  delete scene.submissions;
   delete scene.lines;
   delete scene.heardHistory;
   if (scene.continuity) {
@@ -215,7 +225,11 @@ export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
 }
 export function fixtureSceneState(raw: any, rows: Map<string, any>) {
   if (!raw?.storageFormat) return coerceSession(raw);
-  const { storageFormat: _format, transcript, ...scene } = raw;
+  const { storageFormat: _format, transcript, submissionHistory, ...scene } = raw;
+  scene.submissions = decodeSceneSubmissionsSync(
+    readSceneSubmissionHead(submissionHistory, raw),
+    (id) => rows.get(id)?.data ?? null,
+  ).submissions;
   scene.lines = decodeSceneTranscriptSync(
     readSceneTranscriptHead(transcript, raw),
     (id) => rows.get(id)?.data ?? null,
@@ -229,6 +243,15 @@ export function fixtureSceneState(raw: any, rows: Map<string, any>) {
     scene.continuity = { ...context, facts: { ...context.facts, relationshipContext: relationships } };
   }
   return coerceSession(scene);
+}
+export function editFixtureScene(
+  record: { data: any },
+  rows: Map<string, any>,
+  mutate: (scene: ReturnType<typeof coerceSession>) => void,
+) {
+  const scene = fixtureSceneState(record.data, rows);
+  mutate(scene);
+  record.data = authorSceneFixture(rows, scene);
 }
 /** Author logical current-contract fixtures directly in the current physical layout. */
 export function authorRelationshipFixture(

@@ -539,7 +539,7 @@ for (const canonical of [false, true]) {
       const after = shared.rows.get(`villages-venue-visit-${sceneA.id}`).data;
       assert.equal(after.operation.token, before.token);
       assert.equal(after.operation.status, "running");
-      assert.equal(after.submissions.length, 0);
+      assert.equal(after.submissionHistory.count, 0);
       assert.equal(providerAccess, 0, "persisted admission refuses B before requesting any model");
     } finally {
       moveGate.resolve();

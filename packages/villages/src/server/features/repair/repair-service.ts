@@ -24,7 +24,7 @@ import {
 } from "../../adapters/storage/memory-payload-store.js";
 import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
 import {
-  readSceneIndex,
+  readSceneWorkIndex,
   readSceneTranscriptIndex,
   sceneHistoryOwners,
   validateSceneHistory,
@@ -370,7 +370,7 @@ export function createRepairService(ports: RepairPorts) {
     if (includeArchives) {
       const sceneIds = new Set<string>();
       for (const row of await documents.list(PKG, "venue-visit")) {
-        const scene = readSceneIndex(row.data);
+        const scene = await readSceneWorkIndex(documents, row.data);
         sceneIds.add(scene.id);
         const unfinished =
           scene.submissions?.filter((turn) => turn.processing && unfinishedExchange(turn.processing)) ?? [];
@@ -691,9 +691,10 @@ export function createRepairService(ports: RepairPorts) {
     } else if (kind === "narrative-claim") {
       const claim = (await repository.readAuthority()).narrative?.claims?.find((row) => row.id === id);
       if (claim?.sceneId) {
-        const scene = (await documents.list(PKG, "venue-visit")).find(
+        const source = (await documents.list(PKG, "venue-visit")).find(
           (row) => (row.data as { id?: string }).id === claim.sceneId,
-        )?.data as import("../../domain/models/scene-model.js").VenueScene | undefined;
+        );
+        const scene = source && (await readSceneWorkIndex(documents, source.data));
         if (
           !scene ||
           scene.operation?.status === "running" ||
@@ -1197,7 +1198,7 @@ export function createRepairService(ports: RepairPorts) {
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
       current = storage.worldSources(current, state, false);
       for (const savedScene of [...current, ...checkpointDocuments].filter((r) => r.kind === "venue-visit")) {
-        const scene = readSceneIndex(savedScene.data);
+        const scene = await readSceneWorkIndex(documents, savedScene.data);
         const belongsToCheckpoint = checkpointDocuments.includes(savedScene);
         if (
           (scene.status !== "closed" &&
