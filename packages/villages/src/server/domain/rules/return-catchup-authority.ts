@@ -1,6 +1,7 @@
 import type { VillageState } from "../models/world.js";
 import { planRoutineDays } from "./resident-agenda.js";
 import { localDateKey } from "./resident-planning.js";
+import { cloneVillageContext } from "./world-context-copy.js";
 
 export const returnCatchupSubject = (batchId: string, opportunityId: string): string =>
   "return:" + batchId + ":" + opportunityId;
@@ -25,7 +26,7 @@ export function sameReturnResident(
   if (newPlans?.[date]) {
     let expected = oldPlans?.[date] ?? (oldDay?.dateKey === date ? oldDay.blocks : undefined);
     if (!expected) {
-      const projected = structuredClone(historical);
+      const projected = cloneVillageContext(historical);
       planRoutineDays(projected, at);
       expected = projected.villagers.find((row) => row.characterId === before.characterId)?.agenda?.plannedDays?.[date];
     }

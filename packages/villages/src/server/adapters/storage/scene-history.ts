@@ -11,12 +11,10 @@ import {
   readRelationshipRoot,
   readRelationshipHead,
   assertRelationshipWorld,
-  relationshipPayloadData,
+  validateRelationshipHistory,
   type RelationshipHead,
   type RelationshipScope,
 } from "./relationship-payload-store.js";
-import { createRelationshipPageTracer } from "./relationship-pages.js";
-import type { MemoryPageData } from "./memory-pages.js";
 
 export const SCENE_STORAGE_FORMAT = 4;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
@@ -123,34 +121,7 @@ export function readSceneIndex(value: unknown): Omit<VenueScene, "continuity"> {
 }
 /** Checkpoint publication validates every referenced page once without decoding ordinary historical prose. */
 export async function validateSceneHistory(documents: Pick<CapabilityDocumentStore, "getById">, scenes: unknown[]) {
-  const seen = new Set<string>(),
-    pages = new Map<string, MemoryPageData>();
-  const tracer = createRelationshipPageTracer(async (id) => {
-    if (!pages.has(id)) {
-      const row = await documents.getById("villages", id);
-      memoryRequire(
-        row && row.id === id && row.packageId === "villages" && row.kind === "memory-page" && row.revision === 1,
-        "owned frozen Scene page is missing or changed",
-      );
-      pages.set(id, row.data as MemoryPageData);
-    }
-    return pages.get(id)!;
-  });
-  for (const scene of scenes)
-    for (const owner of sceneHistoryOwners(scene)) {
-      const key = identity(owner.head);
-      if (seen.has(key)) continue;
-      const row = await documents.getById("villages", owner.head.id);
-      memoryRequire(
-        row && row.id === owner.head.id && row.packageId === "villages" && row.revision === 1,
-        "owned frozen Scene history is missing or changed",
-      );
-      const data = relationshipPayloadData(row),
-        manifest = JSON.parse(data.payload);
-      memoryRequire(manifest.header?.seed === owner.scope.seed, "frozen Scene history belongs to another Village");
-      await tracer.trace(manifest, data.world);
-      seen.add(key);
-    }
+  await validateRelationshipHistory(documents, scenes.flatMap(sceneHistoryOwners));
 }
 /** Logical Scenes stay host-free. Only this adapter binds an exact verified immutable body to a native reference. */
 export function createSceneHistory(documents: CapabilityDocumentStore) {

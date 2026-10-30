@@ -24,6 +24,7 @@ import {
 } from "../../adapters/storage/memory-pages.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { sceneHistoryOwners, readActiveSceneOwner } from "../../adapters/storage/scene-history.js";
+import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
 import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
 import {
   RELATIONSHIP_PAYLOAD_KIND,
@@ -249,13 +250,15 @@ export async function collectRetainedStorage(gate: RepairGate) {
         memoryObject(row.data);
         memoryRequire(
           row.id === "villages-village" &&
-            row.data.version === 9 &&
+            row.data.version === 10 &&
             typeof row.data.seed === "string" &&
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",
         );
         const head = readMemoryHead(row.data.memoryHead);
         if (head) await history(head, row.data as { seed: string; setupAt: string }, view);
+        const departure = departureHistoryOwner(row.data);
+        if (departure?.head) await relationshipHistory(departure.head, departure.scope, view);
       } else if (row.kind === "relationships") {
         const root = readRelationshipRoot(row.data);
         memoryRequire(row.id === relationshipDocumentId(root.seed), "unknown relationship root identity");

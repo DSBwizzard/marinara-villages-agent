@@ -9,6 +9,7 @@ import { materializeConnections } from "../../../shared/helpers/zone-contact.js"
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
+import { cloneReturnCapture } from "../rules/world-context-copy.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -101,7 +102,7 @@ import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 9,
+    version: 10,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -1263,6 +1264,8 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
     if (!capture.world || typeof capture.world !== "object" || Array.isArray(capture.world))
       throw new Error("The saved Village departure capture could not be read.");
     const world = capture.world as Record<string, unknown>;
+    if (Object.hasOwn(world, "relationshipHead"))
+      throw new Error("Departure history was not loaded for this operation.");
     if (
       typeof capture.at !== "string" ||
       !Number.isFinite(Date.parse(capture.at)) ||
@@ -1431,11 +1434,14 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
       ids.add(id);
     }
   }
-  return structuredClone(record) as VillageState["returnCatchup"];
+  const { capture, ...tracking } = record;
+  const result = structuredClone(tracking) as NonNullable<VillageState["returnCatchup"]>;
+  if (capture) result.capture = cloneReturnCapture(capture as import("../models/world.js").ReturnCatchupCapture);
+  return result;
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 9) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 10) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1478,7 +1484,7 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
   const state: VillageState = {
-    version: 9,
+    version: 10,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(

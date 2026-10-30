@@ -6,7 +6,11 @@ import {
   encodeRelationshipPages,
   decodeRelationshipPagesSync,
 } from "../../packages/villages/src/server/adapters/storage/relationship-pages.js";
-import { relationshipWorldKey } from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import {
+  createRelationshipPayloadStore,
+  relationshipWorldKey,
+} from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import type { RelationshipIdentity } from "../../packages/villages/src/server/domain/rules/return-capture-revision.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   encodeMemoryPages,
@@ -15,6 +19,9 @@ import {
 } from "../../packages/villages/src/server/adapters/storage/memory-pages.js";
 const wrappers = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 const wrapped = new WeakSet<CapabilityDocumentStore>();
+const identities = createRelationshipPayloadStore({} as CapabilityDocumentStore);
+export const fixtureRelationshipIdentity: RelationshipIdentity = (world) =>
+  identities.fingerprint(world.relationshipContext, world);
 /** Native fixture authorship is projected into the current saved layout without
  * introducing writes into read-only/ownership tests. Production has no inline reader. */
 export function villageFixtureDocuments(store: CapabilityDocumentStore): CapabilityDocumentStore {
@@ -28,8 +35,12 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       Object.entries(raw).filter(([k]) => !["memories", "memoryScenes", "memoryReceipts"].includes(k)),
     );
   async function ensure(data: unknown) {
-    const head = (data as any)?.memoryHead ?? (data as any)?.head;
-    if (!head || !virtual.has(head.id)) return;
+    const heads = [
+      (data as any)?.memoryHead,
+      (data as any)?.head,
+      (data as any)?.returnCatchup?.capture?.world?.relationshipHead,
+    ];
+    if (!heads.some((head) => head && virtual.has(head.id))) return;
     // All virtual page documents are committed before a real root may reference them.
     for (const [id, row] of virtual) {
       const existing = await store.getById("villages", id);
@@ -60,8 +71,9 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
-      if (raw?.version !== 9) return metadata;
-      if (Object.hasOwn(raw, "memoryHead")) return { ...metadata, data: { ...strip(raw), memoryHead: raw.memoryHead } };
+      if (raw?.version !== 10) return metadata;
+      if (Object.hasOwn(raw, "memoryHead"))
+        return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(raw), memoryHead: raw.memoryHead }) };
       if (!raw.memories) return metadata;
       const state = coerceVillageState(raw),
         value = { memories: state.memories, memoryScenes: state.memoryScenes, memoryReceipts: state.memoryReceipts };
@@ -104,7 +116,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
           updatedAt: state.setupAt,
         });
       }
-      return { ...metadata, data: { ...strip(state), memoryHead: head } };
+      return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(state), memoryHead: head }) };
     },
     async create(input) {
       if (input.id === "villages-village" || input.kind === "relationships") await ensure(input.data);
@@ -156,6 +168,18 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
     scene.operation = { ...scene.operation, snapshot: authorSceneFixture(rows, scene.operation.snapshot, world) };
   return scene;
 }
+export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
+  const capture = raw?.returnCatchup?.capture;
+  if (raw?.version !== 10 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
+  const { relationshipContext, ...world } = capture.world;
+  const relationshipHead = relationshipContext
+    ? authorRelationshipFixture(rows, relationshipContext, world).head
+    : null;
+  return {
+    ...raw,
+    returnCatchup: { ...raw.returnCatchup, capture: { ...capture, world: { ...world, relationshipHead } } },
+  };
+}
 export function fixtureSceneState(raw: any, rows: Map<string, any>) {
   if (!raw?.storageFormat) return coerceSession(raw);
   const { storageFormat: _format, ...scene } = raw;
@@ -205,6 +229,18 @@ export function storedVillage(rows: Map<string, any>) {
   return fixtureVillageState(rows.get("villages-village")?.data, rows);
 }
 export function fixtureVillageState(raw: any, rows?: Map<string, any>) {
+  const capture = raw?.returnCatchup?.capture;
+  if (capture && Object.hasOwn(capture.world, "relationshipHead")) {
+    const { relationshipHead, ...world } = capture.world;
+    const body = relationshipHead ? rows!.get(relationshipHead.id)!.data : null;
+    const relationshipContext = body
+      ? decodeRelationshipPagesSync(JSON.parse(body.payload), body.world, (id) => rows!.get(id)?.data ?? null).value
+      : undefined;
+    raw = {
+      ...raw,
+      returnCatchup: { ...raw.returnCatchup, capture: { ...capture, world: { ...world, relationshipContext } } },
+    };
+  }
   if (!raw || !Object.hasOwn(raw, "memoryHead")) return coerceVillageState(raw);
   const root = raw.memoryHead ? rows!.get(raw.memoryHead.id).data : null;
   const payload = root

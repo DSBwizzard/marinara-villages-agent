@@ -9,6 +9,7 @@ import { villagerPlaceView } from "./village-projections.js";
 import { canEnter } from "./social-rules.js";
 import { admitNarrative } from "./narrative-development.js";
 import { preferredActivityLane } from "./activity-arbitration.js";
+import { cloneVillageContext } from "./world-context-copy.js";
 
 const HOUR = 60 * 60_000;
 
@@ -48,7 +49,7 @@ export function returnCatchupOpportunities(
   const day = new ZonedDate(windowStart, zone);
   day.setHours(0, 0, 0, 0);
   for (let dayCount = 0; dayCount < 9 && day.getTime() < end; dayCount++) {
-    const projected = structuredClone(captured);
+    const projected = cloneVillageContext(captured);
     planRoutineDays(projected, day);
     const schedules = residents.map((original) => {
       const resident = projected.villagers.find((row) => row.characterId === original.characterId)!;

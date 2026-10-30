@@ -90,6 +90,7 @@ import {
   readSession,
 } from "../adapters/storage/scene-store.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
+import { relationshipPayloadStore } from "../adapters/storage/relationship-payload-store.js";
 import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
@@ -1115,7 +1116,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       },
     }),
   );
+  const relationshipIdentity: import("../domain/rules/return-capture-revision.js").RelationshipIdentity = (world) =>
+    relationshipPayloadStore(villagesDocuments()).fingerprint(world.relationshipContext, world);
   const residentPlanning = createResidentPlanning({
+    relationshipIdentity,
     afterCatchup: advanceReturnCatchup,
     afterCatchupFailure: advanceReturnCatchup,
     applySavedStartingTies: startingTies.applySaved,
@@ -1129,6 +1133,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const narrative = createNarrative({
+    relationshipIdentity,
     read: readVillageAuthority,
     mutate: (update) => villageRepository.mutateAuthority(update),
     socialSnapshot: readVillageSnapshot,
@@ -1201,6 +1206,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const returnSettlement = createReturnCatchupSettlement({
+    relationshipIdentity,
     gate: repairGate(),
     readSnapshot: readVillageSnapshot,
     mutate: mutateVillageMemoryState,
