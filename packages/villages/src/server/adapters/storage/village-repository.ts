@@ -52,7 +52,7 @@ function encodeRoot(state: VillageState, memoryHead: MemoryHead | null) {
   return {
     ...Object.fromEntries(
       Object.keys(state)
-        .filter((key) => !historyFields.includes(key as never))
+        .filter((key) => key !== "relationshipContext" && !historyFields.includes(key as never))
         .map((key) => [key, state[key as keyof VillageState]]),
     ),
     memoryHead,

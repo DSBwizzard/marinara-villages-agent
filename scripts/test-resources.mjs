@@ -3,6 +3,7 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-work-retention.regression.ts",
   "tests/villages-agenda-focus.regression.ts",
   "tests/villages-zone-layout.regression.ts",
   "tests/villages-zone-map.e2e.mjs",
