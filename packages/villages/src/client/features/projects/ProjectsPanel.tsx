@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { SceneView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH, MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
 import { SpaceConnections } from "../../shared/SpaceConnections.js";
@@ -15,7 +15,7 @@ const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as
 type Tab = (typeof tabs)[number];
 const active = (status: string) => status === "working" || status === "paused";
 const kindName = (kind: string) => (kind === "new-venue" ? "New Venue" : "Renovation");
-function Facts({ rows }: { rows: [string, string][] }) {
+function Facts({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <dl className="vp-facts">
       {rows.map(([label, value]) => (
@@ -865,7 +865,14 @@ export function ProjectsPanel({
                         rows={[
                           ...(editable ? [["Duration", "24 hours"] as [string, string]] : []),
                           ...(project.status === "working" && flow.workOrder
-                            ? [["Completes", focusTime(flow.workOrder.completesAt)] as [string, string]]
+                            ? [
+                                [
+                                  "Completes",
+                                  <time dateTime={flow.workOrder.completesAt}>
+                                    {focusTime(flow.workOrder.completesAt)}
+                                  </time>,
+                                ] as [string, ReactNode],
+                              ]
                             : []),
                           ...(resumable && flow.workOrder
                             ? [
