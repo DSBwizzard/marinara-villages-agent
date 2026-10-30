@@ -1078,6 +1078,7 @@ await runCase("repair/checkpoint-pages", async () => {
     { memories: true },
   );
   const envelopes = new Set<string>();
+  let interrupted = false;
   f.hook((event, id) => {
     const row = f.rows.get(id);
     if (
@@ -1096,6 +1097,14 @@ await runCase("repair/checkpoint-pages", async () => {
       if (value && typeof value === "object") pending.push(...Object.values(value));
     }
     envelopes.add(row.kind);
+    if (
+      !interrupted &&
+      row.kind === "repair-control" &&
+      row.data.pending?.writes.some((w: any) => typeof w.memoryPages === "string")
+    ) {
+      interrupted = true;
+      throw Error("packed journal acknowledgement interrupted");
+    }
   });
   const checkpoint = await f.api.createCheckpoint("Paged history", "paged-checkpoint");
   const original = await f.read();
@@ -1120,6 +1129,9 @@ await runCase("repair/checkpoint-pages", async () => {
   );
   f.reopen();
   const review = await f.api.restore(checkpoint.id, "restore-paged-checkpoint");
+  await assert.rejects(f.api.apply(review.id, review.token), /packed journal acknowledgement interrupted/);
+  assert.ok(interrupted);
+  f.reopen();
   await f.api.apply(review.id, review.token);
   f.reopen();
   const restored = await f.read();
