@@ -73,6 +73,26 @@ await firstLate.retain(result("valid:unreturned"), false);
 assert.equal((await current.retain(result("valid:current"), true)).content, "valid:current");
 assert.equal((await claim("unadopted", false)).cached?.content, "valid:current");
 
+for (const missing of ["deleted", "reset"] as const) {
+  const key = "lost-claim-" + missing;
+  const lost = await claim(key);
+  const id = "villages-generation-response-" + createHash("sha256").update(key).digest("hex");
+  const record = rows.get(id),
+    original = structuredClone(record.data);
+  if (missing === "deleted") rows.delete(id);
+  else Object.assign(record.data, { dispatched: 0, settled: 0, rejected: 0, pending: [] });
+  const beforeLostClaim = writes;
+  await assert.rejects(lost.retain(result("valid:must not apply without replay"), true), /already settled/);
+  assert.equal(
+    writes,
+    beforeLostClaim,
+    "Missing dispatch authority cannot return a completion or recreate the receipt",
+  );
+  record.data = original;
+  rows.set(id, record);
+  await assert.rejects(claim(key, false), /Retry explicitly/);
+}
+
 // Never compact unresolved purchased work merely because another attempt succeeded.
 const uncertain = [];
 for (let i = 0; i < 150; i++) uncertain.push(await claim("uncertain"));
