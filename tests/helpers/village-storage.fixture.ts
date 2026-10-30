@@ -13,6 +13,11 @@ import {
 import type { RelationshipIdentity } from "../../packages/villages/src/server/domain/rules/return-capture-revision.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
+  encodeSceneTranscript,
+  decodeSceneTranscriptSync,
+  readSceneTranscriptHead,
+} from "../../packages/villages/src/server/adapters/storage/scene-transcript-pages.js";
+import {
   encodeMemoryPages,
   decodeMemoryPagesSync,
   MEMORY_PAGE_KIND,
@@ -39,6 +44,10 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       (data as any)?.memoryHead,
       (data as any)?.head,
       (data as any)?.returnCatchup?.capture?.world?.relationshipHead,
+      (data as any)?.transcript?.lines,
+      (data as any)?.operation?.snapshot?.transcript?.lines,
+      (data as any)?.continuity?.relationshipHead,
+      (data as any)?.operation?.snapshot?.continuity?.relationshipHead,
     ];
     if (!heads.some((head) => head && virtual.has(head.id))) return;
     // All virtual page documents are committed before a real root may reference them.
@@ -119,7 +128,8 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(state), memoryHead: head }) };
     },
     async create(input) {
-      if (input.id === "villages-village" || input.kind === "relationships") await ensure(input.data);
+      if (input.id === "villages-village" || input.kind === "relationships" || input.kind === "venue-visit")
+        await ensure(input.data);
       return store.create(input);
     },
     async list(pkg, kind) {
@@ -138,7 +148,12 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       }));
     },
     async update(input) {
-      if (input.id === "villages-village" || (input.data as any)?.format === 4) await ensure(input.data);
+      if (
+        input.id === "villages-village" ||
+        (input.data as any)?.format === 4 ||
+        (input.data as any)?.storageFormat === 5
+      )
+        await ensure(input.data);
       return store.update(input);
     },
     async remove(pkg, id, revision) {
@@ -155,8 +170,25 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
   const scene = {
     ...raw,
     villageSeed: Object.hasOwn(raw, "villageSeed") ? raw.villageSeed : world?.seed || undefined,
-    storageFormat: 4,
+    storageFormat: 5,
   };
+  const normalized = coerceSession({ ...raw, continuity: undefined, operation: undefined, submissions: [] });
+  const encoded = encodeSceneTranscript(normalized.lines, scene);
+  for (const [id, data] of encoded.pages)
+    rows.set(id, {
+      id,
+      packageId: "villages",
+      kind: MEMORY_PAGE_KIND,
+      data,
+      revision: 1,
+      name: "Fixture Scene history",
+      description: "",
+      createdAt: raw.startedAt ?? "",
+      updatedAt: raw.startedAt ?? "",
+    });
+  scene.transcript = encoded.head;
+  delete scene.lines;
+  delete scene.heardHistory;
   if (scene.continuity) {
     const context = scene.continuity,
       scope = { seed: context.seed, setupAt: context.setupAt ?? world?.setupAt ?? "" },
@@ -182,7 +214,11 @@ export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
 }
 export function fixtureSceneState(raw: any, rows: Map<string, any>) {
   if (!raw?.storageFormat) return coerceSession(raw);
-  const { storageFormat: _format, ...scene } = raw;
+  const { storageFormat: _format, transcript, ...scene } = raw;
+  scene.lines = decodeSceneTranscriptSync(
+    readSceneTranscriptHead(transcript, raw),
+    (id) => rows.get(id)?.data ?? null,
+  ).lines;
   if (raw.continuity) {
     const { relationshipHead, ...context } = raw.continuity;
     const root = relationshipHead ? rows.get(relationshipHead.id)!.data : null;

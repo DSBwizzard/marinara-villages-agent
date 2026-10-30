@@ -514,7 +514,6 @@ async function operation(work: () => Promise<any>) {
     revision: 1,
     name: "Scene",
     data: {
-      storageFormat: 4,
       version: 3,
       id,
       status: "active",

@@ -1,7 +1,8 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_KIND } from "../../adapters/storage/scene-slots.js";
-import { readSceneIndex } from "../../adapters/storage/scene-history.js";
+import { readSceneIndex, readSceneTranscriptIndex } from "../../adapters/storage/scene-history.js";
+import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import type { ActiveVenue, VenueScene } from "../../domain/models/scene-model.js";
 import { conflict, notFound } from "../../domain/rules/errors.js";
 
@@ -13,16 +14,22 @@ export interface SceneArchivePorts {
 /** Owns archive commands and their lazy connections. Construction performs no work. */
 export function createSceneArchive({ villagesDocuments, readActive, readSession }: SceneArchivePorts) {
   async function listVenueVisits(filter: { placeId?: string; characterId?: string } = {}): Promise<VenueScene[]> {
-    const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
-    return records
-      .map((record) => readSceneIndex(record.data))
-      .filter(
-        (session) =>
-          session.status === "closed" &&
-          (!filter.placeId || session.placeId === filter.placeId) &&
-          (!filter.characterId || session.participants.some((person) => person.characterId === filter.characterId)),
-      )
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    return withRepairWork(async () => {
+      const documents = villagesDocuments();
+      const records = await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND);
+      const selected = records
+        .map((record) => ({ record, session: readSceneIndex(record.data) }))
+        .filter(
+          ({ session }) =>
+            session.status === "closed" &&
+            (!filter.placeId || session.placeId === filter.placeId) &&
+            (!filter.characterId || session.participants.some((person) => person.characterId === filter.characterId)),
+        )
+        .sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
+      const scenes: VenueScene[] = [];
+      for (const { record } of selected) scenes.push(await readSceneTranscriptIndex(documents, record.data));
+      return scenes;
+    });
   }
 
   async function readVenueVisit(id: string): Promise<VenueScene> {

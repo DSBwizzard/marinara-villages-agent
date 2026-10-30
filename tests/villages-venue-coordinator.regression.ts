@@ -1,4 +1,4 @@
-import { villageFixtureDocuments, fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments, fixtureSceneState, authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import {
   venueSavedCheckpoint,
@@ -190,8 +190,10 @@ async function main() {
     for (const evidence of ["submission", "navigation", "turn-reply", "greeting-reply"]) {
       const id = "expired-" + evidence;
       seed(id);
-      row(id).data = { ...structuredClone(expired.data), id };
-      row(id).data.operation.snapshot.id = id;
+      const cloned = fixtureSceneState(structuredClone(expired.data), records);
+      cloned.id = id;
+      cloned.operation!.snapshot = { ...fixtureSceneState(cloned.operation!.snapshot, records), id };
+      row(id).data = authorSceneFixture(records, cloned);
       if (evidence === "submission") row(id).data.submissions = [{ id: "turn" }];
       else if (evidence === "navigation") row(id).data.navigationReceipts = [{ id: "turn" }];
       else row(id).data.operation.checkpoints[evidence] = { saved: true };
@@ -926,7 +928,17 @@ async function main() {
       const answer = await venueCheckpoint("turn-reply", () => paid("saved result"));
       if (failCommit) throw new Error("transcript write failed");
       assertVenueOwnership(row("checkpoint").data);
-      row("checkpoint").data.lines.push(answer);
+      await changeSession("checkpoint", (saved) => {
+        saved.lines.push({
+          id: "saved",
+          speakerId: "",
+          name: "",
+          role: "assistant",
+          content: answer,
+          at: new Date().toISOString(),
+          heardBy: [],
+        });
+      });
       return answer;
     };
     await assert.rejects(
@@ -941,7 +953,10 @@ async function main() {
         : Promise.resolve(),
     );
     assert.equal(calls, beforeCommitRecovery, "saved narration commits without regeneration");
-    assert.deepEqual(row("checkpoint").data.lines, ["saved result"]);
+    assert.deepEqual(
+      fixtureSceneState(row("checkpoint").data, records).lines.map((line) => line.content),
+      ["saved result"],
+    );
 
     seed("stages");
     let failNarration = true;
@@ -979,7 +994,17 @@ async function main() {
         return late.promise;
       });
       assertVenueOwnership(row("cancel").data);
-      row("cancel").data.lines.push(answer);
+      await changeSession("cancel", (saved) => {
+        saved.lines.push({
+          id: "late",
+          speakerId: "",
+          name: "",
+          role: "assistant",
+          content: answer,
+          at: new Date().toISOString(),
+          heardBy: [],
+        });
+      });
     });
     const rejectedOld = assert.rejects(old, refused("OPERATION_INTERRUPTED"));
     await entered.promise;
@@ -988,7 +1013,11 @@ async function main() {
     await coordinateVenue("cancel", "new", "turn", {}, 0, undefined, () => paid("successor"));
     late.resolve("late response");
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(row("cancel").data.lines, [], "a provider ignoring cancellation cannot append a late response");
+    assert.deepEqual(
+      fixtureSceneState(row("cancel").data, records).lines,
+      [],
+      "a provider ignoring cancellation cannot append a late response",
+    );
     assert.equal(row("cancel").data.operation.id, "new");
 
     seed("teardown");
@@ -1329,7 +1358,11 @@ async function main() {
       coordinateVenue("typed-review", "typed", "turn", typedInput, 0, undefined, typedWork),
       /clarification/,
     );
-    assert.equal(row("typed-review").data.lines.length, 0, "An unresolved action cannot publish a partial turn");
+    assert.equal(
+      fixtureSceneState(row("typed-review").data, records).lines.length,
+      0,
+      "An unresolved action cannot publish a partial turn",
+    );
     assert.equal(narrationDispatches, 1);
     assert.equal(systemDispatches, 1);
     assert(
@@ -1360,7 +1393,7 @@ async function main() {
     await coordinateVenue("typed-review", "typed", "turn", typedInput, undefined, undefined, typedWork, {
       recovery: true,
     });
-    assert.equal(row("typed-review").data.lines.length, 1);
+    assert.equal(fixtureSceneState(row("typed-review").data, records).lines.length, 1);
     assert.equal(row("typed-review").data.submissions.length, 1);
     assert.equal(systemDispatches, 2);
     seed("typed-invalid-narration");

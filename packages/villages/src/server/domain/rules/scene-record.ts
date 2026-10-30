@@ -1,17 +1,19 @@
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import { perceivedZoneLine } from "./zone-events.js";
 
-export function sceneFingerprint(session: VenueScene): string {
-  return JSON.stringify([
-    session.status,
-    session.zoneId,
-    session.area,
-    session.privateOwnerId,
-    session.activeIds,
-    session.participants,
+export function sceneFingerprint(session: VenueScene) {
+  return [
+    JSON.stringify([
+      session.status,
+      session.zoneId,
+      session.area,
+      session.privateOwnerId,
+      session.activeIds,
+      session.participants,
+      session.recap,
+    ]),
     session.lines.map((line) => line.id),
-    session.recap,
-  ]);
+  ] as const;
 }
 export function pendingProgressTurns(session: VenueScene, foundedAt: string) {
   return session.submissions.filter(
@@ -23,16 +25,10 @@ export function pendingProgressTurns(session: VenueScene, foundedAt: string) {
   );
 }
 export function appendLine(session: VenueScene, line: VenueLine): void {
-  line.zoneId ??= session.zoneId;
-  session.lines.push(line);
-  const recipients = [...line.heardBy, ...(line.soundOnly?.characterIds ?? [])];
-  for (const id of recipients)
-    if (!session.heardHistory.some((history) => history.characterId === id))
-      session.heardHistory.push({ characterId: id, lineIds: [] });
-  for (const history of session.heardHistory)
-    if (recipients.includes(history.characterId)) history.lineIds.push(line.id);
+  session.lines.push({ ...line, zoneId: line.zoneId ?? session.zoneId });
 }
 export function heardLines(session: VenueScene, characterId: string): VenueLine[] {
-  const ids = new Set(session.heardHistory.find((history) => history.characterId === characterId)?.lineIds ?? []);
-  return session.lines.filter((line) => ids.has(line.id)).map((line) => perceivedZoneLine(line, characterId));
+  return session.lines
+    .filter((line) => line.heardBy.includes(characterId) || line.soundOnly?.characterIds.includes(characterId))
+    .map((line) => perceivedZoneLine(line, characterId));
 }

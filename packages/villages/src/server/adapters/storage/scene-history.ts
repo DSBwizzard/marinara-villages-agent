@@ -6,6 +6,14 @@ import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity
 import { immutableRelationshipState } from "../../domain/rules/relationship-rules.js";
 import { sceneContinuityFields } from "../../domain/rules/scene-continuity.js";
 import {
+  sceneTranscriptStore,
+  readSceneTranscriptHead,
+  createSceneTranscriptTracer,
+  decodeSceneTranscript,
+  type SceneTranscriptHead,
+} from "./scene-transcript-pages.js";
+import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
+import {
   relationshipPayloadStore,
   relationshipDocumentId,
   readRelationshipRoot,
@@ -16,7 +24,7 @@ import {
   type RelationshipScope,
 } from "./relationship-payload-store.js";
 
-export const SCENE_STORAGE_FORMAT = 4;
+export const SCENE_STORAGE_FORMAT = 5;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
 const associations = new WeakMap<RelationshipState, { scope: RelationshipScope; head: RelationshipHead }>();
 const identity = (head: RelationshipHead) => head.id + ":" + head.digest;
@@ -82,6 +90,11 @@ export function sceneHistoryOwners(value: unknown): SceneHistoryOwner[] {
         (!expectedId || raw.id === expectedId),
       "unsupported Scene storage format; start a fresh Village",
     );
+    memoryRequire(
+      !Object.hasOwn(raw, "lines") && !Object.hasOwn(raw, "heardHistory"),
+      "inline Scene transcript is unsupported",
+    );
+    readSceneTranscriptHead(raw.transcript, raw as VenueScene);
     const context = storedContinuity(raw.continuity, raw);
     if (context?.head) owners.push({ sceneId: raw.id, scope: context.scope, head: context.head });
     if (raw.operation !== undefined && raw.operation !== null) {
@@ -105,11 +118,58 @@ export function sceneHistoryOwners(value: unknown): SceneHistoryOwner[] {
   scene(value);
   return owners;
 }
-/** Listing/backlog consumers need Scene mechanics and transcript fields, not frozen relationship hydration. */
+export function sceneTranscriptOwners(
+  value: unknown,
+): { head: SceneTranscriptHead; participants: VenueScene["participants"] }[] {
+  sceneHistoryOwners(value);
+  const raw = value as Record<string, any>;
+  const heads = [
+    {
+      head: readSceneTranscriptHead(raw.transcript, raw as VenueScene),
+      participants: coerceSession({ version: 3, participants: raw.participants }).participants,
+    },
+  ];
+  if (raw.operation?.snapshot)
+    heads.push({
+      head: readSceneTranscriptHead(raw.operation.snapshot.transcript, raw.operation.snapshot),
+      participants: coerceSession({ version: 3, participants: raw.operation.snapshot.participants }).participants,
+    });
+  return heads;
+}
+/** Consequential retirement checks the authored source before permissive logical field decoding. */
+export async function readSceneRetirementSource(documents: Pick<CapabilityDocumentStore, "getById">, value: unknown) {
+  sceneHistoryOwners(value);
+  const raw = value as VenueScene & { storageFormat: number; transcript: unknown };
+  const { lines } = await decodeSceneTranscript(readSceneTranscriptHead(raw.transcript, raw), async (id) => {
+    const row = await documents.getById("villages", id);
+    memoryRequire(
+      row && row.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+      "owned Scene transcript page is missing or changed",
+    );
+    return row.data as MemoryPageData;
+  });
+  return { ...raw, lines };
+}
+export async function readSceneTranscriptIndex(documents: Pick<CapabilityDocumentStore, "getById">, value: unknown) {
+  const {
+    storageFormat: _format,
+    transcript: _transcript,
+    continuity: _context,
+    ...source
+  } = await readSceneRetirementSource(documents, value);
+  return coerceSession(source);
+}
+/** Backlog and recovery enumeration need mechanics, not transcript or frozen relationship hydration. */
 export function readSceneIndex(value: unknown): Omit<VenueScene, "continuity"> {
   sceneHistoryOwners(value);
-  const { storageFormat: _format, continuity, ...fields } = value as Record<string, any>;
+  const { storageFormat: _format, continuity, transcript: _transcript, ...fields } = value as Record<string, any>;
   const scene = coerceSession(fields);
+  Object.defineProperty(scene, "lines", {
+    enumerable: false,
+    get() {
+      throw new Error("Scene transcript was not loaded for this operation.");
+    },
+  });
   if (continuity)
     Object.defineProperty(scene, "continuity", {
       enumerable: false,
@@ -122,16 +182,27 @@ export function readSceneIndex(value: unknown): Omit<VenueScene, "continuity"> {
 /** Checkpoint publication validates every referenced page once without decoding ordinary historical prose. */
 export async function validateSceneHistory(documents: Pick<CapabilityDocumentStore, "getById">, scenes: unknown[]) {
   await validateRelationshipHistory(documents, scenes.flatMap(sceneHistoryOwners));
+  const tracer = createSceneTranscriptTracer(async (id) => {
+    const row = await documents.getById("villages", id);
+    memoryRequire(
+      row && row.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+      "owned Scene transcript page is missing or changed",
+    );
+    return row.data as MemoryPageData;
+  });
+  for (const owner of scenes.flatMap(sceneTranscriptOwners)) await tracer.trace(owner.head, owner.participants);
 }
 /** Logical Scenes stay host-free. Only this adapter binds an exact verified immutable body to a native reference. */
 export function createSceneHistory(documents: CapabilityDocumentStore) {
   const payloads = relationshipPayloadStore(documents);
+  const transcripts = sceneTranscriptStore(documents);
   async function decode(value: unknown): Promise<VenueScene> {
     sceneHistoryOwners(value);
     const raw = value as Record<string, any>,
-      { storageFormat: _format, ...logical } = raw;
+      { storageFormat: _format, transcript, ...logical } = raw;
     const captured = storedContinuity(raw.continuity, raw);
     let body: RelationshipState | undefined;
+    logical.continuity = undefined;
     if (captured) {
       if (captured.head) {
         body = await payloads.readSnapshot(captured.head, captured.scope);
@@ -140,6 +211,8 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
       const { relationshipHead: _head, ...continuity } = captured.raw;
       logical.continuity = { ...continuity, facts: { ...continuity.facts, relationshipContext: body } };
     }
+    const header = coerceSession({ ...logical, continuity: undefined, lines: [] });
+    logical.lines = (await transcripts.read(readSceneTranscriptHead(transcript, header), header)).lines;
     // The coordinator retains its native admitted snapshot. Its sole consumer hydrates it explicitly.
     const scene = coerceSession(logical);
     if (scene.continuity && body) scene.continuity.facts.relationshipContext = body;
@@ -184,7 +257,10 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
       const { relationshipContext: _body, ...facts } = continuity.facts;
       stored = { ...continuity, facts, relationshipHead: head };
     }
-    const result = { ...scene, storageFormat: SCENE_STORAGE_FORMAT, continuity: stored };
+    const prior = previous ? readSceneTranscriptHead((previous as Record<string, any>).transcript, scene) : undefined;
+    const transcript = await transcripts.prepare(scene, prior);
+    const { lines: _lines, ...facts } = scene;
+    const result = { ...facts, storageFormat: SCENE_STORAGE_FORMAT, transcript, continuity: stored };
     sceneHistoryOwners(result);
     return result;
   }

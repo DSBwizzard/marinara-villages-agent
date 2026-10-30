@@ -11,7 +11,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const routes = villageRouteSource();
 const ui = clientImplementation();
 const sceneStore = readFileSync(resolve(root, "packages/villages/src/server/adapters/storage/scene-slots.ts"), "utf8");
-const sceneModel = readFileSync(resolve(root, "packages/villages/src/server/domain/models/scene-model.ts"), "utf8");
 
 for (const path of [
   "/rooms/active",
@@ -84,6 +83,5 @@ assert.match(
 );
 assert.doesNotMatch(ui, /Open transcript/u);
 assert.match(sceneStore, /const ACTIVE_ID = "villages-active-venue"/u);
-assert.match(sceneModel, /heardHistory: \{ characterId: string; lineIds: string\[\] \}\[\]/u);
 
 console.log("villages-venue-routes: ok");

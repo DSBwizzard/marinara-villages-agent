@@ -21,6 +21,7 @@ import { coercePendingAttention } from "../rules/scene-attention.js";
 import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneRevision } from "../rules/scene-revision.js";
+import { reuseSceneLine } from "../rules/scene-transcript.js";
 import type { ContactIntent, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import { coerceExchangeProcessing } from "./exchange-codec.js";
@@ -71,7 +72,8 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
 
 export function coerceSession(value: unknown): VenueScene {
   const raw = savedVenueClassRecord(value);
-  if (Object.hasOwn(raw, "storageFormat")) throw conflict("Stored Scene history requires explicit hydration.");
+  if (Object.hasOwn(raw, "storageFormat") || Object.hasOwn(raw, "transcript"))
+    throw conflict("Stored Scene history requires explicit hydration.");
   if (raw.version !== 3) throw conflict("Unsupported Scene format. Its saved data is preserved.");
   if (
     raw.spinoff &&
@@ -99,6 +101,8 @@ export function coerceSession(value: unknown): VenueScene {
   const lines: VenueLine[] = Array.isArray(raw.lines)
     ? raw.lines
         .map((value) => {
+          const canonical = reuseSceneLine(value, participantIds);
+          if (canonical) return canonical;
           const row = asRecord(value);
           return {
             id: asTrimmedString(row.id),
@@ -337,22 +341,6 @@ export function coerceSession(value: unknown): VenueScene {
       : {}),
     activeIds: Array.isArray(raw.activeIds) ? raw.activeIds.filter((id): id is string => typeof id === "string") : [],
     lines,
-    heardHistory: Array.isArray(raw.heardHistory)
-      ? raw.heardHistory
-          .map((value) => {
-            const row = asRecord(value);
-            return {
-              characterId: asTrimmedString(row.characterId),
-              lineIds: Array.isArray(row.lineIds)
-                ? row.lineIds.filter((id): id is string => typeof id === "string")
-                : [],
-            };
-          })
-          .filter((entry) => !!entry.characterId)
-      : participants.map((person) => ({
-          characterId: person.characterId,
-          lineIds: lines.filter((line) => line.heardBy.includes(person.characterId)).map((line) => line.id),
-        })),
     submissions: Array.isArray(raw.submissions)
       ? raw.submissions
           .map((value) => {

@@ -38,7 +38,6 @@ const scene: VenueScene = {
     line("whisper-player", { kind: "whisper", targetId: "player" }),
     line("visible"),
   ],
-  heardHistory: [],
   submissions: [],
   recap: "This recap does not confer evidence authority.",
 };

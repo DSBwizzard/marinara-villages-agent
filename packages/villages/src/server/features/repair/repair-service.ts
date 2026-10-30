@@ -25,6 +25,7 @@ import {
 import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
 import {
   readSceneIndex,
+  readSceneTranscriptIndex,
   sceneHistoryOwners,
   validateSceneHistory,
   readActiveSceneOwner,
@@ -417,7 +418,7 @@ export function createRepairService(ports: RepairPorts) {
               value: (annotation?.data as { text?: string })?.text ?? "",
             },
           ],
-          source: scene.lines.slice(-6).map((l) => l.content),
+          source: (await readSceneTranscriptIndex(documents, row.data)).lines.slice(-6).map((l) => l.content),
           actions: [{ id: "correct", label: "Modify" }],
           related: [],
         });

@@ -17,7 +17,12 @@ import { initializeVenueAccess } from "../packages/villages/src/server/domain/ru
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-import { fixtureVillageState, villageFixtureDocuments, fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import {
+  fixtureVillageState,
+  villageFixtureDocuments,
+  fixtureSceneState,
+  authorSceneFixture,
+} from "./helpers/village-storage.fixture.js";
 
 // Archive-identical server and actual HTTP handlers, with synthetic storage/models only.
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
@@ -357,7 +362,12 @@ async function start() {
     },
   });
 }
-const state = () => records.get("villages-venue-visit-" + scene.id).data;
+const state = (): any => fixtureSceneState(records.get("villages-venue-visit-" + scene.id).data, records);
+const editFixtureScene = (edit: (saved: any) => void) => {
+  const saved = state();
+  edit(saved);
+  records.get("villages-venue-visit-" + scene.id).data = authorSceneFixture(records, saved);
+};
 async function turn(
   id: string,
   message: string,
@@ -912,11 +922,16 @@ try {
   const failedCloseKey = "villages-venue-visit-" + failedCloseId;
   const failedCloseRow = clone(records.get("villages-venue-visit-" + scene.id));
   failedCloseRow.id = failedCloseKey;
+  failedCloseRow.data = fixtureSceneState(failedCloseRow.data, records);
   failedCloseRow.data.id = failedCloseId;
-  failedCloseRow.data.operation.snapshot.id = failedCloseId;
+  failedCloseRow.data.operation.snapshot = {
+    ...fixtureSceneState(failedCloseRow.data.operation.snapshot, records),
+    id: failedCloseId,
+  };
+  const originalLines = clone(failedCloseRow.data.lines);
+  failedCloseRow.data = authorSceneFixture(records, failedCloseRow.data);
   records.set(failedCloseKey, failedCloseRow);
   const originalFailed = clone(failedCloseRow.data.operation);
-  const originalLines = clone(failedCloseRow.data.lines);
   const beforeFailedClose = modelCalls;
   const endFailedPayload = {
     sessionId: failedCloseId,
@@ -933,7 +948,7 @@ try {
   const endedFailed = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
   assert.equal(endedFailed.statusCode, 200, endedFailed.body);
   assert.equal(records.get(failedCloseKey).data.status, "closed");
-  assert.deepEqual(records.get(failedCloseKey).data.lines, originalLines);
+  assert.deepEqual(fixtureSceneState(records.get(failedCloseKey).data, records).lines, originalLines);
   assert.deepEqual(records.get(failedCloseKey).data.operation.checkpoints["abandoned-request"], originalFailed);
   assert.doesNotMatch(endedFailed.body, /abandoned-request|writing-completion|snapshot/);
   const endedAgain = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
@@ -1043,16 +1058,18 @@ try {
   );
   // Both observed tea failures: absent legacy witnesses stay unknown; new witnessed speech survives old history.
   const preference = "I dislike cinnamon in tea. Mint is my favourite. What about you?";
-  records.get("villages-venue-visit-" + scene.id).data.lines.push({
-    id: "legacy-unwitnessed-tea",
-    speakerId: "",
-    name: "",
-    role: "user",
-    content: '"' + preference + '"',
-    at: now,
-    zoneId: "terrace",
-    heardBy: [],
-  });
+  editFixtureScene((saved) =>
+    saved.lines.push({
+      id: "legacy-unwitnessed-tea",
+      speakerId: "",
+      name: "",
+      role: "user",
+      content: '"' + preference + '"',
+      at: now,
+      zoneId: "terrace",
+      heardBy: [],
+    }),
+  );
   await turn("legacy-tea-query", '"Which tea flavour did I dislike?"', [
     { kind: "dialogue", speakerId: "aqua", text: "You never told me." },
   ]);
@@ -1375,7 +1392,9 @@ try {
   ]) {
     records.clear();
     for (const [key, record] of clone(beforeInvalidSound)) records.set(key, record);
-    state().semanticVersion = semanticVersion;
+    editFixtureScene((saved) => {
+      saved.semanticVersion = semanticVersion;
+    });
     const beforeScene = clone(state());
     const beforeWorld = clone(records.get("villages-village"));
     const payload: Record<string, any> = {
@@ -1390,16 +1409,18 @@ try {
       const { operation, ...snapshot } = clone(state());
       const input = { ...operation.input, writingContractVersion: writingVersion };
       if (writingVersion === 1) delete input.writingCapabilities;
-      state().operation = {
-        ...operation,
-        id: payload.submissionId,
-        input,
-        snapshot,
-        status: "interrupted",
-        sceneRevision: state().sceneRevision,
-        checkpoints: {},
-        attempts: {},
-      };
+      editFixtureScene((saved) => {
+        saved.operation = {
+          ...operation,
+          id: payload.submissionId,
+          input,
+          snapshot,
+          status: "interrupted",
+          sceneRevision: state().sceneRevision,
+          checkpoints: {},
+          attempts: {},
+        };
+      });
       payload.retryOfAttemptId = state().operation.attemptId;
     }
     answer = {
@@ -1516,7 +1537,9 @@ try {
     new Date(now).toISOString(),
   );
   liveWorld.villagers.find((row: any) => row.characterId === "aqua").wishes = [wish];
-  state().continuity.facts.villagers = clone(liveWorld.villagers);
+  editFixtureScene((saved) => {
+    saved.continuity.facts.villagers = clone(liveWorld.villagers);
+  });
   semanticIntentAnswer.timeline = [{ kind: "speech", text: "Let us discuss the harbour." }];
   semanticExchangeAnswer.wishChanges = [
     {
@@ -1766,7 +1789,6 @@ try {
     assert.equal(state().zoneId, frozenScene.zoneId);
     assert.deepEqual(state().lines, frozenScene.lines);
     assert.deepEqual(state().submissions, frozenScene.submissions);
-    assert.deepEqual(state().heardHistory, frozenScene.heardHistory);
     assert.deepEqual(records.get("villages-village"), frozenWorld, "Blocked travel commits no world effects");
     const writingCalls = modelCalls;
     const retry = await app.inject({
@@ -1879,7 +1901,6 @@ try {
       assert.equal(modelCalls, callsBefore + 2, "Invalid intent triggers no automatic replacement");
       assert.deepEqual(state().lines, before.lines);
       assert.deepEqual(state().submissions, before.submissions);
-      assert.deepEqual(state().heardHistory, before.heardHistory);
       assert.deepEqual(state().sceneAttendance, before.sceneAttendance);
       assert.deepEqual(records.get("villages-village"), worldBefore);
       assert.equal(state().operation.input.message, message);
@@ -2026,7 +2047,6 @@ try {
       clone({
         lines: state().lines,
         submissions: state().submissions,
-        heardHistory: state().heardHistory,
         accompanying: state().accompanying,
         attendance: state().sceneAttendance,
         revision: state().sceneRevision,
@@ -2139,7 +2159,9 @@ try {
     assert.equal(modelCalls, callsBeforeHistoricalReplay, "superseded rejected IDs never regenerate");
     const receiptsBeforeStale = clone(state().rejectedSubmissions);
     beforeSemanticResponse = () => {
-      state().sceneRevision++;
+      editFixtureScene((saved) => {
+        saved.sceneRevision++;
+      });
     };
     const stale = await app.inject({
       method: "POST",
@@ -2166,9 +2188,11 @@ try {
       oldIntent = clone(semanticIntentAnswer),
       oldExchange = clone(semanticExchangeAnswer);
     if (greeting) {
-      state().status = "opening";
-      state().lines = [];
-      state().submissions = [];
+      editFixtureScene((saved) => {
+        saved.status = "opening";
+        saved.lines = [];
+        saved.submissions = [];
+      });
     }
     const beforeLines = clone(state().lines),
       beforeCalls = modelCalls,
@@ -2350,7 +2374,7 @@ try {
       const result = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
       assert.equal(result.statusCode, 200, result.body);
       assert.equal(result.json().turnOutcome, expected);
-      for (const key of ["lines", "submissions", "heardHistory", "sceneAttendance", "activeIds", "sceneRevision"])
+      for (const key of ["lines", "submissions", "sceneAttendance", "activeIds", "sceneRevision"])
         assert.deepEqual(state()[key], before[key], key);
       assert.deepEqual(records.get("villages-village").data, worldBefore, "held turns have no world or memory effects");
       assert.equal(state().operation.input.message, message);

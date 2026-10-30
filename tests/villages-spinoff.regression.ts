@@ -107,7 +107,7 @@ function fixture() {
         id: "villages-venue-visit-source",
         packageId: "villages",
         kind: "venue-visit",
-        data: { ...scene, storageFormat: 4 },
+        data: scene,
         revision: 1,
       },
     ],
@@ -184,12 +184,13 @@ function fixture() {
   let calls = 0;
   let failModel = false;
   let generationGate: (() => Promise<void>) | undefined;
+  const storedDocuments = villageFixtureDocuments(documents);
   const repository = createSceneRepository({
-    villagesDocuments: () => documents,
-    mutateDocument: createDocumentMutator(() => documents),
+    villagesDocuments: () => storedDocuments,
+    mutateDocument: createDocumentMutator(() => storedDocuments),
   });
   const persistence = {
-    documents: villageFixtureDocuments(documents),
+    documents: storedDocuments,
     getChat: async () => structuredClone(chat),
     listMessages: async () => structuredClone(rows),
   } as unknown as CapabilityPersistenceHost;
@@ -625,7 +626,11 @@ const archive = createSceneArchive({
   removeInterpretationDiagnostics: async () => {},
 });
 await archive.resetVenueSessions();
-assert.equal(roundtrip.records.size, 0);
+assert.equal(
+  [...roundtrip.records.values()].filter((row) => row.kind !== "memory-page").length,
+  0,
+  "reset removes Scene authority; immutable history pages retire through owner-aware cleanup",
+);
 
 console.log(
   "Spinoff lifecycle, privacy, whole-scene decision handling, receipt recovery, identity fences and resident memory selection passed (synthetic model outputs; no semantic-quality or paid-provider claim).",

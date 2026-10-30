@@ -105,7 +105,7 @@ for (const count of [1000, 10_000, 25_000]) {
     await mutate("villages-venue-visit-frozen", sessionSlot(gate.documents), (value) => Object.assign(value, scene));
     const original = structuredClone(rows.get("villages-venue-visit-frozen").data),
       head = sceneHistoryOwners(original)[0].head;
-    assert.equal(original.storageFormat, 4);
+    assert.equal(original.storageFormat, 5);
     assert.equal(Object.hasOwn(original.continuity.facts, "relationshipContext"), false);
     assert.throws(() => coerceSession(original), /hydration/);
     const markerless = structuredClone(original);
