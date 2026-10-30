@@ -259,6 +259,20 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             key: JSON.stringify([seed, venue.id, zone.id, key]),
             retry: attempt > 1,
             valid: (result) => readPrivateReply(result, venue.id, zone.id).issues.length === 0,
+            replayContent: (result) => {
+              const { generated, issues } = readPrivateReply(result, venue.id, zone.id);
+              if (issues.length) throw new Error("The space response could not be replayed.");
+              return JSON.stringify({
+                rooms: [
+                  {
+                    venueId: venue.id,
+                    id: zone.id,
+                    name: asTrimmedString(generated.name).slice(0, 100),
+                    description: asTrimmedString(generated.description),
+                  },
+                ],
+              });
+            },
           },
           responseFormat: { type: "json_object" },
           temperature: 0.7,

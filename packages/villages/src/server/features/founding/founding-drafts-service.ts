@@ -223,6 +223,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     village: VillageState,
     onProgress?: (progress: Partial<FoundingProgress>) => Promise<void>,
   ): Promise<Record<string, SeededFoundingVenueDetails>> {
+    const sourceZone = (venue: VillageState["venues"][number]) =>
+      venue.zones?.find((zone) => zone.kind === "public" || zone.kind === "shared-residence") ??
+      venue.zones?.find((zone) => zone.kind === "exterior");
     const rows = await Promise.all(
       rowsOf(
         village.venues.map((venue) => ({
@@ -230,7 +233,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           name: venue.name,
           form: venue.form,
           description: venue.description,
-          spaceDescription: venue.spaces?.[0]?.description,
+          spaceDescription: sourceZone(venue)?.description,
           layout:
             venue.layoutVersion === 1
               ? venue.zones?.filter((zone) => zone.kind !== "exterior").length
@@ -290,19 +293,41 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     )
       throw badRequest("The required starting situations do not fit the System connection. No request was sent.");
     await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
+    const read = (completion: Parameters<typeof extractModelJsonObject>[0]) => {
+      if (["length", "max_tokens"].includes(completion.finishReason ?? ""))
+        throw badRequest("The initial physical details were truncated. Retry preparation.");
+      const payload = extractModelJsonObject(completion);
+      const generated = Array.isArray(payload?.venues) ? payload.venues : [];
+      const details: [string, SeededFoundingVenueDetails][] = [];
+      for (const row of rows) {
+        const result = generated.map(record).find((candidate) => candidate.id === row.id);
+        if (!result) throw badRequest("The model did not return every founding Venue.");
+        const addition = asTrimmedString(result.addition);
+        if (addition.length > MAX_VENUE_DESCRIPTION_LENGTH) throw badRequest("Shorten the initial physical details.");
+        const original = village.venues.find((venue) => venue.id === row.id);
+        const source = original && sourceZone(original);
+        if (source && [source.description, addition].filter(Boolean).join("\n").length > MAX_VENUE_DESCRIPTION_LENGTH)
+          throw badRequest("The complete initial Zone description is too long.");
+        details.push([row.id, { addition }]);
+      }
+      return Object.fromEntries(details);
+    };
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
       savedRequest: {
         key: "founding-venue-details:" + village.seed + ":" + backgroundRevision(messages),
         retry: !!village.foundingPreparation?.retryActions?.length,
         valid: (result) => {
-          const payload = extractModelJsonObject(result);
-          const venues = payload?.venues;
-          return (
-            !["length", "max_tokens"].includes(result.finishReason ?? "") &&
-            Array.isArray(venues) &&
-            rows.every((row) => venues.some((value: unknown) => record(value).id === row.id))
-          );
+          try {
+            read(result);
+            return true;
+          } catch {
+            return false;
+          }
         },
+        replayContent: (result) =>
+          JSON.stringify({
+            venues: Object.entries(read(result)).map(([id, details]) => ({ id, ...details })),
+          }),
       },
       responseFormat: { type: "json_object" },
       temperature: 0.7,
@@ -312,17 +337,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       debugMode: false,
     });
     await onProgress?.({ stage: "validating" });
-    const payload = extractModelJsonObject(completion);
-    const generated = Array.isArray(payload?.venues) ? payload.venues : [];
-    const details: Record<string, SeededFoundingVenueDetails> = {};
-    for (const row of rows) {
-      const result = generated.map(record).find((candidate) => candidate.id === row.id);
-      if (!result) throw badRequest("The model did not return every founding Venue.");
-      const addition = asTrimmedString(result.addition);
-      if (addition.length > MAX_VENUE_DESCRIPTION_LENGTH) throw badRequest("Shorten the initial physical details.");
-      details[row.id] = { addition };
-    }
-    return details;
+    return read(completion);
   }
 
   async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {

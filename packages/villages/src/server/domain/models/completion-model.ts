@@ -4,8 +4,14 @@ export type VillageCompletionOptions = {
   responseFormat?: Readonly<{ type: string; [key: string]: unknown }>;
   /** Stable background request identity; optional for legacy sequential generators. */
   checkpointId?: string;
-  /** Durable raw response for a standalone task, separate from applying its effects. */
-  savedRequest?: { key: string; retry: boolean; valid?: (result: CapabilityLanguageModelCompletion) => boolean };
+  /** Durable replay response for a standalone task, separate from applying its effects. */
+  savedRequest?: {
+    key: string;
+    retry: boolean;
+    valid?: (result: CapabilityLanguageModelCompletion) => boolean;
+    /** Exact accepted domain projection, using the same parser as application. */
+    replayContent?: (result: CapabilityLanguageModelCompletion) => string;
+  };
   temperature: number | null;
   reasoningEffort?: "none" | "low" | "medium" | "high" | "xhigh" | "max" | null;
   /** Replay a completed response from the prior reasoning policy; never dispatch it. */

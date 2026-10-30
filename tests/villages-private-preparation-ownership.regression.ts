@@ -157,8 +157,19 @@ function fixture(name: string) {
     villagesLogger: () => logger,
     villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
     villagesConnectionIdFor: async () => "same-connection",
-    completeWithRoom: async (selected, messages, maxTokens, options) =>
-      selected.chatComplete(messages, { ...options, maxTokens }),
+    completeWithRoom: async (selected, messages, maxTokens, options) => {
+      const completion = await selected.chatComplete(messages, { ...options, maxTokens });
+      assert.equal(options.savedRequest!.valid!(completion), true);
+      const replay = { ...completion, content: options.savedRequest!.replayContent!(completion) };
+      assert.equal(options.savedRequest!.valid!(replay), true);
+      assert.deepEqual(Object.keys(JSON.parse(replay.content!).rooms[0]).sort(), [
+        "description",
+        "id",
+        "name",
+        "venueId",
+      ]);
+      return replay;
+    },
     reportFoundingProgress: async (_seed, progress) => {
       stages.push(progress.stage!);
     },
