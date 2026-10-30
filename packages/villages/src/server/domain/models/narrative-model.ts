@@ -1,7 +1,14 @@
 import type { PlaceAfter, PlaceUpdate } from "../../../shared/contracts/place-continuity.js";
 import type { VillageNarrativeConsequence } from "../../../shared/contracts/village.js";
 
-export type NarrativeTarget = PlaceAfter & { venueId: string; zoneId: string; name: string; exterior: boolean };
+export type NarrativeTarget = PlaceAfter & {
+  venueId: string;
+  zoneId: string;
+  name: string;
+  exterior: boolean;
+  controllers: string[];
+  correctiveActorIds: string[];
+};
 export type NarrativeSituation = {
   id: string;
   revision: number;

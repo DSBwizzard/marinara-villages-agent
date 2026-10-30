@@ -135,6 +135,7 @@ const publicFields = [
   "spriteVariantsEnabled",
   "backgroundPace",
   "backgroundPaces",
+  "narrativeConsequence",
   "maps",
   "townMapExpectedHeight",
   "townMapExpectedWidth",
@@ -174,6 +175,7 @@ try {
   assert.equal(initial.playerBackground, "");
   assert.equal(initial.scenarioImprint, null);
   assert.equal(initial.sceneryStyleProfileId, null);
+  assert.equal(initial.narrativeConsequence, "gentle");
   assert.equal(initial.playerPersonaName, "Robin Hale");
   assert.equal(initial.townMapExpectedWidth, 2560);
   assert.equal(initial.townMapExpectedHeight, 1440);

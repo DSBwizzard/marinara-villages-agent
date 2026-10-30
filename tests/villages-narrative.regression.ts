@@ -26,6 +26,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/narrative-environment.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
+import { contactCanEnter } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { discoverReturnBatch } from "../packages/villages/src/server/domain/rules/return-catchup-state.js";
@@ -205,6 +206,40 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
       applyVenueSceneChange(
         structuredClone(beforeRepair),
         fixture.venue.id,
+        { ...update, edits: undefined, recent: { text: "The sign was inspected." } },
+        "scene",
+        at,
+        undefined,
+        "public",
+        "",
+        fixture.zone.id,
+        evidence,
+        [condition],
+      ),
+    /enduring physical correction/,
+    "A recent observation alone cannot reopen a damaged space.",
+  );
+  const worldRepair = structuredClone(beforeRepair);
+  worldRepair.narrative!.claims = [];
+  const repairGrant = admitted({ ...fixture, state: worldRepair }, "world:repair");
+  const repairProposal = proposal(repairGrant);
+  repairProposal.physical[0]!.update = {
+    narration: "The sign was inspected.",
+    expectedRevision: fixture.zone.state.revision,
+    appearanceChanged: false,
+    recent: { text: "The sign was inspected." },
+  } as any;
+  Object.assign(repairProposal.conditions[0]!, { id: condition.id, expectedRevision: condition.revision, clear: true });
+  assert.throws(
+    () => applyNarrativeDevelopment(worldRepair, repairGrant, readNarrativeDevelopment(repairProposal, repairGrant)),
+    /matching physical work/,
+    "Independent world developments cannot reopen damage through a recent observation either.",
+  );
+  assert.throws(
+    () =>
+      applyVenueSceneChange(
+        structuredClone(beforeRepair),
+        fixture.venue.id,
         update,
         "scene",
         at,
@@ -265,6 +300,29 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     },
   });
   repairScene.submissions.push({ id: "repair" });
+  fixture.state.exchangeReceipts["repair:physical"] = {
+    sceneId: repairScene.id,
+    submissionId: "repair",
+    domain: "physical",
+    status: "applied",
+    physicalOutcome: {
+      venueId: fixture.venue.id,
+      zoneId: fixture.zone.id,
+      actionReceipt: { after: { description: fixture.zone.description, state: structuredClone(fixture.zone.state) } },
+    },
+  } as any;
+  assert.equal(contactCanEnter(beforeRepair, fixture.venue, fixture.zone.id, "visitor", repairScene), false);
+  assert.equal(
+    contactCanEnter(fixture.state, fixture.venue, fixture.zone.id, "visitor", repairScene),
+    true,
+    "Contact routing extends captured restrictions through this Scene's accepted repair.",
+  );
+  assert.equal(
+    contactCanEnter(fixture.state, fixture.venue, fixture.zone.id, "visitor", oldScene),
+    true,
+    "An earlier Scene does not import a later restriction.",
+  );
+  delete fixture.state.exchangeReceipts["repair:physical"];
   assert.equal(
     ordinaryUseRestricted(
       sceneContinuityView(fixture.state, repairScene).narrative,
@@ -284,6 +342,38 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     coerceVillageState({ ...fixture.state, narrative: undefined }).narrative,
     undefined,
     "Missing additive narrative state never invents historical events.",
+  );
+}
+{
+  const fixture = world();
+  fixture.venue.access = undefined;
+  fixture.zone.controllerIds = [];
+
+  const grant = admitted(fixture),
+    raw = proposal(grant);
+  assert.equal(grant.targets[0]!.correctiveActorIds.length, 0);
+  raw.physical = [];
+  assert.throws(() => readNarrativeDevelopment(raw, grant), /accessible corrective work/);
+  raw.conditions[0]!.endsAt = "2026-10-29T10:00:00.000Z" as any;
+  const temporary = readNarrativeDevelopment(raw, grant);
+  applyNarrativeDevelopment(fixture.state, grant, temporary);
+  assert.equal(
+    contactCanEnter(fixture.state, fixture.venue, fixture.zone.id, "visitor", {
+      id: "legacy",
+      startedAt: at,
+      zoneId: "exterior",
+    } as any),
+    false,
+    "Legacy public access obeys a current temporary closure.",
+  );
+  const damaged = world(),
+    damageGrant = admitted(damaged),
+    damage = proposal(damageGrant);
+  damage.conditions[0]!.endsAt = "2026-10-29T10:00:00.000Z" as any;
+  assert.throws(
+    () => applyNarrativeDevelopment(damaged.state, damageGrant, readNarrativeDevelopment(damage, damageGrant)),
+    /cannot expire/,
+    "A timer cannot substitute for repairing enduring physical damage.",
   );
 }
 {

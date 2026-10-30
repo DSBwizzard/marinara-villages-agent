@@ -127,7 +127,10 @@ export function contactCanEnter(
   return (
     !!zone &&
     !zoneClosed(state, venue, zone) &&
-    (canOccupyZone(venue, zone, characterId) ||
+    (canOccupyZone(venue, zone, characterId, {
+      ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
+      environment: state.narrative,
+    }) ||
       (characterId === "player" &&
         !scene?.dismissedZoneIds?.includes(zoneId) &&
         (venue.playerInvitations?.some(

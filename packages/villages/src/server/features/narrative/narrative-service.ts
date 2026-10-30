@@ -196,11 +196,7 @@ export function createNarrative(ports: Ports) {
     },
     valid(state, input) {
       if (input.version !== 1 || state.backgroundPace === "off") return false;
-      if (
-        state.narrative?.receipts.some((row) => row.id === input.grant.id && row.rejected) ||
-        (input.replaces && !state.narrative?.receipts.some((row) => row.id === input.replaces && row.rejected))
-      )
-        return false;
+      if (state.narrative?.receipts.some((row) => row.id === input.grant.id && row.rejected)) return false;
       const grant = input.grant as NarrativeAdmission;
       const claimed = state.narrative?.claims?.some((row) => row.id === grant.id);
       try {

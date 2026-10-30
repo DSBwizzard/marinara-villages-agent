@@ -89,6 +89,15 @@ export function applyVenueSceneChange(
   )
     throw conflict("The corrective work names a condition outside its captured source.");
   const enduring = after.description !== zone.description;
+  if (
+    !enduring &&
+    change.conditionClears?.some((clear) =>
+      state.narrative?.conditions.some(
+        (condition) => condition.id === clear.id && condition.physicalRevision !== undefined,
+      ),
+    )
+  )
+    throw conflict("Reopening this repair-linked condition needs an enduring physical correction.");
   const controllers = enduring ? zoneControllerIds(venue, zone) : [];
   if (enduring && (zone.kind === "staff" || zone.kind === "restricted") && !controllers.length)
     throw conflict("This Zone has no current authority for the change.");

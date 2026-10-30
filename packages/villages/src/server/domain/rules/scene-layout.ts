@@ -7,15 +7,36 @@ import { defaultVenueSpace } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { sceneRelationshipView } from "./relationship-rules.js";
+import { mergeNarrativeAfter } from "./narrative-development.js";
 
 /** Only captured access inputs; persistent effects still validate against the current world. */
 export function sceneAccessState(state: VillageState, scene: VenueScene): VillageState {
   const facts = scene.continuity?.facts;
+  const narrative = structuredClone(facts?.narrative);
+  if (narrative)
+    for (const receipt of state.narrative?.receipts ?? []) {
+      if (receipt.source !== "action" || receipt.sourceId !== scene.id) continue;
+      const applied = Object.values(state.exchangeReceipts).some(
+        (proof) =>
+          proof.sceneId === scene.id &&
+          proof.domain === "physical" &&
+          proof.status === "applied" &&
+          scene.submissions.some((turn) => turn.id === proof.submissionId) &&
+          receipt.physical.some(
+            (after) =>
+              after.venueId === proof.physicalOutcome?.venueId &&
+              after.zoneId === proof.physicalOutcome?.zoneId &&
+              after.state.revision === proof.physicalOutcome?.actionReceipt?.after.state.revision,
+          ),
+      );
+      if (applied) mergeNarrativeAfter(narrative, receipt.after);
+    }
   return facts && scene.villageSeed === state.seed
     ? {
         ...state,
         venues: facts.venues,
         projects: facts.projects,
+        narrative,
         relationshipContext: sceneRelationshipView(state.relationshipContext, scene),
       }
     : state;

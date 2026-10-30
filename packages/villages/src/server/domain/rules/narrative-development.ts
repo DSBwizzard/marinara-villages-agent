@@ -12,10 +12,28 @@ import { villageCurrentSetting } from "./prompt-preset.js";
 import { hashString, deriveVillageMoment } from "./village-clock.js";
 import { backgroundRevision } from "./background-revision.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
-import { venueZones, zoneClosed } from "./venue-zones.js";
+import { venueZones, zoneClosed, zoneControllerIds, canOccupyZone } from "./venue-zones.js";
 import { applyPlaceUpdate, readPlaceUpdate } from "./zone-continuity.js";
 
 export const CONSEQUENCES = ["gentle", "moderate", "dramatic"] as const;
+function correctiveActors(
+  state: VillageState,
+  venue: VillageState["venues"][number],
+  zone: ReturnType<typeof venueZones>[number],
+  at: string,
+): string[] {
+  return zoneControllerIds(venue, zone)
+    .filter(
+      (id) =>
+        (id === "player" || state.villagers.some((row) => row.characterId === id)) &&
+        canOccupyZone(venue, zone, id, {
+          at: new Date(at),
+          environment: state.narrative,
+          relationships: state.relationshipContext,
+        }),
+    )
+    .sort();
+}
 const object = (value: unknown): Record<string, any> => {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw badGateway("Invalid narrative result.");
   return value as Record<string, any>;
@@ -75,6 +93,8 @@ export function admitNarrative(
           exterior: zone.kind === "exterior",
           description: zone.description,
           state: structuredClone(zone.state),
+          controllers: [...zoneControllerIds(venue, zone)].sort(),
+          correctiveActorIds: correctiveActors(state, venue, zone, at),
         })),
     )
     .sort((a, b) => (a.venueId + ":" + a.zoneId).localeCompare(b.venueId + ":" + b.zoneId));
@@ -138,6 +158,8 @@ export function assertNarrativeAdmission(state: VillageState, grant: NarrativeAd
       !zone ||
       zoneClosed(state, venue, zone) ||
       zone.description !== target.description ||
+      JSON.stringify(correctiveActors(state, venue, zone, grant.at)) !== JSON.stringify(target.correctiveActorIds) ||
+      JSON.stringify([...zoneControllerIds(venue, zone)].sort()) !== JSON.stringify(target.controllers) ||
       JSON.stringify(zone.state) !== JSON.stringify(target.state)
     )
       throw conflict("The admitted Zone changed. The saved result is retained.");
@@ -203,7 +225,10 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
     if (endsAt && (endsAt <= grant.at || Date.parse(endsAt) - Date.parse(grant.at) > 7 * 86400_000))
       throw badGateway("Condition deadline is outside the admitted window.");
     const remedy = text(change.remedy, 600, true);
-    if (change.restriction === "ordinary-use" && (admitted.exterior || (!endsAt && !remedy.trim())))
+    if (
+      change.restriction === "ordinary-use" &&
+      (admitted.exterior || (!endsAt && (!remedy.trim() || !admitted.correctiveActorIds.length)))
+    )
       throw badGateway(
         "A restriction needs accessible corrective work or an established timed release; Entrances remain open.",
       );
@@ -285,14 +310,22 @@ export function applyNarrativeDevelopment(
       throw conflict("The condition changed. The saved result is retained.");
     if (change.clear && !old) throw badGateway("Only an admitted condition can be cleared.");
     const physical = development.physical.find((row) => row.venueId === change.venueId && row.zoneId === change.zoneId);
+    const before = grant.targets.find((row) => row.venueId === change.venueId && row.zoneId === change.zoneId)!;
+    const enduring = physical && applyPlaceUpdate(before, physical.update, grant.at).description !== before.description;
     if (
       old?.physicalRevision !== undefined &&
       (change.clear || (old.restriction === "ordinary-use" && change.restriction === "none")) &&
-      !physical
+      !enduring
     )
       throw badGateway("Reopening this repair-linked condition needs matching physical work.");
-    const before = grant.targets.find((row) => row.venueId === change.venueId && row.zoneId === change.zoneId)!;
-    const enduring = physical && applyPlaceUpdate(before, physical.update, grant.at).description !== before.description;
+    if (
+      change.restriction === "ordinary-use" &&
+      enduring &&
+      (!before.correctiveActorIds.length || change.endsAt !== null)
+    )
+      throw badGateway(
+        "Damage-linked restrictions need an accessible corrective route and cannot expire as a substitute for repair.",
+      );
     return {
       id: old?.id ?? grant.id + ":condition:" + index,
       revision: change.expectedRevision + 1,
