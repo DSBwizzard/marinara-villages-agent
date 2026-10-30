@@ -5,6 +5,7 @@ import { calendarReplay } from "./clock-recovery.js";
 import { captureReturnContext, departureMemoriesAvailable } from "./return-catchup-capture.js";
 import { returnCatchupOpportunities } from "./return-catchup-opportunities.js";
 import { localDateKey, planningAllowance } from "./resident-planning.js";
+import { sameRelationshipContext } from "./world-context-copy.js";
 
 /** Retain recent finished accounts without copying departure snapshots or active work. */
 const HISTORY_BYTES = 512 * 1024;
@@ -47,8 +48,10 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   else {
     const historical = { ...defaultVillageState(), ...capture.world };
     const residentEligible =
+      !!state.relationshipContext &&
+      !!capture.world.relationshipContext &&
       departureMemoriesAvailable(capture, state) &&
-      JSON.stringify(state.relationshipContext) === JSON.stringify(capture.world.relationshipContext);
+      sameRelationshipContext(state.relationshipContext, capture.world.relationshipContext);
     const selected = returnCatchupOpportunities(historical, new Date(capture.at), now, remaining, residentEligible);
     opportunities = selected.opportunities;
     reason = selected.reason;

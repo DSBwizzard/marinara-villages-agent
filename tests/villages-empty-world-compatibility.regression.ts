@@ -45,7 +45,7 @@ for (const version of [0, 5, 6, 7, 8]) {
     assert.deepEqual(record, saved);
   }
 }
-assert.equal(coerceVillageState(undefined).version, 9);
+assert.equal(coerceVillageState(undefined).version, 10);
 const fresh = coerceVillageState(defaultVillageState());
 assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(fresh))), fresh);
 console.log("Fresh worlds reload; incompatible setup and played worlds remain untouched.");

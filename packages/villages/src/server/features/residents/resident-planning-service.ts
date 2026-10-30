@@ -10,7 +10,8 @@ import type { VillageResidence } from "../../domain/models/world.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import { cloneVillageContext, sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
+import { returnCaptureRevision, type RelationshipIdentity } from "../../domain/rules/return-capture-revision.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import {
   ReturnOpportunityUnavailable,
@@ -53,6 +54,7 @@ import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 
 export type ResidentPlanningPorts = {
+  relationshipIdentity: RelationshipIdentity;
   afterCatchup?: (input: unknown) => Promise<void>;
   afterCatchupFailure?: (input: unknown) => Promise<void>;
   applySavedStartingTies?: () => Promise<void>;
@@ -233,7 +235,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       !Number.isFinite(returnAt) ||
       current.returnCatchup.batch.from !== capture.at ||
       !current.returnCatchup.capture ||
-      backgroundRevision(current.returnCatchup.capture) !== backgroundRevision(capture) ||
+      returnCaptureRevision(current.returnCatchup.capture, ports.relationshipIdentity) !==
+        returnCaptureRevision(capture, ports.relationshipIdentity) ||
       !current.returnCatchup.batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
       eventAt < capturedAt ||
       eventAt > returnAt ||
@@ -249,11 +252,15 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       throw new ReturnOpportunityUnavailable("The historical opportunity is not supported by its departure interval.");
     if (!departureMemoriesAvailable(capture, current))
       throw new ReturnOpportunityUnavailable("Resident memories changed after the departure capture.");
-    if (JSON.stringify(current.relationshipContext) !== JSON.stringify(capture.world.relationshipContext))
+    if (
+      !current.relationshipContext ||
+      !capture.world.relationshipContext ||
+      !sameRelationshipContext(current.relationshipContext, capture.world.relationshipContext)
+    )
       throw new ReturnOpportunityUnavailable("Resident relationships changed after the departure capture.");
     if (JSON.stringify(current.opening) !== JSON.stringify(capture.world.opening))
       throw new ReturnOpportunityUnavailable("The opening changed after the departure capture.");
-    const historical: VillageState = structuredClone({ ...current, ...capture.world });
+    const historical: VillageState = cloneVillageContext({ ...current, ...capture.world });
     const now = new ZonedDate(
       opportunity.startsAt,
       historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -388,9 +395,9 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         dateKey,
         now: opportunity.startsAt,
         memoryRevision: capture.memoryRevision,
-        captureRevision: backgroundRevision(capture),
+        captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity),
         returnUntil: current.returnCatchup.batch.until,
-        relationships: capture.world.relationshipContext,
+        relationshipRevision: ports.relationshipIdentity(capture.world),
         admitted: structuredClone({
           villagers: historical.villagers,
           venues: historical.venues,
@@ -574,12 +581,12 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           state.returnCatchup.batch.status === "running" &&
           state.returnCatchup.batch.until === input.returnUntil &&
           !!state.returnCatchup.capture &&
-          backgroundRevision(state.returnCatchup.capture) === input.captureRevision &&
+          returnCaptureRevision(state.returnCatchup.capture, ports.relationshipIdentity) === input.captureRevision &&
           !!state.returnCatchup.batch.opportunities?.some(
             (row) => JSON.stringify(row) === JSON.stringify(input.opportunity),
           ) &&
           state.memories.revision === input.memoryRevision &&
-          JSON.stringify(state.relationshipContext) === JSON.stringify(input.relationships) &&
+          ports.relationshipIdentity(state) === input.relationshipRevision &&
           JSON.stringify(state.opening) === JSON.stringify(input.admitted.opening) &&
           input.opportunity.actorIds.every((id: string) => {
             const live = state.villagers.find((row) => row.characterId === id);

@@ -1,3 +1,4 @@
+import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   readEffectiveVillagerCard,
@@ -92,6 +93,7 @@ function fixture() {
     fitContext: (messages: any, options: any) => ({ messages, ...options }),
   };
   const service = createResidentPlanning({
+    relationshipIdentity: fixtureRelationshipIdentity,
     readVillageState: async () => state,
     readEffectiveVillagerCard,
     queueBackgroundJob: async (input) => {

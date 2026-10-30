@@ -1,3 +1,4 @@
+import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -365,6 +366,7 @@ assert.equal((village.returnCatchup!.batch!.records![0]!.outcome as any).social.
 batchSource.error = undefined;
 batchSource.reinterpretRequired = undefined;
 const batchSettlement = createReturnCatchupSettlement({
+  relationshipIdentity: fixtureRelationshipIdentity,
   gate: { simulate: async (work: any) => ({ value: await work(), transaction: {} }), commit: async () => {} },
   readSnapshot: snapshot,
   mutate: applyWorld,
@@ -379,6 +381,7 @@ assert.equal(departureMemoriesAvailable(village.returnCatchup!.capture!, await s
 assert.ok(projectMemories(village.memories, ["a"]).some((row) => row.text === "B agreed to a walk tomorrow."));
 const nextJobs: any[] = [];
 const nextPlanner = createResidentPlanning({
+  relationshipIdentity: fixtureRelationshipIdentity,
   readVillageState: snapshot,
   readEffectiveVillagerCard,
   queueBackgroundJob: async (work: any) => {
@@ -386,6 +389,12 @@ const nextPlanner = createResidentPlanning({
   },
 } as any);
 await nextPlanner.queueReturnOpportunity("return-batch", secondOpportunity, village.returnCatchup!.capture!);
+assert.equal(
+  Object.hasOwn(nextJobs[0].input, "relationships"),
+  false,
+  "A comparison-only job cannot duplicate the ledger",
+);
+assert.match(nextJobs[0].input.relationshipRevision, /^villages-relationship-history-[a-f0-9]{32}-[a-f0-9]{64}$/);
 assert.match(
   nextJobs[0].input.context.narrationMemories.a,
   /B agreed to a walk tomorrow/,
@@ -511,6 +520,7 @@ const processGated = async () => {
 };
 const realSettlement = () =>
   createReturnCatchupSettlement({
+    relationshipIdentity: fixtureRelationshipIdentity,
     gate: realGate,
     readSnapshot: readGated,
     mutate: mutateGated,
@@ -670,6 +680,7 @@ realGate = createRepairGate(rawStore);
 const revisionBefore = storedWorld.memories.revision;
 failSettlement = false;
 const conflictSettlement = createReturnCatchupSettlement({
+  relationshipIdentity: fixtureRelationshipIdentity,
   gate: {
     simulate: realGate.simulate,
     commit: async (id: string, transaction: any) => {
@@ -771,6 +782,7 @@ console.log(
 );
 let automaticCalls = 0;
 const writer = createResidentPlanning({
+  relationshipIdentity: fixtureRelationshipIdentity,
   villagesLanguageModels: () => ({
     resolveForRequest: async () => ({
       model: "fixture",

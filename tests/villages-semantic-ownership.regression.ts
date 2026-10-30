@@ -1,3 +1,4 @@
+import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -153,6 +154,7 @@ async function main() {
     fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
   };
   const planning = createResidentPlanning({
+    relationshipIdentity: fixtureRelationshipIdentity,
     readVillageState: async () => defaultVillageState(),
     villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
     villagesConnectionIdFor: async () => "system",

@@ -22,6 +22,7 @@ import {
 } from "../../domain/rules/relationship-rules.js";
 import { sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-capture.js";
+import { sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { encounterPhysicalId, readEncounter } from "../../domain/rules/social-encounter.js";
 import { projectSocialActivities, reconcileSocialPlans, socialPlanValid } from "../../domain/rules/social-rules.js";
@@ -445,7 +446,9 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       entry.catchupBatchId !== batchId ||
       !entry.reinterpretRequired ||
       !departureMemoriesAvailable(tracking.capture, village) ||
-      JSON.stringify(village.relationshipContext) !== JSON.stringify(tracking.capture.world.relationshipContext)
+      !village.relationshipContext ||
+      !tracking.capture.world.relationshipContext ||
+      !sameRelationshipContext(village.relationshipContext, tracking.capture.world.relationshipContext)
     )
       throw conflict("The saved encounter changed before interpretation could be retried.");
     const historical = { ...village, ...tracking.capture.world };
@@ -510,8 +513,9 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           state.returnCatchup.batch.status === "recovering" &&
           !!state.returnCatchup.capture &&
           departureMemoriesAvailable(state.returnCatchup.capture, state) &&
-          JSON.stringify(state.relationshipContext) ===
-            JSON.stringify(state.returnCatchup.capture.world.relationshipContext) &&
+          !!state.relationshipContext &&
+          !!state.returnCatchup.capture.world.relationshipContext &&
+          sameRelationshipContext(state.relationshipContext, state.returnCatchup.capture.world.relationshipContext) &&
           JSON.stringify(state.socialOutbox?.find((row) => row.id === input.entry.id)) ===
             JSON.stringify(input.entry))) &&
       !!state.socialOutbox?.some((row) => row.id === input.entry.id) &&

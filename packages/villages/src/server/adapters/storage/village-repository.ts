@@ -15,6 +15,7 @@ import {
   type MemoryHead,
 } from "./memory-payload-store.js";
 import { withRepairWork } from "./repair-gate.js";
+import { createDepartureHistory, departureHistoryOwner } from "./departure-history.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["memories", "memoryScenes", "memoryReceipts"] as const;
@@ -30,7 +31,8 @@ function rootData(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 9) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 10) throw new Error("Unsupported Village format. Start a fresh Village.");
+  departureHistoryOwner(raw);
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
   readMemoryHead(raw.memoryHead);
   return raw;
@@ -48,7 +50,7 @@ function blockHistory(state: VillageState) {
       },
     });
 }
-function encodeRoot(state: VillageState, memoryHead: MemoryHead | null) {
+function encodeRoot(state: VillageState, memoryHead: MemoryHead | null, returnCatchup: unknown) {
   return {
     ...Object.fromEntries(
       Object.keys(state)
@@ -56,6 +58,7 @@ function encodeRoot(state: VillageState, memoryHead: MemoryHead | null) {
         .map((key) => [key, state[key as keyof VillageState]]),
     ),
     memoryHead,
+    returnCatchup,
   };
 }
 /** Ordinary world reads never materialize history; memory consumers opt in. */
@@ -94,7 +97,8 @@ export function createVillageRepository(
         raw = rootData(record);
       if (!raw) return { record, head: null, state: defaultVillageState(), loaded: true };
       const head = readMemoryHead(raw.memoryHead);
-      let state = coerceVillageState({ ...raw, ...emptyMemoryPayload() });
+      const logical = await createDepartureHistory(store).decode(raw);
+      let state = coerceVillageState({ ...logical, ...emptyMemoryPayload() });
       if (head) assertMemoryWorld(head, state);
       const loaded = !head || include === true || (typeof include === "function" && include(state));
       if (loaded && head) {
@@ -105,7 +109,7 @@ export function createVillageRepository(
           if (current && readMemoryHead(current.memoryHead)?.id !== head.id) continue;
           throw new Error("The committed Memories payload is missing.");
         }
-        state = coerceVillageState({ ...raw, ...payload });
+        state = coerceVillageState({ ...logical, ...payload });
       } else if (!loaded) blockHistory(state);
       return { record, head, state, loaded };
     }
@@ -127,7 +131,7 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 9, "invalid Village mutation format");
+            memoryRequire(state.version === 10, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
@@ -137,8 +141,9 @@ export function createVillageRepository(
               "memory receipt outside history",
             );
             const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
+            const returnCatchup = await createDepartureHistory(store).encode(state, record?.data);
             const stamp = new Date().toISOString(),
-              data = encodeRoot(state, nextHead);
+              data = encodeRoot(state, nextHead, returnCatchup);
             let committed = false;
             try {
               if (record)

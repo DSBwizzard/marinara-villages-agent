@@ -1,4 +1,5 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { createDepartureHistory, validateDepartureHistory } from "../../adapters/storage/departure-history.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   RepairChange,
@@ -577,6 +578,10 @@ export function createRepairService(ports: RepairPorts) {
       documents,
       rows.filter((row) => row.kind === "venue-visit").map((row) => row.data),
     );
+    await validateDepartureHistory(
+      documents,
+      rows.filter((row) => row.kind === "village").map((row) => row.data),
+    );
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
@@ -1006,10 +1011,11 @@ export function createRepairService(ports: RepairPorts) {
           const target = write.after ?? write.before!,
             current = await documents.getById(PKG, target.id);
           if (write.before?.kind === "village") {
+            const priorWorld = await createDepartureHistory(documents).decode(write.before.data);
             await repository.mutateAuthority(
               (currentState) => {
                 const prior = coerceVillageState({
-                  ...(write.before!.data as object),
+                  ...priorWorld,
                   memories: currentState.memories,
                   memoryScenes: currentState.memoryScenes,
                   memoryReceipts: currentState.memoryReceipts,
@@ -1181,6 +1187,10 @@ export function createRepairService(ports: RepairPorts) {
         documents,
         checkpointDocuments.filter((row) => row.kind === "venue-visit").map((row) => row.data),
       );
+      await validateDepartureHistory(
+        documents,
+        checkpointDocuments.filter((row) => row.kind === "village").map((row) => row.data),
+      );
       let current: Doc[] = [];
       await currentSocial(state);
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
@@ -1235,7 +1245,11 @@ export function createRepairService(ports: RepairPorts) {
         "selectedLorebookIds",
         "loreTokenBudget",
       ])
-        if (key in preserved) data[key] = structuredClone(preserved[key]);
+        if (key in preserved)
+          data[key] =
+            key === "returnCatchup" && preserved[key] !== undefined
+              ? structuredClone({ ...(preserved[key] as object), capture: undefined })
+              : structuredClone(preserved[key]);
       if (!("returnCatchup" in preserved)) delete data.returnCatchup;
       // A restored world cannot use an absence capture from the world it replaced.
       if (data.returnCatchup && typeof data.returnCatchup === "object")

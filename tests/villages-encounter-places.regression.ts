@@ -1,3 +1,4 @@
+import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 // Test cases: encounter-places/evidence, encounter-places/settlement, encounter-places/recovery, encounter-places/conflict, encounter-places/catchup
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -390,6 +391,7 @@ await runCase("encounter-places/catchup", async () => {
       },
     } as any);
     const settlement = createReturnCatchupSettlement({
+      relationshipIdentity: fixtureRelationshipIdentity,
       gate,
       readSnapshot: snapshot,
       mutate,

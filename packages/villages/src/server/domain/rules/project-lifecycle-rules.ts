@@ -1,6 +1,7 @@
 import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
 import { completeProject } from "./project-completion.js";
+import { cloneVillageContext } from "./world-context-copy.js";
 import {
   allocateProjectFocus,
   projectFocusValid,
@@ -98,7 +99,7 @@ export function finishConstruction(
   at: string,
 ): void {
   if (project.status !== "working" || !project.lifecycle.workOrder || project.lifecycle.workOrder.pausedAt) return;
-  const staged = structuredClone(state);
+  const staged = cloneVillageContext(state);
   try {
     trimProjectFocus(projectFor(staged, project.id), at);
     completeProject(staged, projectFor(staged, project.id), at);

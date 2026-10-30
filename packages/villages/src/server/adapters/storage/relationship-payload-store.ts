@@ -7,13 +7,19 @@ import { coerceRelationshipState, immutableRelationshipState } from "../../domai
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import { isRepairSimulation } from "./repair-gate.js";
 import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
-import { decodeRelationshipPages, encodeRelationshipPages, type RelationshipPageLayout } from "./relationship-pages.js";
+import {
+  createRelationshipPageTracer,
+  decodeRelationshipPages,
+  encodeRelationshipPages,
+  type RelationshipPageLayout,
+} from "./relationship-pages.js";
 
 export const RELATIONSHIP_PAYLOAD_KIND = "relationship-payload";
 export const RELATIONSHIP_INTENT_KIND = "relationship-payload-intent";
 export type RelationshipScope = Pick<VillageState, "seed" | "setupAt">;
 export type RelationshipHead = { id: string; digest: string };
 export type RelationshipRoot = RelationshipScope & { format: 4; head: RelationshipHead };
+export type RelationshipHistoryOwner = { scope: RelationshipScope; head: RelationshipHead };
 const PREFIX = "villages-relationship-history-";
 const HEAD = /^villages-relationship-history-([a-f0-9]{32})-([a-f0-9]{64})$/;
 export const relationshipDigest = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -74,6 +80,44 @@ export function relationshipPayloadData(row: { id: string; kind: string; data: u
     "invalid retained relationship payload identity",
   );
   return value as { format: 1; world: string; payload: string };
+}
+/** Check every referenced immutable page once before publishing or restoring a retained owner. */
+export async function validateRelationshipHistory(
+  documents: Pick<CapabilityDocumentStore, "getById">,
+  owners: RelationshipHistoryOwner[],
+) {
+  const seen = new Set<string>(),
+    pages = new Map<string, MemoryPageData>();
+  const tracer = createRelationshipPageTracer(async (id) => {
+    if (!pages.has(id)) {
+      const row = await documents.getById(VILLAGES_PACKAGE_ID, id);
+      memoryRequire(
+        row &&
+          row.id === id &&
+          row.packageId === VILLAGES_PACKAGE_ID &&
+          row.kind === MEMORY_PAGE_KIND &&
+          row.revision === 1,
+        "owned relationship page is missing or changed",
+      );
+      pages.set(id, row.data as MemoryPageData);
+    }
+    return pages.get(id)!;
+  });
+  for (const { scope, head } of owners) {
+    assertRelationshipWorld(head, scope);
+    const key = head.id + ":" + head.digest;
+    if (seen.has(key)) continue;
+    const row = await documents.getById(VILLAGES_PACKAGE_ID, head.id);
+    memoryRequire(
+      row && row.id === head.id && row.packageId === VILLAGES_PACKAGE_ID && row.revision === 1,
+      "owned relationship history is missing or changed",
+    );
+    const data = relationshipPayloadData(row),
+      manifest = JSON.parse(data.payload);
+    memoryRequire(manifest.header?.seed === scope.seed, "owned relationships belong to another Village");
+    await tracer.trace(manifest, data.world);
+    seen.add(key);
+  }
 }
 /** One live head and a small set of historical decoded heads can alternate without loading the whole ledger again. */
 export function createRelationshipPayloadStore(documents: CapabilityDocumentStore) {
@@ -152,6 +196,21 @@ export function createRelationshipPayloadStore(documents: CapabilityDocumentStor
   }
   async function readSnapshot(head: RelationshipHead, scope: RelationshipScope): Promise<RelationshipState> {
     return (await load(head, scope)).value;
+  }
+  function fingerprint(value: RelationshipState | undefined, scope: RelationshipScope): string {
+    const world = relationshipWorldKey(scope);
+    if (!value) return "relationships-unavailable:" + world;
+    memoryRequire(value.seed === scope.seed, "relationship comparison belongs to another Village");
+    const frozen = immutableRelationshipState(scope.seed, value);
+    const entries = usable()
+      ? [...decoded.values()].filter((entry) => entry.head.id.startsWith(PREFIX + world + "-"))
+      : [];
+    const exact = entries.find((entry) => entry.value === frozen);
+    if (exact) return exact.head.id;
+    const prior = entries.find((entry) => entry.head.id === liveId) ?? entries.at(-1);
+    const result = encodeRelationshipPages(frozen, world, prior?.layout);
+    // This is a non-owning comparison token. It creates no intent, native document or persisted-head cache entry.
+    return PREFIX + world + "-" + relationshipDigest(JSON.stringify(result.manifest));
   }
   async function prepare(
     value: RelationshipState,
@@ -276,7 +335,7 @@ export function createRelationshipPayloadStore(documents: CapabilityDocumentStor
     cache({ head, value: frozen, layout: result.layout });
     return head;
   }
-  return { read, readSnapshot, prepare };
+  return { read, readSnapshot, prepare, fingerprint };
 }
 const payloadStores = new WeakMap<CapabilityDocumentStore, ReturnType<typeof createRelationshipPayloadStore>>();
 /** Live ledgers and frozen snapshots on the same admitted backend share only this bounded decoded cache. */

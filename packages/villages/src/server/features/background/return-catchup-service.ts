@@ -3,6 +3,7 @@ import { ReturnOpportunityUnavailable, returnCatchupSubject } from "../../domain
 import { discoverReturnBatch, recordReturnVisibility } from "../../domain/rules/return-catchup-state.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { activityDate } from "../../domain/rules/event-attempts.js";
+import { sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
 
 type Ports = {
   readAuthority?: () => Promise<VillageState>;
@@ -109,8 +110,10 @@ export function createReturnCatchup(ports: Ports) {
           await update(batch.id, (world) => {
             if (
               !independent &&
-              JSON.stringify(world.relationshipContext) !==
-                JSON.stringify(world.returnCatchup!.capture?.world.relationshipContext)
+              !sameRelationshipContext(
+                world.relationshipContext,
+                world.returnCatchup!.capture?.world.relationshipContext,
+              )
             ) {
               world.returnCatchup!.batch!.reason =
                 "Resident relationships changed before the absence could be verified.";

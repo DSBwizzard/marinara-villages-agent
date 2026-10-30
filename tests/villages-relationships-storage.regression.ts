@@ -63,7 +63,7 @@ for (const count of [1000, 10_000, 25_000]) {
     description: "",
     createdAt: at,
     updatedAt: at,
-    data: { version: 9, ...scope, memoryHead: null },
+    data: { version: 10, ...scope, memoryHead: null },
   });
   const gate = createRepairGate(documents),
     release = configureRepairGate(gate);
@@ -293,7 +293,7 @@ for (const count of [1000, 10_000, 25_000]) {
           packageId: "villages",
           kind: "village",
           revision: 1,
-          data: { version: 9, ...scope, memoryHead: null },
+          data: { version: 10, ...scope, memoryHead: null },
         },
       ],
     ]);

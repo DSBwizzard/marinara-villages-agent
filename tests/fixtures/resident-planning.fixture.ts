@@ -1,3 +1,4 @@
+import { fixtureRelationshipIdentity } from "../helpers/village-storage.fixture.js";
 import { readEffectiveVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
 import { villagesLanguageModels } from "../../packages/villages/src/server/adapters/models/language-models.js";
 import {
@@ -32,6 +33,7 @@ export function buildResidentPlanningMessages(input: any) {
 }
 export function proposeResidentChoices(input: any) {
   return createResidentPlanning({
+    relationshipIdentity: fixtureRelationshipIdentity,
     readVillageState,
     readEffectiveVillagerCard,
     queueBackgroundJob,

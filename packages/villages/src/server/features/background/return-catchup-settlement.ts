@@ -9,8 +9,12 @@ import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import { cloneVillageContext, sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
+import { immutableRelationshipState } from "../../domain/rules/relationship-rules.js";
+import { returnCaptureRevision, type RelationshipIdentity } from "../../domain/rules/return-capture-revision.js";
 
 type Ports = {
+  relationshipIdentity: RelationshipIdentity;
   gate: Pick<RepairGate, "simulate" | "commit">;
   readSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   mutate: typeof import("../world/village-store.js").mutateVillageState;
@@ -48,7 +52,9 @@ export function createReturnCatchupSettlement(ports: Ports) {
         throw conflict("The saved catch-up source does not match its opportunity.");
       if (
         !departureMemoriesAvailable(capture, before) ||
-        JSON.stringify(before.relationshipContext) !== JSON.stringify(capture.world.relationshipContext) ||
+        !before.relationshipContext ||
+        !capture.world.relationshipContext ||
+        !sameRelationshipContext(before.relationshipContext, capture.world.relationshipContext) ||
         JSON.stringify(before.opening) !== JSON.stringify(capture.world.opening)
       )
         throw conflict("Village knowledge changed before the encounter could settle.");
@@ -57,7 +63,7 @@ export function createReturnCatchupSettlement(ports: Ports) {
         opportunity.startsAt,
         capture.world.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
       );
-      const projected = structuredClone(historical);
+      const projected = cloneVillageContext(historical);
       planRoutineDays(projected, at);
       const admitted = {
         villagers: projected.villagers,
@@ -102,7 +108,7 @@ export function createReturnCatchupSettlement(ports: Ports) {
           status: "recovering" as const,
           error: pending.error || "The saved encounter needs recovery.",
           reinterpretRequired: !!pending.reinterpretRequired,
-          captureRevision: backgroundRevision(capture),
+          captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity),
           sourceRevision: backgroundRevision(source),
         };
       await ports.mutate((state) => {
@@ -110,7 +116,9 @@ export function createReturnCatchupSettlement(ports: Ports) {
           next = active?.batch?.records?.find((row) => row.opportunityId === opportunityId);
         if (!active?.capture || active.batch?.id !== batchId || !next) throw conflict("The catch-up batch changed.");
         active.capture.memoryRevision = state.memories.revision;
-        active.capture.world.relationshipContext = structuredClone(state.relationshipContext);
+        active.capture.world.relationshipContext = state.relationshipContext
+          ? immutableRelationshipState(state.seed, state.relationshipContext)
+          : undefined;
         for (const id of opportunity.actorIds) {
           const saved = active.capture.world.villagers.find((row) => row.characterId === id);
           const live = state.villagers.find((row) => row.characterId === id);
@@ -154,10 +162,10 @@ export function createReturnCatchupSettlement(ports: Ports) {
           active.batch?.id !== batchId ||
           !record ||
           !source ||
-          backgroundRevision(active.capture) !== failure.captureRevision ||
+          returnCaptureRevision(active.capture, ports.relationshipIdentity) !== failure.captureRevision ||
           backgroundRevision(source) !== failure.sourceRevision ||
           !departureMemoriesAvailable(active.capture, state) ||
-          JSON.stringify(state.relationshipContext) !== JSON.stringify(active.capture.world.relationshipContext)
+          !sameRelationshipContext(state.relationshipContext, active.capture.world.relationshipContext)
         )
           throw conflict("Village authority changed while recording catch-up recovery.");
         source.error = failure.error;
