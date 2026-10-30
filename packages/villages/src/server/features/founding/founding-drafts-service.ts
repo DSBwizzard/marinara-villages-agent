@@ -223,6 +223,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     village: VillageState,
     onProgress?: (progress: Partial<FoundingProgress>) => Promise<void>,
   ): Promise<Record<string, SeededFoundingVenueDetails>> {
+    const sourceZone = (venue: VillageState["venues"][number]) =>
+      venue.zones?.find((zone) => zone.kind === "public" || zone.kind === "shared-residence") ??
+      venue.zones?.find((zone) => zone.kind === "exterior");
     const rows = await Promise.all(
       rowsOf(
         village.venues.map((venue) => ({
@@ -230,7 +233,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           name: venue.name,
           form: venue.form,
           description: venue.description,
-          spaceDescription: venue.spaces?.[0]?.description,
+          spaceDescription: sourceZone(venue)?.description,
           layout:
             venue.layoutVersion === 1
               ? venue.zones?.filter((zone) => zone.kind !== "exterior").length
@@ -302,9 +305,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         const addition = asTrimmedString(result.addition);
         if (addition.length > MAX_VENUE_DESCRIPTION_LENGTH) throw badRequest("Shorten the initial physical details.");
         const original = village.venues.find((venue) => venue.id === row.id);
-        const source =
-          original?.zones?.find((zone) => zone.kind === "public" || zone.kind === "shared-residence") ??
-          original?.zones?.find((zone) => zone.kind === "exterior");
+        const source = original && sourceZone(original);
         if (source && [source.description, addition].filter(Boolean).join("\n").length > MAX_VENUE_DESCRIPTION_LENGTH)
           throw badRequest("The complete initial Zone description is too long.");
         details.push([row.id, { addition }]);

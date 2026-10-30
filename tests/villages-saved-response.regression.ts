@@ -216,6 +216,7 @@ let answer: any = {
 };
 let classified = false,
   projected: any;
+const foundingKeys: string[] = [];
 const founding = createFoundingDrafts({
   findVillagerCard: async () => null,
   readLinkedPersona: async () => null,
@@ -226,7 +227,9 @@ const founding = createFoundingDrafts({
       fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
     }),
   }),
-  completeWithRoom: async (_model: any, _messages: any, _tokens: any, options: any) => {
+  completeWithRoom: async (_model: any, messages: any, _tokens: any, options: any) => {
+    foundingKeys.push(options.savedRequest.key);
+    assert.equal(JSON.parse(messages[1].content).venues[0].spaceDescription, village.venues[0].zones[0].description);
     const completion = result(JSON.stringify(answer));
     classified = options.savedRequest.valid(completion);
     if (classified) {
@@ -252,6 +255,14 @@ const village = {
 } as any;
 assert.deepEqual(await founding.seedFoundingVenueDetails(village), { hall: { addition: "a flower box" } });
 assert.deepEqual(projected, { venues: [{ id: "hall", addition: "a flower box" }] });
+const originalFoundingKey = foundingKeys.at(-1);
+village.venues[0].zones[0].description = "A revised interior.";
+await founding.seedFoundingVenueDetails(village);
+assert.notEqual(
+  foundingKeys.at(-1),
+  originalFoundingKey,
+  "The frozen acceptance source belongs to the request fingerprint",
+);
 answer = { venues: [{ id: "hall", addition: "x".repeat(4001) }] };
 await assert.rejects(founding.seedFoundingVenueDetails(village), /Shorten/);
 assert.equal(classified, false);
