@@ -122,6 +122,7 @@ export type ReturnCatchupView = {
 };
 
 export type VillageSnapshot = {
+  worldScope: string;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
   opening?: import("./opening.js").OpeningView;

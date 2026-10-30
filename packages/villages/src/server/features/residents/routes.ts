@@ -44,9 +44,9 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       }
     },
   );
-  engine.get("/mailbox", async (_request, reply) => {
+  engine.get("/mailbox", async (request, reply) => {
     try {
-      return await socialMail().readMailbox();
+      return await socialMail().readMailbox(request.query);
     } catch (error) {
       return fail(reply, error, "read Mailbox");
     }
@@ -58,6 +58,19 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       return fail(reply, error, "send personal mail");
     }
   });
+  engine.get<{ Params: { threadId: string; messageId: string }; Querystring: { scope?: string; token?: string } }>(
+    "/mailbox/threads/:threadId/messages/:messageId",
+    async (request, reply) => {
+      try {
+        const { scope, token } = z
+          .object({ scope: z.string().regex(/^[a-f0-9]{64}$/), token: z.string().regex(/^[a-f0-9]{64}$/) })
+          .parse(request.query);
+        return await socialMail().getLetter(request.params.threadId, request.params.messageId, scope, token);
+      } catch (error) {
+        return fail(reply, error, "read personal letter");
+      }
+    },
+  );
   engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/messages", async (request, reply) => {
     try {
       return await socialMail().send(request.body, request.params.threadId);
@@ -67,8 +80,14 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
   });
   engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/read", async (request, reply) => {
     try {
-      const { messageId } = z.object({ messageId: z.string().min(1) }).parse(request.body);
-      return await socialMail().readLetter(request.params.threadId, messageId);
+      const { messageId, scope, token } = z
+        .object({
+          messageId: z.string().min(1),
+          scope: z.string().regex(/^[a-f0-9]{64}$/),
+          token: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .parse(request.body);
+      return await socialMail().readLetter(request.params.threadId, messageId, scope, token);
     } catch (error) {
       return fail(reply, error, "read personal thread");
     }
@@ -77,11 +96,14 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
     "/mailbox/threads/:threadId/messages/:messageId/retry",
     async (request, reply) => {
       try {
-        return await socialMail().retry(
-          request.params.threadId,
-          request.params.messageId,
-          z.object({ requestId: z.string() }).parse(request.body).requestId,
-        );
+        const { requestId, scope, token } = z
+          .object({
+            requestId: z.string(),
+            scope: z.string().regex(/^[a-f0-9]{64}$/),
+            token: z.string().regex(/^[a-f0-9]{64}$/),
+          })
+          .parse(request.body);
+        return await socialMail().retry(request.params.threadId, request.params.messageId, requestId, scope, token);
       } catch (error) {
         return fail(reply, error, "retry personal mail");
       }

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { MailboxView } from "../../../shared/contracts/mailbox.js";
+import type { MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -17,7 +17,13 @@ import {
   PERSONAL_LETTER_INSTRUCTION,
   PersonalLetterActionError,
 } from "../../domain/rules/personal-letter.js";
-import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import {
+  createMailboxPresentation,
+  readMailboxQuery,
+  mailboxLetterIdentity,
+  mailboxRecoveryIdentity,
+} from "../../domain/rules/mailbox-view.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
 import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import {
@@ -27,6 +33,7 @@ import {
 } from "../../domain/rules/relationship-review.js";
 import {
   applyRelationshipReview,
+  coerceRelationshipState,
   defaultRelationshipState,
   SocialRevisionConflict,
 } from "../../domain/rules/relationship-rules.js";
@@ -53,6 +60,7 @@ import {
 } from "../../domain/rules/social-wishes.js";
 
 export interface SocialMailPorts {
+  withWork: typeof import("../../adapters/storage/repair-gate.js").withRepairWork;
   processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
@@ -487,7 +495,7 @@ export function createSocialMail(ports: SocialMailPorts) {
   }
   async function applyEntry(entry: SocialMailOutbox) {
     const { input, result } = entry;
-    const village = await ports.readVillageSnapshot();
+    const village = await ports.readVillageSnapshot({ memories: true });
     if (village.seed !== input.seed) throw conflict("Village identity changed.");
     let current = await ports.readRelationshipState(input.seed);
     if (input.mode !== "resident" && result.replyText && !current.mailDeliveries[input.messageId + ":reply"])
@@ -552,7 +560,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       await ports.mutateRelationships(input.seed, (state) => beginMailDelivery(state, input.threadId, input.messageId));
       // Validate current revisions before any world effect; retries remain entirely local.
       applyRelationshipReview(
-        structuredClone(current),
+        coerceRelationshipState(current.seed, current),
         withoutMailDisclosures(mailReview(result.source)),
         village,
         input.messageId,
@@ -589,7 +597,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     const replyId = input.messageId + ":reply";
     if (!current.mailDeliveries[replyId] && result.replyText) {
       applyRelationshipReview(
-        structuredClone(current),
+        coerceRelationshipState(current.seed, current),
         withoutMailDisclosures(mailReview(result.reply)),
         village,
         replyId,
@@ -650,6 +658,11 @@ export function createSocialMail(ports: SocialMailPorts) {
     });
   }
   async function processOutbox(village: VillageState): Promise<boolean> {
+    // Claim shared tasks only after taking the same admission/authority order as Retry.
+    // Otherwise Retry can hold authority while awaiting a task which is itself waiting for authority.
+    return ports.withWork(() => ports.withVillageSceneAcceptance(() => settleOutbox(village)));
+  }
+  async function settleOutbox(village: VillageState): Promise<boolean> {
     let retired = false;
     for (const entry of village.socialMailOutbox ?? []) {
       const sender = entry.input.admitted.villagers.find((row) => row.characterId === entry.input.residentId)
@@ -671,7 +684,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       )
         retired = (await retireChangedCorrespondent(entry)) || retired;
     }
-    if (retired) village = await ports.readVillageSnapshot();
+    if (retired) village = await ports.readVillageSnapshot({ memories: true });
     const current = await ports.readRelationshipState(village.seed);
     const entries = (village.socialMailOutbox ?? []).filter((row) => {
       if (!row.error) return true;
@@ -700,7 +713,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       }
       const task = applyEntry(entry)
         .catch(async (error) => {
-          const latest = await ports.readVillageSnapshot();
+          const latest = await ports.readVillageSnapshot({ memories: true });
           if (
             latest.seed === entry.input.seed &&
             !latest.villagers.some(
@@ -834,7 +847,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     try {
       await queue(await makeInput(village, threadId, messageId, retainedReply), actionId);
     } catch (error) {
-      const latest = await ports.readVillageSnapshot();
+      const latest = await ports.readVillageSnapshot({ memories: true });
       const retained = latest.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
       if (retained && (await retireChangedCorrespondent(retained))) throw error;
       await ports.withVillageSceneAcceptance(async (authority) => {
@@ -904,98 +917,43 @@ export function createSocialMail(ports: SocialMailPorts) {
       sourceDelivered: !!state.mailDeliveries[message.id],
     };
   }
-  async function readMailbox(): Promise<MailboxView> {
+  const readScope = (value: unknown) =>
+    z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .parse(value);
+  function assertScope(world: VillageState, scope: string) {
+    if (villageWorldScope(world) !== readScope(scope)) throw conflict("The Village changed. Open its Mailbox again.");
+  }
+  async function presentation(scope?: string, settle = false) {
     let village = await ports.readVillageSnapshot();
-    if (!village.clock?.recovery && (await processOutbox(village))) village = await ports.readVillageSnapshot();
+    if (scope) assertScope(village, scope);
+    if (settle && !village.clock?.recovery && (await processOutbox(village)))
+      village = await ports.readVillageSnapshot();
+    if (scope) assertScope(village, scope);
     const state = await ports.readRelationshipState(village.seed);
-    const jobs = (await ports.backgroundWorkSummaries()).filter((job) => job.kind === "personal-mail");
-    const jobFor = (id: string) => {
-      const matches = jobs.filter((job) => job.subjectId === id);
-      return (
-        matches.find((job) => ["queued", "running", "paused"].includes(job.status)) ??
-        matches.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))[0]
-      );
-    };
-    const canRecover = (id: string) => {
-      const job = jobFor(id);
-      const source = Object.values(state.mailThreads)
-        .flatMap((thread) => thread.messages)
-        .find((row) => row.id === id);
-      return (
-        !village.clock?.recovery &&
-        !source?.replyUnavailable &&
-        !["cancelled", "undeliverable"].includes(source?.status ?? "") &&
-        !["queued", "running", "paused"].includes(job?.status ?? "")
-      );
-    };
-    const name = (id: string) =>
-      village.villagers.find((row) => row.characterId === id)?.cardSnapshot.name ?? "Former resident";
-    return {
-      recovery: (village.socialMailOutbox ?? [])
-        .filter((row) => !!row.error && canRecover(row.id))
-        .map((row) => ({
-          threadId: row.input.threadId,
-          messageId: row.id,
-          label: "Saved mail processing needs recovery.",
-          reinterpretRequired: !!row.reinterpretRequired,
-        })),
-      threads: Object.values(state.mailThreads)
-        .filter(
-          (row) =>
-            row.participantIds.includes("player") &&
-            row.messages.some((message) => message.fromId === "player" || !!state.mailDeliveries[message.id]),
-        )
-        .map((thread) => {
-          const residentId = thread.participantIds.find((id) => id !== "player")!;
-          return {
-            id: thread.id,
-            residentId,
-            residentName: name(residentId),
-            letterFontId:
-              village.villagers.find((row) => row.characterId === residentId)?.letterFontId ??
-              (village.formerLetterFonts && Object.hasOwn(village.formerLetterFonts, residentId)
-                ? village.formerLetterFonts[residentId]
-                : undefined) ??
-              legacyLetterFont(residentId),
-            revision: thread.revision,
-            messages: thread.messages
-              .filter((row) => row.fromId === "player" || !!state.mailDeliveries[row.id])
-              .map((row) => ({
-                id: row.id,
-                fromId: row.fromId,
-                text: row.text,
-                at: row.at,
-                status: state.mailDeliveries[row.id] ? "delivered" : row.status,
-                read: !!row.readAt,
-                replyPending: row.replyStatus === "pending",
-                retryAvailable:
-                  canRecover(row.id) &&
-                  ((village.socialMailOutbox ?? []).some((entry) => entry.id === row.id && !!entry.error) ||
-                    (row.admissionFailed === true && row.status === "pending" && !jobFor(row.id)) ||
-                    ["failed", "interrupted"].includes(jobFor(row.id)?.status ?? "")),
-                error:
-                  row.status === "undeliverable" || row.replyUnavailable
-                    ? row.error
-                    : canRecover(row.id) &&
-                        ((village.socialMailOutbox ?? []).some((entry) => entry.id === row.id && !!entry.error) ||
-                          (row.admissionFailed === true && row.status === "pending" && !jobFor(row.id)) ||
-                          ["failed", "interrupted"].includes(jobFor(row.id)?.status ?? ""))
-                      ? "Letter processing needs attention."
-                      : undefined,
-              })),
-          };
-        }),
-    };
+    return createMailboxPresentation(village, state, await ports.backgroundWorkSummaries());
+  }
+  async function readMailbox(value: unknown = {}): Promise<MailboxView> {
+    const query = readMailboxQuery(value);
+    return (await presentation(query.scope, true)).mailbox(query);
+  }
+  async function getLetter(threadId: string, messageId: string, scope: string, token: string): Promise<PersonalLetter> {
+    const detail = (await presentation(readScope(scope))).letter(threadId, messageId);
+    if (detail.message.token !== readScope(token)) throw conflict("The letter changed. Choose it again.");
+    return detail;
   }
   async function send(value: unknown, threadId?: string) {
     const input = z
       .object({
+        scope: z.string().regex(/^[a-f0-9]{64}$/),
         residentId: z.string().min(1),
         requestId: z.string().min(1).max(200),
         text: z.string().min(1).max(4000),
       })
       .parse(value);
-    const village = await ports.readVillageSnapshot();
+    const village = await ports.readVillageSnapshot({ memories: true });
+    assertScope(village, input.scope);
     if (!village.villagers.some((row) => row.characterId === input.residentId))
       throw badRequest("Choose a current resident.");
     if (!village.relationshipContext?.reviewedActorIds.includes(input.residentId))
@@ -1027,15 +985,23 @@ export function createSocialMail(ports: SocialMailPorts) {
       (row) => row.requestId === input.requestId,
     )!;
     if (source.status === "pending") await admit(village, personalThreadId(input.residentId), source.id);
-    return readMailbox();
+    return {
+      scope: villageWorldScope(village),
+      threadId: personalThreadId(input.residentId),
+      messageId: source.id,
+      token: mailboxLetterIdentity(village, state, personalThreadId(input.residentId), source),
+    };
   }
-  async function readLetter(threadId: string, messageId: string) {
-    const village = await ports.readVillageSnapshot();
+  async function readLetter(threadId: string, messageId: string, scope: string, token: string) {
+    const village = await ports.readVillageSnapshot({ memories: true });
+    assertScope(village, scope);
     const thread = village.relationshipContext?.mailThreads[threadId];
     if (!thread || !thread.participantIds.includes("player")) throw badRequest("That thread is unavailable.");
     const letter = thread.messages.find((message) => message.id === messageId && message.toId === "player");
     if (!letter || !village.relationshipContext!.mailDeliveries[messageId])
       throw badRequest("That letter is unavailable.");
+    if (mailboxLetterIdentity(village, village.relationshipContext!, threadId, letter) !== readScope(token))
+      throw conflict("The letter changed. Choose it again.");
     const lines: RelationshipEvidenceLine[] = thread.messages
       .filter(
         (message) =>
@@ -1056,7 +1022,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       if (message.toId !== "player" || !delivery || message.readAt) continue;
       await ports.mutateVillageState(
         (state) => {
-          if (state.seed !== village.seed) throw conflict("Village identity changed.");
+          assertScope(state, scope);
           for (const fact of message.wishDisclosures ?? [])
             publishWishDisclosure(state, fact, new Date().toISOString());
           publishRelationshipDisclosures(
@@ -1075,14 +1041,15 @@ export function createSocialMail(ports: SocialMailPorts) {
       readPersonalThread(state, threadId, new Date().toISOString(), [messageId]),
     );
     await publishReadWishMail(village.seed, threadId);
-    return readMailbox();
+    return { scope, threadId, messageId, token };
   }
-  async function retry(threadId: string, messageId: string, requestId: string) {
+  async function retry(threadId: string, messageId: string, requestId: string, scope: string, token: string) {
     z.string()
       .regex(/^[a-zA-Z0-9_-]{1,200}$/)
       .parse(requestId);
-    const village = await ports.readVillageSnapshot(),
+    const village = await ports.readVillageSnapshot({ memories: true }),
       social = await ports.readRelationshipState(village.seed);
+    assertScope(village, scope);
     if (village.clock?.recovery) throw conflict("Resolve the village clock notice before retrying this letter.");
     const source = social.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
     if (source?.replyUnavailable || (source && ["cancelled", "undeliverable"].includes(source.status)))
@@ -1096,6 +1063,12 @@ export function createSocialMail(ports: SocialMailPorts) {
     if (job && ["queued", "running", "paused"].includes(job.status))
       throw conflict("This letter is already being processed.");
     const entry = village.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
+    const currentToken = source
+      ? mailboxLetterIdentity(village, social, threadId, source)
+      : entry
+        ? mailboxRecoveryIdentity(village, entry)
+        : undefined;
+    if (currentToken !== readScope(token)) throw conflict("The saved mail changed. Refresh its status.");
     const name = village.villagers.find((row) => row.characterId === entry?.input.residentId)?.cardSnapshot.name;
     const replaceInvalidReply =
       !!entry?.error &&
@@ -1116,8 +1089,8 @@ export function createSocialMail(ports: SocialMailPorts) {
         const saved = state.socialMailOutbox?.find((row) => row.id === messageId);
         if (saved) saved.error = undefined;
       });
-      await processOutbox(await ports.readVillageSnapshot());
-      return readMailbox();
+      await processOutbox(await ports.readVillageSnapshot({ memories: true }));
+      return { scope, threadId, messageId, token };
     }
     const { message } = requireMailSource(social, threadId, messageId);
     if (["cancelled", "undeliverable"].includes(message.status))
@@ -1140,7 +1113,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         saved.retryClaim = action;
         claimed = true;
       });
-      if (!claimed) return readMailbox();
+      if (!claimed) return { scope, threadId, messageId, token };
       await admit(village, threadId, messageId, action, replaceInvalidReply ? undefined : entry.result.replyText);
       await ports.mutateVillageState((state) => {
         const saved = state.socialMailOutbox?.find((row) => row.id === messageId && row.input.threadId === threadId);
@@ -1150,7 +1123,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       if (message.status === "pending" && !job && message.admissionFailed) await admit(village, threadId, messageId);
       else throw conflict("This letter has no failed processing to retry.");
     }
-    return readMailbox();
+    return { scope, threadId, messageId, token };
   }
   const handler: Handler = {
     generate,
@@ -1180,7 +1153,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       } else state.socialMailOutbox.push({ id: input.messageId, input, result });
     },
     afterApply: async () => {
-      await processOutbox(await ports.readVillageSnapshot());
+      await processOutbox(await ports.readVillageSnapshot({ memories: true }));
     },
     afterFailure: async (input: SocialMailInput) => {
       await ports.withVillageSceneAcceptance(async (latest) => {
@@ -1295,6 +1268,21 @@ export function createSocialMail(ports: SocialMailPorts) {
       },
     };
   }
-  return { handler, processOutbox, readMailbox, send, readLetter, retry, automaticOutbox };
+  const owned =
+    <A extends unknown[], R>(work: (...args: A) => Promise<R>) =>
+    (...args: A) =>
+      ports.withWork(() => work(...args));
+  const command = <A extends unknown[], R>(work: (...args: A) => Promise<R>) =>
+    owned((...args: A) => ports.withVillageSceneAcceptance(() => work(...args)));
+  return {
+    handler,
+    processOutbox,
+    readMailbox: owned(readMailbox),
+    getLetter: owned(getLetter),
+    send: command(send),
+    readLetter: command(readLetter),
+    retry: command(retry),
+    automaticOutbox,
+  };
 }
 export type SocialMailService = ReturnType<typeof createSocialMail>;

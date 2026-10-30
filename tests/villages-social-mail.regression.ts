@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
@@ -23,6 +24,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
 import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
+import { correspondenceTestClient } from "./helpers/mailbox.fixture.js";
 const village = defaultVillageState();
 village.seed = "mail";
 village.foundedAt = new Date().toISOString();
@@ -48,6 +50,9 @@ let narrationReply = "I'd like to stay friends.";
 let failFirstIncoming = false;
 let failNativeWrite = "";
 let afterSocialCommit: (() => Promise<void>) | undefined;
+let afterWorldCommit: (() => Promise<void>) | undefined;
+let beforeContenderAuthority: (() => void) | undefined;
+const testActor = new AsyncLocalStorage<string>();
 let failMemoryWrite = false;
 let failAdmission = false;
 let failInputRead = false;
@@ -76,8 +81,12 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
 });
 let active: SocialMailInput;
 const promptHistory: string[] = [];
-const service = createSocialMail({
-  withVillageSceneAcceptance: async (work: any) => authorityGate.withAuthorityLock!(async () => work(await snapshot())),
+const coreService = createSocialMail({
+  withWork: async (work: any) => work(),
+  withVillageSceneAcceptance: async (work: any) => {
+    if (testActor.getStore() === "contender") beforeContenderAuthority?.();
+    return authorityGate.withAuthorityLock!(async () => work(await snapshot()));
+  },
   processLiveMemories: async (scene: any, id: string, evidence: any, incarnations: any) => {
     if (failNativeWrite === (scene.lines.length === 1 ? "source" : "reply")) {
       failNativeWrite = "";
@@ -183,6 +192,9 @@ const service = createSocialMail({
     }
     delete next.relationshipContext;
     Object.assign(village, next);
+    const callback = afterWorldCommit;
+    afterWorldCommit = undefined;
+    if (callback) await callback();
     return snapshot();
   },
   queueBackgroundJob: async (job: any) => {
@@ -306,6 +318,7 @@ const service = createSocialMail({
     };
   },
 } as any);
+const service = correspondenceTestClient(coreService, snapshot);
 async function generateAndSave() {
   const job = queued.at(-1);
   active = job.input;
@@ -1153,4 +1166,54 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
     savedRelationships = undefined;
     gate.dispose();
   }
+}
+
+// A competing context must take authority before claiming the shared settlement task.
+backgroundStatuses = [];
+sourceOnlyReply = false;
+narrationReply = "A saved ordinary reply.";
+await service.send({ residentId: "ada", requestId: "outbox-lock-race", text: "A letter for local recovery." });
+failReplyWrite = true;
+await generateAndSave();
+const raceInput = active;
+assert(village.socialMailOutbox?.find((row) => row.id === raceInput.messageId)?.error);
+let startContender!: () => void, attemptedAuthority!: () => void;
+const contenderStart = new Promise<void>((resolve) => {
+  startContender = resolve;
+});
+const authorityAttempt = new Promise<void>((resolve) => {
+  attemptedAuthority = resolve;
+});
+const contender = contenderStart.then(() =>
+  testActor.run("contender", async () => service.processOutbox(await snapshot())),
+);
+beforeContenderAuthority = () => {
+  beforeContenderAuthority = undefined;
+  attemptedAuthority();
+};
+afterWorldCommit = async () => {
+  assert.equal(village.socialMailOutbox?.find((row) => row.id === raceInput.messageId)?.error, undefined);
+  startContender();
+  await authorityAttempt;
+};
+let watchdog: ReturnType<typeof setTimeout>;
+const deadlock = new Promise<never>((_resolve, reject) => {
+  watchdog = setTimeout(() => reject(Error("Retry and competing outbox settlement deadlocked")), 10_000);
+});
+const paidBeforeRace = calls;
+try {
+  await Promise.race([
+    Promise.all([service.retry(raceInput.threadId, raceInput.messageId, "retry-lock-race"), contender]),
+    deadlock,
+  ]);
+  assert(!village.socialMailOutbox?.some((row) => row.id === raceInput.messageId));
+  assert.equal(
+    social.mailThreads[raceInput.threadId]!.messages.filter((row) => row.id === raceInput.messageId + ":reply").length,
+    1,
+  );
+  assert.equal(calls, paidBeforeRace, "Competing local recovery must reuse its saved response");
+} finally {
+  clearTimeout(watchdog!);
+  beforeContenderAuthority = undefined;
+  afterWorldCommit = undefined;
 }

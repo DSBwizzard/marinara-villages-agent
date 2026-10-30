@@ -3,6 +3,7 @@ import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
+import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { openingView } from "../../domain/rules/opening-project.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
@@ -150,6 +151,7 @@ export function createVillageSnapshot({
       );
     });
     const snapshot: VillageSnapshot = {
+      worldScope: villageWorldScope(village),
       status: "ready",
       clock,
       progressEngineVersion: village.progressEngineVersion,

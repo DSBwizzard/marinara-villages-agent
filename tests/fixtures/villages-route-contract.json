@@ -31,6 +31,10 @@
       "path": "/mailbox/threads"
     },
     {
+      "method": "get",
+      "path": "/mailbox/threads/:threadId/messages/:messageId"
+    },
+    {
       "method": "post",
       "path": "/mailbox/threads/:threadId/messages"
     },

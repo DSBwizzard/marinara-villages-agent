@@ -1,3 +1,4 @@
+import { createBrowserMailbox } from "./fixtures/mailbox-browser.fixture.mjs";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
@@ -13,6 +14,7 @@ const browser = await chromium.launch({
 const P = "marinara-capability-villages";
 const output = resolve(process.env.VILLAGES_VISUAL_OUTPUT || ".build-tmp/dossier");
 mkdirSync(output, { recursive: true });
+let executedViewports = 0;
 try {
   for (const [width, height] of [
     [1440, 900],
@@ -28,6 +30,7 @@ try {
       (!process.env.VILLAGES_DOSSIER_WIDTH || width === Number(process.env.VILLAGES_DOSSIER_WIDTH)) &&
       (!process.env.VILLAGES_DOSSIER_HEIGHT || height === Number(process.env.VILLAGES_DOSSIER_HEIGHT)),
   )) {
+    executedViewports++;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
     await mockEngineLookups(page);
     const errors = [],
@@ -168,6 +171,15 @@ try {
     };
     let failMailRead = false;
     let failMailResponse = false;
+    let heldPage = null;
+    let heldSend = null;
+    const hold = (matches) => {
+      let release;
+      const gate = new Promise((resolve) => {
+        release = resolve;
+      });
+      return { matches, gate, release, started: 0, finished: 0 };
+    };
     const mailbox = {
       threads: [
         {
@@ -180,7 +192,7 @@ try {
               id: "first-letter",
               fromId: "mara",
               text: "A first letter from Mara.",
-              at: now,
+              at: new Date(Date.parse(now) + 1).toISOString(),
               status: "delivered",
               read: false,
               replyPending: false,
@@ -200,6 +212,8 @@ try {
       ],
       recovery: [],
     };
+    const browserMailbox = createBrowserMailbox(village, mailbox);
+    village.worldScope = browserMailbox.scope;
     let historyRetried = false;
     const agendas = {
       villagers: ["mara", "eli"].map((characterId) => ({
@@ -262,8 +276,11 @@ try {
         assert.ok(body.actionId);
         historyRetried = true;
       } else if (path.includes("/mailbox")) {
+        const url = new URL(request.url());
+        const body = request.method() === "POST" ? request.postDataJSON() : null;
+        assert.equal(body?.scope ?? url.searchParams.get("scope"), browserMailbox.scope);
+        const target = /\/mailbox\/threads\/([^/]+)\/(?:messages\/([^/]+)(?:\/retry)?|read)$/.exec(path);
         if (path.endsWith("/mailbox/threads") && request.method() === "POST") {
-          const body = request.postDataJSON();
           let thread = mailbox.threads.find((row) => row.residentId === body.residentId);
           if (!thread) {
             thread = {
@@ -289,21 +306,50 @@ try {
             failMailResponse = false;
             return fulfill(route, { status: 503, json: { error: "Reply lost" } });
           }
-        }
-        if (path.endsWith("/retry")) {
-          const failed = mailbox.threads.flatMap((thread) => thread.messages).find((message) => message.retryAvailable);
-          if (failed) {
-            failed.retryAvailable = false;
-            delete failed.error;
+          value = browserMailbox.ack(thread.id, body.requestId);
+          if (heldSend?.matches(body)) {
+            const barrier = heldSend;
+            barrier.started++;
+            await barrier.gate;
+            await fulfill(route, { json: value });
+            barrier.finished++;
+            return;
+          }
+        } else if (target) {
+          const threadId = decodeURIComponent(target[1]),
+            messageId = body?.messageId ?? decodeURIComponent(target[2]);
+          const detail = browserMailbox.detail(threadId, messageId);
+          if ((body?.token ?? url.searchParams.get("token")) !== detail.message.token)
+            return fulfill(route, { status: 409, json: { error: "The letter changed. Choose it again." } });
+          if (path.endsWith("/retry")) {
+            const source = mailbox.threads
+              .find((thread) => thread.id === threadId)
+              .messages.find((message) => message.id === messageId);
+            source.retryAvailable = false;
+            delete source.error;
+          }
+          if (path.endsWith("/read")) {
+            if (failMailRead) {
+              failMailRead = false;
+              return fulfill(route, { status: 503, json: { error: "Read failed" } });
+            }
+            mailbox.threads
+              .find((thread) => thread.id === threadId)
+              .messages.find((message) => message.id === messageId).read = true;
+          }
+          value = request.method() === "GET" ? detail : browserMailbox.ack(threadId, messageId);
+        } else {
+          const query = Object.fromEntries(url.searchParams);
+          value = browserMailbox.page(query);
+          if (heldPage?.matches(query)) {
+            const barrier = heldPage;
+            barrier.started++;
+            await barrier.gate;
+            await fulfill(route, { json: value });
+            barrier.finished++;
+            return;
           }
         }
-        if (path.endsWith("/read") && failMailRead) {
-          failMailRead = false;
-          return fulfill(route, { status: 503, json: { error: "Read failed" } });
-        }
-        if (path.endsWith("/read"))
-          mailbox.threads[0].messages.find((message) => message.id === request.postDataJSON().messageId).read = true;
-        value = mailbox;
       } else if (path.endsWith("/villagers/mara/description")) {
         if (failDescription)
           return fulfill(route, {
@@ -826,6 +872,14 @@ try {
     }, P);
     await profile.getByText("Message", { exact: true }).click();
     const mail = page.getByRole("dialog", { name: "Mailbox", exact: true });
+    const reopenLetter = async (folder) => {
+      await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
+      await profile.getByText("Message", { exact: true }).click();
+      const back = mail.getByRole("button", { name: "Back to letters" });
+      if (await back.isVisible()) await back.click();
+      await mail.getByRole("button", { name: folder, exact: true }).click();
+      await mail.getByRole("navigation", { name: "Letters" }).getByRole("button", { name: /Mara/ }).first().click();
+    };
     const bounds = await page.evaluate((tag) => {
       const game = document.querySelector(tag).getBoundingClientRect();
       const overlay = document.querySelector(".villages-mailbox-overlay").getBoundingClientRect();
@@ -890,6 +944,7 @@ try {
       const outgoing = mailbox.threads[0].messages.findLast((message) => message.fromId === "player");
       outgoing.retryAvailable = true;
       outgoing.error = "Letter processing needs attention.";
+      await reopenLetter("Sent");
       await expect(mail.getByRole("button", { name: "Retry", exact: true })).toBeVisible({ timeout: 10000 });
       await mail.getByRole("button", { name: "Retry", exact: true }).click();
       await expect(mail.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
@@ -1018,6 +1073,7 @@ try {
       const shortLetter =
         "Dear friend,\n\nThe rain finally stopped this morning, so I took the long path past the mill. The garden is coming back to life, one little green shoot at a time.\n\nWould you like to walk there with me tomorrow? I will bring the tea.\n\nUntil then,\nMara";
       mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = shortLetter;
+      await reopenLetter("Inbox");
       await expect
         .poll(
           () =>
@@ -1072,6 +1128,7 @@ try {
 
       const longLetter = "A page of words from Mara, written carefully for a friend. ".repeat(45) + "The final word.";
       mailbox.threads[0].messages.find((message) => message.id === "first-letter").text = longLetter;
+      await reopenLetter("Inbox");
       await expect
         .poll(
           () =>
@@ -1160,6 +1217,79 @@ try {
         .toBe(firstAttempt);
       assert.equal(mailbox.threads[0].messages.filter((message) => message.id === firstAttempt).length, 1);
     }
+    if (width === 977) {
+      const thread = mailbox.threads[0];
+      for (let i = 0; i < 120; i++)
+        thread.messages.push({
+          id: "older:" + String(i).padStart(3, "0"),
+          fromId: "mara",
+          text: "Retained older letter " + i,
+          at: new Date(Date.parse(now) - (i + 1) * 60_000).toISOString(),
+          status: "delivered",
+          read: true,
+        });
+      await mail.getByRole("button", { name: "Sent", exact: true }).click();
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(2);
+      await mail.getByRole("button", { name: "Inbox", exact: true }).click();
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(50);
+      heldPage = hold((query) => query.folder === "sent");
+      await mail.getByRole("button", { name: "Sent", exact: true }).click();
+      await expect.poll(() => heldPage.started).toBeGreaterThan(0);
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(0);
+      await expect(mail.getByText("Loading…", { exact: true })).toBeVisible();
+      await mail.getByRole("button", { name: "Inbox", exact: true }).click();
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(50);
+      const sentBarrier = heldPage;
+      heldPage = null;
+      sentBarrier.release();
+      await expect.poll(() => sentBarrier.finished).toBe(sentBarrier.started);
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await expect(mail.getByRole("button", { name: "Inbox", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(50);
+
+      await mail.locator(".villages-letter-row").first().click();
+      const paperPages = mail.getByLabel("Letter pages");
+      await expect(paperPages).toBeVisible();
+      await mail.getByRole("button", { name: "Next page", exact: true }).click();
+      const position = await paperPages.locator("span").innerText();
+      heldPage = hold((query) => !!query.cursor);
+      await mail.getByRole("button", { name: "Older letters", exact: true }).click();
+      await expect.poll(() => heldPage.started).toBeGreaterThan(0);
+      await expect(mail.getByRole("button", { name: "Older letters", exact: true })).toBeDisabled();
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(0);
+      await expect(paperPages.locator("span")).toHaveText(position);
+      const olderBarrier = heldPage;
+      heldPage = null;
+      olderBarrier.release();
+      await expect.poll(() => olderBarrier.finished).toBe(olderBarrier.started);
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(50);
+      await expect(paperPages.locator("span")).toHaveText(position);
+      await expect(mail.locator(".villages-letter-text").first()).toContainText("A page of words from Mara");
+
+      await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
+      await mail.getByLabel("Recipient").selectOption("mara");
+      await draft.fill("A send whose acknowledgement arrives after page navigation.");
+      heldSend = hold((body) => body.text === "A send whose acknowledgement arrives after page navigation.");
+      await mail.getByRole("button", { name: "Send letter", exact: true }).click();
+      await expect.poll(() => heldSend.started).toBe(1);
+      await mail.getByRole("button", { name: "Older letters", exact: true }).click();
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(22);
+      const sendBarrier = heldSend;
+      heldSend = null;
+      sendBarrier.release();
+      await expect.poll(() => sendBarrier.finished).toBe(1);
+      await expect(draft).toHaveValue("");
+      await expect(mail.getByRole("button", { name: "Inbox", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(mail.locator(".villages-letter-row")).toHaveCount(22);
+      await expect(draft).toBeVisible();
+      assert.equal(
+        mailbox.threads[0].messages.filter(
+          (row) => row.text === "A send whose acknowledgement arrives after page navigation.",
+        ).length,
+        1,
+      );
+    }
+
     await mail.getByRole("button", { name: "Close Mailbox" }).click();
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
@@ -1339,6 +1469,7 @@ try {
     await page.close();
     console.log(`Dossier ${width}×${height}: privacy, filtering, navigation, actions and layout passed`);
   }
+  assert(executedViewports > 0, "No Dossier viewport matched the selected dimensions");
 } finally {
   await browser.close();
 }
