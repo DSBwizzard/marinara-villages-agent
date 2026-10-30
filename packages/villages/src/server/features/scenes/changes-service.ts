@@ -11,6 +11,7 @@ import {
 import type { ExchangeDomain } from "../../domain/models/exchange-model.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
@@ -319,7 +320,7 @@ export function createSceneChanges({
         }
       });
     await changeSession(id, (scene) => {
-      const turn = scene.submissions.find((row) => row.id === submissionId);
+      const turn = mutableSceneSubmission(scene, submissionId);
       if (!turn) throw notFound("No saved exchange.");
       continueSemanticDomain(turn, domain, recoverAccepted);
     });

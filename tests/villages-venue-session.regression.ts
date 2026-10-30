@@ -21,7 +21,7 @@ import { settleBackgroundWork } from "../packages/villages/src/server/jobs/backg
 import { proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
 import { fixtureAcousticModel, fixtureLocalAttention } from "./fixtures/villages-attention.fixture.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments, editFixtureScene, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 // Keep one fixture day across a UTC/local midnight; async timers remain real.
 mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
 // Older narration fixtures declare no Wish proposal; missing/invalid metadata has dedicated live-domain coverage.
@@ -167,7 +167,7 @@ const documents = {
     if (
       input.id.startsWith("villages-venue-visit-") &&
       failReceiptBookkeepingFor &&
-      input.data.submissions?.some(
+      fixtureSceneState(input.data, new Map([...records.values()].map((row) => [row.id, row]))).submissions?.some(
         (turn: any) => turn.id === failReceiptBookkeepingFor && turn.processing?.domains.projects.status === "applied",
       )
     )
@@ -2146,14 +2146,18 @@ async function main() {
     const currentRecord = structuredClone(records.get(fixtureKey)!);
     try {
       const bareChat = structuredClone(currentRecord);
-      bareChat.data.submissions.push({
-        ...structuredClone(bareChat.data.submissions.at(-1)),
-        id: "bare-chat",
-        message: "Saved bare Chat",
-        mode: "chat",
-        requestMode: undefined,
-        targetId: "",
-      });
+      const pages = new Map([...records.values()].map((row) => [row.id, row]));
+      editFixtureScene(bareChat, pages, (scene) =>
+        scene.submissions.push({
+          ...structuredClone(scene.submissions.at(-1)!),
+          id: "bare-chat",
+          message: "Saved bare Chat",
+          mode: "chat",
+          requestMode: undefined,
+          targetId: "",
+        }),
+      );
+      for (const [id, row] of pages) records.set(key("villages", id), row);
       records.set(fixtureKey, bareChat);
       const beforeChat = structuredClone([...records]);
       const beforeChatCalls = [documentWriteCalls, providerCalls, providerResolves];
@@ -2176,8 +2180,9 @@ async function main() {
 
       const unversioned = structuredClone(currentRecord);
       const oldAction = { happened: true, narration: "The player set down an old jug.", addItem: "old jug" };
-      unversioned.data.submissions.push({
-        ...structuredClone(unversioned.data.submissions.at(-1)),
+      const legacyScene = fixtureSceneState(unversioned.data, pages);
+      legacyScene.submissions.push({
+        ...structuredClone(legacyScene.submissions.at(-1)!),
         id: "old-admission",
         message: "Saved old action",
         mode: "act",
@@ -2186,8 +2191,8 @@ async function main() {
         action: oldAction,
         actionReplyDone: false,
       });
-      unversioned.data.operation = {
-        ...unversioned.data.operation,
+      legacyScene.operation = {
+        ...legacyScene.operation!,
         id: "old-admission",
         kind: "turn",
         status: "interrupted",
@@ -2195,8 +2200,10 @@ async function main() {
         checkpoints: {},
         attempts: {},
         input: { message: "Saved old action", mode: "act", targetId: "" },
-        snapshot: structuredClone({ ...unversioned.data, operation: undefined }),
+        snapshot: structuredClone({ ...legacyScene, operation: undefined }),
       };
+      editFixtureScene(unversioned, pages, (scene) => Object.assign(scene, legacyScene));
+      for (const [id, row] of pages) records.set(key("villages", id), row);
       records.set(fixtureKey, unversioned);
       const beforeOld = structuredClone([...records]);
       const beforeOldCalls = [documentWriteCalls, providerCalls, providerResolves];

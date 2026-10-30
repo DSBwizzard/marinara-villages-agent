@@ -97,6 +97,7 @@ function fixture(name: string) {
     ],
   });
   const sessions = new Map<string, VenueScene>(),
+    pages = new Map<string, any>(),
     records: Document[] = [],
     calls: string[] = [],
     owners: unknown[] = [];
@@ -131,6 +132,11 @@ function fixture(name: string) {
     villagesDocuments() {
       note("documents");
       return {
+        async getById(packageId, id) {
+          note("get:" + id);
+          assert.equal(packageId, "villages");
+          return structuredClone(pages.get(id) ?? null);
+        },
         async list(packageId, kind) {
           note("list");
           assert.equal(packageId, "villages");
@@ -157,7 +163,7 @@ function fixture(name: string) {
       kind: SESSION_KIND,
       name,
       description: name,
-      data: authorSceneFixture(new Map(), structuredClone(session)),
+      data: authorSceneFixture(pages, structuredClone(session)),
       revision: 1,
       createdAt: stamp,
       updatedAt: stamp,
@@ -308,9 +314,13 @@ async function main() {
     })),
   );
   assert.deepEqual(
-    backlog.calls,
+    backlog.calls.slice(0, 3),
     ["world", "documents", "list"],
     "world precedes lazy listing, with no prune/replay calls",
+  );
+  assert(
+    backlog.calls.slice(3).every((call) => call.startsWith("get:villages-memory-page-")),
+    "Backlog explicitly reads its saved turn pages",
   );
   assert.deepEqual(backlog.records, originalRecords, "backlog is not a storage mutation");
   const listFault = Error("Exact document list failure"),
@@ -340,7 +350,8 @@ async function main() {
   assert.equal(second.calls[0], "session:same");
   first.gate.resolve();
   assert.deepEqual(await inFlight, [{ sessionId: "same", submissionId: "proof", at: stamp, error: "A pending" }]);
-  assert.deepEqual(first.calls, ["world", "world-resumed", "documents", "list"]);
+  assert.deepEqual(first.calls.slice(0, 4), ["world", "world-resumed", "documents", "list"]);
+  assert(first.calls.slice(4).every((call) => call.startsWith("get:villages-memory-page-")));
   assert(first.owners.every((owner) => owner === a));
   assert(second.owners.every((owner) => owner === b));
   a.run(releaseA);

@@ -1,3 +1,4 @@
+import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
@@ -489,7 +490,7 @@ export function createSceneCommands({
     });
     await changeSession(id, (saved) => {
       if (saved.villageSeed !== village.seed) throw conflict("Village identity changed.");
-      const entry = saved.submissions.find((turn) => turn.id === submissionId)!;
+      const entry = mutableSceneSubmission(saved, submissionId)!;
       if (!entry.liveProposals || entry.processing?.domains[domain].status !== "failed") return;
       if (
         domain === "projects" &&
@@ -3284,7 +3285,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     );
     if (!started) {
       await changeSession(scene.id, (saved) => {
-        const entry = saved.submissions.find((row) => row.id === turn.id);
+        const entry = mutableSceneSubmission(saved, turn.id);
         if (
           !entry ||
           saved.villageSeed !== village.seed ||
@@ -3310,7 +3311,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         // Dispatch refusal, cancellation, provider and persistence errors remain blocking.
         if (!(error instanceof InvalidProjectRecoveryResponse)) throw error;
         await changeSession(scene.id, (saved) => {
-          const entry = saved.submissions.find((row) => row.id === turn.id);
+          const entry = mutableSceneSubmission(saved, turn.id);
           if (
             !entry ||
             saved.villageSeed !== village.seed ||
@@ -3350,7 +3351,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       return;
     await changeSession(scene.id, (saved) => {
       if (saved.villageSeed !== village.seed) throw conflict("Village identity changed during Project recovery.");
-      const entry = saved.submissions.find((row) => row.id === turn.id);
+      const entry = mutableSceneSubmission(saved, turn.id);
       if (entry?.semanticProvenance?.sourceHash !== turn.semanticProvenance?.sourceHash)
         throw conflict("The saved Project proposal changed during recovery.");
       if (entry && terminalInvalid(entry) && projectInterpretationNeedsRecovery(entry))
@@ -3441,7 +3442,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       });
       if (memoryResult)
         await changeSession(scene.id, (current) => {
-          const target = current.submissions.find((row) => row.id === turn.id);
+          const target = mutableSceneSubmission(current, turn.id);
           if (target) {
             if (target.processing) Object.assign(target.processing.domains.memories, memoryResult);
           }
@@ -3499,7 +3500,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     }
     await retainStandingAccess();
     await changeSession(scene.id, (saved) => {
-      const entry = saved.submissions.find((row) => row.id === turn.id);
+      const entry = mutableSceneSubmission(saved, turn.id);
       if (entry?.semanticProvenance?.sourceHash === turn.semanticProvenance?.sourceHash) entry.semanticReady = true;
     });
     await publish();
@@ -3730,7 +3731,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const combined = [...new Map([...events, ...cached].map((event) => [event.id, event])).values()];
     if (persist && JSON.stringify(combined) !== JSON.stringify(submission.recordEvents ?? []))
       await changeSession(session.id, (state) => {
-        const saved = state.submissions.find((entry) => entry.id === submission.id);
+        const saved = mutableSceneSubmission(state, submission.id);
         if (saved) saved.recordEvents = combined;
       });
     return combined;

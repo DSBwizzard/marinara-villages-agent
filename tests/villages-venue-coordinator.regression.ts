@@ -1,4 +1,9 @@
-import { villageFixtureDocuments, fixtureSceneState, authorSceneFixture } from "./helpers/village-storage.fixture.js";
+import {
+  villageFixtureDocuments,
+  fixtureSceneState,
+  authorSceneFixture,
+  editFixtureScene,
+} from "./helpers/village-storage.fixture.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
 import {
   venueSavedCheckpoint,
@@ -194,7 +199,10 @@ async function main() {
       cloned.id = id;
       cloned.operation!.snapshot = { ...fixtureSceneState(cloned.operation!.snapshot, records), id };
       row(id).data = authorSceneFixture(records, cloned);
-      if (evidence === "submission") row(id).data.submissions = [{ id: "turn" }];
+      if (evidence === "submission")
+        editFixtureScene(row(id), records, (scene) => {
+          scene.submissions = [{ id: "turn" } as any];
+        });
       else if (evidence === "navigation") row(id).data.navigationReceipts = [{ id: "turn" }];
       else row(id).data.operation.checkpoints[evidence] = { saved: true };
     }
@@ -411,13 +419,15 @@ async function main() {
     };
     await replayCommands.sendVenueTurn(turn);
     const originalInput = structuredClone(row("v3-replay").data.operation.input);
-    row("v3-replay").data.submissions.push({
-      id: "new-turn",
-      message: "Hello",
-      mode: "chat",
-      targetId: "",
-      semanticProvenance: { version: 2, pipelineVersion: 3 },
-    });
+    editFixtureScene(row("v3-replay"), records, (scene) =>
+      scene.submissions.push({
+        id: "new-turn",
+        message: "Hello",
+        mode: "chat",
+        targetId: "",
+        semanticProvenance: { version: 2, pipelineVersion: 3 },
+      } as any),
+    );
     await replayCommands.sendVenueTurn(turn);
     assert.deepEqual(
       row("v3-replay").data.operation.input,
@@ -525,7 +535,7 @@ async function main() {
       await new Promise((resolve) => setImmediate(resolve));
       assert.equal(row("late-after-edit").data.operation.id, "edited");
       assert.equal(row("late-after-edit").data.operation.checkpoints.reply, undefined);
-      assert.deepEqual(row("late-after-edit").data.submissions, []);
+      assert.deepEqual(fixtureSceneState(row("late-after-edit").data, records).submissions, []);
       editedFinish.resolve("edited reply");
       assert.equal(await replacement, "edited reply", "late original output cannot supply the edited reply");
     } finally {
@@ -831,10 +841,15 @@ async function main() {
     for (const blockedCase of ["committed", "navigation", "semantic"]) {
       const blocked = await failChat("edit-" + blockedCase);
       const data = row("edit-" + blockedCase).data;
-      if (blockedCase === "committed") data.submissions.push({ id: "original" });
+      if (blockedCase === "committed")
+        editFixtureScene(row("edit-" + blockedCase), records, (scene) =>
+          scene.submissions.push({ id: "original" } as any),
+        );
       if (blockedCase === "navigation") data.navigationReceipts = [{ id: "original" }];
       if (blockedCase === "semantic")
-        data.submissions.push({ id: "other", semanticProvenance: { version: 2 }, semanticReady: false });
+        editFixtureScene(row("edit-" + blockedCase), records, (scene) =>
+          scene.submissions.push({ id: "other", semanticProvenance: { version: 2 }, semanticReady: false } as any),
+        );
       const beforeBlockedEdit = calls;
       await assert.rejects(
         () =>
@@ -884,7 +899,11 @@ async function main() {
         );
         assert.equal(result, "new generated content", "edited sends never reuse the original message's output");
         assert.equal(row(sceneId).data.operation.input.message, "Edited draft");
-        assert.deepEqual(row(sceneId).data.submissions, [], "replacement does not commit abandoned content");
+        assert.deepEqual(
+          fixtureSceneState(row(sceneId).data, records).submissions,
+          [],
+          "replacement does not commit abandoned content",
+        );
       }
 
     assert.equal(
@@ -1067,9 +1086,9 @@ async function main() {
     await coordinateVenue("timed", "timed-turn", "turn", {}, 0, undefined, async () => {
       await venueCheckpoint("reply", async () => "saved");
       await venueCheckpoint("reply", async () => assert.fail("completed checkpoint must be reused"));
-      row("timed").data.submissions.push({ id: "timed-turn" });
+      editFixtureScene(row("timed"), records, (scene) => scene.submissions.push({ id: "timed-turn" } as any));
     });
-    const timing = row("timed").data.submissions[0].timing;
+    const timing = fixtureSceneState(row("timed").data, records).submissions[0].timing;
     assert(timing.elapsedMs >= 0);
     assert(timing.startedAt && timing.completedAt && timing.attemptId);
     assert.deepEqual(
@@ -1181,7 +1200,9 @@ async function main() {
         ),
       );
     }
-    row("abandon").data.submissions.push({ id: "earlier", semanticProvenance: { version: 2 }, semanticReady: false });
+    editFixtureScene(row("abandon"), records, (scene) =>
+      scene.submissions.push({ id: "earlier", semanticProvenance: { version: 2 }, semanticReady: false } as any),
+    );
     await assert.rejects(
       coordinateVenue(
         "abandon",
@@ -1195,7 +1216,9 @@ async function main() {
       ),
       refused("OPERATION_INTERRUPTED"),
     );
-    row("abandon").data.submissions = [];
+    editFixtureScene(row("abandon"), records, (scene) => {
+      scene.submissions = [];
+    });
     await assert.rejects(
       coordinateVenue(
         "abandon",
@@ -1302,7 +1325,8 @@ async function main() {
       },
     };
     const typedWork = async () => {
-      if (row("typed-review").data.submissions.some((s: any) => s.id === "typed")) return readSession("typed-review");
+      if (fixtureSceneState(row("typed-review").data, records).submissions.some((s: any) => s.id === "typed"))
+        return readSession("typed-review");
       const story = await venueCheckpoint("writing-completion:typed", () =>
         coordinatedCompletion(
           "typed-narration",
@@ -1394,7 +1418,7 @@ async function main() {
       recovery: true,
     });
     assert.equal(fixtureSceneState(row("typed-review").data, records).lines.length, 1);
-    assert.equal(row("typed-review").data.submissions.length, 1);
+    assert.equal(fixtureSceneState(row("typed-review").data, records).submissions.length, 1);
     assert.equal(systemDispatches, 2);
     seed("typed-invalid-narration");
     const invalidNarration = () =>

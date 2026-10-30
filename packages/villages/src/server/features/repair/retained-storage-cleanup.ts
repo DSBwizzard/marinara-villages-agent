@@ -26,9 +26,11 @@ import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity
 import {
   sceneHistoryOwners,
   sceneTranscriptOwners,
+  sceneSubmissionOwners,
   readActiveSceneOwner,
 } from "../../adapters/storage/scene-history.js";
 import { createSceneTranscriptTracer } from "../../adapters/storage/scene-transcript-pages.js";
+import { createSceneSubmissionTracer } from "../../adapters/storage/scene-submission-pages.js";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
 import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
 import {
@@ -157,7 +159,13 @@ export async function collectRetainedStorage(gate: RepairGate) {
         marked.add(id);
         return row.data as MemoryPageData;
       });
-      return { overlay, lookup, tracer, relationships, transcripts, heads, bodies };
+      const submissions = createSceneSubmissionTracer(async (id) => {
+        const row = await lookup(id);
+        memoryRequire(row && row.kind === "memory-page", "owned Scene submission page is missing");
+        marked.add(id);
+        return row.data as MemoryPageData;
+      });
+      return { overlay, lookup, tracer, relationships, transcripts, submissions, heads, bodies };
     }
     async function relationshipHistory(head: RelationshipHead, owner: RelationshipScope, view: Scope) {
       assertRelationshipWorld(head, owner);
@@ -282,6 +290,8 @@ export async function collectRetainedStorage(gate: RepairGate) {
         for (const owner of sceneHistoryOwners(row.data)) await relationshipHistory(owner.head, owner.scope, view);
         for (const owner of sceneTranscriptOwners(row.data))
           await view.transcripts.trace(owner.head, owner.participants);
+        for (const owner of sceneSubmissionOwners(row.data))
+          await view.submissions.trace(owner.head, owner.participants);
       } else if (row.kind === RELATIONSHIP_PAYLOAD_KIND) {
         const value = relationshipPayloadData(row);
         await view.relationships.trace(JSON.parse(value.payload), value.world);

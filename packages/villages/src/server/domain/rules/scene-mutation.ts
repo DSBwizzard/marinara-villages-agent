@@ -5,6 +5,7 @@ import { sceneFingerprint } from "./scene-record.js";
 import { asRecord } from "./coerce.js";
 import { isImmutableRelationshipState } from "./relationship-rules.js";
 import { isImmutableSceneLine } from "./scene-transcript.js";
+import { isImmutableSceneSubmission, mutableSceneSubmission } from "./scene-submissions.js";
 
 function mutationSnapshot(session: VenueScene) {
   const bodies: object[] = [];
@@ -19,6 +20,7 @@ function mutationSnapshot(session: VenueScene) {
   const value = {
     ...session,
     lines: undefined,
+    submissions: undefined,
     continuity: context(session.continuity),
     operation: session.operation
       ? {
@@ -31,6 +33,7 @@ function mutationSnapshot(session: VenueScene) {
     text: JSON.stringify(value),
     bodies,
     lines: session.lines.map((line) => (isImmutableSceneLine(line) ? line : JSON.stringify(line))),
+    submissions: session.submissions.map((row) => (isImmutableSceneSubmission(row) ? row : JSON.stringify(row))),
   };
 }
 
@@ -46,14 +49,19 @@ export function applySceneMutation(
   const priorChanges = new Map(
     session.submissions.map((turn) => [
       turn.id,
-      JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]),
+      {
+        value: turn,
+        text: isImmutableSceneSubmission(turn)
+          ? undefined
+          : JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]),
+      },
     ]),
   );
   change(session);
   if (session.processingVersion === 1 && session.villageSeed)
     session.submissions.forEach((turn, order) => {
       if (turn.movement || turn.processing || !turn.at) return;
-      turn.processing = createExchangeProcessing({
+      mutableSceneSubmission(session, turn.id)!.processing = createExchangeProcessing({
         seed: session.villageSeed!,
         sceneId: id,
         submissionId: turn.id,
@@ -66,9 +74,16 @@ export function applySceneMutation(
           : [],
       });
     });
-  for (const turn of session.submissions)
-    if (priorChanges.get(turn.id) !== JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]))
-      turn.changeSequence = session.changeSequence = (session.changeSequence ?? 0) + 1;
+  for (const turn of session.submissions) {
+    const prior = priorChanges.get(turn.id);
+    if (prior?.value === turn && isImmutableSceneSubmission(turn)) continue;
+    const original =
+      prior?.text ??
+      (prior && JSON.stringify([prior.value.processing, prior.value.recordEvents, prior.value.liveProposals]));
+    if (original !== JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]))
+      mutableSceneSubmission(session, turn.id)!.changeSequence = session.changeSequence =
+        (session.changeSequence ?? 0) + 1;
+  }
   const fingerprint = sceneFingerprint(session);
   if (
     before[0] !== fingerprint[0] ||
@@ -81,6 +96,8 @@ export function applySceneMutation(
     snapshot.text === after.text &&
     snapshot.lines.length === after.lines.length &&
     snapshot.lines.every((line, i) => line === after.lines[i]) &&
+    snapshot.submissions.length === after.submissions.length &&
+    snapshot.submissions.every((row, i) => row === after.submissions[i]) &&
     snapshot.bodies.length === after.bodies.length &&
     snapshot.bodies.every((body, i) => body === after.bodies[i])
   )
