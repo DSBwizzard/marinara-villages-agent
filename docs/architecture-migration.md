@@ -56,6 +56,43 @@ Zone.description is the authoritative current physical account, bounded at 4,000
 
 Saved-data changes preserve existing worlds or explicitly document the compatibility decision. The 0.7.0 fresh-world baseline and later feature-specific draft resets are not standing permission to discard data.
 
+The user-approved storage growth and recovery overhaul is a one-time exception: its PRs may change saved formats and require fresh Villages, including between PRs. Do not add migrations, legacy readers, transitional adapters or cross-PR save compatibility. Each supported format must persist and recover correctly across restarts. This exception does not authorize resetting or replacing an existing installation or world; deployment protections and recovery holds still apply. After the overhaul, saved-world compatibility is again the default recommendation.
+
+### Recovery disposition
+
+Scheduling labels and failure messages do not establish that evidence is disposable. The domain recovery classification checks saved work and uncertainty before accepting a terminal label:
+
+| Disposition | Required evidence and behavior |
+| --- | --- |
+| Pending | Accepted work is queued, running or paused. Retain its admission and continuation; an explicit pause does not authorize dispatch. |
+| Recoverable | A saved reply, result or partially committed effect permits useful continuation. Reuse purchased output before considering a replacement request. |
+| Uncertain | A dispatched request, effect or publication has no conclusive outcome. Retain its reconciliation evidence and replay guards; do not automatically purchase a duplicate. |
+| Completed | Required effects and publication are acknowledged and no continuation remains. An inconsistent completed label cannot override retained unfinished evidence. |
+| Failed | The attempt ended conclusively without saved work or an unresolved obligation. Ordinary diagnostics can eventually be retired independently of replay protection. |
+| Safely abandoned | Dispatch/callback authority is fenced and committed effects reconciled. An obsolete label alone does not prove this disposition. |
+
+Compaction requires a terminal disposition, preserved accounting/replay protection and an owner for every still-needed piece of evidence. Full receipt deletion additionally requires a durable closed scope, epoch or high-water rule that rejects every possible replay, and no remaining reference. Age, a failure label and diagnostic retention limits are insufficient. These requirements precede the later compaction implementation; the current background cleanup only adds a guard against discarding pending, recoverable or uncertain records. It does not enable new pruning or paid retries.
+
+An explicit Village Reset ends the old world's ownership and retains the established removal of its private jobs after active work settles. The new seed fences their application to the replacement world. Removing a resident or marking a current-world job obsolete does not confer that authority. Malformed records whose ownership cannot be established remain protected. Unknown token counts are accounting uncertainty, not proof that a completed request is still unfinished.
+
+### Reference lifetime
+
+Ownership is explicit and world-scoped. Do not infer references by scanning arbitrary player/model prose. Current storage uses existing payload intents, operation records and captured facts; later storage changes must preserve these owner obligations before adding deletion:
+
+| Owner | Protected dependencies and release boundary |
+| --- | --- |
+| Current authority and meaningful retained history | Current facts, exact evidence, individual knowers, corrections, resolutions and Forget suppression. No automatic history expiration or lifetime cap. |
+| Active/frozen Scene | Captured attendance, privacy, facts, accepted own effects, evidence and media. Release only after established retirement and transfer of retained evidence ownership. |
+| Departure capture and unfinished catch-up | Exact historical facts, admissions and unsettled outcomes. Release after settlement or proven safe abandonment; retained outcomes remain owned by history. |
+| Unfinished or uncertain operation | Admission, saved paid replies, commit/publication evidence and assets. Release only after reconciliation and terminal disposition. |
+| Available repair Undo | Exact inverse dependencies and assets. Later retention keeps ten successful Undo records; losing Undo availability does not erase meaningful repair history. |
+| Automatic/manual checkpoint | The complete transitive snapshot and media dependencies. Later retention keeps ten automatic checkpoints; manual checkpoints remain until explicitly deleted. Recovery/explicit holds override ordinary eviction. |
+| Saved evidence and replay protection | Exact cited sources and information that rejects duplicate effects. Release only after ownership transfer or a proven replay fence with no remaining reference. |
+
+Publication protects existing and proposed dependencies before creating bodies, validates them, then publishes through the existing CAS/repair fence. Ambiguous or interrupted publication retains its intent. Cleanup may release superseded data only after new ownership commits, and must recheck owner revisions and outstanding intents under the same fence before deletion. A writer cannot attach a new reference concurrently with that deletion. Missing, corrupt or unknown ownership defers cleanup. Restore validates/protects its dependencies before publication and cannot rewind operation epochs or replay protection. Startup reconciles unfinished publication/repair journals before cleanup.
+
+Keep native media reference fields visible to Engine's Gallery protection even when historical prose is stored opaquely. Cleanup acts only on attributable Villages candidates. Avoid authoritative reference counts or a generalized collector: extend existing intents/fences and explicit owner manifests only where a concrete storage change requires them.
+
 See [response recovery](scene-response-recovery.md), [Scene continuity recovery](scene-continuity-recovery.md) and the [generation lifecycle](generation-pipeline.md).
 
 ## Engine and validation

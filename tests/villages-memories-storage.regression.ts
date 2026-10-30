@@ -1,8 +1,10 @@
-// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload
+// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import {
   reserveMemoryScene,
   forgetVillageMemory,
@@ -18,18 +20,28 @@ function fixture() {
   const records = new Map<string, any>(),
     warnings: string[] = [],
     reads: string[] = [];
+  const io = { readBytes: 0, writeBytes: 0, reads: 0, writes: 0 };
+  const bytes = (value: unknown) => Buffer.byteLength(JSON.stringify(value ?? null), "utf8");
   let hook: (event: string, id: string) => void | Promise<void> = () => {};
   const clone = (v: any) => (v === undefined ? null : structuredClone(v));
   const store: any = {
     async getById(_pkg: string, id: string) {
       reads.push(id);
       await hook("before-read", id);
-      return clone(records.get(id));
+      const result = clone(records.get(id));
+      io.reads++;
+      io.readBytes += bytes(result);
+      return result;
     },
     async list(_pkg: string, kind: string) {
-      return [...records.values()].filter((r) => r.kind === kind).map(clone);
+      const result = [...records.values()].filter((r) => r.kind === kind).map(clone);
+      io.reads++;
+      io.readBytes += bytes(result);
+      return result;
     },
     async create(input: any) {
+      io.writes++;
+      io.writeBytes += bytes(input);
       await hook("before-create", input.id);
       assert.ok(!records.has(input.id));
       const r = { ...clone(input), revision: 1 };
@@ -38,6 +50,8 @@ function fixture() {
       return clone(r);
     },
     async update(input: any) {
+      io.writes++;
+      io.writeBytes += bytes(input);
       await hook("before-update", input.id);
       const r = records.get(input.id);
       if (!r || r.revision !== input.expectedRevision) return null;
@@ -61,6 +75,8 @@ function fixture() {
   return {
     records,
     reads,
+    io,
+    resetIo: () => Object.assign(io, { readBytes: 0, writeBytes: 0, reads: 0, writes: 0 }),
     warnings,
     repository,
     external: createVillageRepository(() => store),
@@ -109,6 +125,7 @@ for (const count of [1000, 10000, 25000])
     assert.equal(root.data.exchangeReceipts.physical.reason, "global-gallery:physical-owner");
     const head = root.data.memoryHead.id;
     f.reads.length = 0;
+    f.resetIo();
     const ordinary = await f.repository.readAuthority();
     for (const field of ["memories", "memoryScenes", "memoryReceipts"] as const)
       assert.throws(() => ordinary[field], /not loaded/);
@@ -120,6 +137,9 @@ for (const count of [1000, 10000, 25000])
       f.reads.every((id) => !id.startsWith("villages-memory-")),
       "Routine reads and writes do not load history.",
     );
+    const ordinaryIo = { ...f.io };
+    assert.ok(ordinaryIo.readBytes < 50_000, "Ordinary boundary reads stay independent of retained Memory bytes.");
+    assert.ok(ordinaryIo.writeBytes < 15_000, "Ordinary boundary writes do not contain Memory history.");
     const restored = await f.repository.readAuthority({ memories: true });
     assert.deepEqual(restored.memories, initial.memories);
     assert.deepEqual(restored.memoryScenes, initial.memoryScenes);
@@ -140,9 +160,34 @@ for (const count of [1000, 10000, 25000])
         count,
         rootBytes: Buffer.byteLength(JSON.stringify(root.data)),
         payloadBytes: Buffer.byteLength(f.payloads()[0].data.payload),
+        ordinaryIo,
       }),
     );
   });
+await runCase("memories-storage/hydrated-relationships", async () => {
+  const f = fixture();
+  await seed(f);
+  const social = defaultRelationshipState("storage-scale");
+  for (let i = 0; i < 10000; i++) social.disclosureReceipts["historical-disclosure-" + i] = true;
+  const before = JSON.stringify(social);
+  await f.repository.mutateAuthority((state) => {
+    state.relationshipContext = social;
+    state.name = "Direct authority write";
+  });
+  assert.equal(Object.hasOwn(f.root().data, "relationshipContext"), false);
+  assert.equal(JSON.stringify(social), before, "Serialization cannot mutate the relationship authority.");
+  assert.ok(Buffer.byteLength(JSON.stringify(f.root().data)) < 10000);
+  // Captured relationships are meaningful frozen facts, not redundant top-level hydration.
+  await f.repository.mutateAuthority(
+    (state) => {
+      state.relationshipContext = defaultRelationshipState(state.seed);
+      state.returnCatchup = { capture: captureReturnContext(state, new Date(memoryTime())) };
+    },
+    { memories: true },
+  );
+  const restored = await f.repository.readAuthority({ memories: true });
+  assert.deepEqual(restored.returnCatchup!.capture!.world.relationshipContext, defaultRelationshipState(restored.seed));
+});
 await runCase("memories-storage/conflict", async () => {
   const f = fixture(),
     initial = await seed(f);

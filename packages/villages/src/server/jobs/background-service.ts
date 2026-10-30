@@ -37,6 +37,7 @@ import { localDateKey } from "../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { VILLAGE_WEEKDAYS } from "../domain/rules/village-clock.js";
 import { type WorkFailure, WorkFailureError } from "../domain/rules/work-failure.js";
+import { backgroundRecoveryState, isBackgroundRecoveryRecord } from "../domain/rules/work-recovery.js";
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 const KIND = "background-work";
 const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
@@ -1321,7 +1322,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     const discardedReceipts: string[] = [];
     let removed = 0;
     for (const record of records) {
-      const job = record.data as Job;
+      // Unknown evidence is retained without making every other summary unavailable.
+      if (!isBackgroundRecoveryRecord(record.data)) continue;
+      const job = record.data;
       const retired =
         job?.kind !== "resident-planning" &&
         job?.kind !== "world-development" &&
@@ -1336,7 +1339,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         job.seed !== state.seed ||
         (["completed", "obsolete"].includes(job.status) && Date.parse(record.updatedAt) < Date.now() - 30 * 86_400_000)
       ) {
-        if (removed++ < 8 && !running.has(record.id))
+        const recovery = backgroundRecoveryState(job);
+        // Explicit Reset ends the prior world's ownership; a removed subject alone does not.
+        const disposable = job.seed !== state.seed || ["completed", "failed", "abandoned"].includes(recovery);
+        if (disposable && removed++ < 8 && !running.has(record.id))
           if (await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
             const subjectGone =
               job?.kind !== "resident-planning" &&
