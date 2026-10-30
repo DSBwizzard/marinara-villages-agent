@@ -267,6 +267,7 @@ import { createSpinoffs } from "../features/scenes/spinoff-service.js";
 import { configureSpinoffs } from "../features/scenes/spinoffs.js";
 import { configureSceneCommands, finishSemanticScene, sceneReplayEffects } from "../features/scenes/venue-session.js";
 import { createSceneWriting } from "../features/scenes/writing-service.js";
+import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
 import {
   configureSceneWriting,
   explicitSceneActions,
@@ -723,8 +724,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     venueCheckpoint,
     venueOperationSignal,
   });
+  const sceneNarrative = createSceneNarrative({
+    read: readVillageSnapshot,
+    mutate: (work) => villageRepository.mutateAuthority(work),
+    relationships: readRelationshipState,
+    now: villageNow,
+  });
   const releaseSceneWriting = configureSceneWriting(
     createSceneWriting({
+      sceneNarrative,
       semantic,
       venueCheckpoint,
       venueSavedCheckpoint,
@@ -748,6 +756,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      sceneNarrative,
       applySavedStartingTies: startingTies.applySaved,
       withVillageSceneAcceptance,
       semantic,

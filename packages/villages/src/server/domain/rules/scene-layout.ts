@@ -8,11 +8,14 @@ import { venueZones } from "./venue-zones.js";
 import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { sceneRelationshipView } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
+import { extendSceneNarrative } from "./scene-narrative-effects.js";
 
 /** Only captured access inputs; persistent effects still validate against the current world. */
 export function sceneAccessState(state: VillageState, scene: VenueScene): VillageState {
   const facts = scene.continuity?.facts;
   const narrative = structuredClone(facts?.narrative);
+  if (facts)
+    for (const turn of scene.submissions) extendSceneNarrative({ ...state, venues: [], narrative }, state, scene, turn);
   if (narrative)
     for (const receipt of state.narrative?.receipts ?? []) {
       if (receipt.source !== "action" || receipt.sourceId !== scene.id) continue;

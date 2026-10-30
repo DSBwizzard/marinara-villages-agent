@@ -1,5 +1,8 @@
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
+import { SCENE_DEVELOPMENT_REVIEW, WORLD_DEVELOPMENT_REVIEW } from "../../domain/rules/narrative-prompts.js";
+import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
+import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
@@ -409,6 +412,7 @@ export function createSemanticService(ports: SemanticPorts) {
     prepared: SemanticIntent | null,
     residentActions?: ResidentAccessAction[],
     residentActionsOmitted = false,
+    narrativeGrant?: NarrativeAdmission | null,
   ): Promise<SemanticExchange> {
     const state = await ports.readVillageState();
     const sceneState = sceneContinuityView(state, scene);
@@ -437,12 +441,17 @@ export function createSemanticService(ports: SemanticPorts) {
         evidence,
         prepared,
         context,
+        ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
       (residentActionsOmitted
         ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
         : "") +
+        (narrativeGrant !== undefined
+          ? SCENE_DEVELOPMENT_REVIEW +
+            (narrativeGrant ? " Environmental development schema and bounds: " + WORLD_DEVELOPMENT_REVIEW : "")
+          : "") +
         (residentActions
           ? (actionContractV2
               ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
@@ -599,6 +608,13 @@ export function createSemanticService(ports: SemanticPorts) {
           };
         }
         const effects = readSemanticEffects(raw, hash);
+        if (savedInput.narrativeGrant !== undefined)
+          effects.narrativeDevelopment = readSceneNarrativeReview(
+            raw.narrativeIntroduction,
+            savedInput.narrativeGrant,
+            lines,
+            raw.action,
+          );
         if (savedInput.context.opening) {
           const opening = savedInput.context.opening;
           const signalRequired = Boolean(opening.proposal || opening.firstUse);

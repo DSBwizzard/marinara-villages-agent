@@ -12,6 +12,7 @@ export interface SemanticInterpreter {
     prepared: SemanticIntent | null,
     residentActions?: import("../rules/resident-actions.js").ResidentAccessAction[],
     residentActionsOmitted?: boolean,
+    narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
   ): Promise<SemanticExchange>;
 }
 

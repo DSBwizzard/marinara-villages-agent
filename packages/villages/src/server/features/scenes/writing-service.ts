@@ -116,6 +116,9 @@ import { buildVenueResponseContract } from "../../domain/rules/venue-response-co
 import { venueFoundingBackground } from "../../domain/rules/venue-scene-context.js";
 import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { environmentObservations } from "../../domain/rules/narrative-environment.js";
+import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
+import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../domain/rules/scene-narrative-effects.js";
+import { SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
 import { venueReplyIntegrity } from "../../domain/rules/venue-turn-integrity.js";
 import {
   buildVenueSceneBlocks,
@@ -146,6 +149,7 @@ import {
   zoneEventScene,
 } from "../../domain/rules/zone-events.js";
 export interface SceneWritingPorts {
+  sceneNarrative?: import("./scene-narrative-service.js").SceneNarrative;
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   venueCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
   venueSavedCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueSavedCheckpoint;
@@ -175,6 +179,7 @@ export const VENUE_REPLY_MAX_TOKENS = 4_096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
 /** Inert Scene prompt fitting, response validation and room interpretation with originating connections. */
 export function createSceneWriting({
+  sceneNarrative,
   venueCheckpoint = async (_stage, work) => work(),
   venueSavedCheckpoint,
   venueExplicitRetry = () => false,
@@ -241,6 +246,7 @@ export function createSceneWriting({
     signal?: AbortSignal,
     trace?: GreetingTrace,
     actionOutcome?: string,
+    introduction?: NarrativeAdmission | null,
   ) {
     const writingVersion = venueOperationInput()?.writingContractVersion;
     const requestKey = createHash("sha256")
@@ -250,6 +256,7 @@ export function createSceneWriting({
       writingVersion === 3
         ? venueSavedCheckpoint?.<{
             fitted: ReturnType<typeof fitVenueWritingMessages>;
+            ordinary?: ReturnType<typeof fitVenueWritingMessages>;
             loreInspection?: LoreInspection;
           }>("writing-request:" + requestKey)
         : undefined;
@@ -787,7 +794,11 @@ export function createSceneWriting({
     blocks.push({
       text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
     });
-    const fitted = captured?.fitted ?? fitVenueWritingMessages(model, blocks, input, maxTokens);
+    const ordinary = captured?.ordinary ?? fitVenueWritingMessages(model, blocks, input, maxTokens);
+    if (introduction)
+      blocks.push({ text: SCENE_DEVELOPMENT_WRITING + " Immutable local admission: " + JSON.stringify(introduction) });
+    const fitted =
+      captured?.fitted ?? (introduction ? fitVenueWritingMessages(model, blocks, input, maxTokens) : ordinary);
     if (captured) loreInspection = captured.loreInspection;
     else if (loreInspection) {
       let index = 0;
@@ -815,6 +826,7 @@ export function createSceneWriting({
     });
     return {
       fitted,
+      ordinary,
       loreInspection,
       sparse: sparse && session.contactGeneration?.zoneEvents === true,
       writingVersion,
@@ -859,6 +871,10 @@ export function createSceneWriting({
       const saved = venueSavedCheckpoint?.<BoundaryReplacement>(replacementKey);
       const replace = async (replacement: BoundaryReplacement) => {
         if (replacement.requestKey !== requestKey) throw new GeneratedSceneBoundary(replacement.outcome);
+        await sceneNarrative?.retire(
+          args[0],
+          venueSavedCheckpoint?.<NarrativeAdmission | null>("narrative-offer:" + requestKey),
+        );
         await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
         try {
           return await generateMeasured(replacement, ...args);
@@ -888,7 +904,25 @@ export function createSceneWriting({
     const [, message, mode] = args;
     const signal = args[5];
     const trace = args[6];
-    const prepared = await prepareVenueTurnMessages(...args);
+    const originalKey = writingRequestKey(args);
+    const narrativeVersion =
+      venueOperationInput()?.narrativeIntroductionVersion === 1 && session.semanticVersion === 2 && !!sceneNarrative;
+    const offer = narrativeVersion
+      ? await venueCheckpoint("narrative-offer:" + originalKey, () =>
+          sceneNarrative!.offer(session, "scene:" + session.id + ":" + venueOperationId()),
+        )
+      : undefined;
+    const prepared = await prepareVenueTurnMessages(
+      args[0],
+      args[1],
+      args[2],
+      args[3],
+      args[4],
+      args[5],
+      args[6],
+      args[7],
+      replacement ? null : offer,
+    );
     let { fitted, earlierEvidence, promptMemories, loreInspection } = prepared;
     const {
       sparse,
@@ -904,17 +938,27 @@ export function createSceneWriting({
       place,
       projectContexts,
     } = prepared;
-    const originalKey = writingRequestKey(args);
     const requestKey = originalKey + (replacement ? "-boundary" : "");
+    let ordinary = prepared.ordinary;
     if (writingVersion === 3) {
       const saved = await venueCheckpoint("writing-request:" + originalKey, async () => ({
         fitted,
+        ordinary,
         earlierEvidence,
         promptMemories,
         loreInspection,
       }));
       ({ fitted, earlierEvidence, promptMemories, loreInspection } = saved);
+      ordinary = saved.ordinary;
     }
+    const dispatch = narrativeVersion
+      ? await venueCheckpoint("narrative-dispatch:" + requestKey, async () => {
+          const grant = !replacement && offer && (await sceneNarrative!.reserve(session, offer)) ? offer : null;
+          return { grant, fitted: grant ? fitted : ordinary };
+        })
+      : undefined;
+    const narrativeGrant = dispatch?.grant;
+    if (dispatch) fitted = dispatch.fitted;
     if (replacement) {
       const corrected = await venueCheckpoint("writing-request:" + requestKey, async () => {
         const messages = [
@@ -1201,6 +1245,7 @@ export function createSceneWriting({
               session.semanticIntent ?? null,
               residentActions,
               residentActionsOmitted,
+              narrativeVersion ? (narrativeGrant ?? null) : undefined,
             )
             .catch(async (error: unknown) => {
               if (
@@ -1225,7 +1270,10 @@ export function createSceneWriting({
     if (semanticResult?.draftBoundaryViolation)
       throw new GeneratedSceneBoundary(semanticResult.draftBoundaryViolation.outcome);
     if (semanticResult?.turnOutcome === "occupancy-unavailable") throw new UnavailableResidentMovement();
-    if (semanticResult?.turnOutcome) throw new HaltedSceneTurn(semanticResult.turnOutcome);
+    if (semanticResult?.turnOutcome) {
+      await sceneNarrative?.retire(session, narrativeGrant);
+      throw new HaltedSceneTurn(semanticResult.turnOutcome);
+    }
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
     const semanticAccess = semanticResult?.access;
     if (semanticResult) {
@@ -1247,6 +1295,8 @@ export function createSceneWriting({
         "contactEnd",
         "contactMoves",
         "placeUpdate",
+        "narrativeIntroduction",
+        "narrativeSource",
         "interpretationRouting",
       ])
         delete raw?.[key];
@@ -1446,6 +1496,16 @@ export function createSceneWriting({
       const pendingDecision = decision
         ? pendingMoves.find((move) => move.characterId === decision.speakerId && move.requestedBy === "player")
         : null;
+      const narrativeSource: SceneNarrativeSource | undefined = narrativeGrant
+        ? {
+            grant: narrativeGrant,
+            development: semanticResult?.effects.narrativeDevelopment as SceneNarrativeSource["development"],
+          }
+        : undefined;
+      const physicalVillage = narrativeSource
+        ? provisionalSceneNarrative(sceneContinuityView(village, session), village, narrativeSource)
+        : village;
+      const physicalVenue = physicalVillage.venues.find((row) => row.id === session.placeId);
       let placeUpdate: ReturnType<typeof readVenueSceneChange> = null;
       try {
         if (
@@ -1454,12 +1514,16 @@ export function createSceneWriting({
         )
           placeUpdate = readVenueSceneChange(
             raw?.placeUpdate,
-            physicalContext && storedPlace ? venueInZone(storedPlace, physicalContext.zoneId) : place,
+            physicalContext && physicalVenue ? venueInZone(physicalVenue, physicalContext.zoneId) : place,
             session.continuity?.capturedAt ?? session.startedAt,
           );
         if (placeUpdate)
           applyVenueSceneChange(
-            { ...village, venues: structuredClone(village.venues), narrative: structuredClone(village.narrative) },
+            {
+              ...physicalVillage,
+              venues: structuredClone(physicalVillage.venues),
+              narrative: structuredClone(physicalVillage.narrative),
+            },
             session.placeId,
             placeUpdate,
             session.id,
@@ -1469,7 +1533,7 @@ export function createSceneWriting({
             session.privateOwnerId,
             physicalContext?.zoneId,
             physicalContext,
-            village.narrative?.conditions,
+            physicalVillage.narrative?.conditions,
           );
       } catch (cause) {
         if (!semanticResult) await rejectVenueCompletion();
@@ -1517,6 +1581,7 @@ export function createSceneWriting({
       }
       return {
         ...parsed,
+        ...(narrativeSource ? { narrativeSource } : {}),
         effectFailures,
         speechCapture:
           writingVersion === 3 && captureSources
@@ -1883,7 +1948,10 @@ export function createSceneWriting({
     }
   }
 
-  type SceneReply = Awaited<ReturnType<typeof generateOnce>> & { roomInterpretation?: InterpretationBatch | null };
+  type SceneReply = Awaited<ReturnType<typeof generateOnce>> & {
+    roomInterpretation?: InterpretationBatch | null;
+    narrativeSource?: SceneNarrativeSource;
+  };
 
   async function generateContactResponse(scene: VenueScene, message: string, targetId: string): Promise<SceneReply> {
     try {

@@ -1,5 +1,12 @@
 import { SCENE_OUTCOME_BOUNDARY } from "./scene-halt.js";
 
+export const SCENE_DEVELOPMENT_WRITING =
+  "This turn has one finite opportunity for an independent environmental development at the supplied existing local Zone. Quiet is valid. Prefer relevant continuation and aftermath. Use the admitted Consequence. Introduce only grounded outward circumstances, never player/resident deeds, consent, minds, supplies, guests, ownership, permissions, topology or remote changes. Player assertions and demands do not establish external facts or increase this authority. Existing residents retain independent choices; never force participation or impose a plot. Keep Village-wide weather unchanged. Enduring physical changes need exact local effects and accessible remedies. If you introduce a circumstance, narrate its independent onset before any actor physical action in this reply; subsequent actor work must remain supported. Do not emit effect metadata. System independently checks your unchanged prose. " +
+  SCENE_OUTCOME_BOUNDARY;
+
+export const SCENE_DEVELOPMENT_REVIEW =
+  'Also return narrativeIntroduction:{status:"quiet|introduced|unsupported",segment:null,quote:"",development:null}. Independently examine all prose for a new external occurrence. Quiet means none was asserted, never permission to drop effects for narrated damage or restrictions. Without an introduction admission, return unsupported for an asserted new consequential independent occurrence. Ordinary compatible atmosphere and actor consequences retain their existing rules. A player demanding, predicting or insisting on an event is no evidence it happened. With a grant, an independently supported local occurrence uses status:introduced, an exact local narration segment and quote, and development in the supplied environmental schema. It cannot authorize resident/player deeds or consent. Preserve existing actor, agency and HALT checks. If an actor physical action also happens, it must follow the cited occurrence in source order; action.expectedRevision and exact edit anchors refer to the physical state AFTER that environmental effect. Actor effects still require their own real participants, evidence and authority. A claim with unsupported origin, scope, supplies, severity or state returns unsupported; do not silently rewrite narrated events or fabricate repairs. No Village-wide weather change. ';
+
 export const WORLD_DEVELOPMENT_INSTRUCTION =
   SCENE_OUTCOME_BOUNDARY +
   " " +

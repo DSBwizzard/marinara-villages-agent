@@ -125,7 +125,7 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
     );
   }
   for (const claim of state.narrative?.claims ?? [])
-    add(["narrative-claim", claim.id], "world", "Held world proposal", claim.zoneId, [], {
+    add(["narrative-claim", claim.id], "world", claim.sceneId ? "Held Scene introduction" : "Held world proposal", claim.zoneId, [], {
       actions: [{ id: "reject", label: "Reject saved proposal" }],
       source: [
         "Source: " + claim.id,
@@ -492,7 +492,7 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
       id,
       at,
       sourceId: id,
-      source: "world",
+      source: claim.sceneId ? "scene" : "world",
       occurrence: "Saved proposal explicitly rejected in REPAIR.",
       rejected: true,
       after: { situations: [], conditions: [] },
