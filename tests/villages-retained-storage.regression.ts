@@ -444,6 +444,23 @@ await runCase("retained-storage/allocation-budget", async () => {
     assert.equal(passes(), 2, "Allocated bytes schedule a coalesced follow-up sweep.");
     assert.equal(f.rows.has(artifact.body), false);
     assert.deepEqual(failures, []);
+    const social = relationshipStore(f.gate),
+      seed = (await f.repo.readAuthority()).seed;
+    for (let i = 0; i < 3000; i++) {
+      await f.gate.work(() =>
+        social.mutateRelationships(seed, (state) => {
+          state.noticeSequence = i % 2;
+        }),
+      );
+      await cleanup.request();
+    }
+    assert.ok(passes() >= 3, "Cycling existing content-addressable heads must still allocate toward cleanup");
+    const intents = [...f.rows.values()].filter((row) => row.kind === "relationship-payload-intent");
+    assert.ok(
+      intents.reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row.data)), 0) < 1024 * 1024,
+      "Publication-intent overhead is bounded even when no new history body or page is allocated",
+    );
+    assert.deepEqual(failures, []);
   } finally {
     unsubscribe();
     cleanup.dispose();

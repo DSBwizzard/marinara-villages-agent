@@ -365,6 +365,7 @@ await runCase("repair/relationship-history", async () => {
     (world) => {
       world.relationshipContext = social;
       frozen.continuity = captureSceneContinuity(world, frozen, Date.parse(stamp));
+      delete world.memoryScenes[frozen.id];
     },
     { memories: true },
   );
