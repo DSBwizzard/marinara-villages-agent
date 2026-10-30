@@ -111,8 +111,10 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     const record = await documents.getById(VILLAGES_PACKAGE_ID, head.id);
     if (!record) return null;
     validateRecord(record, head);
-    if (!isRepairSimulation(documents) && cached?.head.id === head.id && cached.head.digest === head.digest)
+    if (!isRepairSimulation(documents) && cached?.head.id === head.id && cached.head.digest === head.digest) {
+      memoryRequire(cached.value.memories.revision === head.revision, "history revision changed");
       return cached.value;
+    }
     const decoded = await decodeMemoryPages(
       JSON.parse((record.data as { payload: string }).payload),
       worldKey(state),
@@ -141,7 +143,11 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
       encoded = encodeMemoryPages(
         value,
         worldKey(state),
-        !isRepairSimulation(documents) && cached?.head.id === previous?.id ? cached?.layout : undefined,
+        !isRepairSimulation(documents) &&
+          cached?.head.id === previous?.id &&
+          cached?.head.id.startsWith("villages-memory-" + worldKey(state) + "-")
+          ? cached?.layout
+          : undefined,
       ),
       serialized = JSON.stringify(encoded.manifest),
       digest = memoryDigest(serialized);

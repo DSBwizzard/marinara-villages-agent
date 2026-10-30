@@ -1,4 +1,4 @@
-// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary
+// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary, memories-storage/world-namespace
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -419,6 +419,11 @@ await runCase("memories-storage/reset", async () => {
 await runCase("memories-storage/malformed", async () => {
   const f = fixture();
   await seed(f);
+  await f.repository.readAuthority({ memories: true });
+  f.root().data.memoryHead.revision++;
+  await assert.rejects(f.repository.readAuthority({ memories: true }), /history revision changed/);
+  await assert.rejects(f.restart().readAuthority({ memories: true }), /history revision changed/);
+  f.root().data.memoryHead.revision--;
   const payload = f.payloads()[0];
   payload.data.payload += " ";
   await assert.rejects(f.repository.readAuthority({ memories: true }), /payload changed/);
@@ -615,4 +620,24 @@ await runCase("memories-storage/opaque-gallery-boundary", async () => {
       assert.ok(scanned < 256, "Every individual page fits the Engine's reference scanner.");
     }
   assert.equal((await f.restart().readAuthority({ memories: true })).memoryReceipts.quoted.reason, reason);
+});
+await runCase("memories-storage/world-namespace", async () => {
+  for (const key of ["seed", "setupAt"] as const) {
+    const f = fixture(),
+      initial = await seed(f, 150);
+    const oldHead = f.root().data.memoryHead;
+    await f.repository.mutateAuthority(
+      (state) => {
+        state[key] = key === "seed" ? "different-seed" : memoryTime(50);
+      },
+      { memories: true },
+    );
+    assert.notEqual(f.root().data.memoryHead.id, oldHead.id);
+    const warm = await f.repository.readAuthority({ memories: true });
+    const cold = await f.restart().readAuthority({ memories: true });
+    assert.deepEqual(cold, warm, "Setup restamping cannot publish references in a previous world namespace.");
+    assert.deepEqual(cold.memories, initial.memories);
+    assert.deepEqual(cold.memoryScenes, initial.memoryScenes);
+    assert.deepEqual(cold.memoryReceipts, initial.memoryReceipts);
+  }
 });
