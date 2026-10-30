@@ -91,6 +91,7 @@ const block = {
 const legacyWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [block]]));
 const translated = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [{ ...block, activity: "Tending herbs" }]]));
 const raw = {
+  ...defaultVillageState(),
   memories: { format: 1, revision: 0, records: [] },
   memoryScenes: {},
 
