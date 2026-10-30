@@ -309,8 +309,8 @@ export function applyRelationshipReview(
   }
   for (const change of review.changes) {
     if (state.applied[change.id]) continue;
-    const before = structuredClone(relationshipFor(state, change.fromId, change.toId));
-    const sceneBefore = structuredClone(relationshipFor(sceneState, change.fromId, change.toId));
+    const before = relationshipFor(state, change.fromId, change.toId);
+    const sceneBeforeRevision = relationshipFor(sceneState, change.fromId, change.toId).revision;
     const liveAfter = project(before, change.liveAfter, change.id, at);
     state.edges[relationshipKey(change.fromId, change.toId)] = liveAfter;
     for (const record of change.liveAfter.records)
@@ -322,7 +322,7 @@ export function applyRelationshipReview(
       toId: change.toId,
       beforeRevision: before.revision,
       sequence: ++state.eventSequence,
-      sceneBeforeRevision: sceneBefore.revision,
+      sceneBeforeRevision,
       ...(JSON.stringify(change.sceneAfter) === JSON.stringify(change.liveAfter)
         ? {}
         : { sceneAfter: structuredClone(change.sceneAfter) }),
