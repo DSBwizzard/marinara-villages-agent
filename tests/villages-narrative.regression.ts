@@ -27,6 +27,7 @@ import {
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import { contactCanEnter } from "../packages/villages/src/server/domain/rules/venue-contact.js";
+import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { discoverReturnBatch } from "../packages/villages/src/server/domain/rules/return-catchup-state.js";
@@ -201,6 +202,16 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     consentIds: [],
     positions: { player: fixture.zone.id },
   };
+  const beforeConflictCheck = JSON.stringify(fixture.state);
+  assert.equal(
+    sceneHaltWorldConflict(repairScene, fixture.state, {
+      placeUpdate: update,
+      physicalContext: { ...evidence, zoneId: fixture.zone.id },
+    }),
+    false,
+    "The Scene acceptance gate permits an evidenced matching repair.",
+  );
+  assert.equal(JSON.stringify(fixture.state), beforeConflictCheck, "Preacceptance checking cannot publish a repair.");
   assert.throws(
     () =>
       applyVenueSceneChange(
