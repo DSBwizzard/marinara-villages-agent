@@ -73,6 +73,8 @@ Scheduling labels and failure messages do not establish that evidence is disposa
 
 Compaction requires a terminal disposition, preserved accounting/replay protection and an owner for every still-needed piece of evidence. Full receipt deletion additionally requires a durable closed scope, epoch or high-water rule that rejects every possible replay, and no remaining reference. Age, a failure label and diagnostic retention limits are insufficient. These requirements precede the later compaction implementation; the current background cleanup only adds a guard against discarding pending, recoverable or uncertain records. It does not enable new pruning or paid retries.
 
+An explicit Village Reset ends the old world's ownership and retains the established removal of its private jobs after active work settles. The new seed fences their application to the replacement world. Removing a resident or marking a current-world job obsolete does not confer that authority. Malformed records whose ownership cannot be established remain protected. Unknown token counts are accounting uncertainty, not proof that a completed request is still unfinished.
+
 ### Reference lifetime
 
 Ownership is explicit and world-scoped. Do not infer references by scanning arbitrary player/model prose. Current storage uses existing payload intents, operation records and captured facts; later storage changes must preserve these owner obligations before adding deletion:

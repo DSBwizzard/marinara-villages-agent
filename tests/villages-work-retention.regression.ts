@@ -157,7 +157,6 @@ assert.deepEqual(
     "partial",
     "uncertain",
     "paused",
-    "old-world",
     "malformed",
     "empty-object",
     "malformed-step",
@@ -165,5 +164,12 @@ assert.deepEqual(
     "malformed-optional",
     "array-discriminant",
   ],
+);
+state.seed = "explicit-reset";
+await background.backgroundWorkSummaries();
+assert.deepEqual(
+  [...rows.keys()],
+  ["malformed", "empty-object", "malformed-step", "malformed-steps", "malformed-optional", "array-discriminant"],
+  "Explicit Reset releases known prior-world records; corrupt ownership remains protected.",
 );
 console.log("Recovery classification protects saved replies, partial effects and uncertainty during ordinary cleanup.");

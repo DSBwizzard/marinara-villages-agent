@@ -1340,7 +1340,9 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         (["completed", "obsolete"].includes(job.status) && Date.parse(record.updatedAt) < Date.now() - 30 * 86_400_000)
       ) {
         const recovery = backgroundRecoveryState(job);
-        if (["completed", "failed", "abandoned"].includes(recovery) && removed++ < 8 && !running.has(record.id))
+        // Explicit Reset ends the prior world's ownership; a removed subject alone does not.
+        const disposable = job.seed !== state.seed || ["completed", "failed", "abandoned"].includes(recovery);
+        if (disposable && removed++ < 8 && !running.has(record.id))
           if (await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
             const subjectGone =
               job?.kind !== "resident-planning" &&
