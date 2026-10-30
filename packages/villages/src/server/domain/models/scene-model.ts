@@ -61,6 +61,7 @@ export type VenueSubmission = {
   zoneEventsVersion?: 1;
   attention?: AttentionPlan;
   wishProposals?: WishProposal[];
+  wishAuthority?: import("../rules/social-wishes.js").WishAuthority;
   wishProposalError?: string;
   processing?: ExchangeProcessing;
   id: string;

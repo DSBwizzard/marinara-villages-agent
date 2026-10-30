@@ -26,12 +26,4 @@ export type ExchangeEffectReceipt = {
   reason: string;
   notice?: VenueRecordEvent;
 };
-export type WishProposal = {
-  actorId: string;
-  wishId: string;
-  fingerprint: string;
-  intent: string;
-  lineIds: string[];
-  change: import("../rules/social-wishes.js").SocialWishChange;
-  captured: import("./world.js").VillageVillager[];
-};
+export type WishProposal = import("../rules/social-wishes.js").SocialWishChange;

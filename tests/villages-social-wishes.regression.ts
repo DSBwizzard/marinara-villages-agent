@@ -13,6 +13,8 @@ import type { WishSource } from "../packages/villages/src/server/domain/rules/so
 import {
   applyWishReflection,
   applyWishSource,
+  captureWishAuthority,
+  readSocialWishChanges,
   knownSocialWishes,
   publishWishDisclosure,
 } from "../packages/villages/src/server/domain/rules/social-wishes.js";
@@ -23,13 +25,12 @@ import { memoryRepair } from "./helpers/memories-fixture.js";
 import { wishTime, wishWorld } from "./helpers/social-wishes-fixture.js";
 const goal = "Share a conversation with Bryn";
 function source(world: ReturnType<typeof wishWorld>, overrides: Partial<WishSource> = {}): WishSource {
-  return {
+  const event = {
     id: "scene:turn:one",
     kind: "scene",
     at: wishTime(1),
     recordedAt: wishTime(2),
     learn: true,
-    residents: structuredClone(world.villagers),
     currentLineIds: ["a1", "b1"],
     lines: [
       { id: "a1", speakerId: "a", content: "I would like to talk with Bryn.", heardBy: ["a", "b"], playerHeard: true },
@@ -53,6 +54,10 @@ function source(world: ReturnType<typeof wishWorld>, overrides: Partial<WishSour
       },
     ],
     ...overrides,
+  };
+  return {
+    ...event,
+    authority: captureWishAuthority(structuredClone(world.villagers), readSocialWishChanges(event.changes)),
   };
 }
 await runCase("social-wishes/source", () => {

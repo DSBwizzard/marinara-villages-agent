@@ -12,6 +12,7 @@ import {
 } from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import type { RelationshipIdentity } from "../../packages/villages/src/server/domain/rules/return-capture-revision.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { SCENE_STORAGE_FORMAT } from "../../packages/villages/src/server/adapters/storage/scene-history.js";
 import {
   encodeSceneTranscript,
   decodeSceneTranscriptSync,
@@ -151,7 +152,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (
         input.id === "villages-village" ||
         (input.data as any)?.format === 4 ||
-        (input.data as any)?.storageFormat === 5
+        (input.data as any)?.storageFormat === SCENE_STORAGE_FORMAT
       )
         await ensure(input.data);
       return store.update(input);
@@ -170,7 +171,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
   const scene = {
     ...raw,
     villageSeed: Object.hasOwn(raw, "villageSeed") ? raw.villageSeed : world?.seed || undefined,
-    storageFormat: 5,
+    storageFormat: SCENE_STORAGE_FORMAT,
   };
   const normalized = coerceSession({ ...raw, continuity: undefined, operation: undefined, submissions: [] });
   const encoded = encodeSceneTranscript(normalized.lines, scene);

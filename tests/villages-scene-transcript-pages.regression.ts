@@ -8,6 +8,7 @@ import {
   createSceneHistory,
   readSceneIndex,
   validateSceneHistory,
+  SCENE_STORAGE_FORMAT,
 } from "../packages/villages/src/server/adapters/storage/scene-history.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
@@ -103,7 +104,7 @@ for (const count of [1000, 10_000, 25_000]) {
     });
     await f.mutateDocument("villages-venue-visit-long", sessionSlot, (saved) => Object.assign(saved, scene));
     const initial = structuredClone(f.rows.get("villages-venue-visit-long").data);
-    assert.equal(initial.storageFormat, 5);
+    assert.equal(initial.storageFormat, SCENE_STORAGE_FORMAT);
     assert.equal(Object.hasOwn(initial, "lines"), false);
     assert.equal(Object.hasOwn(initial, "heardHistory"), false);
     assert(Buffer.byteLength(JSON.stringify(initial)) < 4096);

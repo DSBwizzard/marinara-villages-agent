@@ -8,6 +8,7 @@ import {
   createSceneHistory,
   sceneHistoryOwners,
   readSceneIndex,
+  SCENE_STORAGE_FORMAT,
 } from "../packages/villages/src/server/adapters/storage/scene-history.js";
 import { createRelationshipStore } from "../packages/villages/src/server/features/residents/relationship-store-service.js";
 import {
@@ -105,7 +106,12 @@ for (const count of [1000, 10_000, 25_000]) {
     await mutate("villages-venue-visit-frozen", sessionSlot(gate.documents), (value) => Object.assign(value, scene));
     const original = structuredClone(rows.get("villages-venue-visit-frozen").data),
       head = sceneHistoryOwners(original)[0].head;
-    assert.equal(original.storageFormat, 5);
+    assert.equal(original.storageFormat, SCENE_STORAGE_FORMAT);
+    assert.throws(
+      () => sceneHistoryOwners({ ...original, storageFormat: 5 }),
+      /unsupported Scene storage format/,
+      "The old wrapped Wish proposal format has no legacy reader",
+    );
     assert.equal(Object.hasOwn(original.continuity.facts, "relationshipContext"), false);
     assert.throws(() => coerceSession(original), /hydration/);
     const markerless = structuredClone(original);

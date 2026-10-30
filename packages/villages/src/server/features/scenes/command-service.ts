@@ -527,6 +527,7 @@ export function createSceneCommands({
           entry.semanticProvenance?.version === 2,
         );
         entry.wishProposals = bound.proposals;
+        entry.wishAuthority = bound.authority;
         entry.wishProposalError = bound.error;
       } else if (domain === "projects") {
         entry.projectSpeech = result.recoveredProjects ?? [];
@@ -1382,6 +1383,7 @@ export function createSceneCommands({
           activeIdsAtTurn: [...state.activeIds],
           replyLineIds: savedLineIds,
           wishProposals: wishes.proposals,
+          wishAuthority: wishes.authority,
           wishProposalError: wishes.error,
           wishContexts: reply.wishContexts,
           semanticProvenance: reply.semanticProvenance,
@@ -2679,6 +2681,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           wishId,
           wishMemory,
           wishProposals: wishChanges.proposals,
+          wishAuthority: wishChanges.authority,
           wishProposalError: wishChanges.error,
           wishContexts: reply.wishContexts,
           semanticProvenance: reply.semanticProvenance,

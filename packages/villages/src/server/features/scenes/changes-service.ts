@@ -313,7 +313,7 @@ export function createSceneChanges({
             domain: "wishes",
             at: original.at,
             status: "rejected",
-            evidenceIds: proposal.lineIds,
+            evidenceIds: proposal.evidence.filter((id): id is string => typeof id === "string"),
             reason: "Continued without this failed update",
           };
         }

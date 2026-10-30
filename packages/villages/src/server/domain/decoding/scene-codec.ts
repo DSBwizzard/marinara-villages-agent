@@ -22,6 +22,7 @@ import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-cont
 import { readSceneLayout } from "../rules/scene-layout.js";
 import { sceneRevision } from "../rules/scene-revision.js";
 import { reuseSceneLine } from "../rules/scene-transcript.js";
+import { readWishAuthority } from "../rules/social-wishes.js";
 import type { ContactIntent, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import { coerceExchangeProcessing } from "./exchange-codec.js";
@@ -349,6 +350,7 @@ export function coerceSession(value: unknown): VenueScene {
               id: asTrimmedString(row.id),
               ...(row.zoneEventsVersion === 1 ? { zoneEventsVersion: 1 as const } : {}),
               ...(Array.isArray(row.wishProposals) ? { wishProposals: row.wishProposals as WishProposal[] } : {}),
+              ...(row.wishAuthority !== undefined ? { wishAuthority: readWishAuthority(row.wishAuthority) } : {}),
               ...(typeof row.wishProposalError === "string" ? { wishProposalError: row.wishProposalError } : {}),
               ...(coerceExchangeProcessing(row.processing)
                 ? { processing: coerceExchangeProcessing(row.processing) }
