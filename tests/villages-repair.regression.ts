@@ -1107,7 +1107,15 @@ await runCase("repair/privacy", async () => {
       startedAt: stamp,
       lines: [{ id: "whisper", content: "A private archived exchange.", contactHidden: true, heardBy: ["aqua"] }],
       submissions: [],
-      operation: { internal: "Private runtime sentinel" },
+      operation: {
+        id: "private",
+        kind: "turn",
+        status: "complete",
+        input: { internal: "Private runtime sentinel" },
+        checkpoints: {},
+        attempts: {},
+        snapshot: null,
+      },
     };
   await f.gate.documents.create({
     id: "villages-venue-visit-private-archive",

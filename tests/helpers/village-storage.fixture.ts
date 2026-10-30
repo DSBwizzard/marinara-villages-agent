@@ -14,6 +14,18 @@ import type { RelationshipIdentity } from "../../packages/villages/src/server/do
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { SCENE_STORAGE_FORMAT } from "../../packages/villages/src/server/adapters/storage/scene-history.js";
 import {
+  encodeOperationEvidence,
+  decodeOperationEvidenceSync,
+  validateOperationEvidence,
+  OPERATION_EVIDENCE_KIND,
+  operationEvidenceReferences,
+  operationResponseBodyId,
+  prepareOperationValue,
+  operationEvidenceValue,
+  operationCheckpointPrefix,
+  operationResponsePrefix,
+} from "../../packages/villages/src/server/adapters/storage/operation-evidence.js";
+import {
   encodeSceneSubmissions,
   decodeSceneSubmissionsSync,
   readSceneSubmissionHead,
@@ -56,6 +68,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       (data as any)?.operation?.snapshot?.submissionHistory?.submissions,
       (data as any)?.continuity?.relationshipHead,
       (data as any)?.operation?.snapshot?.continuity?.relationshipHead,
+      ...operationEvidenceReferences((data as any)?.operation, data as any),
     ];
     if (!heads.some((head) => head && virtual.has(head.id))) return;
     // All virtual page documents are committed before a real root may reference them.
@@ -209,6 +222,66 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
   }
   if (scene.operation?.snapshot)
     scene.operation = { ...scene.operation, snapshot: authorSceneFixture(rows, scene.operation.snapshot, world) };
+  if (scene.operation) {
+    for (const [stage, attempt] of Object.entries(scene.operation.attempts ?? {}) as [string, any][]) {
+      if (
+        attempt.response &&
+        !attempt.response.claim.startsWith(operationResponsePrefix(scene.operation, scene, stage))
+      )
+        delete attempt.response;
+      if (Object.hasOwn(attempt, "result") && !attempt.response) {
+        const prefix = operationResponsePrefix(scene.operation, scene, stage),
+          token =
+            prefix +
+            createHash("sha256")
+              .update(JSON.stringify([scene.id, stage, attempt.result]))
+              .digest("hex")
+              .slice(0, 32),
+          saved = prepareOperationValue(attempt.result, scene, token);
+        attempt.response = { ...saved.ref, claim: token };
+        rows.set(saved.ref.id, {
+          id: saved.ref.id,
+          packageId: "villages",
+          kind: OPERATION_EVIDENCE_KIND,
+          data: saved.data,
+          revision: 1,
+          name: "Fixture purchased response",
+          description: "",
+          createdAt: "",
+          updatedAt: "",
+        });
+      }
+    }
+    for (const [stage, claim] of Object.entries(scene.operation.checkpointClaims ?? {}) as [
+      string,
+      { token: string; bodyId: string },
+    ][]) {
+      claim.token = operationCheckpointPrefix(scene.operation, scene, stage) + claim.token.slice(-36);
+      const id = operationResponseBodyId(scene, claim.token);
+      if (id !== claim.bodyId) {
+        const old = rows.get(claim.bodyId);
+        if (old) {
+          const copied = prepareOperationValue(operationEvidenceValue(old.data), scene, claim.token);
+          rows.set(id, { ...old, id, data: copied.data });
+        }
+        claim.bodyId = id;
+      }
+    }
+    const evidence = encodeOperationEvidence(scene.operation, scene);
+    scene.operation = evidence.operation;
+    for (const [id, data] of evidence.values)
+      rows.set(id, {
+        id,
+        packageId: "villages",
+        kind: OPERATION_EVIDENCE_KIND,
+        data,
+        revision: 1,
+        name: "Fixture operation evidence",
+        description: "",
+        createdAt: "",
+        updatedAt: "",
+      });
+  }
   return scene;
 }
 export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
@@ -234,6 +307,11 @@ export function fixtureSceneState(raw: any, rows: Map<string, any>) {
     readSceneTranscriptHead(transcript, raw),
     (id) => rows.get(id)?.data ?? null,
   ).lines;
+  scene.operation = decodeOperationEvidenceSync(raw.operation, raw, (ref) => {
+    const row = rows.get(ref.id);
+    if (!row) throw new Error("Missing fixture operation evidence");
+    return operationEvidenceValue(validateOperationEvidence(row, raw, ref).data);
+  });
   if (raw.continuity) {
     const { relationshipHead, ...context } = raw.continuity;
     const root = relationshipHead ? rows.get(relationshipHead.id)!.data : null;

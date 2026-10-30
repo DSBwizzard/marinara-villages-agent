@@ -491,7 +491,12 @@ await runCase("scene-retirement/publication", async () => {
   sceneConflict = false;
   calls.length = 0;
   assert.equal(await service.retire("scene"), true);
-  assert.deepEqual(calls, ["evidence", "receipt", "remove", "remove-late", "diagnostics"]);
+  assert.deepEqual(calls, ["evidence", "receipt", "remove", "diagnostics"]);
+  assert.equal(
+    responsePresent,
+    true,
+    "Retirement preserves replay responses for checkpoints preceding their publication",
+  );
   assert.equal(present, false);
   assert.equal(proof().physicalOutcome, undefined, "actual retirement releases full physical payload");
   assert.equal(proof().status, "applied", "replay protection survives retirement");
@@ -565,7 +570,7 @@ await runCase("scene-retirement/restart-cleanup", async () => {
     withLateResponseWork: async (_id, work) => work(),
   });
   await assert.rejects(service.retireSettled(), /diagnostic conflict/);
-  assert.equal(responseExists, false);
+  assert.equal(responseExists, true, "Restart cleanup cannot retire responses without a closed-scope proof");
   assert.equal(diagnosticExists, true);
   fail = false;
   await service.retireSettled();

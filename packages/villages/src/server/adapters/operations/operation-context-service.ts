@@ -6,6 +6,7 @@ export type { VenueOperation } from "../../domain/models/operation-model.js";
 export type Context = {
   decisionRemainingMs?: number;
   sessionId: string;
+  villageSeed?: string;
   operation: VenueOperation;
   controller: AbortController;
   allowPaid: boolean;

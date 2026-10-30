@@ -934,7 +934,7 @@ try {
   const originalLines = clone(failedCloseRow.data.lines);
   failedCloseRow.data = authorSceneFixture(records, failedCloseRow.data);
   records.set(failedCloseKey, failedCloseRow);
-  const originalFailed = clone(failedCloseRow.data.operation);
+  const originalFailed = JSON.parse(JSON.stringify(fixtureSceneState(failedCloseRow.data, records).operation));
   const beforeFailedClose = modelCalls;
   const endFailedPayload = {
     sessionId: failedCloseId,
@@ -952,10 +952,13 @@ try {
   assert.equal(endedFailed.statusCode, 200, endedFailed.body);
   assert.equal(records.get(failedCloseKey).data.status, "closed");
   assert.deepEqual(fixtureSceneState(records.get(failedCloseKey).data, records).lines, originalLines);
-  assert.deepEqual(records.get(failedCloseKey).data.operation.checkpoints["abandoned-request"], {
-    ...originalFailed,
-    snapshot: null,
-  });
+  assert.deepEqual(
+    fixtureSceneState(records.get(failedCloseKey).data, records).operation!.checkpoints["abandoned-request"],
+    {
+      ...originalFailed,
+      snapshot: null,
+    },
+  );
   assert.doesNotMatch(endedFailed.body, /abandoned-request|writing-completion|snapshot/);
   const endedAgain = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
   assert.equal(endedAgain.statusCode, 200, endedAgain.body);
@@ -2259,10 +2262,14 @@ try {
         ([key]) => key.startsWith("writing-completion:") && key.includes("-boundary:"),
       );
       assert(rawReplacement);
-      (rawReplacement[1] as any).status = "complete";
       const rawAnswer = JSON.parse((rawReplacement[1] as any).result.content);
       rawAnswer.segments = [{ text: good }];
-      (rawReplacement[1] as any).result.content = JSON.stringify(rawAnswer);
+      editFixtureScene((saved) => {
+        const attempt = saved.operation.attempts[rawReplacement[0]];
+        attempt.status = "complete";
+        attempt.result = { ...attempt.result, content: JSON.stringify(rawAnswer) };
+        delete attempt.response;
+      });
       const rawCalls = modelCalls,
         rawWriting = narrationCalls;
       await stop!();

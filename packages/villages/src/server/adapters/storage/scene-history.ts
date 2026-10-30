@@ -1,5 +1,11 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import {
+  operationEvidenceReferences,
+  operationEvidenceStore,
+  operationCheckpointClaims,
+  readOperationEvidenceReference,
+} from "./operation-evidence.js";
 import type { RelationshipState } from "../../domain/models/relationship-types.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
@@ -31,7 +37,7 @@ import {
   type RelationshipScope,
 } from "./relationship-payload-store.js";
 
-export const SCENE_STORAGE_FORMAT = 7;
+export const SCENE_STORAGE_FORMAT = 8;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
 const associations = new WeakMap<RelationshipState, { scope: RelationshipScope; head: RelationshipHead }>();
 const identity = (head: RelationshipHead) => head.id + ":" + head.digest;
@@ -106,7 +112,10 @@ export function sceneHistoryOwners(value: unknown): SceneHistoryOwner[] {
     const context = storedContinuity(raw.continuity, raw);
     if (context?.head) owners.push({ sceneId: raw.id, scope: context.scope, head: context.head });
     if (raw.operation !== undefined && raw.operation !== null) {
+      memoryRequire(!admitted, "admitted Scene snapshots cannot contain an operation");
       memoryObject(raw.operation);
+      operationEvidenceReferences(raw.operation, raw as VenueScene);
+      operationCheckpointClaims(raw.operation, raw as VenueScene);
       const snapshot = raw.operation.snapshot;
       if (snapshot !== undefined && snapshot !== null) {
         memoryRequire(!admitted, "nested admitted Scene snapshot");
@@ -256,16 +265,48 @@ export async function validateSceneHistory(documents: Pick<CapabilityDocumentSto
     return row.data as MemoryPageData;
   });
   for (const owner of scenes.flatMap(sceneSubmissionOwners)) await submissions.trace(owner.head, owner.participants);
+  for (const value of scenes) {
+    const raw = value as Record<string, any>;
+    await validateOperationEvidenceOwners(documents, raw.operation, raw as VenueScene);
+  }
+}
+export async function validateOperationEvidenceOwners(
+  documents: Pick<CapabilityDocumentStore, "getById">,
+  operation: unknown,
+  scope: { id: string; villageSeed?: string },
+  mark: (id: string) => void = () => {},
+  nested = false,
+) {
+  const store = operationEvidenceStore(documents as CapabilityDocumentStore);
+  for (const claim of operationCheckpointClaims(operation, scope)) {
+    const saved = await store.pending(claim, scope);
+    if (saved) mark(saved.ref.id);
+  }
+  for (const ref of operationEvidenceReferences(operation, scope, nested)) {
+    await store.inspect(ref, scope);
+    mark(ref.id);
+  }
+  const ref = (operation as Record<string, any> | undefined)?.checkpoints?.["abandoned-request"];
+  if (ref)
+    await validateOperationEvidenceOwners(
+      documents,
+      await store.read(readOperationEvidenceReference({ id: ref.id, digest: ref.digest }), scope, true),
+      scope,
+      mark,
+      true,
+    );
 }
 /** Logical Scenes stay host-free. Only this adapter binds an exact verified immutable body to a native reference. */
 export function createSceneHistory(documents: CapabilityDocumentStore) {
   const payloads = relationshipPayloadStore(documents);
   const transcripts = sceneTranscriptStore(documents);
   const submissions = sceneSubmissionStore(documents);
+  const evidence = operationEvidenceStore(documents);
   async function decode(value: unknown): Promise<VenueScene> {
     sceneHistoryOwners(value);
     const raw = value as Record<string, any>,
       { storageFormat: _format, transcript, submissionHistory, ...logical } = raw;
+    logical.operation = await evidence.decode(raw.operation, raw as VenueScene);
     const captured = storedContinuity(raw.continuity, raw);
     let body: RelationshipState | undefined;
     logical.continuity = undefined;
@@ -333,7 +374,19 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
       : undefined;
     const submissionHistory = await submissions.prepare(scene, priorSubmissions);
     const { lines: _lines, submissions: _submissions, ...facts } = scene;
-    const result = { ...facts, storageFormat: SCENE_STORAGE_FORMAT, transcript, submissionHistory, continuity: stored };
+    const operation = await evidence.encode(
+      scene.operation,
+      scene,
+      (previous as Record<string, any> | undefined)?.operation,
+    );
+    const result = {
+      ...facts,
+      operation,
+      storageFormat: SCENE_STORAGE_FORMAT,
+      transcript,
+      submissionHistory,
+      continuity: stored,
+    };
     sceneHistoryOwners(result);
     return result;
   }
