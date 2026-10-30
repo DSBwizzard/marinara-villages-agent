@@ -195,11 +195,11 @@ try {
     knowers: [],
     expectedRecord: selected.token,
   } as any);
-  await repair.apply(review.id);
+  await repair.apply(review.id, review.token);
   state = await repository.readAuthority();
   assert.equal(state.narrative!.claims!.length, 0);
   const undo = await repair.undo("reject", "undo-reject");
-  await repair.apply(undo.id);
+  await repair.apply(undo.id, undo.token);
   state = await repository.readAuthority();
   assert.equal(state.narrative!.claims!.length, 1, "Undo restores the held claim with its saved job.");
   assert.equal((await background.backgroundWorkSummaries())[0]!.status, "failed");
@@ -212,7 +212,7 @@ try {
     knowers: [],
     expectedRecord: again.token,
   } as any);
-  await repair.apply(againReview.id);
+  await repair.apply(againReview.id, againReview.token);
   state = await repository.readAuthority();
   failApply = false;
   now = new Date(now.getTime() + 31 * 60_000);

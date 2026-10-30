@@ -140,6 +140,8 @@ Edit a record, then use **Review changes** to check **Before / After** and **Aff
 
 **Repair history** keeps the changes and offers **Review undo** where a safe inverse is available. Undo refuses to overwrite later changes to affected records. Consequential repairs save a checkpoint automatically; you can also name a manual checkpoint. Checkpoints retain independent copies of saved world data. Restoration has its own review and saves the current world first. Current time, spending and replay protection remain current, so elapsed Projects may complete when play resumes.
 
+Unapplied reviews keep at most ten current previews. Leaving a review discards its server preview while preserving your edit draft; if a preview is no longer available, review the edit again. Applying a review retires its preview through the same recovery journal as the saved changes. Repair history, Undo and checkpoints remain separate.
+
 Opening REPAIR and applying ordinary corrections preserve your unfinished Scene, captured context, and drafts. Whole-world restoration requires the current Scene and pending recovery work to be settled. A restored checkpoint can reopen its saved idle Scene with its frozen context; a draft from another Scene remains available to copy.
 
 ## Wishes and Projects

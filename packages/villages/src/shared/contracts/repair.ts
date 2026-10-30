@@ -38,6 +38,7 @@ export type RepairChange = { label: string; before: string; after: string };
 export type RepairReview = {
   kind: "repair" | "undo" | "restore";
   id: string;
+  token: string;
   title: string;
   changes: RepairChange[];
   affected: string[];

@@ -653,6 +653,10 @@
     },
     {
       "method": "post",
+      "path": "/repair/cancel"
+    },
+    {
+      "method": "post",
       "path": "/repair/undo"
     },
     {

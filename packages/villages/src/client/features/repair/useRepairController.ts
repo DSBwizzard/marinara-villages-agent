@@ -44,12 +44,19 @@ export function useRepairController(
     collection = useRef<"list" | "history" | "checkpoints">("list");
   const pending = useRef<RepairRequest | null>(null),
     checkpointRequest = useRef<{ title: string; operationId: string } | null>(null);
+  const reviewRef = useRef<Pick<RepairReview, "id" | "token"> | null>(null);
+  const abandonReview = () => {
+    const retained = reviewRef.current;
+    reviewRef.current = null;
+    if (retained) void request("/repair/cancel", { method: "POST", body: JSON.stringify(retained) }).catch(() => {});
+    pending.current = null;
+    setReview(null);
+  };
   const draftKey = (id: string) => JSON.stringify([world.current, person?.id ?? "", id]);
   const current = (ticket: number) => epoch.current === ticket;
   const invalidate = () => {
+    abandonReview();
     epoch.current++;
-    pending.current = null;
-    setReview(null);
     setSelected(null);
     setRecords([]);
     setCreation(null);
@@ -62,6 +69,7 @@ export function useRepairController(
     if (!current(ticket)) return;
     const identity = result.identity ?? result.seed;
     if (world.current && world.current !== identity) {
+      reviewRef.current = null;
       invalidate();
       setDrafts({});
       setPerson(null);
@@ -88,6 +96,7 @@ export function useRepairController(
         if (abort.signal.aborted || epoch.current !== ticket) return;
         const identity = result.identity ?? result.seed;
         if (world.current && world.current !== identity) {
+          reviewRef.current = null;
           epoch.current++;
           world.current = identity;
           pending.current = null;
@@ -142,11 +151,16 @@ export function useRepairController(
     setOffset(start);
     setTotal(result.total);
   };
-  const load = (nextTopic: RepairTopic = topic, start = 0, search = query) =>
-    act(async (ticket) => {
+  const load = (nextTopic: RepairTopic = topic, start = 0, search = query) => {
+    if (reviewRef.current) {
+      abandonReview();
+      epoch.current++;
+    }
+    return act(async (ticket) => {
       setView(nextTopic === "restore" ? "checkpoints" : "list");
       await fetchRecords(nextTopic, start, search, person, section, ticket);
     });
+  };
   const chooseTopic = (nextTopic: RepairTopic) => {
     invalidate();
     setPerson(null);
@@ -230,8 +244,8 @@ export function useRepairController(
     if (!selected) return;
     const key = draftKey(selected.id);
     setDrafts((prior) => ({ ...prior, [key]: { ...prior[key], ...change } }));
-    pending.current = null;
-    setReview(null);
+    abandonReview();
+    epoch.current++;
     setError("");
   };
   const prepare = () =>
@@ -253,6 +267,7 @@ export function useRepairController(
         body: JSON.stringify(pending.current),
       });
       if (!current(ticket)) return;
+      reviewRef.current = { id: result.id, token: result.token };
       setReview(result);
       setRestoreAcknowledged(false);
       setView("review");
@@ -262,8 +277,12 @@ export function useRepairController(
       if (!review) return;
       setSaving(true);
       try {
-        await request("/repair/apply", { method: "POST", body: JSON.stringify({ id: review.id }) });
+        await request("/repair/apply", {
+          method: "POST",
+          body: JSON.stringify({ id: review.id, token: review.token }),
+        });
         if (!current(ticket)) return;
+        reviewRef.current = null;
         if (selected && review.kind === "repair") {
           const key = draftKey(selected.id);
           setDrafts((prior) => {
@@ -290,6 +309,7 @@ export function useRepairController(
         body: JSON.stringify({ id, operationId: createVillagesClientId() }),
       });
       if (!current(ticket)) return;
+      reviewRef.current = { id: result.id, token: result.token };
       setReview(result);
       setView("review");
     });
@@ -303,6 +323,7 @@ export function useRepairController(
         body: JSON.stringify({ id, operationId: createVillagesClientId() }),
       });
       if (!current(ticket)) return;
+      reviewRef.current = { id: result.id, token: result.token };
       setReview(result);
       setView("review");
     });
@@ -361,8 +382,16 @@ export function useRepairController(
     saveCheckpoint,
     readIndex,
     backFromReview: () => {
-      setReview(null);
+      abandonReview();
+      epoch.current++;
       setView(selected ? "edit" : collection.current);
+    },
+    leave: () => {
+      epoch.current++;
+      if (reviewRef.current) {
+        abandonReview();
+        setView(selected ? "edit" : collection.current);
+      }
     },
     historyPage: (start: number) => act(() => readIndex(start)),
   };

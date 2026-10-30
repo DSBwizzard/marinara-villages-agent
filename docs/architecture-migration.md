@@ -75,6 +75,8 @@ Compaction requires a terminal disposition, preserved accounting/replay protecti
 
 An explicit Village Reset ends the old world's ownership and retains the established removal of its private jobs after active work settles. The new seed fences their application to the replacement world. Removing a resident or marking a current-world job obsolete does not confer that authority. Malformed records whose ownership cannot be established remain protected. Unknown token counts are accounting uncertainty, not proof that a completed request is still unfinished.
 
+Unapplied REPAIR reviews are administrative previews produced by simulation. They have no committed effects and are never the sole owner of a paid response: their authoritative source records remain unchanged. Keep at most ten valid current-world previews, discard them on explicit cancellation, and retire an applied preview in the same journal as its effects and acknowledgment. Apply checks the retained preview and its unique creation token before publishing any effects. A repeated request may recreate an evicted/cancelled review, but its new token cannot restore an old Apply's authority or let a late Cancel erase the replacement. Drafts remain client-owned. Unfinished repair journals recover before cache retirement; unknown/corrupt or foreign ownership is retained. This cache limit does not prune player history, Undo or checkpoints.
+
 ### Reference lifetime
 
 Ownership is explicit and world-scoped. Do not infer references by scanning arbitrary player/model prose. Current storage uses existing payload intents, operation records and captured facts; later storage changes must preserve these owner obligations before adding deletion:
