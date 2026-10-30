@@ -23,6 +23,7 @@ import {
 } from "../packages/villages/src/server/features/residents/resident-cards.js";
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 
 const stamp = new Date().toISOString();
 const source = {
@@ -40,6 +41,7 @@ const source = {
 const card = readVillagerCard(source as any);
 const snapshot = { ...card, revision: 1, sourceStatus: "available", capturedAt: stamp };
 const state = defaultVillageState();
+state.seed = "character-writing";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
 state.foundingDetails = "FOUNDING PREMISE: arrive to establish a new life";
@@ -65,6 +67,7 @@ state.villagers = [
   },
 ] as any;
 let row: any = { id: "villages-village", kind: "village", data: coerceVillageState(state), revision: 1 };
+const historyRows = new Map<string, any>();
 let paidCalls = 0;
 const model: any = {
   model: "fixture",
@@ -81,13 +84,24 @@ const release = configureVillagesRuntime({
   resources: { listCharacters: async () => [source], listLorebooks: async () => [] },
   persistence: {
     documents: villageFixtureDocuments({
-      getById: async (_p: any, id: string) => (id === row.id ? row : null),
-      list: async () => [],
+      getById: async (_p: any, id: string) => (id === row.id ? row : (historyRows.get(id) ?? null)),
+      list: async (_pkg: string, kind: string) => [...historyRows.values()].filter((entry) => entry.kind === kind),
       update: async (input: any) => {
+        if (input.id !== row.id) {
+          const current = historyRows.get(input.id);
+          if (!current || current.revision !== input.expectedRevision) return null;
+          const next = { ...current, ...input, revision: current.revision + 1 };
+          historyRows.set(input.id, next);
+          return next;
+        }
         row = { ...row, ...input, revision: row.revision + 1 };
         return row;
       },
-      create: async (input: any) => input,
+      create: async (input: any) => {
+        const saved = { ...input, revision: 1 };
+        historyRows.set(input.id, saved);
+        return saved;
+      },
     }),
   },
   languageModels: { resolveForRequest: async () => model },
@@ -112,6 +126,18 @@ async function run() {
     };
     const prepared = await prepareVenueTurnMessages(session, "What is your vision for our future?", "chat", "", null);
     const prompt = String(prepared.fitted.messages[0].content);
+    const capturedWorld = coerceVillageState(state);
+    capturedWorld.villagers[0].wishes = [fixtureWish({ wish: "Exact captured desire" }, "captured")];
+    const capturedScene = { ...session, version: 3, villageSeed: state.seed, status: "closed" };
+    capturedScene.continuity = captureSceneContinuity(capturedWorld, capturedScene, Date.parse(stamp));
+    const captured = await prepareVenueTurnMessages(capturedScene, "A frozen Wish context", "chat", "", null);
+    assert.equal(
+      captured.wishContexts[0].wishes[0].id,
+      "captured",
+      "Recovery captures the same Wish authority as the frozen writing context",
+    );
+    assert.equal(Object.isFrozen(captured.wishContexts[0].wishes), true);
+    assert.equal(paidCalls, 0, "Exact Wish context is captured before purchasing work");
     for (const fragment of [
       "DESCRIPTION TAIL",
       "SYSTEM TAIL",

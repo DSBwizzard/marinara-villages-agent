@@ -302,65 +302,68 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           if (memory.status === "failed" || memory.status === "pending")
             throw new EncounterInterpretationError(memory.reason || "Offscreen memory application needs recovery.");
         }
-        await mutateVillageState((state) => {
-          if (state.seed !== entry.seed) return;
-          // Only an encounter accepted by the relationship transaction can settle access.
-          // Its captured evidence survives retries after the original encounter window ends.
-          const encounter = state.relationshipContext?.socialEncounters.find((row) => row.id === entry.id);
-          if (encounter) {
-            const captured = entry.admitted?.villagers;
-            if (encounter.wishChanges?.length && !captured) throw new Error("Wish encounter authority is missing.");
-            if (captured) {
-              try {
-                applyWishSource(state, {
-                  id: "offscreen:" + entry.id,
-                  kind: "encounter",
-                  at: encounter.at,
-                  recordedAt: villageNow().toISOString(),
-                  lines: encounter.lines.map((l) => ({ ...l, playerHeard: false, contactHidden: true })),
-                  currentLineIds: encounter.lines.map((l) => l.id),
-                  changes: encounter.wishChanges ?? [],
-                  authority: captureWishAuthority(captured, readSocialWishChanges(encounter.wishChanges ?? [])),
-                  learn: false,
-                });
-              } catch (error) {
-                throw new EncounterInterpretationError(
-                  error instanceof Error ? error.message : "Wish interpretation is invalid.",
-                );
+        await mutateVillageState(
+          (state) => {
+            if (state.seed !== entry.seed) return;
+            // Only an encounter accepted by the relationship transaction can settle access.
+            // Its captured evidence survives retries after the original encounter window ends.
+            const encounter = state.relationshipContext?.socialEncounters.find((row) => row.id === entry.id);
+            if (encounter) {
+              const captured = entry.admitted?.villagers;
+              if (encounter.wishChanges?.length && !captured) throw new Error("Wish encounter authority is missing.");
+              if (captured) {
+                try {
+                  applyWishSource(state, {
+                    id: "offscreen:" + entry.id,
+                    kind: "encounter",
+                    at: encounter.at,
+                    recordedAt: villageNow().toISOString(),
+                    lines: encounter.lines.map((l) => ({ ...l, playerHeard: false, contactHidden: true })),
+                    currentLineIds: encounter.lines.map((l) => l.id),
+                    changes: encounter.wishChanges ?? [],
+                    authority: captureWishAuthority(captured, readSocialWishChanges(encounter.wishChanges ?? [])),
+                    learn: false,
+                  });
+                } catch (error) {
+                  throw new EncounterInterpretationError(
+                    error instanceof Error ? error.message : "Wish interpretation is invalid.",
+                  );
+                }
+              }
+              const fresh = parseRelationshipProposals(
+                { changes: [], disclosures: [], permissions: encounter.review.permissions },
+                encounter.id,
+                encounter.lines,
+                state,
+                undefined,
+                encounter.semanticProvenance?.version === 2,
+              );
+              if (fresh.rejections.length)
+                throw new Error("Encounter permission authority changed; source retained for recovery.");
+              for (const permission of fresh.review.permissions) {
+                const venue = state.venues.find((venue) => venue.id === permission.venueId);
+                if (venue?.access) {
+                  settleStandingAccess(venue, permission, encounter.at, [
+                    "player",
+                    ...state.villagers.map((resident) => resident.characterId),
+                  ]);
+                  if (
+                    !venue.access.receipts[permission.id] ||
+                    venue.access.receipts[permission.id]?.outcome === "rejected"
+                  )
+                    throw new Error("Encounter standing permission needs recovery.");
+                }
               }
             }
-            const fresh = parseRelationshipProposals(
-              { changes: [], disclosures: [], permissions: encounter.review.permissions },
-              encounter.id,
-              encounter.lines,
-              state,
-              undefined,
-              encounter.semanticProvenance?.version === 2,
-            );
-            if (fresh.rejections.length)
-              throw new Error("Encounter permission authority changed; source retained for recovery.");
-            for (const permission of fresh.review.permissions) {
-              const venue = state.venues.find((venue) => venue.id === permission.venueId);
-              if (venue?.access) {
-                settleStandingAccess(venue, permission, encounter.at, [
-                  "player",
-                  ...state.villagers.map((resident) => resident.characterId),
-                ]);
-                if (
-                  !venue.access.receipts[permission.id] ||
-                  venue.access.receipts[permission.id]?.outcome === "rejected"
-                )
-                  throw new Error("Encounter standing permission needs recovery.");
-              }
+            const saved = state.socialOutbox?.find((row) => row.id === entry.id);
+            if (saved) {
+              saved.processed = true;
             }
-          }
-          const saved = state.socialOutbox?.find((row) => row.id === entry.id);
-          if (saved) {
-            saved.processed = true;
-          }
-          state.socialOutbox = state.socialOutbox?.filter((row) => !row.processed);
-          releasePhysicalOutcomes(state, "offscreen:" + entry.id, !!entry.catchupBatchId);
-        });
+            state.socialOutbox = state.socialOutbox?.filter((row) => !row.processed);
+            releasePhysicalOutcomes(state, "offscreen:" + entry.id, !!entry.catchupBatchId);
+          },
+          { wishes: entry.opportunity.actorIds },
+        );
       } catch (error) {
         await mutateVillageState((state) => {
           const saved = state.socialOutbox?.find((row) => row.id === entry.id);

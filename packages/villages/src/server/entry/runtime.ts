@@ -1150,7 +1150,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const worldCoordination = createWorldCoordination({
     // Memory pages/evidence depend only on saved knowledge; reading them must not
     // observe/write the clock or decode the same large authority record twice.
-    readVillageAuthority: () => villageRepository.readAuthority({ memories: true }),
+    readVillageAuthority: (options) => villageRepository.readAuthority({ ...options, memories: true }),
     // Manual history edits preserve current mechanics and do not reconcile the world.
     mutateMemoryAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     reconcileNarrative: narrative.reconcile,
@@ -1185,7 +1185,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createBackgroundWork({
       activityChanged: requestVillageRefresh,
       readVillageAuthority,
-      mutateVillageAuthority: (update) => villageRepository.mutateAuthority(update),
+      mutateVillageAuthority: (update, options) => villageRepository.mutateAuthority(update, options),
       villagesDocuments,
       villagesLogger,
       readVillageState,
@@ -1214,8 +1214,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     processSocialOutbox,
   });
   const returnCatchup = createReturnCatchup({
-    readAuthority: () => villageRepository.readAuthority({ memories: true }),
-    mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
+    readAuthority: () => villageRepository.readAuthority({ memories: true, wishes: true }),
+    mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true, wishes: true }),
     activityChanged: requestVillageRefresh,
     readSnapshot: readVillageSnapshot,
     mutate: mutateVillageMemoryState,

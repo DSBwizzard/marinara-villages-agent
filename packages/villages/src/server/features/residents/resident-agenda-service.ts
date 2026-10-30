@@ -84,7 +84,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     return changed;
   }
   async function readFoundingResidentContext(characterId: string) {
-    const village = await readVillageState();
+    const village = await readVillageState({ wishes: [characterId] });
     const villager = village.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
     await reportFoundingProgress(village.seed, { stage: "reading" }, characterId);

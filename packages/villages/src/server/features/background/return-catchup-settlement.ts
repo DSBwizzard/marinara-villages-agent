@@ -1,3 +1,4 @@
+import { copySocialWishes, immutableSocialWishes } from "../../domain/rules/social-wishes.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { RepairGate } from "../../adapters/storage/repair-gate.js";
 import type { VillageState } from "../../domain/models/world.js";
@@ -26,7 +27,7 @@ export function createReturnCatchupSettlement(ports: Ports) {
   async function settle(batchId: string, opportunityId: string, retry = false): Promise<"settled" | "recovering"> {
     const sourceId = opportunityId + ":social";
     const staged = await ports.gate.simulate(async () => {
-      let before = await ports.readSnapshot({ memories: true });
+      let before = await ports.readSnapshot({ memories: true, wishes: true });
       const tracking = before.returnCatchup,
         batch = tracking?.batch,
         capture = tracking?.capture;
@@ -98,10 +99,10 @@ export function createReturnCatchupSettlement(ports: Ports) {
           const pending = state.socialOutbox?.find((row) => row.id === sourceId);
           if (pending) pending.error = undefined;
         });
-        before = await ports.readSnapshot({ memories: true });
+        before = await ports.readSnapshot({ memories: true, wishes: true });
       }
       await ports.processSocialOutbox(before, sourceId);
-      const after = await ports.readSnapshot({ memories: true });
+      const after = await ports.readSnapshot({ memories: true, wishes: true });
       const pending = after.socialOutbox?.find((row) => row.id === sourceId);
       if (pending)
         return {
@@ -111,42 +112,47 @@ export function createReturnCatchupSettlement(ports: Ports) {
           captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity),
           sourceRevision: backgroundRevision(source),
         };
-      await ports.mutate((state) => {
-        const active = state.returnCatchup,
-          next = active?.batch?.records?.find((row) => row.opportunityId === opportunityId);
-        if (!active?.capture || active.batch?.id !== batchId || !next) throw conflict("The catch-up batch changed.");
-        active.capture.memoryRevision = state.memories.revision;
-        active.capture.world.relationshipContext = state.relationshipContext
-          ? immutableRelationshipState(state.seed, state.relationshipContext)
-          : undefined;
-        for (const id of opportunity.actorIds) {
-          const saved = active.capture.world.villagers.find((row) => row.characterId === id);
-          const live = state.villagers.find((row) => row.characterId === id);
-          if (!saved || !live) throw conflict("A catch-up resident changed.");
-          saved.wishes = structuredClone(live.wishes);
-        }
-        const savedVenue = active.capture.world.venues.findIndex((row) => row.id === opportunity.venueId);
-        const liveVenue = state.venues.find((row) => row.id === opportunity.venueId);
-        if (savedVenue < 0 || !liveVenue) throw conflict("The catch-up Venue changed.");
-        active.capture.world.venues[savedVenue] = structuredClone(liveVenue);
-        if (active.capture.world.narrative)
-          for (const receipt of state.narrative?.receipts ?? []) {
-            if (
-              receipt.sourceId !== "offscreen:" + sourceId ||
-              receipt.source !== "action" ||
-              active.capture.world.narrative.receipts.some((row) => row.id === receipt.id)
-            )
-              continue;
-            mergeNarrativeAfter(active.capture.world.narrative, receipt.after);
-            active.capture.world.narrative.receipts.push(structuredClone(receipt));
-            active.capture.world.narrative.revision++;
+      await ports.mutate(
+        (state) => {
+          const active = state.returnCatchup,
+            next = active?.batch?.records?.find((row) => row.opportunityId === opportunityId);
+          if (!active?.capture || active.batch?.id !== batchId || !next) throw conflict("The catch-up batch changed.");
+          active.capture.memoryRevision = state.memories.revision;
+          active.capture.world.relationshipContext = state.relationshipContext
+            ? immutableRelationshipState(state.seed, state.relationshipContext)
+            : undefined;
+          for (const id of opportunity.actorIds) {
+            const saved = active.capture.world.villagers.find((row) => row.characterId === id);
+            const live = state.villagers.find((row) => row.characterId === id);
+            if (!saved || !live) throw conflict("A catch-up resident changed.");
+            saved.wishes = copySocialWishes(immutableSocialWishes(live.wishes));
           }
-        if (state.narrative)
-          state.narrative.receipts = state.narrative.receipts.filter((row) => row.sourceId !== "offscreen:" + sourceId);
-        next.status = "settled";
-        next.error = undefined;
-        active.batch.status = "running";
-      });
+          const savedVenue = active.capture.world.venues.findIndex((row) => row.id === opportunity.venueId);
+          const liveVenue = state.venues.find((row) => row.id === opportunity.venueId);
+          if (savedVenue < 0 || !liveVenue) throw conflict("The catch-up Venue changed.");
+          active.capture.world.venues[savedVenue] = structuredClone(liveVenue);
+          if (active.capture.world.narrative)
+            for (const receipt of state.narrative?.receipts ?? []) {
+              if (
+                receipt.sourceId !== "offscreen:" + sourceId ||
+                receipt.source !== "action" ||
+                active.capture.world.narrative.receipts.some((row) => row.id === receipt.id)
+              )
+                continue;
+              mergeNarrativeAfter(active.capture.world.narrative, receipt.after);
+              active.capture.world.narrative.receipts.push(structuredClone(receipt));
+              active.capture.world.narrative.revision++;
+            }
+          if (state.narrative)
+            state.narrative.receipts = state.narrative.receipts.filter(
+              (row) => row.sourceId !== "offscreen:" + sourceId,
+            );
+          next.status = "settled";
+          next.error = undefined;
+          active.batch.status = "running";
+        },
+        { wishes: opportunity.actorIds },
+      );
       return { status: "settled" as const };
     });
     if (staged.value.status === "recovering") {

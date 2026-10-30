@@ -1,5 +1,7 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createDepartureHistory, validateDepartureHistory } from "../../adapters/storage/departure-history.js";
+import { createWorldWishes, validateWorldWishHistory } from "../../adapters/storage/world-wishes.js";
+import { mutableSocialWish } from "../../domain/rules/social-wishes.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
   RepairChange,
@@ -129,9 +131,13 @@ function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
       1;
   for (const person of prior.villagers) {
     const live = current.villagers.find((p) => p.characterId === person.characterId);
+    const wishRevisions = new Map(live?.wishes.map((wish) => [wish.id, wish.revision]) ?? []);
     person.cardSnapshot.revision = Math.max(person.cardSnapshot.revision, live?.cardSnapshot.revision ?? 0) + 1;
-    for (const wish of person.wishes)
-      wish.revision = Math.max(wish.revision, live?.wishes.find((w) => w.id === wish.id)?.revision ?? 0) + 1;
+    person.wishes = person.wishes.map((value) => {
+      const wish = mutableSocialWish(value);
+      wish.revision = Math.max(wish.revision, wishRevisions.get(wish.id) ?? 0) + 1;
+      return wish;
+    });
   }
   for (const venue of prior.venues) {
     const currentVenue = current.venues.find((v) => v.id === venue.id);
@@ -223,7 +229,7 @@ export function createRepairService(ports: RepairPorts) {
     documents = gate.documents;
   const storage = createRepairStorage(documents, gate.raw),
     codec = createRepairTransactionCodec(gate.raw);
-  const read = () => repository.readAuthority({ memories: true });
+  const read = () => repository.readAuthority({ memories: true, wishes: true });
   const relationshipPayloads = relationshipPayloadStore(documents);
   async function socialData(
     row: Pick<RepairDocument, "id" | "kind" | "data"> | null | undefined,
@@ -297,10 +303,11 @@ export function createRepairService(ports: RepairPorts) {
   }
   async function readPlan(row: Doc): Promise<PlanData> {
     const saved = row.data as PlanData;
-    const history = await storage.decodeHistory(saved?.history);
+    const transaction = await codec.decode(saved?.transaction);
+    const history = await storage.decodeHistory(saved?.history, transaction.writes);
     if (!storage.owns(history, saved) || history.id !== saved.review.id)
       throw conflict("This review belongs to another Village.");
-    return { ...saved, transaction: await codec.decode(saved?.transaction), history };
+    return { ...saved, transaction, history };
   }
   async function savePlan(plan: PlanData): Promise<RepairReview> {
     return gate.alone(async () => {
@@ -335,7 +342,7 @@ export function createRepairService(ports: RepairPorts) {
     });
   }
   async function allRecords(includeMemories = true, includeArchives = true, personId?: string) {
-    const state = await repository.readAuthority({ memories: includeMemories }),
+    const state = await repository.readAuthority({ memories: includeMemories, wishes: true }),
       result = worldRepairRecords(state, includeMemories, personId);
     if (personId && personId !== "player" && !state.villagers.some((p) => p.characterId === personId))
       throw notFound("Choose a villager from People.");
@@ -583,6 +590,10 @@ export function createRepairService(ports: RepairPorts) {
       documents,
       rows.filter((row) => row.kind === "village").map((row) => row.data),
     );
+    await validateWorldWishHistory(
+      documents,
+      rows.filter((row) => row.kind === "village").map((row) => row.data),
+    );
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
@@ -716,6 +727,7 @@ export function createRepairService(ports: RepairPorts) {
     } else
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at), {
         memories: ["memory", "new-memory"].includes(kind),
+        wishes: kind === "wish" ? true : undefined,
       });
   }
   function validateRequest(input: RepairRequest) {
@@ -1013,7 +1025,10 @@ export function createRepairService(ports: RepairPorts) {
           const target = write.after ?? write.before!,
             current = await documents.getById(PKG, target.id);
           if (write.before?.kind === "village") {
-            const priorWorld = await createDepartureHistory(documents).decode(write.before.data);
+            const priorWorld = await createWorldWishes(documents).decode(
+              await createDepartureHistory(documents).decode(write.before.data),
+              true,
+            );
             await repository.mutateAuthority(
               (currentState) => {
                 const prior = coerceVillageState({
@@ -1028,7 +1043,7 @@ export function createRepairService(ports: RepairPorts) {
                   Object.assign(currentState, prior);
                 });
               },
-              { memories: true },
+              { memories: true, wishes: true },
             );
           } else if (!write.before) {
             if (current) await documents.remove(PKG, current.id, current.revision);
@@ -1193,6 +1208,10 @@ export function createRepairService(ports: RepairPorts) {
         documents,
         checkpointDocuments.filter((row) => row.kind === "village").map((row) => row.data),
       );
+      await validateWorldWishHistory(
+        documents,
+        checkpointDocuments.filter((row) => row.kind === "village").map((row) => row.data),
+      );
       let current: Doc[] = [];
       await currentSocial(state);
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
@@ -1267,7 +1286,7 @@ export function createRepairService(ports: RepairPorts) {
         (checkpointSceneId && !payload.memoryScenes[checkpointSceneId])
       )
         throw conflict("The checkpoint’s Scene and frozen memories do not match.");
-      const restored = coerceVillageState({ ...data, ...payload });
+      const restored = coerceVillageState({ ...(await createWorldWishes(documents).decode(data, true)), ...payload });
       assertSettledSocial(restored);
       advanceRestoredRevisions(restored, state);
       if (restored.narrative) restored.narrative.claims = [];
@@ -1297,7 +1316,7 @@ export function createRepairService(ports: RepairPorts) {
         (value) => {
           Object.assign(value, restored);
         },
-        { memories: true },
+        { memories: true, wishes: true },
       );
       for (const value of wanted.values()) {
         if (value.id === "villages-village" || value.kind === "memory-payload" || value.kind === MEMORY_PAGE_KIND)

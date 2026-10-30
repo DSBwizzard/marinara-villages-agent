@@ -57,6 +57,7 @@ import {
   readSocialWishChanges,
   SOCIAL_WISH_INSTRUCTION,
   WishInterpretationError,
+  wishHistoryLoaded,
   wishWritingContext,
 } from "../../domain/rules/social-wishes.js";
 
@@ -117,6 +118,8 @@ function mailReview(review: RelationshipReview): RelationshipReview {
 }
 /** Retain only the authority needed to interpret this correspondence. Never a second transcript database. */
 function admission(village: VillageState, residentId: string): VillageState {
+  if (village.villagers.some((row) => !wishHistoryLoaded(row)))
+    throw new Error("Correspondence Wish authority was not loaded.");
   const state = defaultVillageState(),
     social =
       socialContextState(village.relationshipContext, [residentId], "") ?? defaultRelationshipState(village.seed);
@@ -438,56 +441,59 @@ export function createSocialMail(ports: SocialMailPorts) {
       replyId = input.messageId + ":reply";
     const rows = (bundle === "source" ? result.sourceWishChanges : result.replyWishChanges) ?? [];
     let facts: import("../../../shared/contracts/wishes.js").WishDisclosure[] = [];
-    await ports.mutateVillageState((state) => {
-      if (state.seed !== input.seed) throw conflict("Village identity changed.");
-      const captured = structuredClone(input.admitted.villagers);
-      if (bundle === "reply")
-        for (const original of captured) {
-          for (const receipt of Object.values(state.exchangeReceipts)) {
-            if (
-              receipt.sceneId !== "mail:" + sourceId + ":source" ||
-              receipt.actorId !== original.characterId ||
-              !receipt.sceneFacts?.wish?.value
-            )
-              continue;
-            const value = receipt.sceneFacts.wish.value;
-            original.wishes = [...original.wishes.filter((w) => w.id !== value.id), structuredClone(value)];
+    await ports.mutateVillageState(
+      (state) => {
+        if (state.seed !== input.seed) throw conflict("Village identity changed.");
+        const captured = structuredClone(input.admitted.villagers);
+        if (bundle === "reply")
+          for (const original of captured) {
+            for (const receipt of Object.values(state.exchangeReceipts)) {
+              if (
+                receipt.sceneId !== "mail:" + sourceId + ":source" ||
+                receipt.actorId !== original.characterId ||
+                !receipt.sceneFacts?.wish?.value
+              )
+                continue;
+              const value = receipt.sceneFacts.wish.value;
+              original.wishes = [...original.wishes.filter((w) => w.id !== value.id), structuredClone(value)];
+            }
           }
-        }
-      const lines = [
-        {
-          id: sourceId,
-          speakerId: input.mode === "resident" ? input.residentId : "player",
-          content: input.sourceText,
-          heardBy: [input.residentId, "player"],
-          playerHeard: true,
+        const lines = [
+          {
+            id: sourceId,
+            speakerId: input.mode === "resident" ? input.residentId : "player",
+            content: input.sourceText,
+            heardBy: [input.residentId, "player"],
+            playerHeard: true,
+            kind: "mail",
+          },
+          ...(bundle === "reply"
+            ? [
+                {
+                  id: replyId,
+                  speakerId: input.residentId,
+                  content: result.replyText,
+                  heardBy: [input.residentId, "player"],
+                  playerHeard: true,
+                  kind: "mail",
+                },
+              ]
+            : []),
+        ];
+        facts = applyWishSource(state, {
+          id: "mail:" + sourceId + ":" + bundle,
           kind: "mail",
-        },
-        ...(bundle === "reply"
-          ? [
-              {
-                id: replyId,
-                speakerId: input.residentId,
-                content: result.replyText,
-                heardBy: [input.residentId, "player"],
-                playerHeard: true,
-                kind: "mail",
-              },
-            ]
-          : []),
-      ];
-      facts = applyWishSource(state, {
-        id: "mail:" + sourceId + ":" + bundle,
-        kind: "mail",
-        at: input.sourceAt,
-        recordedAt: new Date().toISOString(),
-        lines,
-        currentLineIds: bundle === "reply" ? [replyId] : [sourceId],
-        changes: rows,
-        authority: captureWishAuthority(captured, readSocialWishChanges(rows)),
-        learn: false,
-      }).disclosures;
-    });
+          at: input.sourceAt,
+          recordedAt: new Date().toISOString(),
+          lines,
+          currentLineIds: bundle === "reply" ? [replyId] : [sourceId],
+          changes: rows,
+          authority: captureWishAuthority(captured, readSocialWishChanges(rows)),
+          learn: false,
+        }).disclosures;
+      },
+      { wishes: [input.residentId] },
+    );
     await ports.mutateRelationships(input.seed, (state) => {
       const message = mutablePersonalMessage(state, input.threadId, bundle === "reply" ? replyId : sourceId);
       if (message && message.toId === "player") message.wishDisclosures = facts;
@@ -886,6 +892,12 @@ export function createSocialMail(ports: SocialMailPorts) {
     messageId: string,
     retainedReply?: string,
   ): Promise<SocialMailInput> {
+    if (village.villagers.some((row) => !wishHistoryLoaded(row))) {
+      const current = await ports.readVillageSnapshot({ memories: true, wishes: true });
+      if (current.seed !== village.seed || current.setupAt !== village.setupAt)
+        throw conflict("Village identity changed.");
+      village = current;
+    }
     const state = await ports.readRelationshipState(village.seed),
       { message } = requireMailSource(state, threadId, messageId);
     const resident = village.villagers.find(

@@ -81,7 +81,7 @@ import {
 import { localDateKey } from "../rules/resident-planning.js";
 import { coerceScenarioImprint, coerceWorldFacts } from "../rules/scenario-rules.js";
 import { coerceSocialActivities } from "../rules/social-activity.js";
-import { readSocialWish } from "../rules/social-wishes.js";
+import { copySocialWishes } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
@@ -102,7 +102,7 @@ import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 10,
+    version: 11,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -195,6 +195,7 @@ export function defaultVillageState(): VillageState {
 }
 function coerceVillager(value: unknown, venues: readonly VillageVenue[]): VillageVillager | null {
   const raw = asRecord(value);
+  if (Object.hasOwn(raw, "wishHead")) throw new Error("Wish history was not loaded for this operation.");
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
   const cardSnapshot = coerceVillagerCardSnapshot(raw.cardSnapshot);
@@ -226,7 +227,7 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
     agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name, raw.ingestSchedule !== false),
-    wishes: Array.isArray(raw.wishes) ? raw.wishes.map(readSocialWish) : [],
+    wishes: copySocialWishes(raw.wishes),
     ingestSchedule: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false).enabled,
     scheduleInfluence: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false),
     // Read on the same terms as the agenda, and for the same reason — but null
@@ -1441,7 +1442,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 10) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 11) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1484,7 +1485,7 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
   const state: VillageState = {
-    version: 10,
+    version: 11,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(

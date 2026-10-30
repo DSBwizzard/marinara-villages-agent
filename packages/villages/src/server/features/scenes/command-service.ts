@@ -2767,7 +2767,17 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     try {
       updated =
         venueOperationInput()?.preservationVersion === 1 && withVillageSceneAcceptance
-          ? await withVillageSceneAcceptance(commitTurn)
+          ? await withVillageSceneAcceptance(commitTurn, {
+              wishes: Array.isArray(reply.wishChanges)
+                ? [
+                    ...new Set(
+                      reply.wishChanges.flatMap((row) =>
+                        typeof asRecord(row).actorId === "string" ? [asRecord(row).actorId as string] : [],
+                      ),
+                    ),
+                  ]
+                : [],
+            })
           : await commitTurn(applicationVillage);
     } catch (error) {
       if (error instanceof HaltedSceneTurn) return hold(error.outcome);

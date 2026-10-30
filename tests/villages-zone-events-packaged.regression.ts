@@ -336,7 +336,13 @@ const runtime = {
   },
   languageModels: { resolve: async () => model, resolveForRequest: async () => model },
   json: { parseJsonish: JSON.parse },
-  logger: { info() {}, warn() {}, error() {}, debug() {}, debugOverride() {} },
+  logger: {
+    info() {},
+    warn() {},
+    error() {},
+    debug() {},
+    debugOverride() {},
+  },
   isDebugAgentsEnabled: () => false,
   getAgentConfig: async () => ({ settings: {} }),
 };
@@ -1546,13 +1552,14 @@ try {
   records.clear();
   for (const [key, record] of clone(beforeInvalidSound)) records.set(key, record);
   // A simple complete System verdict is consumed once, without Decisions or a second Wish judge.
-  const liveWorld = records.get("villages-village").data;
+  const liveWorld = fixtureVillageState(records.get("villages-village").data, records);
   const wish = fixtureWish(
     { wish: "A brief discussion of the harbour" },
     "semantic-simple-wish",
     new Date(now).toISOString(),
   );
   liveWorld.villagers.find((row: any) => row.characterId === "aqua").wishes = [wish];
+  records.get("villages-village").data = liveWorld;
   editFixtureScene((saved) => {
     saved.continuity.facts.villagers = clone(liveWorld.villagers);
   });
@@ -1572,9 +1579,8 @@ try {
   ]);
   assert.equal(state().submissions.at(-1).processing.domains.wishes.status, "applied");
   assert(
-    records
-      .get("villages-village")
-      .data.villagers.find((row: any) => row.characterId === "aqua")
+    fixtureVillageState(records.get("villages-village").data, records)
+      .villagers.find((row: any) => row.characterId === "aqua")
       .wishes.some((row: any) => row.id === wish.id && row.status === "fulfilled"),
   );
   const canonicalVenue = records.get("villages-village").data.venues[0];

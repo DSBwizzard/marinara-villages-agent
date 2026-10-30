@@ -55,7 +55,14 @@ async function world(f: ReturnType<typeof sceneHistoryFixture>) {
     kind: "village",
     name: "World",
     description: "",
-    data: { ...fields, seed: scope.villageSeed, setupAt: at, foundedAt: at, memoryHead: null },
+    data: {
+      ...fields,
+      seed: scope.villageSeed,
+      setupAt: at,
+      foundedAt: at,
+      memoryHead: null,
+      wishArchiveHead: { count: 0, root: null },
+    },
   });
 }
 function coordinatorFor(f: ReturnType<typeof sceneHistoryFixture>) {

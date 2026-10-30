@@ -166,7 +166,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       let connectionBlocked = false;
       for (const kind of ["routine", "wish"] as const) {
         for (const villager of initial.villagers) {
-          const latest = await readVillageState(),
+          const latest = await readVillageState({ wishes: [villager.characterId] }),
             marker = latest.foundingPreparation,
             id = villager.characterId;
           if (latest.seed !== initial.seed || marker?.status !== "pending") return;
@@ -418,27 +418,30 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
   }
 
   async function initializeTasks(seed: string) {
-    await mutateVillageState((live) => {
-      const marker = live.foundingPreparation;
-      if (live.seed !== seed || marker?.status !== "pending") return;
-      marker.tasksVersion = 1;
-      marker.tasks ??= {};
-      for (const resident of live.villagers)
-        for (const kind of ["routine", "wish"] as const) {
-          marker.tasks[resident.characterId] ??= {};
-          const revision = foundingTaskRevision(live, resident.characterId, kind),
-            prior = marker.tasks[resident.characterId][kind];
-          if (prior?.status === "completed" || prior?.revision === revision) continue;
-          marker.tasks[resident.characterId][kind] = {
-            contract: 1,
-            revision,
-            jobId: foundingSlot(kind, resident.characterId),
-            status: "pending",
-            attempt: 0,
-            error: "",
-          };
-        }
-    });
+    await mutateVillageState(
+      (live) => {
+        const marker = live.foundingPreparation;
+        if (live.seed !== seed || marker?.status !== "pending") return;
+        marker.tasksVersion = 1;
+        marker.tasks ??= {};
+        for (const resident of live.villagers)
+          for (const kind of ["routine", "wish"] as const) {
+            marker.tasks[resident.characterId] ??= {};
+            const revision = foundingTaskRevision(live, resident.characterId, kind),
+              prior = marker.tasks[resident.characterId][kind];
+            if (prior?.status === "completed" || prior?.revision === revision) continue;
+            marker.tasks[resident.characterId][kind] = {
+              contract: 1,
+              revision,
+              jobId: foundingSlot(kind, resident.characterId),
+              status: "pending",
+              attempt: 0,
+              error: "",
+            };
+          }
+      },
+      { wishes: true },
+    );
   }
   return {
     prepareFoundedVillage,

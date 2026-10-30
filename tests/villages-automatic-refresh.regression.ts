@@ -294,7 +294,7 @@ async function main() {
     assert.equal(modelCalls, 0, "story pace Off never blocks deterministic reconciliation and spends no model call");
     assert.equal((await readVillageState()).simulatedThrough, later.toISOString());
     assert.equal((await readVillageState()).lastKnownTimeZone, quiet.village.timeZone);
-    const retainedState = await readVillageState();
+    const retainedState = await readVillageState({ wishes: true });
     assert.equal(
       retainedState.villagers[0].wishes[0].id,
       "retained",
@@ -396,6 +396,7 @@ async function main() {
       state.villagers = [
         {
           characterId: "housing-resident",
+          wishes: [],
           cardSnapshot: {
             id: "housing-resident",
             name: "Rosa",

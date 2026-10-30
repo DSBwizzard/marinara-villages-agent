@@ -33,7 +33,7 @@ type Ports = {
 };
 export function createWishes(ports: Ports) {
   async function queueFoundingWish(characterId: string, context: CompactFoundingContext) {
-    const state = await ports.readVillageState(),
+    const state = await ports.readVillageState({ wishes: [characterId] }),
       revision = foundingTaskRevision(state, characterId, "wish");
     const resident = state.villagers.find((r) => r.characterId === characterId);
     if (!resident) throw notFound("Resident unavailable.");
@@ -142,7 +142,7 @@ export function createWishes(ports: Ports) {
           learn: !scene.id.startsWith("offscreen:"),
         });
       },
-      { memories: true },
+      { memories: true, wishes: authority.owners.map((owner) => owner.actorId) },
     );
     return {
       status: "applied" as const,

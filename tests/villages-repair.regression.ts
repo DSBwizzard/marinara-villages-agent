@@ -1,6 +1,6 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/wish-checkpoints, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
 import assert from "node:assert/strict";
 import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import {
@@ -22,6 +22,7 @@ import {
 } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createRepairTransactionCodec } from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
 import { createRepairSnapshots } from "../packages/villages/src/server/adapters/storage/repair-snapshot-store.js";
+import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -148,7 +149,7 @@ async function fixture() {
       repo = createVillageRepository(() => gate.documents);
       api = makeService();
     },
-    read: () => repo.readAuthority({ memories: true }),
+    read: () => repo.readAuthority({ memories: true, wishes: true }),
   };
 }
 await runCase("repair/place-continuity", async () => {
@@ -1650,6 +1651,7 @@ await runCase("repair/wishes", async () => {
     const wish = fixtureWish({ wish: "Share a conversation", reason: "Private motive." }, "talk");
     wish.status = "fulfilled";
     state.villagers[0].wishes = [wish];
+    state.villagers[1].wishes = [fixtureWish({ wish: "A separately retained private desire" }, "separate")];
   });
   const record = await f.api.inspect(repairId("wish", "a", "talk"));
   const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
@@ -1658,6 +1660,21 @@ await runCase("repair/wishes", async () => {
   const before = await f.read(),
     review = await f.prepare(edit(record.id, values, "fix-social-wish"));
   assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled", "Repair review is read-only");
+  const plan = [...f.rows.values()].find((row) => row.kind === "repair-plan" && row.data.review.id === review.id)!;
+  const originalTransaction = plan.data.transaction;
+  const codec = createRepairTransactionCodec(f.store),
+    transaction = await codec.decode(originalTransaction);
+  const dependency = f.rows.get(f.rows.get("villages-village").data.villagers[1].wishHead.root.id);
+  const { id, kind, name, description, data } = dependency;
+  transaction.writes.push({ before: { id, kind, name, description, data }, after: null });
+  plan.data.transaction = await codec.encode(transaction);
+  const protectedRows = structuredClone(f.rows);
+  await assert.rejects(f.api.apply(review.id, review.token), /Wish history is missing or changed/);
+  await assert.rejects(collectRetainedStorage(f.gate), /Wish history page is missing or changed/);
+  assert.deepEqual(f.rows, protectedRows, "A proposed deletion cannot masquerade as an available physical dependency");
+  plan.data.transaction = originalTransaction;
+  f.reopen();
+  await collectRetainedStorage(f.gate);
   await f.api.apply(review.id, review.token);
   const repaired = await f.read(),
     wish = repaired.villagers[0].wishes[0];
@@ -1666,6 +1683,47 @@ await runCase("repair/wishes", async () => {
   assert(wish.revision > before.villagers[0].wishes[0].revision);
   assert.deepEqual(knownSocialWishes(repaired, "a"), [], "Administrative state repair grants no player knowledge");
   const undo = await f.api.undo(review.id, "undo-social-wish");
+  f.reopen();
+  await collectRetainedStorage(f.gate);
   await f.api.apply(undo.id, undo.token);
   assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled");
+});
+
+await runCase("repair/wish-checkpoints", async () => {
+  const f = await fixture();
+  await f.repo.mutateAuthority((state) => {
+    state.foundedAt = state.setupAt;
+    state.villagers = wishWorld().villagers;
+    state.villagers[0].wishes = Array.from({ length: 25_000 }, (_, index) =>
+      fixtureWish({ wish: "Exact retained desire " + index }, "wish:" + index),
+    );
+    state.villagers[1].wishes = [fixtureWish({ wish: "A former resident's private desire" }, "former")];
+  });
+  const checkpoint = await f.api.createCheckpoint("Large Wish library", "large-wish-library");
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.villagers[0].wishes[0] = { ...state.villagers[0].wishes[0], status: "fulfilled", revision: 2 };
+      state.villagers = state.villagers.filter((resident) => resident.characterId !== "b");
+    },
+    { wishes: ["a"] },
+  );
+  assert.equal(f.rows.get("villages-village").data.wishArchiveHead.count, 1);
+  f.reopen();
+  const restore = await f.api.restore(checkpoint.id, "restore-large-wishes");
+  f.reopen();
+  await collectRetainedStorage(f.gate);
+  await f.api.apply(restore.id, restore.token);
+  f.reopen();
+  const restored = await f.read();
+  assert.equal(restored.villagers[0].wishes.length, 25_000);
+  assert.equal(restored.villagers[0].wishes[0].status, "open");
+  assert.ok(restored.villagers[0].wishes[0].revision > 2);
+  assert.equal(restored.villagers[0].wishes.at(-1)!.wish, "Exact retained desire 24999");
+  assert.equal(restored.villagers[1].wishes[0].id, "former");
+  assert.equal(
+    f.rows.get("villages-village").data.wishArchiveHead.count,
+    1,
+    "Restoration preserves the monotonic private archive instead of rewinding meaningful removed history",
+  );
+  await collectRetainedStorage(f.gate);
 });

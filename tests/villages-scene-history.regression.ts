@@ -73,7 +73,14 @@ for (const count of [1000, 10_000, 25_000]) {
       kind: "village",
       name: "World",
       description: "",
-      data: { ...world, memories: undefined, memoryScenes: undefined, memoryReceipts: undefined, memoryHead: null },
+      data: {
+        ...world,
+        memories: undefined,
+        memoryScenes: undefined,
+        memoryReceipts: undefined,
+        memoryHead: null,
+        wishArchiveHead: { count: 0, root: null },
+      },
     });
     // Native roots omit unloaded history keys rather than saving undefined placeholders.
     for (const field of ["memories", "memoryScenes", "memoryReceipts"]) delete rows.get("villages-village").data[field];

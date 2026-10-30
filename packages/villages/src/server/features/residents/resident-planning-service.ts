@@ -1,3 +1,4 @@
+import { copySocialWishes, immutableSocialWishes } from "../../domain/rules/social-wishes.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import { environmentObservations } from "../../domain/rules/narrative-environment.js";
 import { createHash } from "node:crypto";
@@ -80,7 +81,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
   } = ports;
   async function reconcile(now: Date, dueOnly = false): Promise<boolean | void> {
     await ports.applySavedStartingTies?.();
-    const village = await readVillageState({ memories: true });
+    const village = await readVillageState({ memories: true, wishes: true });
     const dateKey = activityDate(village, now),
       allowance = planningAllowance(village.backgroundPace, village.seed, dateKey);
     if (
@@ -223,7 +224,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     opportunity: ResidentPlanningOpportunity,
     capture: ReturnCatchupCapture,
   ): Promise<void> {
-    const current = await readVillageState({ memories: true });
+    const current = await readVillageState({ memories: true, wishes: true });
     if (current.returnCatchup?.batch?.id !== batchId || current.returnCatchup.batch.status !== "running")
       throw new Error("The catch-up batch is no longer active.");
     const eventAt = Date.parse(opportunity.startsAt),
@@ -726,7 +727,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           const captured = tracking.capture.world.villagers.find((row) => row.characterId === id);
           const live = state.villagers.find((row) => row.characterId === id);
           if (!captured || !live) throw new Error("The reflecting resident changed.");
-          captured.wishes = structuredClone(live.wishes);
+          captured.wishes = copySocialWishes(immutableSocialWishes(live.wishes));
         }
       }
     },

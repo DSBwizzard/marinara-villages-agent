@@ -32,6 +32,8 @@ import {
 import { createSceneTranscriptTracer } from "../../adapters/storage/scene-transcript-pages.js";
 import { createSceneSubmissionTracer } from "../../adapters/storage/scene-submission-pages.js";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
+import { worldWishOwners } from "../../adapters/storage/world-wishes.js";
+import { createWishHistoryTracer } from "../../adapters/storage/wish-history.js";
 import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
 import {
   OPERATION_EVIDENCE_KIND,
@@ -175,11 +177,11 @@ export async function collectRetainedStorage(gate: RepairGate) {
       }
     }
     type Scope = ReturnType<typeof scope>;
-    function scope(overlay = new Map<string, RepairDocument>()) {
+    function scope(overlay = new Map<string, RepairDocument | null>()) {
       const heads = new Map<string, string>(),
         bodies = new Map<string, string>();
       const lookup = async (id: string): Promise<RepairDocument | null> =>
-        overlay.get(id) ?? (await documents.getById(PACKAGE, id));
+        overlay.has(id) ? overlay.get(id)! : await documents.getById(PACKAGE, id);
       const tracer = createMemoryPageTracer(async (id) => {
         const row = await lookup(id);
         memoryRequire(row && row.kind === "memory-page", "owned history page is missing");
@@ -204,7 +206,13 @@ export async function collectRetainedStorage(gate: RepairGate) {
         marked.add(id);
         return row.data as MemoryPageData;
       });
-      return { overlay, lookup, tracer, relationships, transcripts, submissions, heads, bodies };
+      const wishes = createWishHistoryTracer(async (id) => {
+        const row = await lookup(id);
+        memoryRequire(row?.id === id && row.kind === "memory-page", "owned Wish history page is missing or changed");
+        marked.add(id);
+        return row.data as MemoryPageData;
+      });
+      return { overlay, lookup, tracer, relationships, transcripts, submissions, wishes, heads, bodies };
     }
     async function relationshipHistory(head: RelationshipHead, owner: RelationshipScope, view: Scope) {
       assertRelationshipWorld(head, owner);
@@ -293,11 +301,10 @@ export async function collectRetainedStorage(gate: RepairGate) {
       const codec = createRepairTransactionCodec(documents),
         inspected = await codec.inspect(value.transaction);
       const overlay = new Map(inherited.overlay);
-      for (const write of inspected.writes)
-        if (write.after) {
-          overlay.set(write.after.id, write.after);
-          if (CANDIDATES.includes(write.after.kind)) marked.add(write.after.id);
-        }
+      for (const write of inspected.writes) {
+        overlay.set(write.id, write.after);
+        if (write.after && CANDIDATES.includes(write.after.kind)) marked.add(write.after.id);
+      }
       const view = scope(overlay);
       for (const frame of JSON.parse(value.transaction.writes))
         if (!Object.hasOwn(frame, "memoryPages") && frame.after !== null) await snapshot(frame.after, view);
@@ -311,7 +318,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
         memoryObject(row.data);
         memoryRequire(
           row.id === "villages-village" &&
-            row.data.version === 10 &&
+            row.data.version === 11 &&
             typeof row.data.seed === "string" &&
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",
@@ -320,6 +327,9 @@ export async function collectRetainedStorage(gate: RepairGate) {
         if (head) await history(head, row.data as { seed: string; setupAt: string }, view);
         const departure = departureHistoryOwner(row.data);
         if (departure?.head) await relationshipHistory(departure.head, departure.scope, view);
+        const wishOwners = worldWishOwners(row.data);
+        for (const owner of wishOwners.owners) await view.wishes.trace(owner.head, owner.scope);
+        await view.wishes.traceArchive(wishOwners.archive, wishOwners.scope);
       } else if (row.kind === "relationships") {
         const root = readRelationshipRoot(row.data);
         memoryRequire(row.id === relationshipDocumentId(root.seed), "unknown relationship root identity");

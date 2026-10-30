@@ -915,7 +915,7 @@ async function main() {
       "Old queued standing speech cannot revive permission after authority was withdrawn and restored.",
     );
 
-    const friendWorld = await readVillageState({ memories: true });
+    const friendWorld = await readVillageState({ memories: true, wishes: true });
     const visitor = friendWorld.villagers.find((resident) => resident.characterId === "visitor")!;
     visitor.agenda = unwrittenVillageAgenda(friendWorld.venues, "visitor");
     const future = new Date();
@@ -1306,7 +1306,7 @@ async function main() {
     );
 
     // An offscreen accepted encounter writes canonical standing permission; rejected continuations cannot.
-    const socialWorld = await readVillageState({ memories: true }),
+    const socialWorld = await readVillageState({ memories: true, wishes: true }),
       socialAt = new Date(
         Math.max(
           Date.now(),
@@ -1387,7 +1387,7 @@ async function main() {
       ),
       "Accepted offscreen standing access recovers from the saved encounter.",
     );
-    const rejectedWorld = await readVillageState({ memories: true });
+    const rejectedWorld = await readVillageState({ memories: true, wishes: true });
     rejectedWorld.socialOutbox = [
       { ...socialWorld.socialOutbox[0], id: "rejected-continuation", requiredPlanId: "missing-plan" },
     ];
@@ -1399,7 +1399,7 @@ async function main() {
       ),
       "Rejected offscreen continuation cannot grant access in the second transaction.",
     );
-    const moveWorld = await readVillageState({ memories: true }),
+    const moveWorld = await readVillageState({ memories: true, wishes: true }),
       oldHome = moveWorld.venues[0];
     oldHome.destinations!.jim = { home: "living", sleep: "bedroom" };
     for (const zone of oldHome.zones!.filter((zone) => zone.ownerId === "jim"))

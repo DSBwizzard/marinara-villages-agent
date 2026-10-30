@@ -27,20 +27,28 @@ export function mutateVillageState(...args: Parameters<VillageStateService["muta
 
 export function withVillageSceneAcceptance<T>(
   work: (state: import("../../domain/models/world.js").VillageState) => Promise<T>,
+  options?: import("../../domain/models/world-repository.js").VillageMemoryRead,
 ) {
-  return villageStateService().withVillageSceneAcceptance(work);
+  return villageStateService().withVillageSceneAcceptance(work, options);
 }
 
 /** Explicit history access for recall, disclosures, Scene capture and learning. */
-export function readVillageMemoryState() {
-  return villageStateService().readVillageState({ memories: true });
+export function readVillageMemoryState(options?: import("../../domain/models/world-repository.js").VillageMemoryRead) {
+  return villageStateService().readVillageState({ ...options, memories: true });
 }
-export function readVillageMemoryAuthority() {
-  return villageStateService().readVillageAuthority({ memories: true });
+export function readVillageMemoryAuthority(
+  options?: import("../../domain/models/world-repository.js").VillageMemoryRead,
+) {
+  return villageStateService().readVillageAuthority({ ...options, memories: true });
 }
-export function readVillageMemorySnapshot() {
-  return villageStateService().readVillageSnapshot({ memories: true });
+export function readVillageMemorySnapshot(
+  options?: import("../../domain/models/world-repository.js").VillageMemoryRead,
+) {
+  return villageStateService().readVillageSnapshot({ ...options, memories: true });
 }
-export function mutateVillageMemoryState(update: Parameters<VillageStateService["mutateVillageState"]>[0]) {
-  return villageStateService().mutateVillageState(update, { memories: true });
+export function mutateVillageMemoryState(
+  update: Parameters<VillageStateService["mutateVillageState"]>[0],
+  options?: import("../../domain/models/world-repository.js").VillageMemoryWrite,
+) {
+  return villageStateService().mutateVillageState(update, { ...options, memories: true });
 }

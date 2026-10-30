@@ -50,6 +50,8 @@ export function createUsagePreview({
     const snapshot = await readVillageAuthority();
     const original = coerceVillageState({
       ...snapshot,
+      villagers: snapshot.villagers.map((resident) => ({ ...resident, wishes: [] })),
+      returnCatchup: undefined,
       memories: defaultVillageState().memories,
       memoryScenes: {},
       memoryReceipts: {},
