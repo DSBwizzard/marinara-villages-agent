@@ -237,7 +237,13 @@ export type BuildProject = {
     approvals: { residentId: string; source: "conversation" }[];
     candidates: { residentId: string }[];
     builderId: string;
-    workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;
+    workOrder: {
+      startsAt: string;
+      completesAt: string;
+      pausedAt: string;
+      remainingMs: number;
+      focus?: { minutes: number; nextPeriod: { startsAt: string; endsAt: string } | null };
+    } | null;
     blockedReason: string;
     completedAt: string;
   };

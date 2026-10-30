@@ -1,6 +1,12 @@
 import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
 import { completeProject } from "./project-completion.js";
+import {
+  allocateProjectFocus,
+  projectFocusValid,
+  trimProjectFocus,
+  projectAgendaReservations,
+} from "./project-focus.js";
 import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
@@ -73,6 +79,7 @@ export function refreshProjectAgreements(state: VillageState): void {
 }
 export function pauseProject(project: VillageProject, at: string, reason: string): void {
   const flow = project.lifecycle!;
+  trimProjectFocus(project, at);
   if (flow.workOrder && !flow.workOrder.pausedAt) {
     const pausedAt = Math.max(Date.parse(flow.workOrder.startsAt), Date.parse(at));
     flow.workOrder.remainingMs = Math.max(
@@ -93,7 +100,9 @@ export function finishConstruction(
   if (project.status !== "working" || !project.lifecycle.workOrder || project.lifecycle.workOrder.pausedAt) return;
   const staged = structuredClone(state);
   try {
+    trimProjectFocus(projectFor(staged, project.id), at);
     completeProject(staged, projectFor(staged, project.id), at);
+    projectAgendaReservations(staged);
     Object.assign(state, staged);
   } catch (error) {
     pauseProject(project, at, error instanceof Error ? error.message : "The completed Project needs review.");
@@ -125,5 +134,13 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
     }
     if (flow.workOrder && Date.parse(flow.workOrder.completesAt) <= now.getTime())
       finishConstruction(state, project, flow.workOrder.completesAt);
+    else if (flow.workOrder?.focus) {
+      try {
+        if (!projectFocusValid(state, project, now)) flow.workOrder.focus = allocateProjectFocus(state, project, now);
+      } catch (error) {
+        pauseProject(project, at, error instanceof Error ? error.message : "The lead's Agenda needs review.");
+      }
+    }
   }
+  projectAgendaReservations(state);
 }

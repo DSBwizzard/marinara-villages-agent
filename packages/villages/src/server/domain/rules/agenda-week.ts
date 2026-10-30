@@ -1,5 +1,6 @@
 import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "../models/world.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
+import { composeAgenda } from "./agenda-composition.js";
 import { lookupRemap, remapBlockKey } from "./native-remap.js";
 import { routineDay } from "./owned-routine.js";
 import { type NativeWeekSchedule, parseBlockRange } from "./schedule-rules.js";
@@ -200,7 +201,7 @@ export function scheduleInformedWeek(
 export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean, at: Date): VillageAgendaBlock[] {
   const key = agendaDateKey(at);
   const weekday = VILLAGE_WEEKDAYS[(at.getDay() + 6) % 7]!;
-  let ordinary =
+  const ordinary =
     agenda.activeDay?.dateKey === key
       ? agenda.activeDay.blocks
       : (agenda.plannedDays?.[key] ??
@@ -228,29 +229,15 @@ export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean,
           ...block(entry.startMinute, entry.endMinute, entry.venueId, entry.activity),
           zoneId: entry.zoneId,
         })));
-  for (const adjustment of agenda.socialActivities ?? []) {
-    if (adjustment.dateKey !== key) continue;
-    const started = agenda.activeDay?.dateKey === key && adjustment.startMinute <= at.getHours() * 60 + at.getMinutes();
-    if (!started && !flexibleAgendaInterval(ordinary, adjustment.startMinute, adjustment.endMinute)) continue;
-    ordinary = ordinary.flatMap((entry) => {
-      const start = Math.max(entry.startMinute, adjustment.startMinute),
-        end = Math.min(entry.endMinute, adjustment.endMinute);
-      if (start >= end || !flexibleAgendaBlock(entry)) return [entry];
-      return [
-        ...(entry.startMinute < start ? [{ ...entry, endMinute: start }] : []),
-        {
-          ...entry,
-          startMinute: start,
-          endMinute: end,
-          venueId: adjustment.venueId,
-          zoneId: adjustment.zoneId,
-          activity: adjustment.activity,
-          commitmentId: adjustment.wishId,
-          flexible: false,
-        },
-        ...(entry.endMinute > end ? [{ ...entry, startMinute: end }] : []),
-      ];
-    });
-  }
-  return ordinary;
+  return composeAgenda(ordinary, [
+    ...(agenda.socialActivities ?? [])
+      .filter((activity) => activity.dateKey === key)
+      .map((activity) => ({
+        ...activity,
+        id: activity.wishId,
+        source: "social" as const,
+        replaces: "flexible" as const,
+      })),
+    ...(agenda.reservations ?? []).filter((reservation) => reservation.dateKey === key),
+  ]);
 }

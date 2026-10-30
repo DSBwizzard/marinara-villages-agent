@@ -54,6 +54,8 @@ export type VillageAgenda = {
   routineProfile?: import("../rules/owned-routine.js").RoutineProfile;
   scheduleInfluenceSnapshot?: import("../rules/owned-routine.js").InfluenceSnapshot;
   socialActivities?: import("./social-activity.js").SocialActivity[];
+  /** Derived from feature authority on hydration; never an independently editable booking. */
+  reservations?: import("./agenda-reservation.js").AgendaReservation[];
   /** One line about an ordinary day for them, here. */
   routineSummary: string;
   /** The village's repeating exact-time day when the Engine has no weekly schedule. */
@@ -64,7 +66,6 @@ export type VillageAgenda = {
   scheduleWeek?: Record<string, VillageAgendaBlock[]> | null;
   /** The day already in progress never changes when a week is rewritten. */
   activeDay?: { dateKey: string; weekday: string; blocks: VillageAgendaBlock[]; scheduleInformed: boolean };
-  /** A single agreed construction shift overrides the ordinary plan while it runs. */
   /** Failed generation keeps the owned routine; only deliberate retry can spend again. */
   personalizationPending?: boolean;
   /** Latest actionable generation failure; empty while work is queued or successful. */
@@ -783,7 +784,13 @@ export type VillageProjectLifecycle = {
   commandReceipts: Record<string, string>;
   baseDesignHash: string;
   changedZoneIds: string[];
-  workOrder: { startsAt: string; completesAt: string; pausedAt: string; remainingMs: number } | null;
+  workOrder: {
+    startsAt: string;
+    completesAt: string;
+    pausedAt: string;
+    remainingMs: number;
+    focus?: import("./agenda-reservation.js").ProjectFocus;
+  } | null;
   blockedReason: string;
   completedAt: string;
 };

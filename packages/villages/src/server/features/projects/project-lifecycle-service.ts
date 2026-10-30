@@ -18,6 +18,7 @@ import {
   projectFor,
 } from "../../domain/rules/project-lifecycle-rules.js";
 import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
+import { allocateProjectFocus, projectAgendaReservations, trimProjectFocus } from "../../domain/rules/project-focus.js";
 import { approvalScope, projectDesignKey } from "../../domain/rules/project-terms.js";
 import { assertCanAddVillageVenue } from "../../domain/rules/venue-capacity.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
@@ -261,17 +262,21 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     }
     const at = now.toISOString(),
       remaining = resume ? flow.workOrder!.remainingMs : PROJECT_DURATION_MS;
+    const previousFocus = flow.workOrder?.focus;
     flow.builderId = lead;
     flow.workOrder = {
       startsAt: at,
       completesAt: new Date(now.getTime() + remaining).toISOString(),
       pausedAt: "",
       remainingMs: remaining,
+      ...(previousFocus ? { focus: previousFocus } : {}),
     };
     project.status = flow.phase = "working";
     flow.blockedReason = "";
     project.updatedAt = at;
     project.participantIds = [lead];
+    flow.workOrder.focus = allocateProjectFocus(state, project, now);
+    projectAgendaReservations(state);
   }
   async function startProjectConstruction(id: string, value: unknown, now = villageNow()) {
     await command(id, value, "start", (state, project, row) => begin(state, project, row, false, now));
@@ -282,10 +287,12 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
   async function cancelProject(id: string, value: unknown, now = villageNow()) {
     await command(id, value, "cancel", (state, project) => {
       if (["complete", "cancelled"].includes(project.status)) throw conflict("This Project is already finished.");
+      trimProjectFocus(project, now.toISOString());
       project.status = project.lifecycle.phase = "cancelled";
       project.updatedAt = now.toISOString();
       project.lifecycle.blockedReason = "";
       if (project.kind === "new-venue") state.venues = state.venues.filter((venue) => venue.buildProjectId !== id);
+      projectAgendaReservations(state);
     });
   }
   async function debugCompleteProjectConstruction(id: string, value: unknown) {

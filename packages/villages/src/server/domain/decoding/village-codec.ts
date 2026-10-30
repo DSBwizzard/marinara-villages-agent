@@ -31,6 +31,7 @@ import type {
 } from "../models/world.js";
 import { unwrittenVillageAgenda, VILLAGE_AGENDA_WINDOWS } from "../rules/agenda-plan.js";
 import { completeAgendaWeek, legacyAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
+import { projectAgendaReservations, readProjectFocus } from "../rules/project-focus.js";
 import { decodeVillageClock } from "../rules/clock-recovery.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
@@ -1175,6 +1176,7 @@ function coerceProjects(value: unknown): VillageProject[] {
             completesAt: String(order.completesAt),
             remainingMs: Number(order.remainingMs),
             pausedAt: asTrimmedString(order.pausedAt),
+            ...(order.focus !== undefined ? { focus: readProjectFocus(order.focus) } : {}),
           }
         : null,
       blockedReason: asTrimmedString(flow.blockedReason),
@@ -1760,5 +1762,6 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
 
+  projectAgendaReservations(state);
   return state;
 }

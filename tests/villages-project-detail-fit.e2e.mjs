@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { openProjectPage, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -128,6 +130,41 @@ try {
       assert.deepEqual(calls.at(-1).body.zones.at(-1).controllerIds, ["player", secondId]);
     }
     await page.close();
+    const working = projectSnapshot();
+    working.village.timeZone = "America/Los_Angeles";
+    working.projects[0].status = working.projects[0].lifecycle.phase = "working";
+    working.projects[0].lifecycle.workOrder = {
+      startsAt: "2026-10-30T02:00:00Z",
+      completesAt: "2026-10-31T02:00:00Z",
+      pausedAt: "",
+      remainingMs: 86_400_000,
+      focus: { minutes: 360, nextPeriod: { startsAt: "2026-10-30T02:01:00Z", endsAt: "2026-10-30T08:01:00Z" } },
+    };
+    const { page: focusPage } = await openProjectPage(browser, width, working);
+    await focusPage.setViewportSize({ width, height });
+    if (width < 700) await focusPage.getByRole("button", { name: "Slot 2", exact: true }).click();
+    await focusPage.getByRole("button", { name: /New Venue.*Canvas Tent.*Working/ }).click();
+    await focusPage.getByRole("button", { name: "Progress", exact: true }).click();
+    await expect(focusPage.getByText("6 hours", { exact: true })).toBeVisible();
+    await expect(focusPage.getByText("Next work period", { exact: true })).toBeVisible();
+    assert(
+      await focusPage
+        .locator(".vp-facts")
+        .innerText()
+        .then((text) => text.includes("7:01") && text.includes("1:01")),
+      "focus times use the Village timezone",
+    );
+    if (process.env.VILLAGES_SCREENSHOT_DIR) {
+      await mkdir(process.env.VILLAGES_SCREENSHOT_DIR, { recursive: true });
+      await focusPage.screenshot({ path: join(process.env.VILLAGES_SCREENSHOT_DIR, `focus-${width}x${height}.png`) });
+    }
+    assert(
+      await focusPage
+        .locator(".marinara-capability-villages-project-root")
+        .evaluate((root) => root.scrollHeight <= root.clientHeight + 1),
+      `focus ${width}x${height} fits its viewport`,
+    );
+    await focusPage.close();
   }
   console.log("Project workspace and detail controls fit desktop and phone viewports.");
 } finally {

@@ -196,7 +196,25 @@ export function createVillageSnapshot({
               approvals: project.lifecycle.approvals.map(({ residentId, source }) => ({ residentId, source })),
               candidates: project.lifecycle.candidates.map(({ residentId }) => ({ residentId })),
               builderId: project.lifecycle.builderId,
-              workOrder: project.lifecycle.workOrder,
+              workOrder: project.lifecycle.workOrder
+                ? {
+                    startsAt: project.lifecycle.workOrder.startsAt,
+                    completesAt: project.lifecycle.workOrder.completesAt,
+                    pausedAt: project.lifecycle.workOrder.pausedAt,
+                    remainingMs: project.lifecycle.workOrder.remainingMs,
+                    ...(project.lifecycle.workOrder.focus
+                      ? {
+                          focus: {
+                            minutes: 360,
+                            nextPeriod:
+                              project.lifecycle.workOrder.focus.periods
+                                .filter((period) => Date.parse(period.endsAt) > now.getTime())
+                                .map(({ startsAt, endsAt }) => ({ startsAt, endsAt }))[0] ?? null,
+                          },
+                        }
+                      : {}),
+                  }
+                : null,
               blockedReason: project.lifecycle.blockedReason,
               completedAt: project.lifecycle.completedAt,
             }

@@ -158,6 +158,10 @@ This build requires a fresh format-7 Village. Older worlds and setup records rem
 
 Every Project takes **24 elapsed real hours**. Two can be active at once, with different leads and one per Venue or site. Paused Projects count toward those limits. Visiting a site or leaving the game does not speed up or pause its clock.
 
+Starting a Project reserves **six hours of lead focus** before its completion deadline. This replaces ordinary work or discretionary activities while protecting essential duties, rest and accepted time reservations. Work uses substantial periods at the site's Entrance. If the time cannot fit, choose another willing lead or start later. The Project's Progress view shows its next work period; the Agenda determines availability and location from the same reservations.
+
+Pause or cancellation releases the reserved periods. Resume arranges the remaining focus within the remaining Project time. These are planned work periods at minute resolution; the completion clock remains 24 elapsed hours. No separate work history or effort meter is kept.
+
 If the lead withdraws or the necessary authority is lost, work pauses. **Resume** requires a willing lead and valid agreements and preserves the remaining time. Completion applies the agreed design automatically. To change the scope after work starts, finish or cancel first. Canceling an unfinished site leaves its captured Scenes available to conclude.
 
 A Venue supports up to six non-Entrance Zones, two Classes, and four residents. Renovation does not automatically move residents, assign jobs, or grant access.

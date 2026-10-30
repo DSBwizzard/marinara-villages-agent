@@ -96,7 +96,6 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-facts dd{margin:.2rem 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:1.05rem}
 .${P}-project-board .vp-agreements{padding:0;list-style:none;margin:0 0 1rem}
 .${P}-project-board .vp-agreements li{display:flex;justify-content:space-between;gap:.8rem;border-bottom:1px solid var(--bp-line);padding:.75rem 0}
-.${P}-project-board .vp-deadline{font-size:1.7rem;margin:1rem 0;display:block}
 .${P}-project-board .vp-error{border:1px solid #f5cbb3;padding:.75rem;color:#ffe0c8}
 .${P}-project-board .${P}-opening-projects{border:1px solid var(--bp-line);background:var(--bp-panel);padding:.5rem;margin:.5rem 0}
 .${P}-project-board .${P}-project-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem;margin-bottom:.5rem}
