@@ -20,11 +20,11 @@ import {
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import {
   createMemoryPayloadStore,
-  memoryPayloadDocuments,
   readMemoryHead,
   emptyMemoryPayload,
 } from "../../adapters/storage/memory-payload-store.js";
 import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
+import { encodeRepairTransaction, decodeRepairTransaction } from "../../adapters/storage/repair-transaction-codec.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
 import type { MemoryKnower } from "../../domain/models/memories.js";
@@ -258,33 +258,41 @@ export function createRepairService(ports: RepairPorts) {
     typeof value.description === "string" &&
     Object.hasOwn(value, "data");
   function ownedReview(row: Doc, state: VillageState): boolean {
-    const saved = row.data as Partial<PlanData> | null;
-    return (
-      saved?.seed === state.seed &&
-      saved.setupAt === state.setupAt &&
-      typeof saved.review?.id === "string" &&
-      typeof saved.review.token === "string" &&
-      /^[a-zA-Z0-9-]{1,100}$/.test(saved.review.token) &&
-      docId(PLAN, saved.review.id) === row.id &&
-      saved.review.id === saved.request?.operationId &&
-      saved.review.id === saved.history?.id &&
-      ["repair", "undo", "restore"].includes(saved.review.kind) &&
-      typeof saved.requestHash === "string" &&
-      saved.requestHash === repairDigest(saved.request) &&
-      typeof saved.history?.at === "string" &&
-      Array.isArray(saved.transaction?.reads) &&
-      saved.transaction.reads.every((r) => object(r) && typeof r.id === "string" && typeof r.digest === "string") &&
-      Array.isArray(saved.transaction?.lists) &&
-      saved.transaction.lists.every((r) => object(r) && typeof r.kind === "string" && typeof r.digest === "string") &&
-      Array.isArray(saved.transaction?.writes) &&
-      saved.transaction.writes.every(
-        (w) =>
-          object(w) &&
-          (w.before === null || repairDoc(w.before)) &&
-          (w.after === null || repairDoc(w.after)) &&
-          (w.before !== null || w.after !== null),
-      )
-    );
+    try {
+      const saved = readPlan(row);
+      return (
+        saved?.seed === state.seed &&
+        saved.setupAt === state.setupAt &&
+        typeof saved.review?.id === "string" &&
+        typeof saved.review.token === "string" &&
+        /^[a-zA-Z0-9-]{1,100}$/.test(saved.review.token) &&
+        docId(PLAN, saved.review.id) === row.id &&
+        saved.review.id === saved.request?.operationId &&
+        saved.review.id === saved.history?.id &&
+        ["repair", "undo", "restore"].includes(saved.review.kind) &&
+        typeof saved.requestHash === "string" &&
+        saved.requestHash === repairDigest(saved.request) &&
+        typeof saved.history?.at === "string" &&
+        Array.isArray(saved.transaction?.reads) &&
+        saved.transaction.reads.every((r) => object(r) && typeof r.id === "string" && typeof r.digest === "string") &&
+        Array.isArray(saved.transaction?.lists) &&
+        saved.transaction.lists.every((r) => object(r) && typeof r.kind === "string" && typeof r.digest === "string") &&
+        Array.isArray(saved.transaction?.writes) &&
+        saved.transaction.writes.every(
+          (w) =>
+            object(w) &&
+            (w.before === null || repairDoc(w.before)) &&
+            (w.after === null || repairDoc(w.after)) &&
+            (w.before !== null || w.after !== null),
+        )
+      );
+    } catch {
+      return false;
+    }
+  }
+  function readPlan(row: Doc): PlanData {
+    const saved = row.data as PlanData;
+    return { ...saved, transaction: decodeRepairTransaction(saved?.transaction) };
   }
   async function savePlan(plan: PlanData): Promise<RepairReview> {
     return gate.alone(async () => {
@@ -310,7 +318,7 @@ export function createRepairService(ports: RepairPorts) {
       // Evict before insertion. A failed deletion cannot grow the cache; original facts and client drafts remain.
       for (const row of candidates.slice(MAX_PENDING_REVIEWS - 1))
         if (!(await documents.remove(PKG, row.id, row.revision))) throw conflict("Repair reviews changed. Try again.");
-      await store(id, PLAN, plan);
+      await store(id, PLAN, { ...plan, transaction: encodeRepairTransaction(plan.transaction) });
       return plan.review;
     });
   }
@@ -535,10 +543,7 @@ export function createRepairService(ports: RepairPorts) {
     const root = await documents.getById(PKG, "villages-village");
     if (!root) throw badRequest("Found a Village first.");
     rows.push(copy(root));
-    const head = readMemoryHead((root.data as { memoryHead: unknown }).memoryHead);
-    if (head) {
-      rows.push(...(await memoryPayloadDocuments(documents, head, state)).map(copy));
-    }
+    // The copied root owns its immutable Memory head and all transitive pages.
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
     const data: CheckpointData = {
       version: 1,
@@ -892,7 +897,7 @@ export function createRepairService(ports: RepairPorts) {
       if (await documents.getById(PKG, historyId)) return { applied: true };
       throw notFound("Review this repair again. Your draft is kept.");
     }
-    const plan = row.data as PlanData;
+    const plan = readPlan(row);
     if (plan.review?.token !== token)
       throw conflict("This review changed. Review the repair again; your draft is kept.");
     const world = await repository.readAuthority();
@@ -1201,15 +1206,8 @@ export function createRepairService(ports: RepairPorts) {
         delete (data.returnCatchup as { capture?: unknown }).capture;
       for (const row of current) if (!wanted.has(row.id)) await documents.remove(PKG, row.id, row.revision);
       const savedHead = readMemoryHead(data.memoryHead);
-      const checkpointDocuments = {
-        ...documents,
-        async getById(pkg: string, id: string) {
-          const row = wanted.get(id);
-          return row ? { ...row, packageId: pkg, revision: 1, createdAt: "", updatedAt: "" } : null;
-        },
-      };
       const payload = savedHead
-        ? await createMemoryPayloadStore(checkpointDocuments).read(savedHead, data as unknown as VillageState)
+        ? await createMemoryPayloadStore(documents).read(savedHead, data as unknown as VillageState)
         : emptyMemoryPayload();
       if (!payload) throw conflict("The checkpoint’s Memories payload is unavailable.");
       if (

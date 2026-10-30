@@ -1,4 +1,4 @@
-// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary, memories-storage/world-namespace
+// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retention, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary, memories-storage/world-namespace
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -149,7 +149,7 @@ for (const count of [1000, 10000, 25000])
     assert.deepEqual(restored.memoryScenes, initial.memoryScenes);
     assert.deepEqual(restored.memoryReceipts, initial.memoryReceipts);
     assert.equal(restored.name, "Current world");
-    assert.equal(f.payloads().length, 1);
+    assert.ok(f.records.has(f.root().data.memoryHead.id));
     assert.equal(f.intents().length, 0);
     const values: unknown[] = [f.payloads()[0].data];
     let scanned = 0;
@@ -253,7 +253,7 @@ await runCase("memories-storage/conflict", async () => {
   assert.ok(actual.memories.records[0].knowers.player.forgotten);
   assert.equal(sceneMemories(actual, "frozen").records[0].knowers.player.forgotten, undefined);
   assert.equal(sceneMemories(actual, "frozen").records[0].text, initial.memories.records[0].text);
-  assert.equal(f.payloads().length, 1);
+  assert.ok(f.records.has(f.root().data.memoryHead.id));
   assert.equal(f.intents().length, 0);
   const head = f.root().data.memoryHead.id,
     revision = actual.memories.revision;
@@ -275,7 +275,7 @@ await runCase("memories-storage/conflict", async () => {
   assert.notEqual(f.root().data.memoryHead.id, second, "Receipt-only changes publish.");
 });
 await runCase("memories-storage/interruptions", async () => {
-  for (const failure of ["intent", "payload", "before-publication", "after-publication", "retire", "intent-cleanup"]) {
+  for (const failure of ["intent", "payload", "before-publication", "after-publication", "intent-cleanup"]) {
     const f = fixture();
     await seed(f);
     let failed = false;
@@ -290,9 +290,7 @@ await runCase("memories-storage/interruptions", async () => {
               ? event === "before-update" && id === "villages-village"
               : failure === "after-publication"
                 ? event === "after-update" && id === "villages-village"
-                : failure === "retire"
-                  ? event === "before-remove" && !id.startsWith("villages-memory-intent-")
-                  : event === "before-remove" && id.startsWith("villages-memory-intent-");
+                : event === "before-remove" && id.startsWith("villages-memory-intent-");
       if (match) {
         failed = true;
         throw Error("simulated interruption");
@@ -305,8 +303,8 @@ await runCase("memories-storage/interruptions", async () => {
       },
       { memories: true },
     );
-    const committed = ["after-publication", "retire", "intent-cleanup"].includes(failure);
-    if (["retire", "intent-cleanup"].includes(failure)) await change;
+    const committed = ["after-publication", "intent-cleanup"].includes(failure);
+    if (["intent-cleanup"].includes(failure)) await change;
     else await assert.rejects(change, /simulated interruption/);
     assert.ok(failed);
     const actual = await f.repository.readAuthority({ memories: true });
@@ -317,12 +315,12 @@ await runCase("memories-storage/interruptions", async () => {
     await f.repository.mutateAuthority((s) => {
       s.setting = "Fenced later revision";
     });
-    assert.equal(f.payloads().length, 1);
+    assert.ok(f.records.has(f.root().data.memoryHead.id));
     assert.equal(f.intents().length, 0);
     assert.equal((await f.repository.readAuthority({ memories: true })).memories.revision, committed ? 2 : 1);
   }
 });
-await runCase("memories-storage/reader-retirement", async () => {
+await runCase("memories-storage/reader-retention", async () => {
   const f = fixture();
   await seed(f);
   const old = f.root().data.memoryHead.id;
@@ -350,11 +348,11 @@ await runCase("memories-storage/reader-retirement", async () => {
     },
     { memories: true },
   );
-  assert.equal(f.records.has(old), false);
+  assert.equal(f.records.has(old), true);
   release();
   const actual = await reading;
-  assert.equal(actual.name, "New root");
-  assert.equal(actual.memories.revision, 2);
+  assert.equal(actual.name, defaultVillageState().name);
+  assert.equal(actual.memories.revision, 1);
 });
 await runCase("memories-storage/active-preparation", async () => {
   const f = fixture();
@@ -395,7 +393,7 @@ await runCase("memories-storage/active-preparation", async () => {
   assert.equal(actual.name, "Concurrent world update");
   assert.equal(actual.memories.revision, 2);
   assert.equal(f.intents().length, 0);
-  assert.equal(f.payloads().length, 1);
+  assert.ok(f.records.has(f.root().data.memoryHead.id));
 });
 await runCase("memories-storage/reset", async () => {
   const f = fixture();
@@ -413,7 +411,7 @@ await runCase("memories-storage/reset", async () => {
     { memories: true },
   );
   assert.equal(f.root().data.memoryHead, null);
-  assert.equal(f.payloads().length, 0);
+  assert.ok(f.payloads().length > 0, "Published history awaits owner-aware collection.");
   assert.equal((await f.repository.readAuthority({ memories: true })).memories.records.length, 0);
 });
 await runCase("memories-storage/malformed", async () => {
@@ -479,7 +477,7 @@ await runCase("memories-storage/late-payload", async () => {
     await f.repository.mutateAuthority((state) => {
       state.setting = "Settle retained preparation";
     });
-    assert.equal(f.payloads().length, 1);
+    assert.ok(f.records.has(f.root().data.memoryHead.id));
     assert.equal(f.intents().length, 0);
     assert.equal((await f.repository.readAuthority({ memories: true })).memories.revision, crash ? 1 : 2);
   }

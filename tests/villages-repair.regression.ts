@@ -1073,44 +1073,63 @@ await runCase("repair/checkpoint-pages", async () => {
   await f.repo.mutateAuthority(
     (state) => {
       state.foundedAt = state.setupAt;
-      state.memories = realisticMemoryHistory(150);
+      state.memories = realisticMemoryHistory(5000);
     },
     { memories: true },
   );
+  const envelopes = new Set<string>();
+  f.hook((event, id) => {
+    const row = f.rows.get(id);
+    if (
+      !["after-create", "after-update"].includes(event) ||
+      !["repair-checkpoint", "repair-plan", "repair-control"].includes(row?.kind)
+    )
+      return;
+    const pending: unknown[] = [row.data];
+    let visited = 0;
+    while (pending.length) {
+      assert.ok(
+        ++visited < 4096,
+        "Large-history checkpoint/review/journal envelopes must fit Engine reference traversal.",
+      );
+      const value = pending.pop();
+      if (value && typeof value === "object") pending.push(...Object.values(value));
+    }
+    envelopes.add(row.kind);
+  });
   const checkpoint = await f.api.createCheckpoint("Paged history", "paged-checkpoint");
   const original = await f.read();
   const saved = [...f.rows.values()].find((r) => r.kind === "repair-checkpoint").data;
-  assert.ok(saved.documents.filter((r: any) => r.kind === "memory-page").length > 3);
+  assert.equal(
+    saved.documents.filter((r: any) => ["memory-page", "memory-payload"].includes(r.kind)).length,
+    0,
+    "Checkpoints share immutable Memory bodies through the saved head.",
+  );
+  const head = readMemoryHead(saved.documents.find((r: any) => r.id === "villages-village").data.memoryHead)!;
   await f.repo.mutateAuthority(
     (state) => {
-      state.memories = realisticMemoryHistory(300);
+      state.memories = realisticMemoryHistory(7500);
     },
     { memories: true },
   );
-  const root = f.rows.get("villages-village");
-  const live = new Set(
-    (await memoryPayloadDocuments(f.gate.documents, readMemoryHead(root.data.memoryHead)!, await f.read())).map(
-      (r) => r.id,
-    ),
+  const owned = await memoryPayloadDocuments(f.gate.documents, head, original);
+  assert.ok(owned.length > 100);
+  assert.ok(
+    owned.every((row) => f.rows.has(row.id)),
+    "Checkpoint-owned roots and pages remain available.",
   );
-  let removed = 0;
-  for (const row of saved.documents)
-    if (row.kind === "memory-page" && !live.has(row.id)) {
-      f.rows.delete(row.id);
-      removed++;
-    }
-  assert.ok(removed, "The checkpoint must own superseded pages independently of live storage.");
   f.reopen();
   const review = await f.api.restore(checkpoint.id, "restore-paged-checkpoint");
   await f.api.apply(review.id, review.token);
   f.reopen();
   const restored = await f.read();
-  assert.equal(restored.memories.records.length, 150);
+  assert.equal(restored.memories.records.length, 5000);
   assert.deepEqual(
     restored.memories.records.map((r) => r.text),
     original.memories.records.map((r) => r.text),
   );
   assert.ok(restored.memories.revision > original.memories.revision);
+  assert.deepEqual([...envelopes].sort(), ["repair-checkpoint", "repair-control", "repair-plan"]);
 });
 await runCase("repair/http", async () => {
   const f = await fixture();

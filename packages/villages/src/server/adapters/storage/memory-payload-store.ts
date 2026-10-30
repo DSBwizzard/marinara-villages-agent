@@ -58,7 +58,7 @@ function isEmpty(payload: MemoryPayload) {
     !Object.keys(payload.memoryReceipts).length
   );
 }
-/** Checkpoints own a complete transitive copy, including shared page bodies. */
+/** Inspect the transitive immutable footprint without copying it into an owner document. */
 export async function memoryPayloadDocuments(
   documents: CapabilityDocumentStore,
   head: MemoryHead,
@@ -247,13 +247,6 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     }
     return candidate;
   }
-  async function remove(head: MemoryHead) {
-    const record = await documents.getById(VILLAGES_PACKAGE_ID, head.id);
-    if (!record) return;
-    validateRecord(record, head);
-    if (!(await documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision)))
-      memoryRequire(!(await documents.getById(VILLAGES_PACKAGE_ID, record.id)), "history cleanup changed");
-  }
   async function cleanup(readRoot: () => Promise<{ revision: number; head: MemoryHead | null }>) {
     for (const record of await documents.list(VILLAGES_PACKAGE_ID, INTENT_KIND)) {
       memoryRequire(
@@ -265,8 +258,8 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
       );
       memoryObject(record.data, ["candidate", "previous", "expectedRevision", "phase"]);
       memoryRequire(["preparing", "ready", "cancelled"].includes(String(record.data.phase)), "invalid intent phase");
-      const candidate = readMemoryHead(record.data.candidate),
-        previous = readMemoryHead(record.data.previous);
+      const candidate = readMemoryHead(record.data.candidate);
+      readMemoryHead(record.data.previous);
       const expectedRevision = record.data.expectedRevision as number;
       memoryRequire(Number.isSafeInteger(expectedRevision) && expectedRevision >= 0, "invalid publication revision");
       const root = await readRoot();
@@ -281,8 +274,8 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
         !(await documents.getById(VILLAGES_PACKAGE_ID, candidate.id))
       )
         continue;
-      if (candidate && root.head?.id !== candidate.id) await remove(candidate);
-      if (previous && root.head?.id !== previous.id) await remove(previous);
+      // Checkpoints can own superseded roots. A publication intent is not their owner registry.
+      // Root and page retirement belongs to the same later owner-aware collector.
       if (!(await documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision)))
         memoryRequire(!(await documents.getById(VILLAGES_PACKAGE_ID, record.id)), "intent cleanup changed");
     }
