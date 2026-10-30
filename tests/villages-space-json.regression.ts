@@ -10,7 +10,7 @@ import { createPrivateSpacePreparation } from "../packages/villages/src/server/j
 async function main() {
   const world = coerceVillageState({
     ...defaultVillageState(),
-    version: 8,
+
     seed: "fixture",
     name: "Test",
     setting: "Test",

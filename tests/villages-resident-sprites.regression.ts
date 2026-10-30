@@ -141,15 +141,15 @@ assert.equal(
   "legacy Villages without a choice default to flips on",
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
   true,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
   false,
   "saved Off stays Off",
 );
-const flipVillage = coerceVillageState({ ...defaultVillageState(), version: 8, spriteCardFlipEnabled: true });
+const flipVillage = coerceVillageState({ ...defaultVillageState(), spriteCardFlipEnabled: true });
 assert.equal(
   coerceVillageState(JSON.parse(JSON.stringify(flipVillage))).spriteCardFlipEnabled,
   true,
@@ -162,8 +162,7 @@ const resident = {
   sprite: semanticSprite,
 };
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3, villagers: [resident] }).villagers[0]
-    ?.sprite,
+  coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, villagers: [resident] }).villagers[0]?.sprite,
   null,
   "retired unversioned assignments are ignored",
 );
@@ -248,11 +247,11 @@ resolveSceneSpriteExpressions(
 assert.deepEqual(persisted, cueLines, "saved concrete artwork survives reload and a different random draw");
 assert.equal(defaultVillageState().spriteVariantsEnabled, true);
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, spriteVariantsEnabled: false }).spriteVariantsEnabled,
+  coerceVillageState({ ...defaultVillageState(), spriteVariantsEnabled: false }).spriteVariantsEnabled,
   false,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, spriteVariantsEnabled: undefined }).spriteVariantsEnabled,
+  coerceVillageState({ ...defaultVillageState(), spriteVariantsEnabled: undefined }).spriteVariantsEnabled,
   true,
 );
 

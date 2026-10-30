@@ -33,7 +33,6 @@ function deferred() {
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({
-    version: 8,
     ...defaultVillageState(),
     seed: "same-seed",
     name: label,

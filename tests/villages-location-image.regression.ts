@@ -197,12 +197,12 @@ async function main() {
     nextTransitionAt: "2026-09-11T16:31:00.000Z",
   };
   const setting = "A mill town at the foot of a ridge.";
-  const village = coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3, setting });
+  const village = coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, setting });
   const exteriorPrompt = buildLocationPrompt(
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
     }).venues[0]!,
@@ -216,7 +216,7 @@ async function main() {
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
     }).venues[0]!,
@@ -241,7 +241,7 @@ async function main() {
       village,
       coerceVillageState({
         ...defaultVillageState(),
-        version: 8,
+
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "" }],
       }).venues[0]!,
@@ -254,7 +254,7 @@ async function main() {
   const factual = buildLocationPrompt(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       setting,
       foundingDetails: "Built beside the ridge",
@@ -262,7 +262,7 @@ async function main() {
     }),
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       venues: [
         {
@@ -303,7 +303,7 @@ async function main() {
     village,
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       venues: [
         {
@@ -336,7 +336,7 @@ async function main() {
       village,
       coerceVillageState({
         ...defaultVillageState(),
-        version: 8,
+
         wishSystemVersion: 3,
         venues: [{ id: "mill", name: "the mill pond", form: "   " }],
       }).venues[0]!,
@@ -348,13 +348,13 @@ async function main() {
   const chatty = buildLocationPrompt(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       setting: "y".repeat(MAX_SETTING_LENGTH + 200),
     }),
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", form: "" }],
     }).venues[0]!,
@@ -375,7 +375,7 @@ async function main() {
   const venuesWith = (image: unknown) =>
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       venues: [{ id: "mill", name: "the mill pond", presentation: { image } }],
     }).venues;
@@ -421,7 +421,7 @@ async function main() {
   assert.deepEqual(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       venues: [{ name: "  ", presentation: { image: picture } }],
     }).venues,
@@ -437,7 +437,7 @@ async function main() {
   // name is not a place at all — its name is the whole of what the translation
   // list can say about it.
   const placesOf = (entries: unknown[]) =>
-    coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3, venues: entries }).venues;
+    coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, venues: entries }).venues;
   const house = (id: string, characterId: string | null, extra: Record<string, unknown> = {}) => ({
     id,
     name: "",
@@ -1460,7 +1460,7 @@ async function mediaConnectionOwnership() {
       let held = false;
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 8,
+
         wishSystemVersion: 3,
         seed: "equal-media-seed",
         timeZone: "UTC",

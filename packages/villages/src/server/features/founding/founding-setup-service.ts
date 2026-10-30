@@ -346,9 +346,9 @@ export function createFoundingSetup({
       if (input.useVisualLoreByDefault !== undefined)
         state.useVisualLoreByDefault = readBool(input.useVisualLoreByDefault);
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
-      // The stamp that closes the wizard. Written here and nowhere else, so a
-      // village can only become founded by coming through this flow.
-      state.setupAt = villageNow().toISOString();
+      // This closes the first founding and anchors saved work to this Village.
+      // Configuration edits must not invalidate checkpoints or rekey immutable history.
+      state.setupAt ||= villageNow().toISOString();
       if (founding) {
         state.progressEngineVersion = 1;
         state.opening = initialOpening(

@@ -224,7 +224,7 @@ assert.equal(calls, before);
 await assert.rejects(service.preparedManager("bupkis", draft.revision - 1), /changed/);
 village = coerceVillageState({
   ...defaultVillageState(),
-  version: 8,
+
   villagers: [
     {
       characterId: "bupkis",

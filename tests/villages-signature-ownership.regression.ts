@@ -34,7 +34,7 @@ const stamp = "2026-10-07T00:00:00.000Z";
 function documents(name: string) {
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 8,
+
     seed: "identical-seed",
     name,
     foundedAt: stamp,

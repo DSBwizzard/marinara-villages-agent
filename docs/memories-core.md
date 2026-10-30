@@ -1,6 +1,6 @@
 # Memories core
 
-The pure server domain modules `models/memories.ts` and `rules/memory-{integrity,application,views,protection,recall}.ts` define the final current-format Memories contract. The runtime uses one native collection stored as an immutable history payload in Engine’s existing capability document store. A small reference in the Village document identifies its committed version. The pure domain modules perform no host I/O or model calls. Village format 8, Scene format 3 and relationship format 2 reject previous formats without migration, backfill, dual writes or runtime switches. Rejection preserves saved bytes; use a separate current-format world.
+The pure server domain modules `models/memories.ts` and `rules/memory-{integrity,application,views,protection,recall}.ts` define the final current-format Memories contract. The runtime uses one native collection stored as an immutable history payload in Engine’s existing capability document store. A small reference in the Village document identifies its committed version. The pure domain modules perform no host I/O or model calls. Village format 9, Scene format 3 and relationship format 2 reject previous formats without migration, backfill, dual writes or runtime switches. Rejection preserves saved bytes; use a separate current-format world.
 
 ## Records and authority
 

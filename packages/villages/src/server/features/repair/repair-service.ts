@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import type {
   RepairChange,
   RepairCheckpoint,
-  RepairHistoryEntry,
   RepairIndex,
   RepairRecord,
   RepairRequest,
@@ -15,7 +14,6 @@ import {
   type RepairDocument,
   type RepairGate,
   type RepairTransaction,
-  type RepairWrite,
 } from "../../adapters/storage/repair-gate.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import {
@@ -24,10 +22,9 @@ import {
   emptyMemoryPayload,
 } from "../../adapters/storage/memory-payload-store.js";
 import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
-import { encodeRepairTransaction, decodeRepairTransaction } from "../../adapters/storage/repair-transaction-codec.js";
+import { createRepairTransactionCodec } from "../../adapters/storage/repair-transaction-codec.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
-import type { MemoryKnower } from "../../domain/models/memories.js";
 import type { ExchangeEffectReceipt } from "../../domain/models/wish-check-model.js";
 import type { VillageRepository } from "../../domain/models/world-repository.js";
 import type { VillageState } from "../../domain/models/world.js";
@@ -42,6 +39,13 @@ import {
 } from "../../domain/rules/repair-records.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
 import { normalizeVillageMutation } from "../../domain/rules/world-mutation.js";
+import {
+  createRepairStorage,
+  REPAIR_GAME_KINDS,
+  type CheckpointData,
+  type HistoryData,
+  type HistoryHeader,
+} from "./repair-storage.js";
 
 const PKG = "villages",
   PLAN = "repair-plan",
@@ -49,14 +53,7 @@ const PKG = "villages",
   CHECKPOINT = "repair-checkpoint";
 // Unapplied administrative previews are a bounded cache, not player history or recovery work.
 const MAX_PENDING_REVIEWS = 10;
-const GAME_KINDS = [
-  "venue-visit",
-  "venue-active",
-  "relationships",
-  "repair-annotation",
-  "scene-terminal",
-  "project-scene-evidence",
-];
+const GAME_KINDS = REPAIR_GAME_KINDS;
 type Doc = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const copy = (row: Doc): RepairDocument => ({
   id: row.id,
@@ -65,27 +62,6 @@ const copy = (row: Doc): RepairDocument => ({
   description: row.description,
   data: structuredClone(row.data),
 });
-type CheckpointData = {
-  version: 1;
-  seed: string;
-  setupAt: string;
-  id: string;
-  title: string;
-  at: string;
-  documents: RepairDocument[];
-};
-type HistoryData = RepairHistoryEntry & {
-  seed: string;
-  setupAt: string;
-  request: RepairRequest;
-  record?: RepairRecord;
-  inverse?: RepairRequest;
-  guard: string;
-  memoryBefore?: { id: string; knowers: Record<string, MemoryKnower> };
-  memoryGuard?: string;
-  undoWrites?: RepairWrite[];
-  undoOf?: string;
-};
 type PlanData = {
   seed: string;
   setupAt: string;
@@ -229,6 +205,8 @@ export type RepairPorts = {
 export function createRepairService(ports: RepairPorts) {
   const { gate, repository } = ports,
     documents = gate.documents;
+  const storage = createRepairStorage(documents, gate.raw),
+    codec = createRepairTransactionCodec(gate.raw);
   const read = () => repository.readAuthority({ memories: true });
   const store = async (id: string, kind: string, data: unknown) => {
     const stamp = new Date().toISOString();
@@ -248,18 +226,11 @@ export function createRepairService(ports: RepairPorts) {
     if (typeof id !== "string" || !/^[a-zA-Z0-9-]{1,100}$/.test(id))
       throw badRequest("Choose a saved repair or checkpoint.");
   };
-  const object = (value: unknown): value is Record<string, unknown> =>
-    !!value && typeof value === "object" && !Array.isArray(value);
-  const repairDoc = (value: unknown) =>
-    object(value) &&
-    typeof value.id === "string" &&
-    typeof value.kind === "string" &&
-    typeof value.name === "string" &&
-    typeof value.description === "string" &&
-    Object.hasOwn(value, "data");
-  function ownedReview(row: Doc, state: VillageState): boolean {
+  async function ownedReview(row: Doc, state: VillageState): Promise<boolean> {
     try {
-      const saved = readPlan(row);
+      const saved = row.data as PlanData;
+      if (saved?.seed !== state.seed || saved.setupAt !== state.setupAt) return false;
+      await codec.inspect(saved.transaction);
       return (
         saved?.seed === state.seed &&
         saved.setupAt === state.setupAt &&
@@ -272,27 +243,18 @@ export function createRepairService(ports: RepairPorts) {
         ["repair", "undo", "restore"].includes(saved.review.kind) &&
         typeof saved.requestHash === "string" &&
         saved.requestHash === repairDigest(saved.request) &&
-        typeof saved.history?.at === "string" &&
-        Array.isArray(saved.transaction?.reads) &&
-        saved.transaction.reads.every((r) => object(r) && typeof r.id === "string" && typeof r.digest === "string") &&
-        Array.isArray(saved.transaction?.lists) &&
-        saved.transaction.lists.every((r) => object(r) && typeof r.kind === "string" && typeof r.digest === "string") &&
-        Array.isArray(saved.transaction?.writes) &&
-        saved.transaction.writes.every(
-          (w) =>
-            object(w) &&
-            (w.before === null || repairDoc(w.before)) &&
-            (w.after === null || repairDoc(w.after)) &&
-            (w.before !== null || w.after !== null),
-        )
+        typeof saved.history?.at === "string"
       );
     } catch {
       return false;
     }
   }
-  function readPlan(row: Doc): PlanData {
+  async function readPlan(row: Doc): Promise<PlanData> {
     const saved = row.data as PlanData;
-    return { ...saved, transaction: decodeRepairTransaction(saved?.transaction) };
+    const history = await storage.decodeHistory(saved?.history);
+    if (!storage.owns(history, saved) || history.id !== saved.review.id)
+      throw conflict("This review belongs to another Village.");
+    return { ...saved, transaction: await codec.decode(saved?.transaction), history };
   }
   async function savePlan(plan: PlanData): Promise<RepairReview> {
     return gate.alone(async () => {
@@ -303,22 +265,26 @@ export function createRepairService(ports: RepairPorts) {
       const id = docId(PLAN, plan.review.id),
         prior = await documents.getById(PKG, id);
       if (prior) {
-        if (!ownedReview(prior, state)) throw conflict("This review is invalid. Saved recovery is retained.");
+        if (!(await ownedReview(prior, state))) throw conflict("This review is invalid. Saved recovery is retained.");
         const saved = prior.data as PlanData;
         if (saved.requestHash !== plan.requestHash || saved.review.kind !== plan.review.kind)
           throw conflict("This repair ID already has another edit.");
         return saved.review;
       }
-      const candidates = (await documents.list(PKG, PLAN))
-        .filter((row) => ownedReview(row, state))
-        .sort(
-          (a, b) =>
-            (b.data as PlanData).history.at.localeCompare((a.data as PlanData).history.at) || b.id.localeCompare(a.id),
-        );
+      const candidates: Doc[] = [];
+      for (const row of await documents.list(PKG, PLAN)) if (await ownedReview(row, state)) candidates.push(row);
+      candidates.sort(
+        (a, b) =>
+          (b.data as PlanData).history.at.localeCompare((a.data as PlanData).history.at) || b.id.localeCompare(a.id),
+      );
       // Evict before insertion. A failed deletion cannot grow the cache; original facts and client drafts remain.
       for (const row of candidates.slice(MAX_PENDING_REVIEWS - 1))
         if (!(await documents.remove(PKG, row.id, row.revision))) throw conflict("Repair reviews changed. Try again.");
-      await store(id, PLAN, { ...plan, transaction: encodeRepairTransaction(plan.transaction) });
+      await store(id, PLAN, {
+        ...plan,
+        transaction: await codec.encode(plan.transaction),
+        history: await storage.encodeHistory(plan.history),
+      });
       return plan.review;
     });
   }
@@ -451,16 +417,16 @@ export function createRepairService(ports: RepairPorts) {
     const pointer = await documents.getById(PKG, "villages-active-venue");
     return !!(pointer?.data as { sessionId?: string })?.sessionId;
   }
-  async function index(historyOffset = 0): Promise<RepairIndex> {
+  async function index(historyOffset = 0, checkpointOffset = 0): Promise<RepairIndex> {
     const state = await repository.readAuthority();
     const histories = (await documents.list(PKG, HISTORY))
-      .map((r) => r.data as HistoryData)
-      .filter((r) => r.seed === state.seed && r.setupAt === state.setupAt)
-      .sort((a, b) => b.at.localeCompare(a.at));
+      .map((r) => r.data as HistoryHeader)
+      .filter((r) => r.format === 1 && r.seed === state.seed && r.setupAt === state.setupAt)
+      .sort((a, b) => b.order - a.order);
     const checkpoints = (await documents.list(PKG, CHECKPOINT))
-      .map((r) => r.data as CheckpointData)
-      .filter((r) => r.seed === state.seed && r.setupAt === state.setupAt)
-      .sort((a, b) => b.at.localeCompare(a.at));
+      .map((r) => storage.checkpointRow(r).value)
+      .filter((r): r is CheckpointData => !("deleted" in r) && r.seed === state.seed && r.setupAt === state.setupAt)
+      .sort((a, b) => b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
     return {
       seed: state.seed,
       identity: repairDigest([state.seed, state.setupAt]),
@@ -471,6 +437,8 @@ export function createRepairService(ports: RepairPorts) {
       records: [],
       historyOffset,
       historyTotal: histories.length,
+      checkpointOffset,
+      checkpointTotal: checkpoints.length,
       sceneOpen: await sceneOpen(),
       history: histories
         .slice(historyOffset, historyOffset + 50)
@@ -483,7 +451,7 @@ export function createRepairService(ports: RepairPorts) {
           undone,
           canUndo,
         })),
-      checkpoints: checkpoints.map(({ id, title, at, documents: rows }) => ({ id, title, at, records: rows.length })),
+      checkpoints: checkpoints.slice(checkpointOffset, checkpointOffset + 50).map(storage.summary),
     };
   }
   async function list(topic: string, query = "", offset = 0, personId?: string, section = "memories") {
@@ -537,7 +505,11 @@ export function createRepairService(ports: RepairPorts) {
     if (!record) throw notFound("That record is unavailable.");
     return record;
   }
-  async function checkpoint(title: string, id: string = randomUUID()): Promise<RepairCheckpoint> {
+  async function checkpoint(
+    title: string,
+    id: string = randomUUID(),
+    mode: CheckpointData["mode"] = "automatic",
+  ): Promise<RepairCheckpoint> {
     const state = await repository.readAuthority();
     const rows: RepairDocument[] = [];
     const root = await documents.getById(PKG, "villages-village");
@@ -545,17 +517,7 @@ export function createRepairService(ports: RepairPorts) {
     rows.push(copy(root));
     // The copied root owns its immutable Memory head and all transitive pages.
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
-    const data: CheckpointData = {
-      version: 1,
-      seed: state.seed,
-      setupAt: state.setupAt,
-      id,
-      title,
-      at: new Date().toISOString(),
-      documents: rows,
-    };
-    await store(docId(CHECKPOINT, id), CHECKPOINT, data);
-    return { id, title, at: data.at, records: rows.length };
+    return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
     const job = row.data as import("../../domain/models/background-model.js").Job;
@@ -716,7 +678,7 @@ export function createRepairService(ports: RepairPorts) {
       prior = await documents.getById(PKG, planId);
     if (prior) {
       const world = await repository.readAuthority();
-      if (!ownedReview(prior, world)) throw conflict("This review is unavailable. Saved recovery is retained.");
+      if (!(await ownedReview(prior, world))) throw conflict("This review is unavailable. Saved recovery is retained.");
       const saved = prior.data as PlanData;
       if (saved.seed !== world.seed || saved.setupAt !== world.setupAt) throw conflict("The Village changed.");
       if (saved.requestHash !== hash) throw conflict("This repair ID already has another edit.");
@@ -897,31 +859,24 @@ export function createRepairService(ports: RepairPorts) {
       if (await documents.getById(PKG, historyId)) return { applied: true };
       throw notFound("Review this repair again. Your draft is kept.");
     }
-    const plan = readPlan(row);
+    const plan = await readPlan(row);
     if (plan.review?.token !== token)
       throw conflict("This review changed. Review the repair again; your draft is kept.");
     const world = await repository.readAuthority();
     if (world.seed !== plan.seed || world.setupAt !== plan.setupAt) throw conflict("The Village changed.");
-    await gate.commit(
-      id,
-      {
-        ...plan.transaction,
-        reads: [...plan.transaction.reads, { id: row.id, digest: repairDocumentDigest(copy(row)) }],
-      },
-      [
-        {
-          before: null,
-          after: {
-            id: historyId,
-            kind: HISTORY,
-            name: "Repair history",
-            description: "Private repair record",
-            data: plan.history,
-          },
-        },
-        { before: copy(row), after: null },
-      ],
-    );
+    const publication = await gate.simulate(async () => {
+      const fresh = await documents.getById(PKG, row.id);
+      if (!fresh || repairDocumentDigest(copy(fresh)) !== repairDocumentDigest(copy(row)))
+        throw conflict("This review changed. Review it again; your draft is kept.");
+      const automaticIds = plan.transaction.writes.flatMap((write) =>
+        write.after?.kind === CHECKPOINT && (write.after.data as CheckpointData).mode === "automatic"
+          ? [(write.after.data as CheckpointData).id]
+          : [],
+      );
+      await storage.saveHistory(plan.history, automaticIds);
+      if (!(await documents.remove(PKG, fresh.id, fresh.revision))) throw conflict("Repair review changed.");
+    }, plan.transaction);
+    await gate.commit(id, publication.transaction);
     return { applied: true };
   }
   async function cancelReview(id: string, token: string) {
@@ -933,7 +888,7 @@ export function createRepairService(ports: RepairPorts) {
       if (!row) return { cancelled: true };
       if ((row.data as PlanData | null)?.review?.token !== token) return { cancelled: false };
       const state = await repository.readAuthority();
-      if (!ownedReview(row, state)) throw conflict("This review is invalid. Saved recovery is retained.");
+      if (!(await ownedReview(row, state))) throw conflict("This review is invalid. Saved recovery is retained.");
       if (!(await documents.remove(PKG, row.id, row.revision))) throw conflict("Repair review changed. Try again.");
       return { cancelled: true };
     });
@@ -943,9 +898,10 @@ export function createRepairService(ports: RepairPorts) {
     validateId(operationId);
     const row = await documents.getById(PKG, docId(HISTORY, id));
     if (!row) throw notFound("That repair is unavailable.");
-    const saved = row.data as HistoryData;
-    if (saved.undone || !saved.canUndo)
+    const header = row.data as HistoryHeader;
+    if (header.undone || !header.canUndo)
       throw conflict("This repair cannot be undone. Use its checkpoint when available.");
+    const saved = await storage.readHistory(row);
     const state = await read();
     if (state.seed !== saved.seed || state.setupAt !== saved.setupAt) throw conflict("The Village changed.");
     const record =
@@ -964,7 +920,8 @@ export function createRepairService(ports: RepairPorts) {
       if (before.state.seed !== saved.seed || before.state.setupAt !== saved.setupAt)
         throw conflict("The Village changed.");
       const fresh = await documents.getById(PKG, row.id);
-      if (!fresh || (fresh.data as HistoryData).undone) throw conflict("This repair was already undone.");
+      if (!fresh || repairDocumentDigest(copy(fresh)) !== repairDocumentDigest(copy(row)))
+        throw conflict("This repair changed. Reopen its history.");
       if (saved.memoryBefore) {
         if (
           repairDigest(before.state.memories.records.find((r) => r.id === saved.memoryBefore!.id)) !== saved.memoryGuard
@@ -1037,7 +994,7 @@ export function createRepairService(ports: RepairPorts) {
         expectedRevision: current.revision,
         name: row.name,
         description: row.description,
-        data: { ...saved, undone: true, canUndo: false },
+        data: { ...header, undoId: undefined, undone: true, canUndo: false },
         updatedAt: new Date().toISOString(),
       });
       const after = await allRecords(
@@ -1090,19 +1047,23 @@ export function createRepairService(ports: RepairPorts) {
   async function createCheckpoint(title: string, id: string = randomUUID()) {
     validateId(id);
     if (typeof title !== "string") throw badRequest("Enter a checkpoint name.");
-    const prior = await documents.getById(PKG, docId(CHECKPOINT, id));
+    const prior = await storage.readCheckpoint(id);
     if (prior) {
-      const saved = prior.data as CheckpointData,
+      const saved = prior.value,
         state = await repository.readAuthority();
+      if ("deleted" in saved) throw conflict("That checkpoint was deleted. Save a new checkpoint.");
       if (
         saved.seed !== state.seed ||
         saved.setupAt !== state.setupAt ||
+        saved.mode !== "manual" ||
         saved.title !== (title.trim().slice(0, 120) || "Manual checkpoint")
       )
         throw conflict("This checkpoint ID already has another save.");
-      return { id, title: saved.title, at: saved.at, records: saved.documents.length };
+      return storage.summary(saved);
     }
-    const result = await gate.simulate(() => checkpoint(title.trim().slice(0, 120) || "Manual checkpoint", id));
+    const result = await gate.simulate(() =>
+      checkpoint(title.trim().slice(0, 120) || "Manual checkpoint", id, "manual"),
+    );
     await gate.commit(id, result.transaction);
     return result.value;
   }
@@ -1111,15 +1072,20 @@ export function createRepairService(ports: RepairPorts) {
     validateId(operationId);
     if (await sceneOpen())
       throw conflict("Conclude the unfinished Scene before restoring a whole-world checkpoint. Its draft is kept.");
-    const saved = await documents.getById(PKG, docId(CHECKPOINT, id));
-    if (!saved) throw notFound("That checkpoint is unavailable.");
-    const checkpointData = saved.data as CheckpointData,
+    const heldCheckpoint = await storage.readCheckpoint(id);
+    if (!heldCheckpoint) throw notFound("That checkpoint is unavailable.");
+    const { row: saved, value: checkpointData } = heldCheckpoint,
       state = await read();
+    if ("deleted" in checkpointData) throw notFound("That checkpoint is no longer available.");
     if (state.returnCatchup?.batch && !["completed", "cancelled"].includes(state.returnCatchup.batch.status))
       throw conflict("Finish or safely close Village catch-up before restoring a checkpoint.");
     if (checkpointData.seed !== state.seed || checkpointData.setupAt !== state.setupAt)
       throw conflict("This checkpoint belongs to another Village.");
     const simulation = await gate.simulate(async () => {
+      const fresh = await documents.getById(PKG, saved.id);
+      if (!fresh || repairDocumentDigest(copy(fresh)) !== repairDocumentDigest(copy(saved)))
+        throw conflict("This checkpoint changed. Reload its list.");
+      const checkpointDocuments = await storage.restoreCheckpoint(checkpointData);
       const state = await read();
       if (state.returnCatchup?.batch && !["completed", "cancelled"].includes(state.returnCatchup.batch.status))
         throw conflict("Finish or safely close Village catch-up before restoring a checkpoint.");
@@ -1145,13 +1111,14 @@ export function createRepairService(ports: RepairPorts) {
         if ((row.data as { kind?: string }).kind === "world-development" && job.status === "failed")
           await retireWorldJob(row, new Date().toISOString());
       }
-      const checkpointPointer = checkpointData.documents.find((r) => r.kind === "venue-active");
+      const checkpointPointer = checkpointDocuments.find((r) => r.kind === "venue-active");
       const checkpointSceneId = (checkpointPointer?.data as { sessionId?: string })?.sessionId;
-      const current: Doc[] = [];
+      let current: Doc[] = [];
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
-      for (const savedScene of [...current, ...checkpointData.documents].filter((r) => r.kind === "venue-visit")) {
+      current = storage.worldSources(current, state, false);
+      for (const savedScene of [...current, ...checkpointDocuments].filter((r) => r.kind === "venue-visit")) {
         const scene = savedScene.data as import("../../domain/models/scene-model.js").VenueScene;
-        const belongsToCheckpoint = checkpointData.documents.includes(savedScene);
+        const belongsToCheckpoint = checkpointDocuments.includes(savedScene);
         if (
           (scene.status !== "closed" &&
             !(belongsToCheckpoint && scene.id === checkpointSceneId && scene.status === "active")) ||
@@ -1167,7 +1134,7 @@ export function createRepairService(ports: RepairPorts) {
       await checkpoint("Before checkpoint restoration", operationId);
       const currentRoot = await documents.getById(PKG, "villages-village");
       const preserved = currentRoot!.data as Record<string, unknown>;
-      const wanted = new Map(checkpointData.documents.map((row) => [row.id, structuredClone(row)]));
+      const wanted = new Map(checkpointDocuments.map((row) => [row.id, structuredClone(row)]));
       // A restored source gets a new storage revision. Rebuild its compact evidence on
       // retirement instead of comparing that new revision with a pre-restore receipt.
       const restoredScenes = new Set(
@@ -1373,6 +1340,32 @@ export function createRepairService(ports: RepairPorts) {
       history,
     } satisfies PlanData);
   }
-  return { index, list, inspect, prepare, apply, cancelReview, undo, createCheckpoint, restore };
+  async function deleteCheckpoint(id: string, token: string) {
+    validateId(id);
+    validateId(token);
+    const saved = await storage.readCheckpoint(id),
+      state = await repository.readAuthority();
+    if (saved && (!storage.owns(saved.value, state) || saved.value.mode !== "manual"))
+      throw conflict("Choose a manual checkpoint from this Village.");
+    // One revision-checked ownership release needs no world transaction or new epoch.
+    return storage.deleteCheckpoint(id, token);
+  }
+  // Admission spans immutable artifact preparation and publication; cleanup cannot enter their gap.
+  const owned =
+    <A extends unknown[], R>(fn: (...args: A) => Promise<R>) =>
+    (...args: A) =>
+      gate.work(() => fn(...args));
+  return {
+    index: owned(index),
+    list: owned(list),
+    inspect: owned(inspect),
+    prepare: owned(prepare),
+    apply: owned(apply),
+    cancelReview: owned(cancelReview),
+    undo: owned(undo),
+    createCheckpoint: owned(createCheckpoint),
+    restore: owned(restore),
+    deleteCheckpoint: owned(deleteCheckpoint),
+  };
 }
 export type RepairService = ReturnType<typeof createRepairService>;

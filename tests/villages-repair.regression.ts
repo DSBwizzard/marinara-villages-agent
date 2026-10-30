@@ -1,15 +1,16 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
-import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import {
-  encodeRepairWrites,
-  decodeRepairWrites,
-} from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
+  createRepairGate,
+  repairDocumentDigest,
+} from "../packages/villages/src/server/adapters/storage/repair-gate.js";
+import { createRepairTransactionCodec } from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
+import { createRepairSnapshots } from "../packages/villages/src/server/adapters/storage/repair-snapshot-store.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import {
   memoryPayloadDocuments,
@@ -596,6 +597,150 @@ await runCase("repair/checkpoints", async () => {
     "unfinished",
   );
 });
+await runCase("repair/checkpoint-retention", async () => {
+  const f = await fixture();
+  await f.repo.mutateAuthority((state) => {
+    state.foundedAt = state.setupAt;
+    state.venues = [venue()];
+  });
+  const manual = await f.api.createCheckpoint("Keep this", "manual-keep");
+  const countBodies = () => [...f.rows.values()].filter((row) => row.kind === "repair-snapshot").length;
+  const bodies = countBodies();
+  await f.api.createCheckpoint("Same world", "manual-same");
+  // The first checkpoint publication adds only its small header after-image to the journal.
+  assert.equal(countBodies() - bodies, 1, "An unchanged world shares its snapshot body.");
+  for (let i = 0; i < 11; i++) {
+    const record = await f.api.inspect(repairId("zone", "cafe", "common"));
+    const values = Object.fromEntries(record.fields.map((field) => [field.key, field.value]));
+    values.description = `Physical account ${i}`;
+    const review = await f.prepare(edit(record.id, values, `retained-${i}`));
+    await f.api.apply(review.id, review.token);
+  }
+  f.reopen();
+  const index = await f.api.index();
+  assert.equal(index.history.length, 11, "Meaningful repair history has no lifetime cap.");
+  assert.equal(index.history.filter((entry) => entry.canUndo).length, 10);
+  assert.equal(index.history.at(-1)!.canUndo, false);
+  assert.equal(index.checkpoints.filter((entry) => entry.mode === "automatic").length, 10);
+  assert.ok(index.checkpoints.some((entry) => entry.id === manual.id));
+  await assert.rejects(f.api.undo("retained-0", "expired-undo"), /cannot be undone/);
+  const undo = await f.api.undo("retained-10", "consume-undo");
+  await f.api.apply(undo.id, undo.token);
+  const after = await f.api.index();
+  assert.equal(after.history.filter((entry) => entry.canUndo && !entry.undone).length, 9);
+  assert.equal(after.history.find((entry) => entry.id === "retained-0")!.canUndo, false);
+  assert.equal(after.history.length, 12);
+  assert.equal(
+    [...f.rows.values()].find((row) => row.kind === "repair-history" && row.data.id === undo.id)!.data.undoOf,
+    "retained-10",
+  );
+});
+await runCase("repair/checkpoint-deletion", async () => {
+  const f = await fixture();
+  const checkpoint = await f.api.createCheckpoint("Delete me", "manual-delete");
+  const prepared = await f.api.restore(checkpoint.id, "stale-restoration");
+  const before = await f.read();
+  await assert.rejects(f.api.deleteCheckpoint(checkpoint.id, "wrong-token"), /changed/);
+  let interrupted = false;
+  f.hook((event, id) => {
+    if (!interrupted && event === "after-update" && f.rows.get(id)?.kind === "repair-checkpoint") {
+      interrupted = true;
+      throw Error("lost checkpoint deletion acknowledgment");
+    }
+  });
+  await assert.rejects(f.api.deleteCheckpoint(checkpoint.id, checkpoint.token), /lost checkpoint/);
+  f.hook(undefined);
+  f.reopen();
+  assert.deepEqual(await f.api.deleteCheckpoint(checkpoint.id, checkpoint.token), { deleted: true });
+  assert.equal((await f.api.index()).checkpointTotal, 0);
+  await assert.rejects(f.api.createCheckpoint("Delete me", checkpoint.id), /deleted/);
+  await assert.rejects(f.api.apply(prepared.id, prepared.token), /changed/);
+  assert.deepEqual(await f.read(), before, "Deleting a checkpoint fences already prepared restoration.");
+  const marker = [...f.rows.values()].find((row) => row.kind === "repair-checkpoint")!.data;
+  assert.equal(marker.snapshots, undefined);
+  assert.equal(marker.title, undefined);
+  for (let i = 0; i < 51; i++) await f.api.createCheckpoint(`Manual ${i}`, `page-${i}`);
+  const first = await f.api.index(0, 0),
+    second = await f.api.index(0, 50);
+  assert.equal(first.checkpoints.length, 50);
+  assert.equal(first.checkpointTotal, 51);
+  assert.equal(second.checkpoints.length, 1);
+  assert.equal(new Set([...first.checkpoints, ...second.checkpoints].map((entry) => entry.id)).size, 51);
+});
+await runCase("repair/snapshot-integrity", async () => {
+  const f = await fixture();
+  const cp = await f.api.createCheckpoint("Exact source", "exact-source");
+  const header = [...f.rows.values()].find((row) => row.kind === "repair-checkpoint")!;
+  const original = header.data.snapshots,
+    refs = JSON.parse(original);
+  const before = await f.read();
+  for (const deleted of [false, null, "true", 1]) {
+    header.data.deleted = deleted;
+    await assert.rejects(f.api.restore(cp.id, "invalid-marker"), /checkpoint|unknown field/);
+    assert.deepEqual(await f.read(), before);
+  }
+  delete header.data.deleted;
+  for (const malformed of [[], [...refs, refs[0]], [{ ...refs[0], id: "foreign-root" }]]) {
+    header.data.snapshots = JSON.stringify(malformed);
+    await assert.rejects(f.api.restore(cp.id, "invalid-source"));
+    assert.deepEqual(await f.read(), before);
+  }
+  header.data.snapshots = original;
+  const body = f.rows.get(refs[0].body),
+    originalData = structuredClone(body.data);
+  body.data.clock = { trustedAt: "changed" };
+  await assert.rejects(f.api.restore(cp.id, "corrupt-source"), /digest changed/);
+  assert.deepEqual(await f.read(), before, "Clock belongs to the exact immutable snapshot digest.");
+  body.data = originalData;
+  const saved = await createRepairSnapshots(f.store).restore(original);
+  assert.equal(saved[0].id, "villages-village");
+  assert.deepEqual(body.data, originalData);
+  const snapshots = createRepairSnapshots(f.store);
+  header.data.snapshots = await snapshots.capture([{ ...saved[0], data: { ...originalData, seed: "foreign" } }]);
+  await assert.rejects(f.api.restore(cp.id, "foreign-source"), /ownership changed/);
+  header.data.snapshots = original;
+  const source = { ...saved[0], data: { ...originalData, image: "global-gallery:owned" } };
+  const mediaRefs = JSON.parse(await snapshots.capture([source]));
+  assert.equal(f.rows.get(mediaRefs[0].body).data.image, "global-gallery:owned", "Engine can see native media owners.");
+  await assert.rejects(
+    snapshots.restoreWrites(
+      await snapshots.captureWrites([
+        { before: saved[0], after: source },
+        { before: saved[0], after: source },
+      ]),
+    ),
+    /invalid Undo snapshot sequence/,
+  );
+  let interrupted = false;
+  f.hook((event, id) => {
+    if (!interrupted && event === "before-create" && id.startsWith("villages-repair-checkpoint-")) {
+      interrupted = true;
+      throw Error("checkpoint publication interrupted");
+    }
+  });
+  await assert.rejects(f.api.createCheckpoint("Interrupted", "interrupted-header"), /publication interrupted/);
+  f.hook(undefined);
+  assert.ok(f.rows.get("villages-repair-control").data.pending);
+  f.reopen();
+  const recovered = await f.api.createCheckpoint("Interrupted", "interrupted-header");
+  assert.equal(recovered.id, "interrupted-header");
+  assert.deepEqual(await f.read(), before);
+  const malformedScene = await f.store.create({
+    id: "villages-venue-visit-invalid-owner",
+    packageId: "villages",
+    kind: "venue-visit",
+    name: "Private Scene",
+    description: "",
+    createdAt: memoryTime(),
+    updatedAt: memoryTime(),
+    data: { version: 3, id: "invalid-owner", villageSeed: null, status: "closed", submissions: [], lines: [] },
+  });
+  const control = structuredClone(f.rows.get("villages-repair-control"));
+  await assert.rejects(f.api.createCheckpoint("Invalid source", "invalid-owner-save"), /source ownership/);
+  await assert.rejects(f.api.restore(cp.id, "invalid-owner-restore"), /source ownership/);
+  assert.deepEqual(f.rows.get(malformedScene.id), malformedScene);
+  assert.deepEqual(f.rows.get("villages-repair-control"), control, "Malformed ownership cannot publish a journal.");
+});
 await runCase("repair/recovery", async () => {
   const f = await fixture();
   const review = await f.prepare(
@@ -644,13 +789,15 @@ await runCase("repair/journal-integrity", async () => {
     data: structuredClone(root.data),
   };
   const after = { ...before, data: { ...before.data, setting: "Must never partially replay" } };
+  const codec = createRepairTransactionCodec(f.store);
+  const frames = JSON.parse(await codec.encodeWrites([{ before, after }]));
   await f.store.create({
     id: "villages-repair-control",
     packageId: "villages",
     kind: "repair-control",
     name: "Recovery",
     description: "",
-    data: { version: 2, epoch: 1, pending: { id: "malformed", writes: [{ before, after }, {}] } },
+    data: { version: 3, epoch: 1, pending: { id: "malformed", writes: JSON.stringify([...frames, {}]) } },
     createdAt: memoryTime(),
     updatedAt: memoryTime(),
   });
@@ -662,9 +809,26 @@ await runCase("repair/journal-integrity", async () => {
     "Validate the entire journal before its first effect.",
   );
   assert.ok(f.rows.get("villages-repair-control").data.pending, "Malformed recovery is held rather than discarded.");
+  for (const id of [frames[0].after.body, "villages-repair-control"]) {
+    const control = f.rows.get("villages-repair-control");
+    control.data.pending.writes = JSON.stringify([
+      ...frames,
+      {
+        id,
+        beforeDigest: repairDocumentDigest(null),
+        after: null,
+      },
+    ]);
+    const saved = structuredClone(control);
+    f.reopen();
+    await assert.rejects(f.read(), /invalid repair frame/);
+    assert.deepEqual(f.rows.get(control.id), saved);
+    assert.ok(f.rows.has(frames[0].after.body));
+    assert.equal(f.rows.get(root.id).data.setting, before.data.setting);
+  }
   for (const pending of [false, 0, null, { writes: [] }, { id: "", writes: [] }, { id: "missing-writes" }]) {
     const control = f.rows.get("villages-repair-control");
-    control.data = { version: 2, epoch: 1, pending };
+    control.data = { version: 3, epoch: 1, pending };
     const saved = structuredClone(control);
     f.reopen();
     await assert.rejects(f.read(), /repair recovery record is invalid/);
@@ -699,9 +863,16 @@ await runCase("repair/journal-integrity", async () => {
     },
   };
   const write = { before: null, after: page };
-  const packed = encodeRepairWrites([write]);
-  assert.equal(packed[0].after?.data, page.data, "Unknown page bodies keep native media ownership.");
-  assert.throws(() => decodeRepairWrites([{ memoryPages: JSON.stringify([write]) }]), /invalid repair pages/);
+  const packed = JSON.parse(await codec.encodeWrites([write]));
+  assert.deepEqual(
+    f.rows.get(packed[0].after.body).data,
+    page.data,
+    "Unknown page bodies keep native media ownership.",
+  );
+  await assert.rejects(
+    codec.decodeWrites(JSON.stringify([{ memoryPages: JSON.stringify([write]) }])),
+    /invalid repair pages/,
+  );
 });
 await runCase("repair/fences", async () => {
   const f = await fixture();
@@ -833,10 +1004,10 @@ await runCase("repair/privacy", async () => {
   };
   const added = await f.prepare(secret);
   await f.api.apply(added.id, added.token);
-  const legacyHistory = [...f.rows.values()].find((row) => row.kind === "repair-history" && row.data.id === added.id)!;
-  legacyHistory.data.private = true;
-  legacyHistory.data.request.inspection = false;
-  legacyHistory.data.record.private = true;
+  const history = [...f.rows.values()].find((row) => row.kind === "repair-history" && row.data.id === added.id)!;
+  const undoBody = f.rows.get(history.data.undoId);
+  undoBody.data.payload.request.inspection = false;
+  undoBody.data.payload.record.private = true;
   assert.ok(JSON.stringify(await f.api.index()).includes("voyage"), "Earlier private history remains available");
   const undo = await f.api.undo(added.id, "undo-private-addition");
   await f.api.apply(undo.id, undo.token);
@@ -1174,7 +1345,8 @@ await runCase("repair/checkpoint-pages", async () => {
     if (
       !interrupted &&
       row.kind === "repair-control" &&
-      row.data.pending?.writes.some((w: any) => typeof w.memoryPages === "string")
+      row.data.pending &&
+      JSON.parse(row.data.pending.writes).some((w: any) => typeof w.memoryPages === "string")
     ) {
       interrupted = true;
       throw Error("packed journal acknowledgement interrupted");
@@ -1183,12 +1355,13 @@ await runCase("repair/checkpoint-pages", async () => {
   const checkpoint = await f.api.createCheckpoint("Paged history", "paged-checkpoint");
   const original = await f.read();
   const saved = [...f.rows.values()].find((r) => r.kind === "repair-checkpoint").data;
+  const savedDocuments = await createRepairSnapshots(f.store).restore(saved.snapshots);
   assert.equal(
-    saved.documents.filter((r: any) => ["memory-page", "memory-payload"].includes(r.kind)).length,
+    savedDocuments.filter((r: any) => ["memory-page", "memory-payload"].includes(r.kind)).length,
     0,
     "Checkpoints share immutable Memory bodies through the saved head.",
   );
-  const head = readMemoryHead(saved.documents.find((r: any) => r.id === "villages-village").data.memoryHead)!;
+  const head = readMemoryHead((savedDocuments.find((r: any) => r.id === "villages-village")!.data as any).memoryHead)!;
   await f.repo.mutateAuthority(
     (state) => {
       state.memories = realisticMemoryHistory(7500);
