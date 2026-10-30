@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { MailboxView, PersonalMailThread } from "../../../shared/contracts/mailbox.js";
+import type { MailboxMutation, MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
-import { request } from "../../shared/api.js";
+import { request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import type { PortraitMap } from "../../shared/types.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import { SignatureArt } from "./villages-signature.js";
 
-type Letter = { thread: PersonalMailThread; message: PersonalMailThread["messages"][number] };
-type Selection = { threadId: string; messageId: string } | null;
+type Selection = { threadId: string; messageId: string; token: string } | null;
 
 function LetterPages({
   text,
@@ -180,9 +179,12 @@ export function Mailbox({
       return false;
     }
   });
-  const [view, setView] = useState<MailboxView | null>(null);
+  const [loadedView, setView] = useState<(MailboxView & { queryKey: string }) | null>(null);
   const [folder, setFolder] = useState<"inbox" | "sent">("inbox");
   const [selection, setSelection] = useState<Selection>(null);
+  const [loadedLetter, setLoadedLetter] = useState<PersonalLetter | null>(null);
+  const [cursors, setCursors] = useState<string[]>([]);
+  const [recoveryCursors, setRecoveryCursors] = useState<string[]>([]);
   const [composing, setComposing] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -191,7 +193,20 @@ export function Mailbox({
   const [loadError, setLoadError] = useState("");
   const [readError, setReadError] = useState("");
   const [readAttempt, setReadAttempt] = useState(0);
+  const [detailAttempt, setDetailAttempt] = useState(0);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const uiEpoch = useRef(0);
+  const navigationEpoch = useRef(0);
+  const indexLane = useRef(0);
+  const detailLane = useRef(0);
+  const retryIdentity = useRef<Record<string, string>>({});
+  const sendIdentities = useRef(new Map<string, string>());
+  const scope = snapshot?.worldScope ?? "";
+  const cursor = cursors.at(-1) ?? "";
+  const recoveryCursor = recoveryCursors.at(-1) ?? "";
+  const queryKey = JSON.stringify([scope, folder, cursor, recoveryCursor]);
+  const currentQuery = useRef(queryKey);
+  currentQuery.current = queryKey;
   useEffect(() => {
     if (!open) return;
     const root = closeButton.current?.getRootNode();
@@ -201,39 +216,110 @@ export function Mailbox({
       if (opener instanceof HTMLElement && opener.isConnected) opener.focus({ preventScroll: true });
     };
   }, [open]);
-  const retryIdentity = useRef<Record<string, string>>({});
-  const sendIdentities = useRef(new Map<string, string>());
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    const next = await request<MailboxView>("/mailbox", { signal });
-    if (!signal?.aborted) {
-      setView(next);
-      setLoadError("");
-    }
-  }, []);
-  useEffect(() => {
-    if (!open) return;
-    setFolder("inbox");
+  useLayoutEffect(() => {
+    uiEpoch.current++;
+    navigationEpoch.current++;
+    setView(null);
+    setLoadedLetter(null);
     setSelection(null);
-    setRecipient(initialResidentId);
-    setComposing(!!initialResidentId);
-    const controller = new AbortController();
-    const poll = () =>
-      void refresh(controller.signal).catch((cause) => {
-        if (!controller.signal.aborted) setLoadError(cause instanceof Error ? cause.message : "Mailbox unavailable.");
-      });
-    poll();
-    const timer = window.setInterval(poll, 5000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [open, initialResidentId, refresh]);
-  const letters: Letter[] = (view?.threads ?? []).flatMap((thread) =>
-    thread.messages.map((message) => ({ thread, message })),
+    setCursors([]);
+    setRecoveryCursors([]);
+    setBusy(false);
+    setError("");
+    setReadError("");
+    if (open) {
+      setFolder("inbox");
+      setRecipient(initialResidentId);
+      setComposing(!!initialResidentId);
+    }
+  }, [open, initialResidentId, scope]);
+  const choose = (next: Selection) => {
+    navigationEpoch.current++;
+    setSelection(next);
+    setLoadedLetter(null);
+  };
+  const refresh = useCallback(
+    async (signal?: AbortSignal) => {
+      if (currentQuery.current !== queryKey) return;
+      const epoch = uiEpoch.current,
+        lane = ++indexLane.current;
+      const query = new URLSearchParams({ scope, folder });
+      if (cursor) query.set("cursor", cursor);
+      if (recoveryCursor) query.set("recoveryCursor", recoveryCursor);
+      const next = await request<MailboxView>("/mailbox?" + query, { signal });
+      if (
+        !signal?.aborted &&
+        epoch === uiEpoch.current &&
+        lane === indexLane.current &&
+        currentQuery.current === queryKey &&
+        next.scope === scope
+      ) {
+        setView({ ...next, queryKey });
+        setLoadError("");
+      }
+    },
+    [queryKey, scope, folder, cursor, recoveryCursor],
   );
+  const refreshLatest = useRef(refresh);
+  refreshLatest.current = refresh;
+  useEffect(() => {
+    if (!open || !scope) return;
+    const controller = new AbortController();
+    void refresh(controller.signal).catch((cause) => {
+      if (!controller.signal.aborted) {
+        setLoadError(cause instanceof Error ? cause.message : "Mailbox unavailable.");
+        if (cause instanceof VillageApiError && cause.status === 409) {
+          navigationEpoch.current++;
+          setCursors([]);
+          setRecoveryCursors([]);
+        }
+      }
+    });
+    return () => controller.abort();
+  }, [open, scope, refresh, snapshot]);
+  useEffect(() => {
+    if (!open || !selection || !scope) return;
+    const controller = new AbortController(),
+      epoch = uiEpoch.current,
+      lane = ++detailLane.current;
+    const query = new URLSearchParams({ scope, token: selection.token });
+    void request<PersonalLetter>(
+      "/mailbox/threads/" +
+        encodeURIComponent(selection.threadId) +
+        "/messages/" +
+        encodeURIComponent(selection.messageId) +
+        "?" +
+        query,
+      { signal: controller.signal },
+    )
+      .then((next) => {
+        if (
+          !controller.signal.aborted &&
+          epoch === uiEpoch.current &&
+          lane === detailLane.current &&
+          next.scope === scope &&
+          next.message.token === selection.token
+        )
+          setLoadedLetter(next);
+      })
+      .catch((cause) => {
+        if (!controller.signal.aborted && epoch === uiEpoch.current && lane === detailLane.current) {
+          setLoadedLetter(null);
+          setSelection(null);
+          setError(cause instanceof Error ? cause.message : "Letter unavailable.");
+        }
+      });
+    return () => controller.abort();
+  }, [open, selection, scope, snapshot, detailAttempt]);
+  const view = loadedView?.scope === scope && loadedView.queryKey === queryKey ? loadedView : null;
+  const letters = view?.letters ?? [];
   const selected =
-    selection &&
-    letters.find(({ thread, message }) => thread.id === selection.threadId && message.id === selection.messageId);
+    loadedLetter?.scope === scope &&
+    loadedLetter.message.id === selection?.messageId &&
+    loadedLetter.thread.id === selection.threadId &&
+    loadedLetter.message.token === selection.token
+      ? loadedLetter
+      : null;
   const unreadId =
     !composing &&
     selected &&
@@ -243,43 +329,62 @@ export function Mailbox({
       ? selected.message.id
       : "";
   const selectedThreadId = selected?.thread.id ?? "";
+  const selectedToken = selected?.message.token ?? "";
   useEffect(() => {
     setReadError("");
-    if (!open || !selectedThreadId || !unreadId) return;
-    const controller = new AbortController();
-    void request<MailboxView>("/mailbox/threads/" + encodeURIComponent(selectedThreadId) + "/read", {
+    if (!open || !selectedThreadId || !unreadId || !selectedToken) return;
+    const controller = new AbortController(),
+      epoch = uiEpoch.current;
+    void request<MailboxMutation>("/mailbox/threads/" + encodeURIComponent(selectedThreadId) + "/read", {
       method: "POST",
-      body: JSON.stringify({ messageId: unreadId }),
+      body: JSON.stringify({ scope, token: selectedToken, messageId: unreadId }),
       signal: controller.signal,
     })
       .then((next) => {
-        if (!controller.signal.aborted) setView(next);
+        if (
+          !controller.signal.aborted &&
+          epoch === uiEpoch.current &&
+          next.scope === scope &&
+          next.token === selectedToken
+        ) {
+          setLoadedLetter((current) =>
+            current?.message.id === next.messageId && current.message.token === selectedToken
+              ? { ...current, message: { ...current.message, read: true } }
+              : current,
+          );
+          void refreshLatest.current().catch(() => {});
+        }
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setReadError(cause instanceof Error ? cause.message : "Could not read letter.");
+        if (!controller.signal.aborted && epoch === uiEpoch.current) {
+          if (cause instanceof VillageApiError && [404, 409].includes(cause.status)) {
+            setLoadedLetter(null);
+            choose(null);
+            setError(cause.message);
+          } else setReadError(cause instanceof Error ? cause.message : "Could not read letter.");
+        }
       });
     return () => controller.abort();
-  }, [open, selectedThreadId, unreadId, readAttempt]);
-  const action = async (path: string) => {
+  }, [open, selectedThreadId, unreadId, selectedToken, readAttempt, scope]);
+  const action = async (path: string, token: string) => {
+    const epoch = uiEpoch.current,
+      key = scope + ":" + path + ":" + token;
+    retryIdentity.current[key] ??= createVillagesClientId();
     setBusy(true);
     setError("");
     try {
-      let body: unknown;
-      if (path.endsWith("/retry")) {
-        retryIdentity.current[path] ??= createVillagesClientId();
-        body = { requestId: retryIdentity.current[path] };
-      }
-      setView(
-        await request<MailboxView>(path, {
-          method: "POST",
-          body: body === undefined ? undefined : JSON.stringify(body),
-        }),
-      );
-      delete retryIdentity.current[path];
+      const next = await request<MailboxMutation>(path, {
+        method: "POST",
+        body: JSON.stringify({ scope, token, requestId: retryIdentity.current[key] }),
+      });
+      if (epoch !== uiEpoch.current || next.scope !== scope) return;
+      delete retryIdentity.current[key];
+      await refreshLatest.current();
+      setDetailAttempt((attempt) => attempt + 1);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Mailbox action failed.");
+      if (epoch === uiEpoch.current) setError(cause instanceof Error ? cause.message : "Mailbox action failed.");
     } finally {
-      setBusy(false);
+      if (epoch === uiEpoch.current) setBusy(false);
     }
   };
   const sender = selected && snapshot.villagers.find((person) => person.characterId === selected.message.fromId);
@@ -290,46 +395,51 @@ export function Mailbox({
   const fontRevision = useLetterFont(fontId);
   if (!open || !snapshot) return null;
   const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
-  const shown = letters
-    .filter(({ message }) => (folder === "sent" ? message.fromId === "player" : message.fromId !== "player"))
-    .sort((a, b) => b.message.at.localeCompare(a.message.at));
-  const draft = drafts[recipient] ?? "";
+  const shown = letters;
+  const draftKey = scope + ":" + recipient;
+  const draft = drafts[draftKey] ?? "";
   const write = (id = "") => {
+    choose(null);
     setRecipient(id);
-    setSelection(null);
     setComposing(true);
   };
   const send = async () => {
-    const key = JSON.stringify([recipient, draft]);
+    const epoch = uiEpoch.current,
+      navigation = navigationEpoch.current;
+    const key = JSON.stringify([scope, recipient, draft]);
     const requestId = sendIdentities.current.get(key) ?? createVillagesClientId();
     sendIdentities.current.set(key, requestId);
-    const identity = { residentId: recipient, text: draft, requestId };
+    const identity = { scope, residentId: recipient, text: draft, requestId },
+      savedDraftKey = draftKey;
     setBusy(true);
     setError("");
     try {
-      const next = await request<MailboxView>("/mailbox/threads", { method: "POST", body: JSON.stringify(identity) });
-      setView(next);
+      const next = await request<MailboxMutation>("/mailbox/threads", {
+        method: "POST",
+        body: JSON.stringify(identity),
+      });
+      if (epoch !== uiEpoch.current || next.scope !== scope) return;
       if (sendIdentities.current.get(key) === requestId) sendIdentities.current.delete(key);
       setDrafts((current) =>
-        current[identity.residentId] === identity.text ? { ...current, [identity.residentId]: "" } : current,
+        current[savedDraftKey] === identity.text ? { ...current, [savedDraftKey]: "" } : current,
       );
-      const sent = next.threads.find((row) => row.residentId === identity.residentId);
-      const message = sent?.messages.find(
-        (row) =>
-          row.fromId === "player" && (row.id === identity.requestId || row.id.endsWith(":" + identity.requestId)),
-      );
-      setFolder("sent");
-      setComposing(false);
-      setSelection(sent && message ? { threadId: sent.id, messageId: message.id } : null);
+      if (navigation === navigationEpoch.current) {
+        setFolder("sent");
+        setCursors([]);
+        setComposing(false);
+        choose({ threadId: next.threadId, messageId: next.messageId, token: next.token });
+        if (folder === "sent" && !cursor) await refreshLatest.current();
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Letter could not be saved.");
+      if (epoch === uiEpoch.current) setError(cause instanceof Error ? cause.message : "Letter could not be saved.");
     } finally {
-      setBusy(false);
+      if (epoch === uiEpoch.current) setBusy(false);
     }
   };
-  const detail = !!selected || composing;
+  const detail = !!selection || composing;
   const retryPath = (threadId: string, messageId: string) =>
     `/mailbox/threads/${encodeURIComponent(threadId)}/messages/${encodeURIComponent(messageId)}/retry`;
+
   return (
     <div
       className="villages-mailbox-overlay"
@@ -432,7 +542,8 @@ export function Mailbox({
                   aria-pressed={folder === "inbox"}
                   onClick={() => {
                     setFolder("inbox");
-                    setSelection(null);
+                    setCursors([]);
+                    choose(null);
                     setComposing(false);
                   }}
                 >
@@ -443,7 +554,8 @@ export function Mailbox({
                   aria-pressed={folder === "sent"}
                   onClick={() => {
                     setFolder("sent");
-                    setSelection(null);
+                    setCursors([]);
+                    choose(null);
                     setComposing(false);
                   }}
                 >
@@ -455,23 +567,51 @@ export function Mailbox({
               </button>
             </div>
             <div className="villages-letter-rows">
-              {(view?.recovery ?? [])
-                .filter((row) => !letters.some(({ message }) => message.id === row.messageId))
-                .map((row) => (
-                  <article key={row.messageId}>
-                    <p>{row.label}</p>
-                    <div className="villages-letter-actions">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void action(retryPath(row.threadId, row.messageId))}
-                      >
-                        Retry
-                      </button>
-                    </div>
-                  </article>
-                ))}
-              {shown.length === 0 ? (
+              {view?.recoveryTotal ? <h4>Recovery</h4> : null}
+              {(view?.recovery ?? []).map((row) => (
+                <article key={row.messageId}>
+                  <p>{row.label}</p>
+                  <div className="villages-letter-actions">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void action(retryPath(row.threadId, row.messageId), row.token)}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {recoveryCursors.length || view?.recoveryNextCursor ? (
+                <div className="villages-letter-actions" aria-label="Recovery pages">
+                  <button
+                    type="button"
+                    disabled={!recoveryCursors.length}
+                    onClick={() => {
+                      navigationEpoch.current++;
+                      setRecoveryCursors((current) => current.slice(0, -1));
+                    }}
+                  >
+                    Newer recovery
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!view?.recoveryNextCursor}
+                    onClick={() => {
+                      if (view?.recoveryNextCursor) {
+                        navigationEpoch.current++;
+                        setRecoveryCursors((current) =>
+                          current.at(-1) === view.recoveryNextCursor ? current : [...current, view.recoveryNextCursor!],
+                        );
+                      }
+                    }}
+                  >
+                    Older recovery
+                  </button>
+                </div>
+              ) : null}
+              {!view && !loadError ? <p role="status">Loading…</p> : null}
+              {view && shown.length === 0 ? (
                 <p className="villages-letter-empty">{folder === "inbox" ? "No letters yet." : "No sent letters."}</p>
               ) : null}
               {shown.map(({ thread, message }) => (
@@ -481,7 +621,7 @@ export function Mailbox({
                   key={thread.id + message.id}
                   aria-pressed={selection?.threadId === thread.id && selection.messageId === message.id && !composing}
                   onClick={() => {
-                    setSelection({ threadId: thread.id, messageId: message.id });
+                    choose({ threadId: thread.id, messageId: message.id, token: message.token });
                     setComposing(false);
                   }}
                 >
@@ -495,11 +635,39 @@ export function Mailbox({
                     <small>
                       {message.fromId !== "player" && !message.read
                         ? `New · ${new Date(message.at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
-                        : message.text}
+                        : message.preview}
                     </small>
                   </span>
                 </button>
               ))}
+              {cursors.length || view?.nextCursor ? (
+                <div className="villages-letter-actions" aria-label="Mail pages">
+                  <button
+                    type="button"
+                    disabled={!cursors.length}
+                    onClick={() => {
+                      navigationEpoch.current++;
+                      setCursors((current) => current.slice(0, -1));
+                    }}
+                  >
+                    Newer letters
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!view?.nextCursor}
+                    onClick={() => {
+                      if (view?.nextCursor) {
+                        navigationEpoch.current++;
+                        setCursors((current) =>
+                          current.at(-1) === view.nextCursor ? current : [...current, view.nextCursor!],
+                        );
+                      }
+                    }}
+                  >
+                    Older letters
+                  </button>
+                </div>
+              ) : null}
             </div>
           </nav>
           <section className="villages-letter-paper" aria-label="Personal mail" data-reading={!!selected && !composing}>
@@ -507,7 +675,7 @@ export function Mailbox({
               type="button"
               className="villages-letter-back"
               onClick={() => {
-                setSelection(null);
+                choose(null);
                 setComposing(false);
               }}
             >
@@ -534,7 +702,10 @@ export function Mailbox({
                     <select
                       aria-label="Recipient"
                       value={recipient}
-                      onChange={(event) => setRecipient(event.target.value)}
+                      onChange={(event) => {
+                        navigationEpoch.current++;
+                        setRecipient(event.target.value);
+                      }}
                     >
                       <option value="">Choose a resident</option>
                       {people.map((person) => (
@@ -551,7 +722,10 @@ export function Mailbox({
                       aria-label="Personal message"
                       maxLength={4000}
                       value={draft}
-                      onChange={(event) => setDrafts((current) => ({ ...current, [recipient]: event.target.value }))}
+                      onChange={(event) => {
+                        navigationEpoch.current++;
+                        setDrafts((current) => ({ ...current, [draftKey]: event.target.value }));
+                      }}
                     />
                   </label>
                 </div>
@@ -585,7 +759,9 @@ export function Mailbox({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void action(retryPath(selected.thread.id, selected.message.id))}
+                      onClick={() =>
+                        void action(retryPath(selected.thread.id, selected.message.id), selected.message.token)
+                      }
                     >
                       Retry
                     </button>

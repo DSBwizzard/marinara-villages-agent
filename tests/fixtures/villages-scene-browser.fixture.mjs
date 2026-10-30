@@ -35,6 +35,7 @@ const place = (id, x, y) => ({
   state: { revision: 0, recent: null, updatedAt: now },
 });
 const snapshot = {
+  worldScope: "b".repeat(64),
   status: "ready",
   isFounded: true,
   village: {

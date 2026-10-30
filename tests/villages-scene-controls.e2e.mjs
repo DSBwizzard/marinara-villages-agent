@@ -90,7 +90,15 @@ try {
         let value = fixture;
         if (path.endsWith("/connections"))
           value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
-        else if (path.endsWith("/mailbox")) value = { threads: [], recovery: [] };
+        else if (path.endsWith("/mailbox"))
+          value = {
+            scope: snapshot.worldScope,
+            folder: "inbox",
+            letters: [],
+            total: 0,
+            recovery: [],
+            recoveryTotal: 0,
+          };
         else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
         else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (
