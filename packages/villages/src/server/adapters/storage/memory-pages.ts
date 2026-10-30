@@ -7,6 +7,7 @@ export const MEMORY_PAGE_BYTES = 256 * 1024;
 const ITEMS = 64,
   FANOUT = 32,
   CHARS = 32 * 1024;
+const TEXT_PREFIX = "memory:";
 type Ref = { id: string; digest: string; height: number };
 type Page = { type: "text"; text: string } | { type: "block"; content: Ref } | { type: "branch"; children: Ref[] };
 type Entry = [string, unknown];
@@ -69,7 +70,8 @@ export function encodeMemoryPages(value: MemoryPayload, world: string, previous?
     const text = JSON.stringify(rows);
     serializedBytes += Buffer.byteLength(text);
     const chunks: Ref[] = [];
-    for (let i = 0; i < text.length; i += CHARS) chunks.push(page({ type: "text", text: text.slice(i, i + CHARS) }, 0));
+    for (let i = 0; i < text.length; i += CHARS)
+      chunks.push(page({ type: "text", text: TEXT_PREFIX + text.slice(i, i + CHARS) }, 0));
     const content = directory(chunks).root!;
     return page({ type: "block", content }, 0);
   }
@@ -206,10 +208,14 @@ function* memoryPageDecoder(raw: unknown, world: string) {
       for (const textRef of texts.refs) {
         const text = yield* load(textRef);
         memoryRequire(
-          text.type === "text" && textRef.height === 0 && typeof text.text === "string" && text.text.length <= CHARS,
+          text.type === "text" &&
+            textRef.height === 0 &&
+            typeof text.text === "string" &&
+            text.text.startsWith(TEXT_PREFIX) &&
+            text.text.length <= CHARS + TEXT_PREFIX.length,
           "invalid history text page",
         );
-        parts.push(text.text);
+        parts.push(text.text.slice(TEXT_PREFIX.length));
       }
       const rows = JSON.parse(parts.join(""));
       memoryRequire(Array.isArray(rows) && rows.length > 0 && rows.length <= ITEMS, "invalid history block entries");

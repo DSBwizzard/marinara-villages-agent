@@ -1,4 +1,4 @@
-// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry
+// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry, memories-storage/opaque-gallery-boundary
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -586,4 +586,33 @@ await runCase("memories-storage/large-exact-entry", async () => {
       .filter((r) => r.kind === "memory-page")
       .every((r) => Buffer.byteLength(JSON.stringify(r.data)) <= MEMORY_PAGE_BYTES),
   );
+});
+await runCase("memories-storage/opaque-gallery-boundary", async () => {
+  const f = fixture();
+  await seed(f);
+  const prefix = '[["quoted",{"id":"quoted","domain":"memories","reason":"';
+  const reason = "x".repeat(32768 - prefix.length) + "global-gallery:quoted-image";
+  await f.repository.mutateAuthority(
+    (state) => {
+      state.memoryReceipts = { quoted: { id: "quoted", domain: "memories", reason } as any };
+    },
+    { memories: true },
+  );
+  assert.ok(
+    [...f.records.values()].some((r) => r.data.node?.text?.startsWith("memory:global-gallery:")),
+    "The deliberate chunk boundary must exercise the Engine's prefix-sensitive reference scanner.",
+  );
+  for (const page of f.records.values())
+    if (page.kind === "memory-page") {
+      const pending: unknown[] = [page.data];
+      let scanned = 0;
+      while (pending.length) {
+        const value = pending.pop();
+        scanned++;
+        if (typeof value === "string") assert.equal(value.startsWith("global-gallery:"), false);
+        else if (value && typeof value === "object") pending.push(...Object.values(value));
+      }
+      assert.ok(scanned < 256, "Every individual page fits the Engine's reference scanner.");
+    }
+  assert.equal((await f.restart().readAuthority({ memories: true })).memoryReceipts.quoted.reason, reason);
 });
