@@ -23,12 +23,24 @@ import {
   type MemoryPageData,
 } from "../../adapters/storage/memory-pages.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
+import {
+  RELATIONSHIP_PAYLOAD_KIND,
+  RELATIONSHIP_INTENT_KIND,
+  relationshipPayloadData,
+  readRelationshipRoot,
+  relationshipDocumentId,
+  readRelationshipHead,
+  assertRelationshipWorld,
+  type RelationshipHead,
+  type RelationshipScope,
+} from "../../adapters/storage/relationship-payload-store.js";
 import { createRepairStorage, repairStorageId } from "./repair-storage.js";
 
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const PACKAGE = "villages",
   FLOOR = 1024 * 1024;
-const CANDIDATES = ["memory-payload", "memory-page", "repair-snapshot", "repair-undo"];
+const CANDIDATES = ["memory-payload", "memory-page", "repair-snapshot", "repair-undo", RELATIONSHIP_PAYLOAD_KIND];
 const HISTORY_ID = /^villages-memory-([a-f0-9]{32})-[a-f0-9-]{36}$/;
 const ordinaryKinds = new Set([
   "relationships",
@@ -41,6 +53,7 @@ const ordinaryKinds = new Set([
   "background-history",
   "repair-retention",
   "memory-payload-intent",
+  RELATIONSHIP_INTENT_KIND,
 ]);
 function historyBody(row: RepairDocument) {
   const identity = HISTORY_ID.exec(row.id),
@@ -108,6 +121,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
           memoryRequire(/^villages-repair-snapshot-[a-f0-9]{64}$/.test(row.id), "unknown snapshot identity");
         else if (kind === "memory-page") validateMemoryPageData(row.data, row.id);
         else if (kind === "repair-undo") undoBody(row);
+        else if (kind === RELATIONSHIP_PAYLOAD_KIND) relationshipPayloadData(row);
         else historyBody(row);
         candidates.push(row);
       }
@@ -124,7 +138,30 @@ export async function collectRetainedStorage(gate: RepairGate) {
         marked.add(id);
         return row.data as MemoryPageData;
       });
-      return { overlay, lookup, tracer, heads, bodies };
+      const relationships = createRelationshipPageTracer(async (id) => {
+        const row = await lookup(id);
+        memoryRequire(row && row.kind === "memory-page", "owned relationship page is missing");
+        marked.add(id);
+        return row.data as MemoryPageData;
+      });
+      return { overlay, lookup, tracer, relationships, heads, bodies };
+    }
+    async function relationshipHistory(head: RelationshipHead, owner: RelationshipScope, view: Scope) {
+      assertRelationshipWorld(head, owner);
+      const identity = JSON.stringify(head),
+        prior = view.heads.get(head.id);
+      if (prior !== undefined) {
+        memoryRequire(prior === identity, "relationship reference changed");
+        return;
+      }
+      const row = await view.lookup(head.id);
+      memoryRequire(row, "owned relationship history is missing");
+      const value = relationshipPayloadData(row),
+        manifest = JSON.parse(value.payload);
+      memoryRequire(manifest.header?.seed === owner.seed, "owned relationships belong to another Village");
+      await view.relationships.trace(manifest, value.world);
+      marked.add(head.id);
+      view.heads.set(head.id, identity);
     }
     async function history(head: MemoryHead, owner: { seed: string; setupAt: string }, view: Scope) {
       assertMemoryWorld(head, owner);
@@ -218,6 +255,13 @@ export async function collectRetainedStorage(gate: RepairGate) {
         );
         const head = readMemoryHead(row.data.memoryHead);
         if (head) await history(head, row.data as { seed: string; setupAt: string }, view);
+      } else if (row.kind === "relationships") {
+        const root = readRelationshipRoot(row.data);
+        memoryRequire(row.id === relationshipDocumentId(root.seed), "unknown relationship root identity");
+        await relationshipHistory(root.head, root, view);
+      } else if (row.kind === RELATIONSHIP_PAYLOAD_KIND) {
+        const value = relationshipPayloadData(row);
+        await view.relationships.trace(JSON.parse(value.payload), value.world);
       } else if (row.kind === "repair-checkpoint") {
         const value = storage.checkpointData(row.data);
         memoryRequire(row.id === repairStorageId("repair-checkpoint", value.id), "checkpoint owner identity changed");
@@ -276,6 +320,24 @@ export async function collectRetainedStorage(gate: RepairGate) {
     }
     for (const row of await listed("repair-history")) await header(row, physical);
     for (const row of await listed("repair-plan")) await plan(row, physical);
+    for (const row of await listed("relationships")) {
+      memoryRequire(
+        row.id === relationshipDocumentId(readRelationshipRoot(row.data).seed),
+        "unknown relationship root identity",
+      );
+      await sourceOwners(row, physical);
+    }
+    if (root) {
+      const id = relationshipDocumentId((root.data as { seed: string }).seed),
+        owner = await documents.getById(PACKAGE, id);
+      if (owner) {
+        memoryRequire(
+          owner.id === id && owner.packageId === PACKAGE && owner.kind === "relationships",
+          "invalid current relationship owner identity",
+        );
+        await sourceOwners(owner, physical);
+      }
+    }
     const intents = await listed("memory-payload-intent");
     for (const row of intents) {
       memoryRequire(
@@ -292,9 +354,30 @@ export async function collectRetainedStorage(gate: RepairGate) {
         "invalid publication intent ownership",
       );
     }
+    const relationshipIntents = await listed(RELATIONSHIP_INTENT_KIND);
+    for (const row of relationshipIntents) {
+      memoryRequire(
+        /^villages-relationship-intent-[a-f0-9-]{36}$/.test(row.id) && [1, 2].includes(row.revision),
+        "invalid relationship intent identity",
+      );
+      memoryObject(row.data, ["format", "scope", "candidate", "previous", "expectedRevision", "phase"]);
+      memoryObject(row.data.scope, ["seed", "setupAt"]);
+      memoryRequire(
+        row.data.format === 1 &&
+          typeof row.data.scope.seed === "string" &&
+          typeof row.data.scope.setupAt === "string" &&
+          Number.isSafeInteger(row.data.expectedRevision) &&
+          row.data.expectedRevision >= 0 &&
+          ["preparing", "ready"].includes(row.data.phase),
+        "invalid relationship intent ownership",
+      );
+      const owner = row.data.scope as RelationshipScope;
+      assertRelationshipWorld(readRelationshipHead(row.data.candidate), owner);
+      if (row.data.previous !== null) assertRelationshipWorld(readRelationshipHead(row.data.previous), owner);
+    }
     // No writer can publish now, and startup replay finished before exclusion was acquired.
     // Partial preparations have no surviving producer; actual owners above protect committed data.
-    const retired = [...intents, ...candidates.filter((row) => !marked.has(row.id))];
+    const retired = [...intents, ...relationshipIntents, ...candidates.filter((row) => !marked.has(row.id))];
     let removedBytes = 0;
     for (const row of retired) {
       memoryRequire(await raw.remove(PACKAGE, row.id, row.revision), "retained cleanup changed");
@@ -304,7 +387,12 @@ export async function collectRetainedStorage(gate: RepairGate) {
       .filter((row) => marked.has(row.id))
       .reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row)), 0);
     const ownerBytes = [...cache.values()]
-      .filter((row): row is Row => !!row && !CANDIDATES.includes(row.kind) && row.kind !== "memory-payload-intent")
+      .filter(
+        (row): row is Row =>
+          !!row &&
+          !CANDIDATES.includes(row.kind) &&
+          !["memory-payload-intent", RELATIONSHIP_INTENT_KIND].includes(row.kind),
+      )
       .reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row)), 0);
     return { removed: retired.length, removedBytes, retainedBytes: retainedBytes + ownerBytes };
   }, "cleanup");

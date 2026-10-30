@@ -2,35 +2,57 @@ import { assertVillageClockWrite, withVillageClockCommit } from "../time/clock-g
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID, villagesDocuments } from "../engine/runtime-host.js";
 import { assertVenueOwnership } from "../operations/operation-context.js";
+import { withRepairWork } from "./repair-gate.js";
+import { memoryRequire } from "../../domain/rules/memory-integrity.js";
 
 export const MAX_WRITE_ATTEMPTS = 3;
 export type DocumentSlot<T> = {
   kind: string;
   name: string;
   description: string;
-  coerce(data: unknown): T;
-  encode?(state: T): unknown;
+  coerce(data: unknown, expectedRevision?: number): T;
+  encode?(state: T, expectedRevision?: number): unknown;
   label(state: T): string;
+};
+export type HydratedDocumentSlot<T> = Omit<DocumentSlot<T>, "coerce"> & {
+  coerce(data: unknown, expectedRevision?: number): Promise<T>;
 };
 /** A mutation captures its document store once, then retains it across CAS retries. */
 export function createDocumentMutator(getDocuments: () => CapabilityDocumentStore) {
   async function mutateDocument<T>(
     documentId: string,
-    slot: DocumentSlot<T>,
+    slot: DocumentSlot<T> | HydratedDocumentSlot<T>,
+    mutate: (state: T) => void | false | Promise<void | false>,
+  ): Promise<void> {
+    return withRepairWork(() => performMutation(documentId, slot, mutate));
+  }
+  async function performMutation<T>(
+    documentId: string,
+    slot: DocumentSlot<T> | HydratedDocumentSlot<T>,
     mutate: (state: T) => void | false | Promise<void | false>,
   ): Promise<void> {
     const documents = getDocuments();
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt += 1) {
       const record = await documents.getById(VILLAGES_PACKAGE_ID, documentId);
+      if (record && slot.encode)
+        memoryRequire(
+          record.id === documentId && record.packageId === VILLAGES_PACKAGE_ID && record.kind === slot.kind,
+          "invalid hydrated document owner identity",
+        );
       assertVenueOwnership(
         documentId.startsWith("villages-venue-visit-") ? (record?.data as Record<string, unknown>) : undefined,
       );
-      const state = slot.coerce(record?.data);
+      const state = await slot.coerce(record?.data, record?.revision ?? 0);
       await assertVillageClockWrite();
       const changed = await mutate(state);
       await assertVillageClockWrite();
       assertVenueOwnership();
       if (changed === false) return;
+      const data = slot.encode ? await slot.encode(state, record?.revision ?? 0) : state;
+      await assertVillageClockWrite();
+      assertVenueOwnership();
+      // Compare the bounded saved representation, never a hydrated history, when an encoder owns publication.
+      if (record && slot.encode && JSON.stringify(data) === JSON.stringify(record.data)) return;
       const stamp = new Date().toISOString();
       try {
         if (!record) {
@@ -41,7 +63,7 @@ export function createDocumentMutator(getDocuments: () => CapabilityDocumentStor
               kind: slot.kind,
               name: slot.label(state) || slot.name,
               description: slot.description,
-              data: slot.encode ? slot.encode(state) : state,
+              data,
               createdAt: stamp,
               updatedAt: stamp,
             }),
@@ -55,7 +77,7 @@ export function createDocumentMutator(getDocuments: () => CapabilityDocumentStor
             expectedRevision: record.revision,
             name: slot.label(state) || slot.name,
             description: slot.description,
-            data: slot.encode ? slot.encode(state) : state,
+            data,
             updatedAt: stamp,
           }),
         );

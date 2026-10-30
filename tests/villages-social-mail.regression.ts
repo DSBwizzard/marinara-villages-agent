@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
+import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import { createRelationshipStore } from "../packages/villages/src/server/features/residents/relationship-store-service.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { RelationshipState } from "../packages/villages/src/server/domain/models/relationship-types.js";
 import type { SocialMailInput } from "../packages/villages/src/server/domain/models/social-mail.js";
@@ -7,6 +10,7 @@ import { assertPersonalLetter } from "../packages/villages/src/server/domain/rul
 import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   defaultRelationshipState,
+  coerceRelationshipState,
   relationshipFor,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
@@ -30,6 +34,7 @@ village.villagers = [
   },
 ] as any;
 let social = defaultRelationshipState(village.seed);
+let savedRelationships: ReturnType<typeof createRelationshipStore> | undefined;
 social.reviewedActorIds = ["ada"];
 const queued: any[] = [];
 let backgroundStatuses: any[] = [];
@@ -91,7 +96,9 @@ const service = createSocialMail({
       failInputRead = false;
       throw Error("Input storage unavailable");
     }
-    return structuredClone(social);
+    return savedRelationships
+      ? savedRelationships.readRelationshipState(village.seed)
+      : coerceRelationshipState(village.seed, social);
   },
   mutateRelationships: async (_seed: string, mutate: (state: RelationshipState) => void) => {
     if (
@@ -106,7 +113,7 @@ const service = createSocialMail({
       source.replyUnavailable = true;
       source.replyStatus = "complete";
     }
-    let next = structuredClone(social);
+    let next = coerceRelationshipState(village.seed, social);
     await mutate(next);
     if (
       conflictRetirementId &&
@@ -117,7 +124,7 @@ const service = createSocialMail({
       const id = conflictRetirementId;
       conflictRetirementId = "";
       social.mailDeliveries[id] = { messageId: id, sourceHash: "concurrent-receipt", at: new Date().toISOString() };
-      next = structuredClone(social);
+      next = coerceRelationshipState(village.seed, social);
       await mutate(next);
     }
     if (
@@ -148,7 +155,9 @@ const service = createSocialMail({
       failFirstIncoming = false;
       throw Error("Incoming thread write unavailable");
     }
-    social = next;
+    if (savedRelationships)
+      await savedRelationships.mutateRelationships(village.seed, (state) => Object.assign(state, next));
+    social = structuredClone(next);
     const callback = afterSocialCommit;
     afterSocialCommit = undefined;
     if (callback) await callback();
@@ -1066,3 +1075,82 @@ service.handler.apply(village, reinterpretedInput, fixedMeaning, { retrying: fal
 await service.processOutbox(await snapshot());
 assert.equal(village.socialMailOutbox?.length, 0);
 assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writing and purchases only interpretation");
+
+// The production relationship store exposes immutable history leaves on warm and cold reads.
+// A failure after source delivery must annotate that source and replay locally in both cases.
+{
+  const rows = new Map<string, any>();
+  const documents: any = {
+    getById: async (_pkg: string, id: string) => structuredClone(rows.get(id) ?? null),
+    list: async (_pkg: string, kind: string) => structuredClone([...rows.values()].filter((row) => row.kind === kind)),
+    create: async (input: any) => {
+      assert(!rows.has(input.id));
+      const row = { ...structuredClone(input), revision: 1 };
+      rows.set(row.id, row);
+      return structuredClone(row);
+    },
+    update: async (input: any) => {
+      const old = rows.get(input.id);
+      if (!old || old.revision !== input.expectedRevision) return null;
+      const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+      rows.set(row.id, row);
+      return structuredClone(row);
+    },
+  };
+  await documents.create({
+    id: "villages-village",
+    packageId: "villages",
+    kind: "village",
+    data: { version: 9, seed: village.seed, setupAt: village.setupAt, memoryHead: null },
+  });
+  let gate = createRepairGate(documents);
+  const reopen = () => {
+    savedRelationships = createRelationshipStore({
+      VILLAGES_PACKAGE_ID: "villages",
+      villagesDocuments: () => gate.documents,
+      mutateDocument: createDocumentMutator(() => gate.documents),
+    });
+  };
+  reopen();
+  await gate.work(() => savedRelationships!.mutateRelationships(village.seed, (state) => Object.assign(state, social)));
+  try {
+    for (const cold of [false, true]) {
+      backgroundStatuses = [];
+      await gate.work(() =>
+        service.send({
+          residentId: "ada",
+          requestId: "paged-failure-" + cold,
+          text: "MEMORY: I collect amber fossils.",
+        }),
+      );
+      active = queued.at(-1).input;
+      const result = await service.handler.generate(active);
+      service.handler.apply(village, active, result, { retrying: false });
+      if (cold) {
+        gate.dispose();
+        gate = createRepairGate(documents);
+        reopen();
+      }
+      failNativeWrite = "source";
+      const paid = calls;
+      await gate.work(async () => service.processOutbox(await snapshot()));
+      const pending = await savedRelationships!.readRelationshipState(village.seed);
+      assert(pending.mailDeliveries[active.messageId]);
+      assert.match(
+        pending.mailThreads[active.threadId]!.messages.find((m) => m.id === active.messageId)!.error!,
+        /Memory storage/,
+      );
+      await gate.work(() => service.retry(active.threadId, active.messageId, "paged-local-replay-" + cold));
+      assert.equal(village.socialMailOutbox?.length, 0);
+      assert.equal(calls, paid, "Paged mailbox recovery reuses the saved response without model work");
+      const settled = await savedRelationships!.readRelationshipState(village.seed);
+      assert.equal(
+        settled.mailThreads[active.threadId]!.messages.filter((m) => m.id === active.messageId + ":reply").length,
+        1,
+      );
+    }
+  } finally {
+    savedRelationships = undefined;
+    gate.dispose();
+  }
+}

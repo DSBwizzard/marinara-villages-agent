@@ -50,7 +50,14 @@ const clean = (row: CapabilityDocumentRecord | null): RepairDocument | null =>
  */
 export function createRepairGate(backing: CapabilityDocumentStore, admission = createRepairAdmission()) {
   let allocatedBytes = 0;
-  const allocationKinds = new Set(["memory-payload", "memory-page", "repair-snapshot", "repair-undo"]);
+  const allocationKinds = new Set([
+    "memory-payload",
+    "memory-page",
+    "repair-snapshot",
+    "repair-undo",
+    "relationship-payload",
+    "relationship-payload-intent",
+  ]);
   const raw = new Proxy(backing, {
     get(target, key) {
       const value = Reflect.get(target, key);

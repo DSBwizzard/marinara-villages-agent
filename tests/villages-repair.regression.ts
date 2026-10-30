@@ -2,13 +2,16 @@ import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
 // Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import {
-  coerceRelationshipState,
   defaultRelationshipState,
   neutralRelationship,
   relationshipKey,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  relationshipPayloadStore,
+  readRelationshipRoot,
+  relationshipDocumentId,
+} from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -19,6 +22,11 @@ import {
 import { createRepairTransactionCodec } from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
 import { createRepairSnapshots } from "../packages/villages/src/server/adapters/storage/repair-snapshot-store.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  captureSceneContinuity,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import {
   memoryPayloadDocuments,
   readMemoryHead,
@@ -318,9 +326,14 @@ await runCase("repair/review-retirement-recovery", async () => {
 });
 await runCase("repair/relationship-history", async () => {
   const f = await fixture(),
-    seed = (await f.read()).seed,
+    { seed, setupAt } = await f.read(),
+    scope = { seed, setupAt },
     stamp = memoryTime(10);
-  const id = "villages-relationships-" + createHash("sha256").update(seed).digest("hex").slice(0, 24);
+  const id = relationshipDocumentId(seed);
+  const readSocial = async () => {
+    const row = await f.gate.documents.getById("villages", id);
+    return relationshipPayloadStore(f.gate.documents).read(readRelationshipRoot(row!.data, scope).head, scope);
+  };
   const social = defaultRelationshipState(seed),
     key = relationshipKey("aqua", "player");
   social.edges[key] = { ...neutralRelationship("aqua", "player"), revision: 4, connection: "Original connection" };
@@ -330,7 +343,39 @@ await runCase("repair/relationship-history", async () => {
     kind: "relationships",
     name: "Relationships",
     description: "",
-    data: social,
+    data: {
+      format: 4,
+      ...scope,
+      head: await f.gate.work(() => relationshipPayloadStore(f.gate.documents).prepare(social, scope)),
+    },
+    createdAt: stamp,
+    updatedAt: stamp,
+  });
+  const frozenId = "villages-venue-visit-inline-relationships";
+  const frozen = coerceSession({
+    version: 3,
+    id: "inline-relationships",
+    villageSeed: seed,
+    status: "closed",
+    startedAt: stamp,
+    lines: [],
+    submissions: [],
+  });
+  await f.repo.mutateAuthority(
+    (world) => {
+      world.relationshipContext = social;
+      frozen.continuity = captureSceneContinuity(world, frozen, Date.parse(stamp));
+      delete world.memoryScenes[frozen.id];
+    },
+    { memories: true },
+  );
+  await f.gate.documents.create({
+    id: frozenId,
+    packageId: "villages",
+    kind: "venue-visit",
+    name: "Frozen relationships",
+    description: "",
+    data: frozen,
     createdAt: stamp,
     updatedAt: stamp,
   });
@@ -348,23 +393,47 @@ await runCase("repair/relationship-history", async () => {
     ),
   );
   await f.api.apply(correction.id, correction.token);
-  const changedRevision = f.rows.get(id).data.edges[key].revision;
+  const changedRevision = (await readSocial()).edges[key].revision;
   const undo = await f.api.undo(correction.id, "undo-relationship");
   await f.api.apply(undo.id, undo.token);
-  assert.equal(f.rows.get(id).data.edges[key].connection, "Original connection");
-  assert.ok(f.rows.get(id).data.edges[key].revision > changedRevision);
+  assert.equal((await readSocial()).edges[key].connection, "Original connection");
+  assert.ok((await readSocial()).edges[key].revision > changedRevision);
   const current = await f.gate.documents.getById("villages", id),
-    later = structuredClone(current.data);
+    later = await readSocial();
   later.eventSequence = 42;
   later.edges[key].revision = 100;
-  await f.gate.documents.update({ ...current, expectedRevision: current.revision, data: later });
+  await f.gate.work(async () => {
+    const head = await relationshipPayloadStore(f.gate.documents).prepare(
+      later,
+      scope,
+      readRelationshipRoot(current!.data, scope).head,
+      current!.revision,
+    );
+    await f.gate.documents.update({
+      ...current!,
+      expectedRevision: current!.revision,
+      data: { format: 4, ...scope, head },
+    });
+  });
   const restore = await f.api.restore(cp.id, "restore-relationship-baseline");
   await f.api.apply(restore.id, restore.token);
   f.reopen();
-  const restarted = coerceRelationshipState(seed, (await f.gate.documents.getById("villages", id)).data);
+  const restarted = await readSocial();
   assert.equal(restarted.eventSequence, 42, "Checkpoint restoration cannot rewind relationship publication order");
   assert.ok(restarted.edges[key].revision > 100);
   assert.equal(restarted.edges[key].connection, "Original connection");
+  const retainedScene = coerceSession((await f.gate.documents.getById("villages", frozenId))!.data);
+  const retainedView = sceneContinuityView(
+    { ...(await f.read()), relationshipContext: restarted },
+    retainedScene,
+    false,
+  );
+  assert.equal(retainedView.relationshipContext!.edges[key].revision, 4);
+  assert.equal(
+    retainedView.relationshipContext!.edges[key].connection,
+    "Original connection",
+    "Inline frozen Scene facts remain exact across repair, Undo, checkpoint restoration and restart",
+  );
 });
 await runCase("repair/memory-undo", async () => {
   const f = await fixture();

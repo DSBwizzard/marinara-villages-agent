@@ -40,6 +40,7 @@ import {
   queuePersonalMessage,
   readPersonalThread,
   requireMailSource,
+  mutablePersonalMessage,
   withoutMailDisclosures,
 } from "../../domain/rules/social-mail.js";
 import {
@@ -479,9 +480,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       }).disclosures;
     });
     await ports.mutateRelationships(input.seed, (state) => {
-      const message = state.mailThreads[input.threadId]?.messages.find(
-        (m) => m.id === (bundle === "reply" ? replyId : sourceId),
-      );
+      const message = mutablePersonalMessage(state, input.threadId, bundle === "reply" ? replyId : sourceId);
       if (message && message.toId === "player") message.wishDisclosures = facts;
     });
     await publishReadWishMail(input.seed, input.threadId);
@@ -713,9 +712,7 @@ export function createSocialMail(ports: SocialMailPorts) {
             return;
           const message = error instanceof Error ? error.message : "Mail delivery needs recovery.";
           await ports.mutateRelationships(entry.input.seed, (state) => {
-            const source = state.mailThreads[entry.input.threadId]?.messages.find(
-              (row) => row.id === entry.input.messageId,
-            );
+            const source = mutablePersonalMessage(state, entry.input.threadId, entry.input.messageId);
             if (source) source.error = message;
           });
           await ports.mutateVillageState((state) => {
@@ -766,7 +763,7 @@ export function createSocialMail(ports: SocialMailPorts) {
         }
         if (!thread || !thread.participantIds.includes("player") || !thread.participantIds.includes(input.residentId))
           return;
-        let source = thread.messages.find((row) => row.id === input.messageId);
+        let source = mutablePersonalMessage(state, input.threadId, input.messageId);
         if (!source && input.mode === "resident") {
           source = {
             id: input.messageId,
@@ -843,7 +840,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       await ports.withVillageSceneAcceptance(async (authority) => {
         if (authority.seed !== village.seed) return;
         await ports.mutateRelationships(village.seed, (state) => {
-          const message = state.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
+          const message = mutablePersonalMessage(state, threadId, messageId);
           if (message && !state.mailDeliveries[message.id]) {
             const unavailable =
               message.fromId === "player" &&
@@ -862,7 +859,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       throw error;
     }
     await ports.mutateRelationships(village.seed, (state) => {
-      const message = state.mailThreads[threadId]?.messages.find((row) => row.id === messageId);
+      const message = mutablePersonalMessage(state, threadId, messageId);
       if (message?.admissionFailed) {
         message.admissionFailed = undefined;
         message.error = undefined;
@@ -1189,7 +1186,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       await ports.withVillageSceneAcceptance(async (latest) => {
         if (latest.seed !== input.seed) return;
         await ports.mutateRelationships(input.seed, (state) => {
-          const message = state.mailThreads[input.threadId]?.messages.find((row) => row.id === input.messageId);
+          const message = mutablePersonalMessage(state, input.threadId, input.messageId);
           if (!message || message.sourceHash !== input.sourceHash || message.incarnation !== input.incarnation) return;
           if (
             input.mode !== "resident" &&

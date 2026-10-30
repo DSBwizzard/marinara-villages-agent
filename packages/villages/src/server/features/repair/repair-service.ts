@@ -22,6 +22,14 @@ import {
   emptyMemoryPayload,
 } from "../../adapters/storage/memory-payload-store.js";
 import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
+import {
+  relationshipPayloadStore,
+  readRelationshipRoot,
+  readRelationshipOwner,
+  relationshipDocumentId,
+  type RelationshipScope,
+} from "../../adapters/storage/relationship-payload-store.js";
+import type { RelationshipState } from "../../domain/models/relationship-types.js";
 import { createRepairTransactionCodec } from "../../adapters/storage/repair-transaction-codec.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
@@ -29,7 +37,7 @@ import type { ExchangeEffectReceipt } from "../../domain/models/wish-check-model
 import type { VillageRepository } from "../../domain/models/world-repository.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { coerceRelationshipState, relationshipKey } from "../../domain/rules/relationship-rules.js";
+import { defaultRelationshipState, relationshipKey } from "../../domain/rules/relationship-rules.js";
 import {
   applyWorldRepair,
   changeMemoryProtection,
@@ -208,6 +216,36 @@ export function createRepairService(ports: RepairPorts) {
   const storage = createRepairStorage(documents, gate.raw),
     codec = createRepairTransactionCodec(gate.raw);
   const read = () => repository.readAuthority({ memories: true });
+  const relationshipPayloads = relationshipPayloadStore(documents);
+  async function socialData(
+    row: Pick<RepairDocument, "id" | "kind" | "data"> | null | undefined,
+    owner: RelationshipScope,
+  ) {
+    if (!row) return defaultRelationshipState(owner.seed);
+    const root = readRelationshipOwner(row, owner);
+    return relationshipPayloads.read(root.head, root);
+  }
+  async function currentSocial(owner: RelationshipScope) {
+    const row = await documents.getById(PKG, relationshipDocumentId(owner.seed));
+    if (row) {
+      if (row.packageId !== PKG) throw conflict("Invalid relationship owner identity.");
+      readRelationshipOwner(row, owner);
+    }
+    return row;
+  }
+  async function socialRootData(
+    value: RelationshipState,
+    owner: RelationshipScope,
+    current: Pick<Doc, "data" | "revision"> | null | undefined,
+  ) {
+    const previous = current ? readRelationshipRoot(current.data, owner).head : undefined;
+    return {
+      format: 4,
+      seed: owner.seed,
+      setupAt: owner.setupAt,
+      head: await relationshipPayloads.prepare(value, owner, previous, current?.revision ?? 0),
+    };
+  }
   const store = async (id: string, kind: string, data: unknown) => {
     const stamp = new Date().toISOString();
     await documents.create({
@@ -293,9 +331,8 @@ export function createRepairService(ports: RepairPorts) {
       result = worldRepairRecords(state, includeMemories, personId);
     if (personId && personId !== "player" && !state.villagers.some((p) => p.characterId === personId))
       throw notFound("Choose a villager from People.");
-    const relationshipId = `villages-relationships-${createHash("sha256").update(state.seed).digest("hex").slice(0, 24)}`;
-    const saved = await documents.getById(PKG, relationshipId),
-      social = coerceRelationshipState(state.seed, saved?.data);
+    const saved = await currentSocial(state),
+      social = await socialData(saved, state);
     for (const edge of Object.values(social.edges)) {
       const name = (id: string) =>
         id === "player"
@@ -517,6 +554,11 @@ export function createRepairService(ports: RepairPorts) {
     rows.push(copy(root));
     // The copied root owns its immutable Memory head and all transitive pages.
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
+    const social = await currentSocial(state),
+      listed = rows.find((row) => row.id === relationshipDocumentId(state.seed));
+    if (repairDocumentDigest(listed ?? null) !== repairDocumentDigest(social ? copy(social) : null))
+      throw conflict("The current relationship owner is missing from the checkpoint sources.");
+    await socialData(social, state);
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
@@ -544,10 +586,10 @@ export function createRepairService(ports: RepairPorts) {
       at = now.toISOString();
     if (kind === "relationship") {
       const state = await repository.readAuthority(),
-        documentId = `villages-relationships-${createHash("sha256").update(state.seed).digest("hex").slice(0, 24)}`;
+        documentId = relationshipDocumentId(state.seed);
       const row = await documents.getById(PKG, documentId);
       if (!row) throw conflict("That relationship is unavailable.");
-      const social = coerceRelationshipState(state.seed, row.data),
+      const social = await socialData(row, state),
         edge = social.edges[relationshipKey(id, sub)];
       if (!edge) throw conflict("That relationship changed.");
       for (const key of ["connection", "stance", "expectations", "concerns"] as const) {
@@ -569,7 +611,7 @@ export function createRepairService(ports: RepairPorts) {
           expectedRevision: row.revision,
           name: row.name,
           description: row.description,
-          data: social,
+          data: await socialRootData(social, state, row),
           updatedAt: at,
         }))
       )
@@ -968,13 +1010,15 @@ export function createRepairService(ports: RepairPorts) {
             const value = structuredClone(write.before),
               stamp = new Date().toISOString();
             if (value.kind === "relationships") {
-              const previous = value.data as import("../../domain/models/relationship-types.js").RelationshipState,
-                live = current?.data as typeof previous | undefined;
+              const owner = readRelationshipRoot(value.data),
+                previous = await socialData(value, owner),
+                live = await socialData(current, owner);
               previous.eventSequence = Math.max(previous.eventSequence, live?.eventSequence ?? 0);
               for (const [key, edge] of Object.entries(previous.edges)) {
                 edge.revision = Math.max(edge.revision, live?.edges[key]?.revision ?? 0) + 1;
                 edge.updatedAt = stamp;
               }
+              value.data = await socialRootData(previous, owner, current);
             }
             if (current)
               await documents.update({
@@ -1116,6 +1160,7 @@ export function createRepairService(ports: RepairPorts) {
       const checkpointPointer = checkpointDocuments.find((r) => r.kind === "venue-active");
       const checkpointSceneId = (checkpointPointer?.data as { sessionId?: string })?.sessionId;
       let current: Doc[] = [];
+      await currentSocial(state);
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
       current = storage.worldSources(current, state, false);
       for (const savedScene of [...current, ...checkpointDocuments].filter((r) => r.kind === "venue-visit")) {
@@ -1222,8 +1267,9 @@ export function createRepairService(ports: RepairPorts) {
         const old = await documents.getById(PKG, value.id),
           stamp = new Date().toISOString();
         if (value.kind === "relationships") {
-          const social = value.data as import("../../domain/models/relationship-types.js").RelationshipState,
-            live = old?.data as typeof social | undefined;
+          const owner = readRelationshipRoot(value.data),
+            social = await socialData(value, owner),
+            live = await socialData(old, owner);
           if (
             social.startingActorIds.length ||
             social.initializationConflicts.length ||
@@ -1237,9 +1283,13 @@ export function createRepairService(ports: RepairPorts) {
             social.intentionRevisions[key] =
               Math.max(social.intentionRevisions[key], live?.intentionRevisions[key] ?? 0) + 1;
           for (const [key, record] of Object.entries(social.sharedRecords))
-            record.revision = Math.max(record.revision, live?.sharedRecords[key]?.revision ?? 0) + 1;
+            social.sharedRecords[key] = {
+              ...record,
+              revision: Math.max(record.revision, live?.sharedRecords[key]?.revision ?? 0) + 1,
+            };
           for (const [key, edge] of Object.entries(social.edges))
             edge.revision = Math.max(edge.revision, live?.edges[key]?.revision ?? 0) + 1;
+          value.data = await socialRootData(social, owner, old);
         }
         if (value.kind === "venue-visit") {
           const scene = value.data as {

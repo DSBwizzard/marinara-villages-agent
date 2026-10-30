@@ -178,18 +178,23 @@ export function projectSocialActivities(village: VillageState, now = new Date())
     }
   }
 }
-export function reconcileSocialPlans(village: VillageState, now = new Date()): void {
+export function reconcileSocialPlans(village: VillageState, now = new Date()): boolean {
   const minute = now.getHours() * 60 + now.getMinutes();
-  for (const plan of village.relationshipContext?.socialPlans ?? []) {
+  let changed = false;
+  const plans = village.relationshipContext?.socialPlans ?? [];
+  for (const [index, plan] of plans.entries()) {
     if (plan.status !== "planned") continue;
     if (
       plan.dateKey !== agendaDateKey(now) ||
       plan.endMinute <= minute ||
       village.backgroundPace === "off" ||
       !socialPlanValid(village, plan, now, false)
-    )
-      plan.status = "cancelled";
+    ) {
+      plans[index] = { ...plan, status: "cancelled" };
+      changed = true;
+    }
   }
+  return changed;
 }
 export function socialContinuationValid(
   village: VillageState,

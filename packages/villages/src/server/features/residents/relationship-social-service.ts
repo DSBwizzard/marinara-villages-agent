@@ -174,9 +174,11 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
           projectSocialActivities(current);
           if (state.applied[entry.id]) {
             if (entry.reinterpreted) {
-              const accepted = state.socialEncounters.find((row) => row.id === entry.id),
+              const acceptedIndex = state.socialEncounters.findIndex((row) => row.id === entry.id),
+                accepted = acceptedIndex < 0 ? undefined : structuredClone(state.socialEncounters[acceptedIndex]),
                 raw = asRecord(entry.proposal.encounter);
               if (accepted) {
+                state.socialEncounters[acceptedIndex] = accepted;
                 accepted.memoryChanges = structuredClone(raw.memoryChanges);
                 accepted.wishChanges = structuredClone(raw.wishChanges) as unknown[];
                 accepted.memoryContexts = structuredClone(raw.memoryContexts) as SocialEncounter["memoryContexts"];
@@ -231,7 +233,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
               encounter.at,
               villageNow().getTime(),
             );
-            state.socialEncounters = [...state.socialEncounters, encounter].slice(-64);
+            state.socialEncounters.push(encounter);
             const minute =
               new ZonedDate(
                 encounter.at,
@@ -242,7 +244,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                 encounter.at,
                 entry.admitted?.timeZone || village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
               ).getMinutes();
-            for (const plan of state.socialPlans)
+            for (const [index, plan] of state.socialPlans.entries())
               if (
                 plan.status === "planned" &&
                 plan.kind === "meeting" &&
@@ -252,9 +254,8 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
                 plan.endMinute > minute &&
                 plan.actorIds.every((id) => encounter!.actorIds.includes(id))
               )
-                plan.status = "completed";
+                state.socialPlans[index] = { ...plan, status: "completed" };
           }
-          state.socialPlans = state.socialPlans.slice(-64);
           state.applied[entry.id] = true;
         });
         const accepted = settled.socialEncounters.find((row) => row.id === entry.id);

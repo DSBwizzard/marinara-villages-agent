@@ -1,9 +1,20 @@
-// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity
+// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import { createRelationshipStore } from "../packages/villages/src/server/features/residents/relationship-store-service.js";
+import {
+  createRelationshipPayloadStore,
+  relationshipDocumentId,
+  readRelationshipRoot,
+} from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import {
+  neutralRelationship,
+  relationshipKey,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import {
   collectRetainedStorage,
@@ -89,6 +100,175 @@ async function fixture() {
     });
   return { rows, lists, gate, repo, api, store, insert, head: () => rows.get("villages-village").data.memoryHead };
 }
+function relationshipStore(gate: ReturnType<typeof createRepairGate>) {
+  return createRelationshipStore({
+    VILLAGES_PACKAGE_ID: "villages",
+    villagesDocuments: () => gate.documents,
+    mutateDocument: createDocumentMutator(() => gate.documents),
+  });
+}
+await runCase("retained-storage/relationship-owners", async () => {
+  const f = await fixture(),
+    api = relationshipStore(f.gate),
+    scope = await f.repo.readAuthority(),
+    id = relationshipDocumentId(scope.seed),
+    key = relationshipKey("aqua", "player");
+  const head = () => readRelationshipRoot(f.rows.get(id).data, scope).head;
+  await f.gate.work(() =>
+    api.mutateRelationships(scope.seed, (state) => {
+      state.edges[key] = { ...neutralRelationship("aqua", "player"), connection: "Original" };
+      state.mailThreads.personal = {
+        id: "personal",
+        participantIds: ["aqua", "player"],
+        revision: 1,
+        messages: [
+          {
+            id: "letter",
+            requestId: "letter",
+            fromId: "aqua",
+            toId: "player",
+            text: "Exact private evidence",
+            status: "delivered",
+            at: memoryTime(),
+          },
+        ],
+      };
+    }),
+  );
+  const first = head(),
+    cp = await f.api.createCheckpoint("Relationship owner", "relationship-owner");
+  await f.gate.work(() =>
+    api.mutateRelationships(scope.seed, (state) => {
+      state.edges[key].connection = "Later";
+      state.edges[key].revision++;
+    }),
+  );
+  const beforeRepair = head(),
+    record = await f.api.inspect(repairId("relationship", "aqua", "player"));
+  const review = await f.api.prepare({
+    operationId: "paged-relationship-repair",
+    recordId: record.id,
+    expectedRecord: record.token!,
+    action: "correct",
+    knowers: [],
+    values: { connection: "Repaired", stance: "", expectations: "", concerns: "" },
+  });
+  await collectRetainedStorage(f.gate);
+  assert(f.rows.has(first.id), "A manual checkpoint owns an older relationship head");
+  await f.api.apply(review.id, review.token);
+  await collectRetainedStorage(f.gate);
+  assert(f.rows.has(beforeRepair.id), "Available Undo protects the previous ledger");
+  const undo = await f.api.undo(review.id, "undo-paged-relationship");
+  await f.api.apply(undo.id, undo.token);
+  assert.equal((await api.readRelationshipState(scope.seed)).edges[key].connection, "Later");
+  const restore = await f.api.restore(cp.id, "restore-paged-relationship");
+  await f.api.apply(restore.id, restore.token);
+  const restored = await createRelationshipPayloadStore(f.gate.documents).read(head(), scope);
+  assert.equal(restored.edges[key].connection, "Original");
+  assert.equal(restored.mailThreads.personal.messages[0].text, "Exact private evidence");
+  f.rows.get(id).kind = "unknown";
+  const invalidOwner = structuredClone(f.rows);
+  await assert.rejects(api.readRelationshipState(scope.seed), /owner identity/);
+  await assert.rejects(f.api.inspect(repairId("relationship", "aqua", "player")), /owner identity/);
+  await assert.rejects(f.api.createCheckpoint("Invalid owner", "invalid-owner"), /owner identity/);
+  await assert.rejects(
+    api.mutateRelationships(scope.seed, (state) => {
+      state.noticeSequence++;
+    }),
+    /owner identity/,
+  );
+  await assert.rejects(collectRetainedStorage(f.gate), /owner identity/);
+  assert.deepEqual(
+    f.rows,
+    invalidOwner,
+    "A wrong-kind current owner must prevent publication and every cleanup deletion",
+  );
+  f.rows.get(id).kind = "relationships";
+  await f.api.deleteCheckpoint(cp.id, cp.token);
+  await collectRetainedStorage(f.gate);
+  assert.equal(
+    f.rows.has(first.id),
+    false,
+    "A restored ledger is republished with fresh revision fences; deleting the last old owner releases its head",
+  );
+  const old = structuredClone(f.rows.get(id).data);
+  f.rows.get(id).data.head = beforeRepair;
+  f.rows.delete(beforeRepair.id);
+  const snapshot = structuredClone(f.rows);
+  await assert.rejects(collectRetainedStorage(f.gate), /missing/);
+  assert.deepEqual(f.rows, snapshot, "Missing relationship ownership prevents every deletion");
+  f.rows.get(id).data = old;
+});
+await runCase("retained-storage/relationship-publication", async () => {
+  const f = await fixture(),
+    api = relationshipStore(f.gate),
+    scope = await f.repo.readAuthority();
+  await f.gate.work(() => api.mutateRelationships(scope.seed, () => {}));
+  const create = f.store.create;
+  let createdPages = 0;
+  f.store.create = async (input: any) => {
+    if (input.kind === "memory-page" && ++createdPages === 2) throw Error("Interrupted relationship publication");
+    return create(input);
+  };
+  await assert.rejects(
+    f.gate.work(() =>
+      api.mutateRelationships(scope.seed, (state) => {
+        state.mailThreads.personal = {
+          id: "personal",
+          participantIds: ["aqua", "player"],
+          revision: 300,
+          messages: Array.from({ length: 300 }, (_, i) => ({
+            id: "letter-" + i,
+            requestId: "letter-" + i,
+            fromId: "aqua",
+            toId: "player",
+            text: "Retained " + i,
+            at: memoryTime(),
+            status: "delivered",
+          })),
+        };
+      }),
+    ),
+    /Interrupted/,
+  );
+  f.store.create = create;
+  f.gate.dispose();
+  const restarted = createRepairGate(f.store),
+    cold = relationshipStore(restarted);
+  await collectRetainedStorage(restarted);
+  assert.equal([...f.rows.values()].filter((row) => row.kind === "relationship-payload-intent").length, 0);
+  assert.equal([...f.rows.values()].filter((row) => row.kind === "relationship-payload").length, 1);
+  assert.equal(Object.keys((await cold.readRelationshipState(scope.seed)).mailThreads).length, 0);
+  let entered!: () => void, release!: () => void;
+  const atWrite = new Promise<void>((r) => {
+      entered = r;
+    }),
+    continueWrite = new Promise<void>((r) => {
+      release = r;
+    });
+  f.store.create = async (input: any) => {
+    if (input.kind === "relationship-payload") {
+      entered();
+      await continueWrite;
+    }
+    return create(input);
+  };
+  const writer = restarted.work(() =>
+    cold.mutateRelationships(scope.seed, (state) => {
+      state.noticeSequence++;
+    }),
+  );
+  await atWrite;
+  const before = structuredClone(f.rows);
+  await assert.rejects(collectRetainedStorage(restarted), /work is active/);
+  assert.deepEqual(f.rows, before, "Cleanup cannot remove a preparation while its writer can still publish");
+  release();
+  await writer;
+  f.store.create = create;
+  await collectRetainedStorage(restarted);
+  assert.equal((await cold.readRelationshipState(scope.seed)).noticeSequence, 1);
+  restarted.dispose();
+});
 await runCase("retained-storage/checkpoint-owners", async () => {
   const f = await fixture(),
     checkpoint = await f.api.createCheckpoint("Keep old history", "manual-history");
@@ -265,6 +445,23 @@ await runCase("retained-storage/allocation-budget", async () => {
     await cleanup.request();
     assert.equal(passes(), 2, "Allocated bytes schedule a coalesced follow-up sweep.");
     assert.equal(f.rows.has(artifact.body), false);
+    assert.deepEqual(failures, []);
+    const social = relationshipStore(f.gate),
+      seed = (await f.repo.readAuthority()).seed;
+    for (let i = 0; i < 3000; i++) {
+      await f.gate.work(() =>
+        social.mutateRelationships(seed, (state) => {
+          state.noticeSequence = i % 2;
+        }),
+      );
+      await cleanup.request();
+    }
+    assert.ok(passes() >= 3, "Cycling existing content-addressable heads must still allocate toward cleanup");
+    const intents = [...f.rows.values()].filter((row) => row.kind === "relationship-payload-intent");
+    assert.ok(
+      intents.reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row.data)), 0) < 1024 * 1024,
+      "Publication-intent overhead is bounded even when no new history body or page is allocated",
+    );
     assert.deepEqual(failures, []);
   } finally {
     unsubscribe();
