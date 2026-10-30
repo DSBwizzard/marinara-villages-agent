@@ -13,6 +13,7 @@ import { conflict } from "../../domain/rules/errors.js";
 import type { RepairDocument, RepairWrite } from "../../adapters/storage/repair-gate.js";
 import { createRepairSnapshots } from "../../adapters/storage/repair-snapshot-store.js";
 import { readRelationshipRoot, relationshipDocumentId } from "../../adapters/storage/relationship-payload-store.js";
+import { sceneHistoryOwners } from "../../adapters/storage/scene-history.js";
 
 export const REPAIR_HISTORY_KIND = "repair-history",
   REPAIR_CHECKPOINT_KIND = "repair-checkpoint",
@@ -90,6 +91,16 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
     else if (row.kind === "relationships") {
       const root = readRelationshipRoot(row.data, owner);
       memoryRequire(row.id === relationshipDocumentId(root.seed), "snapshot relationship ownership changed");
+    } else if (row.kind === "venue-visit") {
+      memoryRequire(
+        row.id === "villages-venue-visit-" + row.data.id && row.data.villageSeed === owner.seed,
+        "snapshot Scene ownership changed",
+      );
+      for (const context of sceneHistoryOwners(row.data))
+        memoryRequire(
+          context.scope.seed === owner.seed && context.scope.setupAt === owner.setupAt,
+          "snapshot Scene belongs to another world",
+        );
     } else
       for (const key of ["seed", "villageSeed"])
         if (Object.hasOwn(row.data, key))

@@ -1,7 +1,7 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
-import { coerceSession } from "../../domain/decoding/scene-codec.js";
+import { createSceneHistory } from "../../adapters/storage/scene-history.js";
 import type { ActiveVenue, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { releasePhysicalOutcomes } from "../../domain/rules/venue-scene-state.js";
 
 export interface SceneRetirementPorts {
-  villagesDocuments(): Pick<CapabilityDocumentStore, "getById" | "list" | "remove" | "update">;
+  villagesDocuments(): CapabilityDocumentStore;
   readActive(): Promise<ActiveVenue>;
   readVillageState(): Promise<VillageState>;
   readVillageMemoryState(): Promise<VillageState>;
@@ -55,7 +55,7 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         const documents = ports.villagesDocuments();
         const saved = await documents.getById(VILLAGES_PACKAGE_ID, SESSION_PREFIX + id);
         if (!saved || !sceneRetirementSourceIsValid(saved.data)) return false;
-        const scene = coerceSession(saved.data);
+        const scene = await createSceneHistory(documents).decode(saved.data);
         const village = await ports.readVillageState();
         const active = await ports.readActive();
         if (ports.hasVenueOperation(id) || !sceneReadyForRetirement(scene, village, active.sessionId)) return false;

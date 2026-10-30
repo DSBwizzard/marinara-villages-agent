@@ -1,5 +1,6 @@
 // Test cases: scene-retirement/eligibility, scene-retirement/project-evidence, scene-retirement/project-citations, scene-retirement/evidence-window, scene-retirement/terminal, scene-retirement/operation-status, scene-retirement/notice-dismissal, scene-retirement/publication, scene-retirement/restart-cleanup, scene-retirement/fence
 import assert from "node:assert/strict";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { createHash } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -423,7 +424,9 @@ await runCase("scene-retirement/publication", async () => {
   const service = createSceneRetirement({
     villagesDocuments: () => ({
       getById: async (_package, id) =>
-        present && id === "villages-venue-visit-scene" ? ({ id, data: scene, revision } as never) : null,
+        present && id === "villages-venue-visit-scene"
+          ? ({ id, data: authorSceneFixture(new Map(), scene, world), revision } as never)
+          : null,
       list: async (_package, kind) =>
         kind === "generation-response" && responsePresent
           ? [

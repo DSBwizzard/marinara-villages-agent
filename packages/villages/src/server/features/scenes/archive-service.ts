@@ -1,7 +1,7 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_KIND } from "../../adapters/storage/scene-slots.js";
-import { coerceSession } from "../../domain/decoding/scene-codec.js";
+import { readSceneIndex } from "../../adapters/storage/scene-history.js";
 import type { ActiveVenue, VenueScene } from "../../domain/models/scene-model.js";
 import { conflict, notFound } from "../../domain/rules/errors.js";
 
@@ -15,7 +15,7 @@ export function createSceneArchive({ villagesDocuments, readActive, readSession 
   async function listVenueVisits(filter: { placeId?: string; characterId?: string } = {}): Promise<VenueScene[]> {
     const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
     return records
-      .map((record) => coerceSession(record.data))
+      .map((record) => readSceneIndex(record.data))
       .filter(
         (session) =>
           session.status === "closed" &&

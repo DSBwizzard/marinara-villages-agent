@@ -509,9 +509,13 @@ async function operation(work: () => Promise<any>) {
   const id = `test-${++number}`;
   records.set(`villages-venue-visit-${id}`, {
     id: `villages-venue-visit-${id}`,
+    kind: "venue-visit",
+    packageId: "villages",
     revision: 1,
     name: "Scene",
     data: {
+      storageFormat: 4,
+      version: 3,
       id,
       status: "active",
       sceneRevision: 0,

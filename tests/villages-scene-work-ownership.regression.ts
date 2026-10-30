@@ -237,6 +237,8 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
       "villages-venue-visit-same",
       {
         id: "villages-venue-visit-same",
+        kind: "venue-visit",
+        packageId: "villages",
         revision: 1,
         data: {
           version: 3,
@@ -254,7 +256,13 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
     ],
     [
       "villages-active-venue",
-      { id: "villages-active-venue", revision: 1, data: { sessionId: "same", placeId: "same-place" } },
+      {
+        id: "villages-active-venue",
+        packageId: "villages",
+        kind: "venue-active",
+        revision: 1,
+        data: { sessionId: "same", placeId: "same-place" },
+      },
     ],
   ]);
   let reads = 0,
@@ -449,6 +457,7 @@ for (const canonical of [false, true]) {
   const shared = fixture("Shared", false, identity);
   shared.rows.clear();
   const world = defaultVillageState();
+  world.seed = "shared-world";
   const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
   world.venues = [venue];
   world.backgroundPace = "off";

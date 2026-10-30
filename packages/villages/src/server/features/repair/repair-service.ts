@@ -23,6 +23,12 @@ import {
 } from "../../adapters/storage/memory-payload-store.js";
 import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
 import {
+  readSceneIndex,
+  sceneHistoryOwners,
+  validateSceneHistory,
+  readActiveSceneOwner,
+} from "../../adapters/storage/scene-history.js";
+import {
   relationshipPayloadStore,
   readRelationshipRoot,
   readRelationshipOwner,
@@ -362,7 +368,7 @@ export function createRepairService(ports: RepairPorts) {
     if (includeArchives) {
       const sceneIds = new Set<string>();
       for (const row of await documents.list(PKG, "venue-visit")) {
-        const scene = row.data as import("../../domain/models/scene-model.js").VenueScene;
+        const scene = readSceneIndex(row.data);
         sceneIds.add(scene.id);
         const unfinished =
           scene.submissions?.filter((turn) => turn.processing && unfinishedExchange(turn.processing)) ?? [];
@@ -554,11 +560,23 @@ export function createRepairService(ports: RepairPorts) {
     rows.push(copy(root));
     // The copied root owns its immutable Memory head and all transitive pages.
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
+    const active = await readActiveSceneOwner(documents);
+    if (
+      active.scene &&
+      ((active.scene.data as { villageSeed?: string }).villageSeed !== state.seed ||
+        repairDocumentDigest(rows.find((row) => row.id === active.scene!.id) ?? null) !==
+          repairDocumentDigest(copy(active.scene)))
+    )
+      throw conflict("The active Scene source ownership is missing from this checkpoint.");
     const social = await currentSocial(state),
       listed = rows.find((row) => row.id === relationshipDocumentId(state.seed));
     if (repairDocumentDigest(listed ?? null) !== repairDocumentDigest(social ? copy(social) : null))
       throw conflict("The current relationship owner is missing from the checkpoint sources.");
     await socialData(social, state);
+    await validateSceneHistory(
+      documents,
+      rows.filter((row) => row.kind === "venue-visit").map((row) => row.data),
+    );
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
@@ -1159,12 +1177,16 @@ export function createRepairService(ports: RepairPorts) {
       }
       const checkpointPointer = checkpointDocuments.find((r) => r.kind === "venue-active");
       const checkpointSceneId = (checkpointPointer?.data as { sessionId?: string })?.sessionId;
+      await validateSceneHistory(
+        documents,
+        checkpointDocuments.filter((row) => row.kind === "venue-visit").map((row) => row.data),
+      );
       let current: Doc[] = [];
       await currentSocial(state);
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));
       current = storage.worldSources(current, state, false);
       for (const savedScene of [...current, ...checkpointDocuments].filter((r) => r.kind === "venue-visit")) {
-        const scene = savedScene.data as import("../../domain/models/scene-model.js").VenueScene;
+        const scene = readSceneIndex(savedScene.data);
         const belongsToCheckpoint = checkpointDocuments.includes(savedScene);
         if (
           (scene.status !== "closed" &&
@@ -1292,6 +1314,7 @@ export function createRepairService(ports: RepairPorts) {
           value.data = await socialRootData(social, owner, old);
         }
         if (value.kind === "venue-visit") {
+          sceneHistoryOwners(value.data);
           const scene = value.data as {
               id: string;
               sceneRevision: number;

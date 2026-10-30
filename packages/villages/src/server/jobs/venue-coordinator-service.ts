@@ -6,6 +6,8 @@ import type { VenueScene } from "../domain/models/scene-model.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
+import { sceneHistoryOwners } from "../adapters/storage/scene-history.js";
+import { memoryRequire } from "../domain/rules/memory-integrity.js";
 import {
   boundedRejectedText,
   rejectedSyntaxError,
@@ -158,6 +160,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const store = villagesDocuments();
       const record = await store.getById(VILLAGES_PACKAGE_ID, prefix + id);
       if (!record) throw new VillagesRequestError(404, "That Scene is no longer available.");
+      memoryRequire(
+        record.id === prefix + id && record.packageId === VILLAGES_PACKAGE_ID && record.kind === "venue-visit",
+        "invalid Scene operation owner identity",
+      );
+      sceneHistoryOwners(record.data);
+      memoryRequire((record.data as { id?: string }).id === id, "Scene operation owner identity changed");
       const data = structuredClone(record.data) as Record<string, unknown>;
       mutate(data);
       const saved = await store.update({

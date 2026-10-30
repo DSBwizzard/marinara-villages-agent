@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -14,7 +15,7 @@ function put(id: string, kind: string, data: unknown = {}) {
     kind,
     name: id,
     description: "",
-    data,
+    data: kind === SESSION_KIND ? authorSceneFixture(documents, data) : data,
     revision: 1,
     createdAt: stamp,
     updatedAt: stamp,
@@ -35,7 +36,7 @@ const service = createSceneArchive({
     remove: async (_packageId, id, revision) => documents.get(id)?.revision === revision && documents.delete(id),
   }),
   readActive: async () => ({ sessionId: activeId, placeId: "" }),
-  readSession: async (id) => coerceSession(documents.get(SESSION_PREFIX + id)?.data),
+  readSession: async (id) => fixtureSceneState(documents.get(SESSION_PREFIX + id)?.data, documents),
 });
 assert.deepEqual(
   (await service.listVenueVisits()).map((scene) => scene.id),

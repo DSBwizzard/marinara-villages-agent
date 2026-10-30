@@ -2,9 +2,9 @@ import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { ACTIVE_ID, activeSlot, SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
+import { createSceneHistory } from "../../adapters/storage/scene-history.js";
 import { villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
-import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type {
   GreetingTrace,
@@ -58,7 +58,7 @@ import {
   type AttentionPlan,
 } from "../../domain/rules/scene-attention.js";
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
-import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
 import { provisionalSceneNarrative } from "../../domain/rules/scene-narrative-effects.js";
 import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
@@ -159,10 +159,7 @@ export interface SceneCommandPorts {
     | "abortGreeting"
   >;
   villagesDebugAgentsEnabled: typeof import("../../adapters/engine/runtime-host.js").villagesDebugAgentsEnabled;
-  villagesDocuments(): Pick<
-    ReturnType<typeof import("../../adapters/engine/runtime-host.js").villagesDocuments>,
-    "list" | "getById" | "remove"
-  >;
+  villagesDocuments(): ReturnType<typeof import("../../adapters/engine/runtime-host.js").villagesDocuments>;
   villagesLogger(): Pick<
     ReturnType<typeof import("../../adapters/engine/runtime-host.js").villagesLogger>,
     "debug" | "info" | "warn"
@@ -2114,7 +2111,8 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     // Act and Fulfill aliases use the current Chat interpretation.
     if (requestMode) input = { ...input, mode: "chat" };
     const admitted = venueOperationSnapshot<unknown>();
-    if (admitted) session = { ...coerceSession(admitted), operation: session.operation };
+    if (admitted)
+      session = { ...(await createSceneHistory(villagesDocuments()).decode(admitted)), operation: session.operation };
     if (session.status !== "active") throw conflict("That Scene is not active.");
     if (
       [5, 6].includes(Number(venueOperationInput()?.interactionScopeVersion)) &&
@@ -2829,7 +2827,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     const current = await readVillageState();
     await changeSession(scene.id, (saved) => {
       if (!saved.continuity || saved.villageSeed !== current.seed) return;
-      const view = { ...current, ...structuredClone(saved.continuity.facts) };
+      const view = { ...current, ...cloneSceneFacts(saved.continuity.facts) };
       change(view);
       saved.continuity.facts.venues = view.venues;
     });

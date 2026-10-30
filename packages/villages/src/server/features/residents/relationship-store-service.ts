@@ -38,23 +38,24 @@ export function createRelationshipStore(ports: RelationshipStorePorts) {
 
   const documentId = relationshipDocumentId;
 
-  function slot(documents: CapabilityDocumentStore, scope: RelationshipScope): HydratedDocumentSlot<RelationshipState> {
+  function slot(documents: CapabilityDocumentStore, seed: string): HydratedDocumentSlot<RelationshipState> {
     let previous: RelationshipHead | undefined;
+    let scope: RelationshipScope | undefined;
     return {
       kind: "relationships",
       name: "Villager relationships",
       description: "Directional feelings, evidence, and social permissions; independent of memories.",
       coerce: async (raw) => {
+        scope = await owner(documents, seed);
         previous = undefined;
         if (raw === undefined) return defaultRelationshipState(scope.seed);
         previous = readRelationshipRoot(raw, scope).head;
         return store(documents).read(previous, scope, true);
       },
-      encode: async (state, expectedRevision) => ({
-        format: 4,
-        ...scope,
-        head: await store(documents).prepare(state, scope, previous, expectedRevision),
-      }),
+      encode: async (state, expectedRevision) => {
+        memoryRequire(scope, "relationship publication has no admitted scope");
+        return { format: 4, ...scope, head: await store(documents).prepare(state, scope, previous, expectedRevision) };
+      },
       label: () => "Villager relationships",
     };
   }
@@ -82,13 +83,15 @@ export function createRelationshipStore(ports: RelationshipStorePorts) {
   ): Promise<RelationshipState> {
     if (!seed) throw new Error("Found a village before changing relationships.");
     return withRepairWork(async () => {
-      const documents = villagesDocuments(),
-        scope = await owner(documents, seed);
       let result = defaultRelationshipState(seed);
-      await mutateDocument(documentId(seed), slot(documents, scope), async (state) => {
-        await update(state);
-        result = state;
-      });
+      await mutateDocument(
+        documentId(seed),
+        (documents) => slot(documents, seed),
+        async (state) => {
+          await update(state);
+          result = state;
+        },
+      );
       return result;
     });
   }

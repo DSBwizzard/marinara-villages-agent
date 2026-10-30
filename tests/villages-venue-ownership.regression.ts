@@ -37,6 +37,8 @@ function fixture(label: string, decisionsEnabled: boolean) {
         description: "",
         revision: 1,
         data: {
+          version: 3,
+          storageFormat: 4,
           id: "same-scene",
           status: "active",
           sceneRevision: 0,

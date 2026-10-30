@@ -17,7 +17,7 @@ import { initializeVenueAccess } from "../packages/villages/src/server/domain/ru
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { fixtureVillageState, villageFixtureDocuments, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 
 // Archive-identical server and actual HTTP handlers, with synthetic storage/models only.
 const receipt = JSON.parse(await readFile(".build-tmp/package-build.json", "utf8"));
@@ -500,7 +500,7 @@ try {
     "delayed Project/progress consumers retain adjacent speakers",
   );
   const queries = createSceneQueryService({
-    readSession: async () => coerceSession(state()),
+    readSession: async () => fixtureSceneState(state(), records),
     readVillageState: async () => village,
     villagesDocuments: () => documents,
   } as any);
@@ -604,10 +604,10 @@ try {
   assert.deepEqual(narratedLine.heardBy, ["aqua", "feddy"]);
   assert.deepEqual(narratedLine.soundOnly.characterIds, ["neighbor"]);
   assert.equal(
-    heardLines(coerceSession(state()), "neighbor").find((line) => line.id === narratedLine.id)?.content,
+    heardLines(fixtureSceneState(state(), records), "neighbor").find((line) => line.id === narratedLine.id)?.content,
     audibleCue,
   );
-  assert(!heardLines(coerceSession(state()), "distant").some((line) => line.id === narratedLine.id));
+  assert(!heardLines(fixtureSceneState(state(), records), "distant").some((line) => line.id === narratedLine.id));
 
   const ambientProse = "A pipe ticks beside the open doorway.";
   const ambient = await turn("ambient-narration", "I investigate without leaving this space.", [
@@ -625,7 +625,7 @@ try {
   assert.equal(ambient.session.lines.filter((line: any) => line.content === ambientProse).length, 1);
   assert.deepEqual(ambientLine.heardBy, ["aqua", "feddy"]);
   assert.equal(ambientLine.soundOnly, undefined);
-  const ambientRestored = coerceSession(JSON.parse(JSON.stringify(state())));
+  const ambientRestored = fixtureSceneState(JSON.parse(JSON.stringify(state())), records);
   assert(heardLines(ambientRestored, "aqua").some((line) => line.id === ambientLine.id));
   for (const remote of ["neighbor", "distant"])
     assert(!heardLines(ambientRestored, remote).some((line) => line.id === ambientLine.id));
@@ -1167,7 +1167,7 @@ try {
   assert(restored.body.includes(naturalProse));
   assert(!restored.body.includes(audibleCue));
   assert.equal(
-    heardLines(coerceSession(state()), "neighbor").find((line) => line.id === narratedLine.id)?.content,
+    heardLines(fixtureSceneState(state(), records), "neighbor").find((line) => line.id === narratedLine.id)?.content,
     audibleCue,
   );
   // Actual packaged navigation records visits without adding a classifier/model request.

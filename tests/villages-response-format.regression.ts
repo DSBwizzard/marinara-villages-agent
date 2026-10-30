@@ -159,6 +159,8 @@ async function main() {
         kind: "venue-visit",
         revision: 1,
         data: {
+          storageFormat: 4,
+          version: 3,
           id,
           status: "active",
           sceneRevision: 0,

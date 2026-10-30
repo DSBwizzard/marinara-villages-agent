@@ -20,7 +20,8 @@ export function sceneRelationshipView(
   scene: Pick<VenueScene, "id" | "continuity" | "submissions">,
 ) {
   if (!scene.continuity) return current;
-  const view = structuredClone(scene.continuity.facts.relationshipContext);
+  const captured = scene.continuity.facts.relationshipContext;
+  const view = captured ? coerceRelationshipState(captured.seed, captured) : undefined;
   if (!view || !current) return view;
   replaySceneRelationships(view, current, scene);
   return view;
@@ -114,6 +115,9 @@ function validatedRelationshipState(seed: string, value: unknown): RelationshipS
   return state;
 }
 const immutableStates = new WeakSet<object>();
+export function isImmutableRelationshipState(value: unknown): value is RelationshipState {
+  return !!value && typeof value === "object" && immutableStates.has(value);
+}
 /** Captured relationships are exact immutable values, not authority for a later live mutation. */
 export function immutableRelationshipState(seed: string, value: unknown): RelationshipState {
   if (value && typeof value === "object" && immutableStates.has(value) && (value as RelationshipState).seed === seed)

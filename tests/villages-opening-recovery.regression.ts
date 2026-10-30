@@ -11,6 +11,7 @@ import {
   semanticBlocker,
 } from "../packages/villages/src/server/domain/rules/semantic-continuity.js";
 import assert from "node:assert/strict";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
@@ -215,7 +216,7 @@ const queries = createSceneQueryService({
   villagesDocuments: () => ({
     list: async (_packageId: string, kind: string) => {
       assert.equal(kind, SESSION_KIND);
-      return [{ data: saved }];
+      return [{ data: authorSceneFixture(new Map(), saved, state) }];
     },
   }),
 } as any);

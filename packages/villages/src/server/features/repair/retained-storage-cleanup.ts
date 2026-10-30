@@ -23,6 +23,7 @@ import {
   type MemoryPageData,
 } from "../../adapters/storage/memory-pages.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { sceneHistoryOwners, readActiveSceneOwner } from "../../adapters/storage/scene-history.js";
 import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
 import {
   RELATIONSHIP_PAYLOAD_KIND,
@@ -259,6 +260,12 @@ export async function collectRetainedStorage(gate: RepairGate) {
         const root = readRelationshipRoot(row.data);
         memoryRequire(row.id === relationshipDocumentId(root.seed), "unknown relationship root identity");
         await relationshipHistory(root.head, root, view);
+      } else if (row.kind === "venue-visit") {
+        memoryRequire(
+          row.id === "villages-venue-visit-" + (row.data as { id?: string }).id,
+          "invalid Scene owner identity",
+        );
+        for (const owner of sceneHistoryOwners(row.data)) await relationshipHistory(owner.head, owner.scope, view);
       } else if (row.kind === RELATIONSHIP_PAYLOAD_KIND) {
         const value = relationshipPayloadData(row);
         await view.relationships.trace(JSON.parse(value.payload), value.world);
@@ -327,6 +334,9 @@ export async function collectRetainedStorage(gate: RepairGate) {
       );
       await sourceOwners(row, physical);
     }
+    for (const row of await listed("venue-visit")) await sourceOwners(row, physical);
+    const active = await readActiveSceneOwner(documents);
+    if (active.scene) await sourceOwners(active.scene, physical);
     if (root) {
       const id = relationshipDocumentId((root.data as { seed: string }).seed),
         owner = await documents.getById(PACKAGE, id);

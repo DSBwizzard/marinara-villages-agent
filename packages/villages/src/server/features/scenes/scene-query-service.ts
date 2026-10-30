@@ -2,7 +2,7 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_KIND } from "../../adapters/storage/scene-slots.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
-import { coerceSession } from "../../domain/decoding/scene-codec.js";
+import { readSceneIndex } from "../../adapters/storage/scene-history.js";
 import { notFound } from "../../domain/rules/errors.js";
 import { pendingProgressTurns } from "../../domain/rules/scene-record.js";
 import { projectMetadataRejected } from "../../domain/rules/semantic-continuity.js";
@@ -118,7 +118,7 @@ export function createSceneQueryService({
     const village = await readVillageState();
     const records = await villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
     return records.flatMap((record) => {
-      const session = coerceSession(record.data);
+      const session = readSceneIndex(record.data);
       if (session.processingVersion === 1 && session.villageSeed !== village.seed) return [];
       return session.submissions
         .filter(

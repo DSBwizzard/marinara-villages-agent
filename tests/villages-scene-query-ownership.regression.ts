@@ -1,5 +1,6 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -156,7 +157,7 @@ function fixture(name: string) {
       kind: SESSION_KIND,
       name,
       description: name,
-      data: structuredClone(session),
+      data: authorSceneFixture(new Map(), structuredClone(session)),
       revision: 1,
       createdAt: stamp,
       updatedAt: stamp,

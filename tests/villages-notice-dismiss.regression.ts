@@ -33,7 +33,10 @@ async function main() {
   };
   const records = new Map<string, any>([
     ["villages-village", { id: "villages-village", data: state, revision: 1 }],
-    [`villages-venue-visit-${sceneId}`, { id: `villages-venue-visit-${sceneId}`, data: scene, revision: 1 }],
+    [
+      `villages-venue-visit-${sceneId}`,
+      { id: `villages-venue-visit-${sceneId}`, packageId: "villages", kind: "venue-visit", data: scene, revision: 1 },
+    ],
   ]);
   let modelCalls = 0;
   const release = configureVillagesRuntime({

@@ -16,7 +16,7 @@ import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
 import { readOpeningSignal } from "../rules/opening-project.js";
 import { coerceProjectSpeech } from "../rules/project-interpretation.js";
-import { coerceRelationshipState } from "../rules/relationship-rules.js";
+import { immutableRelationshipState } from "../rules/relationship-rules.js";
 import { coercePendingAttention } from "../rules/scene-attention.js";
 import { sceneContinuityFields, type SceneContinuity } from "../rules/scene-continuity.js";
 import { readSceneLayout } from "../rules/scene-layout.js";
@@ -35,6 +35,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   if (value === undefined) return undefined;
   const raw = asRecord(value),
     facts = asRecord(raw.facts);
+  if (Object.hasOwn(raw, "relationshipHead")) throw conflict("Frozen Scene history requires explicit hydration.");
   if (
     raw.version !== 3 ||
     typeof raw.seed !== "string" ||
@@ -54,13 +55,14 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     memoryScenes: {},
   });
   if (facts.relationshipContext)
-    decoded.relationshipContext = coerceRelationshipState(raw.seed, facts.relationshipContext);
+    decoded.relationshipContext = immutableRelationshipState(raw.seed, facts.relationshipContext);
   const captured = Object.fromEntries(
     sceneContinuityFields.map((key) => [key, decoded[key]]),
   ) as SceneContinuity["facts"];
   return {
     version: 3,
     seed: raw.seed,
+    setupAt: asString(raw.setupAt),
     capturedAt: raw.capturedAt,
     receiptIds: [...raw.receiptIds] as string[],
     facts: captured,
@@ -69,6 +71,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
 
 export function coerceSession(value: unknown): VenueScene {
   const raw = savedVenueClassRecord(value);
+  if (Object.hasOwn(raw, "storageFormat")) throw conflict("Stored Scene history requires explicit hydration.");
   if (raw.version !== 3) throw conflict("Unsupported Scene format. Its saved data is preserved.");
   if (
     raw.spinoff &&

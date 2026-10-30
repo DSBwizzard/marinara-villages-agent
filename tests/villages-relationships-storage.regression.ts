@@ -281,6 +281,63 @@ for (const count of [1000, 10_000, 25_000]) {
   assert.equal((await store.read(headB, scope)).noticeSequence, 1);
   assert.deepEqual(await store.read(headB, scope), await createRelationshipPayloadStore(documents).read(headB, scope));
 }
+// Hydration and publication use the one backend captured by the CAS mutator, even if a getter changes later.
+{
+  const scope = { seed: "single-origin-store", setupAt: at };
+  const backend = () => {
+    const rows = new Map<string, any>([
+      [
+        "villages-village",
+        {
+          id: "villages-village",
+          packageId: "villages",
+          kind: "village",
+          revision: 1,
+          data: { version: 9, ...scope, memoryHead: null },
+        },
+      ],
+    ]);
+    const documents: any = {
+      getById: async (_pkg: string, id: string) => structuredClone(rows.get(id) ?? null),
+      create: async (input: any) => {
+        assert(!rows.has(input.id));
+        const row = { ...structuredClone(input), revision: 1 };
+        rows.set(row.id, row);
+        return structuredClone(row);
+      },
+      update: async (input: any) => {
+        const old = rows.get(input.id);
+        if (!old || old.revision !== input.expectedRevision) return null;
+        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+        rows.set(row.id, row);
+        return structuredClone(row);
+      },
+    };
+    return { rows, documents };
+  };
+  const a = backend(),
+    b = backend();
+  let accesses = 0;
+  const getDocuments = () => (++accesses === 1 ? a.documents : b.documents);
+  const api = createRelationshipStore({
+    VILLAGES_PACKAGE_ID: "villages",
+    villagesDocuments: getDocuments,
+    mutateDocument: createDocumentMutator(getDocuments),
+  });
+  await api.mutateRelationships(scope.seed, (state) => {
+    state.noticeSequence = 1;
+  });
+  assert.equal(accesses, 1, "Scope, immutable pages and owner CAS cannot select different stores");
+  const root = a.rows.get(relationshipDocumentId(scope.seed));
+  assert(root);
+  assert.equal(b.rows.size, 1, "A later backend remains untouched");
+  assert.equal(
+    (await createRelationshipPayloadStore(a.documents).read(readRelationshipRoot(root.data, scope).head, scope))
+      .noticeSequence,
+    1,
+    "Cold loading verifies owner and immutable body were committed to the same backend",
+  );
+}
 console.log("Relationship native operation growth:", JSON.stringify(metrics));
 console.log(
   "Relationship storage: bounded warm I/O and total serialization, alternating frozen/live heads, no-op publication, restart, ownership cleanup, stale-cache rematerialization and descriptor isolation passed.",
