@@ -167,12 +167,15 @@ const documents = {
       failedSaveId &&
       saveFault &&
       input.id === "villages-venue-visit-" + scene.id &&
-      (saveFaultStage === "rejection" ? row.data.rejectedSubmissions : row.data.submissions)?.some(
-        (turn: any) => turn.id === failedSaveId,
-      ) &&
-      !(saveFaultStage === "rejection" ? prior.data.rejectedSubmissions : prior.data.submissions)?.some(
-        (turn: any) => turn.id === failedSaveId,
-      )
+      (saveFaultStage === "rejection"
+        ? row.data.rejectedSubmissions
+        : fixtureSceneState(row.data, records).submissions
+      )?.some((turn: any) => turn.id === failedSaveId) &&
+      !(
+        saveFaultStage === "rejection"
+          ? prior.data.rejectedSubmissions
+          : fixtureSceneState(prior.data, records).submissions
+      )?.some((turn: any) => turn.id === failedSaveId)
         ? saveFault
         : "";
     if (fault) saveFault = "";

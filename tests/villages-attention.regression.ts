@@ -39,7 +39,12 @@ import {
 import { mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import { contactNeighborIds } from "../packages/villages/src/shared/helpers/zone-contact.js";
 import { fixtureInterpretationChecks } from "./fixtures/villages-interpretation-payload.js";
-import { fixtureVillageState, villageFixtureDocuments, authorSceneFixture } from "./helpers/village-storage.fixture.js";
+import {
+  fixtureVillageState,
+  villageFixtureDocuments,
+  authorSceneFixture,
+  fixtureSceneState,
+} from "./helpers/village-storage.fixture.js";
 // Keep the scheduled cast on the seeded day; async timers remain real.
 mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
 
@@ -190,7 +195,11 @@ const release = configureVillagesRuntime({
           failCompletedSceneResult = false;
           throw new Error("Synthetic completed Scene result interruption");
         }
-        if (failNextTurnSave && input.data.submissions?.some((turn: any) => turn.id === "save-failure")) {
+        if (
+          failNextTurnSave &&
+          input.id.startsWith("villages-venue-visit-") &&
+          fixtureSceneState(input.data, records).submissions.some((turn: any) => turn.id === "save-failure")
+        ) {
           failNextTurnSave = false;
           throw new Error("Synthetic interrupted save");
         }
