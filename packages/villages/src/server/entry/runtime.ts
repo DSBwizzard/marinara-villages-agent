@@ -188,6 +188,10 @@ import {
   resumeProject,
 } from "../features/projects/project-lifecycle.js";
 import { createRepairService } from "../features/repair/repair-service.js";
+import {
+  createRetainedStorageCleanup,
+  configureRetainedStorageCleanup,
+} from "../features/repair/retained-storage-cleanup.js";
 import { configureRepairs } from "../features/repair/repair.js";
 import { createLiveMemory } from "../features/residents/live-memory-service.js";
 import {
@@ -378,7 +382,7 @@ const signatureProcessOwner = randomUUID();
 function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: object) {
   const backendWork = backendWorkFor(backendIdentity ?? next.persistence?.documents);
   const releaseMetrics = configureMetricsContext(createMetricsContext());
-  const release = configureRuntimeHost(next);
+  const release = configureRuntimeHost(next, backendWork.repairAdmission);
   const releasePersonas = configurePersonaQueries(createPersonaQueries({ findPlayerPersona, listPlayerPersonas }));
   const releaseNativeSchedules = configureNativeSchedules(createNativeSchedules({ villagesResources, villagesLogger }));
   const releaseGallery = configureGlobalGallery(createGlobalGallery({ villageEngineJson, villageEngineForm }));
@@ -1167,6 +1171,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       continueSaved: continueSceneChange,
     }),
   );
+  const retainedCleanup = createRetainedStorageCleanup(repairGate(), (error) =>
+    runtimeDebug("retained storage cleanup deferred", { error: String(error) }),
+  );
+  const releaseRetainedCleanup = configureRetainedStorageCleanup(retainedCleanup);
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       activityChanged: requestVillageRefresh,
@@ -1250,6 +1258,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseGraph = () => {
+    releaseRetainedCleanup();
+    retainedCleanup.dispose();
     releaseRepairs();
     releaseSettings();
     releaseFoundingSetup();

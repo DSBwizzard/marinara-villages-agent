@@ -1,6 +1,6 @@
 import { createActivationBinding } from "./activation-scope.js";
 import { pipelineStorage } from "../observability/metrics-context.js";
-import { createRepairGate, configureRepairGate } from "../storage/repair-gate.js";
+import { createRepairGate, configureRepairGate, type RepairAdmission } from "../storage/repair-gate.js";
 import type {
   CapabilityDocumentStore,
   CapabilityResourceHost,
@@ -60,7 +60,7 @@ function safeLogger(target: CapabilityRuntimeLogger): CapabilityRuntimeLogger {
 }
 
 /** Captures one host and epoch; construction starts no timers, requests or writes. */
-export function createRuntimeConnections(next: CapabilityRuntimeHost) {
+export function createRuntimeConnections(next: CapabilityRuntimeHost, admission?: RepairAdmission) {
   const token = ++registration;
   let active = true;
   const measuredStore = next.persistence?.documents
@@ -77,7 +77,7 @@ export function createRuntimeConnections(next: CapabilityRuntimeHost) {
         },
       })
     : null;
-  const repair = measuredStore ? createRepairGate(measuredStore) : null;
+  const repair = measuredStore ? createRepairGate(measuredStore, admission) : null;
   function requireHost(): CapabilityRuntimeHost {
     if (!active) throw new Error("The Villages package runtime is not configured.");
     return next;
@@ -121,8 +121,8 @@ export function createRuntimeConnections(next: CapabilityRuntimeHost) {
 }
 export type RuntimeConnections = ReturnType<typeof createRuntimeConnections>;
 const connections = createActivationBinding<RuntimeConnections>("The Villages package runtime is not configured.");
-export function configureRuntimeHost(next: CapabilityRuntimeHost): () => void {
-  const runtime = createRuntimeConnections(next);
+export function configureRuntimeHost(next: CapabilityRuntimeHost, admission?: RepairAdmission): () => void {
+  const runtime = createRuntimeConnections(next, admission);
   const release = connections.configure(runtime);
   const releaseRepair = runtime.repair ? configureRepairGate(runtime.repair) : () => {};
   return () => {

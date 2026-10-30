@@ -988,13 +988,14 @@ export function createRepairService(ports: RepairPorts) {
       } else await applyRecord(record, request);
       const current = await documents.getById(PKG, row.id);
       if (!current) throw conflict("Repair history changed.");
+      const { undoId: _undoId, ...consumed } = header;
       await documents.update({
         id: row.id,
         packageId: PKG,
         expectedRevision: current.revision,
         name: row.name,
         description: row.description,
-        data: { ...header, undoId: undefined, undone: true, canUndo: false },
+        data: { ...consumed, undone: true, canUndo: false },
         updatedAt: new Date().toISOString(),
       });
       const after = await allRecords(

@@ -375,8 +375,22 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
   }
   async function restoreCheckpoint(value: CheckpointData) {
     const rows = await snapshots.restore(value.snapshots);
-    validateSources(rows, value, true);
+    validateCheckpointSources(value, rows);
     return rows;
+  }
+  function validateCheckpointSources(value: CheckpointData, rows: RepairDocument[]) {
+    memoryRequire(
+      rows.length === value.records && new Set(rows.map((row) => row.id)).size === rows.length,
+      "checkpoint source count changed",
+    );
+    validateSources(rows, value, true);
+  }
+  function validateUndoSources(owner: { seed: string; setupAt: string }, rows: RepairWrite[]) {
+    validateSources(
+      rows.flatMap((write) => [write.before, write.after].filter((row): row is RepairDocument => !!row)),
+      owner,
+      false,
+    );
   }
   return {
     checkpoint,
@@ -390,6 +404,8 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     encodeHistory,
     decodeHistory,
     restoreCheckpoint,
+    validateCheckpointSources,
+    validateUndoSources,
     owns,
     worldSources,
   };

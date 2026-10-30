@@ -114,7 +114,7 @@ export function createVillageRepository(
   return {
     withAuthorityLock,
     async readAuthority(options) {
-      return (await load(documents(), options?.memories)).state;
+      return withRepairWork(async () => (await load(documents(), options?.memories)).state);
     },
     async mutateAuthority(update, options) {
       return withRepairWork(() =>

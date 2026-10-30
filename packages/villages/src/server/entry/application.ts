@@ -11,6 +11,7 @@ import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import { readRuntimeDebug } from "../adapters/observability/runtime-debug.js";
 import { recoverVenueSceneWork } from "../features/scenes/venue-session.js";
 import { startProgressRecovery } from "../features/scenes/progress.js";
+import { startRetainedStorageCleanup } from "../features/repair/retained-storage-cleanup.js";
 import { readVillageAuthority, readVillageState } from "../features/world/village-store.js";
 import { startBackgroundWork } from "../jobs/background-work.js";
 import { startTownMapGeneration } from "../jobs/town-map-generation.js";
@@ -51,6 +52,7 @@ export interface ApplicationServices {
   startBackgroundWork(): Cleanup;
   startRefreshScheduler(): Cleanup;
   startProgressRecovery(): Cleanup;
+  startStorageCleanup?(): Cleanup;
   startPrivateSpacePreparation(): Promise<Cleanup>;
   readVillageState(): Promise<unknown>;
   assertSocialContract?(): Promise<unknown>;
@@ -84,6 +86,7 @@ const applicationServices: ApplicationServices = {
   startBackgroundWork,
   startRefreshScheduler: startVillageRefreshScheduler,
   startProgressRecovery,
+  startStorageCleanup: startRetainedStorageCleanup,
   async startPrivateSpacePreparation() {
     const { startPrivateSpacePreparation } = await import("../jobs/private-space-preparation.js");
     return startPrivateSpacePreparation();
@@ -154,6 +157,7 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
     cleanups.push(await api.registerPrivilegedRoutes(services.routes, { prefix: "/api/villages" }));
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.
+    if (services.startStorageCleanup) cleanups.push(services.startStorageCleanup());
     cleanups.push(services.startBackgroundWork());
     cleanups.push(services.startRefreshScheduler());
     cleanups.push(services.startProgressRecovery());
