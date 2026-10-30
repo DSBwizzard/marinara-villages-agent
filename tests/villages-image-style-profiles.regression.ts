@@ -90,18 +90,14 @@ assert.ok(
 settings = { defaultProfileId: "my-ink", profiles: [{ ...custom, styleText: "x".repeat(17000) }] };
 await assert.rejects(service.generateVillageImage({ ...input, sceneryStyleProfileId: "" }), /too long/);
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, sceneryArtStyle: "Legacy authored style" })
-    .sceneryStyleProfileId,
+  coerceVillageState({ ...defaultVillageState(), sceneryArtStyle: "Legacy authored style" }).sceneryStyleProfileId,
   null,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, sceneryStyleProfileId: "my-ink" }).sceneryStyleProfileId,
+  coerceVillageState({ ...defaultVillageState(), sceneryStyleProfileId: "my-ink" }).sceneryStyleProfileId,
   "my-ink",
 );
-assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8, sceneryStyleProfileId: "" }).sceneryStyleProfileId,
-  "",
-);
+assert.equal(coerceVillageState({ ...defaultVillageState(), sceneryStyleProfileId: "" }).sceneryStyleProfileId, "");
 console.log(
   "Engine image style catalog, privacy, selection, persistence, prompt override and dispatch limits passed; synthetic provider only.",
 );

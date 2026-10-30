@@ -82,9 +82,11 @@ export function useRepairController(
     world.current = identity;
     setIndex(result);
   };
-  const readIndex = async (historyOffset = 0) => {
+  const readIndex = async (historyOffset = 0, checkpointOffset = 0) => {
     const ticket = epoch.current;
-    const result = await request<RepairIndex>(`/repair?historyOffset=${historyOffset}`);
+    const result = await request<RepairIndex>(
+      `/repair?historyOffset=${historyOffset}&checkpointOffset=${checkpointOffset}`,
+    );
     acceptIndex(result, ticket);
   };
   useEffect(() => {
@@ -343,6 +345,11 @@ export function useRepairController(
         setSaving(false);
       }
     });
+  const deleteCheckpoint = (id: string, token: string) =>
+    act(async (ticket) => {
+      await request("/repair/checkpoints", { method: "DELETE", body: JSON.stringify({ id, token }) });
+      if (current(ticket)) await readIndex(index?.historyOffset ?? 0);
+    });
   return {
     index,
     topic,
@@ -380,6 +387,7 @@ export function useRepairController(
     undo,
     restore,
     saveCheckpoint,
+    deleteCheckpoint,
     readIndex,
     backFromReview: () => {
       abandonReview();
@@ -393,7 +401,8 @@ export function useRepairController(
         setView(selected ? "edit" : collection.current);
       }
     },
-    historyPage: (start: number) => act(() => readIndex(start)),
+    historyPage: (start: number) => act(() => readIndex(start, index?.checkpointOffset ?? 0)),
+    checkpointPage: (start: number) => act(() => readIndex(index?.historyOffset ?? 0, start)),
   };
 }
 export type RepairController = ReturnType<typeof useRepairController>;

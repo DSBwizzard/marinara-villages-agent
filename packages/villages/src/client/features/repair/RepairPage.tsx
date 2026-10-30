@@ -627,18 +627,45 @@ export function RepairPage({
                 <section key={p.id} className="repair-panel">
                   <h2>{p.title}</h2>
                   <p className="repair-muted">
-                    {new Date(p.at).toLocaleString()} · {p.records} saved records
+                    {new Date(p.at).toLocaleString()} · {p.mode === "automatic" ? "Automatic" : "Manual"}
                   </p>
-                  <button type="button" disabled={c.busy || c.index?.sceneOpen} onClick={() => void c.restore(p.id)}>
-                    Review restoration
-                  </button>
+                  <div className="repair-buttons">
+                    <button type="button" disabled={c.busy || c.index?.sceneOpen} onClick={() => void c.restore(p.id)}>
+                      Review restoration
+                    </button>
+                    {p.mode === "manual" ? (
+                      <button type="button" disabled={c.busy} onClick={() => void c.deleteCheckpoint(p.id, p.token)}>
+                        Delete checkpoint
+                      </button>
+                    ) : null}
+                  </div>
                 </section>
               ))}
             </div>
-            <p className="repair-muted">
-              Whole-world restoration requires a concluded Scene. Current time, spending records and purchased responses
-              are retained.
-            </p>
+            {(c.index?.checkpointTotal ?? 0) > 50 ? (
+              <div className="repair-buttons">
+                <button
+                  type="button"
+                  disabled={c.busy || !c.index?.checkpointOffset}
+                  onClick={() => void c.checkpointPage(Math.max(0, (c.index?.checkpointOffset ?? 0) - 50))}
+                >
+                  Previous
+                </button>
+                <span>
+                  {(c.index?.checkpointOffset ?? 0) + 1}–
+                  {Math.min((c.index?.checkpointOffset ?? 0) + 50, c.index?.checkpointTotal ?? 0)} of{" "}
+                  {c.index?.checkpointTotal}
+                </span>
+                <button
+                  type="button"
+                  disabled={c.busy || (c.index?.checkpointOffset ?? 0) + 50 >= (c.index?.checkpointTotal ?? 0)}
+                  onClick={() => void c.checkpointPage((c.index?.checkpointOffset ?? 0) + 50)}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
+            {c.index?.sceneOpen ? <p role="status">Conclude the Scene to restore.</p> : null}
           </>
         ) : null}
         {c.busy && c.view !== "review" ? <p role="status">Working…</p> : null}

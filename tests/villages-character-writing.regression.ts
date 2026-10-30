@@ -204,7 +204,7 @@ async function run() {
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
       ...defaultVillageState(),
-      version: 8,
+
       wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],

@@ -3,9 +3,12 @@ import type { RepairRequest } from "../../../shared/contracts/repair.js";
 import { fail } from "../../adapters/http/route-support.js";
 import { repairs } from "./repair.js";
 export function registerRepairRoutes(app: FastifyInstance) {
-  app.get<{ Querystring: { historyOffset?: string } }>("/repair", async (request, reply) => {
+  app.get<{ Querystring: { historyOffset?: string; checkpointOffset?: string } }>("/repair", async (request, reply) => {
     try {
-      return await repairs().index(Math.max(0, Math.floor(Number(request.query.historyOffset) || 0)));
+      return await repairs().index(
+        Math.max(0, Math.floor(Number(request.query.historyOffset) || 0)),
+        Math.max(0, Math.floor(Number(request.query.checkpointOffset) || 0)),
+      );
     } catch (e) {
       return fail(reply, e, "reading REPAIR");
     }
@@ -78,6 +81,13 @@ export function registerRepairRoutes(app: FastifyInstance) {
       return await repairs().restore(request.body.id, request.body.operationId);
     } catch (e) {
       return fail(reply, e, "reviewing checkpoint restoration");
+    }
+  });
+  app.delete<{ Body: { id: string; token: string } }>("/repair/checkpoints", async (request, reply) => {
+    try {
+      return await repairs().deleteCheckpoint(request.body.id, request.body.token);
+    } catch (e) {
+      return fail(reply, e, "deleting a checkpoint");
     }
   });
 }

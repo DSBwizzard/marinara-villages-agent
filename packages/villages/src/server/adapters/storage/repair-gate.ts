@@ -1,27 +1,24 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 import { createActivationBinding } from "../engine/activation-scope.js";
 import { conflict } from "../../domain/rules/errors.js";
-import { encodeRepairWrites, decodeRepairWrites } from "./repair-transaction-codec.js";
+import { createRepairTransactionCodec, type ReplayWrite } from "./repair-transaction-codec.js";
+import {
+  repairDigest,
+  repairDocumentDigest,
+  type RepairDocument,
+  type RepairWrite,
+  type RepairRead,
+  type RepairTransaction,
+} from "./repair-document.js";
+export { repairDigest, repairDocumentDigest } from "./repair-document.js";
+export type { RepairDocument, RepairWrite, RepairRead, RepairTransaction } from "./repair-document.js";
 
 const PACKAGE = "villages";
 const CONTROL = "villages-repair-control";
 const simulations = new WeakMap<CapabilityDocumentStore, () => boolean>();
 export const isRepairSimulation = (documents: CapabilityDocumentStore) => simulations.get(documents)?.() ?? false;
-export const repairDigest = (value: unknown): string =>
-  createHash("sha256")
-    .update(JSON.stringify(value) ?? "undefined")
-    .digest("hex");
-export type RepairDocument = Pick<CapabilityDocumentRecord, "id" | "kind" | "name" | "description" | "data">;
-export type RepairWrite = { before: RepairDocument | null; after: RepairDocument | null };
-export type RepairRead = { id: string; digest: string };
-export type RepairTransaction = {
-  reads: RepairRead[];
-  lists: { kind: string; digest: string }[];
-  writes: RepairWrite[];
-};
 type Context = {
   epoch: number;
   owners?: { active: boolean }[];
@@ -29,22 +26,15 @@ type Context = {
   transaction?: Map<string, RepairWrite>;
   revisions?: Map<string, number>;
 };
-type Control = { version: 2; epoch: number; pending?: { id: string; writes: RepairWrite[] } };
+type Control = { version: 3; epoch: number; pending?: { id: string; writes: string } };
 const clean = (row: CapabilityDocumentRecord | null): RepairDocument | null =>
   row ? { id: row.id, kind: row.kind, name: row.name, description: row.description, data: row.data } : null;
-// Clock observation may advance while a player reads the review. Preserve that clock on commit.
-function comparable(row: RepairDocument | null): unknown {
-  if (row?.id !== "villages-village") return row;
-  const data = { ...(row.data as Record<string, unknown>) };
-  delete data.clock;
-  return { ...row, data };
-}
-export const repairDocumentDigest = (row: RepairDocument | null) => repairDigest(comparable(row));
 
 /** One activation owns admission, read isolation and durable multi-document replay.
  * Provider work never runs inside a transaction. Old admitted work cannot write after restore.
  */
 export function createRepairGate(raw: CapabilityDocumentStore) {
+  const codec = createRepairTransactionCodec(raw);
   const context = new AsyncLocalStorage<Context>();
   let epoch = 0;
   let active = 0;
@@ -56,22 +46,31 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
     if (!alive) throw conflict("This Village runtime is no longer active.");
   };
 
-  async function saveControl(data: Control) {
+  async function saveControl(input: {
+    version: 3;
+    epoch: number;
+    pending?: { id: string; writes: RepairWrite[] };
+  }): Promise<Control> {
     requireAlive();
     const now = new Date().toISOString();
     const old = await raw.getById(PACKAGE, CONTROL);
     if (old && old.revision !== controlRevision) throw conflict("Repair ownership changed. Reopen REPAIR.");
+    const data: Control = {
+      version: 3,
+      epoch: input.epoch,
+      ...(input.pending
+        ? { pending: { id: input.pending.id, writes: await codec.encodeWrites(input.pending.writes) } }
+        : {}),
+    };
     const fields = {
       id: CONTROL,
       packageId: PACKAGE,
       name: "Repair recovery",
       description: "Durable local recovery",
-      data: {
-        ...data,
-        ...(data.pending ? { pending: { ...data.pending, writes: encodeRepairWrites(data.pending.writes) } } : {}),
-      },
+      data,
       updatedAt: now,
     };
+    requireAlive();
     if (old) {
       const saved = await raw.update({ ...fields, expectedRevision: old.revision });
       if (!saved) throw conflict("Repair recovery changed. Try again.");
@@ -80,16 +79,24 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       const saved = await raw.create({ ...fields, kind: "repair-control", createdAt: now });
       controlRevision = saved.revision;
     }
+    return data;
   }
-  async function replay(pending: NonNullable<Control["pending"]>) {
+  async function replay(pending: { id: string; writes: ReplayWrite[] }) {
+    const prepared: { write: ReplayWrite; current: CapabilityDocumentRecord | null }[] = [];
     for (const write of pending.writes) {
       requireAlive();
-      const id = (write.after ?? write.before)!.id;
+      const id = write.id;
       const current = await raw.getById(PACKAGE, id);
       requireAlive();
-      if (repairDocumentDigest(clean(current)) === repairDocumentDigest(write.after)) continue;
-      if (repairDocumentDigest(clean(current)) !== repairDocumentDigest(write.before))
+      const digest = repairDocumentDigest(clean(current));
+      if (digest !== repairDocumentDigest(write.after) && digest !== write.beforeDigest)
         throw conflict("Repair recovery found a changed record. Saved recovery has been retained.");
+      prepared.push({ write, current });
+    }
+    for (const { write, current } of prepared) {
+      requireAlive();
+      const id = write.id;
+      if (repairDocumentDigest(clean(current)) === repairDocumentDigest(write.after)) continue;
       if (!write.after) {
         if (current && !(await raw.remove(PACKAGE, id, current.revision))) throw conflict("Repair deletion changed.");
       } else {
@@ -103,7 +110,7 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
         } else await raw.create({ ...fields, createdAt: fields.updatedAt });
       }
     }
-    await saveControl({ version: 2, epoch });
+    await saveControl({ version: 3, epoch });
   }
   async function ensureReady() {
     if (!ready) {
@@ -111,7 +118,7 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
         const row = await raw.getById(PACKAGE, CONTROL);
         if (!row) return;
         const saved = row.data as Control;
-        if (saved?.version !== 2 || !Number.isSafeInteger(saved.epoch) || saved.epoch < 0)
+        if (saved?.version !== 3 || !Number.isSafeInteger(saved.epoch) || saved.epoch < 0)
           throw conflict("The repair recovery record is invalid.");
         controlRevision = row.revision;
         epoch = saved.epoch;
@@ -127,7 +134,7 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
             !Object.hasOwn(pending, "writes")
           )
             throw conflict("The repair recovery record is invalid.");
-          await replay({ id: pending.id, writes: decodeRepairWrites(pending.writes) });
+          await replay({ id: pending.id, writes: await codec.decodeWrites(pending.writes) });
         }
       })().catch((error) => {
         ready = undefined;
@@ -178,7 +185,12 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
           }
         : null;
     const row = await raw.getById(packageId, id);
-    if (context.getStore()?.transaction) readSet?.set(id, { id, digest: repairDocumentDigest(clean(row)) });
+    if (context.getStore()?.transaction) {
+      const digest = repairDocumentDigest(clean(row)),
+        prior = readSet?.get(id);
+      if (prior && prior.digest !== digest) throw conflict("A reviewed record changed during preparation.");
+      readSet?.set(id, { id, digest });
+    }
     return row;
   }
   const documents: CapabilityDocumentStore = {
@@ -189,7 +201,10 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       const rows = await raw.list(packageId, kind);
       const staged = context.getStore()?.transaction;
       if (!staged) return rows;
-      listSet?.set(kind, repairDigest(rows.map(clean).sort((a, b) => a!.id.localeCompare(b!.id))));
+      const digest = repairDigest(rows.map(clean).sort((a, b) => a!.id.localeCompare(b!.id))),
+        prior = listSet?.get(kind);
+      if (prior && prior !== digest) throw conflict("Related records changed during preparation.");
+      listSet?.set(kind, digest);
       const result = new Map(rows.map((row) => [row.id, row]));
       for (const [id, write] of staged) {
         if (write.after?.kind === kind)
@@ -257,13 +272,41 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       exclusive = false;
     }
   }
-  async function simulate<T>(fn: () => Promise<T>): Promise<{ value: T; transaction: RepairTransaction }> {
+  async function guards(transaction: RepairTransaction) {
+    for (const expected of transaction.reads)
+      if (repairDocumentDigest(clean(await raw.getById(PACKAGE, expected.id))) !== expected.digest)
+        throw conflict("A reviewed record changed. Review the repair again; your draft is kept.");
+    for (const expected of transaction.lists) {
+      const current = await raw.list(PACKAGE, expected.kind);
+      if (repairDigest(current.map(clean).sort((a, b) => a!.id.localeCompare(b!.id))) !== expected.digest)
+        throw conflict("Related records changed. Review the repair again.");
+    }
+  }
+  async function simulate<T>(
+    fn: () => Promise<T>,
+    reviewed?: RepairTransaction,
+  ): Promise<{ value: T; transaction: RepairTransaction }> {
     return alone(async () => {
+      if (reviewed) await guards(reviewed);
       const staged = new Map<string, RepairWrite>();
-      readSet = new Map();
-      listSet = new Map();
+      readSet = new Map(reviewed?.reads.map((row) => [row.id, row]));
+      listSet = new Map(reviewed?.lists.map((row) => [row.kind, row.digest]));
       try {
-        const value = await context.run({ epoch, administrative: true, transaction: staged, revisions: new Map() }, fn);
+        const revisions = new Map<string, number>();
+        const value = await context.run({ epoch, administrative: true, transaction: staged, revisions }, async () => {
+          for (const write of reviewed?.writes ?? []) {
+            const id = (write.after ?? write.before)!.id,
+              current = await get(PACKAGE, id);
+            if (repairDocumentDigest(clean(current)) !== repairDocumentDigest(write.before))
+              throw conflict("A reviewed record changed. Review the repair again.");
+            const after = write.after ? structuredClone(write.after) : null;
+            if (after?.id === "villages-village" && current)
+              after.data = { ...(after.data as object), clock: (current.data as Record<string, unknown>).clock };
+            staged.set(id, { before: clean(current), after });
+            if (after) revisions.set(id, (current?.revision ?? 0) + 1);
+          }
+          return fn();
+        });
         return {
           value,
           transaction: {
@@ -280,21 +323,14 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       }
     });
   }
-  async function commit(id: string, transaction: RepairTransaction, extra: RepairWrite[] = []) {
+  async function commit(id: string, transaction: RepairTransaction) {
     return alone(async () => {
-      for (const expected of transaction.reads)
-        if (repairDocumentDigest(clean(await raw.getById(PACKAGE, expected.id))) !== expected.digest)
-          throw conflict("A reviewed record changed. Review the repair again; your draft is kept.");
-      for (const expected of transaction.lists) {
-        const current = await raw.list(PACKAGE, expected.kind);
-        if (repairDigest(current.map(clean).sort((a, b) => a!.id.localeCompare(b!.id))) !== expected.digest)
-          throw conflict("Related records changed. Review the repair again.");
-      }
-      const writes = [...transaction.writes, ...extra];
+      await guards(transaction);
+      const writes = transaction.writes;
       epoch++;
       try {
-        await saveControl({ version: 2, epoch, pending: { id, writes } });
-        await replay({ id, writes });
+        const saved = await saveControl({ version: 3, epoch, pending: { id, writes } });
+        await replay({ id, writes: await codec.decodeWrites(saved.pending!.writes) });
       } catch (error) {
         ready = undefined;
         throw error;

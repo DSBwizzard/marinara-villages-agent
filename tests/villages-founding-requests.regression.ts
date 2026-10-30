@@ -107,7 +107,7 @@ console.log("Founding request budgets, full identity, explicit Routine contract 
 
 const state = coerceVillageState({
   ...defaultVillageState(),
-  version: 8,
+
   seed: "revision-fixture",
   setting: "Shared place",
   villagers: [

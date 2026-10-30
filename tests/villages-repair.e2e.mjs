@@ -1,4 +1,4 @@
-// Test cases: repair-ui/desktop, repair-ui/phone, repair-ui/retry
+// Test cases: repair-ui/desktop, repair-ui/phone, repair-ui/retry, repair-ui/checkpoints
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { build } from "../scripts/esbuild.mjs";
@@ -403,6 +403,74 @@ try {
       await expect(page.getByRole("textbox", { name: "Place description", exact: true })).toHaveValue(
         "My correction survives this conflict.",
       );
+      await page.close();
+    }
+  });
+  await runCase("repair-ui/checkpoints", async () => {
+    const code = await build({
+      stdin: {
+        loader: "tsx",
+        resolveDir: process.cwd(),
+        contents: `import {createRoot} from 'react-dom/client';import {useRepairController} from './packages/villages/src/client/features/repair/useRepairController.js';import {RepairPage} from './packages/villages/src/client/features/repair/RepairPage.js';function App(){const c=useRepairController(true,async()=>null);return <RepairPage controller={c} onBack={()=>{}}/>}createRoot(document.getElementById('root')).render(<App/>);`,
+      },
+      bundle: true,
+      write: false,
+      format: "iife",
+      platform: "browser",
+      jsx: "automatic",
+    });
+    for (const width of [1440, 390]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await mockEngineLookups(page);
+      let checkpoints = Array.from({ length: 51 }, (_, i) => ({
+        id: `checkpoint-${i}`,
+        token: `token-${i}`,
+        title: `Checkpoint ${i}`,
+        at: now,
+        records: 3,
+        mode: i === 0 ? "automatic" : "manual",
+      }));
+      await page.route("http://repair-checkpoints.test/", (route) =>
+        fulfill(route, { contentType: "text/html", body: '<div id="root"></div>' }),
+      );
+      await page.route("**/api/villages**", (route) => {
+        const url = new URL(route.request().url());
+        if (route.request().method() === "DELETE") {
+          const request = route.request().postDataJSON();
+          assert.equal(request.token, `token-${request.id.split("-")[1]}`);
+          checkpoints = checkpoints.filter((entry) => entry.id !== request.id);
+          return fulfill(route, { json: { deleted: true } });
+        }
+        const offset = Number(url.searchParams.get("checkpointOffset") || 0);
+        return fulfill(route, {
+          json: {
+            seed: "checkpoints",
+            identity: "checkpoints",
+            people: [],
+            sceneOpen: false,
+            history: [],
+            historyTotal: 0,
+            historyOffset: 0,
+            records: [],
+            checkpoints: checkpoints.slice(offset, offset + 50),
+            checkpointOffset: offset,
+            checkpointTotal: checkpoints.length,
+          },
+        });
+      });
+      await page.goto("http://repair-checkpoints.test/");
+      await page.addScriptTag({ content: code.outputFiles[0].text });
+      await page
+        .getByRole("button", { name: "Backups & repairs Review repairs, undo, or restore a checkpoint." })
+        .click();
+      await expect(page.getByRole("button", { name: "Delete checkpoint", exact: true })).toHaveCount(49);
+      await page.getByRole("button", { name: "Next", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Checkpoint 50", exact: true })).toBeVisible();
+      assert.equal(await page.locator(".villages-repair").evaluate((el) => el.scrollWidth <= el.clientWidth + 1), true);
+      await page.screenshot({ path: `.build-tmp/repair-ui/checkpoints-${width}.png`, fullPage: true });
+      await page.getByRole("button", { name: "Delete checkpoint", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Checkpoint 50", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Review restoration", exact: true })).toHaveCount(50);
       await page.close();
     }
   });

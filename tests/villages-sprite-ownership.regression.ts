@@ -39,7 +39,7 @@ const image = "data:image/png;base64," + PNG.sync.write(source).toString("base64
 const village = (name: string) =>
   coerceVillageState({
     ...defaultVillageState(),
-    version: 8,
+
     name,
     foundedAt: new Date().toISOString(),
     wishSystemVersion: 3,

@@ -56,7 +56,14 @@ export type RepairHistoryEntry = {
   undone: boolean;
   canUndo: boolean;
 };
-export type RepairCheckpoint = { id: string; title: string; at: string; records: number };
+export type RepairCheckpoint = {
+  id: string;
+  title: string;
+  at: string;
+  records: number;
+  token: string;
+  mode: "automatic" | "manual";
+};
 export type RepairIndex = {
   seed: string;
   identity: string;
@@ -65,6 +72,8 @@ export type RepairIndex = {
   historyOffset: number;
   historyTotal: number;
   checkpoints: RepairCheckpoint[];
+  checkpointOffset: number;
+  checkpointTotal: number;
   sceneOpen: boolean;
   people: RepairPerson[];
 };

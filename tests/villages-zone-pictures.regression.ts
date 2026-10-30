@@ -16,7 +16,7 @@ const image = (id: string) => ({ id, ref: "global-gallery:" + id, url: "/api/glo
 function fixture() {
   let state = coerceVillageState({
     ...defaultVillageState(),
-    version: 8,
+
     wishSystemVersion: 3,
     seed: "pictures",
     foundedAt: "2026-10-29T10:00:00Z",

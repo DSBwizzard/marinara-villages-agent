@@ -1309,9 +1309,10 @@ async function main() {
   // because the failure happens on a tick nobody is watching.
   const store = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
   const refusals = store.coerceVillageState({
+    ...store.defaultVillageState(),
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
-    version: 8,
+
     socialContractVersion: 2,
     wishSystemVersion: 3,
     foundedAt: "2026-09-18T16:40:57.802Z",
@@ -1335,9 +1336,10 @@ async function main() {
   assert.equal(refusals.villagers[0]!.remap, null, "beside the null that says no translation was written");
 
   const partial = store.coerceVillageState({
+    ...store.defaultVillageState(),
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
-    version: 8,
+
     socialContractVersion: 2,
     wishSystemVersion: 3,
     villagers: [
@@ -1394,9 +1396,10 @@ async function main() {
   );
   assert.deepEqual(
     store.coerceVillageState({
+      ...store.defaultVillageState(),
       memories: { format: 1, revision: 0, records: [] },
       memoryScenes: {},
-      version: 8,
+
       socialContractVersion: 2,
       wishSystemVersion: 3,
       villagers: [{ characterId: "a", cardSnapshot: cardSnapshot("a", "A"), addedAt: "", agenda: null, remap: null }],

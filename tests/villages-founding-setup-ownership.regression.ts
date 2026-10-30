@@ -344,6 +344,7 @@ assert.equal(
   "Later village setup does not consume an existing resident's obsolete sprite draft.",
 );
 assert.deepEqual(direct.state.villagers, saved.villagers);
+assert.equal(direct.state.setupAt, saved.setupAt, "Configuration saves retain checkpoint and history ownership.");
 
 const suggestions = fixture("Suggestions");
 assert.deepEqual(await suggestions.service.suggestFoundingPlaces("Observatory", ["book"], 1600), {

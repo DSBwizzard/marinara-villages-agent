@@ -45,7 +45,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
-      if (raw?.version !== 8) return metadata;
+      if (raw?.version !== 9) return metadata;
       if (Object.hasOwn(raw, "memoryHead")) return { ...metadata, data: { ...strip(raw), memoryHead: raw.memoryHead } };
       if (!raw.memories) return metadata;
       const state = coerceVillageState(raw),

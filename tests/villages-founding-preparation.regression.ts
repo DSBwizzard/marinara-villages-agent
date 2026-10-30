@@ -47,7 +47,7 @@ function fixture(seeded = true) {
   const names = ["Aqua", "Feddy Fastbayer", "Sneak McKnickit"];
   const state = coerceVillageState({
     ...defaultVillageState(),
-    version: 8,
+
     wishSystemVersion: 3,
     seed: "station-fields",
     name: "Station Fields",

@@ -49,7 +49,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   // This is an already-captured projection, not an old world to migrate.
   const decoded = coerceVillageState({
     ...facts,
-    version: 8,
+    version: 9,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
   });
