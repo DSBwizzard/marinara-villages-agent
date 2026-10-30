@@ -7,6 +7,8 @@ import { conflict } from "../../domain/rules/errors.js";
 
 const PACKAGE = "villages";
 const CONTROL = "villages-repair-control";
+const simulations = new WeakMap<CapabilityDocumentStore, () => boolean>();
+export const isRepairSimulation = (documents: CapabilityDocumentStore) => simulations.get(documents)?.() ?? false;
 export const repairDigest = (value: unknown): string =>
   createHash("sha256")
     .update(JSON.stringify(value) ?? "undefined")
@@ -293,6 +295,7 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
   const assertGeneration = () => {
     if (context.getStore()?.administrative) throw conflict("Repair operations cannot request model work.");
   };
+  simulations.set(guardedDocuments, () => !!context.getStore()?.transaction);
   return {
     documents: guardedDocuments,
     work,

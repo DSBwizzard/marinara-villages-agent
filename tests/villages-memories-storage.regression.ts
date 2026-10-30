@@ -1,10 +1,12 @@
-// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload
+// Test cases: memories-storage/1000, memories-storage/10000, memories-storage/25000, memories-storage/hydrated-relationships, memories-storage/conflict, memories-storage/malformed, memories-storage/interruptions, memories-storage/reader-retirement, memories-storage/reset, memories-storage/active-preparation, memories-storage/late-payload, memories-storage/page-restart, memories-storage/simulation, memories-storage/missing-page, memories-storage/large-exact-entry
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
+import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
+import { MEMORY_PAGE_BYTES } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
 import {
   reserveMemoryScene,
   forgetVillageMemory,
@@ -80,6 +82,8 @@ function fixture() {
     warnings,
     repository,
     external: createVillageRepository(() => store),
+    store,
+    restart: () => createVillageRepository(() => store),
     hook: (h: typeof hook) => {
       hook = h;
     },
@@ -161,6 +165,46 @@ for (const count of [1000, 10000, 25000])
         rootBytes: Buffer.byteLength(JSON.stringify(root.data)),
         payloadBytes: Buffer.byteLength(f.payloads()[0].data.payload),
         ordinaryIo,
+      }),
+    );
+    // Measure a real history-aware mutation after the activation has decoded this head.
+    // Count serialized bytes as well as physical I/O; no machine-dependent duration gate.
+    f.resetIo();
+    let serializedBytes = 0;
+    const stringify = JSON.stringify;
+    JSON.stringify = ((...args: any[]) => {
+      const result = Reflect.apply(stringify, JSON, args);
+      if (typeof result === "string") serializedBytes += Buffer.byteLength(result);
+      return result;
+    }) as typeof JSON.stringify;
+    try {
+      await f.repository.mutateAuthority(
+        (state) => {
+          forgetVillageMemory(state, memoryRepair(state.memories, "forget", ["player"]), memoryTime(20));
+        },
+        { memories: true },
+      );
+    } finally {
+      JSON.stringify = stringify;
+    }
+    const mutationIo = { ...f.io };
+    assert.ok(mutationIo.readBytes < 500_000, "Warm Memory writes do not read the complete history.");
+    assert.ok(mutationIo.writeBytes < 500_000, "Warm Memory writes replace bounded blocks and directory paths.");
+    assert.ok(serializedBytes < 2_000_000, "Validation and publication do not serialize unchanged history bodies.");
+    assert.ok(
+      [...f.records.values()]
+        .filter((r) => r.kind === "memory-page")
+        .every((r) => Buffer.byteLength(JSON.stringify(r.data)) <= MEMORY_PAGE_BYTES),
+    );
+    const restarted = await f.restart().readAuthority({ memories: true });
+    assert.ok(restarted.memories.records[0].knowers.player.forgotten);
+    assert.equal(sceneMemories(restarted, "frozen").records[0].knowers.player.forgotten, undefined);
+    console.log(
+      JSON.stringify({
+        count,
+        mutationIo,
+        serializedBytes,
+        retainedBytes: [...f.records.values()].reduce((sum, r) => sum + Buffer.byteLength(JSON.stringify(r)), 0),
       }),
     );
   });
@@ -434,4 +478,112 @@ await runCase("memories-storage/late-payload", async () => {
     assert.equal(f.intents().length, 0);
     assert.equal((await f.repository.readAuthority({ memories: true })).memories.revision, crash ? 1 : 2);
   }
+});
+
+await runCase("memories-storage/page-restart", async () => {
+  const f = fixture();
+  await seed(f, 150);
+  const before = await f.repository.readAuthority({ memories: true });
+  assert.throws(() => {
+    before.memories.records[0].text = "Aliased mutation";
+  }, TypeError);
+  before.memories.records.pop();
+  assert.equal(
+    (await f.repository.readAuthority({ memories: true })).memories.records.length,
+    150,
+    "Caller containers cannot mutate the activation’s immutable decoded cache.",
+  );
+  for (const phase of ["before-create", "after-create"]) {
+    let failed = false;
+    f.hook((event, id) => {
+      if (!failed && event === phase && id.startsWith("villages-memory-page-")) {
+        failed = true;
+        throw Error("page interruption");
+      }
+    });
+    await assert.rejects(
+      f.repository.mutateAuthority(
+        (state) => {
+          forgetVillageMemory(state, memoryRepair(state.memories, "forget", ["player"]), memoryTime(20));
+        },
+        { memories: true },
+      ),
+      /page interruption/,
+    );
+    f.hook(() => {});
+    assert.equal(
+      (await f.restart().readAuthority({ memories: true })).memories.records[0].knowers.player.forgotten,
+      undefined,
+    );
+  }
+  await f.repository.mutateAuthority(
+    (state) => {
+      forgetVillageMemory(state, memoryRepair(state.memories, "forget", ["player"]), memoryTime(20));
+    },
+    { memories: true },
+  );
+  assert.ok((await f.restart().readAuthority({ memories: true })).memories.records[0].knowers.player.forgotten);
+});
+await runCase("memories-storage/simulation", async () => {
+  const f = fixture();
+  await seed(f, 150);
+  const gate = createRepairGate(f.store),
+    repository = createVillageRepository(() => gate.documents);
+  const { transaction } = await gate.simulate(async () =>
+    repository.mutateAuthority(
+      (state) => {
+        forgetVillageMemory(state, memoryRepair(state.memories, "forget", ["player"]), memoryTime(20));
+      },
+      { memories: true },
+    ),
+  );
+  const pages = transaction.writes.filter((w) => w.after?.kind === "memory-page");
+  assert.ok(pages.length);
+  assert.ok(
+    pages.every((w) => !f.records.has(w.after!.id)),
+    "Simulation pages are never durable cache entries.",
+  );
+  assert.equal(
+    (await repository.readAuthority({ memories: true })).memories.records[0].knowers.player.forgotten,
+    undefined,
+  );
+  await repository.mutateAuthority(
+    (state) => {
+      forgetVillageMemory(state, memoryRepair(state.memories, "forget", ["player"]), memoryTime(20));
+    },
+    { memories: true },
+  );
+  assert.ok((await f.restart().readAuthority({ memories: true })).memories.records[0].knowers.player.forgotten);
+});
+await runCase("memories-storage/missing-page", async () => {
+  const f = fixture();
+  await seed(f);
+  const page = [...f.records.values()].find((r) => r.kind === "memory-page");
+  f.records.delete(page.id);
+  await assert.rejects(f.restart().readAuthority({ memories: true }), /history page is missing/);
+  assert.equal(f.root().data.version, 8, "Unreadable committed data is retained without reset or conversion.");
+  f.root().data.version = 7;
+  await assert.rejects(f.restart().readAuthority(), /Unsupported Village format/);
+});
+await runCase("memories-storage/large-exact-entry", async () => {
+  const f = fixture();
+  await seed(f);
+  const exact = ('Exact evidence: 🌻 "\\\n' + "a".repeat(127)).repeat(10000);
+  await f.repository.mutateAuthority(
+    (state) => {
+      state.memoryReceipts.large = { id: "large", domain: "memories", reason: exact } as any;
+    },
+    { memories: true },
+  );
+  const restored = await f.restart().readAuthority({ memories: true });
+  assert.equal(
+    restored.memoryReceipts.large.reason,
+    exact,
+    "Large exact evidence survives chunk and surrogate boundaries.",
+  );
+  assert.ok(
+    [...f.records.values()]
+      .filter((r) => r.kind === "memory-page")
+      .every((r) => Buffer.byteLength(JSON.stringify(r.data)) <= MEMORY_PAGE_BYTES),
+  );
 });

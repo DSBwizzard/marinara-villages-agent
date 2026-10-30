@@ -1,6 +1,39 @@
 import { createHash } from "node:crypto";
 import type { MemoryCollection, MemoryRecord } from "../models/memories.js";
 
+const immutableValues = new WeakSet<object>();
+const validatedRecords = new WeakSet<object>();
+const validatedCollections = new WeakSet<object>();
+/** Detached JSON containers share only already-immutable values. No mutable input is memoized. */
+export function immutableMemoryValue<T>(value: T): T {
+  const copying = new WeakMap<object, unknown>();
+  const copy = (item: unknown): unknown => {
+    if (!item || typeof item !== "object" || immutableValues.has(item)) return item;
+    if (copying.has(item)) return copying.get(item);
+    memoryRequire(Array.isArray(item) || Object.getPrototypeOf(item) === Object.prototype, "non-JSON memory value");
+    const result: any = Array.isArray(item) ? [] : {};
+    copying.set(item, result);
+    for (const [key, child] of Object.entries(item))
+      Object.defineProperty(result, key, { value: copy(child), enumerable: true, configurable: true, writable: true });
+    Object.freeze(result);
+    immutableValues.add(result);
+    return result;
+  };
+  return copy(value) as T;
+}
+export function immutableMemoryRecord(value: unknown): MemoryRecord {
+  validateMemoryRecord(value);
+  const record = immutableMemoryValue(value);
+  validatedRecords.add(record);
+  return record;
+}
+export function immutableMemoryCollection(value: unknown): MemoryCollection {
+  if (value && typeof value === "object" && validatedCollections.has(value)) return value as MemoryCollection;
+  const collection = immutableMemoryValue(readMemoryCollection(value));
+  validatedCollections.add(collection);
+  return collection;
+}
+
 export const MEMORY_TEXT_LIMIT = 600;
 export const MEMORY_EXCERPT_LIMIT = 320;
 export const MEMORY_RECORD_BYTES = 32768;
@@ -122,6 +155,7 @@ export function validateMemoryLearning(value: unknown, knower: string, saved = f
   }
 }
 export function validateMemoryRecord(value: unknown): asserts value is MemoryRecord {
+  if (value && typeof value === "object" && validatedRecords.has(value)) return;
   object(value, [
     "id",
     "rootId",
@@ -198,13 +232,17 @@ export function validateMemoryRecord(value: unknown): asserts value is MemoryRec
 }
 /** Fail closed. No legacy decoding, migration, coercion, dropping invalid rows or reset-to-empty. */
 export function readMemoryCollection(value: unknown): MemoryCollection {
+  if (value && typeof value === "object" && validatedCollections.has(value)) {
+    const collection = value as MemoryCollection;
+    return { ...collection, records: [...collection.records] };
+  }
   object(value, ["format", "revision", "records"]);
   memoryRequire(value.format === 1, "unsupported format");
   integer(value.revision, 0);
   memoryRequire(Array.isArray(value.records), "invalid records");
   const records = new Map<string, MemoryRecord>();
-  for (const record of value.records) {
-    validateMemoryRecord(record);
+  for (const entry of value.records) {
+    const record = immutableMemoryRecord(entry);
     memoryRequire(!records.has(record.id) && record.updatedRevision <= value.revision, "duplicate or future record");
     records.set(record.id, record);
   }
@@ -245,5 +283,5 @@ export function readMemoryCollection(value: unknown): MemoryCollection {
         );
       }
   }
-  return structuredClone(value) as MemoryCollection;
+  return { format: 1, revision: value.revision, records: [...records.values()] };
 }

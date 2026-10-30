@@ -18,6 +18,13 @@ import {
   type RepairWrite,
 } from "../../adapters/storage/repair-gate.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import {
+  createMemoryPayloadStore,
+  memoryPayloadDocuments,
+  readMemoryHead,
+  emptyMemoryPayload,
+} from "../../adapters/storage/memory-payload-store.js";
+import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
 import type { MemoryKnower } from "../../domain/models/memories.js";
@@ -528,11 +535,9 @@ export function createRepairService(ports: RepairPorts) {
     const root = await documents.getById(PKG, "villages-village");
     if (!root) throw badRequest("Found a Village first.");
     rows.push(copy(root));
-    const head = (root.data as { memoryHead?: { id: string } }).memoryHead;
+    const head = readMemoryHead((root.data as { memoryHead: unknown }).memoryHead);
     if (head) {
-      const payload = await documents.getById(PKG, head.id);
-      if (!payload) throw conflict("The saved Memories payload is unavailable.");
-      rows.push(copy(payload));
+      rows.push(...(await memoryPayloadDocuments(documents, head, state)).map(copy));
     }
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
     const data: CheckpointData = {
@@ -1195,11 +1200,18 @@ export function createRepairService(ports: RepairPorts) {
       if (data.returnCatchup && typeof data.returnCatchup === "object")
         delete (data.returnCatchup as { capture?: unknown }).capture;
       for (const row of current) if (!wanted.has(row.id)) await documents.remove(PKG, row.id, row.revision);
-      const savedHead = data.memoryHead as { id: string } | null,
-        savedPayload = savedHead ? wanted.get(savedHead.id) : undefined;
-      const payload = savedPayload
-        ? JSON.parse((savedPayload.data as { payload: string }).payload)
-        : { memories: { format: 1, revision: 0, records: [] }, memoryScenes: {}, memoryReceipts: {} };
+      const savedHead = readMemoryHead(data.memoryHead);
+      const checkpointDocuments = {
+        ...documents,
+        async getById(pkg: string, id: string) {
+          const row = wanted.get(id);
+          return row ? { ...row, packageId: pkg, revision: 1, createdAt: "", updatedAt: "" } : null;
+        },
+      };
+      const payload = savedHead
+        ? await createMemoryPayloadStore(checkpointDocuments).read(savedHead, data as unknown as VillageState)
+        : emptyMemoryPayload();
+      if (!payload) throw conflict("The checkpoint’s Memories payload is unavailable.");
       if (
         Object.keys(payload.memoryScenes).some((id) => id !== checkpointSceneId) ||
         (checkpointSceneId && !payload.memoryScenes[checkpointSceneId])
@@ -1222,8 +1234,10 @@ export function createRepairService(ports: RepairPorts) {
       }
       restored.memories.revision = Math.max(restored.memories.revision, state.memories.revision) + 1;
       const currentMemories = new Map(state.memories.records.map((record) => [record.id, record]));
-      for (const record of restored.memories.records)
-        record.revision = Math.max(record.revision, currentMemories.get(record.id)?.revision ?? 0) + 1;
+      restored.memories.records = restored.memories.records.map((record) => ({
+        ...record,
+        revision: Math.max(record.revision, currentMemories.get(record.id)?.revision ?? 0) + 1,
+      }));
       restored.exchangeReceipts = restoredReceipts(restored.exchangeReceipts, state.exchangeReceipts);
       restored.memoryReceipts = restoredReceipts(restored.memoryReceipts, state.memoryReceipts);
       restored.noticeSequence = Math.max(restored.noticeSequence, state.noticeSequence);
@@ -1236,7 +1250,8 @@ export function createRepairService(ports: RepairPorts) {
         { memories: true },
       );
       for (const value of wanted.values()) {
-        if (value.id === "villages-village" || value.kind === "memory-payload") continue;
+        if (value.id === "villages-village" || value.kind === "memory-payload" || value.kind === MEMORY_PAGE_KIND)
+          continue;
         const old = await documents.getById(PKG, value.id),
           stamp = new Date().toISOString();
         if (value.kind === "relationships") {

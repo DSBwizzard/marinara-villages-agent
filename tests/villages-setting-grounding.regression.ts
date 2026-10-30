@@ -113,19 +113,19 @@ async function main() {
   } as any);
   try {
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 7 }).name,
+      coerceVillageState({ ...defaultVillageState(), version: 8 }).name,
       "",
       "new worlds have no invented village name",
     );
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 7, name: "Willowbrook" }).name,
+      coerceVillageState({ ...defaultVillageState(), version: 8, name: "Willowbrook" }).name,
       "Willowbrook",
       "authored names remain intact",
     );
     for (const [name, setting, circumstances, home] of scenarios) {
       const state = coerceVillageState({
         ...defaultVillageState(),
-        version: 7,
+        version: 8,
         wishSystemVersion: 3,
         name,
         setting,
@@ -238,7 +238,7 @@ async function main() {
     common.description += ". The roof leaks";
     const farm = coerceVillageState({
       ...defaultVillageState(),
-      version: 7,
+      version: 8,
       wishSystemVersion: 3,
       seed: "farm-progress",
       setupAt: "2026-10-01T12:00:00Z",
@@ -319,7 +319,7 @@ async function main() {
 
     const legacy = coerceVillageState({
       ...defaultVillageState(),
-      version: 7,
+      version: 8,
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
@@ -331,7 +331,7 @@ async function main() {
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, setupAt: legacy.setupAt })
+      coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3, setupAt: legacy.setupAt })
         .playerBackground,
       "",
     );

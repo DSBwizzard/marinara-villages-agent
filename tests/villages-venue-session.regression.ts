@@ -1589,9 +1589,9 @@ async function main() {
       /Alternate narration and speakers|Every player speech turn needs spoken dialogue/u,
     );
     assert.equal(defaultVillageState().sendOnEnter, false);
-    assert.equal(coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3 }).sendOnEnter, false);
+    assert.equal(coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3 }).sendOnEnter, false);
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, sendOnEnter: "true" })
+      coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3, sendOnEnter: "true" })
         .sendOnEnter,
       false,
     );
@@ -1600,13 +1600,13 @@ async function main() {
     assert.equal((await setVillageSendOnEnter(false)).settings.sendOnEnter, false);
     await assert.rejects(() => setVillageSendOnEnter("true"), /must be on or off/u);
     assert.deepEqual(
-      coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3 }).narrationStyle,
+      coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3 }).narrationStyle,
       defaultVillageState().narrationStyle,
     );
     assert.deepEqual(
       coerceVillageState({
         ...defaultVillageState(),
-        version: 7,
+        version: 8,
         wishSystemVersion: 3,
         narrationStyle: {
           tense: "past",

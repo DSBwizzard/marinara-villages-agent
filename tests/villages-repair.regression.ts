@@ -1,12 +1,16 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import {
+  memoryPayloadDocuments,
+  readMemoryHead,
+} from "../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
@@ -1063,6 +1067,50 @@ await runCase("repair/scale", async () => {
   const found = await f.api.inspect(repairId("memory", oldest.id));
   assert.ok(found.people?.length);
   assert.ok(found.source.length);
+});
+await runCase("repair/checkpoint-pages", async () => {
+  const f = await fixture();
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.foundedAt = state.setupAt;
+      state.memories = realisticMemoryHistory(150);
+    },
+    { memories: true },
+  );
+  const checkpoint = await f.api.createCheckpoint("Paged history", "paged-checkpoint");
+  const original = await f.read();
+  const saved = [...f.rows.values()].find((r) => r.kind === "repair-checkpoint").data;
+  assert.ok(saved.documents.filter((r: any) => r.kind === "memory-page").length > 3);
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.memories = realisticMemoryHistory(300);
+    },
+    { memories: true },
+  );
+  const root = f.rows.get("villages-village");
+  const live = new Set(
+    (await memoryPayloadDocuments(f.gate.documents, readMemoryHead(root.data.memoryHead)!, await f.read())).map(
+      (r) => r.id,
+    ),
+  );
+  let removed = 0;
+  for (const row of saved.documents)
+    if (row.kind === "memory-page" && !live.has(row.id)) {
+      f.rows.delete(row.id);
+      removed++;
+    }
+  assert.ok(removed, "The checkpoint must own superseded pages independently of live storage.");
+  f.reopen();
+  const review = await f.api.restore(checkpoint.id, "restore-paged-checkpoint");
+  await f.api.apply(review.id, review.token);
+  f.reopen();
+  const restored = await f.read();
+  assert.equal(restored.memories.records.length, 150);
+  assert.deepEqual(
+    restored.memories.records.map((r) => r.text),
+    original.memories.records.map((r) => r.text),
+  );
+  assert.ok(restored.memories.revision > original.memories.revision);
 });
 await runCase("repair/http", async () => {
   const f = await fixture();

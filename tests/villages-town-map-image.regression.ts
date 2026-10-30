@@ -113,7 +113,7 @@ async function main() {
   );
   const legacy = coerceVillageState({
     ...defaultVillageState(),
-    version: 7,
+    version: 8,
     wishSystemVersion: 3,
     setting: "Misty cliffs",
     foundingReason: "rebuild",

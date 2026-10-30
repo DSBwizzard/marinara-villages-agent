@@ -43,7 +43,7 @@ async function main() {
       () => coerceVillageState({ ...defaultVillageState(), ...fresh, version: incompatible }),
       /Unsupported Village format/,
     );
-  assert.equal(coerceVillageState(null).version, 7);
+  assert.equal(coerceVillageState(null).version, 8);
   const f = fixture();
   await f.mutate((state) => {
     state.venues = Array.from({ length: 15 }, (_, i) => venue(i));
@@ -111,7 +111,7 @@ async function main() {
     assert.equal(records.get("villages-village").revision, 7);
     assert.deepEqual(records.get("villages-village").data, incompatible, "rejected data is never rewritten");
     records.delete("villages-village");
-    assert.equal((await readVillageState({ memories: true })).version, 7);
+    assert.equal((await readVillageState({ memories: true })).version, 8);
     const reset = await resetVillage();
     assert.equal(reset.settings.maxPlaces, 16);
     const bulk = defaultVillageState();

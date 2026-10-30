@@ -36,7 +36,7 @@ import { decodeVillageClock } from "../rules/clock-recovery.js";
 import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
 import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
-import { memoryObject, memoryRequire, readMemoryCollection } from "../rules/memory-integrity.js";
+import { memoryRequire, readMemoryCollection } from "../rules/memory-integrity.js";
 import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "../rules/native-remap.js";
@@ -93,7 +93,7 @@ import {
   ZONE_KINDS,
 } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
-import { readMemorySceneStates } from "../rules/village-memories.js";
+import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
 import { savedVenueClassRecord } from "./venue-class-compat.js";
 
@@ -101,7 +101,7 @@ import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 7,
+    version: 8,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -1435,7 +1435,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 7) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 8) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1452,11 +1452,8 @@ export function coerceVillageState(value: unknown): VillageState {
 
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
   const memories = readMemoryCollection(memoryField(raw.memories ?? fallback.memories));
-  const memoryReceipts = raw.memoryReceipts === undefined ? {} : memoryField(raw.memoryReceipts);
-  memoryObject(memoryReceipts);
-  for (const [id, receipt] of Object.entries(memoryReceipts)) {
-    memoryObject(receipt);
-    memoryRequire(receipt.id === id && receipt.domain === "memories", "invalid encoded memory receipt");
+  const memoryReceipts = readMemoryReceipts(raw.memoryReceipts === undefined ? {} : memoryField(raw.memoryReceipts));
+  for (const id of Object.keys(memoryReceipts)) {
     memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
   }
   const exchangeReceipts = structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"];
@@ -1481,7 +1478,7 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
   const state: VillageState = {
-    version: 7,
+    version: 8,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
@@ -1489,7 +1486,7 @@ export function coerceVillageState(value: unknown): VillageState {
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
-    memoryReceipts: structuredClone(memoryReceipts) as VillageState["memoryReceipts"],
+    memoryReceipts,
     exchangeReceipts,
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
