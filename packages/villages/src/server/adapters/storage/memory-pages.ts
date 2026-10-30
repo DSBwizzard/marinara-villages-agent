@@ -138,6 +138,41 @@ function readRef(raw: unknown, world: string): Ref | null {
   );
   return raw as Ref;
 }
+/** Strict native envelope: text is opaque, and structural nodes contain only page identities. */
+export function validateMemoryPageData(data: unknown, id: string): asserts data is MemoryPageData {
+  const identity = /^villages-memory-page-([a-f0-9]{32})-([a-f0-9]{64})$/.exec(id);
+  memoryObject(data, ["format", "world", "node"]);
+  memoryRequire(
+    identity &&
+      data.format === 1 &&
+      data.world === identity[1] &&
+      Buffer.byteLength(JSON.stringify(data)) <= MEMORY_PAGE_BYTES &&
+      pageDigest(JSON.stringify(data.node)) === identity[2],
+    "history page changed",
+  );
+  const node = data.node;
+  memoryObject(node);
+  memoryRequire(["text", "block", "branch"].includes(node.type), "invalid history page");
+  memoryObject(
+    node,
+    node.type === "text" ? ["type", "text"] : node.type === "block" ? ["type", "content"] : ["type", "children"],
+  );
+  if (node.type === "text")
+    memoryRequire(
+      typeof node.text === "string" &&
+        node.text.startsWith(TEXT_PREFIX) &&
+        node.text.length <= CHARS + TEXT_PREFIX.length,
+      "invalid history text page",
+    );
+  else if (node.type === "block") memoryRequire(readRef(node.content, data.world), "invalid history block content");
+  else {
+    memoryRequire(
+      Array.isArray(node.children) && node.children.length > 0 && node.children.length <= FANOUT,
+      "invalid history directory branch",
+    );
+    for (const child of node.children) memoryRequire(readRef(child, data.world), "invalid history child");
+  }
+}
 function* memoryPageDecoder(raw: unknown, world: string) {
   memoryObject(raw, ["format", "revision", "records", "scenes", "receipts"]);
   memoryRequire(
@@ -149,21 +184,8 @@ function* memoryPageDecoder(raw: unknown, world: string) {
     if (seen.has(ref.id)) return seen.get(ref.id)!;
     const data = yield ref.id;
     memoryRequire(data, "committed history page is missing");
-    memoryObject(data, ["format", "world", "node"]);
-    memoryRequire(
-      data.format === 1 &&
-        data.world === world &&
-        Buffer.byteLength(JSON.stringify(data)) <= MEMORY_PAGE_BYTES &&
-        pageDigest(JSON.stringify(data.node)) === ref.digest,
-      "history page changed",
-    );
+    validateMemoryPageData(data, ref.id);
     const node = data.node;
-    memoryObject(node);
-    memoryRequire(["text", "block", "branch"].includes(node.type), "invalid history page");
-    memoryObject(
-      node,
-      node.type === "text" ? ["type", "text"] : node.type === "block" ? ["type", "content"] : ["type", "children"],
-    );
     seen.set(ref.id, node as Page);
     return node as Page;
   }

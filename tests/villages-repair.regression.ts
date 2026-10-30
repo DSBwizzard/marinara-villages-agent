@@ -1,11 +1,15 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
+import {
+  encodeRepairWrites,
+  decodeRepairWrites,
+} from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import {
   memoryPayloadDocuments,
@@ -628,6 +632,68 @@ await runCase("repair/recovery", async () => {
   f.hook(undefined);
   f.reopen();
   assert.equal((await f.read()).setting, "Control acknowledgment");
+});
+await runCase("repair/journal-integrity", async () => {
+  const f = await fixture(),
+    root = f.rows.get("villages-village");
+  const before = {
+    id: root.id,
+    kind: root.kind,
+    name: root.name,
+    description: root.description,
+    data: structuredClone(root.data),
+  };
+  const after = { ...before, data: { ...before.data, setting: "Must never partially replay" } };
+  await f.store.create({
+    id: "villages-repair-control",
+    packageId: "villages",
+    kind: "repair-control",
+    name: "Recovery",
+    description: "",
+    data: { version: 2, epoch: 1, pending: { id: "malformed", writes: [{ before, after }, {}] } },
+    createdAt: memoryTime(),
+    updatedAt: memoryTime(),
+  });
+  f.reopen();
+  await assert.rejects(f.read());
+  assert.equal(
+    f.rows.get(root.id).data.setting,
+    before.data.setting,
+    "Validate the entire journal before its first effect.",
+  );
+  assert.ok(f.rows.get("villages-repair-control").data.pending, "Malformed recovery is held rather than discarded.");
+
+  const reviewFixture = await fixture();
+  const review = await reviewFixture.prepare(
+    edit(repairId("world"), { name: "Willowmere", setting: "Invalid read set", worldName: "", worldFacts: "" }),
+  );
+  const plan = [...reviewFixture.rows.values()].find((r) => r.kind === "repair-plan");
+  const transaction = structuredClone(plan.data.transaction);
+  for (const key of ["reads", "lists"])
+    for (const invalid of ['""', "[{}]"]) {
+      plan.data.transaction = { ...transaction, [key]: invalid };
+      await assert.rejects(reviewFixture.api.apply(review.id, review.token));
+      assert.equal((await reviewFixture.read()).setting, "Original setting");
+    }
+  const page = {
+    id: `villages-memory-page-${"a".repeat(32)}-${"b".repeat(64)}`,
+    kind: "memory-page",
+    name: "Unrecognized page",
+    description: "",
+    data: {
+      format: 1,
+      world: "a".repeat(32),
+      node: {
+        type: "text",
+        text: "memory:[]",
+        media: "global-gallery:owned-image",
+      },
+    },
+  };
+  const write = { before: null, after: page };
+  const packed = encodeRepairWrites([write]);
+  assert.equal(packed[0].after?.data, page.data, "Unknown page bodies keep native media ownership.");
+  assert.throws(() => decodeRepairWrites([{ memoryPages: JSON.stringify([write]) }]), /invalid repair pages/);
 });
 await runCase("repair/fences", async () => {
   const f = await fixture();
