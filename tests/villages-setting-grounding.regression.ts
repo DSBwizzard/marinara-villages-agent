@@ -112,11 +112,7 @@ async function main() {
     },
   } as any);
   try {
-    assert.equal(
-      coerceVillageState(defaultVillageState()).name,
-      "",
-      "new worlds have no invented village name",
-    );
+    assert.equal(coerceVillageState(defaultVillageState()).name, "", "new worlds have no invented village name");
     assert.equal(
       coerceVillageState({ ...defaultVillageState(), name: "Willowbrook" }).name,
       "Willowbrook",
