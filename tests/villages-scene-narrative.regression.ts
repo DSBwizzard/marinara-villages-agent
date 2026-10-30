@@ -216,6 +216,17 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     grant = offerSceneNarrative(state, scene, "scene:scene:greeting", now)!;
   const paused = structuredClone(state);
   paused.backgroundPace = "off";
+  let writes = 0;
+  const pausedService = createSceneNarrative({
+    read: async () => paused,
+    mutate: async () => {
+      writes++;
+    },
+    relationships: async () => ({}) as any,
+    now: () => now,
+  });
+  assert.equal(await pausedService.offer(scene, grant.id), null);
+  assert.equal(writes, 0, "An ineligible ordinary turn must not mutate Village authority.");
   assert.equal(offerSceneNarrative(paused, scene, grant.id, now), null);
   assert.equal(reserveSceneNarrative(state, scene, grant, now), true);
   settleSceneNarrative(state, scene, { grant, development: null });

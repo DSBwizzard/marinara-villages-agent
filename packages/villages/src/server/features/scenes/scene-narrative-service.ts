@@ -12,32 +12,42 @@ export function createSceneNarrative(ports: {
 }) {
   return {
     async offer(scene: VenueScene, sourceId: string) {
-      // Edited Send has already fenced the abandoned request in the existing coordinator.
-      await ports.mutate((state) => {
-        if (scene.villageSeed !== state.seed || !scene.operation) return;
-        const abandoned =
-          state.narrative?.claims?.filter(
-            (row) =>
-              row.sceneId === scene.id &&
-              row.submissionId !== scene.operation!.id &&
-              !scene.submissions.some((turn) => turn.id === row.submissionId),
-          ) ?? [];
-        for (const claim of abandoned) {
-          state.narrative!.receipts.push({
-            id: claim.id,
-            sourceId: claim.id,
-            source: "scene",
-            at: ports.now().toISOString(),
-            rejected: true,
-            occurrence: "Introduction source abandoned by an explicit replacement request.",
-            after: { situations: [], conditions: [] },
-            physical: [],
-          });
-          state.narrative!.claims = state.narrative!.claims!.filter((row) => row.id !== claim.id);
-        }
-      });
+      let snapshot: VillageState;
       try {
-        return offerSceneNarrative(await ports.read(), scene, sourceId, ports.now());
+        snapshot = await ports.read();
+      } catch {
+        return null;
+      }
+      const abandoned = (state: VillageState) =>
+        scene.villageSeed === state.seed && scene.operation
+          ? (state.narrative?.claims?.filter(
+              (row) =>
+                row.sceneId === scene.id &&
+                row.submissionId !== scene.operation!.id &&
+                !scene.submissions.some((turn) => turn.id === row.submissionId),
+            ) ?? [])
+          : [];
+      // Edited Send has already fenced the abandoned request in the existing coordinator.
+      if (abandoned(snapshot).length) {
+        await ports.mutate((state) => {
+          for (const claim of abandoned(state)) {
+            state.narrative!.receipts.push({
+              id: claim.id,
+              sourceId: claim.id,
+              source: "scene",
+              at: ports.now().toISOString(),
+              rejected: true,
+              occurrence: "Introduction source abandoned by an explicit replacement request.",
+              after: { situations: [], conditions: [] },
+              physical: [],
+            });
+            state.narrative!.claims = state.narrative!.claims!.filter((row) => row.id !== claim.id);
+          }
+        });
+        snapshot = await ports.read();
+      }
+      try {
+        return offerSceneNarrative(snapshot, scene, sourceId, ports.now());
       } catch {
         return null;
       }
