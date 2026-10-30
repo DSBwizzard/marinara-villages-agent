@@ -27,21 +27,60 @@ type Context = {
   revisions?: Map<string, number>;
 };
 type Control = { version: 3; epoch: number; pending?: { id: string; writes: string } };
+/** Shared only by activations using the same canonical Engine backend. */
+export type RepairAdmission = {
+  epoch: number;
+  active: number;
+  exclusive: object | null;
+  idle: Set<() => void>;
+  cleanup: { done: Promise<void>; finish(): void } | null;
+};
+export const createRepairAdmission = (): RepairAdmission => ({
+  epoch: 0,
+  active: 0,
+  exclusive: null,
+  idle: new Set(),
+  cleanup: null,
+});
 const clean = (row: CapabilityDocumentRecord | null): RepairDocument | null =>
   row ? { id: row.id, kind: row.kind, name: row.name, description: row.description, data: row.data } : null;
 
 /** One activation owns admission, read isolation and durable multi-document replay.
  * Provider work never runs inside a transaction. Old admitted work cannot write after restore.
  */
-export function createRepairGate(raw: CapabilityDocumentStore) {
+export function createRepairGate(backing: CapabilityDocumentStore, admission = createRepairAdmission()) {
+  let allocatedBytes = 0;
+  const allocationKinds = new Set(["memory-payload", "memory-page", "repair-snapshot", "repair-undo"]);
+  const raw = new Proxy(backing, {
+    get(target, key) {
+      const value = Reflect.get(target, key);
+      if (key !== "create") return typeof value === "function" ? value.bind(target) : value;
+      return (input: Parameters<CapabilityDocumentStore["create"]>[0]) => {
+        // An estimate may overcount a failed create, but never understates attempted allocation.
+        if (allocationKinds.has(input.kind)) allocatedBytes += Buffer.byteLength(JSON.stringify(input.data));
+        return target.create(input);
+      };
+    },
+  });
   const codec = createRepairTransactionCodec(raw);
   const context = new AsyncLocalStorage<Context>();
-  let epoch = 0;
-  let active = 0;
-  let exclusive = false;
+  const activation = {};
   let ready: Promise<void> | undefined;
+  let readyEpoch: number | undefined;
   let controlRevision = 0;
   let alive = true;
+  const listeners = new Set<() => void>();
+  const isIdle = () => admission.active === 0 && admission.exclusive === null;
+  function notifyIdle() {
+    if (!isIdle()) return;
+    for (const listener of admission.idle) {
+      try {
+        listener();
+      } catch {
+        /* Housekeeping cannot change the saved operation's outcome. */
+      }
+    }
+  }
   const requireAlive = () => {
     if (!alive) throw conflict("This Village runtime is no longer active.");
   };
@@ -110,18 +149,32 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
         } else await raw.create({ ...fields, createdAt: fields.updatedAt });
       }
     }
-    await saveControl({ version: 3, epoch });
+    await saveControl({ version: 3, epoch: admission.epoch });
   }
   async function ensureReady() {
+    if (admission.cleanup && !(context.getStore()?.administrative && admission.exclusive === activation))
+      await admission.cleanup.done;
+    if (readyEpoch !== undefined && readyEpoch !== admission.epoch) {
+      ready = undefined;
+      readyEpoch = undefined;
+    }
     if (!ready) {
+      requireAlive();
+      const owned = context.getStore()?.owners?.filter((owner) => owner.active).length ?? 0;
+      if (admission.exclusive || admission.active > owned)
+        throw conflict("Earlier Village work is still settling. Try again after it finishes.");
+      admission.exclusive = activation;
       ready = (async () => {
         const row = await raw.getById(PACKAGE, CONTROL);
-        if (!row) return;
+        if (!row) {
+          readyEpoch = admission.epoch;
+          return;
+        }
         const saved = row.data as Control;
         if (saved?.version !== 3 || !Number.isSafeInteger(saved.epoch) || saved.epoch < 0)
           throw conflict("The repair recovery record is invalid.");
         controlRevision = row.revision;
-        epoch = saved.epoch;
+        admission.epoch = Math.max(admission.epoch, saved.epoch);
         if (Object.hasOwn(saved, "pending")) {
           const pending = saved.pending;
           if (
@@ -136,43 +189,57 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
             throw conflict("The repair recovery record is invalid.");
           await replay({ id: pending.id, writes: await codec.decodeWrites(pending.writes) });
         }
-      })().catch((error) => {
-        ready = undefined;
-        throw error;
-      });
+        readyEpoch = admission.epoch;
+      })()
+        .catch((error) => {
+          ready = undefined;
+          throw error;
+        })
+        .finally(() => {
+          if (admission.exclusive === activation) admission.exclusive = null;
+          notifyIdle();
+        });
     }
     await ready;
   }
   async function work<T>(fn: () => Promise<T>): Promise<T> {
     requireAlive();
     await ensureReady();
+    while (admission.cleanup && !(context.getStore()?.administrative && admission.exclusive === activation)) {
+      await admission.cleanup.done;
+      await ensureReady();
+    }
     requireAlive();
     const inherited = context.getStore();
     if (inherited) {
-      if (inherited.epoch !== epoch) throw conflict("The world was restored. This older action cannot change it.");
-      if (inherited.administrative) return fn();
+      if (inherited.epoch !== admission.epoch)
+        throw conflict("The world was restored. This older action cannot change it.");
+      if (inherited.administrative && admission.exclusive === activation) return fn();
     }
-    if (exclusive) throw conflict("REPAIR is saving. Try again after it finishes.");
+    if (admission.exclusive) throw conflict("REPAIR is saving. Try again after it finishes.");
     const owner = { active: true };
-    active++;
+    admission.active++;
     try {
-      return await context.run({ epoch, owners: [...(inherited?.owners ?? []), owner] }, fn);
+      return await context.run({ epoch: admission.epoch, owners: [...(inherited?.owners ?? []), owner] }, fn);
     } finally {
       owner.active = false;
-      active--;
+      admission.active--;
+      notifyIdle();
     }
   }
   function assertWrite() {
     const owner = context.getStore();
-    if (owner?.epoch !== undefined && owner.epoch !== epoch)
+    if (owner?.epoch !== undefined && owner.epoch !== admission.epoch)
       throw conflict("An older action cannot change the restored world.");
-    if (exclusive && !owner?.administrative) throw conflict("REPAIR is saving. Try again.");
+    if (admission.exclusive && !(owner?.administrative && admission.exclusive === activation))
+      throw conflict("REPAIR is saving. Try again.");
   }
   let readSet: Map<string, RepairRead> | undefined;
   let listSet: Map<string, string> | undefined;
   async function get(packageId: string, id: string): Promise<CapabilityDocumentRecord | null> {
     await ensureReady();
-    if (exclusive && !context.getStore()?.administrative) throw conflict("REPAIR is saving. Try again.");
+    if (admission.exclusive && !(context.getStore()?.administrative && admission.exclusive === activation))
+      throw conflict("REPAIR is saving. Try again.");
     const staged = context.getStore()?.transaction?.get(id);
     if (staged)
       return staged.after
@@ -197,7 +264,8 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
     getById: get,
     async list(packageId, kind) {
       await ensureReady();
-      if (exclusive && !context.getStore()?.administrative) throw conflict("REPAIR is saving. Try again.");
+      if (admission.exclusive && !(context.getStore()?.administrative && admission.exclusive === activation))
+        throw conflict("REPAIR is saving. Try again.");
       const rows = await raw.list(packageId, kind);
       const staged = context.getStore()?.transaction;
       if (!staged) return rows;
@@ -260,16 +328,38 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       return true;
     },
   };
-  async function alone<T>(fn: () => Promise<T>) {
+  async function alone<T>(fn: () => Promise<T>, mode: "repair" | "cleanup" = "repair") {
     await ensureReady();
+    while (admission.cleanup && !(context.getStore()?.administrative && admission.exclusive === activation)) {
+      await admission.cleanup.done;
+      await ensureReady();
+    }
+    const inherited = context.getStore();
+    if (inherited && inherited.epoch !== admission.epoch)
+      throw conflict("The world was restored. This older action cannot change it.");
     const owned = context.getStore()?.owners?.filter((owner) => owner.active).length ?? 0;
-    if (exclusive || active > owned)
+    requireAlive();
+    if (admission.exclusive || admission.active > owned)
       throw conflict("Other Village work is active. Let it finish, then try REPAIR again.");
-    exclusive = true;
+    admission.exclusive = activation;
+    let cleanup: RepairAdmission["cleanup"] = null;
+    if (mode === "cleanup") {
+      let finish!: () => void;
+      const done = new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+      cleanup = { done, finish };
+      admission.cleanup = cleanup;
+    }
     try {
-      return await context.run({ epoch, administrative: true }, fn);
+      return await context.run({ epoch: admission.epoch, administrative: true }, fn);
     } finally {
-      exclusive = false;
+      if (admission.exclusive === activation) admission.exclusive = null;
+      if (cleanup) {
+        if (admission.cleanup === cleanup) admission.cleanup = null;
+        cleanup.finish();
+      }
+      notifyIdle();
     }
   }
   async function guards(transaction: RepairTransaction) {
@@ -293,20 +383,23 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       listSet = new Map(reviewed?.lists.map((row) => [row.kind, row.digest]));
       try {
         const revisions = new Map<string, number>();
-        const value = await context.run({ epoch, administrative: true, transaction: staged, revisions }, async () => {
-          for (const write of reviewed?.writes ?? []) {
-            const id = (write.after ?? write.before)!.id,
-              current = await get(PACKAGE, id);
-            if (repairDocumentDigest(clean(current)) !== repairDocumentDigest(write.before))
-              throw conflict("A reviewed record changed. Review the repair again.");
-            const after = write.after ? structuredClone(write.after) : null;
-            if (after?.id === "villages-village" && current)
-              after.data = { ...(after.data as object), clock: (current.data as Record<string, unknown>).clock };
-            staged.set(id, { before: clean(current), after });
-            if (after) revisions.set(id, (current?.revision ?? 0) + 1);
-          }
-          return fn();
-        });
+        const value = await context.run(
+          { epoch: admission.epoch, administrative: true, transaction: staged, revisions },
+          async () => {
+            for (const write of reviewed?.writes ?? []) {
+              const id = (write.after ?? write.before)!.id,
+                current = await get(PACKAGE, id);
+              if (repairDocumentDigest(clean(current)) !== repairDocumentDigest(write.before))
+                throw conflict("A reviewed record changed. Review the repair again.");
+              const after = write.after ? structuredClone(write.after) : null;
+              if (after?.id === "villages-village" && current)
+                after.data = { ...(after.data as object), clock: (current.data as Record<string, unknown>).clock };
+              staged.set(id, { before: clean(current), after });
+              if (after) revisions.set(id, (current?.revision ?? 0) + 1);
+            }
+            return fn();
+          },
+        );
         return {
           value,
           transaction: {
@@ -327,9 +420,9 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
     return alone(async () => {
       await guards(transaction);
       const writes = transaction.writes;
-      epoch++;
+      admission.epoch++;
       try {
-        const saved = await saveControl({ version: 3, epoch, pending: { id, writes } });
+        const saved = await saveControl({ version: 3, epoch: admission.epoch, pending: { id, writes } });
         await replay({ id, writes: await codec.decodeWrites(saved.pending!.writes) });
       } catch (error) {
         ready = undefined;
@@ -357,8 +450,22 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
     alone,
     raw,
     assertGeneration,
+    allocatedBytes: () => allocatedBytes,
+    isIdle,
+    whenIdle(listener: () => void) {
+      requireAlive();
+      const detached = () => context.exit(listener);
+      listeners.add(detached);
+      admission.idle.add(detached);
+      return () => {
+        listeners.delete(detached);
+        admission.idle.delete(detached);
+      };
+    },
     dispose: () => {
       alive = false;
+      for (const listener of listeners) admission.idle.delete(listener);
+      listeners.clear();
     },
   };
 }

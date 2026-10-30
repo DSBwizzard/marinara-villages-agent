@@ -301,3 +301,97 @@ export function decodeMemoryPagesSync(raw: unknown, world: string, get: (id: str
   while (step.done === false) step = decoder.next(get(step.value));
   return step.value;
 }
+
+/** A cleanup pass visits shared structural pages once, including links inside Scene headers.
+ * Keep a separate tracer for each proposed publication overlay; virtual data cannot prove
+ * that a physically published owner has all of its dependencies.
+ */
+export function createMemoryPageTracer(get: (id: string) => Promise<MemoryPageData | null>) {
+  const nodes = new Map<string, Page>(),
+    heights = new Map<string, number>(),
+    sceneTrees = new Set<string>(),
+    contents = new Map<string, string>();
+  async function walk(ref: Ref, world: string, kind: "block" | "text" = "block"): Promise<Page> {
+    const prior = nodes.get(ref.id);
+    if (prior) {
+      memoryRequire(heights.get(ref.id) === ref.height, "history page depth changed");
+      memoryRequire(prior.type === "branch" || prior.type === kind, "invalid history page kind");
+      return prior;
+    }
+    const data = await get(ref.id);
+    memoryRequire(data, "committed history page is missing");
+    validateMemoryPageData(data, ref.id);
+    memoryRequire(data.world === world, "history page belongs to another world");
+    const node = data.node;
+    memoryRequire(node.type === "branch" || node.type === kind, "invalid history page kind");
+    memoryRequire(node.type === "branch" ? ref.height > 0 : ref.height === 0, "invalid history page depth");
+    nodes.set(ref.id, node);
+    heights.set(ref.id, ref.height);
+    if (node.type === "block") {
+      const content = readRef(node.content, world);
+      memoryRequire(content, "missing history block content");
+      await walk(content, world, "text");
+    } else if (node.type === "branch") {
+      for (const value of node.children) {
+        const child = readRef(value, world);
+        memoryRequire(child && child.height === ref.height - 1, "invalid history directory depth");
+        await walk(child, world, kind);
+      }
+    }
+    return node;
+  }
+  async function text(ref: Ref, world: string): Promise<string> {
+    const saved = contents.get(ref.id);
+    if (saved !== undefined) return saved;
+    const node = await walk(ref, world, "text");
+    memoryRequire(node.type !== "block", "invalid history block content");
+    const parts: string[] = [];
+    if (node.type === "text") parts.push(node.text.slice(TEXT_PREFIX.length));
+    else for (const child of node.children) parts.push(await text(readRef(child, world)!, world));
+    const value = parts.join("");
+    contents.set(ref.id, value);
+    return value;
+  }
+  async function scenes(ref: Ref, world: string) {
+    if (sceneTrees.has(ref.id)) return;
+    const node = await walk(ref, world);
+    sceneTrees.add(ref.id);
+    memoryRequire(node.type !== "text", "invalid history Scene directory");
+    if (node.type === "branch") {
+      for (const child of node.children) await scenes(readRef(child, world)!, world);
+      return;
+    }
+    const rows = JSON.parse(await text(readRef(node.content, world)!, world));
+    memoryRequire(Array.isArray(rows) && rows.length > 0 && rows.length <= ITEMS, "invalid history Scene entries");
+    const ids = new Set<string>();
+    for (const row of rows) {
+      memoryRequire(
+        Array.isArray(row) && row.length === 2 && typeof row[0] === "string" && !ids.has(row[0]),
+        "invalid history Scene identity",
+      );
+      ids.add(row[0]);
+      const header = row[1];
+      memoryObject(header, ["snapshot", "effects"]);
+      memoryObject(header.snapshot);
+      for (const value of [header.snapshot.before, header.effects]) {
+        const dependency = readRef(value, world);
+        if (dependency) await walk(dependency, world);
+      }
+    }
+  }
+  async function trace(raw: unknown, world: string) {
+    memoryObject(raw, ["format", "revision", "records", "scenes", "receipts"]);
+    memoryRequire(
+      raw.format === 2 && Number.isSafeInteger(raw.revision) && raw.revision >= 0,
+      "invalid history directory",
+    );
+    for (const value of [raw.records, raw.receipts]) {
+      const ref = readRef(value, world);
+      if (ref) await walk(ref, world);
+    }
+    const scene = readRef(raw.scenes, world);
+    if (scene) await scenes(scene, world);
+    return new Set(nodes.keys());
+  }
+  return { trace };
+}

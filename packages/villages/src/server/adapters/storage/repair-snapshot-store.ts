@@ -7,7 +7,7 @@ const VILLAGES_PACKAGE_ID = "villages";
 export type SnapshotReference = Omit<RepairDocument, "data"> & { body: string };
 const bodyId = (value: RepairDocument) => "villages-repair-snapshot-" + repairDigest(value);
 
-function readReferences(value: unknown): SnapshotReference[] {
+export function readSnapshotReferences(value: unknown): SnapshotReference[] {
   memoryRequire(typeof value === "string", "invalid snapshot references");
   const refs = JSON.parse(value);
   memoryRequire(Array.isArray(refs), "invalid snapshot references");
@@ -75,7 +75,7 @@ export function createRepairSnapshots(documents: CapabilityDocumentStore) {
     return JSON.stringify(refs);
   }
   async function restore(value: unknown): Promise<RepairDocument[]> {
-    const refs = readReferences(value);
+    const refs = readSnapshotReferences(value);
     memoryRequire(new Set(refs.map((ref) => ref.id)).size === refs.length, "duplicate snapshot identity");
     const rows: RepairDocument[] = [];
     for (const ref of refs) rows.push(await read(ref));
@@ -91,7 +91,7 @@ export function createRepairSnapshots(documents: CapabilityDocumentStore) {
   }
   async function restoreWrites(value: { references: string; presence: string }): Promise<RepairWrite[]> {
     memoryObject(value, ["references", "presence"]);
-    const refs = readReferences(value.references),
+    const refs = readSnapshotReferences(value.references),
       rows: RepairDocument[] = [];
     for (const ref of refs) rows.push(await read(ref));
     memoryRequire(typeof value.presence === "string", "invalid Undo write references");
@@ -123,7 +123,8 @@ export function createRepairSnapshots(documents: CapabilityDocumentStore) {
     );
     return writes;
   }
-  const captureOne = async (row: RepairDocument): Promise<SnapshotReference> => readReferences(await capture([row]))[0];
-  const readOne = async (value: unknown) => read(readReferences(JSON.stringify([value]))[0]);
+  const captureOne = async (row: RepairDocument): Promise<SnapshotReference> =>
+    readSnapshotReferences(await capture([row]))[0];
+  const readOne = async (value: unknown) => read(readSnapshotReferences(JSON.stringify([value]))[0]);
   return { capture, restore, captureWrites, restoreWrites, captureOne, readOne };
 }
