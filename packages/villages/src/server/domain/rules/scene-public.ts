@@ -109,7 +109,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
     )
       .filter(
         ([key]) =>
-          !(privateHearing && ["heardBy", "heardPlayerBy", "heardHistory"].includes(key)) &&
+          !(privateHearing && ["heardBy", "heardPlayerBy"].includes(key)) &&
           ![
             "developmentChanges",
             "continuity",
@@ -193,12 +193,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             }
           : visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
             ? entry.filter((id) => visible.has(id))
-            : key === "heardHistory" && visible && Array.isArray(entry)
-              ? publicSceneResponse(
-                  entry.filter((history) => visible.has(asTrimmedString(asRecord(history).characterId))),
-                  visible,
-                )
-              : publicSceneResponse(entry, visible, privateHearing),
+            : publicSceneResponse(entry, visible, privateHearing),
       ]),
   ) as T;
 }

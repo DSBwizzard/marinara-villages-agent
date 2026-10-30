@@ -645,7 +645,6 @@ const privateRecords = publicSceneResponse({
   ...scene,
   submissions: [{ attention: plan, heardPlayerBy: ["local"] }],
   lines: [{ id: "visible", content: "Hi", heardBy: ["local", "near"] }],
-  heardHistory: [{ characterId: "local", lineIds: ["visible"] }],
 } as any);
 assert(!JSON.stringify(privateRecords).includes("heardBy"));
 assert(!JSON.stringify(privateRecords).includes("heardPlayerBy"));

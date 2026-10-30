@@ -38,7 +38,6 @@ function fixture(label: string, decisionsEnabled: boolean) {
         revision: 1,
         data: {
           version: 3,
-          storageFormat: 4,
           id: "same-scene",
           status: "active",
           sceneRevision: 0,
@@ -49,7 +48,7 @@ function fixture(label: string, decisionsEnabled: boolean) {
       },
     ],
   ]);
-  const documents = {
+  const backing = {
     async create(input: any) {
       const row = { ...structuredClone(input), revision: 1 };
       records.set(input.id, row);
@@ -69,6 +68,7 @@ function fixture(label: string, decisionsEnabled: boolean) {
       return structuredClone(saved);
     },
   } as unknown as CapabilityDocumentStore;
+  const documents = villageFixtureDocuments(backing);
   const logger = { debug() {}, info() {}, warn() {}, error() {} };
   const operations = createVenueOperationContext(() => logger);
   const service = createVenueCoordinator({

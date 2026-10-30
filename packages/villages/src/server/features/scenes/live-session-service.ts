@@ -323,8 +323,6 @@ export function createLiveScenes({
       for (const person of people) {
         if (!state.participants.some((entry) => entry.characterId === person.characterId))
           state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });
-        if (!state.heardHistory.some((entry) => entry.characterId === person.characterId))
-          state.heardHistory.push({ characterId: person.characterId, lineIds: [] });
       }
       if (activeIds.some((id) => !state.activeIds.includes(id))) state.recap = "";
       state.activeIds = activeIds;

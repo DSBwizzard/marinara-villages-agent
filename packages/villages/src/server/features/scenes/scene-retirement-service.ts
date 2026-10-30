@@ -1,7 +1,7 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 import { SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
-import { createSceneHistory } from "../../adapters/storage/scene-history.js";
+import { createSceneHistory, readSceneRetirementSource } from "../../adapters/storage/scene-history.js";
 import type { ActiveVenue, VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { releaseSceneMemories } from "../../domain/rules/scene-memory-lifecycle.js";
@@ -54,7 +54,8 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
       ports.withRepairWork(async () => {
         const documents = ports.villagesDocuments();
         const saved = await documents.getById(VILLAGES_PACKAGE_ID, SESSION_PREFIX + id);
-        if (!saved || !sceneRetirementSourceIsValid(saved.data)) return false;
+        if (!saved || !sceneRetirementSourceIsValid(await readSceneRetirementSource(documents, saved.data)))
+          return false;
         const scene = await createSceneHistory(documents).decode(saved.data);
         const village = await ports.readVillageState();
         const active = await ports.readActive();
@@ -130,7 +131,7 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
     });
     const records = await ports.villagesDocuments().list(VILLAGES_PACKAGE_ID, SESSION_KIND);
     for (const row of records) {
-      if (!sceneRetirementSourceIsValid(row.data)) continue;
+      if ((row.data as { status?: unknown }).status !== "closed") continue;
       const id = String((row.data as { id: string }).id);
       try {
         await retire(id);

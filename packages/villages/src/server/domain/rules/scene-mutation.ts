@@ -4,6 +4,7 @@ import { notFound } from "./errors.js";
 import { sceneFingerprint } from "./scene-record.js";
 import { asRecord } from "./coerce.js";
 import { isImmutableRelationshipState } from "./relationship-rules.js";
+import { isImmutableSceneLine } from "./scene-transcript.js";
 
 function mutationSnapshot(session: VenueScene) {
   const bodies: object[] = [];
@@ -17,6 +18,7 @@ function mutationSnapshot(session: VenueScene) {
   const snapshot = session.operation?.snapshot;
   const value = {
     ...session,
+    lines: undefined,
     continuity: context(session.continuity),
     operation: session.operation
       ? {
@@ -25,7 +27,11 @@ function mutationSnapshot(session: VenueScene) {
         }
       : undefined,
   };
-  return { text: JSON.stringify(value), bodies };
+  return {
+    text: JSON.stringify(value),
+    bodies,
+    lines: session.lines.map((line) => (isImmutableSceneLine(line) ? line : JSON.stringify(line))),
+  };
 }
 
 /** Apply the saved Scene rules independently of document reads, writes, and CAS retries. */
@@ -63,10 +69,18 @@ export function applySceneMutation(
   for (const turn of session.submissions)
     if (priorChanges.get(turn.id) !== JSON.stringify([turn.processing, turn.recordEvents, turn.liveProposals]))
       turn.changeSequence = session.changeSequence = (session.changeSequence ?? 0) + 1;
-  if (before !== sceneFingerprint(session)) session.sceneRevision += 1;
+  const fingerprint = sceneFingerprint(session);
+  if (
+    before[0] !== fingerprint[0] ||
+    before[1].length !== fingerprint[1].length ||
+    before[1].some((id, i) => id !== fingerprint[1][i])
+  )
+    session.sceneRevision += 1;
   const after = mutationSnapshot(session);
   if (
     snapshot.text === after.text &&
+    snapshot.lines.length === after.lines.length &&
+    snapshot.lines.every((line, i) => line === after.lines[i]) &&
     snapshot.bodies.length === after.bodies.length &&
     snapshot.bodies.every((body, i) => body === after.bodies[i])
   )

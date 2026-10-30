@@ -706,9 +706,9 @@ async function main() {
     assert.ok(unheard.session.lines.some((line) => line.contactHidden && line.heardBy.includes("messenger")));
     const silentPublic = publicSceneResponse(unheard);
     assert.deepEqual(silentPublic.session.participants, []);
-    assert.deepEqual(silentPublic.session.heardHistory, []);
+    assert.equal(Object.hasOwn(silentPublic.session, "heardHistory"), false);
     assert.doesNotMatch(JSON.stringify(silentPublic.session.lines), /messenger/);
-    assert.ok((await activeVenueSession())!.heardHistory.some((entry) => entry.characterId === "messenger"));
+    assert.ok((await activeVenueSession())!.lines.some((line) => line.heardBy.includes("messenger")));
     await discardVenueVisitDebug(scene.id);
 
     await mutateVillageState((current) => {

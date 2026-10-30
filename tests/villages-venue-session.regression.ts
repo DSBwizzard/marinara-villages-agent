@@ -1745,16 +1745,8 @@ async function main() {
     assert.equal((await readVillageWriting()).writingGuidance, "");
     assert.equal(asked.session.lines.at(-2)?.heardBy.join(), "", "unfiltered player input is never witness evidence");
     assert.equal(asked.session.lines.at(-1)?.speakerId, "bob");
-    assert.ok(
-      !asked.session.heardHistory
-        .find((person) => person.characterId === "bob")
-        ?.lineIds.includes(asked.session.lines.at(-2)!.id),
-    );
-    assert.ok(
-      !asked.session.heardHistory
-        .find((person) => person.characterId === "tina")
-        ?.lineIds.includes(asked.session.lines.at(-2)!.id),
-    );
+    assert.ok(!asked.session.lines.at(-2)!.heardBy.includes("bob"));
+    assert.ok(!asked.session.lines.at(-2)!.heardBy.includes("tina"));
     await saveVillageWriting({ person: "first" });
     await mutateVillageState((state) => {
       state.villagers.find((person) => person.characterId === "bob")!.spriteManager = {

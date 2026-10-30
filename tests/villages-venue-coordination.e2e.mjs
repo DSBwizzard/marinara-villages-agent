@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
@@ -25,7 +26,6 @@ let record = {
   description: "",
   revision: 1,
   data: {
-    storageFormat: 4,
     version: 3,
     sceneRevision: 0,
     id: "browser",
@@ -60,7 +60,9 @@ const documents = {
     return structuredClone(row);
   },
   async getById(_packageId, id) {
-    return id === record.id ? structuredClone(record) : structuredClone(extraRecords.get(id) ?? null);
+    return id === record.id
+      ? structuredClone({ ...record, data: authorSceneFixture(extraRecords, record.data) })
+      : structuredClone(extraRecords.get(id) ?? null);
   },
   async update(input) {
     if (input.id !== record.id) {
@@ -71,8 +73,9 @@ const documents = {
       return structuredClone(next);
     }
     if (input.expectedRevision !== record.revision) return null;
-    record = { ...record, ...structuredClone(input), revision: record.revision + 1 };
-    return structuredClone(record);
+    const native = { ...record, ...structuredClone(input), revision: record.revision + 1 };
+    record = { ...native, data: fixtureSceneState(native.data, extraRecords) };
+    return structuredClone(native);
   },
 };
 const release = configureVillagesRuntime({

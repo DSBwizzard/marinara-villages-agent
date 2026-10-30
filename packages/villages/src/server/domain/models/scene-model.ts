@@ -243,7 +243,6 @@ export type VenueScene = {
   sceneAttendance?: SceneAttendance;
   activeIds: string[];
   lines: VenueLine[];
-  heardHistory: { characterId: string; lineIds: string[] }[];
   submissions: VenueSubmission[];
   recap: string;
 };

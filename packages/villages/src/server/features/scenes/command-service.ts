@@ -870,8 +870,6 @@ export function createSceneCommands({
       for (const person of people) {
         if (!state.participants.some((entry) => entry.characterId === person.characterId))
           state.participants.push({ characterId: person.characterId, name: person.name, doing: person.doing });
-        if (!state.heardHistory.some((entry) => entry.characterId === person.characterId))
-          state.heardHistory.push({ characterId: person.characterId, lineIds: [] });
       }
       state.activeIds = people.map((person) => person.characterId);
       state.privateSpaceId = ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined;
@@ -1189,7 +1187,6 @@ export function createSceneCommands({
       sceneAttendance,
       activeIds: participants.map((person) => person.characterId),
       lines: [],
-      heardHistory: participants.map((person) => ({ characterId: person.characterId, lineIds: [] })),
       submissions: [],
       recap: "",
     };
@@ -2555,8 +2552,6 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             const person = state.sceneAttendance?.occupants.find((entry) => entry.characterId === id);
             if (person)
               state.participants.push({ characterId: id, name: person.name, doing: "Answering a contact request" });
-            if (!state.heardHistory.some((entry) => entry.characterId === id))
-              state.heardHistory.push({ characterId: id, lineIds: [] });
           }
           if (contactIntentUsed) {
             const venue = village.venues.find((entry) => entry.id === state.placeId)!;
