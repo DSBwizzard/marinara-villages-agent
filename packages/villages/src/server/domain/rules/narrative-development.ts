@@ -320,7 +320,7 @@ export function applyNarrativeDevelopment(
       throw badGateway("Reopening this repair-linked condition needs matching physical work.");
     if (
       change.restriction === "ordinary-use" &&
-      enduring &&
+      (old?.physicalRevision !== undefined || enduring) &&
       (!before.correctiveActorIds.length || change.endsAt !== null)
     )
       throw badGateway(

@@ -235,6 +235,13 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     /matching physical work/,
     "Independent world developments cannot reopen damage through a recent observation either.",
   );
+  repairProposal.physical = [];
+  Object.assign(repairProposal.conditions[0]!, { clear: false, endsAt: "2026-10-29T10:00:00.000Z" });
+  assert.throws(
+    () => applyNarrativeDevelopment(worldRepair, repairGrant, readNarrativeDevelopment(repairProposal, repairGrant)),
+    /cannot expire/,
+    "Continuing a damage-linked condition cannot add a timer that bypasses repair.",
+  );
   assert.throws(
     () =>
       applyVenueSceneChange(
