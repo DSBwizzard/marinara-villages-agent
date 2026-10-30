@@ -37,6 +37,7 @@ try {
       await mockEngineLookups(page);
       let text = "Nora gave you a workshop key.",
         applied = 0,
+        cancelled = 0,
         reviewed;
       const record = {
         id: '["memory","key"]',
@@ -119,6 +120,10 @@ try {
         const json = (value) => fulfill(route, { json: value });
         if (path === "/rooms/active") return json({ session });
         if (path === "/repair") return json(index());
+        if (path === "/repair/cancel") {
+          cancelled++;
+          return json({ cancelled: true });
+        }
         if (path === "/repair/records") return json({ records: [record, addition], total: 2, next: null });
         if (path === "/repair/record") return json(url.searchParams.get("id") === addition.id ? addition : record);
         if (path === "/repair/review") {
@@ -127,6 +132,7 @@ try {
           if (body.action === "forget")
             return json({
               kind: "repair",
+              token: "review-token",
               id: body.operationId,
               title: record.title,
               changes: body.knowers.map((id) => ({
@@ -147,6 +153,7 @@ try {
           if (body.recordId === addition.id)
             return json({
               kind: "repair",
+              token: "review-token",
               id: body.operationId,
               title: addition.title,
               changes: [{ label: "Memory", before: "", after: text }],
@@ -158,6 +165,7 @@ try {
             });
           return json({
             kind: "repair",
+            token: "review-token",
             id: body.operationId,
             title: record.title,
             changes: [{ label: "Your Persona · memory", before: record.fields[0].value, after: text }],
@@ -175,6 +183,7 @@ try {
         if (path === "/repair/undo")
           return json({
             kind: "undo",
+            token: "review-token",
             id: "undo",
             title: "Undo the workshop key",
             changes: [{ label: "Memory", before: text, after: record.fields[0].value }],
@@ -250,14 +259,17 @@ try {
       await expect(repair).not.toContainText(unfinished);
       assert.equal(applied, 0, "Choosing Forget and reviewing it cannot save a text edit");
       await page.getByRole("button", { name: "Back", exact: true }).click();
+      await expect.poll(() => cancelled).toBeGreaterThan(0);
       await page.getByRole("button", { name: "Modify", exact: true }).click();
       await expect(page.getByRole("textbox", { name: "Memory", exact: true })).toHaveValue(unfinished);
       await page.getByRole("checkbox", { name: "Nora", exact: true }).uncheck();
       await page
         .getByRole("textbox", { name: "Memory", exact: true })
         .fill("Nora lent you her workshop key until Friday.");
-      await page.getByRole("button", { name: "Main menu", exact: true }).click();
+      await page.getByRole("button", { name: "Review changes", exact: true }).click();
+      const beforeSceneExit = cancelled;
       await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+      await expect.poll(() => cancelled).toBeGreaterThan(beforeSceneExit);
       await expect(page.getByRole("textbox", { name: "Scene draft", exact: true })).toHaveValue(
         "My unfinished Scene draft.",
       );

@@ -196,6 +196,7 @@ async function fixture(width) {
       );
     }
     if (path === "/repair/apply") return reply(route, "apply", { applied: true });
+    if (path === "/repair/cancel") return reply(route, "cancel", { cancelled: true });
     if (["/repair/review", "/repair/undo", "/repair/restore"].includes(path)) {
       const body = route.request().postDataJSON();
       assert.equal("inspection" in body, false);
@@ -205,6 +206,7 @@ async function fixture(width) {
       return reply(route, kind, {
         kind,
         id: "plan",
+        token: "review-token",
         title: "Saved review",
         changes:
           kind === "restore"

@@ -45,11 +45,18 @@ export function registerRepairRoutes(app: FastifyInstance) {
       return fail(reply, e, "reviewing a repair");
     }
   });
-  app.post<{ Body: { id: string } }>("/repair/apply", async (request, reply) => {
+  app.post<{ Body: { id: string; token: string } }>("/repair/apply", async (request, reply) => {
     try {
-      return await repairs().apply(request.body.id);
+      return await repairs().apply(request.body.id, request.body.token);
     } catch (e) {
       return fail(reply, e, "applying a repair");
+    }
+  });
+  app.post<{ Body: { id: string; token: string } }>("/repair/cancel", async (request, reply) => {
+    try {
+      return await repairs().cancelReview(request.body.id, request.body.token);
+    } catch (e) {
+      return fail(reply, e, "closing a repair review");
     }
   });
   app.post<{ Body: { id: string; operationId: string } }>("/repair/undo", async (request, reply) => {

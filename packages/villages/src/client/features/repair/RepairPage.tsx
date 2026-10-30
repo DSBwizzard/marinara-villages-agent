@@ -65,7 +65,14 @@ export function RepairPage({
       <style>{REPAIR_STYLES}</style>
       <header className="repair-chrome">
         <span>Villages</span>
-        <button type="button" disabled={c.busy} onClick={onBack}>
+        <button
+          type="button"
+          disabled={c.busy}
+          onClick={() => {
+            c.leave();
+            onBack();
+          }}
+        >
           Main menu
         </button>
       </header>
@@ -131,7 +138,14 @@ export function RepairPage({
           <div className="repair-notice">
             Scene in progress · Repairs preserve its captured context and draft.{" "}
             {onScene ? (
-              <button type="button" onClick={onScene} disabled={c.busy}>
+              <button
+                type="button"
+                onClick={() => {
+                  c.leave();
+                  onScene();
+                }}
+                disabled={c.busy}
+              >
                 Back to Scene
               </button>
             ) : null}

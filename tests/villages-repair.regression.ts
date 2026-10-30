@@ -1,6 +1,6 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
@@ -149,11 +149,11 @@ await runCase("repair/place-continuity", async () => {
   };
   const review = await f.api.prepare(request);
   assert.deepEqual((await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state.recent, old);
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   const renewed = (await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state;
   assert.notEqual(renewed.recent!.expiresAt, old.expiresAt);
   const inverse = await f.api.undo(review.id, "undo-renew");
-  await f.api.apply(inverse.id);
+  await f.api.apply(inverse.id, inverse.token);
   const restored = (await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state;
   assert.deepEqual(restored.recent, old);
   assert.ok(restored.revision > renewed.revision);
@@ -164,7 +164,7 @@ await runCase("repair/place-continuity", async () => {
     action: "clear-recent",
     expectedRecord: current.token!,
   });
-  await f.api.apply(clear.id);
+  await f.api.apply(clear.id, clear.token);
   assert.equal((await f.read()).venues[0].zones!.find((z) => z.id === "common")!.state.recent, null);
   await f.repo.mutateAuthority((s) => {
     s.venues[0].zones!.find((z) => z.id === "common")!.description = "Later gameplay.";
@@ -195,12 +195,12 @@ await runCase("repair/review", async () => {
   );
   assert.equal((await f.read()).setting, before.setting, "Review cannot mutate the world");
   assert.equal(review.changes[0].before, "Original setting");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   assert.equal((await f.read()).setting, "Corrected setting");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   assert.equal((await f.api.index()).history.length, 1, "Lost acknowledgments replay the same repair");
   const undo = await f.api.undo(review.id, "undo-first");
-  await f.api.apply(undo.id);
+  await f.api.apply(undo.id, undo.token);
   assert.equal((await f.read()).setting, before.setting);
   const stale = await f.prepare(
     edit(id, { name: "Willowmere", setting: "Stale", worldName: "", worldFacts: "" }, "stale"),
@@ -208,8 +208,97 @@ await runCase("repair/review", async () => {
   await f.repo.mutateAuthority((s) => {
     s.setting = "Changed elsewhere";
   });
-  await assert.rejects(() => f.api.apply(stale.id), /changed/u);
+  await assert.rejects(() => f.api.apply(stale.id, stale.token), /changed/u);
   assert.equal((await f.read()).setting, "Changed elsewhere");
+});
+await runCase("repair/review-retirement", async () => {
+  const f = await fixture(),
+    id = repairId("world"),
+    reviews = [];
+  const plans = () => [...f.rows.values()].filter((row) => row.kind === "repair-plan");
+  for (let i = 0; i < 15; i++) reviews.push(await f.prepare(edit(id, { setting: "Preview " + i }, "preview-" + i)));
+  assert.equal(plans().length, 10, "Unapplied previews cannot accumulate whole-world transactions indefinitely.");
+  assert.equal((await f.read()).setting, "Original setting");
+  assert.equal((await f.api.index()).historyTotal, 0);
+  await assert.rejects(() => f.api.apply(reviews[0].id, reviews[0].token), /Review this repair again/);
+  const latest = reviews.at(-1)!;
+  f.reopen();
+  await f.api.apply(latest.id, latest.token);
+  assert.equal(plans().length, 9, "The committed plan is retired with its durable acknowledgment.");
+  f.reopen();
+  await f.api.apply(latest.id, latest.token);
+  assert.equal((await f.api.index()).historyTotal, 1, "Idempotent apply does not depend on the retired preview.");
+  assert.deepEqual(await f.api.cancelReview(latest.id, latest.token), { cancelled: false, applied: true });
+  await assert.rejects(() => f.prepare(edit(id, { setting: "Duplicate mutation" }, latest.id)), /already applied/);
+  assert.equal((await f.read()).setting, "Preview 14");
+  const cancel = await f.prepare(edit(id, { setting: "Never committed" }, "cancel-preview"));
+  assert.deepEqual(await f.api.cancelReview(cancel.id, cancel.token), { cancelled: true });
+  assert.deepEqual(await f.api.cancelReview(cancel.id, cancel.token), { cancelled: true });
+  await assert.rejects(() => f.api.apply(cancel.id, cancel.token), /Review this repair again/);
+  assert.equal((await f.read()).setting, "Preview 14");
+  const valid = plans()[0];
+  f.rows.set("foreign-review", {
+    ...structuredClone(valid),
+    id: "foreign-review",
+    data: { ...structuredClone(valid.data), seed: "another-world" },
+  });
+  f.rows.set("unknown-review", {
+    ...structuredClone(valid),
+    id: "unknown-review",
+    data: { ...structuredClone(valid.data), transaction: null },
+  });
+  for (let i = 0; i < 12; i++) await f.prepare(edit(id, { setting: "Later " + i }, "later-preview-" + i));
+  assert.ok(
+    f.rows.has("foreign-review") && f.rows.has("unknown-review"),
+    "Foreign and malformed ownership is retained.",
+  );
+  assert.equal(plans().filter((row) => !["foreign-review", "unknown-review"].includes(row.id)).length, 10);
+});
+await runCase("repair/review-cancel-race", async () => {
+  const repeat = await fixture(),
+    request = edit(repairId("world"), { setting: "Fresh review" }, "same-request");
+  const old = await repeat.prepare(request);
+  await repeat.api.cancelReview(old.id, old.token);
+  const replacement = await repeat.prepare(request);
+  assert.equal(old.id, replacement.id);
+  assert.notEqual(old.token, replacement.token, "A recreated review cannot restore an old Apply's authority.");
+  await assert.rejects(() => repeat.api.apply(old.id, old.token), /review changed/);
+  assert.deepEqual(await repeat.api.cancelReview(old.id, old.token), { cancelled: false });
+  await repeat.api.apply(replacement.id, replacement.token);
+  assert.equal((await repeat.read()).setting, "Fresh review");
+  const f = await fixture(),
+    review = await f.prepare(edit(repairId("world"), { setting: "Must not commit" }, "cancel-race"));
+  const commit = f.gate.commit;
+  f.gate.commit = async (...args) => {
+    await f.api.cancelReview(review.id, review.token);
+    return commit(...args);
+  };
+  await assert.rejects(() => f.api.apply(review.id, review.token), /changed/);
+  assert.equal(
+    (await f.read()).setting,
+    "Original setting",
+    "Eviction/cancellation is checked before any effects publish.",
+  );
+  assert.equal((await f.api.index()).historyTotal, 0);
+});
+await runCase("repair/review-retirement-recovery", async () => {
+  const f = await fixture(),
+    review = await f.prepare(edit(repairId("world"), { setting: "Committed once" }, "retirement-crash"));
+  let fired = false;
+  f.hook((event, id) => {
+    if (!fired && event === "before-remove" && id.startsWith("villages-repair-plan-")) {
+      fired = true;
+      throw Error("crash retiring review");
+    }
+  });
+  await assert.rejects(() => f.api.apply(review.id, review.token), /crash retiring/);
+  assert.ok([...f.rows.values()].some((row) => row.kind === "repair-plan"));
+  f.hook(undefined);
+  f.reopen();
+  await f.api.apply(review.id, review.token);
+  assert.equal((await f.read()).setting, "Committed once");
+  assert.equal((await f.api.index()).historyTotal, 1);
+  assert.equal([...f.rows.values()].filter((row) => row.kind === "repair-plan").length, 0);
 });
 await runCase("repair/memory-undo", async () => {
   const f = await fixture();
@@ -226,7 +315,7 @@ await runCase("repair/memory-undo", async () => {
     id = before.memories.records[0].id;
   const request = { ...edit(repairId("memory", id), { text: "Aqua lent the telescope." }), knowers: ["player"] };
   const review = await f.prepare(request);
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   let current = await f.read();
   assert.equal(projectMemories(current.memories, ["player"])[0].text, request.values.text);
   assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
@@ -236,7 +325,7 @@ await runCase("repair/memory-undo", async () => {
   );
   const revision = current.memories.revision;
   const undo = await f.api.undo(review.id, "undo-memory");
-  await f.api.apply(undo.id);
+  await f.api.apply(undo.id, undo.token);
   current = await f.read();
   assert.ok(current.memories.revision > revision);
   assert.equal(projectMemories(current.memories, ["player"])[0].text, before.memories.records[0].text);
@@ -250,7 +339,7 @@ await runCase("repair/memory-undo", async () => {
   assert.deepEqual(forget.changes, [
     { label: "Your Persona · memory", before: before.memories.records[0].text, after: "Forgotten" },
   ]);
-  await f.api.apply(forget.id);
+  await f.api.apply(forget.id, forget.token);
   current = await f.read();
   const forgotten = current.memories.records.find((record) => record.id === id)!;
   assert.ok(forgotten.knowers.player.forgotten);
@@ -265,7 +354,7 @@ await runCase("repair/memory-undo", async () => {
   );
   assert.deepEqual(sceneMemories(current, "frozen"), sceneMemories(before, "frozen"));
   const restore = await f.api.undo(forget.id, "undo-forget-with-unsaved-text");
-  await f.api.apply(restore.id);
+  await f.api.apply(restore.id, restore.token);
   assert.equal(
     projectMemories((await f.read()).memories, ["player"]).find((record) => record.rootId === id)?.text,
     before.memories.records[0].text,
@@ -281,13 +370,13 @@ await runCase("repair/add-memory", async () => {
   assert.equal(review.changes[0].before, "");
   assert.equal(review.changes[0].after, text);
   assert.ok(!review.affected.includes(text), "Memory text is not repeated as an affected-record label");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   const added = (await f.read()).memories.records.find((row) => row.id === "player-repair:add-sandwich")!;
   assert.equal(added.text, text);
   assert.deepEqual(Object.keys(added.knowers), ["player"]);
   const inverse = await f.api.undo(review.id, "undo-sandwich");
   assert.equal(inverse.changes.filter((change) => change.before === text).length, 1);
-  await f.api.apply(inverse.id);
+  await f.api.apply(inverse.id, inverse.token);
   assert.ok(!projectMemories((await f.read()).memories, ["player"]).some((row) => row.id === added.id));
 });
 await runCase("repair/people", async () => {
@@ -393,14 +482,14 @@ await runCase("repair/people", async () => {
   await assert.rejects(() => f.api.prepare({ ...editBoth, expectedRecord: player.token! }), /record changed/u);
   const review = await f.prepare(editBoth);
   assert.deepEqual(review.memory?.people, ["Your Persona", "Nora"]);
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   for (const id of ["player", "a"])
     assert.equal(
       projectMemories((await f.read()).memories, [id]).find((r) => r.rootId === root.id)?.text,
       editBoth.values.text,
     );
   const inverse = await f.api.undo(review.id, "shared-undo");
-  await f.api.apply(inverse.id);
+  await f.api.apply(inverse.id, inverse.token);
   assert.equal((await f.api.inspect(nora.id, "a")).fields[0].value, nora.fields[0].value);
   assert.equal((await f.api.inspect(nora.id, "player")).fields[0].value, player.fields[0].value);
   const allNora = await f.api.list("people", "", 0, "a");
@@ -457,7 +546,7 @@ await runCase("repair/checkpoints", async () => {
   f.reopen();
   const review = await f.api.restore(cp.id, "restore-first");
   assert.equal((await f.read()).setting, "Later setting");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   assert.equal((await f.read()).setting, "Original setting");
   assert.equal((await f.read()).zonePictureBudget?.used, 6, "Restore cannot rewind automatic image spending");
   assert.ok((await f.read()).zonePictureEpoch! > 11, "Restore fences in-flight artwork");
@@ -478,7 +567,7 @@ await runCase("repair/checkpoints", async () => {
     delete state.returnCatchup;
   });
   const withoutBatch = await f.api.restore(withBatch.id, "restore-without-catchup");
-  await f.api.apply(withoutBatch.id);
+  await f.api.apply(withoutBatch.id, withoutBatch.token);
   assert.equal((await f.read()).returnCatchup, undefined, "Restoring cannot revive an older catch-up batch.");
   assert.equal((await f.read()).memories.records.length, 2, "Checkpoint owns independently restorable memory bytes");
   const now = new Date().toISOString();
@@ -511,11 +600,11 @@ await runCase("repair/recovery", async () => {
       throw Error("lost storage acknowledgment");
     }
   });
-  await assert.rejects(() => f.api.apply(review.id), /lost storage/u);
+  await assert.rejects(() => f.api.apply(review.id, review.token), /lost storage/u);
   f.hook(undefined);
   f.reopen();
   assert.equal((await f.read()).setting, "Survives a crash");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   assert.equal((await f.api.index()).history.length, 1);
   const second = await f.prepare(
     edit(
@@ -531,7 +620,7 @@ await runCase("repair/recovery", async () => {
       throw Error("lost control acknowledgment");
     }
   });
-  await assert.rejects(() => f.api.apply(second.id), /lost control/u);
+  await assert.rejects(() => f.api.apply(second.id, second.token), /lost control/u);
   f.hook(undefined);
   f.reopen();
   assert.equal((await f.read()).setting, "Control acknowledgment");
@@ -588,7 +677,7 @@ await runCase("repair/fences", async () => {
   const review = await f.prepare(
     edit(repairId("world"), { name: "Willowmere", setting: "Guarded", worldName: "", worldFacts: "" }),
   );
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   await f.repo.mutateAuthority((s) => {
     s.setting = "Later progress";
   });
@@ -612,7 +701,7 @@ await runCase("repair/fences", async () => {
   const next = await f.prepare(
     edit(repairId("world"), { name: "Willowmere", setting: "New epoch", worldName: "", worldFacts: "" }, "new-epoch"),
   );
-  await f.api.apply(next.id);
+  await f.api.apply(next.id, next.token);
   finish();
   await assert.rejects(oldWrite, /older action|restored/u);
   f.gate.dispose();
@@ -665,14 +754,14 @@ await runCase("repair/privacy", async () => {
     knowers: ["aqua"],
   };
   const added = await f.prepare(secret);
-  await f.api.apply(added.id);
+  await f.api.apply(added.id, added.token);
   const legacyHistory = [...f.rows.values()].find((row) => row.kind === "repair-history" && row.data.id === added.id)!;
   legacyHistory.data.private = true;
   legacyHistory.data.request.inspection = false;
   legacyHistory.data.record.private = true;
   assert.ok(JSON.stringify(await f.api.index()).includes("voyage"), "Earlier private history remains available");
   const undo = await f.api.undo(added.id, "undo-private-addition");
-  await f.api.apply(undo.id);
+  await f.api.apply(undo.id, undo.token);
   assert.ok(!projectMemories((await f.read()).memories, ["aqua"]).some((row) => row.text.includes("voyage")));
 });
 
@@ -699,16 +788,16 @@ await runCase("repair/domain-editors", async () => {
   const founding = await f.prepare(
     edit(opening.id, { foundingDetails: "Corrected authoritative founding", foundingGuidance: "" }, "fix-founding"),
   );
-  await f.api.apply(founding.id);
+  await f.api.apply(founding.id, founding.token);
   assert.equal((await f.read()).scenarioImprint?.origin, "Corrected authoritative founding");
   const place = await f.api.inspect(repairId("venue", "cafe"));
   const values = Object.fromEntries(place.fields.map((field) => [field.key, field.value]));
   values.x = 0.3;
   const map = await f.prepare(edit(place.id, values, "fix-map"));
-  await f.api.apply(map.id);
+  await f.api.apply(map.id, map.token);
   const revision = (await f.read()).maps[0].revision;
   const undoMap = await f.api.undo(map.id, "undo-map");
-  await f.api.apply(undoMap.id);
+  await f.api.apply(undoMap.id, undoMap.token);
   assert.ok((await f.read()).maps[0].revision > revision);
   assert.equal((await f.read()).venues[0].presentation.x, 0.2);
   assert.ok(
@@ -719,7 +808,7 @@ await runCase("repair/domain-editors", async () => {
   const physicalValues = Object.fromEntries(physical.fields.map((field) => [field.key, field.value]));
   physicalValues.description = "A shared room. The roof is sound.";
   const roof = await f.prepare(edit(physical.id, physicalValues, "fix-roof"));
-  await f.api.apply(roof.id);
+  await f.api.apply(roof.id, roof.token);
   assert.equal(
     (await f.read()).venues[0].zones?.find((z) => z.id === "common")?.description,
     "A shared room. The roof is sound.",
@@ -730,7 +819,7 @@ await runCase("repair/domain-editors", async () => {
   assert.ok((await f.api.index()).checkpoints.some((checkpoint) => checkpoint.id === legacyCheckpoint.data.id));
   const restoreReview = await f.api.restore(legacyCheckpoint.data.id, "legacy-private-checkpoint");
   assert.equal(restoreReview.kind, "restore");
-  await f.api.apply(restoreReview.id);
+  await f.api.apply(restoreReview.id, restoreReview.token);
   const oldHome = venue("old-home", "residence"),
     newHome = venue("new-home", "residence");
   newHome.residentIds = [];
@@ -754,7 +843,7 @@ await runCase("repair/domain-editors", async () => {
   const home = await f.prepare({
     ...edit(repairId("home", "a"), { destination: repairId("new-home", "bedroom") }, "fix-home"),
   });
-  await f.api.apply(home.id);
+  await f.api.apply(home.id, home.token);
   const housed = await f.read();
   assert.ok(housed.venues.find((v) => v.id === "new-home")?.residentIds?.includes("a"));
   assert.deepEqual(
@@ -853,7 +942,7 @@ await runCase("repair/retained-scenes", async () => {
     { memories: true },
   );
   const review = await f.api.restore(cp.id, "restore-idle");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   f.reopen();
   const restored = await f.read();
   assert.equal(
@@ -893,7 +982,7 @@ await runCase("repair/correction-retained", async () => {
   const correction = await f.prepare(
     edit(repairId("scene", "corrected"), { text: "The door was blue." }, "correct-scene"),
   );
-  await f.api.apply(correction.id);
+  await f.api.apply(correction.id, correction.token);
   assert.equal(await f.gate.documents.remove("villages", row.id, row.revision), true);
   const retained = await f.api.inspect(repairId("scene", "corrected"));
   assert.match(retained.title, /Library/);
@@ -952,7 +1041,7 @@ await runCase("repair/restored-evidence", async () => {
     updatedAt: stamp,
   });
   const review = await f.api.restore(cp.id, "restore-publication");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   const restored = (await f.gate.documents.getById("villages", savedScene.id))!.data as any;
   assert.equal(restored.generationReceipts[0].attemptId, "spent");
   const index = (await f.gate.documents.getById("villages", "villages-project-scene-evidence"))!.data as any;
@@ -1023,7 +1112,11 @@ await runCase("repair/http", async () => {
     const prepared = await app.inject({ method: "POST", url: "/repair/review", payload: input });
     assert.equal(prepared.statusCode, 200, prepared.body);
     assert.equal((await f.read()).setting, "Original setting");
-    const applied = await app.inject({ method: "POST", url: "/repair/apply", payload: { id: input.operationId } });
+    const applied = await app.inject({
+      method: "POST",
+      url: "/repair/apply",
+      payload: { id: input.operationId, token: prepared.json().token },
+    });
     assert.equal(applied.statusCode, 200, applied.body);
     assert.equal((await f.read()).setting, "HTTP correction");
     const undo = await app.inject({
@@ -1032,6 +1125,13 @@ await runCase("repair/http", async () => {
       payload: { id: input.operationId, operationId: "http-undo" },
     });
     assert.equal(undo.statusCode, 200, undo.body);
+    const cancelled = await app.inject({
+      method: "POST",
+      url: "/repair/cancel",
+      payload: { id: undo.json().id, token: undo.json().token },
+    });
+    assert.equal(cancelled.statusCode, 200, cancelled.body);
+    assert.equal(cancelled.json().cancelled, true);
   } finally {
     await app.close();
     release();
@@ -1054,12 +1154,12 @@ await runCase("repair/letter-fonts", async () => {
   const request = { ...edit(id, { letterFontId: next }, "font-change"), personId: resident.characterId };
   const review = await f.prepare(request);
   assert.equal((await f.read()).villagers[0]!.letterFontId, undefined, "Review is read-only");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   assert.equal((await f.read()).villagers[0]!.letterFontId, next);
   f.reopen();
   assert.equal((await f.read()).villagers[0]!.letterFontId, next, "The decoder preserves the saved style");
   const undo = await f.api.undo(review.id, "undo-font-change");
-  await f.api.apply(undo.id);
+  await f.api.apply(undo.id, undo.token);
   assert.equal((await f.read()).villagers[0]!.letterFontId, undefined);
 
   await f.repo.mutateAuthority((state) => {
@@ -1073,7 +1173,7 @@ await runCase("repair/letter-fonts", async () => {
   await f.repo.mutateAuthority((state) => {
     state.villagers[0]!.letterFontId = original;
   });
-  await assert.rejects(() => f.api.apply(stale.id), /changed/u);
+  await assert.rejects(() => f.api.apply(stale.id, stale.token), /changed/u);
   assert.equal((await f.read()).villagers[0]!.letterFontId, original);
 });
 
@@ -1092,7 +1192,7 @@ await runCase("repair/wishes", async () => {
   const before = await f.read(),
     review = await f.prepare(edit(record.id, values, "fix-social-wish"));
   assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled", "Repair review is read-only");
-  await f.api.apply(review.id);
+  await f.api.apply(review.id, review.token);
   const repaired = await f.read(),
     wish = repaired.villagers[0].wishes[0];
   assert.equal(wish.status, "open");
@@ -1100,6 +1200,6 @@ await runCase("repair/wishes", async () => {
   assert(wish.revision > before.villagers[0].wishes[0].revision);
   assert.deepEqual(knownSocialWishes(repaired, "a"), [], "Administrative state repair grants no player knowledge");
   const undo = await f.api.undo(review.id, "undo-social-wish");
-  await f.api.apply(undo.id);
+  await f.api.apply(undo.id, undo.token);
   assert.equal((await f.read()).villagers[0].wishes[0].status, "fulfilled");
 });
