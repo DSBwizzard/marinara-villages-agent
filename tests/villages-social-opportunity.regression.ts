@@ -4,6 +4,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { residentPlanningOpportunity } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
@@ -54,6 +55,7 @@ state.venues = [{ id: "commons", classes: ["workplace"], occupancy: {} }] as any
 assert.equal(opportunity(), null, "Weather alone does not admit paid resident activity");
 const capture = defaultVillageState();
 capture.seed = "captured";
+capture.relationshipContext = defaultRelationshipState(capture.seed);
 capture.foundedAt = now.toISOString();
 capture.timeZone = "UTC";
 const venue = venueDraft(
@@ -140,6 +142,15 @@ assert.ok(
 assert.deepEqual(returnCatchupOpportunities(capture, now, afterTwoHours, 0).opportunities, []);
 assert.deepEqual(returnCatchupOpportunities(capture, now, new Date(now.getTime() + 59 * 60_000), 3).opportunities, []);
 const tracking = { ...defaultVillageState(), ...structuredClone(savedCapture.world), setupAt: now.toISOString() };
+const unavailable = { ...tracking, relationshipContext: undefined };
+recordReturnVisibility(unavailable, now);
+discoverReturnBatch(unavailable, afterTwoHours, "unknown-context");
+assert.equal(unavailable.returnCatchup?.batch?.status, "completed");
+assert.equal(
+  unavailable.returnCatchup?.batch?.opportunities?.length,
+  0,
+  "Unavailable relationship context cannot authorize resident work even when both live and capture are unavailable",
+);
 discoverReturnBatch(tracking, afterTwoHours, "batch-before-first-visibility");
 assert.equal(tracking.returnCatchup, undefined, "Existing saves do not invent a pre-feature absence.");
 recordReturnVisibility(tracking, now);
