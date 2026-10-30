@@ -113,7 +113,7 @@ async function main() {
   } as any);
   try {
     assert.equal(
-      coerceVillageState({ ...defaultVillageState(), version: 8 }).name,
+      coerceVillageState(defaultVillageState()).name,
       "",
       "new worlds have no invented village name",
     );

@@ -18,7 +18,7 @@ import { createSpriteWrites } from "../packages/villages/src/server/features/med
 const documents = new Map<string, unknown>();
 const imageBytes = PNG.sync.write(new PNG({ width: 64, height: 96 }));
 const imageData = "data:image/png;base64," + imageBytes.toString("base64");
-let village = coerceVillageState({ ...defaultVillageState(), version: 8 });
+let village = coerceVillageState(defaultVillageState());
 let calls = 0,
   failImage = false,
   resolved = "",

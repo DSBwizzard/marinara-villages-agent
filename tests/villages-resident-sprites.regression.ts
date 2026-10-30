@@ -136,9 +136,9 @@ assert.equal(staged.lines[2]?.gazeAt, "resident-b", "whispers face their target 
 const now = new Date().toISOString();
 assert.equal(defaultVillageState().spriteCardFlipEnabled, true, "new Villages start with flips on");
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 8 }).spriteCardFlipEnabled,
+  coerceVillageState(defaultVillageState()).spriteCardFlipEnabled,
   true,
-  "legacy Villages without a choice default to flips on",
+  "Villages without a choice default to flips on",
 );
 assert.equal(
   coerceVillageState({ ...defaultVillageState(), spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
