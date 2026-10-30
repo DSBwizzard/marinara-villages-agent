@@ -68,6 +68,71 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
     text("foundingDetails", "Starting history", state.scenarioImprint?.origin ?? state.foundingDetails),
     text("foundingGuidance", "Starting guidance", state.foundingGuidance),
   ]);
+  for (const situation of state.narrative?.situations ?? [])
+    add(
+      ["narrative-situation", situation.id],
+      "world",
+      situation.title,
+      situation.summary,
+      [
+        text("title", "Title", situation.title),
+        text("summary", "Current circumstances", situation.summary),
+        choices("status", "Status", situation.status, [
+          { value: "active", label: "Active" },
+          { value: "resolved", label: "Resolved" },
+        ]),
+      ],
+      { revision: situation.revision },
+    );
+  for (const condition of state.narrative?.conditions ?? []) {
+    const zone = state.venues
+      .find((row) => row.id === condition.venueId)
+      ?.zones?.find((row) => row.id === condition.zoneId);
+    add(
+      ["narrative-condition", condition.id],
+      "world",
+      condition.observation,
+      condition.clearedAt ? "Cleared" : condition.restriction,
+      [
+        text("observation", "Observable circumstances", condition.observation),
+        text("remedy", "Corrective work", condition.remedy),
+        text("endsAt", "End time", condition.endsAt ?? ""),
+        choices("cleared", "Condition", condition.clearedAt ? "yes" : "no", [
+          { value: "no", label: "Active" },
+          { value: "yes", label: "Cleared" },
+        ]),
+        ...(zone ? [text("description", "Physical description", zone.description)] : []),
+      ],
+      {
+        revision: condition.revision,
+        source: [
+          "Situation: " + condition.situationId,
+          "Zone: " + condition.zoneId,
+          "Physical and condition values are published together.",
+        ],
+      },
+    );
+  }
+  if (state.narrative?.weather) {
+    const weather = state.narrative.weather;
+    add(
+      ["narrative-weather", weather.id],
+      "world",
+      "Weather override",
+      weather.description,
+      [text("description", "Weather", weather.description), text("endsAt", "End time", weather.endsAt)],
+      { revision: weather.revision, source: ["Source: " + weather.sourceId, "Start: " + weather.startsAt] },
+    );
+  }
+  for (const claim of state.narrative?.claims ?? [])
+    add(["narrative-claim", claim.id], "world", "Held world proposal", claim.zoneId, [], {
+      actions: [{ id: "reject", label: "Reject saved proposal" }],
+      source: [
+        "Source: " + claim.id,
+        "Purchased request: " + claim.attemptId,
+        "Rejection retains request evidence and consumed allowance.",
+      ],
+    });
   const people = [
     { id: "player", name: "Your Persona" },
     ...state.villagers.map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
@@ -418,6 +483,83 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   const values = inputValues(record, request),
     [kind, id, sub, actor] = repairParts(record.id);
   const str = (key: string) => String(values[key] ?? "");
+  if (kind === "narrative-claim") {
+    const narrative = state.narrative,
+      claim = narrative?.claims?.find((row) => row.id === id);
+    if (!narrative || !claim || request.action !== "reject") throw conflict("The world proposal changed.");
+    narrative.claims = narrative.claims?.filter((row) => row.id !== id);
+    narrative.receipts.push({
+      id,
+      at,
+      sourceId: id,
+      source: "world",
+      occurrence: "Saved proposal explicitly rejected in REPAIR.",
+      rejected: true,
+      after: { situations: [], conditions: [] },
+      physical: [],
+    });
+    narrative.revision++;
+    return;
+  }
+  if (kind.startsWith("narrative-")) {
+    const narrative = state.narrative;
+    if (!narrative) throw conflict("Environmental state changed.");
+    if (kind === "narrative-situation") {
+      const row = narrative.situations.find((item) => item.id === id)!;
+      if (!str("title") || str("title").length > 160 || !str("summary") || str("summary").length > 1200)
+        throw badRequest("Shorten the situation text.");
+      row.title = str("title");
+      row.summary = str("summary");
+      row.status = str("status") as "active" | "resolved";
+      row.updatedAt = at;
+      row.revision++;
+    } else if (kind === "narrative-condition") {
+      const row = narrative.conditions.find((item) => item.id === id)!;
+      if (
+        !str("observation") ||
+        str("observation").length > 600 ||
+        str("remedy").length > 600 ||
+        (str("endsAt") &&
+          (!Number.isFinite(Date.parse(str("endsAt"))) ||
+            new Date(str("endsAt")).toISOString() !== str("endsAt") ||
+            str("endsAt") <= row.startsAt))
+      )
+        throw badRequest("Check the condition and its end time.");
+      const zone = state.venues
+        .find((venue) => venue.id === row.venueId)
+        ?.zones?.find((item) => item.id === row.zoneId);
+      if (zone && (!str("description") || str("description").length > MAX_PLACE_DESCRIPTION))
+        throw badRequest("Check the physical description.");
+      row.observation = str("observation");
+      row.remedy = str("remedy");
+      row.endsAt = str("endsAt") || null;
+      row.clearedAt = str("cleared") === "yes" ? at : null;
+      row.revision++;
+      if (zone && zone.description !== str("description")) {
+        zone.description = str("description");
+        zone.state.revision++;
+        zone.state.updatedAt = at;
+        zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
+      }
+    } else if (kind === "narrative-weather") {
+      const weather = narrative.weather;
+      if (
+        !weather ||
+        weather.id !== id ||
+        !str("description") ||
+        str("description").length > 600 ||
+        !Number.isFinite(Date.parse(str("endsAt"))) ||
+        new Date(str("endsAt")).toISOString() !== str("endsAt") ||
+        str("endsAt") <= weather.startsAt
+      )
+        throw badRequest("Check the weather and its end time.");
+      weather.description = str("description");
+      weather.endsAt = str("endsAt");
+      weather.revision = ++narrative.weatherRevision;
+    }
+    narrative.revision++;
+    return;
+  }
   if (kind === "memory") {
     const target = state.memories.records.find((r) => r.id === id)!;
     const root = state.memories.records.find((r) => r.id === target.rootId)!;

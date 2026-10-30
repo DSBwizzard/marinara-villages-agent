@@ -218,6 +218,7 @@ import {
 import { createResidentCards } from "../features/residents/resident-card-service.js";
 import { configureResidentCards } from "../features/residents/resident-cards.js";
 import { createResidentPlanning } from "../features/residents/resident-planning-service.js";
+import { createNarrative } from "../features/narrative/narrative-service.js";
 import { createResidentRoster } from "../features/residents/resident-roster-service.js";
 import { configureResidentRoster } from "../features/residents/resident-roster.js";
 import { createResidentSignatures } from "../features/residents/resident-signature-service.js";
@@ -1114,13 +1115,26 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     villagesConnectionIdFor,
     completeWithRoom,
   });
+  const narrative = createNarrative({
+    read: readVillageAuthority,
+    mutate: (update) => villageRepository.mutateAuthority(update),
+    socialSnapshot: readVillageSnapshot,
+    resident: residentPlanning.reconcile,
+    queue: queueBackgroundJob,
+    job: backgroundJobSnapshot,
+    models: villagesLanguageModels,
+    connection: villagesConnectionIdFor,
+    complete: completeWithRoom,
+    now: villageNow,
+    afterCatchup: advanceReturnCatchup,
+  });
   const worldCoordination = createWorldCoordination({
     // Memory pages/evidence depend only on saved knowledge; reading them must not
     // observe/write the clock or decode the same large authority record twice.
     readVillageAuthority: () => villageRepository.readAuthority({ memories: true }),
     // Manual history edits preserve current mechanics and do not reconcile the world.
     mutateMemoryAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
-    reconcileResidentPlanning: residentPlanning.reconcile,
+    reconcileNarrative: narrative.reconcile,
     readVillageState,
     mutateVillageState,
     buildVillageSnapshot,
@@ -1147,6 +1161,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       activityChanged: requestVillageRefresh,
+      readVillageAuthority,
+      mutateVillageAuthority: (update) => villageRepository.mutateAuthority(update),
       villagesDocuments,
       villagesLogger,
       readVillageState,
@@ -1163,6 +1179,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
         ["social-recovery", relationshipSocial.handler],
         ["agenda", bindActivationService(residentAgendas.agendaBackgroundHandler)],
         ["resident-planning", bindActivationService(residentPlanning.handler)],
+        ["world-development", bindActivationService(narrative.handler)],
       ],
     }),
   );
@@ -1173,10 +1190,15 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     processSocialOutbox,
   });
   const returnCatchup = createReturnCatchup({
+    readAuthority: () => villageRepository.readAuthority({ memories: true }),
+    mutateAuthority: (update) => villageRepository.mutateAuthority(update, { memories: true }),
     activityChanged: requestVillageRefresh,
     readSnapshot: readVillageSnapshot,
     mutate: mutateVillageMemoryState,
-    queue: residentPlanning.queueReturnOpportunity,
+    queue: (batchId, opportunity, capture) =>
+      opportunity.kind === "world"
+        ? narrative.queueReturnOpportunity(batchId, opportunity, capture)
+        : residentPlanning.queueReturnOpportunity(batchId, opportunity, capture),
     job: backgroundJobSnapshot,
     retryJob: retryBackgroundJob,
     cancel: cancelReturnCatchup,

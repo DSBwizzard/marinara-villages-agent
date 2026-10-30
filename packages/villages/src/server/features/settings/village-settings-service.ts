@@ -58,6 +58,16 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
+  async function setVillageNarrativeConsequence(value: unknown): Promise<VillageSnapshot> {
+    if (typeof value !== "string" || !["gentle", "moderate", "dramatic"].includes(value))
+      throw badRequest("Choose Gentle, Moderate or Dramatic for Consequence.");
+    await mutateVillageState((state) => {
+      state.narrativeConsequence = value as "gentle" | "moderate" | "dramatic";
+    });
+    activityChanged?.();
+    return buildVillageSnapshot();
+  }
+
   async function setVillageSpriteCardFlipEnabled(value: unknown): Promise<VillageSnapshot> {
     if (typeof value !== "boolean") throw badRequest("Card-flip sprite changes must be on or off.");
     await mutateVillageState((state) => {
@@ -209,6 +219,7 @@ export function createVillageSettings({
     setVillagePromptKnowledge,
     setVillageLoreSettings,
     setVillageBackgroundPace,
+    setVillageNarrativeConsequence,
     setVillageSpriteCardFlipEnabled,
     setVillageSpriteVariantsEnabled,
     setVillageSendOnEnter,

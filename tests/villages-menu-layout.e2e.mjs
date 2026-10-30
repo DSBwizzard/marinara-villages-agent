@@ -121,6 +121,7 @@ try {
     await mockEngineLookups(page);
     const errors = [];
     let progressReads = 0;
+    let consequence = "gentle";
     let progressFails = false;
     let holdWorldSave = false,
       heldWorldSave,
@@ -153,6 +154,10 @@ try {
                 },
           ),
         });
+      }
+      if (path.endsWith("/settings") && route.request().method() === "PATCH") {
+        const body = route.request().postDataJSON();
+        if (body.narrativeConsequence) consequence = body.narrativeConsequence;
       }
       const response = path.endsWith("/connections")
         ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
@@ -187,7 +192,7 @@ try {
                           }
                         : path.endsWith("/rooms/active")
                           ? { session: null, debugDiscardEnabled: true }
-                          : snapshot;
+                          : { ...snapshot, settings: { ...snapshot.settings, narrativeConsequence: consequence } };
       return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
     await page.route("**/api/connections", (route) =>
@@ -234,6 +239,15 @@ try {
         const pace = main.getByRole("combobox", { name: "Pace", exact: true });
         await expect(pace).toBeVisible();
         assert.deepEqual(await pace.locator("option").allTextContents(), ["Off", "Quiet", "Average", "Busy"]);
+        const consequenceControl = main.getByRole("combobox", { name: "Consequence", exact: true });
+        assert.deepEqual(await consequenceControl.locator("option").allTextContents(), [
+          "Gentle",
+          "Moderate",
+          "Dramatic",
+        ]);
+        await expect(consequenceControl).toHaveValue("gentle");
+        await consequenceControl.selectOption("moderate");
+        await expect(consequenceControl).toHaveValue("moderate");
       }
       if (key === "village") {
         await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toHaveCount(0);

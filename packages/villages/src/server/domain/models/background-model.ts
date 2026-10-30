@@ -8,6 +8,7 @@ export type BackgroundKind =
   | "starting-ties"
   | "story" // Read-only compatibility for retired prose jobs.
   | "resident-planning"
+  | "world-development"
   | "agenda"
   | "translation"
   | "wish"
@@ -104,6 +105,8 @@ export type Job = BackgroundInput & {
   failedAt?: string;
 };
 export type Handler = {
+  authority?: "raw";
+  reserve?(state: VillageState, input: any, attemptId: string): void;
   generate(input: any): Promise<unknown>;
   valid(state: VillageState, input: any, admission?: { activityAttemptId: string; activityDate?: string }): boolean;
   apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void | WorkFailure;

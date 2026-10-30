@@ -358,6 +358,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
+      environment: village.narrative,
       seed: village.seed,
       timeZone: village.timeZone || undefined,
       now,

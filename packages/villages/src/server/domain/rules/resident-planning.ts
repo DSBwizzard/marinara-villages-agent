@@ -113,6 +113,10 @@ export type ResidentPlanningContext = {
   playerPersonaName?: string;
   worldFacts: readonly string[];
   moment: VillageMoment;
+  environment?: {
+    weather: string;
+    conditions: ReturnType<typeof import("./narrative-environment.js").environmentObservations>;
+  };
   residents: {
     characterId: string;
     name: string;
@@ -168,6 +172,13 @@ export function buildResidentPlanningMessages(context: ResidentPlanningContext):
     renderPlayerBackgroundContext(context, false),
     "Retained desires are a catalogue for considering this opportunity, never a quota or a requirement to act. Ordinary life and the complete character govern attention. No Wish need be mentioned or pursued.",
     "World facts: " + JSON.stringify(context.worldFacts),
+    ...(context.environment
+      ? [
+          "Current locally perceivable circumstances: " +
+            JSON.stringify(context.environment) +
+            ". These are observations, not prior knowledge. Adapt ordinary activities to restrictions; actual corrective work still needs the existing permission, participant, action and physical-change checks.",
+        ]
+      : []),
     "Current opportunity: " + JSON.stringify(offered),
     "Encounter place: " +
       JSON.stringify(

@@ -44,14 +44,18 @@ export function discoverReturnBatch(state: VillageState, now: Date, id: string):
   let opportunities: NonNullable<NonNullable<VillageState["returnCatchup"]>["batch"]>["opportunities"] = [];
   let reason = "";
   if (calendarReplay(state, localNow)) reason = "The calendar is replaying a previously visited date.";
-  else if (!departureMemoriesAvailable(capture, state)) reason = "Resident memories changed after departure.";
-  else if (JSON.stringify(state.relationshipContext) !== JSON.stringify(capture.world.relationshipContext))
-    reason = "Resident relationships changed after departure.";
   else {
     const historical = { ...defaultVillageState(), ...capture.world };
-    const selected = returnCatchupOpportunities(historical, new Date(capture.at), now, remaining);
+    const residentEligible =
+      departureMemoriesAvailable(capture, state) &&
+      JSON.stringify(state.relationshipContext) === JSON.stringify(capture.world.relationshipContext);
+    const selected = returnCatchupOpportunities(historical, new Date(capture.at), now, remaining, residentEligible);
     opportunities = selected.opportunities;
     reason = selected.reason;
+    if (!residentEligible)
+      reason += !departureMemoriesAvailable(capture, state)
+        ? " Resident memories changed after departure."
+        : " Resident relationships changed after departure.";
   }
   if (prior?.id === id || tracking.history?.some((row) => row.id === id)) return;
   if (prior) tracking.history = rememberFinishedBatch(tracking.history ?? [], prior);

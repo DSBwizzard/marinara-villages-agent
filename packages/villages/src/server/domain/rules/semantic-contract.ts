@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
+import { environmentObservations } from "./narrative-environment.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -148,6 +149,16 @@ export function semanticContext(
               ? {
                   description: zone.description,
                   revision: zone.state.revision,
+                  ...(state.narrative
+                    ? {
+                        conditions: environmentObservations(
+                          state.narrative,
+                          scene.continuity?.capturedAt ?? scene.startedAt,
+                          venue!.id,
+                          zone.id,
+                        ),
+                      }
+                    : {}),
                   recentContext: recentPlaceText(zone.state, scene.continuity?.capturedAt ?? scene.startedAt),
                 }
               : {}),

@@ -58,6 +58,24 @@ export function renderGeneralSettingsPage(ports: GeneralSettingsPagePorts) {
                   </option>
                 ))}
               </select>
+              <label className={`${ELEMENT_TAG}-label`} htmlFor={`${ELEMENT_TAG}-consequence`}>
+                Consequence
+              </label>
+              <select
+                id={`${ELEMENT_TAG}-consequence`}
+                value={snapshot.settings.narrativeConsequence ?? "gentle"}
+                disabled={busy}
+                onChange={(event) =>
+                  void saveBackgroundPace(
+                    snapshot.settings.backgroundPace,
+                    event.target.value as import("../../../shared/contracts/village.js").VillageNarrativeConsequence,
+                  )
+                }
+              >
+                <option value="gentle">Gentle</option>
+                <option value="moderate">Moderate</option>
+                <option value="dramatic">Dramatic</option>
+              </select>
             </div>
           ) : null}
         </>

@@ -5,6 +5,8 @@ import { conflict } from "../../domain/rules/errors.js";
 import { activityDate } from "../../domain/rules/event-attempts.js";
 
 type Ports = {
+  readAuthority?: () => Promise<VillageState>;
+  mutateAuthority?: (update: (state: VillageState) => void) => Promise<void>;
   readSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   mutate: typeof import("../world/village-store.js").mutateVillageState;
   queue: (
@@ -24,6 +26,25 @@ type Ports = {
 
 /** One durable batch uses the existing background worker and social settlement. */
 export function createReturnCatchup(ports: Ports) {
+  const mutate = ports.mutateAuthority ?? ports.mutate;
+  const readAuthority = ports.readAuthority ?? (() => ports.readSnapshot({ memories: true }));
+  async function captureMutation(update: (state: VillageState) => void): Promise<void> {
+    let snapshot: VillageState;
+    try {
+      snapshot = await ports.readSnapshot({ memories: true });
+    } catch {
+      snapshot = await readAuthority();
+    }
+    await mutate((state) => {
+      const stored = state.relationshipContext;
+      state.relationshipContext = snapshot.relationshipContext;
+      try {
+        update(state);
+      } finally {
+        state.relationshipContext = stored;
+      }
+    });
+  }
   let tail: Promise<unknown> = Promise.resolve();
   let advancing = false;
   function serial<T>(work: () => Promise<T>): Promise<T> {
@@ -32,18 +53,29 @@ export function createReturnCatchup(ports: Ports) {
     return result;
   }
   async function prepare(now: Date, id: string): Promise<void> {
-    await ports.mutate((state) => discoverReturnBatch(state, now, id));
+    await captureMutation((state) => discoverReturnBatch(state, now, id));
   }
   async function recordVisible(now: Date, visible = true): Promise<void> {
-    await ports.mutate((state) => {
+    await captureMutation((state) => {
       if (ports.hasPresence() === visible) recordReturnVisibility(state, now);
     });
   }
   async function update(batchId: string, change: (state: VillageState) => void): Promise<void> {
-    await ports.mutate((state) => {
+    const raw = await readAuthority();
+    const social =
+      ports.readAuthority && !raw.returnCatchup?.batch?.opportunities?.some((row) => row.kind === "world")
+        ? await ports.readSnapshot({ memories: true })
+        : undefined;
+    await mutate((state) => {
       if (state.returnCatchup?.batch?.id !== batchId) throw conflict("Village catch-up changed. Refresh its status.");
       if (["completed", "cancelled"].includes(state.returnCatchup.batch.status)) return;
-      change(state);
+      const stored = state.relationshipContext;
+      if (social) state.relationshipContext = social.relationshipContext;
+      try {
+        change(state);
+      } finally {
+        state.relationshipContext = stored;
+      }
     });
     ports.activityChanged?.();
   }
@@ -52,7 +84,7 @@ export function createReturnCatchup(ports: Ports) {
     advancing = true;
     return serial(async () => {
       for (let iteration = 0; iteration < 16; iteration++) {
-        const state = await ports.readSnapshot({ memories: true });
+        let state = await readAuthority();
         const tracking = state.returnCatchup,
           batch = tracking?.batch,
           capture = tracking?.capture;
@@ -63,12 +95,22 @@ export function createReturnCatchup(ports: Ports) {
           });
           continue;
         }
-        const record = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
+        const independent = batch.opportunities?.some((row) => row.kind === "world");
+        if (!independent && ports.readAuthority) state = await ports.readSnapshot({ memories: true });
+        const record = batch.records?.find((row) => !["settled", "rejected", "held"].includes(row.status));
         if (!record) {
+          const held = batch.records?.find((row) => row.status === "held");
+          if (held) {
+            await update(batch.id, (world) => {
+              world.returnCatchup!.batch!.status = held.heldStage === "settling" ? "recovering" : "failed";
+            });
+            return;
+          }
           await update(batch.id, (world) => {
             if (
+              !independent &&
               JSON.stringify(world.relationshipContext) !==
-              JSON.stringify(world.returnCatchup!.capture?.world.relationshipContext)
+                JSON.stringify(world.returnCatchup!.capture?.world.relationshipContext)
             ) {
               world.returnCatchup!.batch!.reason =
                 "Resident relationships changed before the absence could be verified.";
@@ -76,9 +118,9 @@ export function createReturnCatchup(ports: Ports) {
               return;
             }
             world.returnCatchup!.batch!.status = "completed";
-            if (ports.hasPresence()) recordReturnVisibility(world, ports.now());
-            else delete world.returnCatchup!.capture;
+            if (!ports.hasPresence()) delete world.returnCatchup!.capture;
           });
+          if (ports.hasPresence()) await recordVisible(ports.now());
           return;
         }
         const opportunity = batch.opportunities?.find((row) => row.id === record.opportunityId);
@@ -91,6 +133,15 @@ export function createReturnCatchup(ports: Ports) {
             return;
           } catch (error) {
             if (error instanceof Error && error.message.includes("Other Village work is active")) return;
+            if (independent) {
+              await update(batch.id, (world) => {
+                const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
+                row.status = "held";
+                row.heldStage = "settling";
+                row.error = String(error).slice(0, 300);
+              });
+              continue;
+            }
             await update(batch.id, (world) => {
               world.returnCatchup!.batch!.status = "recovering";
               const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
@@ -101,7 +152,7 @@ export function createReturnCatchup(ports: Ports) {
         }
         if (!ports.hasPresence()) return;
         const subject = returnCatchupSubject(batch.id, opportunity.id);
-        const job = await ports.job("resident-planning", subject);
+        const job = await ports.job(opportunity.kind === "world" ? "world-development" : "resident-planning", subject);
         if (
           batch.budgetDate !== undefined &&
           activityDate(state, ports.now()) !== batch.budgetDate &&
@@ -120,6 +171,15 @@ export function createReturnCatchup(ports: Ports) {
         if (record.status === "queued" && job) {
           if (["queued", "running", "paused"].includes(job.status)) return;
           if (job.status === "failed" || job.status === "interrupted") {
+            if (independent) {
+              await update(batch.id, (world) => {
+                const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
+                row.status = "held";
+                row.heldStage = "queued";
+                row.error = job.error;
+              });
+              continue;
+            }
             await update(batch.id, (world) => {
               world.returnCatchup!.batch!.status = "failed";
               world.returnCatchup!.batch!.records!.find((row) => row.opportunityId === opportunity.id)!.error =
@@ -143,6 +203,15 @@ export function createReturnCatchup(ports: Ports) {
           await ports.queue(batch.id, opportunity, capture);
           return;
         } catch (error) {
+          if (independent && opportunity.kind !== "world" && !(error instanceof ReturnOpportunityUnavailable)) {
+            await update(batch.id, (world) => {
+              const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
+              row.status = "held";
+              row.heldStage = "queued";
+              row.error = String(error).slice(0, 300);
+            });
+            continue;
+          }
           await update(batch.id, (world) => {
             const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
             row.error = (error instanceof Error ? error.message : String(error)).slice(0, 300);
@@ -155,7 +224,7 @@ export function createReturnCatchup(ports: Ports) {
       throw new Error("Village catch-up did not settle within its bounded work limit.");
     })
       .catch(async (error: unknown) => {
-        const state = await ports.readSnapshot({ memories: true });
+        const state = await readAuthority();
         const batch = state.returnCatchup?.batch;
         if (!batch || !["queued", "running"].includes(batch.status)) throw error;
         await update(batch.id, (world) => {
@@ -173,12 +242,17 @@ export function createReturnCatchup(ports: Ports) {
     if (advancing) throw conflict("Catch-up is updating. Try again in a moment.");
     advancing = true;
     try {
-      const state = await ports.readSnapshot({ memories: true });
+      const state = await readAuthority();
       const batch = state.returnCatchup?.batch;
       if (!batch || batch.id !== batchId) throw conflict("Village catch-up changed. Refresh its status.");
       const record = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
       if (!record) throw conflict("There is no unfinished catch-up work.");
-      if (batch.status === "recovering" && record.status === "settling") {
+      if (batch.status === "recovering" && (record.status === "settling" || record.heldStage === "settling")) {
+        if (record.status === "held")
+          await update(batch.id, (world) => {
+            world.returnCatchup!.batch!.records!.find((row) => row.opportunityId === record.opportunityId)!.status =
+              "settling";
+          });
         const source = state.socialOutbox?.find((row) => row.id === record.opportunityId + ":social");
         if (source?.reinterpretRequired) {
           const job = await ports.job("social-recovery", source.id);
@@ -192,9 +266,16 @@ export function createReturnCatchup(ports: Ports) {
         return;
       }
       if (batch.status !== "failed") throw conflict("Catch-up does not need a retry.");
-      const job = await ports.job("resident-planning", returnCatchupSubject(batch.id, record.opportunityId));
+      const opportunity = batch.opportunities?.find((row) => row.id === record.opportunityId);
+      const job = await ports.job(
+        opportunity?.kind === "world" ? "world-development" : "resident-planning",
+        returnCatchupSubject(batch.id, record.opportunityId),
+      );
       await update(batch.id, (world) => {
         world.returnCatchup!.batch!.status = "running";
+        if (record.status === "held")
+          world.returnCatchup!.batch!.records!.find((row) => row.opportunityId === record.opportunityId)!.status =
+            "queued";
       });
       try {
         if (job && ["failed", "interrupted", "paused"].includes(job.status))

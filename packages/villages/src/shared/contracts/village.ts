@@ -75,12 +75,14 @@ export type VillagerRefreshPreview = {
   changed: boolean;
 };
 export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
+export type VillageNarrativeConsequence = "gentle" | "moderate" | "dramatic";
 
 export type BackgroundWork = {
   id: string;
   kind:
     | "story" // Retired saved job identity; no generation or retry.
     | "resident-planning"
+    | "world-development"
     | "agenda"
     | "translation"
     | "wish"
@@ -504,6 +506,7 @@ export type VillageSettings = {
   promptBoxMaxLength: number;
   macros: readonly PresetMacro[];
   backgroundPace: VillageBackgroundPace;
+  narrativeConsequence?: VillageNarrativeConsequence;
   backgroundPaces: readonly VillageBackgroundPace[];
   /** How long the village's own name may be, as the founding wizard asks for it. */
   villageNameMaxLength: number;

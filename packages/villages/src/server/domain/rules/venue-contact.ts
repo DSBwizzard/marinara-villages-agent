@@ -121,12 +121,16 @@ export function contactCanEnter(
         ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
         accepting: characterId === "player",
         unavailable: !!zone && zoneClosed(state, venue, zone),
+        environment: state.narrative,
       }).allowed
     );
   return (
     !!zone &&
     !zoneClosed(state, venue, zone) &&
-    (canOccupyZone(venue, zone, characterId) ||
+    (canOccupyZone(venue, zone, characterId, {
+      ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
+      environment: state.narrative,
+    }) ||
       (characterId === "player" &&
         !scene?.dismissedZoneIds?.includes(zoneId) &&
         (venue.playerInvitations?.some(

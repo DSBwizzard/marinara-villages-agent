@@ -1,6 +1,7 @@
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { RepairGate } from "../../adapters/storage/repair-gate.js";
 import type { VillageState } from "../../domain/models/world.js";
+import { mergeNarrativeAfter } from "../../domain/rules/narrative-development.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { sameReturnResident } from "../../domain/rules/return-catchup-authority.js";
 import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-capture.js";
@@ -120,6 +121,20 @@ export function createReturnCatchupSettlement(ports: Ports) {
         const liveVenue = state.venues.find((row) => row.id === opportunity.venueId);
         if (savedVenue < 0 || !liveVenue) throw conflict("The catch-up Venue changed.");
         active.capture.world.venues[savedVenue] = structuredClone(liveVenue);
+        if (active.capture.world.narrative)
+          for (const receipt of state.narrative?.receipts ?? []) {
+            if (
+              receipt.sourceId !== "offscreen:" + sourceId ||
+              receipt.source !== "action" ||
+              active.capture.world.narrative.receipts.some((row) => row.id === receipt.id)
+            )
+              continue;
+            mergeNarrativeAfter(active.capture.world.narrative, receipt.after);
+            active.capture.world.narrative.receipts.push(structuredClone(receipt));
+            active.capture.world.narrative.revision++;
+          }
+        if (state.narrative)
+          state.narrative.receipts = state.narrative.receipts.filter((row) => row.sourceId !== "offscreen:" + sourceId);
         next.status = "settled";
         next.error = undefined;
         active.batch.status = "running";

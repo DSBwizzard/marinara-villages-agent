@@ -69,6 +69,7 @@ export function createVillageSnapshot({
     }
     const minuteOfDay = deriveVillageMoment({
       foundedAt: village.foundedAt,
+      environment: village.narrative,
       seed: village.seed,
       timeZone: village.timeZone || undefined,
       now,

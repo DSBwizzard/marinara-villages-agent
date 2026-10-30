@@ -1,6 +1,7 @@
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
 import { relationshipKey } from "./relationship-rules.js";
+import { mergeNarrativeAfter } from "./narrative-development.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
@@ -47,6 +48,7 @@ export const sceneContinuityFields = [
   "setting",
   "worldName",
   "worldFacts",
+  "narrative",
   "foundedAt",
   "socialContractVersion",
   "seed",
@@ -133,6 +135,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
   const view = {
     ...current,
     ...structuredClone(context.facts),
+    narrative: structuredClone(context.facts.narrative),
     ...(includeMemories
       ? {
           memories: current.memoryScenes[scene.id]
@@ -239,6 +242,20 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
     // Exact committed after-values extend this captured Scene only; live time and preconditions do not apply.
     zone.description = change.after.description;
     zone.state = structuredClone(change.after.state);
+    if (view.narrative)
+      for (const receipt of current.narrative?.receipts ?? []) {
+        if (
+          receipt.sourceId === scene.id &&
+          receipt.source === "action" &&
+          receipt.physical.some(
+            (after) =>
+              after.venueId === venue.id &&
+              after.zoneId === zone.id &&
+              after.state.revision === change.after.state.revision,
+          )
+        )
+          mergeNarrativeAfter(view.narrative, receipt.after);
+      }
     view.venueEvents = [event, ...view.venueEvents.filter((row) => row.id !== event.id)];
   }
   return view;

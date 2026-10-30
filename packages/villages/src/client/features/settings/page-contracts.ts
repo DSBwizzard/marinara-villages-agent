@@ -12,7 +12,10 @@ export type GeneralSettingsPagePorts = {
   readonly busy: boolean;
   readonly resetArmed: boolean;
   readonly saveSendOnEnter: (sendOnEnter: boolean) => Promise<void>;
-  readonly saveBackgroundPace: (backgroundPace: VillageBackgroundPace) => Promise<void>;
+  readonly saveBackgroundPace: (
+    backgroundPace: VillageBackgroundPace,
+    consequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence,
+  ) => Promise<void>;
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;
   readonly settingsError: string;
   readonly snapshot: VillageSnapshot | null;

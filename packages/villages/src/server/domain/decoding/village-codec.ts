@@ -82,6 +82,7 @@ import { coerceSocialActivities } from "../rules/social-activity.js";
 import { readSocialWish } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
+import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
 import {
   canInviteToZone,
@@ -157,6 +158,7 @@ export function defaultVillageState(): VillageState {
     timeZone: "",
     clock: null,
     backgroundPace: "balanced",
+    narrativeConsequence: "gentle",
     lastPlanningDate: "",
     planningUsage: { dateKey: "", count: 0 },
     processedActionIds: [],
@@ -1368,14 +1370,14 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
         if (
           typeof row.id !== "string" ||
           !/^[a-zA-Z0-9-]{1,100}$/.test(row.id) ||
-          (row.kind !== "encounter" && row.kind !== "routine") ||
+          !["encounter", "routine", "world"].includes(String(row.kind)) ||
           typeof row.startsAt !== "string" ||
           !Number.isFinite(Date.parse(row.startsAt)) ||
           row.endsAt !== row.startsAt ||
           Date.parse(row.startsAt) < Date.parse(batch.from) ||
           Date.parse(row.startsAt) > Date.parse(batch.until) ||
           !Array.isArray(row.actorIds) ||
-          row.actorIds.length < 1 ||
+          (row.kind === "world" ? row.actorIds.length !== 0 : row.actorIds.length < 1) ||
           row.actorIds.length > 4 ||
           row.actorIds.some((id) => typeof id !== "string" || !id || id === "player") ||
           new Set(row.actorIds).size !== row.actorIds.length ||
@@ -1383,6 +1385,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           (row.kind === "encounter" &&
             (row.actorIds.length < 2 || !row.venueId || typeof row.zoneId !== "string" || !row.zoneId)) ||
           (row.kind === "routine" && (row.actorIds.length !== 1 || !!row.venueId)) ||
+          (row.kind === "world" && (!row.venueId || typeof row.zoneId !== "string" || !row.zoneId)) ||
           !Array.isArray(row.facts) ||
           row.facts.some((fact) => typeof fact !== "string")
         )
@@ -1404,7 +1407,8 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           typeof row.opportunityId !== "string" ||
           !ids.has(row.opportunityId) ||
           recorded.has(row.opportunityId) ||
-          !["pending", "queued", "settling", "settled", "rejected"].includes(String(row.status)) ||
+          !["pending", "queued", "settling", "settled", "rejected", "held"].includes(String(row.status)) ||
+          (row.heldStage !== undefined && !["queued", "settling"].includes(String(row.heldStage))) ||
           (row.error !== undefined && typeof row.error !== "string")
         )
           throw new Error("The saved Village catch-up records could not be read.");
@@ -1501,6 +1505,7 @@ export function coerceVillageState(value: unknown): VillageState {
       ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
       : undefined,
     returnCatchup: decodeReturnCatchup(raw.returnCatchup),
+    narrative: readNarrativeState(raw.narrative),
     progressEngineVersion: 1,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
@@ -1618,6 +1623,9 @@ export function coerceVillageState(value: unknown): VillageState {
     timeZone: validTimeZone(raw.timeZone) ? raw.timeZone : "",
     clock: decodeVillageClock(raw.clock),
     backgroundPace: coerceBackgroundPace(raw),
+    narrativeConsequence: ["gentle", "moderate", "dramatic"].includes(String(raw.narrativeConsequence))
+      ? (raw.narrativeConsequence as "gentle" | "moderate" | "dramatic")
+      : "gentle",
     lastPlanningDate: boundText(raw.lastPlanningDate ?? raw.lastCreativeDate, 10),
     planningUsage: coercePlanningUsage(raw),
     processedActionIds: asStringArray(raw.processedActionIds ?? raw.processedOpportunityIds)

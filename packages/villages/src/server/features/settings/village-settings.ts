@@ -17,6 +17,9 @@ export function setVillageLoreSettings(...args: Parameters<VillageSettings["setV
 export function setVillageBackgroundPace(...args: Parameters<VillageSettings["setVillageBackgroundPace"]>) {
   return villageSettings().setVillageBackgroundPace(...args);
 }
+export function setVillageNarrativeConsequence(...args: Parameters<VillageSettings["setVillageNarrativeConsequence"]>) {
+  return villageSettings().setVillageNarrativeConsequence(...args);
+}
 export function setVillageSpriteCardFlipEnabled(
   ...args: Parameters<VillageSettings["setVillageSpriteCardFlipEnabled"]>
 ) {

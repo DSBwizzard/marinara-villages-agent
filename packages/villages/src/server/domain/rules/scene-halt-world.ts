@@ -75,7 +75,11 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
     if (!same(controllers(liveVenue, live), controllers(oldVenue, old))) return true;
     if (live.state.revision !== old.state.revision || live.description !== old.description) return true;
     try {
-      const copy = { ...current, venues: structuredClone(current.venues) };
+      const copy = {
+        ...current,
+        venues: structuredClone(current.venues),
+        narrative: structuredClone(current.narrative),
+      };
       applyVenueSceneChange(
         copy,
         scene.placeId,
@@ -87,6 +91,7 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
         scene.privateOwnerId,
         zoneId,
         reply.physicalContext as import("../../../shared/contracts/place-continuity.js").PlaceEvidence,
+        captured.narrative?.conditions,
       );
     } catch {
       return true;

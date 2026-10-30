@@ -739,6 +739,7 @@ export function createSceneCommands({
         ...sceneAccessContext({ ...session, accompanying }, village),
         accepting: true,
         unavailable: zoneClosed(village, venue, zone),
+        environment: village.narrative,
       });
       if (!decision.allowed) throw conflict(decision.explanation);
       await changeSceneVenues(session, (state) => {
@@ -753,6 +754,7 @@ export function createSceneCommands({
           ...sceneAccessContext({ ...session, accompanying }, state),
           accepting: true,
           unavailable: zoneClosed(state, current, target),
+          environment: state.narrative,
         });
         if (!decision.allowed) {
           if (session.continuity) return;
@@ -916,6 +918,7 @@ export function createSceneCommands({
           !evaluateZoneAccess(venue, zone, "player", {
             ...sceneAccessContext(session, state),
             unavailable: zoneClosed(state, venue, zone),
+            environment: state.narrative,
           }).allowed)
       )
         return;
@@ -1105,6 +1108,7 @@ export function createSceneCommands({
             ...entryAccessContext,
             relationships: state.relationshipContext,
             unavailable: zoneClosed(state, current, target),
+            environment: state.narrative,
           });
           if (!checked.allowed) throw conflict(checked.explanation);
           initialPermissionId = checked.permissionId;
@@ -3606,6 +3610,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         privateOwnerId,
         zoneId,
         submission.physicalContext,
+        sceneContinuityView(state, session).narrative?.conditions,
       );
       const venue = state.venues.find((place) => place.id === session.placeId)!;
       state.venueEvents = [

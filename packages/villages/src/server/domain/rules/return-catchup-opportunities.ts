@@ -7,6 +7,8 @@ import { localDateKey } from "./resident-planning.js";
 import { hashString } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
 import { canEnter } from "./social-rules.js";
+import { admitNarrative } from "./narrative-development.js";
+import { preferredActivityLane } from "./activity-arbitration.js";
 
 const HOUR = 60 * 60_000;
 
@@ -16,6 +18,7 @@ export function returnCatchupOpportunities(
   from: Date,
   until: Date,
   limit: number,
+  residentsEligible = true,
 ): { opportunities: ResidentPlanningOpportunity[]; reason: string } {
   const start = from.getTime(),
     end = until.getTime();
@@ -30,7 +33,7 @@ export function returnCatchupOpportunities(
   const candidates: ResidentPlanningOpportunity[] = [];
   const seen = new Set<string>();
   const omissions = new Set<string>();
-  const residents = captured.villagers.filter((resident) => {
+  const residents = (residentsEligible ? captured.villagers : []).filter((resident) => {
     const joined = Date.parse(resident.addedAt),
       card = Date.parse(resident.cardSnapshot.capturedAt);
     const eligible =
@@ -157,12 +160,47 @@ export function returnCatchupOpportunities(
     }
     day.setDate(day.getDate() + 1);
   }
-  const chosen = [
+  let chosen = [
     ...candidates.filter((row) => row.kind === "encounter"),
     ...candidates.filter((row) => row.kind === "routine"),
   ]
     .slice(0, cap)
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  if (captured.narrative) {
+    chosen = [];
+    let lane = preferredActivityLane(captured);
+    const width = (end - windowStart) / cap;
+    for (let index = 0; index < cap; index++) {
+      const left = windowStart + index * width,
+        right = left + width;
+      const resident = candidates.find(
+        (row) =>
+          Date.parse(row.startsAt) >= left &&
+          Date.parse(row.startsAt) < right &&
+          !chosen.some((selected) => selected.id === row.id),
+      );
+      const instant = new Date(left + width / 2).toISOString();
+      const grant = admitNarrative(captured, instant, "return-world:" + instant);
+      const world: ResidentPlanningOpportunity | null = grant
+        ? {
+            id: "return-world-" + Date.parse(instant),
+            kind: "world",
+            startsAt: instant,
+            endsAt: instant,
+            actorIds: [],
+            venueId: grant.targets[0]!.venueId,
+            zoneId: grant.targets[0]!.zoneId,
+            facts: ["An independently grounded world opportunity within the saved departure interval."],
+          }
+        : null;
+      const selected = lane === "world" ? (world ?? resident) : (resident ?? world);
+      if (selected) {
+        chosen.push(selected);
+        lane = selected.kind === "world" ? "resident" : "world";
+      }
+    }
+    chosen.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  }
   if (candidates.length > chosen.length) omissions.add("Further opportunities exceeded the remaining allowance.");
   return {
     opportunities: chosen,

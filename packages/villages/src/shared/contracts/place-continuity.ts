@@ -3,6 +3,7 @@ export type RecentPlaceContext = { text: string; occurredAt: string; expiresAt: 
 export type PlaceContinuity = { revision: number; updatedAt: string; recent: RecentPlaceContext | null };
 export type PlaceTextEdit = { before: string; after: string };
 export type PlaceUpdate = {
+  conditionClears?: { id: string; expectedRevision: number }[];
   narration: string;
   expectedRevision: number;
   appearanceChanged?: boolean;

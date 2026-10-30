@@ -735,7 +735,7 @@ export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
 
 export type ResidentPlanningOpportunity = {
   id: string;
-  kind: "encounter" | "routine";
+  kind: "encounter" | "routine" | "world";
   startsAt: string;
   endsAt: string;
   actorIds: string[];
@@ -876,7 +876,8 @@ export type ReturnCatchupBatch = {
   opportunities?: ResidentPlanningOpportunity[];
   records?: {
     opportunityId: string;
-    status: "pending" | "queued" | "settling" | "settled" | "rejected";
+    status: "pending" | "queued" | "settling" | "settled" | "rejected" | "held";
+    heldStage?: "queued" | "settling";
     outcome?: unknown;
     error?: string;
   }[];
@@ -896,6 +897,9 @@ export type ReturnCatchupCapture = {
     | "setting"
     | "worldName"
     | "worldFacts"
+    | "narrative"
+    | "narrativeConsequence"
+    | "eventAttempts"
     | "playerBackground"
     | "playerPersonaId"
     | "playerPersonaName"
@@ -911,6 +915,8 @@ export type ReturnCatchupCapture = {
 };
 
 export type VillageState = {
+  narrative?: import("./narrative-model.js").NarrativeState;
+  narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;
   memories: import("./memories.js").MemoryCollection;
   memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
   memoryReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;

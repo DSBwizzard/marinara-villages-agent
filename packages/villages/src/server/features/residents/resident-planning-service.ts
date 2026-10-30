@@ -1,4 +1,5 @@
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
+import { environmentObservations } from "../../domain/rules/narrative-environment.js";
 import { createHash } from "node:crypto";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
 import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
@@ -75,7 +76,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     villagesConnectionIdFor,
     completeWithRoom,
   } = ports;
-  async function reconcile(now: Date): Promise<void> {
+  async function reconcile(now: Date, dueOnly = false): Promise<boolean | void> {
     await ports.applySavedStartingTies?.();
     const village = await readVillageState({ memories: true });
     const dateKey = activityDate(village, now),
@@ -90,6 +91,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       return;
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
+      environment: village.narrative,
       seed: village.seed,
       timeZone: village.timeZone || undefined,
       now,
@@ -107,6 +109,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           )
         : undefined;
     const subjectId = activePlan ? "social:" + activePlan.id : "village";
+    if (dueOnly && !activePlan) return false;
     const prior = await backgroundJobSnapshot("resident-planning", subjectId);
     if (prior?.seed === village.seed && ["queued", "running", "failed", "interrupted", "paused"].includes(prior.status))
       return;
@@ -134,6 +137,19 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       playerPersonaName: village.playerPersonaName,
       worldFacts: village.worldFacts,
       moment,
+      ...(village.narrative
+        ? {
+            environment: {
+              weather: moment.weather,
+              conditions: environmentObservations(
+                village.narrative,
+                moment.instant,
+                opportunity.venueId,
+                opportunity.zoneId ?? "",
+              ),
+            },
+          }
+        : {}),
       residents: village.villagers.map((resident) => {
         const card = readEffectiveVillagerCard(resident);
         return {
@@ -175,6 +191,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       automaticDate: dateKey,
       input: {
         context,
+        reviewBasis: village.eventAttempts?.lastAttemptAt ?? "",
         opportunity,
         dateKey,
         now: now.toISOString(),
@@ -186,6 +203,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           residences: village.residences,
           projects: village.projects,
           timeZone: village.timeZone,
+          narrative: village.narrative,
         }),
         actorIncarnations: Object.fromEntries(
           opportunity.actorIds.map((id) => [
@@ -195,6 +213,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         ),
       },
     });
+    return true;
   }
   /** Queue one dated opportunity using the saved departure context. */
   async function queueReturnOpportunity(
@@ -270,6 +289,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       throw new ReturnOpportunityUnavailable("The opportunity's Venue changed after the departure capture.");
     const moment = deriveVillageMoment({
       foundedAt: historical.foundedAt,
+      environment: historical.narrative,
       seed: historical.seed,
       timeZone: historical.timeZone || undefined,
       now,
@@ -287,6 +307,19 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       playerPersonaName: historical.playerPersonaName,
       worldFacts: historical.worldFacts,
       moment,
+      ...(historical.narrative
+        ? {
+            environment: {
+              weather: moment.weather,
+              conditions: environmentObservations(
+                historical.narrative,
+                moment.instant,
+                opportunity.venueId,
+                opportunity.zoneId ?? "",
+              ),
+            },
+          }
+        : {}),
       residents: historical.villagers
         .filter((resident) => opportunity.actorIds.includes(resident.characterId))
         .map((resident) => {
@@ -364,6 +397,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           residences: historical.residences,
           projects: historical.projects,
           timeZone: historical.timeZone,
+          narrative: historical.narrative,
           opening: historical.opening,
         }),
         actorIncarnations: Object.fromEntries(
@@ -475,6 +509,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               .map((r) => ({ characterId: r.characterId, wishes: r.wishes })),
             memory: nativeMemory.envelope,
             now: context.moment.instant,
+            ...(context.environment ? { environment: context.environment } : {}),
             place:
               context.catchupPlace ??
               residentEncounterPlace(context.venues, context.opportunity, context.moment.instant),
@@ -527,6 +562,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
     return proposal;
   }
   const handler: Handler = {
+    reserve(state, input) {
+      if (input.reviewBasis !== undefined && input.reviewBasis !== (state.eventAttempts?.lastAttemptAt ?? ""))
+        throw new Error("This automatic activity opportunity was already used. Its source is preserved.");
+    },
     generate: (input) => proposeResidentChoices(input.context),
     valid: (state, input, admission) =>
       input.context.version === 1 &&

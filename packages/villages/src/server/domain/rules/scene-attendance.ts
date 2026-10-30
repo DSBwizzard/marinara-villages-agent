@@ -17,6 +17,7 @@ export function captureSceneAttendance(village: VillageState, placeId: string, n
   const venue = village.venues.find((entry) => entry.id === placeId)!;
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
+    environment: village.narrative,
     seed: village.seed,
     timeZone: village.timeZone || undefined,
     now,
@@ -102,6 +103,7 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
               ...context,
               positions,
               unavailable: zoneClosed(village, venue, target),
+              environment: village.narrative,
             }).allowed &&
             !!contactPath(village, venue, from, target.id, actor, session),
         )?.id ?? "";

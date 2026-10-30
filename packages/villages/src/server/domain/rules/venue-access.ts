@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   AccessCommand,
   VenueAccessState,
@@ -240,6 +241,7 @@ export function withinVisitorHours(hours: VenueAccessState["visitorHours"], at: 
   });
 }
 export type AccessContext = {
+  environment?: import("../models/narrative-model.js").NarrativeState;
   at?: Date;
   sceneId?: string;
   positions?: Record<string, string>;
@@ -313,7 +315,18 @@ export function evaluateZoneAccess(
         : policy.visitorHours;
   const open = withinVisitorHours(hours, context.at ?? new Date());
   // A ban exception supplies only its exact invitation; it does not restore general membership.
-  if (member && !bans.length) return result(true, "member", "You have access as a designated member or Zone manager.");
+  const restricted = ordinaryUseRestricted(
+    context.environment,
+    (context.at ?? new Date()).toISOString(),
+    venue.id,
+    zone.id,
+  );
+  if (member && !bans.length && (!restricted || canManage))
+    return result(
+      true,
+      "member",
+      restricted ? "Inspection and corrective work only." : "You have access as a designated member or Zone manager.",
+    );
   const eligible = permitted.filter((grant) => open || grant.outsideHours);
   if (!open && !eligible.length)
     return result(
@@ -333,7 +346,13 @@ export function evaluateZoneAccess(
     );
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
-    return result(true, "public", "Public during visitor hours.");
+    return restricted
+      ? result(
+          false,
+          "unavailable",
+          "Ordinary use is restricted. A controller can authorize inspection or corrective work.",
+        )
+      : result(true, "public", "Public during visitor hours.");
   if (eligible.some((grant) => grant.accompaniedBy || policy.accompanied))
     return result(false, "accompaniment-required", "Your named escort must be here with you.");
   return result(false, "permission-required", "Permission is required for this Zone.");
