@@ -25,6 +25,7 @@ let record = {
   description: "",
   revision: 1,
   data: {
+    storageFormat: 4,
     version: 3,
     sceneRevision: 0,
     id: "browser",
@@ -83,7 +84,10 @@ let calls = 0,
   started = null,
   holdNext = true;
 let disconnectNext = false;
-const publicRoom = () => ({ ...structuredClone(record.data), operation: operationSummary(record.data.operation) });
+const publicRoom = () => {
+  const { storageFormat: _storageFormat, ...fields } = structuredClone(record.data);
+  return { ...fields, operation: operationSummary(record.data.operation) };
+};
 const errors = [],
   routeErrors = [];
 try {
