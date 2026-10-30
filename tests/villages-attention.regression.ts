@@ -44,6 +44,7 @@ import {
   villageFixtureDocuments,
   authorSceneFixture,
   fixtureSceneState,
+  editFixtureScene,
 } from "./helpers/village-storage.fixture.js";
 // Keep the scheduled cast on the seeded day; async timers remain real.
 mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-18T12:00:00.000Z") });
@@ -575,6 +576,7 @@ async function sendVenueTurn(input: Parameters<typeof sendCurrentVenueTurn>[0]) 
     scene.operation?.id !== input.submissionId
   ) {
     scene.operation = {
+      evidenceFormat: 1,
       id: input.submissionId,
       kind: "turn",
       status: "complete",
@@ -974,18 +976,20 @@ try {
     };
     const cooked = variant === "unbound" ? plan : bindAttentionPlan(plan, "A different input", house, scene);
     const row = records.get(`villages-venue-visit-${scene.id}`);
-    row.data.operation = {
-      ...row.data.operation,
-      id: "legacy-plan",
-      kind: "turn",
-      status: "interrupted",
-      attemptId: "legacy-plan-attempt",
-      sceneRevision: scene.sceneRevision,
-      input: { message, mode: "chat", targetId: "", interactionScopeVersion: 2 },
-      snapshot: null,
-      checkpoints: { "attention-plan": cooked },
-      attempts: {},
-    };
+    editFixtureScene(row, records, (saved) => {
+      saved.operation = {
+        ...saved.operation,
+        id: "legacy-plan",
+        kind: "turn",
+        status: "interrupted",
+        attemptId: "legacy-plan-attempt",
+        sceneRevision: scene.sceneRevision,
+        input: { message, mode: "chat", targetId: "", interactionScopeVersion: 2 },
+        snapshot: null,
+        checkpoints: { "attention-plan": cooked },
+        attempts: {},
+      } as NonNullable<typeof saved.operation>;
+    });
     const beforeHeld = { ...counts };
     const heldPlan = await send(scene, "legacy-plan", message, undefined, "legacy-plan-attempt");
     assert.deepEqual(counts, beforeHeld, "unverifiable cooked plans never repurchase or dispatch a Scene");
@@ -1061,6 +1065,7 @@ try {
   // Simulate an admitted scope-2 request from the earlier attention candidate.
   const legacyOperation = records.get(`villages-venue-visit-${scene.id}`).data;
   legacyOperation.operation = {
+    evidenceFormat: 1,
     ...legacyOperation.operation,
     id: "intermediate-system",
     kind: "turn",
@@ -1189,6 +1194,7 @@ try {
   scene = await open();
   const oldRecord = records.get(`villages-venue-visit-${scene.id}`);
   oldRecord.data.operation = {
+    evidenceFormat: 1,
     ...oldRecord.data.operation,
     id: "old-v1",
     kind: "turn",
@@ -1487,6 +1493,7 @@ try {
   delete migrationSnapshot.sceneAttendance.layout;
   migrationSnapshot.operation = null;
   records.get("villages-venue-visit-" + scene.id).data.operation = {
+    evidenceFormat: 1,
     id: "save-failure",
     kind: "turn",
     status: "interrupted",

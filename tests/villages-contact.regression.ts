@@ -392,6 +392,7 @@ async function submitTurn(input: Parameters<typeof submitTurnRaw>[0]) {
   ) {
     const attemptId = "legacy-contact-" + input.submissionId;
     saved.operation = {
+      evidenceFormat: 1,
       id: input.submissionId,
       kind: "turn",
       status: "interrupted",

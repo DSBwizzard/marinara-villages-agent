@@ -57,6 +57,7 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     "repair-undo",
     "relationship-payload",
     "relationship-payload-intent",
+    "operation-evidence",
   ]);
   const raw = new Proxy(backing, {
     get(target, key) {

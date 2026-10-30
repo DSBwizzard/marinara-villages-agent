@@ -7,6 +7,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { mutableSceneSubmission } from "../packages/villages/src/server/domain/rules/scene-submissions.js";
 import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import { operationEvidenceStore } from "../packages/villages/src/server/adapters/storage/operation-evidence.js";
 import {
   createSceneHistory,
   readSceneIndex,
@@ -153,6 +154,7 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
     });
     if (consumer === "restart")
       fixture.rows.get("villages-venue-visit-" + sceneId).data.operation = {
+        evidenceFormat: 1,
         id: "turn:7",
         kind: "turn",
         input: {},
@@ -397,21 +399,26 @@ for (const count of [1000, 10_000, 25_000]) {
     assert.equal(Object.hasOwn(original.data, "submissions"), false);
     assert.equal(original.data.submissionHistory.count, count);
     assert.throws(() => readSceneIndex(original.data).submissions, /not loaded/);
-    fixture.rows.get(original.id).data.operation = {
-      id: "saved",
-      kind: "turn",
-      input: {},
-      token: "saved",
-      attemptId: "saved-attempt",
-      status: "complete",
-      stage: "complete",
-      startedAt: at,
-      sceneRevision: original.data.sceneRevision,
-      snapshot: structuredClone(original.data),
-      checkpoints: {},
-      attempts: { saved: { status: "complete", result: { content: "Retained purchased response" } } },
-      error: "",
-    };
+    fixture.rows.get(original.id).data.operation = await fixture.gate.work(() =>
+      operationEvidenceStore(fixture.gate.documents).encode(
+        {
+          id: "saved",
+          kind: "turn",
+          input: {},
+          token: "saved",
+          attemptId: "saved-attempt",
+          status: "complete",
+          stage: "complete",
+          startedAt: at,
+          sceneRevision: original.data.sceneRevision,
+          snapshot: structuredClone(original.data),
+          checkpoints: { saved: { content: "Retained parsed checkpoint" } },
+          attempts: {},
+          error: "",
+        },
+        { id: sceneId, villageSeed: seed },
+      ),
+    );
     const initialBytes = [...fixture.rows.values()].reduce(
       (sum, row) => sum + Buffer.byteLength(JSON.stringify(row)),
       0,

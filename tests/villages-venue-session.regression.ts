@@ -1295,6 +1295,7 @@ async function admitLegacyTurn(input: Parameters<typeof sendVenueTurnRaw>[0]) {
     scene.operation?.id !== input.submissionId
   ) {
     scene.operation = {
+      evidenceFormat: 1,
       id: input.submissionId,
       kind: "turn",
       status: "complete",
@@ -3039,21 +3040,25 @@ async function main() {
           },
         };
         const record = records.get(key("villages", `villages-venue-visit-${opening.id}`))!;
-        record.data.operation = {
-          id: "greeting",
-          kind: "greet",
-          input: {},
-          token: "old-owner",
-          attemptId: "saved-greeting",
-          status: "interrupted",
-          stage: "greeting-reply",
-          startedAt: new Date().toISOString(),
-          sceneRevision: opening.sceneRevision,
-          snapshot: structuredClone({ ...record.data, operation: undefined }),
-          checkpoints: { "greeting-reply": savedReply },
-          attempts: {},
-          error: "Application was interrupted",
-        };
+        const pages = new Map([...records.values()].map((row) => [row.id, row]));
+        editFixtureScene(record, pages, (scene) => {
+          scene.operation = {
+            id: "greeting",
+            kind: "greet",
+            input: {},
+            token: "old-owner",
+            attemptId: "saved-greeting",
+            status: "interrupted",
+            stage: "greeting-reply",
+            startedAt: new Date().toISOString(),
+            sceneRevision: opening.sceneRevision,
+            snapshot: structuredClone({ ...record.data, operation: undefined }),
+            checkpoints: { "greeting-reply": savedReply },
+            attempts: {},
+            error: "Application was interrupted",
+          };
+        });
+        for (const [id, row] of pages) records.set(key("villages", id), row);
         const beforeReplay = calls;
         const replayed = await greetVenue(opening.id);
         assert.equal(calls, beforeReplay, "saved invitation replay makes no generation or interpretation request");

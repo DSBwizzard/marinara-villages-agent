@@ -11,6 +11,14 @@ import { readSceneSubmissionHead, sceneSubmissionStore } from "../adapters/stora
 import { coerceSession } from "../domain/decoding/scene-codec.js";
 import { mutableSceneSubmission } from "../domain/rules/scene-submissions.js";
 import { memoryRequire } from "../domain/rules/memory-integrity.js";
+import { immutableMemoryValue } from "../domain/rules/memory-integrity.js";
+import {
+  operationEvidenceStore,
+  operationResponseBodyId,
+  prepareOperationValue,
+  operationCheckpointPrefix,
+} from "../adapters/storage/operation-evidence.js";
+import { createSceneResponseReceipts } from "../adapters/storage/scene-response-receipts.js";
 import {
   boundedRejectedText,
   rejectedSyntaxError,
@@ -29,7 +37,7 @@ import { coerceInterpretationSettings, type InterpretationSettings } from "../do
 import { sceneRevision } from "../domain/rules/scene-revision.js";
 import { coerceWorkFailure } from "../domain/rules/work-failure.js";
 import type { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 export interface VenueCoordinatorPorts {
   operations: VenueOperationContext;
@@ -79,6 +87,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
 
   function venueInterpretationSettings(): InterpretationSettings {
     return coerceInterpretationSettings(context.getStore()?.operation.interpretationSettings);
+  }
+  function withResponseWork<T>(sessionId: string, work: () => Promise<T>) {
+    return ports.operations.outsideVenueOperation(() => {
+      const fenced = () => (ports.withLateResponseWork ? ports.withLateResponseWork(sessionId, work) : work());
+      return ports.withRepairWork ? ports.withRepairWork(fenced) : fenced();
+    });
   }
 
   /** Record uncertain billing before an explicit retry or replacement. */
@@ -141,7 +155,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const result = await Promise.race([work(signal), expired]);
       assertVenueOwnership();
       receipt.status = "complete";
-      receipt.result = structuredClone(result);
+      receipt.result = immutableMemoryValue(result);
       return result;
     } catch {
       current.controller.signal.throwIfAborted();
@@ -189,7 +203,11 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
   }
   async function updateWithSubmissions(
     id: string,
-    mutate: (data: Record<string, unknown>, submissions: VenueScene["submissions"]) => void,
+    mutate: (
+      data: Record<string, unknown>,
+      submissions: VenueScene["submissions"],
+      documents: CapabilityDocumentStore,
+    ) => void | Promise<void>,
   ) {
     return update(id, async (data, documents) => {
       const scene = coerceSession({
@@ -202,16 +220,20 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         store = sceneSubmissionStore(documents);
       const prior = (await store.read(previous, scene)).submissions,
         submissions = [...prior];
-      mutate(data, submissions);
+      await mutate(data, submissions, documents);
       if (submissions.length !== prior.length || submissions.some((row, index) => row !== prior[index]))
         data.submissionHistory = await store.prepare({ ...scene, submissions }, previous);
     });
   }
   async function persist(current: Context) {
     assertVenueOwnership();
-    await update(current.sessionId, (data) => {
+    await update(current.sessionId, async (data, documents) => {
       assertVenueOwnership(data);
-      data.operation = structuredClone(current.operation);
+      data.operation = await operationEvidenceStore(documents).encode(
+        current.operation,
+        data as unknown as VenueScene,
+        data.operation,
+      );
     });
   }
 
@@ -220,6 +242,15 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     const current = context.getStore();
     if (!current) return work();
     assertVenueOwnership();
+    const publishCheckpoint = async (claim: { token: string; bodyId: string } | undefined) => {
+      if (claim) delete current.operation.checkpointClaims![stage];
+      try {
+        await persist(current);
+      } catch (error) {
+        if (claim) (current.operation.checkpointClaims ??= {})[stage] = claim;
+        throw error;
+      }
+    };
     const started = performance.now();
     const record = (reused: boolean) => {
       const timing = current.operation.timing;
@@ -229,8 +260,30 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         );
     };
     if (Object.hasOwn(current.operation.checkpoints, stage)) {
+      if (current.operation.checkpointClaims?.[stage])
+        await publishCheckpoint(current.operation.checkpointClaims[stage]);
       record(true);
       return structuredClone(current.operation.checkpoints[stage]) as T;
+    }
+    const documents = villagesDocuments(),
+      evidence = operationEvidenceStore(documents);
+    const owner = { id: current.sessionId, villageSeed: current.villageSeed };
+    // Writing completion only returns the independently retained raw provider response.
+    let claim = current.operation.checkpointClaims?.[stage];
+    if (!stage.startsWith("writing-completion:")) {
+      if (!claim) {
+        const token = operationCheckpointPrefix(current.operation, owner, stage) + randomUUID();
+        claim = { token, bodyId: operationResponseBodyId(owner, token) };
+        (current.operation.checkpointClaims ??= {})[stage] = claim;
+      } else {
+        const saved = await evidence.pending(claim, owner);
+        if (saved) {
+          current.operation.checkpoints[stage] = saved.value;
+          record(true);
+          await publishCheckpoint(claim);
+          return structuredClone(saved.value) as T;
+        }
+      }
     }
     current.operation.stage = stage;
     await persist(current);
@@ -247,8 +300,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         "The previous request may have been billed. Explicitly retry the saved request to recover the unfinished stage.",
       );
     record(false);
-    current.operation.checkpoints[stage] = structuredClone(result);
-    await persist(current);
+    if (claim) {
+      const saved = prepareOperationValue(result, owner, claim.token);
+      await evidence.publish(new Map([[saved.ref.id, saved.data]]));
+      current.operation.checkpoints[stage] = saved.value;
+    } else current.operation.checkpoints[stage] = immutableMemoryValue(result);
+    await publishCheckpoint(claim);
     return result;
   }
 
@@ -277,7 +334,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     );
     if (prior?.status === "complete") {
       runtimeDebug("completion replay", { key });
-      return structuredClone(prior.result) as T;
+      return immutableMemoryValue(prior.result) as T;
     }
     const signature = JSON.stringify([
       current.sessionId,
@@ -286,7 +343,9 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       current.operation.input,
       key,
     ]);
-    const lateId = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
+    const documents = villagesDocuments(),
+      receipts = createSceneResponseReceipts(documents);
+    const owner = { id: current.sessionId, villageSeed: current.villageSeed };
     // A policy upgrade may replay a completed late response too. A newer exact attempt always wins.
     for (const savedKey of current.operation.attempts[key] || !legacyKey ? [key] : [key, legacyKey]) {
       const savedSignature = JSON.stringify([
@@ -296,14 +355,16 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         current.operation.input,
         savedKey,
       ]);
-      const savedId = "villages-generation-response-" + createHash("sha256").update(savedSignature).digest("hex");
-      const late = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, savedId);
-      const lateData = asRecord(late?.data);
-      if (lateData.signature === savedSignature && lateData.status === "complete") {
-        current.operation.attempts[savedKey] = { status: "complete", result: structuredClone(lateData.result) };
+      const saved = await withResponseWork(current.sessionId, () => receipts.read(owner, savedSignature));
+      if (saved) {
+        current.operation.attempts[savedKey] = {
+          status: "complete",
+          result: saved.value,
+          response: { ...saved.ref, claim: saved.claim },
+        };
         current.usedAttemptKeys.set(`${current.scope}:${index}`, savedKey);
         await persist(current);
-        return structuredClone(lateData.result) as T;
+        return saved.value as T;
       }
     }
     if (!current.allowPaid) {
@@ -314,6 +375,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       );
     }
     const budget = asRecord(current.operation.input.semanticBudget);
+    let reservationBefore: { key: string; present: boolean; value: unknown } | undefined;
     if (current.operation.input.semanticBudget !== undefined || current.operation.snapshot?.semanticVersion === 2) {
       const keys = ["requests", "inputTokens", "outputTokens"] as const;
       if (
@@ -351,66 +413,55 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           "SEMANTIC_BUDGET",
           "This attempt reached its model allowance. Saved results remain recoverable.",
         );
+      reservationBefore = {
+        key: budgetKey,
+        present: Object.hasOwn(current.operation.checkpoints, budgetKey),
+        value: current.operation.checkpoints[budgetKey],
+      };
       current.operation.checkpoints[budgetKey] = next;
     }
     current.operation.attempts[key] = { status: "dispatching" };
     await persist(current);
+    const reservationClaim = await receipts.begin(
+      owner,
+      signature,
+      current.operation.attemptId,
+      current.explicitRetry === true,
+    );
+    if (reservationClaim.cached) {
+      if (reservationBefore) {
+        if (reservationBefore.present) current.operation.checkpoints[reservationBefore.key] = reservationBefore.value;
+        else delete current.operation.checkpoints[reservationBefore.key];
+      }
+      current.operation.attempts[key] = {
+        status: "complete",
+        result: reservationClaim.cached.value,
+        response: { ...reservationClaim.cached.ref, claim: reservationClaim.cached.claim },
+      };
+      await persist(current);
+      return reservationClaim.cached.value as T;
+    }
+    const claim = reservationClaim.claim!;
     const started = performance.now();
     let result: T;
     try {
       result = await work(current.controller.signal);
     } catch (error) {
-      retainLateProviderResponse(error, (value) =>
-        ports.operations.outsideVenueOperation(() => {
-          const retain = async () => {
-            const savedScene = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, prefix + current.sessionId);
-            const operation = asRecord(asRecord(savedScene?.data).operation);
-            if (
-              operation.id !== current.operation.id ||
-              operation.sceneRevision !== current.operation.sceneRevision ||
-              JSON.stringify(operation.input) !== JSON.stringify(current.operation.input) ||
-              operation.status === "complete" ||
-              asRecord(asRecord(operation.attempts)[key]).status === "rejected"
-            )
-              return;
-            await createDocumentMutator(villagesDocuments)(
-              lateId,
-              {
-                kind: "generation-response",
-                name: "Saved late response",
-                description: "Private provider response; no effects applied",
-                coerce: (raw) => asRecord(raw),
-                label: () => "Saved late response",
-              },
-              (saved) => {
-                if (saved.status === "complete") return false;
-                if (
-                  saved.status === "rejected" &&
-                  (saved.attemptId === current.operation.attemptId ||
-                    operation.attemptId !== current.operation.attemptId)
-                )
-                  return false;
-                Object.assign(saved, {
-                  signature,
-                  status: "complete",
-                  result: structuredClone(value),
-                  attemptId: current.operation.attemptId,
-                });
-              },
-            );
-          };
-          const fenced = () =>
-            ports.withLateResponseWork ? ports.withLateResponseWork(current.sessionId, retain) : retain();
-          return ports.withRepairWork ? ports.withRepairWork(fenced) : fenced();
-        }),
-      );
+      retainLateProviderResponse(error, async (value) => {
+        await withResponseWork(current.sessionId, () => receipts.retain(owner, signature, claim, value));
+      });
       throw error;
     }
+    const retained = await withResponseWork(current.sessionId, () => receipts.retain(owner, signature, claim, result));
     assertVenueOwnership();
+    if (!retained)
+      throw venueRefusal("OPERATION_INTERRUPTED", "The saved response was rejected or replaced. Refresh the Scene.");
+    result = retained.value as T;
     current.operation.attempts[key] = {
       status: "complete",
       elapsedMs: Math.round(performance.now() - started),
-      result: structuredClone(result),
+      result: immutableMemoryValue(result),
+      response: { ...retained.ref, claim: retained.claim },
     };
     await persist(current);
     villagesLogger().info(
@@ -424,7 +475,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     return result;
   }
 
-  async function rejectLateReceipt(current: Context, key: string) {
+  async function rejectLateReceipt(
+    current: Context,
+    key: string,
+    expected = current.operation.attempts[key]?.response,
+  ) {
+    if (!expected) return;
     const signature = JSON.stringify([
       current.sessionId,
       current.operation.id,
@@ -432,28 +488,13 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       current.operation.input,
       key,
     ]);
-    const id = "villages-generation-response-" + createHash("sha256").update(signature).digest("hex");
-    const reject = () =>
-      createDocumentMutator(villagesDocuments)(
-        id,
-        {
-          kind: "generation-response",
-          name: "Saved late response",
-          description: "Private rejected provider evidence",
-          coerce: (raw) => asRecord(raw),
-          label: () => "Saved late response",
-        },
-        (saved) => {
-          if (saved.signature && saved.signature !== signature)
-            throw new Error("Saved late response identity changed.");
-          if (saved.status === "rejected" && saved.attemptId === current.operation.attemptId) return false;
-          saved.signature = signature;
-          saved.attemptId = current.operation.attemptId;
-          saved.status = "rejected";
-        },
-      );
-    if (ports.withLateResponseWork) await ports.withLateResponseWork(current.sessionId, reject);
-    else await reject();
+    const owner = { id: current.sessionId, villageSeed: current.villageSeed };
+    await withResponseWork(current.sessionId, () =>
+      createSceneResponseReceipts(villagesDocuments()).reject(owner, signature, current.operation.attemptId, {
+        id: expected.id,
+        digest: expected.digest,
+      }),
+    );
   }
 
   async function retainRejectedCompletion(
@@ -518,6 +559,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     if (options?.stages?.length && !options.stages.includes(current.scope)) {
       for (const stage of options.stages) {
         delete current.operation.checkpoints[stage];
+        if (current.operation.checkpointClaims) delete current.operation.checkpointClaims[stage];
         for (const [key, attempt] of Object.entries(current.operation.attempts))
           if (key.startsWith(stage + ":") && attempt.status === "complete") {
             await retainRejectedCompletion(
@@ -539,6 +581,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     );
     for (const stage of writingStages) {
       delete current.operation.checkpoints[stage];
+      if (current.operation.checkpointClaims) delete current.operation.checkpointClaims[stage];
       for (const [key, attempt] of Object.entries(current.operation.attempts))
         if (key.startsWith(stage + ":") && attempt.status === "complete") {
           await retainRejectedCompletion(
@@ -557,8 +600,10 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     if (key && current.operation.attempts[key]?.status === "complete") {
       const result = current.operation.attempts[key]?.result as
         { content?: unknown; finishReason?: unknown } | undefined;
+      const response = current.operation.attempts[key]?.response;
       current.operation.attempts[key] = { status: "rejected" };
-      await rejectLateReceipt(current, key);
+      if (current.operation.checkpointClaims) delete current.operation.checkpointClaims[current.scope];
+      await rejectLateReceipt(current, key, response);
       await persist(current);
       await retainRejectedCompletion(current, current.scope, result, detail);
     }
@@ -629,12 +674,14 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         const runStartedAt = new Date().toISOString();
         const capturedInterpretationSettings = await readInterpretationSettings();
         let operation!: VenueOperation;
+        let villageSeed: string | undefined;
         let authorizedRetry = false;
-        await updateWithSubmissions(sessionId, (data, submissions) => {
+        await updateWithSubmissions(sessionId, async (data, submissions, documents) => {
+          villageSeed = typeof data.villageSeed === "string" ? data.villageSeed : undefined;
           controller.signal.throwIfAborted();
           if (spinoffLocksScene(data.spinoff as import("../domain/models/spinoff-model.js").VillageSpinoff | undefined))
             throw venueRefusal("SCENE_BUSY", "Finish or discard your spinoff before continuing in Villages.");
-          const prior = data.operation as VenueOperation | undefined;
+          const prior = await operationEvidenceStore(documents).decode(data.operation, data as unknown as VenueScene);
           // A durable business result survives a crash before coordinator cleanup.
           // It cannot keep a later edited submission behind an interrupted request.
           if (
@@ -773,12 +820,17 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
             };
           }
           operation.timing = { attemptId: operation.attemptId, startedAt: runStartedAt, stages: [] };
-          data.operation = operation;
+          data.operation = await operationEvidenceStore(documents).encode(
+            operation,
+            data as unknown as VenueScene,
+            data.operation,
+          );
           if (!options.replay && data.status !== "closed") data.lastActivityAt = villageNow().toISOString();
         });
         admittedToken = operation.token;
         const current: Context = {
           sessionId,
+          villageSeed,
           operation,
           controller,
           allowPaid:
@@ -804,17 +856,26 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                   "OPERATION_INTERRUPTED",
                   "The saved request still needs explicit authorization for unfinished provider work.",
                 );
-              operation.status = Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching")
-                ? "interrupted"
-                : "complete";
-              operation.stage = operation.status;
               operation.timing!.completedAt = new Date().toISOString();
               operation.timing!.elapsedMs = Math.round(performance.now() - runStarted);
               await updateWithSubmissions(sessionId, (data, submissions) => {
                 assertVenueOwnership(data);
+                if (
+                  operation.turnOutcome &&
+                  (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.some(
+                    (receipt) => receipt.id === id && receipt.turnOutcome === operation.turnOutcome,
+                  )
+                )
+                  operation.checkpointClaims = {};
                 const turn = mutableSceneSubmission({ submissions }, id);
                 if (turn && !turn.timing) turn.timing = structuredClone(operation.timing);
               });
+              operation.status =
+                Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
+                Object.keys(operation.checkpointClaims ?? {}).length > 0
+                  ? "interrupted"
+                  : "complete";
+              operation.stage = operation.status;
               villagesLogger().info(
                 "[villages] operation %s serverElapsedMs=%d stages=%s",
                 id,
@@ -827,6 +888,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                   ? { "abandoned-request": operation.checkpoints["abandoned-request"] }
                   : {};
                 operation.attempts = {};
+                operation.checkpointClaims = {};
               } else operation.error = "The previous request may have been billed. No automatic retry was made.";
               await persist(current).catch((error) => {
                 if (error?.statusCode !== 404) throw error;
@@ -850,10 +912,11 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                 /* Diagnostics cannot replace the request failure. */
               }
               // Revoked owners cannot overwrite a successor or resurrect a discarded visit.
-              await updateWithSubmissions(sessionId, (data, submissions) => {
+              await updateWithSubmissions(sessionId, async (data, submissions, documents) => {
                 if ((data.operation as VenueOperation | undefined)?.token !== operation.token) return;
                 operation.status =
                   Object.values(operation.attempts).some((attempt) => attempt.status === "dispatching") ||
+                  Object.keys(operation.checkpointClaims ?? {}).length > 0 ||
                   Object.values(operation.attempts).some((attempt) => attempt.status === "complete") ||
                   operation.checkpoints["turn-reply"] ||
                   ((attentionStages(operation).some((stage) => Object.hasOwn(operation.checkpoints, stage)) ||
@@ -878,7 +941,11 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
                     : "complete";
                 operation.error = safeFailureMessage(error);
                 operation.failure = coerceWorkFailure((error as { failure?: unknown })?.failure);
-                data.operation = operation;
+                data.operation = await operationEvidenceStore(documents).encode(
+                  operation,
+                  data as unknown as VenueScene,
+                  data.operation,
+                );
               }).catch(() => {});
               throw error;
             }

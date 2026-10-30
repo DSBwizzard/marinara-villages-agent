@@ -563,7 +563,7 @@ admission.ports.models = () =>
   ({
     resolve: async () => {
       await admission.repository.changeSpinoffSession("source", (scene) => {
-        scene.operation = { status: "running" } as typeof scene.operation;
+        scene.operation = { status: "running", checkpoints: {}, attempts: {} } as typeof scene.operation;
       });
       return models().resolve("narration");
     },

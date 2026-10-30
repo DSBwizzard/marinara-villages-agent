@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { MemoryCollection, MemoryRecord } from "../models/memories.js";
 
 const immutableValues = new WeakSet<object>();
+export const isImmutableMemoryValue = (value: unknown): value is object =>
+  !!value && typeof value === "object" && immutableValues.has(value);
 const validatedRecords = new WeakSet<object>();
 const validatedCollections = new WeakSet<object>();
 /** Detached JSON containers share only already-immutable values. No mutable input is memoized. */

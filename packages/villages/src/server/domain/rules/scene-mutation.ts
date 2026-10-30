@@ -6,6 +6,8 @@ import { asRecord } from "./coerce.js";
 import { isImmutableRelationshipState } from "./relationship-rules.js";
 import { isImmutableSceneLine } from "./scene-transcript.js";
 import { isImmutableSceneSubmission, mutableSceneSubmission } from "./scene-submissions.js";
+import { isImmutableMemoryValue } from "./memory-integrity.js";
+import type { VenueOperation } from "../models/operation-model.js";
 
 function mutationSnapshot(session: VenueScene) {
   const bodies: object[] = [];
@@ -16,18 +18,41 @@ function mutationSnapshot(session: VenueScene) {
     bodies.push(facts.relationshipContext);
     return { ...raw, facts: { ...facts, relationshipContext: undefined } };
   }
-  const snapshot = session.operation?.snapshot;
+  function evidence(value: unknown) {
+    if (!isImmutableMemoryValue(value)) return value;
+    bodies.push(value);
+    return null;
+  }
+  function operation(value: VenueOperation | undefined): unknown {
+    if (!value) return value;
+    const snapshot = value.snapshot;
+    const attempts = (rows: Record<string, { result?: unknown }> | undefined) =>
+      rows &&
+      Object.fromEntries(
+        Object.entries(rows).map(([id, row]) => [
+          id,
+          { ...row, ...(Object.hasOwn(row, "result") ? { result: evidence(row.result) } : {}) },
+        ]),
+      );
+    return {
+      ...value,
+      snapshot: snapshot ? { ...snapshot, continuity: context(snapshot.continuity) } : snapshot,
+      checkpoints: Object.fromEntries(
+        Object.entries(value.checkpoints).map(([stage, body]) => [
+          stage,
+          stage === "abandoned-request" ? operation(body as VenueOperation) : evidence(body),
+        ]),
+      ),
+      attempts: attempts(value.attempts),
+      optionalAttempts: attempts(value.optionalAttempts),
+    };
+  }
   const value = {
     ...session,
     lines: undefined,
     submissions: undefined,
     continuity: context(session.continuity),
-    operation: session.operation
-      ? {
-          ...session.operation,
-          snapshot: snapshot ? { ...snapshot, continuity: context(snapshot.continuity) } : snapshot,
-        }
-      : undefined,
+    operation: operation(session.operation),
   };
   return {
     text: JSON.stringify(value),

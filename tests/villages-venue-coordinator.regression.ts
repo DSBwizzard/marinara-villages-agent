@@ -204,7 +204,10 @@ async function main() {
           scene.submissions = [{ id: "turn" } as any];
         });
       else if (evidence === "navigation") row(id).data.navigationReceipts = [{ id: "turn" }];
-      else row(id).data.operation.checkpoints[evidence] = { saved: true };
+      else
+        editFixtureScene(row(id), records, (scene) => {
+          scene.operation!.checkpoints[evidence] = { saved: true };
+        });
     }
     const expiredRecoveries: string[] = [];
     await recoverVenueOperations(async (id) => {
@@ -372,6 +375,9 @@ async function main() {
       writingCapabilities: { wishes: true },
     };
     row("v3-opening-retry").data.operation = {
+      evidenceFormat: 1,
+      checkpoints: {},
+      attempts: {},
       id: "greeting",
       input: frozenOpening,
       status: "interrupted",
@@ -461,7 +467,10 @@ async function main() {
       await failure;
       const saved = await readVenueOperation("provider-timeout");
       assert.equal(saved!.status, "interrupted");
-      assert.equal(row("provider-timeout").data.operation.checkpoints["saved-intent"], "intent");
+      assert.equal(
+        fixtureSceneState(row("provider-timeout").data, records).operation!.checkpoints["saved-intent"],
+        "intent",
+      );
       timeoutLate("late reply");
       await Promise.resolve();
       await Promise.resolve();
@@ -1180,7 +1189,7 @@ async function main() {
       }),
       /truncated/,
     );
-    const failed = structuredClone(row("abandon").data.operation);
+    const failed = JSON.parse(JSON.stringify(fixtureSceneState(row("abandon").data, records).operation!));
     const closeInput = { abandonOperationId: "failed" };
     const closeOptions = { abandonOfOperationId: "failed" };
     for (const [revision, attempt] of [
@@ -1235,7 +1244,7 @@ async function main() {
       ),
       /close storage failure/,
     );
-    const interruptedClose = structuredClone(row("abandon").data.operation);
+    const interruptedClose = structuredClone(fixtureSceneState(row("abandon").data, records).operation!);
     assert.deepEqual(
       interruptedClose.checkpoints["abandoned-request"],
       { ...failed, snapshot: null },
@@ -1257,7 +1266,10 @@ async function main() {
     );
     assert.equal(closeWrites, 1, "Admitted close can recover after a storage failure without paid work");
     assert.equal(row("abandon").data.status, "closed");
-    assert.deepEqual(row("abandon").data.operation.checkpoints["abandoned-request"], { ...failed, snapshot: null });
+    assert.deepEqual(fixtureSceneState(row("abandon").data, records).operation!.checkpoints["abandoned-request"], {
+      ...failed,
+      snapshot: null,
+    });
     seed("typed-review");
     row("typed-review").data = coerceSession({
       version: 3,

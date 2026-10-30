@@ -30,25 +30,6 @@ export interface SceneRetirementPorts {
 
 /** Publish independent evidence before a revision-checked removal of settled Scene prose. */
 export function createSceneRetirement(ports: SceneRetirementPorts) {
-  async function removeLateResponses(
-    id: string,
-    responses?: Awaited<ReturnType<CapabilityDocumentStore["list"]>>,
-  ): Promise<void> {
-    const documents = ports.villagesDocuments();
-    for (const response of responses ?? (await documents.list(VILLAGES_PACKAGE_ID, "generation-response"))) {
-      const signature = (response.data as { signature?: unknown } | null)?.signature;
-      if (typeof signature !== "string") continue;
-      let parts: unknown;
-      try {
-        parts = JSON.parse(signature);
-      } catch {
-        continue;
-      }
-      if (!Array.isArray(parts) || parts.length !== 5 || parts[0] !== id) continue;
-      if (!(await documents.remove(VILLAGES_PACKAGE_ID, response.id, response.revision)))
-        throw new Error("A saved late response changed during Scene cleanup.");
-    }
-  }
   async function retire(id: string): Promise<boolean> {
     return ports.withSceneWork(id, () =>
       ports.withRepairWork(async () => {
@@ -82,7 +63,6 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         if ((await ports.readVillageState()).seed !== scene.villageSeed) return false;
         const removed = await ports.withLateResponseWork(id, async () => {
           if (!(await documents.remove(VILLAGES_PACKAGE_ID, saved.id, saved.revision))) return false;
-          await removeLateResponses(id);
           return true;
         });
         if (!removed) return false;
@@ -101,7 +81,6 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
       // A crash can occur after the Scene is removed and before its memory reservation is released.
       // The durable terminal receipt is the recovery intent; a still-present Scene always wins.
       const terminals = await ports.villagesDocuments().list(VILLAGES_PACKAGE_ID, SCENE_TERMINAL_KIND);
-      const responses = await ports.villagesDocuments().list(VILLAGES_PACKAGE_ID, "generation-response");
       const memoryState = await ports.readVillageMemoryState();
       const releasable: string[] = [];
       const physicalScenes = new Set(
@@ -116,7 +95,6 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         if (await ports.villagesDocuments().getById(VILLAGES_PACKAGE_ID, SESSION_PREFIX + data.sceneId)) continue;
         const terminal = await ports.readTerminal(data.sceneId);
         if (!terminal || terminal.villageSeed !== data.villageSeed) continue;
-        await ports.withLateResponseWork(data.sceneId, () => removeLateResponses(data.sceneId as string, responses));
         await ports.removeInterpretationDiagnostics(data.sceneId);
         if (memoryState.memoryScenes[data.sceneId] || physicalScenes.has(data.sceneId)) releasable.push(data.sceneId);
       }

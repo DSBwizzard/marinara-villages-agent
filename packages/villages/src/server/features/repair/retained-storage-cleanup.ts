@@ -34,6 +34,13 @@ import { createSceneSubmissionTracer } from "../../adapters/storage/scene-submis
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
 import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
 import {
+  OPERATION_EVIDENCE_KIND,
+  validateOperationEvidence,
+  traceOperationEvidence,
+  operationCheckpointClaims,
+  operationEvidenceValue,
+} from "../../adapters/storage/operation-evidence.js";
+import {
   RELATIONSHIP_PAYLOAD_KIND,
   RELATIONSHIP_INTENT_KIND,
   relationshipPayloadData,
@@ -45,11 +52,19 @@ import {
   type RelationshipScope,
 } from "../../adapters/storage/relationship-payload-store.js";
 import { createRepairStorage, repairStorageId } from "./repair-storage.js";
+import { readSceneResponseReceipt, sceneResponseReceiptId } from "../../adapters/storage/scene-response-receipts.js";
 
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const PACKAGE = "villages",
   FLOOR = 1024 * 1024;
-const CANDIDATES = ["memory-payload", "memory-page", "repair-snapshot", "repair-undo", RELATIONSHIP_PAYLOAD_KIND];
+const CANDIDATES = [
+  "memory-payload",
+  "memory-page",
+  "repair-snapshot",
+  "repair-undo",
+  RELATIONSHIP_PAYLOAD_KIND,
+  OPERATION_EVIDENCE_KIND,
+];
 const HISTORY_ID = /^villages-memory-([a-f0-9]{32})-[a-f0-9-]{36}$/;
 const ordinaryKinds = new Set([
   "relationships",
@@ -86,6 +101,24 @@ export async function collectRetainedStorage(gate: RepairGate) {
       cache = new Map<string, Row | null>(),
       candidates: Row[] = [],
       marked = new Set<string>();
+    const checkedEvidence = new WeakMap<object, ReturnType<typeof validateOperationEvidence>>();
+    function evidenceBody(
+      row: RepairDocument,
+      owner?: { id: string; villageSeed?: string },
+      ref?: { id: string; digest: string },
+    ) {
+      let saved = checkedEvidence.get(row);
+      if (!saved) {
+        saved = validateOperationEvidence(row);
+        checkedEvidence.set(row, saved);
+      }
+      memoryRequire(
+        !owner || (saved.data.sceneId === owner.id && saved.data.villageSeed === (owner.villageSeed ?? "")),
+        "operation evidence belongs to another Scene",
+      );
+      memoryRequire(!ref || (ref.id === saved.ref.id && ref.digest === saved.ref.digest), "operation evidence changed");
+      return saved;
+    }
     const documents: CapabilityDocumentStore = {
       ...raw,
       async getById(pkg, id) {
@@ -131,6 +164,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
         else if (kind === "memory-page") validateMemoryPageData(row.data, row.id);
         else if (kind === "repair-undo") undoBody(row);
         else if (kind === RELATIONSHIP_PAYLOAD_KIND) relationshipPayloadData(row);
+        else if (kind === OPERATION_EVIDENCE_KIND) evidenceBody(row);
         else historyBody(row);
         candidates.push(row);
       }
@@ -292,6 +326,27 @@ export async function collectRetainedStorage(gate: RepairGate) {
           await view.transcripts.trace(owner.head, owner.participants);
         for (const owner of sceneSubmissionOwners(row.data))
           await view.submissions.trace(owner.head, owner.participants);
+        const scene = row.data as { id: string; villageSeed?: string; operation?: unknown };
+        await traceOperationEvidence(
+          scene.operation,
+          scene,
+          async (ref, resolveValue) => {
+            const body = await view.lookup(ref.id);
+            memoryRequire(body, "owned operation evidence is missing");
+            const { data } = evidenceBody(body, scene, ref);
+            marked.add(ref.id);
+            return resolveValue ? operationEvidenceValue(data) : undefined;
+          },
+          async (operation) => {
+            for (const claim of operationCheckpointClaims(operation, scene)) {
+              const body = await view.lookup(claim.bodyId);
+              if (!body) continue;
+              const { data } = evidenceBody(body, scene);
+              memoryRequire(data.claim === claim.token, "pending checkpoint publication identity changed");
+              marked.add(body.id);
+            }
+          },
+        );
       } else if (row.kind === RELATIONSHIP_PAYLOAD_KIND) {
         const value = relationshipPayloadData(row);
         await view.relationships.trace(JSON.parse(value.payload), value.world);
@@ -308,6 +363,8 @@ export async function collectRetainedStorage(gate: RepairGate) {
       else if (row.kind === "memory-payload") {
         const value = historyBody(row);
         await view.tracer.trace(JSON.parse(value.payload), value.world);
+      } else if (row.kind === OPERATION_EVIDENCE_KIND) {
+        evidenceBody(row);
       } else memoryRequire(ordinaryKinds.has(row.kind), "unknown retained snapshot source kind");
     }
     async function header(row: RepairDocument, view: Scope) {
@@ -342,6 +399,33 @@ export async function collectRetainedStorage(gate: RepairGate) {
       }
     }
     const physical = scope();
+    for (const row of await listed("generation-response")) {
+      memoryObject(row.data);
+      if (row.data.purpose !== "scene") {
+        memoryRequire(
+          row.data.purpose === "standalone-generation" ||
+            (typeof row.data.jobId === "string" && typeof row.data.fingerprint === "string"),
+          "unknown generation response ownership",
+        );
+        continue;
+      }
+      const receipt = readSceneResponseReceipt(row.data);
+      memoryRequire(row.id === sceneResponseReceiptId(receipt.signature), "Scene response owner identity changed");
+      const owner = { id: receipt.sceneId, villageSeed: receipt.villageSeed };
+      if (receipt.selected) {
+        const body = await physical.lookup(receipt.selected.ref.id);
+        memoryRequire(body, "selected Scene response is missing");
+        evidenceBody(body, owner, receipt.selected.ref);
+        marked.add(body.id);
+      }
+      for (const claim of receipt.pending) {
+        const body = await physical.lookup(claim.bodyId);
+        if (!body) continue;
+        const { data } = evidenceBody(body, owner);
+        memoryRequire(data.claim === claim.token, "pending Scene response identity changed");
+        marked.add(body.id);
+      }
+    }
     const root = await documents.getById(PACKAGE, "villages-village");
     if (root) {
       memoryRequire(root.packageId === PACKAGE && root.kind === "village", "invalid current Village identity");

@@ -28,9 +28,15 @@ export type VenueOperation = {
   sceneRevision: number;
   snapshot: Record<string, unknown> | null;
   checkpoints: Record<string, unknown>;
+  checkpointClaims?: Record<string, { token: string; bodyId: string }>;
   attempts: Record<
     string,
-    { status: "dispatching" | "complete" | "interrupted" | "rejected"; elapsedMs?: number; result?: unknown }
+    {
+      status: "dispatching" | "complete" | "interrupted" | "rejected";
+      elapsedMs?: number;
+      result?: unknown;
+      response?: { id: string; digest: string; claim: string };
+    }
   >;
   error: string;
 };
