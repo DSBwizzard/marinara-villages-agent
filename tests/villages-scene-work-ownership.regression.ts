@@ -121,6 +121,7 @@ function commandFixture(
     }
   }
   const supplied: Partial<SceneCommandPorts> = {
+    sceneNarrative: undefined,
     activationScope,
     bindReplayEffects: bindActivationService,
     VENUE_REPLY_MAX_TOKENS,

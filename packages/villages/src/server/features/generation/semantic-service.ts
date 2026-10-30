@@ -82,6 +82,17 @@ const SYSTEM_CURRENT_SCENE =
 const INTENT_TIMELINE_RULE =
   "Only movement rows carry zoneId; omit it on speech, thought, action and context rows. The current Zone is context.zoneId. Resolved timelines must cover the entire input in source order, including every clause and punctuation. Only whitespace and surrounding quotation marks may fall between spans. Keep roleplay wrappers inside action/context spans and internal apostrophes inside words. Use context rows for other source text; never drop a clause. ";
 
+function semanticCheckpointKey(stage: string, identity: Record<string, unknown>): string {
+  return `semantic-v2:${stage}:${semanticHash([
+    1,
+    identity.residentActionsOmitted === true,
+    identity.message,
+    identity.evidence,
+    ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []),
+    ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : []),
+  ])}`;
+}
+
 export function createSemanticService(ports: SemanticPorts) {
   async function ask<Input, Result>(
     stage: string,
@@ -94,7 +105,7 @@ export function createSemanticService(ports: SemanticPorts) {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
-    const key = `semantic-v2:${stage}:${semanticHash([1, identity.residentActionsOmitted === true, identity.message, identity.evidence, ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []), ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : [])])}`;
+    const key = semanticCheckpointKey(stage, identity);
     return ports.venueCheckpoint(key, async () => {
       const requested = await ports.villagesConnectionIdFor("system");
       const initial = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
@@ -876,7 +887,7 @@ export function createSemanticService(ports: SemanticPorts) {
         return {
           version: 2,
           ...(interpretedIntent ? { intent: interpretedIntent } : {}),
-          checkpointKey: `semantic-v2:exchange:${semanticHash([1, savedInput.residentActionsOmitted === true, savedInput.message, savedInput.evidence, ...(savedInput.residentActions ? [savedInput.residentActions] : [])])}`,
+          checkpointKey: semanticCheckpointKey("exchange", savedInput),
           sourceHash: hash,
           authority,
           effects,
