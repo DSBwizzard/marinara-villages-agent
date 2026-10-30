@@ -15,6 +15,10 @@ import type { RepairDocument, RepairWrite } from "../../adapters/storage/repair-
 import { createRepairSnapshots } from "../../adapters/storage/repair-snapshot-store.js";
 import { readRelationshipRoot, relationshipDocumentId } from "../../adapters/storage/relationship-payload-store.js";
 import { sceneHistoryOwners } from "../../adapters/storage/scene-history.js";
+import {
+  validateBackgroundJobRecord,
+  validateBackgroundResponseOwners,
+} from "../../adapters/storage/background-responses.js";
 
 export const REPAIR_HISTORY_KIND = "repair-history",
   REPAIR_CHECKPOINT_KIND = "repair-checkpoint",
@@ -84,6 +88,7 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
   for (const row of rows) {
     memoryRequire(allowed.includes(row.kind), "unsupported saved repair source");
     memoryObject(row.data);
+    if (["background-work", "background-history"].includes(row.kind)) validateBackgroundJobRecord(row);
     if (row.kind === "village") {
       memoryRequire(
         row.id === "villages-village" && owns(row.data as VillageState, owner),
@@ -133,6 +138,13 @@ function worldSources<T extends RepairDocument>(
 
 export function createRepairStorage(documents: CapabilityDocumentStore, artifacts: CapabilityDocumentStore) {
   const snapshots = createRepairSnapshots(artifacts);
+  async function validateResponseWrites(writes: RepairWrite[]) {
+    for (const row of writes.flatMap((write) => [write.before, write.after]))
+      if (row && ["background-work", "background-history"].includes(row.kind)) {
+        validateBackgroundJobRecord(row);
+        await validateBackgroundResponseOwners(row.data, (id) => documents.getById("villages", id));
+      }
+  }
   async function encodeHistory(history: HistoryData): Promise<StoredHistory> {
     const { undoWrites, ...kept } = history;
     return { ...kept, ...(undoWrites ? { writeRefs: await snapshots.captureWrites(undoWrites) } : {}) };
@@ -149,9 +161,11 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
       "invalid prepared repair history",
     );
     const { writeRefs, ...kept } = raw as StoredHistory;
+    const writes = Object.hasOwn(raw, "writeRefs") ? await snapshots.restoreWrites(writeRefs!) : undefined;
+    if (writes) await validateResponseWrites(writes);
     return {
       ...kept,
-      ...(Object.hasOwn(raw, "writeRefs") ? { undoWrites: await snapshots.restoreWrites(writeRefs!) } : {}),
+      ...(writes ? { undoWrites: writes } : {}),
     };
   }
   async function insert(id: string, kind: string, data: unknown) {
@@ -314,6 +328,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     memoryObject(body.payload);
     const { format: _format, order: _order, undoId: _undoId, command: _command, ...entry } = header;
     const writes = Object.hasOwn(body, "writes") ? await snapshots.restoreWrites(body.writes!) : undefined;
+    if (writes) await validateResponseWrites(writes);
     if (writes)
       validateSources(
         writes.flatMap((write) => [write.before, write.after].filter((value): value is RepairDocument => !!value)),

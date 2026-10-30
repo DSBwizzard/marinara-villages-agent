@@ -106,6 +106,20 @@ for (const fault of ["before", "after"] as const) {
     );
     const expectedBody = publishedRef?.id ?? pendingClaim.bodyId;
     assert(f.rows.has(expectedBody), "The completed parsed checkpoint is physically present before collection");
+    if (pendingClaim) {
+      const body = f.rows.get(expectedBody),
+        payload = body.data.payload;
+      body.data.payload = payload.replace("First accepted", "Altered accepted");
+      const retainedIds = [...f.rows.keys()];
+      await assert.rejects(createOperationEvidence(f.documents).pending(pendingClaim, scope));
+      await assert.rejects(collectRetainedStorage(f.gate));
+      assert.deepEqual(
+        [...f.rows.keys()],
+        retainedIds,
+        "a corrupted prospective body holds cleanup before any deletion",
+      );
+      body.data.payload = payload;
+    }
     await collectRetainedStorage(f.gate);
     assert(f.rows.has(expectedBody), "Collection preserves a prospective or published checkpoint value");
     if (pendingClaim) {

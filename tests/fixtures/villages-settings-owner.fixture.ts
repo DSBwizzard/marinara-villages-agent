@@ -8,6 +8,8 @@ import {
 } from "../../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../../packages/villages/src/server/entry/runtime.js";
+import { backgroundRevision } from "../../packages/villages/src/server/domain/rules/background-revision.js";
+export const settingsJobId = "villages-background-" + backgroundRevision(["agenda", "same-resident"]);
 
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 function deferred() {
@@ -99,7 +101,7 @@ function graph(label: "A" | "B") {
     narrationConnectionId: "same-connection",
     imageConnectionId: "same-connection",
   });
-  seed("same-job", "background-work", {
+  seed(settingsJobId, "background-work", {
     id: "same-job",
     seed: "same-seed",
     kind: "agenda",

@@ -4,7 +4,8 @@ import { agendaRevision } from "../packages/villages/src/server/domain/rules/age
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
-import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageFixtureDocuments, authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
+import { validateBackgroundResponse } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
@@ -417,13 +418,21 @@ async function main() {
           "source drift after Wish pass: " + JSON.stringify(diffs.map((key) => [key, (current as any)[key], old[key]])),
         );
       }
-      const saved = checkpoint.data.steps[0].response;
+      const saved = structuredClone(
+        validateBackgroundResponse(rows.get(checkpoint.data.steps[0].responseRef.id)).response,
+      );
       const response = JSON.parse(saved.content);
       response.palette = response.palette.map(({ venue: _venue, ...row }: any) => ({ ...row, venueNumber: 0 }));
       response.rhythm = [{ startMinute: 1320, endMinute: 360, activityPaletteIndex: 0 }];
       if (recovery === "dayparts") response.days = Array.from({ length: 7 }, () => [0, 1, 2, 3]);
       saved.content = recovery === "malformed" ? "{}" : JSON.stringify(response);
       if (recovery === "truncated") saved.finishReason = "length";
+      const { responseStorage: _storage, ...authored } = checkpoint.data;
+      checkpoint.data = authorBackgroundFixture(rows, {
+        ...authored,
+        attempt: authored.attempt + 1,
+        steps: authored.steps.map((step: any, index: number) => (index === 0 ? { ...step, response: saved } : step)),
+      });
       if (recovery === "alias") assert.ok(parseCompactFoundingCompletion(saved, checkpoint.data.input.context).agenda);
       mode = "valid";
       calls.length = 0;

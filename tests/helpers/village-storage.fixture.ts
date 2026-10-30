@@ -1,4 +1,10 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import type { Job } from "../../packages/villages/src/server/domain/models/background-model.js";
+import {
+  backgroundResponseClaim,
+  nativeBackgroundJob,
+  prepareBackgroundResponse,
+} from "../../packages/villages/src/server/adapters/storage/background-responses.js";
 import { createHash } from "node:crypto";
 import { emptyMemoryPayload } from "../../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -43,6 +49,34 @@ import {
 const wrappers = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 const wrapped = new WeakSet<CapabilityDocumentStore>();
 const identities = createRelationshipPayloadStore({} as CapabilityDocumentStore);
+export function authorBackgroundFixture(rows: Map<string, any>, raw: unknown) {
+  const job = structuredClone(raw) as Job & { responseStorage?: number };
+  if (
+    !job ||
+    job.responseStorage !== undefined ||
+    !Array.isArray(job.steps) ||
+    typeof job.id !== "string" ||
+    typeof job.seed !== "string"
+  )
+    return raw;
+  job.attempt ??= 1;
+  for (const [index, step] of job.steps.entries()) {
+    if (!step || typeof step.fingerprint !== "string" || (step.status === "completed" && !step.response)) return raw;
+    step.responseClaim = backgroundResponseClaim(job, index);
+    if (step.response) {
+      const saved = prepareBackgroundResponse(job, index, step.response);
+      rows.set(saved.ref.id, {
+        id: saved.ref.id,
+        kind: "generation-response",
+        packageId: "villages",
+        revision: 1,
+        data: saved.data,
+      });
+      step.responseRef = saved.ref;
+    }
+  }
+  return nativeBackgroundJob(job);
+}
 export const fixtureRelationshipIdentity: RelationshipIdentity = (world) =>
   identities.fingerprint(world.relationshipContext, world);
 /** Native fixture authorship is projected into the current saved layout without
@@ -69,6 +103,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       (data as any)?.continuity?.relationshipHead,
       (data as any)?.operation?.snapshot?.continuity?.relationshipHead,
       ...operationEvidenceReferences((data as any)?.operation, data as any),
+      ...((data as any)?.responseStorage === 1 ? (data as any).steps.map((step: any) => step.responseRef) : []),
     ];
     if (!heads.some((head) => head && virtual.has(head.id))) return;
     // All virtual page documents are committed before a real root may reference them.
@@ -89,6 +124,8 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
     async getById(pkg, id) {
       if (virtual.has(id)) return structuredClone(virtual.get(id));
       const row = await store.getById(pkg, id);
+      if (row && ["background-work", "background-history"].includes(row.kind))
+        return { ...row, packageId: row.packageId ?? pkg, data: authorBackgroundFixture(virtual, row.data) };
       if (row?.kind === "venue-visit" && (row.data as any)?.version === 3) {
         const world = (await store.getById(pkg, "villages-village"))?.data as any;
         return { ...row, id, packageId: pkg, data: authorSceneFixture(virtual, row.data, world) };
@@ -155,6 +192,12 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
     },
     async list(pkg, kind) {
       const records = await store.list(pkg, kind);
+      if (["background-work", "background-history"].includes(kind))
+        return records.map((row) => ({
+          ...row,
+          packageId: row.packageId ?? pkg,
+          data: authorBackgroundFixture(virtual, row.data),
+        }));
       if (kind !== "venue-visit" && kind !== "relationships") return records;
       const world = (await store.getById(pkg, "villages-village"))?.data as any;
       return records.map((row) => ({
@@ -172,6 +215,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (
         input.id === "villages-village" ||
         (input.data as any)?.format === 4 ||
+        (input.data as any)?.responseStorage === 1 ||
         (input.data as any)?.storageFormat === SCENE_STORAGE_FORMAT
       )
         await ensure(input.data);

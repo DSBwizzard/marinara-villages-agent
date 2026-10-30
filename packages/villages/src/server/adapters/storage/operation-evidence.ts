@@ -9,11 +9,12 @@ export type OperationEvidenceScope = { id: string; villageSeed?: string };
 export type OperationEvidenceReference = { id: string; digest: string };
 type BoundReference = OperationEvidenceReference & { binding: string };
 export type OperationEvidenceData = {
-  format: 1;
+  format: 2;
   sceneId: string;
   villageSeed: string;
   claim: string | null;
   payload: string;
+  payloadDigest: string;
 };
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const scopeKey = (scope: OperationEvidenceScope) => JSON.stringify([scope.id, scope.villageSeed ?? ""]);
@@ -97,12 +98,14 @@ export function readOperationEvidenceReference(value: unknown): OperationEvidenc
 }
 export function prepareOperationValue(value: unknown, scope: OperationEvidenceScope, claim: string | null = null) {
   memoryRequire(typeof scope.id === "string" && !!scope.id, "invalid operation evidence owner");
+  const payload = TEXT_PREFIX + JSON.stringify({ value });
   const data: OperationEvidenceData = immutableMemoryValue({
-    format: 1,
+    format: 2,
     sceneId: scope.id,
     villageSeed: scope.villageSeed ?? "",
     claim,
-    payload: TEXT_PREFIX + JSON.stringify({ value }),
+    payload,
+    payloadDigest: hash(payload),
   });
   const frozen = immutableMemoryValue(value);
   decodedValues.set(data, frozen);
@@ -121,10 +124,10 @@ export function validateOperationEvidence(
       (row.packageId === undefined || row.packageId === "villages"),
     "operation evidence identity changed",
   );
-  memoryObject(row.data, ["format", "sceneId", "villageSeed", "claim", "payload"]);
+  memoryObject(row.data, ["format", "sceneId", "villageSeed", "claim", "payload", "payloadDigest"]);
   const data = row.data as OperationEvidenceData;
   memoryRequire(
-    data.format === 1 &&
+    data.format === 2 &&
       typeof data.sceneId === "string" &&
       !!data.sceneId &&
       typeof data.villageSeed === "string" &&
@@ -133,6 +136,12 @@ export function validateOperationEvidence(
       (data.claim === null || (typeof data.claim === "string" && !!data.claim)) &&
       (!scope || (scope.id === data.sceneId && (scope.villageSeed ?? "") === data.villageSeed)),
     "operation evidence belongs to another Scene",
+  );
+  memoryRequire(
+    typeof data.payloadDigest === "string" &&
+      /^[a-f0-9]{64}$/.test(data.payloadDigest) &&
+      data.payloadDigest === hash(data.payload),
+    "operation evidence changed",
   );
   const digest = hash(data),
     expected =

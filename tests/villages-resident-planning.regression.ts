@@ -1,5 +1,7 @@
 import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
+import { authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
+import { validateBackgroundResponse } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 import {
   readEffectiveVillagerCard,
   readVillagerCard,
@@ -691,21 +693,36 @@ for (const status of ["queued", "paused", "failed", "interrupted", "completed"])
     },
   });
 }
+for (const row of [...rows.values()]) {
+  row.data = authorBackgroundFixture(rows, row.data);
+  row.packageId = "villages";
+}
 const stop = work.startBackgroundWork();
 await work.recoverBackgroundWork();
 await work.settleBackgroundWork();
 for (const id of ids) {
   assert.equal(rows.get(id).data.status, "obsolete");
-  assert.deepEqual(rows.get(id).data.steps[0].response, rawResponse);
+  assert.deepEqual(
+    validateBackgroundResponse(rows.get(rows.get(id).data.steps[0].responseRef.id)).response,
+    rawResponse,
+  );
   await assert.rejects(work.retryBackgroundJob(id, 1, "retry-old"), /retired/);
 }
 assert.equal(dispatched, 0);
 assert.equal(applied, 0);
 assert.deepEqual(await work.backgroundWorkSummaries(), []);
-assert.equal(rows.size, ids.length, "Current-world purchased evidence is retained");
+assert.equal(
+  [...rows.values()].filter((row) => row.kind === "background-work").length,
+  ids.length,
+  "Current-world purchased evidence is retained",
+);
 state.seed = "reset-world";
 await work.backgroundWorkSummaries();
-assert.equal(rows.size, 0, "Reset still removes another world's private job records");
+assert.equal(
+  [...rows.values()].filter((row) => row.kind === "background-work").length,
+  0,
+  "Reset still removes another world's private job records",
+);
 stop();
 console.log(
   "Resident planning preserves quiet outcomes, routine/housing proposals, independent social checks, pacing, legacy spending floors and private recovery boundaries.",

@@ -38,6 +38,8 @@ export type Step = {
   fingerprint: string;
   status: "running" | "completed";
   response?: Awaited<ReturnType<BackgroundCompletion>>;
+  responseClaim?: { attempt: number; id: string };
+  responseRef?: { id: string; digest: string };
   responseDiagnostics?: ResponseDiagnostics;
   timing?: {
     queuedAt: string;

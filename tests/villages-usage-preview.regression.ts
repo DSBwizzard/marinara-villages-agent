@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
+import { withSettingsOwners, settingsJobId } from "./fixtures/villages-settings-owner.fixture.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
@@ -59,6 +60,7 @@ const model: any = {
         rhythm: [],
       }),
       usage: { promptTokens: 500, completionTokens: 100, totalTokens: 600 },
+      finishReason: "stop",
     };
   },
 };
@@ -192,16 +194,23 @@ async function main() {
     const unchanged = structuredClone(records.get("villages-village"));
     await readUsageMeter(true);
     assert.deepEqual(records.get("villages-village"), unchanged, "meter reads cannot reconcile the village");
-    records.set("job", {
-      id: "job",
+    const jobSlot = "villages-background-" + backgroundRevision(["agenda", "a"]);
+    records.set(jobSlot, {
+      id: jobSlot,
       kind: "background-work",
       data: {
         seed: state.seed,
+        id: "fixture-job",
+        attempt: 1,
         kind: "agenda",
         subjectId: "a",
         status: "failed",
         finite: true,
-        steps: Array.from({ length: 3 }, () => ({ status: "completed" })),
+        steps: Array.from({ length: 3 }, (_, index) => ({
+          fingerprint: "saved:" + index,
+          status: "completed",
+          response: { content: "{}", finishReason: "stop" },
+        })),
         settings: {},
         input: {},
         failedStep: null,
@@ -213,9 +222,9 @@ async function main() {
       0,
       "retries reuse purchased routine responses",
     );
-    records.get("job").data.status = "completed";
+    records.get(jobSlot).data.status = "completed";
     assert.equal(
-      (await previewVillageBurst({ action: "retry", jobId: "job" })).requests,
+      (await previewVillageBurst({ action: "retry", jobId: jobSlot })).requests,
       0,
       "completed retry replays cost no new requests",
     );
@@ -244,7 +253,7 @@ async function main() {
       "retired translation stays zero even when cards are unreadable",
     );
     assert.equal(
-      (await previewVillageBurst({ action: "retry", jobId: "job" })).requests,
+      (await previewVillageBurst({ action: "retry", jobId: jobSlot })).requests,
       0,
       "a saved completed retry does not need readable native cards",
     );
@@ -288,7 +297,7 @@ async function main() {
   }
   await withSettingsOwners(async (a, b, selectB) => {
     const paused = a.pause("list", "background-work");
-    const pending = previewVillageBurst({ action: "retry", jobId: "same-job" });
+    const pending = previewVillageBurst({ action: "retry", jobId: settingsJobId });
     await paused.wait(pending);
     selectB();
     paused.resume();

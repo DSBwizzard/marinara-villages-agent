@@ -18,6 +18,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import {
   backgroundWorkSummaries,
+  backgroundJobSnapshot,
   queueBackgroundJob,
   recoverBackgroundWork,
   registerBackgroundHandler,
@@ -391,7 +392,7 @@ async function main() {
     };
     await queueBackgroundJob(input);
     await settleBackgroundWork();
-    const job = [...rows.values()].find((row) => row.kind === "background-work")!.data;
+    const job = (await backgroundJobSnapshot("agenda", "format"))!;
     assert.equal(job.failure.cause, "invalid_json");
     assert.equal(job.steps[0].response.content, output);
     assert.equal(job.steps[0].responseDiagnostics.model, "fixture");
