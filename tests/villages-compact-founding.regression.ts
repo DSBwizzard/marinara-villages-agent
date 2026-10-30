@@ -132,7 +132,13 @@ async function openingIdeaShapes() {
         true,
         "the purchased response is usable without replacement",
       );
-      return completion;
+      const projected = { ...completion, content: options.savedRequest.replayContent(completion) };
+      assert.equal(
+        options.savedRequest.valid(projected),
+        true,
+        "The saved domain projection round-trips through application",
+      );
+      return projected;
     },
   } as any);
   const openingContext = {

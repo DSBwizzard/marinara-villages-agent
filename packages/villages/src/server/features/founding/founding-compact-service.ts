@@ -135,6 +135,7 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
             return false;
           }
         },
+        replayContent: (completion) => JSON.stringify({ openingProposal: read(completion) }),
       },
     });
     return read(completion);

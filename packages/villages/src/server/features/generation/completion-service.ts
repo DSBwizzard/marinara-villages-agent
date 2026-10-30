@@ -14,7 +14,8 @@ import type {
   CapabilityResolvedLanguageModel,
   CapabilityRuntimeLogger,
 } from "@marinara-engine/shared";
-import { randomUUID, createHash } from "node:crypto";
+import { createHash } from "node:crypto";
+import { claimSavedResponse } from "./saved-response.js";
 
 export type ModelCompletionPorts = {
   mutateDocument?: typeof mutateDocument;
@@ -197,54 +198,21 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
     // An empty result is still a purchased response; replacement requires explicit authorization.
     if (!options.savedRequest) return ask(maxTokens);
     if (!ports.mutateDocument) throw new Error("Saved model request storage is unavailable.");
-    type Receipt = {
-      fingerprint?: string;
-      token?: string;
-      status?: "dispatching" | "complete" | "rejected";
-      result?: CapabilityLanguageModelCompletion;
-      responses?: { token: string; result: CapabilityLanguageModelCompletion; valid: boolean }[];
-    };
-    const documentId =
-      "villages-generation-response-" + createHash("sha256").update(options.savedRequest.key).digest("hex");
-    const fingerprint = createHash("sha256").update(JSON.stringify(messages)).digest("hex");
-    const token = randomUUID();
-    const slot = {
-      kind: "generation-response",
-      name: "Saved generation response",
-      description: "Private model response receipt",
-      coerce: (value: unknown): Receipt =>
-        value && typeof value === "object" ? (structuredClone(value) as Receipt) : {},
-      label: () => "Saved generation response",
-    };
-    let saved: CapabilityLanguageModelCompletion | undefined;
-    await ports.mutateDocument(documentId, slot, (receipt) => {
-      if (receipt.fingerprint && receipt.fingerprint !== fingerprint)
-        throw new Error("Saved generation inputs changed. The response is preserved.");
-      if (receipt.status === "complete") saved = receipt.result;
-      else saved = receipt.responses?.findLast((response) => response.valid)?.result;
-      if (saved) return false;
-      if ((receipt.status === "dispatching" || receipt.status === "rejected") && !options.savedRequest!.retry)
-        throw new Error("The previous request may have been billed. Retry explicitly.");
-      Object.assign(receipt, { fingerprint, token, status: "dispatching" });
+    const receipt = await claimSavedResponse(ports.mutateDocument, options.savedRequest, messages, () => {
+      try {
+        villagesLogger().warn("[villages] Could not retain rejected generation diagnostics");
+      } catch {
+        /* Diagnostics cannot replace the request outcome. */
+      }
     });
-    if (saved) return saved;
-    const retain = async (result: CapabilityLanguageModelCompletion) => {
-      await ports.mutateDocument!(documentId, slot, (receipt) => {
-        if (receipt.fingerprint !== fingerprint) return false;
-        const valid = !options.savedRequest?.valid || options.savedRequest.valid(result);
-        receipt.responses ??= [];
-        if (!receipt.responses.some((response) => response.token === token))
-          receipt.responses.push({ token, result: structuredClone(result), valid });
-        if (receipt.token === token)
-          Object.assign(receipt, { status: valid ? "complete" : "rejected", result: structuredClone(result) });
-      });
-    };
+    if (receipt.cached) return receipt.cached;
     try {
       const result = await ask(maxTokens);
-      await retain(result);
-      return result;
+      return await receipt.retain(result, true);
     } catch (error) {
-      retainLateProviderResponse(error, (value) => retain(value as CapabilityLanguageModelCompletion));
+      retainLateProviderResponse(error, async (value) => {
+        await receipt.retain(value as CapabilityLanguageModelCompletion, false);
+      });
       throw error;
     }
   }

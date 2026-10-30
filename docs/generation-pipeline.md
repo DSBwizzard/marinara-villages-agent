@@ -2,6 +2,20 @@
 
 A model response, a validated result, a committed effect and a playable Scene are separate milestones. A failed observer or cancelled request does not establish that a provider failed or that no charge occurred.
 
+## Standalone saved requests
+
+Founding Venue details, opening ideas and Private Space preparation keep a format-1 standalone receipt under the stable request key and exact input fingerprint. This receipt is distinct from Scene and background receipts even though all use the native `generation-response` kind. An unknown receipt format fails closed; this overhaul provides no legacy reader.
+
+The dispatch intent commits before provider work. Its token remains pending until an actual response conclusively settles it; after interruption or restart, pending means uncertain, never unbilled. Only explicit Retry can authorize a replacement when no reusable response exists. Cancellation, timeouts, another successful attempt and diagnostic retention cannot remove uncertain tokens.
+
+A valid completion is recoverable without purchasing work. The first completion returned for application is selected in the same CAS that records it, or a previously saved late candidate is selected by the read that adopts it. Every later caller receives that immutable selection. A late callback saves evidence only and cannot replace a selected result or apply effects. A newer live result may win over an unadopted late candidate, but it must return an already selected result if another caller adopted first.
+
+Each consumer projects accepted content with its application parser, retaining exact accepted fields, finish reason and usage. Venue details use the frozen target Zone and the complete 4,000-character description limit; live source conflicts retain the selected response for reconciliation. Selection is separate from successful application. Its replay body remains local indefinitely, including after restoring a checkpoint from before its effects. No application acknowledgment, timer or current-world scope alone releases it.
+
+Conclusive rejection means the same application parser cannot apply this response. It requires explicit replacement. Its body moves to the latest 100 private standalone rejection diagnostics, each capped at 24,000 characters and redacted with the existing helper; these diagnostics never authorize effects or replay. Settled unselected valid bodies are also dispensable because they were never returned for effects. Both settle their known token exactly once and keep per-request counts, a chained response digest and known token-usage totals with separate unknown-usage counts. Unknown or duplicate callback tokens cannot recreate bodies or change accounting. Receipt and uncertainty protection never depend on a diagnostic surviving.
+
+These rules do not yet compact Scene or background operational records; those owners retain their existing recovery contracts.
+
 ## Scenes
 
 New semantic admissions carry semanticPipelineVersion: 3. Narration drafts first; a single System exchange check interprets original input and draft together. System supplies cited meaning, ordered input spans and proposed effects. Code retains authority over witness timelines, consent/access, physical receipts and Project revisions. Unsupported or ambiguous consequential outcomes remain unresolved before play.
