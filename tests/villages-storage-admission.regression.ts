@@ -1,4 +1,4 @@
-// Test cases: storage-admission/module-replacement, storage-admission/disposed-write, storage-admission/epoch, storage-admission/recovery-generation, storage-admission/history-read, storage-admission/cleanup-wait, storage-admission/idle-context
+// Test cases: storage-admission/module-replacement, storage-admission/disposed-write, storage-admission/epoch, storage-admission/recovery-generation, storage-admission/history-read, storage-admission/cleanup-wait, storage-admission/idle-context, storage-admission/manual-publication-gap, storage-admission/parallel-readiness, storage-admission/stale-control-read
 import assert from "node:assert/strict";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -274,4 +274,120 @@ await runCase("storage-admission/idle-context", async () => {
   await gate.commit("advance-epoch", change.transaction);
   assert.ok(cleanup);
   await cleanup;
+});
+await runCase("storage-admission/manual-publication-gap", async () => {
+  const f = fixture(),
+    admission = createRepairAdmission();
+  await f.insert("villages-repair-control", { version: 3, epoch: 0 }, "repair-control");
+  const source = await f.insert("gap-source", { value: "before" });
+  const first = createRepairGate(f.store, admission),
+    next = createRepairGate(f.store, admission);
+  await first.documents.getById("villages", source.id);
+  await next.documents.getById("villages", source.id);
+  const change = await first.simulate(async () => {
+    await first.documents.update({ ...source, expectedRevision: 1, data: { value: "after" } });
+  });
+  const entered = deferred(),
+    release = deferred();
+  f.hook(async (id) => {
+    if (id === "villages-repair-control") {
+      entered.resolve();
+      await release.promise;
+    }
+    if (id === source.id) throw Error("effect interrupted");
+  });
+  const saving = assert.rejects(first.commit("publication-gap", change.transaction), /effect interrupted/);
+  await entered.promise;
+  await assert.rejects(next.documents.getById("villages", source.id), /REPAIR is saving/);
+  release.resolve();
+  await saving;
+  let admitted = false;
+  await assert.rejects(
+    next.alone(async () => {
+      admitted = true;
+    }),
+    /effect interrupted/,
+  );
+  assert.equal(admitted, false, "An older settled Control read cannot validate a later interrupted journal.");
+  f.hook(async () => {});
+  await next.alone(async () => {});
+  assert.equal(f.rows.get(source.id).data.value, "after");
+});
+await runCase("storage-admission/parallel-readiness", async () => {
+  const f = fixture(),
+    admission = createRepairAdmission();
+  const source = await f.insert("parallel-source", { value: "before" });
+  const clean = {
+    id: source.id,
+    kind: source.kind,
+    name: source.name,
+    description: source.description,
+    data: source.data,
+  };
+  const codec = createRepairTransactionCodec(f.store);
+  const writes = await codec.encodeWrites([{ before: clean, after: { ...clean, data: { value: "after" } } }]);
+  await f.insert(
+    "villages-repair-control",
+    { version: 3, epoch: 1, pending: { id: "parallel", writes } },
+    "repair-control",
+  );
+  const entered = deferred(),
+    release = deferred();
+  f.hook(async (id) => {
+    if (id === source.id) {
+      entered.resolve();
+      await release.promise;
+    }
+  });
+  const gates = Array.from({ length: 3 }, () => createRepairGate(f.store, admission));
+  const first = gates[0].documents.getById("villages", source.id);
+  await entered.promise;
+  const readers = gates.slice(1).map((gate) => gate.documents.getById("villages", source.id));
+  release.resolve();
+  assert.deepEqual(
+    (await Promise.all([first, ...readers])).map((row) => row!.data.value),
+    ["after", "after", "after"],
+  );
+});
+await runCase("storage-admission/stale-control-read", async () => {
+  const f = fixture(),
+    admission = createRepairAdmission();
+  const source = await f.insert("stale-control-source", { value: "before" });
+  const first = createRepairGate(f.store, admission);
+  await first.documents.getById("villages", source.id);
+  const entered = deferred(),
+    release = deferred();
+  let held = false;
+  const delayed = createRepairGate(
+    {
+      ...f.store,
+      async getById(pkg: string, id: string) {
+        const row = await f.store.getById(pkg, id);
+        if (!held && id === "villages-repair-control") {
+          held = true;
+          entered.resolve();
+          await release.promise;
+        }
+        return row;
+      },
+    },
+    admission,
+  );
+  const reading = delayed.documents.getById("villages", source.id);
+  await entered.promise;
+  const change = await first.simulate(async () => {
+    await first.documents.update({ ...source, expectedRevision: 1, data: { value: "after" } });
+  });
+  f.hook(async (id) => {
+    if (id === source.id) throw Error("pending after stale read");
+  });
+  await assert.rejects(first.commit("stale-control", change.transaction), /pending after stale read/);
+  f.hook(async () => {});
+  release.resolve();
+  assert.equal(
+    (await reading)!.data.value,
+    "after",
+    "A stale no-journal read must retry against the advanced recovery epoch.",
+  );
+  assert.equal(f.rows.get("villages-repair-control").data.pending, undefined);
 });

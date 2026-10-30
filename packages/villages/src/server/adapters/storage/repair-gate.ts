@@ -33,14 +33,14 @@ export type RepairAdmission = {
   active: number;
   exclusive: object | null;
   idle: Set<() => void>;
-  cleanup: { done: Promise<void>; finish(): void } | null;
+  maintenance: { done: Promise<void>; finish(): void } | null;
 };
 export const createRepairAdmission = (): RepairAdmission => ({
   epoch: 0,
   active: 0,
   exclusive: null,
   idle: new Set(),
-  cleanup: null,
+  maintenance: null,
 });
 const clean = (row: CapabilityDocumentRecord | null): RepairDocument | null =>
   row ? { id: row.id, kind: row.kind, name: row.name, description: row.description, data: row.data } : null;
@@ -84,6 +84,15 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
   const requireAlive = () => {
     if (!alive) throw conflict("This Village runtime is no longer active.");
   };
+  function beginMaintenance() {
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const hold = { done, finish };
+    admission.maintenance = hold;
+    return hold;
+  }
 
   async function saveControl(input: {
     version: 3;
@@ -152,31 +161,38 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     await saveControl({ version: 3, epoch: admission.epoch });
   }
   async function ensureReady() {
-    if (admission.cleanup && !(context.getStore()?.administrative && admission.exclusive === activation))
-      await admission.cleanup.done;
+    while (admission.maintenance && !(context.getStore()?.administrative && admission.exclusive === activation))
+      await admission.maintenance.done;
     if (readyEpoch !== undefined && readyEpoch !== admission.epoch) {
       ready = undefined;
       readyEpoch = undefined;
     }
     if (!ready) {
       requireAlive();
-      const owned = context.getStore()?.owners?.filter((owner) => owner.active).length ?? 0;
-      if (admission.exclusive || admission.active > owned)
-        throw conflict("Earlier Village work is still settling. Try again after it finishes.");
-      admission.exclusive = activation;
       ready = (async () => {
-        const row = await raw.getById(PACKAGE, CONTROL);
-        if (!row) {
-          readyEpoch = admission.epoch;
-          return;
-        }
-        const saved = row.data as Control;
-        if (saved?.version !== 3 || !Number.isSafeInteger(saved.epoch) || saved.epoch < 0)
-          throw conflict("The repair recovery record is invalid.");
-        controlRevision = row.revision;
-        admission.epoch = Math.max(admission.epoch, saved.epoch);
-        if (Object.hasOwn(saved, "pending")) {
-          const pending = saved.pending;
+        for (;;) {
+          while (admission.maintenance && !(context.getStore()?.administrative && admission.exclusive === activation))
+            await admission.maintenance.done;
+          requireAlive();
+          if (admission.exclusive && !(context.getStore()?.administrative && admission.exclusive === activation))
+            throw conflict("REPAIR is saving. Try again after it finishes.");
+          const observedEpoch = admission.epoch,
+            row = await raw.getById(PACKAGE, CONTROL);
+          requireAlive();
+          if (observedEpoch !== admission.epoch || admission.maintenance) continue;
+          if (admission.exclusive && !(context.getStore()?.administrative && admission.exclusive === activation))
+            throw conflict("REPAIR is saving. Try again after it finishes.");
+          const saved = row?.data as Control | undefined;
+          if (row && (saved?.version !== 3 || !Number.isSafeInteger(saved.epoch) || saved.epoch < 0))
+            throw conflict("The repair recovery record is invalid.");
+          if (!row || !Object.hasOwn(saved!, "pending")) {
+            // Reading settled recovery metadata needs no exclusion from ordinary gameplay.
+            controlRevision = row?.revision ?? 0;
+            admission.epoch = Math.max(admission.epoch, saved?.epoch ?? 0);
+            readyEpoch = admission.epoch;
+            return;
+          }
+          const pending = saved!.pending;
           if (
             !pending ||
             typeof pending !== "object" ||
@@ -187,26 +203,41 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
             !Object.hasOwn(pending, "writes")
           )
             throw conflict("The repair recovery record is invalid.");
-          await replay({ id: pending.id, writes: await codec.decodeWrites(pending.writes) });
+          const owned = context.getStore()?.owners?.filter((owner) => owner.active).length ?? 0;
+          if (admission.exclusive || admission.active > owned)
+            throw conflict("Earlier Village work is still settling. Try again after it finishes.");
+          admission.exclusive = activation;
+          const recovering = beginMaintenance();
+          try {
+            const fresh = await raw.getById(PACKAGE, CONTROL);
+            if (fresh?.revision !== row.revision) continue;
+            controlRevision = row.revision;
+            admission.epoch = Math.max(admission.epoch, saved!.epoch);
+            await replay({ id: pending.id, writes: await codec.decodeWrites(pending.writes) });
+            readyEpoch = admission.epoch;
+            return;
+          } finally {
+            if (admission.exclusive === activation) admission.exclusive = null;
+            if (admission.maintenance === recovering) admission.maintenance = null;
+            recovering.finish();
+            notifyIdle();
+          }
         }
-        readyEpoch = admission.epoch;
-      })()
-        .catch((error) => {
-          ready = undefined;
-          throw error;
-        })
-        .finally(() => {
-          if (admission.exclusive === activation) admission.exclusive = null;
-          notifyIdle();
-        });
+      })().catch((error) => {
+        ready = undefined;
+        throw error;
+      });
     }
     await ready;
   }
   async function work<T>(fn: () => Promise<T>): Promise<T> {
     requireAlive();
     await ensureReady();
-    while (admission.cleanup && !(context.getStore()?.administrative && admission.exclusive === activation)) {
-      await admission.cleanup.done;
+    while (
+      readyEpoch !== admission.epoch ||
+      (admission.maintenance && !(context.getStore()?.administrative && admission.exclusive === activation))
+    ) {
+      if (admission.maintenance) await admission.maintenance.done;
       await ensureReady();
     }
     requireAlive();
@@ -330,8 +361,11 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
   };
   async function alone<T>(fn: () => Promise<T>, mode: "repair" | "cleanup" = "repair") {
     await ensureReady();
-    while (admission.cleanup && !(context.getStore()?.administrative && admission.exclusive === activation)) {
-      await admission.cleanup.done;
+    while (
+      readyEpoch !== admission.epoch ||
+      (admission.maintenance && !(context.getStore()?.administrative && admission.exclusive === activation))
+    ) {
+      if (admission.maintenance) await admission.maintenance.done;
       await ensureReady();
     }
     const inherited = context.getStore();
@@ -342,21 +376,16 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     if (admission.exclusive || admission.active > owned)
       throw conflict("Other Village work is active. Let it finish, then try REPAIR again.");
     admission.exclusive = activation;
-    let cleanup: RepairAdmission["cleanup"] = null;
+    let cleanup: RepairAdmission["maintenance"] = null;
     if (mode === "cleanup") {
-      let finish!: () => void;
-      const done = new Promise<void>((resolve) => {
-        finish = resolve;
-      });
-      cleanup = { done, finish };
-      admission.cleanup = cleanup;
+      cleanup = beginMaintenance();
     }
     try {
       return await context.run({ epoch: admission.epoch, administrative: true }, fn);
     } finally {
       if (admission.exclusive === activation) admission.exclusive = null;
       if (cleanup) {
-        if (admission.cleanup === cleanup) admission.cleanup = null;
+        if (admission.maintenance === cleanup) admission.maintenance = null;
         cleanup.finish();
       }
       notifyIdle();

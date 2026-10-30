@@ -1,4 +1,9 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import {
+  activationScope,
+  bindActivationService,
+  createActivationBinding,
+} from "../../adapters/engine/activation-scope.js";
 import type { RepairGate, RepairDocument } from "../../adapters/storage/repair-gate.js";
 import { createRepairTransactionCodec } from "../../adapters/storage/repair-transaction-codec.js";
 import {
@@ -307,6 +312,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
 
 /** Allocation-driven housekeeping, using the existing idle gate; no timer or saved counter. */
 export function createRetainedStorageCleanup(gate: RepairGate, onFailure: (error: unknown) => void) {
+  let unsubscribe: (() => void) | undefined;
   let active = true,
     running: Promise<void> | undefined,
     initial = true,
@@ -338,8 +344,32 @@ export function createRetainedStorageCleanup(gate: RepairGate, onFailure: (error
   };
   return {
     request,
+    start() {
+      if (!unsubscribe) {
+        active = true;
+        const scope = activationScope(),
+          callback = () => {
+            void request();
+          };
+        unsubscribe = gate.whenIdle(scope?.bind(callback) ?? callback);
+        request();
+      }
+      return () => {
+        active = false;
+        unsubscribe?.();
+        unsubscribe = undefined;
+      };
+    },
     dispose: () => {
       active = false;
+      unsubscribe?.();
+      unsubscribe = undefined;
     },
   };
 }
+const cleanupBinding = createActivationBinding<ReturnType<typeof createRetainedStorageCleanup>>(
+  "Storage cleanup is unavailable.",
+);
+export const configureRetainedStorageCleanup = (service: ReturnType<typeof createRetainedStorageCleanup>) =>
+  cleanupBinding.configure(bindActivationService(service));
+export const startRetainedStorageCleanup = () => cleanupBinding.get().start();

@@ -188,7 +188,10 @@ import {
   resumeProject,
 } from "../features/projects/project-lifecycle.js";
 import { createRepairService } from "../features/repair/repair-service.js";
-import { createRetainedStorageCleanup } from "../features/repair/retained-storage-cleanup.js";
+import {
+  createRetainedStorageCleanup,
+  configureRetainedStorageCleanup,
+} from "../features/repair/retained-storage-cleanup.js";
 import { configureRepairs } from "../features/repair/repair.js";
 import { createLiveMemory } from "../features/residents/live-memory-service.js";
 import {
@@ -1171,10 +1174,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const retainedCleanup = createRetainedStorageCleanup(repairGate(), (error) =>
     runtimeDebug("retained storage cleanup deferred", { error: String(error) }),
   );
-  const requestCleanup = () => {
-    void retainedCleanup.request();
-  };
-  const releaseRetainedCleanup = repairGate().whenIdle(activationScope()?.bind(requestCleanup) ?? requestCleanup);
+  const releaseRetainedCleanup = configureRetainedStorageCleanup(retainedCleanup);
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       activityChanged: requestVillageRefresh,
