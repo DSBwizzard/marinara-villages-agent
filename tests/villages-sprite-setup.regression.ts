@@ -18,7 +18,7 @@ import { createSpriteWrites } from "../packages/villages/src/server/features/med
 const documents = new Map<string, unknown>();
 const imageBytes = PNG.sync.write(new PNG({ width: 64, height: 96 }));
 const imageData = "data:image/png;base64," + imageBytes.toString("base64");
-let village = coerceVillageState({ ...defaultVillageState(), version: 7 });
+let village = coerceVillageState({ ...defaultVillageState(), version: 8 });
 let calls = 0,
   failImage = false,
   resolved = "",
@@ -224,7 +224,7 @@ assert.equal(calls, before);
 await assert.rejects(service.preparedManager("bupkis", draft.revision - 1), /changed/);
 village = coerceVillageState({
   ...defaultVillageState(),
-  version: 7,
+  version: 8,
   villagers: [
     {
       characterId: "bupkis",

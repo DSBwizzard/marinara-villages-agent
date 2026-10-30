@@ -6,6 +6,8 @@ import {
   memoryString,
   memoryTimestamp,
   validateMemoryRecord,
+  immutableMemoryRecord,
+  immutableMemoryValue,
 } from "./memory-integrity.js";
 import { memoryTerms } from "./memory-protection.js";
 
@@ -46,7 +48,12 @@ export function readMemorySceneSnapshot(value: unknown): MemorySceneSnapshot {
       "invalid Scene preimage",
     );
   }
-  return structuredClone(value) as MemorySceneSnapshot;
+  return immutableMemoryValue({
+    ...value,
+    before: Object.fromEntries(
+      Object.entries(value.before).map(([id, record]) => [id, record === null ? null : immutableMemoryRecord(record)]),
+    ),
+  }) as MemorySceneSnapshot;
 }
 /** Call before writes, and persist the result in the same transaction as those writes. */
 export function retainMemoryScenes(

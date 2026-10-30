@@ -2,6 +2,11 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createHash } from "node:crypto";
 import { emptyMemoryPayload } from "../../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  encodeMemoryPages,
+  decodeMemoryPagesSync,
+  MEMORY_PAGE_KIND,
+} from "../../packages/villages/src/server/adapters/storage/memory-pages.js";
 const wrappers = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 const wrapped = new WeakSet<CapabilityDocumentStore>();
 /** Native fixture authorship is projected into the current saved layout without
@@ -19,16 +24,18 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
   async function ensure(data: unknown) {
     const head = (data as any)?.memoryHead;
     if (!head || !virtual.has(head.id)) return;
-    const row = virtual.get(head.id);
-    const existing = await store.getById("villages", head.id);
-    if (existing?.id !== head.id) {
-      try {
-        await store.create(row);
-      } catch (error) {
-        if ((await store.getById("villages", head.id))?.id !== head.id) throw error;
+    // All virtual page documents are committed before a real root may reference them.
+    for (const [id, row] of virtual) {
+      const existing = await store.getById("villages", id);
+      if (existing?.id !== id) {
+        try {
+          await store.create(row);
+        } catch (error) {
+          if ((await store.getById("villages", id))?.id !== id) throw error;
+        }
       }
+      virtual.delete(id);
     }
-    virtual.delete(head.id);
   }
   const result: CapabilityDocumentStore = {
     ...store,
@@ -38,7 +45,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
-      if (raw?.version !== 7) return metadata;
+      if (raw?.version !== 8) return metadata;
       if (Object.hasOwn(raw, "memoryHead")) return { ...metadata, data: { ...strip(raw), memoryHead: raw.memoryHead } };
       if (!raw.memories) return metadata;
       const state = coerceVillageState(raw),
@@ -50,9 +57,22 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
         !Object.keys(value.memoryReceipts).length;
       let head = null;
       if (!empty) {
-        const payload = JSON.stringify(value),
-          hash = digest(payload),
-          world = digest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32);
+        const world = digest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32),
+          encoded = encodeMemoryPages(value, world),
+          payload = JSON.stringify(encoded.manifest),
+          hash = digest(payload);
+        for (const [id, data] of encoded.pages)
+          virtual.set(id, {
+            id,
+            packageId: "villages",
+            kind: MEMORY_PAGE_KIND,
+            name: "Fixture history page",
+            description: "Fixture page",
+            data,
+            revision: 1,
+            createdAt: state.setupAt,
+            updatedAt: state.setupAt,
+          });
         const h = hash.slice(0, 32),
           uuid = [h.slice(0, 8), h.slice(8, 12), h.slice(12, 16), h.slice(16, 20), h.slice(20)].join("-");
         const key = "villages-memory-" + world + "-" + uuid;
@@ -63,7 +83,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
           kind: "memory-payload",
           name: "Fixture history",
           description: "Already committed fixture state",
-          data: { format: 1, world, payload },
+          data: { format: 2, world, payload },
           revision: 1,
           createdAt: state.setupAt,
           updatedAt: state.setupAt,
@@ -94,6 +114,9 @@ export function storedVillage(rows: Map<string, any>) {
 }
 export function fixtureVillageState(raw: any, rows?: Map<string, any>) {
   if (!raw || !Object.hasOwn(raw, "memoryHead")) return coerceVillageState(raw);
-  const payload = raw.memoryHead ? JSON.parse(rows!.get(raw.memoryHead.id).data.payload) : emptyMemoryPayload();
+  const root = raw.memoryHead ? rows!.get(raw.memoryHead.id).data : null;
+  const payload = root
+    ? decodeMemoryPagesSync(JSON.parse(root.payload), root.world, (id) => rows!.get(id)?.data ?? null).value
+    : emptyMemoryPayload();
   return coerceVillageState({ ...raw, ...payload });
 }

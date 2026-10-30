@@ -30,7 +30,7 @@ function rootData(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 7) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 8) throw new Error("Unsupported Village format. Start a fresh Village.");
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
   readMemoryHead(raw.memoryHead);
   return raw;
@@ -63,6 +63,12 @@ export function createVillageRepository(
   documents: () => CapabilityDocumentStore,
   warn: (message: string) => void = () => {},
 ): VillageRepository {
+  const payloadStores = new WeakMap<CapabilityDocumentStore, ReturnType<typeof createMemoryPayloadStore>>();
+  function memoryStore(store: CapabilityDocumentStore) {
+    let payloads = payloadStores.get(store);
+    if (!payloads) payloadStores.set(store, (payloads = createMemoryPayloadStore(store)));
+    return payloads;
+  }
   const ownership = new AsyncLocalStorage<{ active: boolean }>();
   let tail: Promise<void> = Promise.resolve();
   async function withAuthorityLock<T>(work: () => Promise<T>): Promise<T> {
@@ -82,7 +88,7 @@ export function createVillageRepository(
     }
   }
   async function load(store: CapabilityDocumentStore, include: VillageMemoryWrite["memories"]) {
-    const payloads = createMemoryPayloadStore(store);
+    const payloads = memoryStore(store);
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
       const record = await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID),
         raw = rootData(record);
@@ -114,14 +120,14 @@ export function createVillageRepository(
       return withRepairWork(() =>
         withAuthorityLock(async () => {
           const store = documents(),
-            payloads = createMemoryPayloadStore(store);
+            payloads = memoryStore(store);
           for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
             const { record, head, state, loaded } = await load(store, options?.memories);
             const identity = JSON.stringify([state.seed, state.setupAt]);
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 7, "invalid Village mutation format");
+            memoryRequire(state.version === 8, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
@@ -173,6 +179,7 @@ export function createVillageRepository(
               warn("Memory payload housekeeping remains pending; committed progress is retained.");
             }
             if (!committed) continue;
+            payloads.published(nextHead);
             return;
           }
           throw new Error("The village kept changing while it was being saved. Please try again.");

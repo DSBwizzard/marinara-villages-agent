@@ -633,8 +633,11 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
       lastApplication: { id: request.operationId, fingerprint: memoryHash(request) },
     };
     validateMemoryRecord(row);
-    state.memories.revision++;
-    state.memories.records.push(row);
+    state.memories = {
+      ...state.memories,
+      revision: state.memories.revision + 1,
+      records: [...state.memories.records, row],
+    };
     return;
   }
   normalizeVillageMutation(
@@ -846,7 +849,7 @@ export function changeMemoryProtection(
 ) {
   const target = state.memories.records.find((r) => r.id === id);
   if (!target) throw conflict("The memory is unavailable.");
-  const root = state.memories.records.find((r) => r.id === target.rootId)!;
+  const root = structuredClone(state.memories.records.find((r) => r.id === target.rootId)!);
   const snapshots = retainMemoryScenes(
     state.memories,
     [root.id],
@@ -861,7 +864,12 @@ export function changeMemoryProtection(
     else delete root.knowers[knower].repair;
   }
   root.revision++;
-  root.updatedRevision = ++state.memories.revision;
+  root.updatedRevision = state.memories.revision + 1;
   root.lastApplication = { id: operationId, fingerprint: memoryHash(knowers) };
   validateMemoryRecord(root);
+  state.memories = {
+    ...state.memories,
+    revision: root.updatedRevision,
+    records: state.memories.records.map((record) => (record.id === root.id ? root : record)),
+  };
 }

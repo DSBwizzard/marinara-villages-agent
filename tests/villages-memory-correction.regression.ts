@@ -316,7 +316,9 @@ await runCase("memory-correction/runtime", async () => {
     assert.ok(forgottenAt >= forgetStarted + 86400000 && forgottenAt <= Date.now() + 86400000);
     assert.deepEqual(mechanics(forgottenState), mechanics(original), "Forget uses the same history-only boundary.");
     assert.ok(
-      [...f.rows.values()].every((row) => ["village", "memory-payload", "memory-payload-intent"].includes(row.kind)),
+      [...f.rows.values()].every((row) =>
+        ["village", "memory-payload", "memory-page", "memory-payload-intent"].includes(row.kind),
+      ),
       "No relationship, Scene, settings or other domain documents are written.",
     );
   } finally {

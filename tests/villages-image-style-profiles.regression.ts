@@ -90,16 +90,16 @@ assert.ok(
 settings = { defaultProfileId: "my-ink", profiles: [{ ...custom, styleText: "x".repeat(17000) }] };
 await assert.rejects(service.generateVillageImage({ ...input, sceneryStyleProfileId: "" }), /too long/);
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, sceneryArtStyle: "Legacy authored style" })
+  coerceVillageState({ ...defaultVillageState(), version: 8, sceneryArtStyle: "Legacy authored style" })
     .sceneryStyleProfileId,
   null,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, sceneryStyleProfileId: "my-ink" }).sceneryStyleProfileId,
+  coerceVillageState({ ...defaultVillageState(), version: 8, sceneryStyleProfileId: "my-ink" }).sceneryStyleProfileId,
   "my-ink",
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, sceneryStyleProfileId: "" }).sceneryStyleProfileId,
+  coerceVillageState({ ...defaultVillageState(), version: 8, sceneryStyleProfileId: "" }).sceneryStyleProfileId,
   "",
 );
 console.log(

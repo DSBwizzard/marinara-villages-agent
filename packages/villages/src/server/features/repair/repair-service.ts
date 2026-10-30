@@ -18,6 +18,13 @@ import {
   type RepairWrite,
 } from "../../adapters/storage/repair-gate.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import {
+  createMemoryPayloadStore,
+  readMemoryHead,
+  emptyMemoryPayload,
+} from "../../adapters/storage/memory-payload-store.js";
+import { MEMORY_PAGE_KIND } from "../../adapters/storage/memory-pages.js";
+import { encodeRepairTransaction, decodeRepairTransaction } from "../../adapters/storage/repair-transaction-codec.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
 import { coerceVillageState } from "../../domain/decoding/village-codec.js";
 import type { MemoryKnower } from "../../domain/models/memories.js";
@@ -251,33 +258,41 @@ export function createRepairService(ports: RepairPorts) {
     typeof value.description === "string" &&
     Object.hasOwn(value, "data");
   function ownedReview(row: Doc, state: VillageState): boolean {
-    const saved = row.data as Partial<PlanData> | null;
-    return (
-      saved?.seed === state.seed &&
-      saved.setupAt === state.setupAt &&
-      typeof saved.review?.id === "string" &&
-      typeof saved.review.token === "string" &&
-      /^[a-zA-Z0-9-]{1,100}$/.test(saved.review.token) &&
-      docId(PLAN, saved.review.id) === row.id &&
-      saved.review.id === saved.request?.operationId &&
-      saved.review.id === saved.history?.id &&
-      ["repair", "undo", "restore"].includes(saved.review.kind) &&
-      typeof saved.requestHash === "string" &&
-      saved.requestHash === repairDigest(saved.request) &&
-      typeof saved.history?.at === "string" &&
-      Array.isArray(saved.transaction?.reads) &&
-      saved.transaction.reads.every((r) => object(r) && typeof r.id === "string" && typeof r.digest === "string") &&
-      Array.isArray(saved.transaction?.lists) &&
-      saved.transaction.lists.every((r) => object(r) && typeof r.kind === "string" && typeof r.digest === "string") &&
-      Array.isArray(saved.transaction?.writes) &&
-      saved.transaction.writes.every(
-        (w) =>
-          object(w) &&
-          (w.before === null || repairDoc(w.before)) &&
-          (w.after === null || repairDoc(w.after)) &&
-          (w.before !== null || w.after !== null),
-      )
-    );
+    try {
+      const saved = readPlan(row);
+      return (
+        saved?.seed === state.seed &&
+        saved.setupAt === state.setupAt &&
+        typeof saved.review?.id === "string" &&
+        typeof saved.review.token === "string" &&
+        /^[a-zA-Z0-9-]{1,100}$/.test(saved.review.token) &&
+        docId(PLAN, saved.review.id) === row.id &&
+        saved.review.id === saved.request?.operationId &&
+        saved.review.id === saved.history?.id &&
+        ["repair", "undo", "restore"].includes(saved.review.kind) &&
+        typeof saved.requestHash === "string" &&
+        saved.requestHash === repairDigest(saved.request) &&
+        typeof saved.history?.at === "string" &&
+        Array.isArray(saved.transaction?.reads) &&
+        saved.transaction.reads.every((r) => object(r) && typeof r.id === "string" && typeof r.digest === "string") &&
+        Array.isArray(saved.transaction?.lists) &&
+        saved.transaction.lists.every((r) => object(r) && typeof r.kind === "string" && typeof r.digest === "string") &&
+        Array.isArray(saved.transaction?.writes) &&
+        saved.transaction.writes.every(
+          (w) =>
+            object(w) &&
+            (w.before === null || repairDoc(w.before)) &&
+            (w.after === null || repairDoc(w.after)) &&
+            (w.before !== null || w.after !== null),
+        )
+      );
+    } catch {
+      return false;
+    }
+  }
+  function readPlan(row: Doc): PlanData {
+    const saved = row.data as PlanData;
+    return { ...saved, transaction: decodeRepairTransaction(saved?.transaction) };
   }
   async function savePlan(plan: PlanData): Promise<RepairReview> {
     return gate.alone(async () => {
@@ -303,7 +318,7 @@ export function createRepairService(ports: RepairPorts) {
       // Evict before insertion. A failed deletion cannot grow the cache; original facts and client drafts remain.
       for (const row of candidates.slice(MAX_PENDING_REVIEWS - 1))
         if (!(await documents.remove(PKG, row.id, row.revision))) throw conflict("Repair reviews changed. Try again.");
-      await store(id, PLAN, plan);
+      await store(id, PLAN, { ...plan, transaction: encodeRepairTransaction(plan.transaction) });
       return plan.review;
     });
   }
@@ -528,12 +543,7 @@ export function createRepairService(ports: RepairPorts) {
     const root = await documents.getById(PKG, "villages-village");
     if (!root) throw badRequest("Found a Village first.");
     rows.push(copy(root));
-    const head = (root.data as { memoryHead?: { id: string } }).memoryHead;
-    if (head) {
-      const payload = await documents.getById(PKG, head.id);
-      if (!payload) throw conflict("The saved Memories payload is unavailable.");
-      rows.push(copy(payload));
-    }
+    // The copied root owns its immutable Memory head and all transitive pages.
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
     const data: CheckpointData = {
       version: 1,
@@ -887,7 +897,7 @@ export function createRepairService(ports: RepairPorts) {
       if (await documents.getById(PKG, historyId)) return { applied: true };
       throw notFound("Review this repair again. Your draft is kept.");
     }
-    const plan = row.data as PlanData;
+    const plan = readPlan(row);
     if (plan.review?.token !== token)
       throw conflict("This review changed. Review the repair again; your draft is kept.");
     const world = await repository.readAuthority();
@@ -1195,11 +1205,11 @@ export function createRepairService(ports: RepairPorts) {
       if (data.returnCatchup && typeof data.returnCatchup === "object")
         delete (data.returnCatchup as { capture?: unknown }).capture;
       for (const row of current) if (!wanted.has(row.id)) await documents.remove(PKG, row.id, row.revision);
-      const savedHead = data.memoryHead as { id: string } | null,
-        savedPayload = savedHead ? wanted.get(savedHead.id) : undefined;
-      const payload = savedPayload
-        ? JSON.parse((savedPayload.data as { payload: string }).payload)
-        : { memories: { format: 1, revision: 0, records: [] }, memoryScenes: {}, memoryReceipts: {} };
+      const savedHead = readMemoryHead(data.memoryHead);
+      const payload = savedHead
+        ? await createMemoryPayloadStore(documents).read(savedHead, data as unknown as VillageState)
+        : emptyMemoryPayload();
+      if (!payload) throw conflict("The checkpoint’s Memories payload is unavailable.");
       if (
         Object.keys(payload.memoryScenes).some((id) => id !== checkpointSceneId) ||
         (checkpointSceneId && !payload.memoryScenes[checkpointSceneId])
@@ -1222,8 +1232,10 @@ export function createRepairService(ports: RepairPorts) {
       }
       restored.memories.revision = Math.max(restored.memories.revision, state.memories.revision) + 1;
       const currentMemories = new Map(state.memories.records.map((record) => [record.id, record]));
-      for (const record of restored.memories.records)
-        record.revision = Math.max(record.revision, currentMemories.get(record.id)?.revision ?? 0) + 1;
+      restored.memories.records = restored.memories.records.map((record) => ({
+        ...record,
+        revision: Math.max(record.revision, currentMemories.get(record.id)?.revision ?? 0) + 1,
+      }));
       restored.exchangeReceipts = restoredReceipts(restored.exchangeReceipts, state.exchangeReceipts);
       restored.memoryReceipts = restoredReceipts(restored.memoryReceipts, state.memoryReceipts);
       restored.noticeSequence = Math.max(restored.noticeSequence, state.noticeSequence);
@@ -1236,7 +1248,8 @@ export function createRepairService(ports: RepairPorts) {
         { memories: true },
       );
       for (const value of wanted.values()) {
-        if (value.id === "villages-village" || value.kind === "memory-payload") continue;
+        if (value.id === "villages-village" || value.kind === "memory-payload" || value.kind === MEMORY_PAGE_KIND)
+          continue;
         const old = await documents.getById(PKG, value.id),
           stamp = new Date().toISOString();
         if (value.kind === "relationships") {

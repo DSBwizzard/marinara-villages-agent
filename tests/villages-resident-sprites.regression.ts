@@ -136,20 +136,20 @@ assert.equal(staged.lines[2]?.gazeAt, "resident-b", "whispers face their target 
 const now = new Date().toISOString();
 assert.equal(defaultVillageState().spriteCardFlipEnabled, true, "new Villages start with flips on");
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7 }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 8 }).spriteCardFlipEnabled,
   true,
   "legacy Villages without a choice default to flips on",
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 8, spriteCardFlipEnabled: "true" }).spriteCardFlipEnabled,
   true,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 8, spriteCardFlipEnabled: false }).spriteCardFlipEnabled,
   false,
   "saved Off stays Off",
 );
-const flipVillage = coerceVillageState({ ...defaultVillageState(), version: 7, spriteCardFlipEnabled: true });
+const flipVillage = coerceVillageState({ ...defaultVillageState(), version: 8, spriteCardFlipEnabled: true });
 assert.equal(
   coerceVillageState(JSON.parse(JSON.stringify(flipVillage))).spriteCardFlipEnabled,
   true,
@@ -162,7 +162,7 @@ const resident = {
   sprite: semanticSprite,
 };
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, wishSystemVersion: 3, villagers: [resident] }).villagers[0]
+  coerceVillageState({ ...defaultVillageState(), version: 8, wishSystemVersion: 3, villagers: [resident] }).villagers[0]
     ?.sprite,
   null,
   "retired unversioned assignments are ignored",
@@ -248,11 +248,11 @@ resolveSceneSpriteExpressions(
 assert.deepEqual(persisted, cueLines, "saved concrete artwork survives reload and a different random draw");
 assert.equal(defaultVillageState().spriteVariantsEnabled, true);
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, spriteVariantsEnabled: false }).spriteVariantsEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 8, spriteVariantsEnabled: false }).spriteVariantsEnabled,
   false,
 );
 assert.equal(
-  coerceVillageState({ ...defaultVillageState(), version: 7, spriteVariantsEnabled: undefined }).spriteVariantsEnabled,
+  coerceVillageState({ ...defaultVillageState(), version: 8, spriteVariantsEnabled: undefined }).spriteVariantsEnabled,
   true,
 );
 

@@ -102,7 +102,7 @@ async function main() {
   const migrated = coerceVillageState({
     ...defaultVillageState(),
     backgroundPace: "quiet",
-    version: 7,
+    version: 8,
     wishSystemVersion: 3,
     foundedAt: "2026-09-01T07:00:00.000Z",
     lastHappeningKey: "2:morning",
@@ -130,7 +130,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 7,
+      version: 8,
       wishSystemVersion: 3,
       backgroundPace: "off",
       refreshClocks: [],
@@ -140,7 +140,7 @@ async function main() {
   assert.equal(
     coerceVillageState({
       ...defaultVillageState(),
-      version: 7,
+      version: 8,
       wishSystemVersion: 3,
       refreshClocks: ["morning", "evening"],
     }).backgroundPace,

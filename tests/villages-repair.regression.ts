@@ -1,12 +1,20 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
 import assert from "node:assert/strict";
 import { LETTER_FONTS } from "../packages/villages/src/shared/helpers/letter-fonts.js";
 import { legacyLetterFont } from "../packages/villages/src/shared/helpers/letter-font-selection.js";
 import { runCase } from "../scripts/test-cases.mjs";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
+import {
+  encodeRepairWrites,
+  decodeRepairWrites,
+} from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import {
+  memoryPayloadDocuments,
+  readMemoryHead,
+} from "../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
@@ -625,6 +633,76 @@ await runCase("repair/recovery", async () => {
   f.reopen();
   assert.equal((await f.read()).setting, "Control acknowledgment");
 });
+await runCase("repair/journal-integrity", async () => {
+  const f = await fixture(),
+    root = f.rows.get("villages-village");
+  const before = {
+    id: root.id,
+    kind: root.kind,
+    name: root.name,
+    description: root.description,
+    data: structuredClone(root.data),
+  };
+  const after = { ...before, data: { ...before.data, setting: "Must never partially replay" } };
+  await f.store.create({
+    id: "villages-repair-control",
+    packageId: "villages",
+    kind: "repair-control",
+    name: "Recovery",
+    description: "",
+    data: { version: 2, epoch: 1, pending: { id: "malformed", writes: [{ before, after }, {}] } },
+    createdAt: memoryTime(),
+    updatedAt: memoryTime(),
+  });
+  f.reopen();
+  await assert.rejects(f.read());
+  assert.equal(
+    f.rows.get(root.id).data.setting,
+    before.data.setting,
+    "Validate the entire journal before its first effect.",
+  );
+  assert.ok(f.rows.get("villages-repair-control").data.pending, "Malformed recovery is held rather than discarded.");
+  for (const pending of [false, 0, null, { writes: [] }, { id: "", writes: [] }, { id: "missing-writes" }]) {
+    const control = f.rows.get("villages-repair-control");
+    control.data = { version: 2, epoch: 1, pending };
+    const saved = structuredClone(control);
+    f.reopen();
+    await assert.rejects(f.read(), /repair recovery record is invalid/);
+    assert.deepEqual(f.rows.get(control.id), saved, "Malformed outer journals remain held byte-for-byte.");
+  }
+
+  const reviewFixture = await fixture();
+  const review = await reviewFixture.prepare(
+    edit(repairId("world"), { name: "Willowmere", setting: "Invalid read set", worldName: "", worldFacts: "" }),
+  );
+  const plan = [...reviewFixture.rows.values()].find((r) => r.kind === "repair-plan");
+  const transaction = structuredClone(plan.data.transaction);
+  for (const key of ["reads", "lists"])
+    for (const invalid of ['""', "[{}]"]) {
+      plan.data.transaction = { ...transaction, [key]: invalid };
+      await assert.rejects(reviewFixture.api.apply(review.id, review.token));
+      assert.equal((await reviewFixture.read()).setting, "Original setting");
+    }
+  const page = {
+    id: `villages-memory-page-${"a".repeat(32)}-${"b".repeat(64)}`,
+    kind: "memory-page",
+    name: "Unrecognized page",
+    description: "",
+    data: {
+      format: 1,
+      world: "a".repeat(32),
+      node: {
+        type: "text",
+        text: "memory:[]",
+        media: "global-gallery:owned-image",
+      },
+    },
+  };
+  const write = { before: null, after: page };
+  const packed = encodeRepairWrites([write]);
+  assert.equal(packed[0].after?.data, page.data, "Unknown page bodies keep native media ownership.");
+  assert.throws(() => decodeRepairWrites([{ memoryPages: JSON.stringify([write]) }]), /invalid repair pages/);
+});
 await runCase("repair/fences", async () => {
   const f = await fixture();
   const cp = await f.api.createCheckpoint("Original Village");
@@ -1063,6 +1141,81 @@ await runCase("repair/scale", async () => {
   const found = await f.api.inspect(repairId("memory", oldest.id));
   assert.ok(found.people?.length);
   assert.ok(found.source.length);
+});
+await runCase("repair/checkpoint-pages", async () => {
+  const f = await fixture();
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.foundedAt = state.setupAt;
+      state.memories = realisticMemoryHistory(5000);
+    },
+    { memories: true },
+  );
+  const envelopes = new Set<string>();
+  let interrupted = false;
+  f.hook((event, id) => {
+    const row = f.rows.get(id);
+    if (
+      !["after-create", "after-update"].includes(event) ||
+      !["repair-checkpoint", "repair-plan", "repair-control"].includes(row?.kind)
+    )
+      return;
+    const pending: unknown[] = [row.data];
+    let visited = 0;
+    while (pending.length) {
+      assert.ok(
+        ++visited < 4096,
+        "Large-history checkpoint/review/journal envelopes must fit Engine reference traversal.",
+      );
+      const value = pending.pop();
+      if (value && typeof value === "object") pending.push(...Object.values(value));
+    }
+    envelopes.add(row.kind);
+    if (
+      !interrupted &&
+      row.kind === "repair-control" &&
+      row.data.pending?.writes.some((w: any) => typeof w.memoryPages === "string")
+    ) {
+      interrupted = true;
+      throw Error("packed journal acknowledgement interrupted");
+    }
+  });
+  const checkpoint = await f.api.createCheckpoint("Paged history", "paged-checkpoint");
+  const original = await f.read();
+  const saved = [...f.rows.values()].find((r) => r.kind === "repair-checkpoint").data;
+  assert.equal(
+    saved.documents.filter((r: any) => ["memory-page", "memory-payload"].includes(r.kind)).length,
+    0,
+    "Checkpoints share immutable Memory bodies through the saved head.",
+  );
+  const head = readMemoryHead(saved.documents.find((r: any) => r.id === "villages-village").data.memoryHead)!;
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.memories = realisticMemoryHistory(7500);
+    },
+    { memories: true },
+  );
+  const owned = await memoryPayloadDocuments(f.gate.documents, head, original);
+  assert.ok(owned.length > 100);
+  assert.ok(
+    owned.every((row) => f.rows.has(row.id)),
+    "Checkpoint-owned roots and pages remain available.",
+  );
+  f.reopen();
+  const review = await f.api.restore(checkpoint.id, "restore-paged-checkpoint");
+  await assert.rejects(f.api.apply(review.id, review.token), /packed journal acknowledgement interrupted/);
+  assert.ok(interrupted);
+  f.reopen();
+  await f.api.apply(review.id, review.token);
+  f.reopen();
+  const restored = await f.read();
+  assert.equal(restored.memories.records.length, 5000);
+  assert.deepEqual(
+    restored.memories.records.map((r) => r.text),
+    original.memories.records.map((r) => r.text),
+  );
+  assert.ok(restored.memories.revision > original.memories.revision);
+  assert.deepEqual([...envelopes].sort(), ["repair-checkpoint", "repair-control", "repair-plan"]);
 });
 await runCase("repair/http", async () => {
   const f = await fixture();

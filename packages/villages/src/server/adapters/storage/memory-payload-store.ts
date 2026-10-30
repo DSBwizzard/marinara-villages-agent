@@ -2,7 +2,21 @@ import { createHash, randomUUID } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 import type { VillageState } from "../../domain/models/world.js";
-import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import {
+  immutableMemoryCollection,
+  immutableMemoryValue,
+  memoryObject,
+  memoryRequire,
+} from "../../domain/rules/memory-integrity.js";
+import { readMemorySceneStates, readMemoryReceipts } from "../../domain/rules/village-memories.js";
+import {
+  encodeMemoryPages,
+  decodeMemoryPages,
+  MEMORY_PAGE_KIND,
+  type MemoryPageLayout,
+  type MemoryPageData,
+} from "./memory-pages.js";
+import { isRepairSimulation } from "./repair-gate.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 
 export const MEMORY_PAYLOAD_KIND = "memory-payload";
@@ -44,8 +58,37 @@ function isEmpty(payload: MemoryPayload) {
     !Object.keys(payload.memoryReceipts).length
   );
 }
+/** Inspect the transitive immutable footprint without copying it into an owner document. */
+export async function memoryPayloadDocuments(
+  documents: CapabilityDocumentStore,
+  head: MemoryHead,
+  state: Pick<VillageState, "seed" | "setupAt">,
+) {
+  const rows: CapabilityDocumentRecord[] = [];
+  const collecting = {
+    ...documents,
+    async getById(pkg: string, id: string) {
+      const row = await documents.getById(pkg, id);
+      if (row) rows.push(row);
+      return row;
+    },
+  };
+  const value = await createMemoryPayloadStore(collecting).read(head, state);
+  memoryRequire(value, "checkpoint history is missing");
+  return rows;
+}
 /** Bulk records are immutable. The Village's CAS is their only publication point. */
 export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
+  type Cached = { head: MemoryHead; value: MemoryPayload; layout: MemoryPageLayout };
+  let cached: Cached | undefined, candidateCache: Cached | undefined;
+  const normalize = (raw: MemoryPayload): MemoryPayload => {
+    const memories = immutableMemoryCollection(raw.memories);
+    return immutableMemoryValue({
+      memories,
+      memoryScenes: readMemorySceneStates(raw.memoryScenes, memories),
+      memoryReceipts: readMemoryReceipts(raw.memoryReceipts),
+    });
+  };
   function validateRecord(record: CapabilityDocumentRecord, head: MemoryHead) {
     memoryRequire(
       record.id === head.id &&
@@ -56,7 +99,7 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     );
     memoryObject(record.data, ["format", "world", "payload"]);
     memoryRequire(
-      record.data.format === 1 &&
+      record.data.format === 2 &&
         record.data.world === PAYLOAD_ID.exec(head.id)?.[1] &&
         typeof record.data.payload === "string" &&
         memoryDigest(record.data.payload) === head.digest,
@@ -68,20 +111,45 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
     const record = await documents.getById(VILLAGES_PACKAGE_ID, head.id);
     if (!record) return null;
     validateRecord(record, head);
-    const value: unknown = JSON.parse((record.data as { payload: string }).payload);
-    memoryObject(value, ["memories", "memoryScenes", "memoryReceipts"]);
-    memoryObject(value.memoryReceipts);
-    memoryRequire((value.memories as { revision?: unknown })?.revision === head.revision, "history revision changed");
-    // The domain decoder validates every native row, receipt and frozen preimage.
-    return value as MemoryPayload;
+    if (!isRepairSimulation(documents) && cached?.head.id === head.id && cached.head.digest === head.digest) {
+      memoryRequire(cached.value.memories.revision === head.revision, "history revision changed");
+      return cached.value;
+    }
+    const decoded = await decodeMemoryPages(
+      JSON.parse((record.data as { payload: string }).payload),
+      worldKey(state),
+      async (id) => {
+        const row = await documents.getById(VILLAGES_PACKAGE_ID, id);
+        if (!row) return null;
+        memoryRequire(
+          row.id === id && row.packageId === VILLAGES_PACKAGE_ID && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+          "history page identity changed",
+        );
+        return row.data as MemoryPageData;
+      },
+    );
+    const value = normalize(decoded.value);
+    memoryRequire(value.memories.revision === head.revision, "history revision changed");
+    if (!isRepairSimulation(documents)) cached = { head, value, layout: decoded.layout };
+    return value;
   }
   async function prepare(
     state: VillageState,
     previous: MemoryHead | null,
     expectedRevision: number,
   ): Promise<MemoryHead | null> {
-    const value = memoryPayload(state),
-      serialized = JSON.stringify(value),
+    candidateCache = undefined;
+    const value = normalize(memoryPayload(state)),
+      encoded = encodeMemoryPages(
+        value,
+        worldKey(state),
+        !isRepairSimulation(documents) &&
+          cached?.head.id === previous?.id &&
+          cached?.head.id.startsWith("villages-memory-" + worldKey(state) + "-")
+          ? cached?.layout
+          : undefined,
+      ),
+      serialized = JSON.stringify(encoded.manifest),
       digest = memoryDigest(serialized);
     if (previous?.digest === digest && previous.id.startsWith("villages-memory-" + worldKey(state) + "-"))
       return previous;
@@ -136,11 +204,36 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
         name: "Memories",
         description: "Immutable private history",
         // Opaque prose has no media ownership and must fit the host's reference scan.
-        data: { format: 1, world: worldKey(state), payload: serialized },
+        data: { format: 2, world: worldKey(state), payload: serialized },
         createdAt: stamp,
         updatedAt: stamp,
       });
-    if (candidate)
+    if (candidate) {
+      for (const [id, data] of encoded.pages) {
+        // A decoded cache never proves physical persistence, particularly in REPAIR simulation.
+        const existing = await documents.getById(VILLAGES_PACKAGE_ID, id);
+        if (existing) {
+          memoryRequire(
+            existing.id === id &&
+              existing.packageId === VILLAGES_PACKAGE_ID &&
+              existing.kind === MEMORY_PAGE_KIND &&
+              existing.revision === 1 &&
+              JSON.stringify(existing.data) === JSON.stringify(data),
+            "immutable history page changed",
+          );
+          continue;
+        }
+        await documents.create({
+          id,
+          packageId: VILLAGES_PACKAGE_ID,
+          kind: MEMORY_PAGE_KIND,
+          name: "Memory history",
+          description: "Immutable private history page",
+          data,
+          createdAt: stamp,
+          updatedAt: stamp,
+        });
+      }
       await documents.update({
         id: intentId,
         packageId: VILLAGES_PACKAGE_ID,
@@ -150,14 +243,9 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
         data: { ...intent, phase: "ready" },
         updatedAt: stamp,
       });
+      if (!isRepairSimulation(documents)) candidateCache = { head: candidate, value, layout: encoded.layout };
+    }
     return candidate;
-  }
-  async function remove(head: MemoryHead) {
-    const record = await documents.getById(VILLAGES_PACKAGE_ID, head.id);
-    if (!record) return;
-    validateRecord(record, head);
-    if (!(await documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision)))
-      memoryRequire(!(await documents.getById(VILLAGES_PACKAGE_ID, record.id)), "history cleanup changed");
   }
   async function cleanup(readRoot: () => Promise<{ revision: number; head: MemoryHead | null }>) {
     for (const record of await documents.list(VILLAGES_PACKAGE_ID, INTENT_KIND)) {
@@ -170,8 +258,8 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
       );
       memoryObject(record.data, ["candidate", "previous", "expectedRevision", "phase"]);
       memoryRequire(["preparing", "ready", "cancelled"].includes(String(record.data.phase)), "invalid intent phase");
-      const candidate = readMemoryHead(record.data.candidate),
-        previous = readMemoryHead(record.data.previous);
+      const candidate = readMemoryHead(record.data.candidate);
+      readMemoryHead(record.data.previous);
       const expectedRevision = record.data.expectedRevision as number;
       memoryRequire(Number.isSafeInteger(expectedRevision) && expectedRevision >= 0, "invalid publication revision");
       const root = await readRoot();
@@ -186,11 +274,18 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
         !(await documents.getById(VILLAGES_PACKAGE_ID, candidate.id))
       )
         continue;
-      if (candidate && root.head?.id !== candidate.id) await remove(candidate);
-      if (previous && root.head?.id !== previous.id) await remove(previous);
+      // Checkpoints can own superseded roots. A publication intent is not their owner registry.
+      // Root and page retirement belongs to the same later owner-aware collector.
       if (!(await documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision)))
         memoryRequire(!(await documents.getById(VILLAGES_PACKAGE_ID, record.id)), "intent cleanup changed");
     }
   }
-  return { read, prepare, cleanup };
+  function published(head: MemoryHead | null) {
+    if (isRepairSimulation(documents)) return;
+    if (!head) cached = undefined;
+    else if (candidateCache?.head.id === head.id) cached = candidateCache;
+    candidateCache = undefined;
+  }
+  // Page deletion is owner-aware housekeeping, never a side effect of replacing one root.
+  return { read, prepare, cleanup, published };
 }

@@ -12,7 +12,13 @@ import {
   mergeMemoryLearning,
   type MemoryApplicationContext,
 } from "./memory-application.js";
-import { memoryObject, memoryRequire, validateMemoryRecord } from "./memory-integrity.js";
+import {
+  memoryObject,
+  memoryRequire,
+  validateMemoryRecord,
+  immutableMemoryRecord,
+  immutableMemoryValue,
+} from "./memory-integrity.js";
 import { captureMemoryScene, readMemorySceneSnapshot, sceneMemoryCollection } from "./memory-views.js";
 
 export function readMemorySceneStates(value: unknown, collection?: MemoryCollection): VillageState["memoryScenes"] {
@@ -59,9 +65,29 @@ export function readMemorySceneStates(value: unknown, collection?: MemoryCollect
           }
         }
       }
-      return [id, { snapshot, effects: structuredClone(raw.effects) } as MemorySceneState];
+      return [
+        id,
+        {
+          snapshot,
+          effects: Object.fromEntries(
+            Object.entries(raw.effects).map(([key, record]) => [key, immutableMemoryRecord(record)]),
+          ),
+        } as MemorySceneState,
+      ];
     }),
   );
+}
+
+/** Receipt bodies are copy-on-write; mutable maps are detached for each authority operation. */
+export function readMemoryReceipts(value: unknown): VillageState["memoryReceipts"] {
+  memoryObject(value);
+  return Object.fromEntries(
+    Object.entries(value).map(([id, receipt]) => {
+      memoryObject(receipt);
+      memoryRequire(receipt.id === id && receipt.domain === "memories", "invalid encoded memory receipt");
+      return [id, immutableMemoryValue(receipt)];
+    }),
+  ) as VillageState["memoryReceipts"];
 }
 
 /** Reserve in the Village CAS before attaching continuity to the Scene document.

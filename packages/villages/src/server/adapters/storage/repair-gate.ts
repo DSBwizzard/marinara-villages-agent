@@ -4,9 +4,12 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 import { createActivationBinding } from "../engine/activation-scope.js";
 import { conflict } from "../../domain/rules/errors.js";
+import { encodeRepairWrites, decodeRepairWrites } from "./repair-transaction-codec.js";
 
 const PACKAGE = "villages";
 const CONTROL = "villages-repair-control";
+const simulations = new WeakMap<CapabilityDocumentStore, () => boolean>();
+export const isRepairSimulation = (documents: CapabilityDocumentStore) => simulations.get(documents)?.() ?? false;
 export const repairDigest = (value: unknown): string =>
   createHash("sha256")
     .update(JSON.stringify(value) ?? "undefined")
@@ -26,7 +29,7 @@ type Context = {
   transaction?: Map<string, RepairWrite>;
   revisions?: Map<string, number>;
 };
-type Control = { version: 1; epoch: number; pending?: { id: string; writes: RepairWrite[] } };
+type Control = { version: 2; epoch: number; pending?: { id: string; writes: RepairWrite[] } };
 const clean = (row: CapabilityDocumentRecord | null): RepairDocument | null =>
   row ? { id: row.id, kind: row.kind, name: row.name, description: row.description, data: row.data } : null;
 // Clock observation may advance while a player reads the review. Preserve that clock on commit.
@@ -63,7 +66,10 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       packageId: PACKAGE,
       name: "Repair recovery",
       description: "Durable local recovery",
-      data,
+      data: {
+        ...data,
+        ...(data.pending ? { pending: { ...data.pending, writes: encodeRepairWrites(data.pending.writes) } } : {}),
+      },
       updatedAt: now,
     };
     if (old) {
@@ -97,7 +103,7 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
         } else await raw.create({ ...fields, createdAt: fields.updatedAt });
       }
     }
-    await saveControl({ version: 1, epoch });
+    await saveControl({ version: 2, epoch });
   }
   async function ensureReady() {
     if (!ready) {
@@ -105,11 +111,24 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
         const row = await raw.getById(PACKAGE, CONTROL);
         if (!row) return;
         const saved = row.data as Control;
-        if (saved?.version !== 1 || !Number.isSafeInteger(saved.epoch) || saved.epoch < 0)
+        if (saved?.version !== 2 || !Number.isSafeInteger(saved.epoch) || saved.epoch < 0)
           throw conflict("The repair recovery record is invalid.");
         controlRevision = row.revision;
         epoch = saved.epoch;
-        if (saved.pending) await replay(saved.pending);
+        if (Object.hasOwn(saved, "pending")) {
+          const pending = saved.pending;
+          if (
+            !pending ||
+            typeof pending !== "object" ||
+            Array.isArray(pending) ||
+            Object.getPrototypeOf(pending) !== Object.prototype ||
+            typeof pending.id !== "string" ||
+            !pending.id.trim() ||
+            !Object.hasOwn(pending, "writes")
+          )
+            throw conflict("The repair recovery record is invalid.");
+          await replay({ id: pending.id, writes: decodeRepairWrites(pending.writes) });
+        }
       })().catch((error) => {
         ready = undefined;
         throw error;
@@ -274,7 +293,7 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
       const writes = [...transaction.writes, ...extra];
       epoch++;
       try {
-        await saveControl({ version: 1, epoch, pending: { id, writes } });
+        await saveControl({ version: 2, epoch, pending: { id, writes } });
         await replay({ id, writes });
       } catch (error) {
         ready = undefined;
@@ -293,6 +312,7 @@ export function createRepairGate(raw: CapabilityDocumentStore) {
   const assertGeneration = () => {
     if (context.getStore()?.administrative) throw conflict("Repair operations cannot request model work.");
   };
+  simulations.set(guardedDocuments, () => !!context.getStore()?.transaction);
   return {
     documents: guardedDocuments,
     work,
