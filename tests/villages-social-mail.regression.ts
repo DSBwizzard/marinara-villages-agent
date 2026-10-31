@@ -25,7 +25,8 @@ import {
 import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
 import { createSocialMail } from "../packages/villages/src/server/features/residents/social-mail-service.js";
 import { correspondenceTestClient } from "./helpers/mailbox.fixture.js";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 const village = defaultVillageState();
 village.seed = "mail";
 village.foundedAt = new Date().toISOString();
@@ -62,6 +63,7 @@ let conflictClaimId = "";
 let conflictRetirementId = "";
 let competeAtReply: (() => void) | undefined;
 const authorityGate = createVillageRepository(() => ({}) as any);
+let savedVillage: ReturnType<typeof createVillageRepository> | undefined;
 const retries: string[] = [];
 const snapshot = async () => ({ ...structuredClone(village), relationshipContext: structuredClone(social) });
 const projection = (connection: string) => ({
@@ -173,7 +175,21 @@ const coreService = createSocialMail({
     if (callback) await callback();
     return structuredClone(social);
   },
-  mutateVillageState: async (mutate: any) => {
+  mutateVillageState: async (mutate: any, options: any) => {
+    if (savedVillage) {
+      await savedVillage.mutateAuthority(
+        (state) => {
+          state.relationshipContext = structuredClone(social);
+          mutate(state);
+        },
+        { ...options, memories: true },
+      );
+      Object.assign(village, await savedVillage.readAuthority({ memories: true, wishes: true }));
+      const callback = afterWorldCommit;
+      afterWorldCommit = undefined;
+      if (callback) await callback();
+      return snapshot();
+    }
     let next = { ...structuredClone(village), relationshipContext: structuredClone(social) };
     mutate(next);
     if (conflictClaimId && next.socialMailOutbox?.some((row: any) => row.id === conflictClaimId && row.retryClaim)) {
@@ -1269,3 +1285,98 @@ try {
   beforeContenderAuthority = undefined;
   afterWorldCommit = undefined;
 }
+
+// Native after-images are unloaded by default; reply authority must explicitly resolve its source effects.
+for (const kind of ["progress", "create"] as const)
+  for (const cold of [false, true]) {
+    const f = sceneHistoryFixture();
+    let repository = createVillageRepository(() => f.gate.documents);
+    const id = "canonical-mail-" + kind + "-" + cold;
+    const wish = fixtureWish({ wish: "Exchange friendly letters" }, id),
+      neighbour = fixtureWish({ wish: "Visit the orchard" }, id + "-neighbour");
+    const resident = wishWorld().villagers[0];
+    village.villagers[0] = {
+      ...resident,
+      characterId: "ada",
+      cardSnapshot: { ...resident.cardSnapshot, id: "ada" },
+      wishes: [wish, neighbour],
+    };
+    village.exchangeReceipts = {};
+    village.socialMailOutbox = [];
+    try {
+      await repository.mutateAuthority((state) => Object.assign(state, structuredClone(village)), {
+        memories: true,
+        wishes: true,
+      });
+      savedVillage = repository;
+      await service.send({ residentId: "ada", requestId: id, text: "We are exchanging letters." });
+      active = queued.at(-1).input;
+      const result = await service.handler.generate(active);
+      const proposal = {
+        actorId: "ada",
+        wishId: wish.id,
+        intent: "progress" as const,
+        evidence: [0],
+        reason: "A friendly written exchange.",
+      };
+      result.sourceWishChanges = [proposal];
+      result.replyWishChanges =
+        kind === "progress"
+          ? [{ ...proposal, reason: "Ada replies to the friendly letter." }]
+          : [
+              {
+                actorId: "ada",
+                wishId: "new:" + id,
+                intent: "create",
+                evidence: [0],
+                reason: "Ada expresses a new desire.",
+                desire: { wish: "Continue these letters " + id, reason: "Ada values the exchange." },
+                quote: result.replyText,
+              },
+            ];
+      await repository.mutateAuthority((state) => service.handler.apply(state, active, result, { retrying: false }));
+      Object.assign(village, await repository.readAuthority({ memories: true, wishes: true }));
+      const sourceId = "mail:" + active.messageId + ":source";
+      afterWorldCommit = async function failAfterSource() {
+        if (!Object.values(village.exchangeReceipts).some((receipt) => receipt.sceneId === sourceId)) {
+          afterWorldCommit = failAfterSource;
+          return;
+        }
+        throw Error("Acknowledgement lost after canonical source Wish publication");
+      };
+      const paid = calls;
+      await service.processOutbox(await snapshot());
+      assert(village.socialMailOutbox?.some((row) => row.id === active.messageId && row.error));
+      const metadata = await repository.readAuthority();
+      const receipt = Object.values(metadata.exchangeReceipts).find((row) => row.sceneId === sourceId)!;
+      assert(receipt, village.socialMailOutbox?.find((row) => row.id === active.messageId)?.error);
+      assert.equal(
+        receipt.sceneFacts!.wish!.value,
+        undefined,
+        "ordinary authority does not hydrate historical effects",
+      );
+      assert.equal(village.villagers[0].wishes[0].revision, wish.revision + 1);
+      if (cold) {
+        const documents = { ...f.gate.documents };
+        repository = createVillageRepository(() => documents);
+        savedVillage = repository;
+      }
+      await service.retry(active.threadId, active.messageId, id + "-retry");
+      const settled = await repository.readAuthority({ wishes: ["ada"] });
+      assert.equal(settled.socialMailOutbox?.length, 0, "reply settlement reuses the exact committed source authority");
+      assert.deepEqual(
+        settled.villagers[0].wishes.slice(0, 2).map((row) => row.id),
+        [wish.id, neighbour.id],
+      );
+      if (kind === "progress") assert.equal(settled.villagers[0].wishes[0].revision, wish.revision + 2);
+      else
+        assert.equal(settled.villagers[0].wishes.length, 3, "creation authority preserves the captured library order");
+      assert.equal(active.admitted.villagers[0].wishes[0].revision, wish.revision);
+      assert.equal(calls, paid, "source and reply recovery do not purchase replacement work");
+    } finally {
+      savedVillage = undefined;
+      afterWorldCommit = undefined;
+      f.release();
+      f.gate.dispose();
+    }
+  }
