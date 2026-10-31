@@ -1,3 +1,4 @@
+import { foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 import type { VillageState, ResidentPlanningOpportunity, ReturnCatchupCapture } from "../../domain/models/world.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
@@ -103,12 +104,7 @@ export function createNarrative(ports: Ports) {
   }
   async function reconcileAt(now: Date): Promise<void> {
     let state = await ports.read();
-    if (
-      !state.setupAt ||
-      state.clock?.recovery ||
-      (state.foundingPreparation && state.foundingPreparation.status !== "ready")
-    )
-      return;
+    if (!state.setupAt || state.clock?.recovery || !foundingReadyForPlay(state)) return;
     if (!state.narrative) {
       await ports.mutate((world) => {
         ensureNarrative(world, now.toISOString());

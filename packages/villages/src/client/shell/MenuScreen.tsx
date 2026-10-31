@@ -207,6 +207,18 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
             <div>
               <h1 className={`${ELEMENT_TAG}-title`}>{MENU_PAGE_TITLES[menuPage]}</h1>
             </div>
+            {snapshot?.foundingPreparation && snapshot.foundingPreparation.status !== "ready" ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={navigationBusy}
+                onClick={async () => {
+                  if (await canLeave()) setScreen("preparing");
+                }}
+              >
+                Founding extras
+              </button>
+            ) : null}
             {room && room.status !== "closed" ? (
               <button
                 type="button"

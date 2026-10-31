@@ -15,7 +15,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-founding-help-popup[data-mobile]::backdrop { background:rgb(0 0 0 / 25%); }
 .villages-founding-help-popup header { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin:0 0 .6rem; }
 .villages-founding-help-popup header h3 { margin:0; font-size:1rem; }
-.villages-founding-help-popup header button { flex:none; min-width:44px; min-height:44px; padding:.25rem; border:1px solid #596b9b; border-radius:.5rem; color:inherit; background:#192c4c; font:inherit; cursor:pointer; }
+.villages-founding-help-popup header button,.villages-forging-preparing button { flex:none; min-width:44px; min-height:44px; padding:.25rem; border:1px solid #596b9b; border-radius:.5rem; color:inherit; background:#192c4c; font:inherit; cursor:pointer; }
 .villages-founding-help-popup [role=note] { font-size:.9rem; line-height:1.5; overflow-wrap:anywhere; }
 .villages-life-heading { display:flex; align-items:center; gap:.2rem; }
 .villages-forging-v2 .villages-life-heading h3 { margin:0; }

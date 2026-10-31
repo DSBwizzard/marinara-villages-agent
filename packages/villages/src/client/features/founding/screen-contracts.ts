@@ -148,6 +148,7 @@ export type FoundingScreenController = {
 
 /** Values and actions used by PreparationScreen; independent of shell implementation. */
 export type PreparationScreenController = {
+  readonly setScreen: FoundingScreenController["setScreen"];
   readonly preparationProblem: FoundingState["preparationProblem"];
   readonly retryPreparation: ReturnType<typeof useRetryPreparation>;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";

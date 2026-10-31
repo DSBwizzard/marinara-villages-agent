@@ -5,7 +5,7 @@ import type { VillageSnapshot } from "../../domain/models/world.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { badRequest, conflict, safeFailureMessage } from "../../domain/rules/errors.js";
-import { foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
+import { foundingReadyForPlay, foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
@@ -39,7 +39,7 @@ export interface FoundingPreparationPorts {
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
   retryBackgroundJob: typeof retryBackgroundJob;
   settleBackgroundWork: typeof settleBackgroundWork;
-  queueVillagerAgenda(characterId: string, finite?: boolean): Promise<void>;
+  queueVillagerAgenda(characterId: string, finite?: boolean, origin?: "founding"): Promise<void>;
 }
 /** One application owns the first-founding sequence and its deliberate retries. */
 export function createFoundingPreparation(ports: FoundingPreparationPorts) {
@@ -68,6 +68,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       const initial = await readVillageState();
       seed = initial.seed;
       if (initial.foundingPreparation?.status !== "pending") return;
+      await initializeTasks(initial.seed);
       const targeted = !!initial.foundingPreparation.selectedTasks?.length;
       if (!targeted && !initial.foundingPreparation.venueDetailsSeeded) {
         try {
@@ -172,7 +173,8 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           if (latest.seed !== initial.seed || marker?.status !== "pending") return;
           const task = marker.tasks?.[id]?.[kind];
           if (
-            task?.status === "completed" ||
+            !task ||
+            task.status === "completed" ||
             (marker.selectedTasks?.length && !marker.selectedTasks.includes(kind + ":" + id))
           )
             continue;
@@ -205,7 +207,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
               prior && prior.revision === task?.revision && ["failed", "interrupted", "paused"].includes(prior.status);
             if (retryable && marker.retryActions?.length)
               await retryBackgroundJob(task!.jobId, prior.attempt, marker.retryActions.at(-1)!);
-            else if (kind === "routine") await queueVillagerAgenda(id, true);
+            else if (kind === "routine") await queueVillagerAgenda(id, true, "founding");
             else {
               const context = await readFoundingResidentContext(id);
               if (!context) throw new Error("Character identity is unavailable.");
@@ -293,6 +295,9 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             ),
           )
           .map((row) => row.characterId);
+        const residentIds = Object.keys(marker.tasks ?? {}).filter((id) =>
+          state.villagers.some((resident) => resident.characterId === id),
+        );
         const ideasReady =
           state.opening?.version !== 2 ||
           !state.opening.residentIds.some(
@@ -302,10 +307,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           );
         const spacesReady = privatePreparationRooms(state).every(({ zone }) => zone.preparation?.status === "ready");
         marker.status =
-          marker.venueDetailsSeeded &&
-          spacesReady &&
-          ideasReady &&
-          marker.completedIds.length === state.villagers.length
+          marker.venueDetailsSeeded && spacesReady && ideasReady && marker.completedIds.length === residentIds.length
             ? "ready"
             : "failed";
         marker.error =
@@ -412,9 +414,8 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     return buildVillageSnapshot();
   }
   async function assertFoundedVillageReady(): Promise<void> {
-    const marker = (await readVillageState()).foundingPreparation;
-    if (marker && marker.status !== "ready")
-      throw conflict("The village is still preparing. Retry any failed preparation before entering.");
+    if (!foundingReadyForPlay(await readVillageState()))
+      throw conflict("The Village needs usable places and local routines before entering.");
   }
 
   async function initializeTasks(seed: string) {
@@ -422,9 +423,14 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       (live) => {
         const marker = live.foundingPreparation;
         if (live.seed !== seed || marker?.status !== "pending") return;
+        const residentIds =
+          live.opening?.residentIds ??
+          (marker.tasksVersion === 1
+            ? Object.keys(marker.tasks ?? {})
+            : live.villagers.map((resident) => resident.characterId));
         marker.tasksVersion = 1;
         marker.tasks ??= {};
-        for (const resident of live.villagers)
+        for (const resident of live.villagers.filter((resident) => residentIds.includes(resident.characterId)))
           for (const kind of ["routine", "wish"] as const) {
             marker.tasks[resident.characterId] ??= {};
             const revision = foundingTaskRevision(live, resident.characterId, kind),

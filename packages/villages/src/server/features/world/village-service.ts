@@ -1,3 +1,4 @@
+import { foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import type {
   MemoryCorrectRequest,
@@ -157,8 +158,7 @@ export function createWorldCoordination({
     let recorded = await readVillageState();
     const now = options.now ?? villageNow();
     if (!isVillageFounded(recorded)) return buildVillageSnapshot(now);
-    if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
-      return buildVillageSnapshot(now);
+    if (!foundingReadyForPlay(recorded)) return buildVillageSnapshot(now);
     let completedMove = false;
     for (const residence of recorded.residences) {
       if (residence.status !== "moving" || Date.parse(residence.completesAt ?? "") > now.getTime()) continue;
@@ -202,6 +202,9 @@ export function createWorldCoordination({
     });
 
     if (calendarReplay(await readVillageState(), now)) return buildVillageSnapshot(now);
+    // Founding owns its optional requests; ordinary pulses must not retry them.
+    if (recorded.foundingPreparation && recorded.foundingPreparation.status !== "ready")
+      return buildVillageSnapshot(now);
     // Discover optional paid work only after deterministic advancement has committed.
     // Initial space preparation retains the founding generation path; begin it only after local advancement.
     outsideVenueOperation(() => {

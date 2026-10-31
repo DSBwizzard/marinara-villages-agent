@@ -40,6 +40,7 @@ try {
       },
     ];
     snapshot.foundingPreparation = {
+      canPlay: false,
       status: "pending",
       completedIds: [],
       currentId: "",
@@ -93,7 +94,8 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const root = page.locator(".villages-forging-preparing");
-    await expect(root.getByRole("heading", { name: "Station Fields is settling in" })).toBeVisible();
+    await expect(root.getByRole("heading", { name: "Founding extras" })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Enter Village" })).toHaveCount(0);
     const details = root.getByRole("region", { name: "Preparation details" });
     await expect(details).toBeVisible();
     await expect(details).toContainText("Waiting for Fixture System to write starting venue details");
@@ -123,6 +125,7 @@ try {
     await expect(details).toContainText("Waiting for Fixture System to write a Routine for Aqua");
     snapshot.foundingPreparation = {
       status: "pending",
+      canPlay: false,
       completedIds: [],
       currentId: "",
       error: "",
@@ -144,6 +147,7 @@ try {
       ...snapshot.foundingPreparation,
       status: "failed",
       tasksVersion: 1,
+      canPlay: true,
       tasks: {
         aqua: {
           routine: { contract: 1, revision: "r", jobId: "j", status: "completed", attempt: 1, error: "", receipt: "r" },
@@ -153,6 +157,16 @@ try {
     };
     await expect(root.getByRole("button", { name: "Retry Wish", exact: true })).toBeVisible();
     await expect(root.getByRole("button", { name: "Retry routine", exact: true })).toHaveCount(0);
+    snapshot.villagers.push({ characterId: "newcomer", name: "New arrival" });
+    await expect(root.getByText("New arrival", { exact: true })).toHaveCount(0);
+    assert.ok((await root.getByRole("button", { name: "Enter Village", exact: true }).boundingBox()).height >= 44);
+    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `optional-founding-${width}.png`) });
+    await root.getByRole("button", { name: "Enter Village", exact: true }).click();
+    await expect(root).toHaveCount(0);
+    assert.equal(retries, 1, "Entering after an optional failure makes no generation request");
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("button", { name: "Founding extras", exact: true }).click();
+    await expect(root.getByRole("button", { name: "Retry Wish", exact: true })).toBeVisible();
     await root.getByRole("button", { name: "Retry Wish", exact: true }).click();
     await expect.poll(() => retries).toBe(2);
     assert.equal(retryBody.characterId, "aqua");
@@ -164,6 +178,11 @@ try {
       "no horizontal overflow",
     );
     assert.deepEqual(errors, []);
+    await page.goto("http://villages.test/");
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+    await expect(root).toHaveCount(0);
+    assert.equal(retries, 2, "Reload preserves optional work without retrying it");
     await page.close();
   }
   console.log(

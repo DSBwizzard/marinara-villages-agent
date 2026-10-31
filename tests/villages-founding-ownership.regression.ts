@@ -195,7 +195,7 @@ async function independentFounding() {
     await a.service.foundingPreparationSnapshot();
     await a.service.prepareFoundedVillage();
     assert.deepEqual(a.calls, ["first", "second"], "discovery does not retry an interrupted paid request");
-    await assert.rejects(a.service.assertFoundedVillageReady(), /still preparing/);
+    await assert.rejects(a.service.assertFoundedVillageReady(), { statusCode: 409 });
     a.setFailure(false);
     await a.service.retryFoundedVillagePreparation();
     await a.service.prepareFoundedVillage();

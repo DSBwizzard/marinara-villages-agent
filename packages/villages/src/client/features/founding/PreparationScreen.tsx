@@ -3,16 +3,13 @@ import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
 
 export function PreparationScreen({ controller }: { controller: PreparationScreenController }) {
-  const { preparationProblem, retryPreparation, screen, snapshot } = controller;
-
-  // ── The founding wizard ────────────────────────────────────────────────────
-  // It owns the whole tab while it runs. The questions sit in the left column
-  // and the map is drawn beside them, so the player answers and marks their own
-  // houses by clicking the picture without either one being drawn over the
-  // other.
+  const { preparationProblem, retryPreparation, screen, setScreen, snapshot } = controller;
   if (screen === "preparing") {
     const preparation = snapshot?.foundingPreparation;
-    const total = snapshot?.villagers.length ?? 0;
+    const residents = (snapshot?.villagers ?? []).filter(
+      (resident) => preparation?.tasksVersion !== 1 || !!preparation.tasks?.[resident.characterId],
+    );
+    const total = residents.length;
     const done = preparation?.completedIds.length ?? 0;
     const current = snapshot?.villagers.find((villager) => villager.characterId === preparation?.currentId)?.name;
     const currentVenue = snapshot?.settings.venues.find((venue) => venue.id === preparation?.currentVenueId);
@@ -68,9 +65,14 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
           <div className={`${ELEMENT_TAG}-preparing-house`} aria-hidden="true">
             🏡
           </div>
-          <h1>{snapshot?.village.name ?? "Your village"} is settling in</h1>
-          <p>{`${done} of ${total} villagers ready`}</p>
-          <progress aria-label="Villagers ready" max={Math.max(1, total)} value={done} />
+          <h1>Founding extras</h1>
+          {preparation?.canPlay ? (
+            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setScreen("home")}>
+              Enter Village
+            </button>
+          ) : null}
+          <p>{`${done} of ${total} residents complete`}</p>
+          <progress aria-label="Residents complete" max={Math.max(1, total)} value={done} />
           {preparation?.privateSpacesTotal !== undefined ? (
             <>
               <p>{`${preparation.privateSpacesReady ?? 0} of ${preparation.privateSpacesTotal} private spaces ready`}</p>
@@ -82,7 +84,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
             </>
           ) : null}
           <ul className="villages-forging-preparation-list">
-            {(snapshot?.villagers ?? []).map((villager) => (
+            {residents.map((villager) => (
               <li key={villager.characterId}>
                 <strong>{villager.name}</strong>
                 {(["routine", "wish"] as const).map((kind) => {
@@ -91,7 +93,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
                     preparation?.status === "pending" &&
                     preparation.currentId === villager.characterId &&
                     preparation.currentTask === kind;
-                  const label = kind === "routine" ? "Routine" : "Initial Wish";
+                  const label = kind === "routine" ? "Personal routine" : "Initial Wish";
                   const status =
                     entry?.status === "completed" ||
                     (!entry && preparation?.completedIds.includes(villager.characterId))
