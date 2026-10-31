@@ -57,6 +57,7 @@ const palette = ["Tending herbs", "Reading", "Walking", "Painting", "Playing mus
   venue: 0,
   status: "idle",
   flexible: true,
+  essential: false,
   duration: 180,
   parts: [0, 1, 2, 3],
 }));
@@ -463,6 +464,10 @@ async function main() {
       1,
       "one generation request, no translation afterwards: " + JSON.stringify(await backgroundWorkSummaries()),
     );
+    assert.ok(
+      (await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "completed"),
+      "the valid response actually completes Routine generation",
+    );
     assert.ok(lastOptions.maxTokens <= 4000);
     assert.equal(lastOptions.reasoningEffort, "none");
     assert.deepEqual(
@@ -561,10 +566,13 @@ async function main() {
     fail = true;
     await clearVillagerAgenda("a", "bad-output");
     await settleBackgroundWork();
-    assert.equal(calls, 2);
+    assert.equal(calls, 3, "malformed output receives one eligible replacement request");
+    const failed = (await backgroundWorkSummaries()).find((job) => job.kind === "agenda" && job.status === "failed");
+    assert.equal(failed?.attempt, 3, "successful generation, explicit regeneration, then one automatic retry");
+    assert.equal(failed?.requests, 2);
     await buildVillageAgendas();
     await settleBackgroundWork();
-    assert.equal(calls, 2, "invalid output never automatically retries");
+    assert.equal(calls, 3, "local reads cannot purchase another retry after the allowance is spent");
     assert.ok((await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "failed"));
     await mutateVillageState((value) => {
       value.villagers[0]!.scheduleInfluence = influenceSettings({ enabled: false });
@@ -577,7 +585,7 @@ async function main() {
     });
     await reconcileVillage({ now: today });
     await settleBackgroundWork();
-    assert.equal(calls, 2, "entire missing legacy agendas are repaired locally, never a paid migration");
+    assert.equal(calls, 3, "entire missing legacy agendas are repaired locally, never a paid migration");
     assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.personalizationPending, false);
   } finally {
     stop();
