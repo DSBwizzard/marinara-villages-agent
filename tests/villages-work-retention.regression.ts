@@ -41,6 +41,23 @@ function job(patch: Partial<Job> = {}): Job {
   };
 }
 const savedReply = { fingerprint: "paid-input", status: "completed" as const, response: { content: "saved reply" } };
+const replacement = {
+  kind: "agenda" as const,
+  subjectId: "replacement",
+  seed: "retention",
+  revision: "next",
+  finite: true,
+  label: "Replacement",
+  input: { source: "accepted replacement" },
+};
+assert.equal(backgroundRecoveryState(job({ replacement })), "pending");
+assert.equal(
+  backgroundRecoveryState(
+    job({ replacement, status: "obsolete", steps: [{ fingerprint: "unknown", status: "running" }] }),
+  ),
+  "uncertain",
+  "A queued replacement does not settle its original request.",
+);
 for (const status of ["queued", "running", "paused"] as const)
   assert.equal(backgroundRecoveryState(job({ status })), "pending");
 assert.equal(backgroundRecoveryState(job()), "completed");
@@ -78,6 +95,8 @@ for (const malformed of [
   job({ steps: {} as any }),
   job({ optionalAttempts: { review: null } as any }),
   job({ partialResult: "invalid" as any }),
+  job({ replacement: null as any }),
+  job({ replacement: {} as any }),
 ])
   assert.equal(backgroundRecoveryState(malformed), "uncertain");
 assert.equal(
@@ -114,6 +133,8 @@ save("reply", { status: "obsolete", steps: [savedReply] });
 save("partial", { status: "failed", partialResult: true });
 save("uncertain", { status: "obsolete", steps: [{ fingerprint: "unknown", status: "running" }] });
 save("paused", { status: "paused" });
+save("pending-replacement", { replacement });
+save("old-parent-current-replacement", { seed: "prior-world", replacement });
 save("old-world", { seed: "prior-world", status: "failed", hasResult: true, result: "paid" });
 rows.set("malformed", { id: "malformed", kind: "background-work", revision: 1, data: null });
 for (const [id, data] of Object.entries({
@@ -163,6 +184,8 @@ assert.deepEqual(remainingJobs(), [
   "partial",
   "uncertain",
   "paused",
+  "pending-replacement",
+  "old-parent-current-replacement",
   "malformed",
   "empty-object",
   "malformed-step",

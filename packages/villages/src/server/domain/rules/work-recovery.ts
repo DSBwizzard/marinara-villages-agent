@@ -1,4 +1,4 @@
-import type { Job } from "../models/background-model.js";
+import type { BackgroundInput, Job } from "../models/background-model.js";
 
 export type WorkRecoveryState = "pending" | "recoverable" | "uncertain" | "completed" | "failed" | "abandoned";
 
@@ -34,6 +34,15 @@ const kinds: Record<Job["kind"], true> = {
 };
 export const isBackgroundKind = (value: unknown): value is Job["kind"] =>
   typeof value === "string" && Object.hasOwn(kinds, value);
+export function isBackgroundInput(value: unknown): value is BackgroundInput {
+  return (
+    record(value) &&
+    isBackgroundKind(value.kind) &&
+    ["seed", "subjectId", "revision", "label"].every((key) => typeof value[key] === "string") &&
+    typeof value.finite === "boolean" &&
+    Object.hasOwn(value, "input")
+  );
+}
 
 /** Minimum evidence/identity shape required for retention and summary projection, not a legacy decoder. */
 export function isBackgroundRecoveryRecord(value: unknown): value is Job {
@@ -77,6 +86,7 @@ export function isBackgroundRecoveryRecord(value: unknown): value is Job {
     return false;
   if (value.partialResult !== undefined && typeof value.partialResult !== "boolean") return false;
   if (value.failure !== undefined && (!record(value.failure) || typeof value.failure.cause !== "string")) return false;
+  if (value.replacement !== undefined && !isBackgroundInput(value.replacement)) return false;
   return true;
 }
 
@@ -84,13 +94,13 @@ export function isBackgroundRecoveryRecord(value: unknown): value is Job {
 export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
   if (!isBackgroundRecoveryRecord(value)) return "uncertain";
   const job = value;
-  const pending = ["queued", "running", "paused"].includes(job.status);
+  const scheduled = ["queued", "running", "paused"].includes(job.status);
   const steps = job.steps ?? [];
   const optional = Object.values(job.optionalAttempts ?? {});
   return workRecoveryState({
-    pending,
+    pending: scheduled || !!job.replacement,
     uncertain:
-      !pending &&
+      !scheduled &&
       (steps.some(
         (step) =>
           step.status === "running" || (step.timing?.outcome === "unknown" && !step.response && !step.responseRef),

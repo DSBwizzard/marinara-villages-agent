@@ -44,7 +44,11 @@ import { localDateKey } from "../domain/rules/resident-planning.js";
 import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { VILLAGE_WEEKDAYS } from "../domain/rules/village-clock.js";
 import { type WorkFailure, WorkFailureError } from "../domain/rules/work-failure.js";
-import { backgroundRecoveryState, isBackgroundRecoveryRecord } from "../domain/rules/work-recovery.js";
+import {
+  backgroundRecoveryState,
+  isBackgroundInput,
+  isBackgroundRecoveryRecord,
+} from "../domain/rules/work-recovery.js";
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 const KIND = "background-work";
 const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
@@ -52,6 +56,36 @@ const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);
 const activityDispatched = (job: Job) =>
   job.requests > 0 || job.attemptHistory?.some((attempt) => attempt.requests > 0) === true;
+const uncertainAttempt = (job: Job) =>
+  backgroundRecoveryState({ ...job, replacement: undefined, status: "obsolete" }) === "uncertain";
+function holdReplacement(job: Job): Job {
+  const message = "The replaced request has an uncertain outcome. Retry deliberately.";
+  return {
+    ...job,
+    status: "interrupted",
+    error: message,
+    failure: { cause: "unknown_request", stage: "recovery", message },
+  };
+}
+function completedJob(job: Job): Job {
+  if (job.replacement && uncertainAttempt(job)) return holdReplacement(job);
+  return {
+    ...job,
+    completedCount: job.steps.length || job.completedCount,
+    status: "completed",
+    error: "",
+    failure: undefined,
+    failedAt: undefined,
+    partialResult: false,
+    steps: [],
+    optionalAttempts: {},
+    settings: {},
+    input: null,
+    result: undefined,
+    hasResult: false,
+    retrying: false,
+  };
+}
 export function retireBackgroundResident(state: VillageState, characterId: string): void {
   for (const kind of ["agenda", "translation", "wish"] as const)
     delete state.backgroundReceipts[slotId({ kind, subjectId: characterId })];
@@ -306,6 +340,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (released) {
           const recovery = backgroundRecoveryState({
             ...before,
+            replacement: undefined,
             status: "obsolete",
             steps: before.steps.filter((_step, index) => index !== undispatchedStep),
           });
@@ -427,6 +462,39 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       connectionId: "",
       highWaterDate: work.automaticDate ?? (previous?.seed === work.seed ? previous.highWaterDate : ""),
     };
+  }
+  async function promoteReplacement(
+    id: string,
+    job: Job,
+    documents: CapabilityDocumentStore,
+    runOwner: string,
+  ): Promise<Job | undefined> {
+    const ready = (current: Job) => {
+      if (current.replacement === undefined) return false;
+      if (!isBackgroundInput(current.replacement) || slotId(current.replacement) !== id)
+        throw new Error("The saved background replacement is invalid. Restore it from a backup.");
+      return (
+        !stopped &&
+        owner === runOwner &&
+        !current.connectionPaused &&
+        !pausedConnections.has(current.connectionId) &&
+        !uncertainAttempt(current)
+      );
+    };
+    if (!ready(job)) return;
+    const next = await changeJob(
+      id,
+      (current) => {
+        if (!current || current.id !== job.id || current.attempt !== job.attempt)
+          throw new Obsolete("Background replacement ownership changed.");
+        if (!ready(current)) return current;
+        return fresh(current.replacement!, current);
+      },
+      documents,
+    );
+    if (next.id === job.id) return;
+    superseded.delete(job.id);
+    return next;
   }
   function hasVillagePresence(): boolean {
     const now = presenceNow();
@@ -650,10 +718,21 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     );
   }
   async function runMeasuredJob(id: string, documents: CapabilityDocumentStore): Promise<void> {
+    const runOwner = owner;
     const responses = backgroundResponseStore(documents);
     const updateJob = (update: Parameters<typeof changeJob>[1], undispatchedStep?: number) =>
       changeJob(id, update, documents, undispatchedStep);
     let job = await readJob(id, documents);
+    if (job) job = (await promoteReplacement(id, job, documents, runOwner)) ?? job;
+    if (job?.replacement && uncertainAttempt(job)) {
+      await updateJob((current) => {
+        if (stopped || owner !== runOwner) return current!;
+        if (current?.id !== job!.id || current.attempt !== job!.attempt)
+          throw new Obsolete("Background replacement ownership changed.");
+        return holdReplacement(current);
+      });
+      return;
+    }
     if (
       job &&
       (job.kind === "translation" ||
@@ -674,23 +753,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       return;
     }
     if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
-    const runOwner = owner;
     const recorded = await readForJob(job);
     if (recorded.backgroundReceipts[id] === job.id) {
-      await updateJob((current) => ({
-        ...current!,
-        status: "completed",
-        steps: [],
-        optionalAttempts: {},
-        settings: {},
-        input: null,
-        result: undefined,
-        hasResult: false,
-        error: "",
-        failure: undefined,
-        failedAt: undefined,
-        partialResult: false,
-      }));
+      job = await updateJob((current) => {
+        if (current?.id !== job!.id || current.attempt !== job!.attempt)
+          throw new Obsolete("Background acknowledgement ownership changed.");
+        return completedJob(current);
+      });
+      if (await promoteReplacement(id, job, documents, runOwner)) relaunch.add(id);
       return;
     }
     if (
@@ -1113,22 +1183,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       const appliedInput = job.input;
       const appliedFinite = job.finite;
       const wasRetry = job.retrying;
-      job = await updateJob((current) => ({
-        ...current!,
-        completedCount: current!.steps.length,
-        status: "completed",
-        error: "",
-        failure: undefined,
-        failedAt: undefined,
-        partialResult: false,
-        steps: [],
-        optionalAttempts: {},
-        settings: {},
-        input: null,
-        result: undefined,
-        hasResult: false,
-        retrying: false,
-      }));
+      job = await updateJob((current) => completedJob(current!));
       if (wasRetry) await recoverBackgroundWork().catch(() => {});
       await handlers
         .get(job.kind)!
@@ -1176,13 +1231,15 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           // Catch-up marks a step before entering the admission gate. If visibility
           // was lost there, no provider call began and this is an ordinary pause.
           if (
-            paused &&
+            (paused || obsolete) &&
             !dispatched &&
             catchupBatchId(current) &&
             lastIndex >= 0 &&
-            current.steps[lastIndex]?.status === "running"
+            current.steps[lastIndex]?.status === "running" &&
+            !current.steps[lastIndex].responseRef
           )
             current.steps.splice(lastIndex, 1);
+          if (obsolete && current.replacement && uncertainAttempt(current)) return holdReplacement(current);
           return {
             ...current!,
             status: obsolete
@@ -1233,12 +1290,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     } finally {
       controllers.delete(id);
     }
-    if (job.replacement && !stopped && owner === runOwner) {
-      const replacement = job.replacement;
-      await updateJob(() => fresh(replacement, job));
-      superseded.delete(job.id);
-      relaunch.add(id);
-    }
+    if (await promoteReplacement(id, job, documents, runOwner)) relaunch.add(id);
   }
   function recoverSavedResult(job: Job): { result: unknown } | undefined {
     if (job.hasResult || !["failed", "interrupted", "paused"].includes(job.status)) return undefined;
@@ -1289,6 +1341,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         if (job.attempt !== expectedAttempt || !["failed", "interrupted", "paused"].includes(job.status))
           throw conflict("That job changed. Refresh its status before retrying.");
         if (running.has(id)) throw conflict("That job is still finishing.");
+        if (job.replacement) {
+          if (!isBackgroundInput(job.replacement) || slotId(job.replacement) !== id)
+            throw new Error("The saved background replacement is invalid. Restore it from a backup.");
+          return fresh({ ...job.replacement, finite: true, retryActionId: actionId }, job);
+        }
         job.attemptHistory = [
           ...(job.attemptHistory ?? []),
           {
@@ -1328,6 +1385,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       },
       documents,
     );
+    if (savedPrior) superseded.delete(savedPrior.id);
     launch(id, documents);
   }
   async function retireStory(id: string, documents = villagesDocuments()): Promise<void> {
@@ -1411,7 +1469,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           }),
           documents,
         );
-      } else if (["queued", "paused", "running"].includes(job.status)) launch(record.id, documents);
+      } else if (["queued", "paused", "running"].includes(job.status) || job.replacement) launch(record.id, documents);
     }
   }
   async function backgroundWorkSummaries(): Promise<BackgroundSummary[]> {
@@ -1430,6 +1488,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         continue;
       }
       const job = record.data;
+      const oldWorld = job.seed !== state.seed && job.replacement?.seed !== state.seed;
       const retired =
         job?.kind !== "resident-planning" &&
         job?.kind !== "world-development" &&
@@ -1441,12 +1500,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (
         !job ||
         retired ||
-        job.seed !== state.seed ||
+        oldWorld ||
         (["completed", "obsolete"].includes(job.status) && Date.parse(record.updatedAt) < Date.now() - 30 * 86_400_000)
       ) {
         const recovery = backgroundRecoveryState(job);
         // Explicit Reset ends the prior world's ownership; a removed subject alone does not.
-        const disposable = job.seed !== state.seed || ["completed", "failed", "abandoned"].includes(recovery);
+        const disposable = oldWorld || ["completed", "failed", "abandoned"].includes(recovery);
         if (disposable && removed++ < 8 && !running.has(record.id))
           if (await documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision)) {
             const subjectGone =
