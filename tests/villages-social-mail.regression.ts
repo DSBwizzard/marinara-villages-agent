@@ -52,6 +52,8 @@ let calls = 0,
   sourceOnlyReply = false;
 let narrationReply = "I'd like to stay friends.";
 let rejectKnownContext = false;
+let rejectNarrationContext = false,
+  narrationFits = 0;
 let optionalTokenEstimate = 13000;
 let writingReplay:
   | {
@@ -252,15 +254,19 @@ const coreService = createSocialMail({
       connectionId,
       model: "fixture",
       maxOutputTokens: 4096,
-      fitContext: (messages: any, options: any) => ({
-        messages,
-        ...options,
-        estimatedTokensBefore: optionalTokenEstimate,
-        trimmed:
-          rejectKnownContext &&
-          connectionId === "system" &&
-          JSON.stringify(messages).includes("mandatory-correction-sentinel"),
-      }),
+      fitContext: (messages: any, options: any) => {
+        if (connectionId === "narration" && options.maxTokens > 0) narrationFits++;
+        return {
+          messages,
+          ...options,
+          estimatedTokensBefore: optionalTokenEstimate,
+          trimmed:
+            (rejectNarrationContext && connectionId === "narration") ||
+            (rejectKnownContext &&
+              connectionId === "system" &&
+              JSON.stringify(messages).includes("mandatory-correction-sentinel")),
+        };
+      },
       chatComplete: () => assert.fail("Real providers forbidden"),
     }),
   }),
@@ -515,12 +521,19 @@ calls = initialCalls;
   writingReplay = { settings: new Map(), hits: 0 };
   optionalTokenEstimate = 1;
   try {
+    rejectNarrationContext = true;
+    const before = calls;
+    await assert.rejects(service.handler.generate(active), /context does not fit.*narration/);
+    assert.equal(calls, before, "A new mail purchase still preflights its complete context");
+    rejectNarrationContext = false;
     await service.handler.generate(active);
     assert(writingReplay.response?.messages.includes("original-refusal"));
     const paid = calls;
+    const fits = narrationFits;
     writingReplay.settings = new Map(structuredClone([...writingReplay.settings]));
     optionalTokenEstimate = 13000;
     rejectKnownContext = true;
+    rejectNarrationContext = true;
     await assert.rejects(service.handler.generate(active), /context does not fit.*system/);
     assert.equal(
       writingReplay.hits,
@@ -528,10 +541,12 @@ calls = initialCalls;
       "Cached Narration replays before the current System's existing final self-fit hold",
     );
     assert.equal(calls, paid, "A context hold reuses the paid reply and buys no replacement");
+    assert.equal(narrationFits, fits, "A smaller current Narration budget cannot block a purchased response replay");
   } finally {
     active = original;
     writingReplay = undefined;
     rejectKnownContext = false;
+    rejectNarrationContext = false;
     optionalTokenEstimate = 13000;
     calls = initialCalls;
   }
