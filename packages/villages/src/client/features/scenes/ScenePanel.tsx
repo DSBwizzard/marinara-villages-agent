@@ -557,15 +557,23 @@ export function RoomPanel({
     const boundaries = stagingBoundaries(room.lines, room.submissions ?? []);
     const mainLines = room.lines.filter((line) => !isSceneAside(line));
     if (!mainLines.length && room.lines.length) mainLines.push(room.lines[0]!);
+    const mainSet = new Set(mainLines);
+    const mainById = new Map<string, RoomLine>();
+    for (const line of mainLines) if (line.id && !mainById.has(line.id)) mainById.set(line.id, line);
+    const participantNames = new Map<string, string>();
+    for (const person of room.participants)
+      if (!participantNames.has(person.characterId)) participantNames.set(person.characterId, person.name);
     const stageAsides = new Map<RoomLine, RoomLine[]>();
     const attached = new Map<RoomLine, RoomStep["asides"]>();
-    for (const [index, line] of room.lines.entries()) {
-      if (!isSceneAside(line) || mainLines.includes(line)) continue;
+    let previousMain: RoomLine | undefined;
+    for (const line of room.lines) {
+      if (mainSet.has(line)) {
+        previousMain = line;
+        continue;
+      }
+      if (!isSceneAside(line)) continue;
       // Also repair orphaned anchors in already-saved Scenes, without changing evidence.
-      const anchor =
-        mainLines.find((main) => main.id && main.id === line.asideFor) ??
-        mainLines.findLast((main) => room.lines.indexOf(main) < index) ??
-        mainLines[0];
+      const anchor = mainById.get(line.asideFor ?? "") ?? previousMain ?? mainLines[0];
       if (!anchor) continue;
       const list = attached.get(anchor) ?? [];
       list.push({
@@ -573,10 +581,7 @@ export function RoomPanel({
         text: line.content,
         ...(line.targetId
           ? {
-              target:
-                line.targetId === "player"
-                  ? playerName
-                  : (room.participants.find((person) => person.characterId === line.targetId)?.name ?? line.targetId),
+              target: line.targetId === "player" ? playerName : (participantNames.get(line.targetId) ?? line.targetId),
             }
           : {}),
         speakerId: line.speakerId,
@@ -585,10 +590,12 @@ export function RoomPanel({
         gazeAt: line.gazeAt,
       });
       attached.set(anchor, list);
-      stageAsides.set(anchor, [...(stageAsides.get(anchor) ?? []), line]);
+      const staged = stageAsides.get(anchor) ?? [];
+      staged.push(line);
+      stageAsides.set(anchor, staged);
     }
     for (const line of room.lines) {
-      if (!mainLines.includes(line)) continue;
+      if (!mainSet.has(line)) continue;
       const player = line.speakerId.length === 0;
       const walk = villagesWalk(line.content, line.beats ?? null);
       const asideLines = stageAsides.get(line) ?? [];

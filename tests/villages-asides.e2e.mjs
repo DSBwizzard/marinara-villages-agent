@@ -83,7 +83,7 @@ try {
         "At least the tea is strong.",
         "I brought the biscuits.",
       ][index],
-      asideFor: "main",
+      asideFor: index === 0 ? "missing-main" : "main",
       heardBy: [person.characterId],
       at: now,
     }));
