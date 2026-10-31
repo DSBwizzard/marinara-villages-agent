@@ -1,4 +1,4 @@
-// Test cases: storage-admission/module-replacement, storage-admission/disposed-write, storage-admission/epoch, storage-admission/recovery-generation, storage-admission/history-read, storage-admission/cleanup-wait, storage-admission/idle-context, storage-admission/manual-publication-gap, storage-admission/parallel-readiness, storage-admission/stale-control-read, storage-admission/page-batching, storage-admission/page-guards, storage-admission/page-overlay, storage-admission/page-acknowledgement, storage-admission/page-inflight, storage-admission/page-lifetime, storage-admission/page-inventory-integrity, storage-admission/page-replay
+// Test cases: storage-admission/module-replacement, storage-admission/disposed-write, storage-admission/epoch, storage-admission/recovery-generation, storage-admission/history-read, storage-admission/cleanup-wait, storage-admission/idle-context, storage-admission/manual-publication-gap, storage-admission/parallel-readiness, storage-admission/stale-control-read, storage-admission/page-batching, storage-admission/page-guards, storage-admission/page-overlay, storage-admission/page-acknowledgement, storage-admission/page-inflight, storage-admission/page-lifetime, storage-admission/page-inventory-integrity, storage-admission/page-replay, storage-admission/background-receipts
 import assert from "node:assert/strict";
 import { setImmediate as nextTurn } from "node:timers/promises";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -12,6 +12,153 @@ import { createVillageRepository } from "../packages/villages/src/server/adapter
 import { addMemory, memoryTime } from "./helpers/memories-fixture.js";
 import { createRepairTransactionCodec } from "../packages/villages/src/server/adapters/storage/repair-transaction-codec.js";
 import { createHistoryPageWriter } from "../packages/villages/src/server/adapters/storage/memory-pages.js";
+import {
+  BACKGROUND_COMPLETION_KIND,
+  backgroundCompletionId,
+  readBackgroundCompletion,
+} from "../packages/villages/src/server/adapters/storage/background-completions.js";
+import { backgroundSlotId } from "../packages/villages/src/server/domain/rules/background-revision.js";
+
+await runCase("storage-admission/background-receipts", async () => {
+  const slot = backgroundSlotId({ kind: "agenda", subjectId: "resident" });
+  const f = fixture(),
+    gate = createRepairGate(f.store),
+    repo = createVillageRepository(() => gate.documents);
+  const proofs = () =>
+    [...f.rows.values()].filter((row) => row.kind === BACKGROUND_COMPLETION_KIND).map(readBackgroundCompletion);
+  const world = () => f.rows.get("villages-village");
+  const replace = (jobId: string, expectedRevision = world().revision) =>
+    gate.documents.update({
+      id: world().id,
+      packageId: "villages",
+      expectedRevision,
+      data: { ...world().data, backgroundReceipts: { [slot]: jobId } },
+      updatedAt: "2026-10-31T00:00:00.000Z",
+    });
+  await repo.mutateAuthority((state) => {
+    state.seed = "closure-world";
+    state.backgroundReceipts = { [slot]: "committed-first" };
+  });
+  await replace("committed-first");
+  assert.equal(proofs().length, 0, "unchanged receipts need no extra proof");
+  assert.equal(await replace("not-written", world().revision - 1), null);
+  assert.equal(proofs().length, 0, "a stale expected revision cannot manufacture closure");
+  f.hook(async (id) => {
+    if (id === world().id)
+      assert.equal(proofs()[0].jobId, "committed-first", "proof is durable before the receipt is lost");
+  });
+  await replace("committed-second");
+  f.hook(async () => {});
+  const create = f.store.create;
+  let failure: "before" | "after" | undefined = "before";
+  f.store.create = async (input: any) => {
+    if (input.kind !== BACKGROUND_COMPLETION_KIND || !failure) return create(input);
+    const outcome = failure;
+    failure = undefined;
+    if (outcome === "after") await create(input);
+    throw Error("Completion publication acknowledgement lost");
+  };
+  await assert.rejects(replace("committed-third"), /acknowledgement lost/);
+  assert.equal(
+    world().data.backgroundReceipts[slot],
+    "committed-second",
+    "failed proof publication preserves the live receipt",
+  );
+  const get = f.store.getById;
+  const expected = backgroundCompletionId({
+    format: 1,
+    seed: "closure-world",
+    slotId: slot,
+    jobId: "committed-second",
+  });
+  const foreign = [...f.rows.values()].find((row) => row.kind === BACKGROUND_COMPLETION_KIND)!;
+  f.store.getById = async (pkg: string, id: string) => (id === expected ? structuredClone(foreign) : get(pkg, id));
+  failure = "before";
+  await assert.rejects(replace("committed-third"), /completion proof changed/);
+  assert.equal(
+    world().data.backgroundReceipts[slot],
+    "committed-second",
+    "a misindexed valid proof cannot acknowledge another scope",
+  );
+  f.store.getById = get;
+  failure = "after";
+  await replace("committed-third");
+  assert.deepEqual(
+    proofs()
+      .map((proof) => proof.jobId)
+      .sort(),
+    ["committed-first", "committed-second"],
+  );
+  f.hook(async (id) => {
+    if (id === "villages-village") {
+      const row = world();
+      row.revision++;
+      row.data.name = "Concurrent save";
+    }
+  });
+  assert.equal(await replace("not-committed"), null);
+  assert.equal(world().data.backgroundReceipts[slot], "committed-third");
+  assert.equal(
+    proofs().at(-1)!.jobId,
+    "committed-third",
+    "failed CAS may retain only an already committed positive fact",
+  );
+  f.hook(async () => {});
+  assert.equal(await gate.documents.remove("villages", world().id, world().revision), true);
+  assert.equal(proofs().length, 3, "physical World deletion also archives receipts idempotently");
+  gate.dispose();
+
+  const staged = fixture(),
+    first = createRepairGate(staged.store),
+    stagedRepo = createVillageRepository(() => first.documents);
+  await stagedRepo.mutateAuthority((state) => {
+    state.seed = "journal-world";
+    state.backgroundReceipts = { [slot]: "physical-commit" };
+  });
+  const initial = staged.rows.get("villages-village");
+  const review = await first.simulate(async () => {
+    const one = await first.documents.update({
+      ...initial,
+      expectedRevision: initial.revision,
+      data: { ...initial.data, backgroundReceipts: { [slot]: "simulation-only" } },
+    });
+    await first.documents.update({
+      ...one!,
+      expectedRevision: one!.revision,
+      data: { ...one!.data, backgroundReceipts: { [slot]: "reviewed-after-image" } },
+    });
+  });
+  assert.equal(
+    [...staged.rows.values()].filter((row) => row.kind === BACKGROUND_COMPLETION_KIND).length,
+    0,
+    "simulated intermediate receipts never become closure proof",
+  );
+  staged.hook(async (id) => {
+    if (id === "villages-village") throw Error("Interrupted World replay");
+  });
+  await assert.rejects(first.commit("receipt-journal", review.transaction), /Interrupted World replay/);
+  const savedProofs = [...staged.rows.values()]
+    .filter((row) => row.kind === BACKGROUND_COMPLETION_KIND)
+    .map(readBackgroundCompletion);
+  assert.deepEqual(
+    savedProofs.map((proof) => proof.jobId),
+    ["physical-commit"],
+  );
+  assert.equal(staged.rows.get("villages-village").data.backgroundReceipts[slot], "physical-commit");
+  first.dispose();
+  staged.hook(async () => {});
+  const restarted = createRepairGate(staged.store);
+  assert.equal(
+    (await restarted.documents.getById("villages", initial.id))!.data.backgroundReceipts[slot],
+    "reviewed-after-image",
+  );
+  assert.equal(
+    [...staged.rows.values()].filter((row) => row.kind === BACKGROUND_COMPLETION_KIND).length,
+    1,
+    "journal restart reuses exact proof rather than treating an intermediate preview as authority",
+  );
+  restarted.dispose();
+});
 
 function fixture() {
   const rows = new Map<string, any>();

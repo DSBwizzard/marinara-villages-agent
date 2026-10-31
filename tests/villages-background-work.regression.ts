@@ -35,6 +35,7 @@ import { backgroundCalls } from "../packages/villages/src/server/adapters/operat
 const rows = new Map<string, any>();
 let writesFail = false;
 let conflictingWrites = 0;
+let rejectEffectReceipts = false;
 let delayClaim = false;
 let claimGate: (() => void) | null = null;
 let claimWrites = 0;
@@ -86,6 +87,12 @@ const documents = {
       });
     }
     const row = rows.get(input.id);
+    if (
+      input.id === "villages-village" &&
+      rejectEffectReceipts &&
+      Object.keys(input.data?.backgroundReceipts ?? {}).length
+    )
+      return null;
     if (input.id === "villages-village" && conflictingWrites-- > 0) return null;
     if (!row || row.revision !== input.expectedRevision) return null;
     const next = { ...row, ...structuredClone(input), revision: row.revision + 1 };
@@ -276,6 +283,7 @@ async function reset() {
   maximum = 0;
   writesFail = false;
   conflictingWrites = 0;
+  rejectEffectReceipts = false;
   failStep = "";
   blockStep = "";
   providerGate = null;
@@ -701,18 +709,19 @@ async function main() {
     translationMode = false;
 
     await reset();
+    rejectEffectReceipts = true;
     await queueBackgroundJob(work("unapplied", ["unapplied"]));
     await settleBackgroundWork();
     const unapplied = rows.get((await summary("unapplied")).id);
+    rejectEffectReceipts = false;
+    const notApplied = await readVillageState({ memories: true });
+    assert.equal(notApplied.backgroundReceipts[unapplied.id], undefined, "the fixture never committed its effects");
+    assert.equal(notApplied.setting, "");
     unapplied.data.status = "running";
     unapplied.data.owner = "old-runtime";
     unapplied.data.input = { subject: "unapplied", steps: ["unapplied"], expectedName: "Willowbrook" };
     unapplied.data.hasResult = true;
     unapplied.data.result = ["recovered-local-result"];
-    await mutateVillageState((state) => {
-      delete state.backgroundReceipts[unapplied.id];
-      state.setting = "";
-    });
     effects.length = 0;
     stop();
     stop = startBackgroundWork({ now: () => now });
