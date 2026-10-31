@@ -498,6 +498,7 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
       memoryObject(row.data);
       if (row.data.purpose === "background") {
         validateBackgroundResponse(row);
+        candidates.push(row);
         continue;
       }
       if (row.data.purpose !== "scene") {

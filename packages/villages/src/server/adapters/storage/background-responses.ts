@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore, CapabilityLanguageModelCompletion } from "@marinara-engine/shared";
 import type { Job, Step } from "../../domain/models/background-model.js";
 import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
-import { isRepairSimulation } from "./repair-gate.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import { isRepairSimulation, withRepairWork } from "./repair-gate.js";
+import { backgroundSlotId } from "../../domain/rules/background-revision.js";
 import { capturedJobOwners } from "./captured-admissions.js";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -114,10 +114,7 @@ export function validateBackgroundJobRecord(row: Pick<Row, "id" | "kind" | "data
   memoryRequire(
     typeof job.kind === "string" &&
       typeof job.subjectId === "string" &&
-      row.id ===
-        (row.kind === "background-work"
-          ? "villages-background-" + backgroundRevision([job.kind, job.subjectId])
-          : backgroundHistoryId(row.data)),
+      row.id === (row.kind === "background-work" ? backgroundSlotId(job) : backgroundHistoryId(row.data)),
     "background job record identity changed",
   );
 }
@@ -263,8 +260,33 @@ export function createBackgroundResponses(documents: CapabilityDocumentStore) {
     remember(saved);
     return saved;
   }
-  async function publish(job: Job, index: number, response: CapabilityLanguageModelCompletion) {
+  async function publishOwned(job: Job, index: number, response: CapabilityLanguageModelCompletion) {
     const { ref, data } = prepareBackgroundResponse(job, index, response);
+    const owns = (row: Row) => {
+      memoryRequire(
+        row.packageId === "villages" && Number.isSafeInteger(row.revision) && row.revision > 0,
+        "background job record identity changed",
+      );
+      validateBackgroundJobRecord(row);
+      const owner = backgroundResponseOwners(row.data).find((owner) => owner.claim.id === ref.id);
+      memoryRequire(!owner?.ref || owner.ref.digest === ref.digest, "physical background response changed");
+      return !!owner;
+    };
+    const slot = backgroundSlotId(job),
+      current = await documents.getById("villages", slot);
+    if (current)
+      memoryRequire(
+        current.id === slot && current.kind === "background-work",
+        "background job record identity changed",
+      );
+    // Supersession retains the exact claim before releasing the current slot; only late replies scan history.
+    let owned = current ? owns(current) : false;
+    if (!owned)
+      for (const row of await documents.list("villages", "background-history")) {
+        memoryRequire(row.kind === "background-history" && row.revision === 1, "retained background attempt changed");
+        if (owns(row)) owned = true;
+      }
+    memoryRequire(owned, "background response claim is no longer retained");
     const stamp = new Date().toISOString();
     try {
       await documents.create({
@@ -289,6 +311,9 @@ export function createBackgroundResponses(documents: CapabilityDocumentStore) {
     const saved = validateBackgroundResponse({ id: ref.id, kind: "generation-response", data });
     remember(saved);
     return saved;
+  }
+  function publish(job: Job, index: number, response: CapabilityLanguageModelCompletion) {
+    return withRepairWork(() => publishOwned(job, index, response));
   }
   async function decode(raw: unknown): Promise<Job> {
     const owners = backgroundResponseOwners(raw),
