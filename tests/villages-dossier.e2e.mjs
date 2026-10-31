@@ -927,7 +927,9 @@ try {
     await expect(draft).toHaveValue(exactMessage);
     await mail.getByRole("button", { name: "Send letter", exact: true }).click();
     await expect(mail.getByLabel("Personal mail").getByText(exactMessage, { exact: true })).toBeVisible();
-    assert.equal(writes.findLast((row) => row.path.endsWith("/mailbox/threads")).body.text, exactMessage);
+    await expect
+      .poll(() => writes.findLast((row) => row.path.endsWith("/mailbox/threads"))?.body.text)
+      .toBe(exactMessage);
     assert.equal(
       await mail.evaluate((node) => node.scrollWidth > node.clientWidth + 1),
       false,
