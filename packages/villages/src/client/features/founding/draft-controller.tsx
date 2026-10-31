@@ -461,7 +461,7 @@ export function useFoundingDraftOffer(ports: {
         });
     } else {
       void removeDeviceDraft(API_PATH).catch(() => undefined);
-      if (snapshot.foundingPreparation && snapshot.foundingPreparation.status !== "ready") setScreen("preparing");
+      if (snapshot.foundingPreparation && !snapshot.foundingPreparation.canPlay) setScreen("preparing");
     }
   }, [
     openSetup,

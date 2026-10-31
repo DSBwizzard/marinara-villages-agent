@@ -43,9 +43,11 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     housingVenueId,
     setHousingVenueId,
     personalizeHomes,
+    preparationProblem,
     progressDebug,
     requestEdits,
     resetArmed,
+    retryPreparation,
     room,
     saveScenerySettings,
     spriteVisualSettings,
@@ -127,6 +129,9 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     return (
       <RepairPage
         controller={controller.repairController}
+        preparation={snapshot?.foundingPreparation}
+        preparationProblem={preparationProblem}
+        onRetryPreparation={retryPreparation}
         onBack={() => rawOpenMenu("index")}
         onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
       />

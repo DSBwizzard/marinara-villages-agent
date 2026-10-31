@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
-import { foundingCompletedIds } from "../../domain/rules/founding-tasks.js";
+import { foundingCompletedIds, foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
 import { openingView } from "../../domain/rules/opening-project.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
@@ -158,6 +158,7 @@ export function createVillageSnapshot({
       foundingPreparation: village.foundingPreparation
         ? {
             ...village.foundingPreparation,
+            canPlay: foundingReadyForPlay(village),
             completedIds: foundingCompletedIds(village),
             privateSpacesTotal: privatePreparationRooms(village).length,
             privateSpacesReady: privatePreparationRooms(village).filter(

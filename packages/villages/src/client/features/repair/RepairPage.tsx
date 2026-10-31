@@ -1,5 +1,6 @@
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import type { RepairTopic, RepairValue } from "../../../shared/contracts/repair.js";
+import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import type { RepairController } from "./useRepairController.js";
 import { REPAIR_STYLES } from "./repair-styles.js";
 const topics: { id: RepairTopic; name: string; description: string }[] = [
@@ -14,10 +15,16 @@ export function RepairPage({
   controller: c,
   onBack,
   onScene,
+  preparation,
+  preparationProblem,
+  onRetryPreparation,
 }: {
   controller: RepairController;
   onBack(): void;
   onScene?: () => void;
+  preparation?: VillageSnapshot["foundingPreparation"];
+  preparationProblem?: string;
+  onRetryPreparation?: () => Promise<void>;
 }) {
   const currentTopic = topics.find((t) => t.id === c.topic)!;
   const isRestore = c.review?.kind === "restore";
@@ -184,6 +191,16 @@ export function RepairPage({
         ) : null}
         {c.view === "list" ? (
           <>
+            {c.topic === "progress" && preparation?.status === "failed" && onRetryPreparation ? (
+              <section className="repair-notice" aria-label="Initial preparation">
+                <strong>Initial preparation</strong>
+                <p>{preparation.error}</p>
+                <button type="button" disabled={c.busy} onClick={() => void onRetryPreparation()}>
+                  Retry unfinished work
+                </button>
+                {preparationProblem ? <p role="alert">{preparationProblem}</p> : null}
+              </section>
+            ) : null}
             {c.person ? (
               <div className="repair-actions" role="group" aria-label="Villager records">
                 <button

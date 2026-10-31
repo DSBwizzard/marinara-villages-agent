@@ -15,7 +15,7 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
     if (
       !opening ||
       opening.stage !== "gathering" ||
-      snapshot?.foundingPreparation?.status !== "ready" ||
+      !snapshot?.foundingPreparation?.canPlay ||
       sceneRestoration.status !== "ready" ||
       screen !== "home" ||
       placingProjectId ||
@@ -35,7 +35,7 @@ export function OpeningReminder({ controller }: { controller: ReturnType<typeof 
     placingProjectId ||
     dismissed === key ||
     !["room", "home"].includes(screen) ||
-    snapshot?.foundingPreparation?.status !== "ready"
+    !snapshot?.foundingPreparation?.canPlay
   )
     return null;
   const follow = () => {

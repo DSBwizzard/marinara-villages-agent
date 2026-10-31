@@ -12,6 +12,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import {
   createWorldCoordination,
   type WorldCoordinationPorts,
@@ -198,6 +199,27 @@ a.times.length = 0;
 a.state.setupAt = a.state.foundedAt = a.state.simulatedThrough = stamp;
 a.state.backgroundPace = "off";
 const now = new Date("2026-10-07T12:00:00.000Z");
+for (const status of ["pending", "failed"] as const) {
+  const local = fixture("Local life");
+  local.state.setupAt = local.state.foundedAt = local.state.simulatedThrough = stamp;
+  local.state.venues = [
+    venueDraft(
+      { id: "commons", name: "Square", form: "Square", description: "A paved square", classes: ["community"] },
+      null,
+    ),
+  ];
+  local.state.foundingPreparation = { status, completedIds: [], currentId: "", error: "Optional request unfinished" };
+  await local.service.reconcileVillage({ now });
+  assert.equal(local.state.simulatedThrough, now.toISOString());
+  assert(local.calls.includes("roll"), "Local routines advance while optional preparation is unfinished");
+  assert(local.calls.includes("projects"), "Existing Projects continue");
+  assert(
+    !local.calls.includes("prepare") && !local.calls.includes("agendas"),
+    "A pulse does not redispatch founding generation",
+  );
+  assert.equal(local.queued.length, 0);
+  assert.equal(local.state.foundingPreparation.status, status, "Unfinished work retains its retry state");
+}
 await reconcileVillage({ now });
 assert.equal(a.state.simulatedThrough, now.toISOString());
 assert.equal(a.queued.length, 0);

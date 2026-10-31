@@ -167,6 +167,7 @@ export type VillageSnapshot = {
   isFounded: boolean;
   progressEngineVersion: 1;
   foundingPreparation: {
+    canPlay: boolean;
     status: "pending" | "failed" | "ready";
     completedIds: string[];
     tasksVersion?: 1;

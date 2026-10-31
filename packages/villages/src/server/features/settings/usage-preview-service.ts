@@ -111,6 +111,7 @@ export function createUsagePreview({
         !proposed.foundingPreparation.completedIds.includes(resident.characterId)
       ) {
         const tasks = proposed.foundingPreparation.tasks?.[resident.characterId];
+        if (proposed.foundingPreparation.tasksVersion === 1 && !tasks) continue;
         for (const [task, kind] of [
           ["routine", "agenda"],
           ["wish", "wish"],

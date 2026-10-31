@@ -9,6 +9,20 @@ import { backgroundRevision } from "./background-revision.js";
 import { asRecord } from "./coerce.js";
 import { venueZones } from "./venue-zones.js";
 import { foundingIdentity } from "./founding-requests.js";
+
+export function foundingReadyForPlay(
+  state: Pick<VillageState, "setupAt" | "venues" | "villagers" | "foundingPreparation">,
+): boolean {
+  if (!state.foundingPreparation || state.foundingPreparation.status === "ready") return true;
+  return (
+    !!state.setupAt &&
+    state.venues.some((venue) =>
+      venueZones(venue).some((zone) => zone.kind === "exterior" && !!zone.description.trim()),
+    ) &&
+    state.villagers.every((resident) => !!resident.agenda)
+  );
+}
+
 export function foundingTaskRevision(state: VillageState, id: string, kind: FoundingTaskKind): string {
   const resident = state.villagers.find((row) => row.characterId === id);
   return backgroundRevision([

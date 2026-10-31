@@ -1797,10 +1797,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           documents,
         );
       } else if (
-        (asRecord(job.input).foundingContract === 1 ||
-          (job.kind === "agenda" &&
-            (await (ports.readVillageAuthority ?? readVillageState)()).foundingPreparation?.status !== "ready" &&
-            !!(await (ports.readVillageAuthority ?? readVillageState)()).foundingPreparation)) &&
+        asRecord(job.input).foundingContract === 1 &&
         !job.hasResult &&
         ["queued", "paused", "running"].includes(job.status)
       ) {

@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { parseCompactFoundingCompletion } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
-import { foundingTaskRevision } from "../packages/villages/src/server/domain/rules/founding-tasks.js";
+import {
+  foundingReadyForPlay,
+  foundingSlot,
+  foundingTaskRevision,
+} from "../packages/villages/src/server/domain/rules/founding-tasks.js";
 import { villageFixtureDocuments, authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
 import { validateBackgroundResponse } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 
@@ -12,11 +15,13 @@ import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/r
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
+  assertFoundedVillageReady,
   foundingPreparationSnapshot,
   prepareFoundedVillage,
   retryFoundedVillagePreparation,
 } from "../packages/villages/src/server/features/founding/preparation.js";
 import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
+import { clearVillagerAgenda } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   recoverBackgroundWork,
@@ -297,10 +302,52 @@ async function main() {
   const stop = startBackgroundWork();
   try {
     install();
+    const local = fixture();
+    assert.equal(foundingReadyForPlay(local), true, "Local routines and usable places allow play during optional work");
+    const incomplete = structuredClone(local);
+    incomplete.villagers[0]!.agenda = null;
+    assert.equal(foundingReadyForPlay(incomplete), false, "A resident still needs a usable local routine");
+    incomplete.villagers = [];
+    incomplete.venues = [];
+    assert.equal(foundingReadyForPlay(incomplete), false, "An unfinished Village needs usable places");
+    await assertFoundedVillageReady();
+    assert.equal(calls.length, 0, "Entering does not authorize extra generation");
     mode = "context-loss";
     await prepareFoundedVillage();
     assert.equal(calls.length, 0, "required resident context cannot be trimmed before dispatch");
     assert.equal((await readVillageState({ memories: true })).foundingPreparation?.status, "failed");
+    await assertFoundedVillageReady();
+    assert.equal((await foundingPreparationSnapshot()).foundingPreparation?.canPlay, true);
+    install();
+    mode = "held";
+    failVenue = "aqua";
+    const admitted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const preparing = prepareFoundedVillage();
+    await admitted;
+    const forecast = await previewVillageBurst({ action: "founding" });
+    await mutateVillageState((current) => {
+      const newcomer = structuredClone(current.villagers[0]!);
+      newcomer.characterId = newcomer.cardSnapshot.id = "newcomer";
+      newcomer.cardSnapshot.name = "Newcomer";
+      newcomer.agenda = unwrittenVillageAgenda(current.venues, "Newcomer");
+      current.villagers.push(newcomer);
+    });
+    assert.equal(
+      (await previewVillageBurst({ action: "founding" })).requests,
+      forecast.requests,
+      "The founding estimate excludes residents admitted during play",
+    );
+    hold!();
+    await preparing;
+    const withNewcomer = await readVillageState({ memories: true });
+    assert.equal(withNewcomer.foundingPreparation?.status, "ready");
+    assert.equal(
+      withNewcomer.foundingPreparation?.tasks?.newcomer,
+      undefined,
+      "New arrivals never acquire implicit founding generation tasks",
+    );
     mode = "valid";
     install(false);
     await Promise.all([prepareFoundedVillage(), prepareFoundedVillage()]);
@@ -383,12 +430,31 @@ async function main() {
         await recoverBackgroundWork();
         await mutateVillageState((state) => {
           state.foundingPreparation!.tasksVersion = 1;
+          state.foundingPreparation!.tasks = Object.fromEntries(
+            state.villagers.map((resident) => [
+              resident.characterId,
+              Object.fromEntries(
+                (["routine", "wish"] as const).map((kind) => [
+                  kind,
+                  {
+                    contract: 1,
+                    revision: foundingTaskRevision(state, resident.characterId, kind),
+                    jobId: foundingSlot(kind, resident.characterId),
+                    status: "pending",
+                    attempt: 0,
+                    error: "",
+                  },
+                ]),
+              ),
+            ]),
+          );
           state.foundingPreparation!.retryActions = ["legacy-upgrade-retry"];
         });
       }
       await prepareFoundedVillage();
       state = await readVillageState({ memories: true });
       assert.equal(state.foundingPreparation?.status, "failed");
+      await assertFoundedVillageReady();
       assert.equal(
         state.foundingPreparation?.completedIds.length,
         2,
@@ -552,9 +618,6 @@ async function main() {
       const saved = [...rows.values()].find(
         (row) => row.kind === "background-work" && row.data.kind === "agenda",
       )!.data;
-      delete saved.input.foundingContract;
-      saved.revision = agendaRevision(await readVillageState({ memories: true }), saved.subjectId);
-      saved.input.revision = saved.revision;
       saved.owner = "previous-process";
       saved.status = interruptedStatus;
       saved.steps = [];
@@ -563,7 +626,7 @@ async function main() {
       calls.length = 0;
       await recoverBackgroundWork();
       await settleBackgroundWork();
-      assert.equal(calls.length, 0, "legacy " + interruptedStatus + " work cannot dispatch at startup");
+      assert.equal(calls.length, 0, "Founding " + interruptedStatus + " work cannot dispatch at startup");
       assert.equal(saved.requests, 0);
     }
 
@@ -713,6 +776,11 @@ async function main() {
     const targeted = (await readVillageState({ memories: true })).foundingPreparation!.tasks!.aqua.routine!;
     calls.length = 0;
     mode = "valid";
+    await clearVillagerAgenda("aqua", "play-regenerate");
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["routine"], "A deliberate normal regeneration works while extras remain failed");
+    assert.equal((await readVillageState()).foundingPreparation!.tasks!.aqua.routine!.status, "failed");
+    calls.length = 0;
     await retryFoundedVillagePreparation({
       characterId: "aqua",
       task: "routine",
@@ -721,6 +789,11 @@ async function main() {
     });
     await prepareFoundedVillage();
     assert.deepEqual(calls, ["routine"], "Targeted Routine retry cannot spend on unrelated Venue/interior work");
+    assert.equal(
+      (await readVillageState()).foundingPreparation!.tasks!.aqua.routine!.status,
+      "completed",
+      "Explicit founding retry retains task ownership after ordinary regeneration",
+    );
     assert.equal((await readVillageState({ memories: true })).foundingPreparation!.venueDetailsSeeded, false);
     console.log(
       "Founding preparation: Station Fields, single-space checkpoints, failures, retries, claims, fencing, progress and forecasts passed.",

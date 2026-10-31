@@ -540,6 +540,34 @@ async function main() {
     await settleBackgroundWork();
     assert.deepEqual(calls, ["write-race"]);
 
+    for (const founding of [false, true]) {
+      await reset();
+      await mutateVillageState((state) => {
+        state.foundingPreparation = {
+          status: "failed",
+          completedIds: [],
+          currentId: "",
+          error: "Optional Wish failed",
+        };
+      });
+      delayClaim = true;
+      claimGate = null;
+      const queued = work("same", ["queued-before-restart"]);
+      if (founding) queued.input = { ...queued.input, foundingContract: 1 };
+      const admission = queueBackgroundJob(queued);
+      await until(() => !!claimGate);
+      stop();
+      delayClaim = false;
+      claimGate!();
+      await admission;
+      assert.deepEqual(calls, [], "The stored request has never been submitted");
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, founding ? [] : ["queued-before-restart"]);
+      assert.equal((await summary("same")).status, founding ? "interrupted" : "completed");
+    }
+
     await reset();
     failStep = "Wednesday";
     await queueBackgroundJob(work("week", ["routine", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]));

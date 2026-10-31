@@ -1025,7 +1025,7 @@ export type VillageState = {
    * different question with a different answer.
    */
   setupAt: string;
-  /** Only first founding waits for this durable preparation marker; absent legacy villages are ready. */
+  /** Optional founding work and its explicit retries; play readiness is derived separately. */
   foundingPreparation?: {
     status: "pending" | "failed" | "ready";
     completedIds: string[];
@@ -1436,7 +1436,7 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   backgroundWork: import("./background-model.js").BackgroundSummary[];
   status: "ready";
   progressEngineVersion: 1;
-  foundingPreparation: NonNullable<VillageState["foundingPreparation"]> | null;
+  foundingPreparation: (NonNullable<VillageState["foundingPreparation"]> & { canPlay: boolean }) | null;
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];
   projects: import("../../../shared/contracts/village.js").BuildProject[];

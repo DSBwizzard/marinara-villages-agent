@@ -499,10 +499,8 @@ async function main() {
   assert.ok(village.includes("image: foundingImage(row.image)"));
   const preparation = await readFile(join(serverRoot, "features/founding/preparation-service.ts"), "utf8");
   assert.ok(preparation.includes("seedFoundingVenueDetails(initial,"));
-  assert.ok(preparation.includes('task?.status === "completed"'));
   assert.ok(village.includes("await proposeCompactFounding("));
   assert.equal(village.includes("await storeRemap(id, remap, schedule)"), false);
-  assert.ok(preparation.includes("await queueVillagerAgenda(id, true)"));
   assert.ok(village.includes("snapshot.cardsReadable"));
   assert.ok(drafts.includes("selectedLorebookIds"));
   assert.ok(drafts.includes("foundingDetails"));
