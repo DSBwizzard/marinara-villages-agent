@@ -855,6 +855,13 @@ async function main() {
       [],
       "Cancelled undispatched work cannot leave a running-step restore hold.",
     );
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "cancel-before-dispatch",
+      ),
+      false,
+      "An explicitly undispatched cancellation needs no recovery history.",
+    );
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "quiet";
@@ -871,6 +878,12 @@ async function main() {
     assert.equal(hidden.status, "paused", "No request began, so hiding is a pause rather than an interruption.");
     assert.equal(hidden.requests, 0);
     assert.deepEqual(rows.get(hidden.id).data.steps, []);
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "hidden-before-dispatch",
+      ),
+      false,
+    );
     await villageBackgroundPresence("hide-before-admission", true);
     await settleBackgroundWork();
     assert.ok(
@@ -893,9 +906,48 @@ async function main() {
     assert.equal(countPaused.status, "paused");
     assert.equal(countPaused.requests, 0, "A pre-dispatch hide does not count a provider request.");
     assert.equal(calls.includes("hidden-during-count"), false);
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "hidden-during-count",
+      ),
+      false,
+    );
     await villageBackgroundPresence("hide-during-count", true);
     await settleBackgroundWork();
     assert.ok(calls.includes("hidden-during-count"), "The unstarted request resumes after visibility returns.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("stale-saved-response", true);
+    registerBackgroundHandler("resident-planning", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        await mutateVillageState((state) => {
+          state.setting = "Source changed after response storage";
+        });
+        return {};
+      },
+      valid: (state) => state.setting !== "Source changed after response storage",
+      apply() {
+        throw new Error("An obsolete source cannot apply");
+      },
+    });
+    await queueBackgroundJob(catchupWork("stale-after-response", "stale-after-response"));
+    await settleBackgroundWork();
+    assert.equal(calls.filter((step) => step === "stale-after-response").length, 1);
+    assert.equal(
+      (await summary("stale-after-response")).status,
+      "obsolete",
+      "A saved reply is already dispatched work",
+    );
+    const staleAttempt = [...rows.values()].find(
+      (row) => row.kind === "background-history" && row.data.subjectId === "stale-after-response",
+    );
+    assert.equal(staleAttempt.data.steps[0].status, "completed");
+    assert.ok(staleAttempt.data.steps[0].responseRef);
+    assert.equal(staleAttempt.data.hasResult, true, "The paid result remains owned after its source becomes obsolete");
     await reset();
     await mutateVillageMemoryState((state) => {
       state.backgroundPace = "quiet";

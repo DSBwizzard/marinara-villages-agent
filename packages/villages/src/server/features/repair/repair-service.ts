@@ -1,4 +1,5 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
 import { createDepartureHistory, validateDepartureHistory } from "../../adapters/storage/departure-history.js";
 import { createWorldWishes, validateWorldWishHistory } from "../../adapters/storage/world-wishes.js";
 import { mutableSocialWish } from "../../domain/rules/social-wishes.js";
@@ -599,8 +600,7 @@ export function createRepairService(ports: RepairPorts) {
   async function retireWorldJob(row: Doc, at: string) {
     const job = row.data as import("../../domain/models/background-model.js").Job;
     if (job.kind !== "world-development") throw conflict("This held source is not a world review.");
-    const historyId = "villages-background-history-" + job.id + "-" + job.attempt;
-    if (!(await documents.getById(PKG, historyId))) await store(historyId, "background-history", structuredClone(job));
+    await retainBackgroundJob(documents, job);
     await documents.update({
       id: row.id,
       packageId: PKG,

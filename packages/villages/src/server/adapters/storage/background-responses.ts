@@ -8,7 +8,7 @@ import { backgroundRevision } from "../../domain/rules/background-revision.js";
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const prefix = "background:";
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
-type NativeJob = Omit<Job, "steps"> & { responseStorage: 1; steps: Omit<Step, "response">[] };
+type NativeJob = Omit<Job, "steps"> & { responseStorage: 2; steps: Omit<Step, "response">[] };
 function identity(job: Job, index: number, attempt: number) {
   const step = job.steps[index];
   return { seed: job.seed, jobId: job.id, attempt, index, key: step.key ?? null, fingerprint: step.fingerprint };
@@ -22,7 +22,7 @@ export function backgroundResponseClaim(job: Job, index: number, attempt = job.a
 export function backgroundResponseOwners(raw: unknown) {
   memoryObject(raw);
   memoryRequire(
-    raw.responseStorage === 1 && Array.isArray(raw.steps),
+    raw.responseStorage === 2 && Array.isArray(raw.steps),
     "unsupported background format; start a fresh Village",
   );
   const job = raw as NativeJob;
@@ -65,11 +65,41 @@ export function backgroundResponseOwners(raw: unknown) {
 export function nativeBackgroundJob(job: Job): NativeJob {
   const native = {
     ...job,
-    responseStorage: 1 as const,
+    responseStorage: 2 as const,
     steps: job.steps.map(({ response: _response, ...step }) => step),
   };
   backgroundResponseOwners(native);
   return native;
+}
+export function backgroundHistoryId(raw: unknown): string {
+  backgroundResponseOwners(raw);
+  const job = raw as NativeJob;
+  return "villages-background-history-" + job.id + "-" + job.attempt + "-" + hash(raw);
+}
+/** Exact before-images avoid losing richer evidence when a competing current-job CAS wins. */
+export async function retainBackgroundJob(documents: CapabilityDocumentStore, raw: unknown): Promise<void> {
+  const id = backgroundHistoryId(raw),
+    stamp = new Date().toISOString();
+  try {
+    await documents.create({
+      id,
+      packageId: "villages",
+      kind: "background-history",
+      name: "Retained background attempt",
+      description: "Private unfinished work and response ownership",
+      data: raw,
+      createdAt: stamp,
+      updatedAt: stamp,
+    });
+  } catch (error) {
+    const saved = await documents.getById("villages", id);
+    if (!saved) throw error;
+    validateBackgroundJobRecord(saved);
+    memoryRequire(
+      saved.packageId === "villages" && saved.revision === 1 && saved.id === id,
+      "retained background attempt changed",
+    );
+  }
 }
 export function validateBackgroundJobRecord(row: Pick<Row, "id" | "kind" | "data"> & Partial<Row>) {
   memoryRequire(
@@ -85,7 +115,7 @@ export function validateBackgroundJobRecord(row: Pick<Row, "id" | "kind" | "data
       row.id ===
         (row.kind === "background-work"
           ? "villages-background-" + backgroundRevision([job.kind, job.subjectId])
-          : "villages-background-history-" + job.id + "-" + job.attempt),
+          : backgroundHistoryId(row.data)),
     "background job record identity changed",
   );
 }
