@@ -114,19 +114,15 @@ function retainAttention(state: StagingState, ids: readonly string[]): StagingSt
   );
 }
 
-/** Replay from the initial cast, never from the currently displayed frame. */
-export function replayStaging(
-  ids: readonly string[],
-  events: readonly StagingEvent[],
-): Array<{ state: StagingState; activeIds: readonly string[] }> {
-  let state = initialStaging(ids);
-  let activeIds: readonly string[] = ids;
-  return events.map((event) => {
+/** Private writing needs the final state, without retaining every historical frame. */
+export function currentStaging(ids: readonly string[], events: readonly StagingEvent[]): StagingState {
+  let state = initialStaging(ids),
+    activeIds = ids;
+  for (const event of events) {
     if (event.beforeIds) {
       activeIds = event.beforeIds;
       state = retainAttention(state, activeIds);
     }
-    state = { ...state };
     for (const cue of event.cues ?? []) {
       if (!activeIds.includes(cue.characterId) || !state[cue.characterId]) continue;
       const { characterId, ...fields } = cue;
@@ -136,8 +132,8 @@ export function replayStaging(
       activeIds = event.afterIds;
       state = retainAttention(state, activeIds);
     }
-    return { state, activeIds };
-  });
+  }
+  return state;
 }
 
 export type StagingCursor = {

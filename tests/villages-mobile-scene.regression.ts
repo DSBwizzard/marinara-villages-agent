@@ -3,9 +3,9 @@ import { mobileReadingCounter } from "../packages/villages/src/client/features/s
 import {
   initialStaging,
   mobileSceneLayout,
-  replayStaging,
   stagingLayout,
 } from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { replayStaging } from "./helpers/scene-staging.fixture.js";
 
 const ids = ["a", "b", "c", "d"];
 for (const [count, expected] of [
