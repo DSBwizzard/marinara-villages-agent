@@ -17,6 +17,8 @@ import { createSceneCommands } from "../packages/villages/src/server/features/sc
 import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
 import { readSession, changeSession } from "../packages/villages/src/server/adapters/storage/scene-store.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { readScenePublicHistoryHead } from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
+import { validateSceneHistory } from "../packages/villages/src/server/adapters/storage/scene-history.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { quietContactReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import {
@@ -116,6 +118,118 @@ async function main() {
     assert.deepEqual(records, mismatched, "An internal Scene-ID mismatch cannot persist operation admission");
     assert.equal(calls, 0, "An invalid owner cannot purchase model work");
     records.delete("villages-venue-visit-mismatched-owner");
+    seed("history-policy");
+    const policyRow = row("history-policy");
+    Object.assign(policyRow.data, {
+      villageSeed: "policy-world",
+      participants: [{ characterId: "audience", name: "Audience", doing: "Listening" }],
+      lines: [
+        {
+          id: "heard",
+          role: "assistant",
+          speakerId: "audience",
+          name: "Audience",
+          content: "Exact heard words",
+          at: new Date().toISOString(),
+          heardBy: ["audience"],
+        },
+      ],
+    });
+    policyRow.data = authorSceneFixture(records, policyRow.data);
+    const publicBefore = structuredClone(policyRow.data.publicHistory);
+    let beforeTiming: any;
+    await coordinateVenue(
+      "history-policy",
+      "private-policy",
+      "turn",
+      { interactionScopeVersion: 6 },
+      0,
+      undefined,
+      async () => {
+        const native = row("history-policy").data;
+        const head = readScenePublicHistoryHead(
+          native.publicHistory,
+          native,
+          native.transcript,
+          native.submissionHistory,
+        );
+        assert.equal(head.privateHearing, true, "Scope6 privacy publishes before operation work");
+        assert.notEqual(head.publicVersion, publicBefore.publicVersion);
+        assert.deepEqual(
+          native.operation.snapshot.publicHistory,
+          publicBefore,
+          "Admitted history keeps its independent policy",
+        );
+        const get = documents.getById;
+        const reads: string[] = [];
+        const spy = mock.method(documents, "getById", async (pkg, id) => {
+          reads.push(id);
+          return get(pkg, id);
+        });
+        try {
+          await venueCheckpoint("history-status", async () => 42);
+        } finally {
+          spy.mock.restore();
+        }
+        assert(
+          !reads.some((id) => id.startsWith("villages-memory-page-" + native.transcript.world + "-")),
+          "Ordinary status/checkpoint writes never load transcript bodies",
+        );
+        await changeSession("history-policy", (scene) => {
+          scene.submissions.push({
+            id: "private-policy",
+            mode: "chat",
+            targetId: "",
+            message: "Exact input",
+            at: new Date().toISOString(),
+          });
+        });
+        beforeTiming = structuredClone(row("history-policy").data);
+      },
+    );
+    const afterTiming = row("history-policy").data;
+    assert.notDeepEqual(afterTiming.submissionHistory, beforeTiming.submissionHistory);
+    assert.notEqual(afterTiming.publicHistory.source, beforeTiming.publicHistory.source);
+    assert.deepEqual(afterTiming.publicHistory.positions, beforeTiming.publicHistory.positions);
+    assert.equal(afterTiming.publicHistory.publicVersion, beforeTiming.publicHistory.publicVersion);
+    await validateSceneHistory(villageFixtureDocuments(documents), [afterTiming]);
+    await coordinateVenue(
+      "history-policy",
+      "public-policy",
+      "turn",
+      { interactionScopeVersion: 5 },
+      afterTiming.sceneRevision,
+      undefined,
+      async () => {
+        assert.equal(row("history-policy").data.publicHistory.privateHearing, false);
+        assert.equal(row("history-policy").data.publicHistory.publicVersion, publicBefore.publicVersion);
+      },
+    );
+    await changeSession("history-policy", (scene) => {
+      scene.submissions.push({
+        id: "published-zone",
+        mode: "chat",
+        targetId: "",
+        message: "Zone evidence",
+        at: new Date().toISOString(),
+        zoneEventsVersion: 1,
+      });
+    });
+    await coordinateVenue(
+      "history-policy",
+      "still-private",
+      "turn",
+      { interactionScopeVersion: 5 },
+      row("history-policy").data.sceneRevision,
+      undefined,
+      async () => {
+        assert.equal(
+          row("history-policy").data.publicHistory.privateHearing,
+          true,
+          "Published Zone policy outlives the current operation",
+        );
+      },
+    );
     // Real completion fingerprints and persisted raw responses survive a reasoning-policy upgrade.
     let policyCalls = 0;
     const efforts: unknown[] = [];

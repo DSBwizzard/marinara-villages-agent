@@ -198,6 +198,10 @@
     },
     {
       "method": "get",
+      "path": "/rooms/:id/history"
+    },
+    {
+      "method": "get",
       "path": "/rooms/active"
     },
     {

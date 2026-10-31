@@ -4,6 +4,7 @@ import type { HistoryPageRef, HistoryPageTree, MemoryPageData } from "./memory-p
 import {
   sceneRecordWorld,
   readSceneRecordHead,
+  readSceneRecordPositions,
   encodeSceneRecords,
   decodeSceneRecords,
   decodeSceneRecordsSync,
@@ -20,6 +21,14 @@ const external = ({ root, ...head }: SceneRecordHead): SceneTranscriptHead => ({
 export const sceneTranscriptWorld = (owner: Owner) => sceneRecordWorld(owner, "lines");
 export function readSceneTranscriptHead(value: unknown, owner: Owner): SceneTranscriptHead {
   return external(readSceneRecordHead(value, owner, "lines"));
+}
+export async function readSceneTranscriptPositions(
+  documents: Pick<CapabilityDocumentStore, "getById">,
+  head: SceneTranscriptHead,
+  scene: VenueScene,
+  positions: readonly number[],
+) {
+  return (await readSceneRecordPositions(documents, internal(head), scene, "lines", positions)) as VenueLine[];
 }
 export function encodeSceneTranscript(lines: VenueLine[], owner: Owner, previous?: HistoryPageTree) {
   const encoded = encodeSceneRecords(lines, owner, "lines", previous);
@@ -38,6 +47,9 @@ export async function decodeSceneTranscript(
 }
 function transcriptStore(store: ReturnType<typeof createSceneRecordStore>) {
   return {
+    async readPositions(head: SceneTranscriptHead, scene: VenueScene, positions: readonly number[]) {
+      return (await store.readPositions(internal(head), scene, positions)) as VenueLine[];
+    },
     async read(head: SceneTranscriptHead, scene: VenueScene) {
       const { rows, layout } = await store.read(internal(head), scene);
       return { lines: [...rows] as VenueLine[], layout };

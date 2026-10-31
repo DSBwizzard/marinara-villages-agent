@@ -20,6 +20,14 @@ import {
   type SceneTranscriptHead,
 } from "./scene-transcript-pages.js";
 import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
+import {
+  readScenePublicHistoryHead,
+  scenePublicHistoryStore,
+  createScenePublicHistoryTracer,
+  type ScenePublicHistoryHead,
+  rebindScenePublicHistory,
+} from "./scene-public-history.js";
+import { publicSceneHistoryHearing } from "../../domain/rules/scene-public.js";
 import { wishHistoryStore, createWishHistoryTracer, wishResidentOwners } from "./wish-history.js";
 import { worldWishOwners } from "./world-wishes.js";
 import {
@@ -40,10 +48,18 @@ import {
   type RelationshipScope,
 } from "./relationship-payload-store.js";
 
-export const SCENE_STORAGE_FORMAT = 11;
+export const SCENE_STORAGE_FORMAT = 12;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
 const associations = new WeakMap<RelationshipState, { scope: RelationshipScope; head: RelationshipHead }>();
 const identity = (head: RelationshipHead) => head.id + ":" + head.digest;
+function publicHistoryHead(raw: Record<string, any>) {
+  return readScenePublicHistoryHead(
+    raw.publicHistory,
+    raw as VenueScene,
+    readSceneTranscriptHead(raw.transcript, raw as VenueScene),
+    readSceneSubmissionHead(raw.submissionHistory, raw as VenueScene),
+  );
+}
 export async function readActiveSceneOwner(documents: Pick<CapabilityDocumentStore, "getById">) {
   const pointer = await documents.getById("villages", "villages-active-venue");
   if (!pointer) return { pointer, scene: null };
@@ -113,6 +129,7 @@ export function sceneHistoryOwners(value: unknown): SceneHistoryOwner[] {
     );
     readSceneTranscriptHead(raw.transcript, raw as VenueScene);
     readSceneSubmissionHead(raw.submissionHistory, raw as VenueScene);
+    publicHistoryHead(raw);
     const context = storedContinuity(raw.continuity, raw);
     if (context?.head) owners.push({ sceneId: raw.id, scope: context.scope, head: context.head });
     if (raw.operation !== undefined && raw.operation !== null) {
@@ -175,9 +192,26 @@ export function sceneSubmissionOwners(
     scene: owner,
   }));
 }
+export function scenePublicHistoryOwners(value: unknown): ScenePublicHistoryHead[] {
+  sceneHistoryOwners(value);
+  const raw = value as Record<string, any>;
+  return [raw, ...(raw.operation?.snapshot ? [raw.operation.snapshot] : [])].map(publicHistoryHead);
+}
+async function validatePublicHistory(documents: Pick<CapabilityDocumentStore, "getById">, scenes: unknown[]) {
+  const tracer = createScenePublicHistoryTracer(async (id) => {
+    const row = await documents.getById("villages", id);
+    memoryRequire(
+      row?.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+      "owned public Scene history page is missing or changed",
+    );
+    return row.data as MemoryPageData;
+  });
+  for (const head of scenes.flatMap(scenePublicHistoryOwners)) await tracer.trace(head);
+}
 /** Consequential retirement checks the authored source before permissive logical field decoding. */
 export async function readSceneRetirementSource(documents: Pick<CapabilityDocumentStore, "getById">, value: unknown) {
   sceneHistoryOwners(value);
+  await validatePublicHistory(documents, [value]);
   const raw = value as VenueScene & { storageFormat: number; transcript: unknown; submissionHistory: unknown };
   const { lines } = await decodeSceneTranscript(readSceneTranscriptHead(raw.transcript, raw), async (id) => {
     const row = await documents.getById("villages", id);
@@ -208,6 +242,43 @@ export async function readSceneTranscriptIndex(documents: Pick<CapabilityDocumen
   );
   return { ...scene, lines };
 }
+/** Coordinator saves only operation metadata and submission timing, never transcript or semantic readiness. */
+export async function publishSceneOperationHistory(
+  documents: CapabilityDocumentStore,
+  before: Record<string, unknown>,
+  next: Record<string, unknown>,
+) {
+  const old = publicHistoryHead(before);
+  memoryRequire(
+    JSON.stringify([before.id, before.villageSeed, before.transcript, before.participants]) ===
+      JSON.stringify([next.id, next.villageSeed, next.transcript, next.participants]),
+    "Scene operation cannot change transcript or cast",
+  );
+  const scene = coerceSession({
+    version: 3,
+    id: next.id,
+    villageSeed: next.villageSeed,
+    participants: next.participants,
+  });
+  scene.operation = next.operation as VenueScene["operation"];
+  scene.contactGeneration = next.contactGeneration as VenueScene["contactGeneration"];
+  const transcript = readSceneTranscriptHead(next.transcript, scene),
+    submissions = readSceneSubmissionHead(next.submissionHistory, scene);
+  if (publicSceneHistoryHearing({ ...before, submissions: [] }) !== publicSceneHistoryHearing(scene)) {
+    scene.submissions = (
+      await sceneSubmissionStore(documents).read(submissions, {
+        ...scene,
+        continuity: next.continuity as VenueScene["continuity"],
+      })
+    ).submissions;
+    if (publicSceneHistoryHearing(scene) !== old.privateHearing) {
+      scene.lines = (await sceneTranscriptStore(documents).read(transcript, scene)).lines;
+      next.publicHistory = await scenePublicHistoryStore(documents).prepare(scene, transcript, submissions, old);
+      return;
+    }
+  }
+  next.publicHistory = rebindScenePublicHistory(old, scene, transcript, submissions);
+}
 /** Backlog and recovery enumeration need mechanics, not transcript or frozen relationship hydration. */
 export function readSceneIndex(value: unknown): Omit<VenueScene, "continuity"> {
   sceneHistoryOwners(value);
@@ -216,6 +287,7 @@ export function readSceneIndex(value: unknown): Omit<VenueScene, "continuity"> {
     continuity,
     transcript: _transcript,
     submissionHistory: _submissions,
+    publicHistory: _publicHistory,
     ...fields
   } = value as Record<string, any>;
   const scene = coerceSession(fields);
@@ -287,6 +359,7 @@ export async function validateSceneHistory(documents: Pick<CapabilityDocumentSto
   });
   for (const owner of scenes.flatMap(sceneSubmissionOwners))
     await submissions.trace(owner.head, owner.participants, owner.scene);
+  await validatePublicHistory(documents, scenes);
   for (const value of scenes) {
     const raw = value as Record<string, any>;
     await validateOperationEvidenceOwners(documents, raw.operation, raw as VenueScene, undefined, false, wishes);
@@ -338,6 +411,7 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
   const transcripts = sceneTranscriptStore(documents);
   const submissions = sceneSubmissionStore(documents);
   const evidence = operationEvidenceStore(documents);
+  const publicHistories = scenePublicHistoryStore(documents);
   async function decode(value: unknown): Promise<VenueScene> {
     sceneHistoryOwners(value);
     const active = await readActiveSceneOwner(documents);
@@ -349,7 +423,7 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
         : undefined,
     );
     const raw = value as Record<string, any>,
-      { storageFormat: _format, transcript, submissionHistory, ...logical } = raw;
+      { storageFormat: _format, transcript, submissionHistory, publicHistory: _publicHistory, ...logical } = raw;
     logical.operation = await evidence.decode(raw.operation, raw as VenueScene);
     const captured = storedContinuity(raw.continuity, raw);
     let body: RelationshipState | undefined;
@@ -469,6 +543,12 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
       ? readSceneSubmissionHead((previous as Record<string, any>).submissionHistory, scene)
       : undefined;
     const submissionHistory = await submissions.prepare(scene, priorSubmissions);
+    const publicHistory = await publicHistories.prepare(
+      scene,
+      transcript,
+      submissionHistory,
+      previous ? publicHistoryHead(previous as Record<string, any>) : undefined,
+    );
     const { lines: _lines, submissions: _submissions, ...facts } = scene;
     const operation = await evidence.encode(
       scene.operation,
@@ -481,6 +561,7 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
       storageFormat: SCENE_STORAGE_FORMAT,
       transcript,
       submissionHistory,
+      publicHistory,
       continuity: stored,
     };
     sceneHistoryOwners(result);

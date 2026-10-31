@@ -28,10 +28,12 @@ import {
   sceneWishOwners,
   sceneTranscriptOwners,
   sceneSubmissionOwners,
+  scenePublicHistoryOwners,
   readActiveSceneOwner,
 } from "../../adapters/storage/scene-history.js";
 import { createSceneTranscriptTracer } from "../../adapters/storage/scene-transcript-pages.js";
 import { createSceneSubmissionTracer } from "../../adapters/storage/scene-submission-pages.js";
+import { createScenePublicHistoryTracer } from "../../adapters/storage/scene-public-history.js";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
 import { worldWishOwners } from "../../adapters/storage/world-wishes.js";
 import { capturedWorldOwners, capturedJobOwners } from "../../adapters/storage/captured-admissions.js";
@@ -215,7 +217,16 @@ export async function collectRetainedStorage(gate: RepairGate) {
         marked.add(id);
         return row.data as MemoryPageData;
       });
-      return { overlay, lookup, tracer, relationships, transcripts, submissions, wishes, heads, bodies };
+      const publicHistory = createScenePublicHistoryTracer(async (id) => {
+        const row = await lookup(id);
+        memoryRequire(
+          row?.id === id && row.kind === "memory-page",
+          "owned public Scene history page is missing or changed",
+        );
+        marked.add(id);
+        return row.data as MemoryPageData;
+      });
+      return { overlay, lookup, tracer, relationships, transcripts, submissions, wishes, publicHistory, heads, bodies };
     }
     async function relationshipHistory(head: RelationshipHead, owner: RelationshipScope, view: Scope) {
       assertRelationshipWorld(head, owner);
@@ -359,6 +370,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
           await view.transcripts.trace(owner.head, owner.participants);
         for (const owner of sceneSubmissionOwners(row.data))
           await view.submissions.trace(owner.head, owner.participants, owner.scene);
+        for (const head of scenePublicHistoryOwners(row.data)) await view.publicHistory.trace(head);
         const scene = row.data as { id: string; villageSeed?: string; operation?: unknown };
         await traceOperationEvidence(
           scene.operation,

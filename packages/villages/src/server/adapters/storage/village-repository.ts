@@ -23,7 +23,7 @@ import { createCapturedAdmissions } from "./captured-admission-store.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["memories", "memoryScenes", "memoryReceipts"] as const;
-function rootData(record: CapabilityDocumentRecord | null) {
+export function readVillageRoot(record: CapabilityDocumentRecord | null) {
   if (!record) return null;
   memoryRequire(
     record.id === VILLAGE_DOC_ID &&
@@ -106,7 +106,7 @@ export function createVillageRepository(
       include = options?.memories;
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
       const record = await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID),
-        raw = rootData(record);
+        raw = readVillageRoot(record);
       if (!raw) return { record, head: null, state: defaultVillageState(), loaded: true };
       const head = readMemoryHead(raw.memoryHead);
       wishes.retain(raw);
@@ -118,7 +118,7 @@ export function createVillageRepository(
         const payload = await payloads.read(head, state);
         if (!payload) {
           const fresh = await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID);
-          const current = rootData(fresh);
+          const current = readVillageRoot(fresh);
           if (current && readMemoryHead(current.memoryHead)?.id !== head.id) continue;
           throw new Error("The committed Memories payload is missing.");
         }
@@ -201,7 +201,7 @@ export function createVillageRepository(
             try {
               await payloads.cleanup(async () => {
                 const current = await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID),
-                  raw = rootData(current);
+                  raw = readVillageRoot(current);
                 return { revision: current?.revision ?? 0, head: raw ? readMemoryHead(raw.memoryHead) : null };
               });
             } catch {

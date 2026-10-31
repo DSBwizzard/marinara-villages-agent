@@ -6,9 +6,14 @@ import type { VenueScene } from "../domain/models/scene-model.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
-import { sceneHistoryOwners, readSceneWorkIndex } from "../adapters/storage/scene-history.js";
+import {
+  sceneHistoryOwners,
+  readSceneWorkIndex,
+  publishSceneOperationHistory,
+} from "../adapters/storage/scene-history.js";
 import { readSceneSubmissionHead, sceneSubmissionStore } from "../adapters/storage/scene-submission-pages.js";
 import { coerceSession } from "../domain/decoding/scene-codec.js";
+import { sameSceneHistoryTurnPolicy } from "../domain/rules/scene-public.js";
 import { mutableSceneSubmission } from "../domain/rules/scene-submissions.js";
 import { memoryRequire } from "../domain/rules/memory-integrity.js";
 import { immutableMemoryValue } from "../domain/rules/memory-integrity.js";
@@ -193,6 +198,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       memoryRequire((record.data as { id?: string }).id === id, "Scene operation owner identity changed");
       const data = structuredClone(record.data) as Record<string, unknown>;
       await mutate(data, store);
+      await publishSceneOperationHistory(store, record.data as Record<string, unknown>, data);
+      sceneHistoryOwners(data);
       const saved = await store.update({
         id: record.id,
         packageId: VILLAGES_PACKAGE_ID,
@@ -227,8 +234,14 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       const prior = (await store.read(previous, scene)).submissions,
         submissions = [...prior];
       await mutate(data, submissions, documents);
-      if (submissions.length !== prior.length || submissions.some((row, index) => row !== prior[index]))
+      if (submissions.length !== prior.length || submissions.some((row, index) => row !== prior[index])) {
+        memoryRequire(
+          submissions.length === prior.length &&
+            submissions.every((row, index) => row === prior[index] || sameSceneHistoryTurnPolicy(prior[index], row)),
+          "Scene operation cannot change public turn visibility",
+        );
         data.submissionHistory = await store.prepare({ ...scene, submissions }, previous);
+      }
     });
   }
   async function persist(current: Context) {

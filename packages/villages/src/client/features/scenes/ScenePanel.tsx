@@ -37,6 +37,7 @@ import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene
 import { useReadingPages } from "./villages-reading-viewport.js";
 import { hasCompletedRoomSubmission, nextRoomReadIndex } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
+import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
 
@@ -178,6 +179,7 @@ function SceneControlIcon({ name }: { name: "send" | "sending" | "chat" | "concl
 /** The single Visit surface for an empty, solo, or group cast. */
 export function RoomPanel({
   room,
+  worldScope,
   sceneReading,
   mobile,
   nameColors,
@@ -235,6 +237,7 @@ export function RoomPanel({
   currentZoneLabel,
 }: {
   room: SceneView;
+  worldScope: string;
   sceneReading: SceneReadingSession;
   mobile: boolean;
   nameColors: Record<string, string>;
@@ -1310,6 +1313,7 @@ export function RoomPanel({
               className={ELEMENT_TAG + "-chat-history-toggle"}
               aria-label={historyOpen ? "Hide history" : "History"}
               aria-expanded={historyOpen}
+              disabled={!worldScope}
               title={historyOpen ? "Return to Visual Novel" : "Show chat history"}
               onClick={() => setHistoryOpen((value) => !value)}
             >
@@ -1330,33 +1334,14 @@ export function RoomPanel({
               window.requestAnimationFrame(() => historyTriggerRef.current?.focus());
             }}
           >
-            {room.lines.map((line, index) => (
-              <p key={line.id ?? index} className={`${ELEMENT_TAG}-chat-vn-text`}>
-                <strong
-                  style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
-                >
-                  {line.role === "user"
-                    ? playerName
-                    : line.kind === "narration" || line.speakerId === "__venue_scene__"
-                      ? "Narration"
-                      : line.name || "Resident"}
-                  {isSceneAside(line) ? " · aside" : ""}
-                  {speechDelivery(line) === "whisper"
-                    ? " · whisper"
-                    : speechDelivery(line) === "shout"
-                      ? " · shout"
-                      : ""}
-                  : {line.viaDoorway ? "Through the doorway · " : ""}
-                </strong>
-                <span
-                  style={
-                    line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined
-                  }
-                >
-                  {renderVillagesMarkdown(line.content, `history-${index}-`)}
-                </span>
-              </p>
-            ))}
+            <SceneHistory
+              key={worldScope + ":" + room.id}
+              sceneId={room.id}
+              scope={worldScope}
+              playerName={playerName}
+              nameStyle={nameStyle}
+              speechStyle={speechStyle}
+            />
           </div>
         ) : null}
         {step && step.asides.length > 0 ? (

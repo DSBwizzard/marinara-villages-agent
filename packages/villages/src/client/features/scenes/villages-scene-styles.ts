@@ -56,6 +56,9 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-log {
   position: relative; inset: auto; max-height: min(55cqh, max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 10rem)));
 }
+.${tag}-scene-history-pages { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-bottom: .5rem; background: var(--popover); }
+.${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 32px; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
 .${tag}-room-screen .${tag}-chat-input:has(> .${tag}-attention-choice) { flex-wrap: wrap; }
