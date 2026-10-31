@@ -50,7 +50,7 @@ The setup steps are **Place → People → Map → Venues → Review**.
 
 Map uploads need at least **768 pixels on the shorter side** and **1024 on the longer side**, with proportions between **2:3 and 2:1**. Generation requests an overhead map at 2560 × 1440; providers may return other dimensions.
 
-Setup drafts save on your device, so finish them in the same browser. If suggestions finish after your connection drops, use **Check suggestions** to retrieve them. Failed optional preparation can be retried under **REPAIR → Progress**, preserving completed work.
+Setup drafts save on your device, so finish them in the same browser. If suggestions finish after your connection drops, use **Check suggestions** to retrieve them. Background jobs such as Routines and initial Wishes retry one eligible empty or malformed answer automatically, preserving completed work. This can charge one additional model response. Further failures and interrupted requests can be retried under **REPAIR → Progress**.
 
 Characters keep their authored histories, relationships, secrets, and limits on what they know. Sharing a homeworld does not automatically make them acquainted. Optional lorebooks provide reference context without being rewritten.
 

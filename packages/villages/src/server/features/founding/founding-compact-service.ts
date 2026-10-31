@@ -5,6 +5,7 @@ import { foundingRequestMessages, OPENING_IDEA_FORMAT_VERSION } from "../../doma
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { readOpeningProposal } from "../../domain/rules/opening-project.js";
 import { bindOpeningRenovation } from "../../domain/rules/opening-renovation.js";
+import { completionFailure, metadataFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
 
@@ -12,6 +13,7 @@ import {
   type CompactFoundingContext,
   type CompactFoundingResult,
   parseCompactFoundingCompletion,
+  RoutineResponseError,
 } from "../../domain/rules/compact-founding-rules.js";
 
 export type CompactFoundingServicePorts = {
@@ -74,6 +76,13 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
     );
     try {
       return parseCompactFoundingCompletion(completion, context);
+    } catch (error) {
+      if (error instanceof RoutineResponseError)
+        throw new WorkFailureError({
+          ...(completionFailure(completion, "routine", requested) ?? metadataFailure(error.message)),
+          message: error.message,
+        });
+      throw error;
     } finally {
       villagesLogger().info(
         "[villages] founding task=routine contract=1 inputChars=%d outputAllowance=%d finish=%s",

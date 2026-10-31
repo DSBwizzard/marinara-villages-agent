@@ -170,7 +170,7 @@ try {
   let response = await app.inject({ method: "POST", url: "/api/villages/setup/preparation/retry", payload: batch });
   assert.equal(response.statusCode, 200, response.body);
   await settled();
-  assert.equal(calls, 4);
+  assert.equal(calls, 5, "The failed Wish receives exactly one automatic replacement.");
   let marker = records.get("villages-village").data.foundingPreparation;
   assert.equal(marker.status, "failed");
   assert.equal(marker.tasks.a.routine.status, "completed");
@@ -179,6 +179,13 @@ try {
     "A patient resident with a lasting interest in local history.",
   );
   assert.equal(marker.tasks.b.wish.status, "completed");
+  assert.equal(marker.tasks.a.wish.attempt, 2);
+  assert.equal(
+    [...records.values()].find(
+      (row) => row.kind === "background-work" && row.data.kind === "wish" && row.data.subjectId === "a",
+    )?.data.automaticRetryUsed,
+    true,
+  );
   const initialDescription = records.get("villages-village").data.villagers[0].identityDescription;
   const manualText = "A reserved resident with a lasting interest in local history.";
   const savedDescription = await app.inject({
@@ -204,7 +211,7 @@ try {
     },
   });
   assert.equal(oversizedDescription.statusCode, 400);
-  assert.equal(calls, 4, "Editing uses no model request.");
+  assert.equal(calls, 5, "Editing uses no model request.");
   const before = calls;
   await stop!();
   app = Fastify();

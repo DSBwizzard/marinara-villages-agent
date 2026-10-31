@@ -45,6 +45,9 @@ let failVenue = "aqua";
 let limit = 4096;
 let hold: (() => void) | undefined;
 let started: (() => void) | undefined;
+let wishStarted: (() => void) | undefined;
+let releaseWish: (() => void) | undefined;
+let feddyWishCalls = 0;
 let conflicts = 0;
 let writes = 0;
 const sourceSnapshots = new Map<string, any>();
@@ -114,6 +117,9 @@ function install(seeded = true) {
   calls.length = 0;
   stages.length = 0;
   writes = 0;
+  feddyWishCalls = 0;
+  wishStarted = undefined;
+  releaseWish = undefined;
   rows.set("villages-village", { id: "villages-village", packageId: "villages", data: fixture(seeded), revision: 1 });
 }
 const originalFetch = globalThis.fetch;
@@ -136,6 +142,13 @@ const release = configureVillagesRuntime({
       list: async (_p: string, kind: string) => structuredClone([...rows.values()].filter((row) => row.kind === kind)),
       create: async (input: any) => {
         const row = { ...structuredClone(input), revision: 1 };
+        if (
+          mode === "wish-invalid-clock" &&
+          input.kind === "background-work" &&
+          row.data.kind === "wish" &&
+          row.data.subjectId === "feddy"
+        )
+          row.data.input.now = "";
         rows.set(row.id, row);
         return row;
       },
@@ -227,6 +240,19 @@ const release = configureVillagesRuntime({
         assert.equal(options.responseFormat.type, "json_object");
         if (messages[0].content.includes("{wish:null}")) {
           calls.push("wish");
+          if (mode === "wish-invalid-clock" && JSON.parse(messages[1].content).identity.id === "feddy")
+            return {
+              content: JSON.stringify({ wish: { wish: "Talk with a neighbor", reason: "Get acquainted." } }),
+              finishReason: "stop",
+            };
+          if (mode === "wish-auto-held" && JSON.parse(messages[1].content).identity.id === "feddy") {
+            if (feddyWishCalls++ === 0)
+              return { content: JSON.stringify({ wish: { wish: "Incomplete desire" } }), finishReason: "stop" };
+            wishStarted?.();
+            await new Promise<void>((resolve) => {
+              releaseWish = resolve;
+            });
+          }
           if (mode === "wish-one-fail" && JSON.parse(messages[1].content).identity.id === "feddy")
             return { content: "{}", finishReason: "stop" };
           assert.equal(options.maxTokens, Math.min(limit, 1536));
@@ -350,6 +376,44 @@ async function main() {
       privatePreparationRooms(state).every(({ zone }) => zone.description.length <= 4000 && zone.state.recent === null),
     );
 
+    install();
+    mode = "wish-auto-held";
+    const beganWishRetry = new Promise<void>((resolve) => {
+      wishStarted = resolve;
+    });
+    const preparingWithRetry = prepareFoundedVillage();
+    await beganWishRetry;
+    assert.equal(
+      (await readVillageState()).foundingPreparation?.status,
+      "pending",
+      "Founding waits for the automatic Wish attempt.",
+    );
+    releaseWish!();
+    await preparingWithRetry;
+    state = await readVillageState({ memories: true });
+    assert.equal(state.foundingPreparation?.status, "ready");
+    assert.equal(state.foundingPreparation?.tasks?.feddy.wish?.attempt, 2);
+    assert.equal(calls.filter((call) => call === "wish").length, 4);
+    assert.ok(
+      state.villagers.every((resident) => resident.wishes.length === 0),
+      "A valid quiet result is final.",
+    );
+
+    install();
+    mode = "wish-invalid-clock";
+    await prepareFoundedVillage();
+    state = await readVillageState();
+    assert.equal(state.foundingPreparation?.status, "failed");
+    assert.equal(
+      calls.filter((call) => call === "wish").length,
+      3,
+      "Damaged saved input cannot purchase a replacement response.",
+    );
+    const damagedWish = [...rows.values()].find(
+      (row) => row.kind === "background-work" && row.data.kind === "wish" && row.data.subjectId === "feddy",
+    )!;
+    assert.equal(damagedWish.data.automaticRetryUsed, undefined);
+
     // Independent tasks survive each other's failure; retries never repeat successes.
     for (const failure of ["routine-one-fail", "wish-one-fail", "routine-timeout", "inherited-pause"]) {
       install();
@@ -405,12 +469,12 @@ async function main() {
       );
       assert.equal(
         calls.filter((call) => call === "routine").length,
-        3,
+        failure === "routine-one-fail" ? 4 : 3,
         "a transient failure does not block other residents",
       );
       assert.equal(
         calls.filter((call) => call === "wish").length,
-        3,
+        failure === "wish-one-fail" ? 4 : 3,
         "Wish generation does not require a successful Routine",
       );
       const failedId = failure === "wish-one-fail" ? "feddy" : "aqua",

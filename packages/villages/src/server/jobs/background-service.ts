@@ -56,6 +56,7 @@ import { VILLAGE_WEEKDAYS } from "../domain/rules/village-clock.js";
 import { type WorkFailure, WorkFailureError } from "../domain/rules/work-failure.js";
 import {
   backgroundRecoveryState,
+  canAutomaticallyRetryBackgroundJob,
   isBackgroundInput,
   isBackgroundRecoveryRecord,
 } from "../domain/rules/work-recovery.js";
@@ -1555,12 +1556,42 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             }
           : undefined,
       );
-      await handlers
-        .get(job.kind)
-        ?.afterFailure?.(failedInput)
-        .catch((followup) =>
-          villagesLogger().warn("[villages] could not save failed work status: %s", String(followup)),
-        );
+      let automaticallyRetried = false;
+      if (canAutomaticallyRetryBackgroundJob(job) && !pausedConnections.has(job.connectionId)) {
+        try {
+          checkCurrent(job, await readForJob(job));
+          const recovered = recoverSavedResult(job);
+          job = await updateJob((current) => {
+            automaticallyRetried = false;
+            if (
+              !current ||
+              stopped ||
+              owner !== runOwner ||
+              controller.signal.aborted ||
+              superseded.has(current.instanceId) ||
+              pausedConnections.has(current.connectionId) ||
+              !canAutomaticallyRetryBackgroundJob(current)
+            )
+              return current!;
+            resetFailedAttempt(current, recovered);
+            current.automaticRetryUsed = true;
+            current.retrying = false;
+            automaticallyRetried = true;
+            return current;
+          });
+          if (automaticallyRetried) relaunch.add(id);
+        } catch (retryError) {
+          if (!(retryError instanceof Paused || retryError instanceof Obsolete || isVillageClockError(retryError)))
+            throw retryError;
+        }
+      }
+      if (!automaticallyRetried)
+        await handlers
+          .get(job.kind)
+          ?.afterFailure?.(failedInput)
+          .catch((followup) =>
+            villagesLogger().warn("[villages] could not save failed work status: %s", String(followup)),
+          );
     } finally {
       if (controllers.get(id) === controller) controllers.delete(id);
     }
@@ -1575,6 +1606,40 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       // Keep private contents out of diagnostics; invalid replies use deliberate replacement.
       return undefined;
     }
+  }
+  function resetFailedAttempt(job: Job, recovered?: { result: unknown }): void {
+    job.attemptHistory = [
+      ...(job.attemptHistory ?? []),
+      {
+        attempt: job.attempt,
+        requests: job.requests,
+        tokens: job.usageComplete ? job.tokens : null,
+        failure: job.failure,
+        steps: job.steps.map(({ key, status, timing, responseDiagnostics }) => ({
+          key,
+          status,
+          timing,
+          responseDiagnostics,
+        })),
+      },
+    ].slice(-8);
+    if (recovered) {
+      job.result = recovered.result;
+      job.hasResult = true;
+    } else if (job.failedStep !== null) job.steps.splice(job.failedStep);
+    else if (job.steps.at(-1)?.status === "running") job.steps.pop();
+    job.failedStep = null;
+    if (job.partialResult) {
+      job.hasResult = false;
+      job.result = undefined;
+      job.partialResult = false;
+    }
+    job.failure = undefined;
+    job.failedAt = undefined;
+    job.attempt++;
+    job.owner = owner;
+    job.status = "queued";
+    job.error = "";
   }
   async function retryBackgroundJob(
     id: string,
@@ -1641,38 +1706,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           next.retryActions.push(action);
           return next;
         }
-        job.attemptHistory = [
-          ...(job.attemptHistory ?? []),
-          {
-            attempt: job.attempt,
-            requests: job.requests,
-            tokens: job.usageComplete ? job.tokens : null,
-            failure: job.failure,
-            steps: job.steps.map(({ key, status, timing, responseDiagnostics }) => ({
-              key,
-              status,
-              timing,
-              responseDiagnostics,
-            })),
-          },
-        ].slice(-8);
-        if (recovered && job.id === savedPrior?.id && job.instanceId === savedPrior.instanceId) {
-          job.result = recovered.result;
-          job.hasResult = true;
-        } else if (job.failedStep !== null) job.steps.splice(job.failedStep);
-        else if (job.steps.at(-1)?.status === "running") job.steps.pop();
-        job.failedStep = null;
-        if (job.partialResult) {
-          job.hasResult = false;
-          job.result = undefined;
-          job.partialResult = false;
-        }
-        job.failure = undefined;
-        job.failedAt = undefined;
-        job.attempt++;
-        job.owner = owner;
-        job.status = "queued";
-        job.error = "";
+        resetFailedAttempt(
+          job,
+          recovered && job.id === savedPrior?.id && job.instanceId === savedPrior.instanceId ? recovered : undefined,
+        );
         job.retrying = true;
         job.finite = true;
         job.retryActions = [...job.retryActions, action].slice(-32);

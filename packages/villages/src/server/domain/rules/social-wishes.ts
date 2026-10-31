@@ -250,7 +250,7 @@ export function newSocialWish(
   return readSocialWish({
     id,
     revision: 1,
-    ...candidate.parse(desire),
+    ...readSocialWishDesire(desire),
     status: "open",
     addedAt: at,
     changedAt: at,
@@ -260,6 +260,10 @@ export function newSocialWish(
     conditions: [],
     history: [],
   });
+}
+
+export function readSocialWishDesire(value: unknown) {
+  return candidate.parse(value);
 }
 
 export function publishWishDisclosure(state: VillageState, fact: WishDisclosure, recordedAt: string): void {

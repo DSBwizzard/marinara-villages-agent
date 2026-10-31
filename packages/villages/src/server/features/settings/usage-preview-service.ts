@@ -219,7 +219,9 @@ export function createUsagePreview({
             ? { min, max }
             : null,
       unknownCosts,
-      note: "Saved responses are reused. Costs may be unknown.",
+      note: languageRequests
+        ? "Base estimate excludes automatic retries; eligible background tasks can use one extra response. Saved responses are reused. Costs may be unknown."
+        : "Saved responses are reused. Costs may be unknown.",
     };
   }
 

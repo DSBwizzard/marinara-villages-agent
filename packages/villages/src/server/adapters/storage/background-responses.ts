@@ -38,6 +38,10 @@ export function backgroundResponseOwners(raw: unknown) {
   );
   const job = raw as NativeJob;
   memoryRequire(
+    job.automaticRetryUsed === undefined || job.automaticRetryUsed === true,
+    "invalid automatic retry allowance",
+  );
+  memoryRequire(
     typeof job.id === "string" &&
       typeof job.seed === "string" &&
       isBackgroundInstance(job.instanceId) &&

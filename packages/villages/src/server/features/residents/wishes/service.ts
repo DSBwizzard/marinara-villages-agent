@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { ZodError } from "zod";
 import { bindActivationService, createActivationBinding } from "../../../adapters/engine/activation-scope.js";
 import { villageNow } from "../../../adapters/time/clock-gate.js";
 import type { Handler } from "../../../domain/models/background-model.js";
@@ -21,6 +22,7 @@ import {
   knownSocialWishes,
   newSocialWish,
   readWishAuthority,
+  readSocialWishDesire,
 } from "../../../domain/rules/social-wishes.js";
 import { completionFailure, metadataFailure, WorkFailureError } from "../../../domain/rules/work-failure.js";
 type Ports = {
@@ -90,7 +92,14 @@ export function createWishes(ports: Ports) {
       if (!raw || !("wish" in raw)) throw new WorkFailureError(metadataFailure("Initial Wish result is missing."));
       if (raw.wish === null) return null;
       const id = "wish:" + createHash("sha256").update(input.revision).digest("hex").slice(0, 32);
-      return newSocialWish(raw.wish as { wish: string; reason: string }, id, input.now, {
+      let desire: ReturnType<typeof readSocialWishDesire>;
+      try {
+        desire = readSocialWishDesire(raw.wish);
+      } catch (error) {
+        if (error instanceof ZodError) throw new WorkFailureError(metadataFailure("Initial Wish result is invalid."));
+        throw error;
+      }
+      return newSocialWish(desire, id, input.now, {
         kind: "preparation",
         sourceId: input.revision,
         lineIds: [],
