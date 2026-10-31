@@ -8,6 +8,7 @@ import {
   createWishHistoryTracer,
   readWishHistoryHead,
   readWishArchiveHead,
+  wishResidentOwners,
   type WishArchiveEntry,
   type WishHistoryHead,
   type WishHistoryScope,
@@ -17,27 +18,6 @@ import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
 type Owner = { scope: WishHistoryScope; head: WishHistoryHead | null; name: string; departure: boolean };
 type EffectOwner = { id: string; scope: WishHistoryScope; head: WishHistoryHead | null; wishId: string };
 const effectOwners = new WeakMap<object, EffectOwner>();
-export function wishResidentOwners(value: unknown, scope: { seed: string; setupAt: string }) {
-  memoryRequire(Array.isArray(value), "invalid Wish resident directory");
-  const ids = new Set<string>();
-  return value.map((row) => {
-    memoryObject(row);
-    memoryObject(row.cardSnapshot);
-    memoryRequire(
-      typeof row.characterId === "string" &&
-        row.characterId.length > 0 &&
-        row.characterId === row.characterId.trim() &&
-        !ids.has(row.characterId) &&
-        typeof row.cardSnapshot.name === "string" &&
-        row.cardSnapshot.name.trim().length > 0 &&
-        !Object.hasOwn(row, "wishes"),
-      "invalid native Wish owner",
-    );
-    ids.add(row.characterId);
-    const owner = { ...scope, actorId: row.characterId };
-    return { scope: owner, head: readWishHistoryHead(row.wishHead, owner), name: row.cardSnapshot.name };
-  });
-}
 export function worldWishOwners(raw: unknown) {
   memoryObject(raw);
   memoryRequire(

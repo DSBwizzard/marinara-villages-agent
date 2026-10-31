@@ -122,6 +122,28 @@ function align(tree: HistoryPageTree, rows: { id: string }[]): HistoryPageTree {
   };
 }
 
+export function wishResidentOwners(value: unknown, scope: WishWorldScope) {
+  memoryRequire(Array.isArray(value), "invalid Wish resident directory");
+  const ids = new Set<string>();
+  return value.map((row) => {
+    memoryObject(row);
+    memoryObject(row.cardSnapshot);
+    memoryRequire(
+      typeof row.characterId === "string" &&
+        row.characterId.length > 0 &&
+        row.characterId === row.characterId.trim() &&
+        !ids.has(row.characterId) &&
+        typeof row.cardSnapshot.name === "string" &&
+        row.cardSnapshot.name.trim().length > 0 &&
+        !Object.hasOwn(row, "wishes"),
+      "invalid native Wish owner",
+    );
+    ids.add(row.characterId);
+    const owner = { ...scope, actorId: row.characterId };
+    return { scope: owner, head: readWishHistoryHead(row.wishHead, owner), name: row.cardSnapshot.name };
+  });
+}
+
 /** Each Wish's append-only events have their own tree, independent of its changing current fields. */
 export function encodeWishHistory(input: SocialWish[], scope: WishHistoryScope, previous?: Layout) {
   const world = wishHistoryWorld(scope),
