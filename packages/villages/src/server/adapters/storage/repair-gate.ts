@@ -60,6 +60,7 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     "relationship-payload",
     "relationship-payload-intent",
     "operation-evidence",
+    "sprite-file",
   ]);
   const raw = new Proxy(backing, {
     get(target, key) {
@@ -67,7 +68,11 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       if (key !== "create") return typeof value === "function" ? value.bind(target) : value;
       return (input: Parameters<CapabilityDocumentStore["create"]>[0]) => {
         // An estimate may overcount a failed create, but never understates attempted allocation.
-        if (allocationKinds.has(input.kind)) allocatedBytes += Buffer.byteLength(JSON.stringify(input.data));
+        if (allocationKinds.has(input.kind)) {
+          allocatedBytes += Buffer.byteLength(JSON.stringify(input.data));
+          if (input.kind === "sprite-file" && Number.isSafeInteger((input.data as any)?.bytes))
+            allocatedBytes += Math.max(0, (input.data as any).bytes);
+        }
         return target.create(input);
       };
     },

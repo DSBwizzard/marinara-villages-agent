@@ -62,6 +62,12 @@ import { createRepairStorage, repairStorageId } from "./repair-storage.js";
 import { readSceneResponseReceipt, sceneResponseReceiptId } from "../../adapters/storage/scene-response-receipts.js";
 import { readSceneTerminal } from "../scenes/scene-terminal.js";
 import {
+  SPRITE_FILE_KIND,
+  readSpriteFileAllocation,
+  retainedSpriteFiles,
+  spriteFileProcess,
+} from "../../adapters/storage/sprite-files.js";
+import {
   validateBackgroundResponse,
   validateBackgroundResponseOwners,
   validateBackgroundJobRecord,
@@ -77,6 +83,7 @@ const CANDIDATES = [
   "repair-undo",
   RELATIONSHIP_PAYLOAD_KIND,
   OPERATION_EVIDENCE_KIND,
+  SPRITE_FILE_KIND,
 ];
 const HISTORY_ID = /^villages-memory-([a-f0-9]{32})-[a-f0-9-]{36}$/;
 const ordinaryKinds = new Set([
@@ -88,6 +95,7 @@ const ordinaryKinds = new Set([
   "project-scene-evidence",
   "background-work",
   "background-history",
+  "sprite-setup",
   "repair-retention",
   "memory-payload-intent",
   RELATIONSHIP_INTENT_KIND,
@@ -108,7 +116,8 @@ function historyBody(row: RepairDocument) {
 }
 
 /** Only immutable bodies with an explicit owner contract are candidates. No prose discovery. */
-export async function collectRetainedStorage(gate: RepairGate) {
+type RemoveSpriteFile = (files: readonly ReturnType<typeof readSpriteFileAllocation>[]) => Promise<void>;
+export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?: RemoveSpriteFile) {
   return gate.alone(async () => {
     const raw = gate.raw,
       cache = new Map<string, Row | null>(),
@@ -173,14 +182,21 @@ export async function collectRetainedStorage(gate: RepairGate) {
     }
     for (const kind of CANDIDATES) {
       for (const row of await listed(kind)) {
-        memoryRequire(row.revision === 1, "immutable retained document changed");
+        memoryRequire(
+          row.revision === 1 || (kind === SPRITE_FILE_KIND && row.revision === 2),
+          "immutable retained document changed",
+        );
         if (kind === "repair-snapshot")
           memoryRequire(/^villages-repair-snapshot-[a-f0-9]{64}$/.test(row.id), "unknown snapshot identity");
         else if (kind === "memory-page") validateMemoryPageData(row.data, row.id);
         else if (kind === "repair-undo") undoBody(row);
         else if (kind === RELATIONSHIP_PAYLOAD_KIND) relationshipPayloadData(row);
         else if (kind === OPERATION_EVIDENCE_KIND) evidenceBody(row);
-        else historyBody(row);
+        else if (kind === SPRITE_FILE_KIND) {
+          const file = readSpriteFileAllocation(row);
+          memoryRequire(row.revision === (file.ready ? 2 : 1), "owned sprite acknowledgement changed");
+          if (!file.ready && file.process === spriteFileProcess) marked.add(row.id);
+        } else historyBody(row);
         candidates.push(row);
       }
     }
@@ -328,6 +344,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
       if (Object.hasOwn(value.history, "writeRefs")) await writes(value.history.writeRefs, view, value.history);
     }
     async function sourceOwners(row: RepairDocument, view: Scope) {
+      for (const id of retainedSpriteFiles(row.kind, row.data)) marked.add(id);
       const captures =
         row.kind === "village"
           ? capturedWorldOwners(row.data)
@@ -520,6 +537,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
     for (const row of await listed("venue-visit")) await sourceOwners(row, physical);
     for (const kind of ["background-work", "background-history"])
       for (const row of await listed(kind)) await sourceOwners(row, physical);
+    for (const row of await listed("sprite-setup")) await sourceOwners(row, physical);
     const active = await readActiveSceneOwner(documents);
     if (active.scene) await sourceOwners(active.scene, physical);
     if (root) {
@@ -614,14 +632,30 @@ export async function collectRetainedStorage(gate: RepairGate) {
       ...candidates.filter((row) => !marked.has(row.id)),
     ];
     const retiredIds = new Set(retired.map((row) => row.id));
+    memoryRequire(
+      removeSpriteFile || !retired.some((row) => row.kind === SPRITE_FILE_KIND),
+      "owned sprite cleanup is unavailable",
+    );
+    const spriteFiles = retired.filter((row) => row.kind === SPRITE_FILE_KIND).map(readSpriteFileAllocation);
+    if (spriteFiles.length) await removeSpriteFile!(spriteFiles);
     let removedBytes = 0;
     for (const row of retired) {
+      if (row.kind === SPRITE_FILE_KIND) {
+        const file = readSpriteFileAllocation(row);
+        removedBytes += file.bytes;
+      }
       memoryRequire(await raw.remove(PACKAGE, row.id, row.revision), "retained cleanup changed");
       removedBytes += Buffer.byteLength(JSON.stringify(row));
     }
     const retainedBytes = candidates
       .filter((row) => marked.has(row.id))
-      .reduce((sum, row) => sum + Buffer.byteLength(JSON.stringify(row)), 0);
+      .reduce(
+        (sum, row) =>
+          sum +
+          Buffer.byteLength(JSON.stringify(row)) +
+          (row.kind === SPRITE_FILE_KIND ? readSpriteFileAllocation(row).bytes : 0),
+        0,
+      );
     const ownerBytes = [...cache.values()]
       .filter(
         (row): row is Row =>
@@ -636,7 +670,11 @@ export async function collectRetainedStorage(gate: RepairGate) {
 }
 
 /** Allocation-driven housekeeping, using the existing idle gate; no timer or saved counter. */
-export function createRetainedStorageCleanup(gate: RepairGate, onFailure: (error: unknown) => void) {
+export function createRetainedStorageCleanup(
+  gate: RepairGate,
+  onFailure: (error: unknown) => void,
+  removeSpriteFile?: RemoveSpriteFile,
+) {
   let unsubscribe: (() => void) | undefined;
   let active = true,
     running: Promise<void> | undefined,
@@ -648,7 +686,7 @@ export function createRetainedStorageCleanup(gate: RepairGate, onFailure: (error
     running = Promise.resolve().then(async () => {
       try {
         if (!active || !gate.isIdle()) return;
-        const result = await collectRetainedStorage(gate);
+        const result = await collectRetainedStorage(gate, removeSpriteFile);
         retainedBytes = result.retainedBytes;
         initial = false;
         threshold = gate.allocatedBytes() + Math.max(FLOOR, retainedBytes);
