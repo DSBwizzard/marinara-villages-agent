@@ -9,7 +9,7 @@ import { physicalVenueEvents } from "./venue-scene-state.js";
 import { legacyZoneId, resolveVenueZone, venueZones } from "./venue-zones.js";
 import { reserveMemoryScene, sceneMemories } from "./village-memories.js";
 import { cloneWorldContext } from "./world-context-copy.js";
-import { immutableSocialWishes } from "./social-wishes.js";
+import { blockWishHistory, immutableSocialWishes, wishHistoryLoaded } from "./social-wishes.js";
 
 /** Current writer context, never evidence or a public attendance/room disclosure. */
 export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
@@ -91,18 +91,46 @@ export function cloneSceneFacts(facts: SceneContinuity["facts"]): SceneContinuit
 /** Exact after-values retained atomically with an accepted effect. Server-only. */
 export type SceneEffectFacts = {
   standingPermissions?: import("../models/relationship-types.js").RelationshipReview["permissions"];
-  wish?: { actorId: string; wishId: string; value: VillageWish | null };
+  /** Missing value is unloaded; null is an exact deletion after-image. */
+  wish?: { actorId: string; wishId: string; value?: VillageWish | null };
 };
 
 export function captureSceneWishEffect(state: VillageState, actorId: string, wishId: string): SceneEffectFacts {
-  return structuredClone({
+  const wish = state.villagers.find((row) => row.characterId === actorId)?.wishes.find((row) => row.id === wishId);
+  return {
     wish: {
       actorId,
       wishId,
-      value:
-        state.villagers.find((row) => row.characterId === actorId)?.wishes.find((row) => row.id === wishId) ?? null,
+      value: wish ? immutableSocialWishes([wish])[0] : null,
     },
-  });
+  };
+}
+
+/** Transcript order, including delayed completion, chooses one final after-image per Wish. */
+export function sceneWishEffectIds(current: VillageState, scene: VenueScene): string[] {
+  const baseline = new Set(scene.continuity?.receiptIds),
+    receipts = new Map<string, string[]>(),
+    latest = new Map<string, string>();
+  for (const receipt of Object.values(current.exchangeReceipts)) {
+    if (
+      receipt.sceneId !== scene.id ||
+      receipt.status !== "applied" ||
+      baseline.has(receipt.id) ||
+      !receipt.sceneFacts?.wish
+    )
+      continue;
+    const ids = receipts.get(receipt.submissionId) ?? [];
+    ids.push(receipt.id);
+    receipts.set(receipt.submissionId, ids);
+  }
+  for (const turn of scene.submissions)
+    for (const id of receipts.get(turn.id) ?? []) {
+      const wish = current.exchangeReceipts[id].sceneFacts!.wish!;
+      const key = JSON.stringify([wish.actorId, wish.wishId]);
+      latest.delete(key);
+      latest.set(key, id);
+    }
+  return [...latest.values()];
 }
 
 /** Narrator continuity never grants resident knowledge or supplies save evidence. */
@@ -181,24 +209,16 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
     }
   }
   const baselineReceipts = new Set(context.receiptIds);
-  // Transcript order is stable across retries and delayed effect completion.
-  for (const turn of scene.submissions) {
-    for (const receipt of Object.values(current.exchangeReceipts)) {
-      if (
-        receipt.sceneId !== scene.id ||
-        receipt.submissionId !== turn.id ||
-        receipt.status !== "applied" ||
-        baselineReceipts.has(receipt.id)
-      )
-        continue;
-      const facts = receipt.sceneFacts;
-      if (!facts) continue;
-      if (facts.wish) {
-        const { actorId, wishId, value } = structuredClone(facts.wish);
-        const resident = view.villagers.find((row) => row.characterId === actorId);
-        if (resident) resident.wishes = [...resident.wishes.filter((w) => w.id !== wishId), ...(value ? [value] : [])];
-      }
-    }
+  for (const id of sceneWishEffectIds(current, scene)) {
+    const { actorId, wishId, value } = current.exchangeReceipts[id].sceneFacts!.wish!;
+    const resident = view.villagers.find((row) => row.characterId === actorId);
+    if (!resident) continue;
+    if (value === undefined) blockWishHistory(resident);
+    else if (wishHistoryLoaded(resident))
+      resident.wishes = immutableSocialWishes([
+        ...resident.wishes.filter((w) => w.id !== wishId),
+        ...(value ? [value] : []),
+      ]);
   }
 
   if (view.relationshipContext && current.relationshipContext) {

@@ -27,7 +27,7 @@ import {
   type ResidentAccessAction,
 } from "../../domain/rules/resident-actions.js";
 import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
-import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import {
   readSceneBoundary,
@@ -96,14 +96,16 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
 
 export function createSemanticService(ports: SemanticPorts) {
   async function readSceneAuthority(scene: VenueScene) {
-    const state = await ports.readVillageState();
+    const wishEffects = (state: import("../../domain/models/world.js").VillageState) =>
+      sceneWishEffectIds(state, scene);
+    const state = await ports.readVillageState({ wishEffects });
     const actors = scene.contactGeneration?.actorIds ?? [
       ...scene.activeIds,
       ...(scene.contactGeneration?.remoteIds ?? []),
     ];
     const captured = scene.continuity && scene.continuity.seed === state.seed && scene.villageSeed === state.seed;
     return !captured && state.villagers.some((row) => actors.includes(row.characterId) && !wishHistoryLoaded(row))
-      ? ports.readVillageState({ wishes: actors })
+      ? ports.readVillageState({ wishes: actors, wishEffects })
       : state;
   }
   async function ask<Input, Result>(

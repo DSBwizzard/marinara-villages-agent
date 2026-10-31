@@ -319,7 +319,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
         memoryObject(row.data);
         memoryRequire(
           row.id === "villages-village" &&
-            row.data.version === 11 &&
+            row.data.version === 12 &&
             typeof row.data.seed === "string" &&
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",
@@ -330,6 +330,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
         if (departure?.head) await relationshipHistory(departure.head, departure.scope, view);
         const wishOwners = worldWishOwners(row.data);
         for (const owner of wishOwners.owners) await view.wishes.trace(owner.head, owner.scope);
+        for (const owner of wishOwners.effects) await view.wishes.trace(owner.head, owner.scope, owner.wishId);
         await view.wishes.traceArchive(wishOwners.archive, wishOwners.scope);
       } else if (row.kind === "relationships") {
         const root = readRelationshipRoot(row.data);

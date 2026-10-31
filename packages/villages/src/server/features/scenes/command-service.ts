@@ -59,7 +59,7 @@ import {
   type AttentionPlan,
 } from "../../domain/rules/scene-attention.js";
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
-import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView, cloneSceneFacts, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
 import { provisionalSceneNarrative } from "../../domain/rules/scene-narrative-effects.js";
 import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
@@ -2768,6 +2768,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       updated =
         venueOperationInput()?.preservationVersion === 1 && withVillageSceneAcceptance
           ? await withVillageSceneAcceptance(commitTurn, {
+              wishEffects: (state) => sceneWishEffectIds(state, session),
               wishes: Array.isArray(reply.wishChanges)
                 ? [
                     ...new Set(

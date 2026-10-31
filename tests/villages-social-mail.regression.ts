@@ -1160,7 +1160,7 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
     packageId: "villages",
     kind: "village",
     data: {
-      version: 11,
+      version: 12,
       seed: village.seed,
       setupAt: village.setupAt,
       memoryHead: null,

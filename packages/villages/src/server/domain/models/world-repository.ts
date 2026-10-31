@@ -1,6 +1,11 @@
 import type { VillageState } from "./world.js";
 
-export type VillageMemoryRead = { memories?: boolean; wishes?: true | readonly string[] };
+export type VillageMemoryRead = {
+  memories?: boolean;
+  wishes?: true | readonly string[];
+  /** Exact historical Wish after-images needed by this operation. */
+  wishEffects?: true | readonly string[] | ((state: VillageState) => readonly string[]);
+};
 export type VillageMemoryWrite = Omit<VillageMemoryRead, "memories"> & {
   memories?: boolean | ((state: VillageState) => boolean);
 };
