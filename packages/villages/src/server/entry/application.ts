@@ -5,7 +5,6 @@ import {
   createActivationScope,
   installDefaultActivation,
   type ActivationScope,
-  activationScope as activationScopeForSpinoff,
 } from "../adapters/engine/activation-scope.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import { readRuntimeDebug } from "../adapters/observability/runtime-debug.js";
@@ -20,14 +19,11 @@ import { startVillageRefreshScheduler } from "../jobs/village-refresh-scheduler.
 import { villagesRoutes } from "./routes.js";
 import { configureVillagesRuntime } from "./runtime.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
-import type { SceneOriginProvider } from "@marinara-engine/shared";
-import { spinoffs } from "../features/scenes/spinoffs.js";
 import type { FastifyPluginAsync } from "fastify";
 
 export type ActivationContext = {
   app?: { db?: unknown };
   api: {
-    registerSceneOrigin?(provider: SceneOriginProvider): () => void | Promise<void>;
     runtime: CapabilityRuntimeHost;
     registerPrivilegedRoutes(
       routes: FastifyPluginAsync,
@@ -39,7 +35,6 @@ export type ActivationContext = {
 type Cleanup = () => void | Promise<void>;
 /** Assembly ports keep lifecycle tests independent of Engine and providers. */
 export interface ApplicationServices {
-  registerSpinoffs?(api: ActivationContext["api"]): Cleanup;
   configureRuntime(runtime: CapabilityRuntimeHost): Cleanup;
   startTownMapGeneration(): Cleanup;
   configureDecisions(runtime: CapabilityRuntimeHost): Cleanup;
@@ -58,20 +53,6 @@ export interface ApplicationServices {
   assertSocialContract?(): Promise<unknown>;
 }
 const applicationServices: ApplicationServices = {
-  registerSpinoffs: (api) => {
-    if (!api.registerSceneOrigin) throw new Error("Spinoffs require Engine scene origins (Capability API 1.66).");
-    const scope = activationScopeForSpinoff();
-    const provider = spinoffs().provider;
-    return api.registerSceneOrigin(
-      scope
-        ? {
-            getContext: scope.bind(provider.getContext),
-            claim: scope.bind(provider.claim!),
-            release: scope.bind(provider.release!),
-          }
-        : provider,
-    );
-  },
   configureRuntime: configureVillagesRuntime,
   startTownMapGeneration,
   configureDecisions: configureDecisionsAdapter,
@@ -153,7 +134,6 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
     cleanups.push(services.stopVenueCoordinator);
     await services.recoverFoundingPreparation?.();
     await services.recoverVenueSceneWork();
-    if (services.registerSpinoffs) cleanups.push(services.registerSpinoffs(api));
     cleanups.push(await api.registerPrivilegedRoutes(services.routes, { prefix: "/api/villages" }));
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.

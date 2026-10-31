@@ -50,7 +50,6 @@ export function createSceneArchive({ villagesDocuments, readActive }: SceneArchi
     const documents = villagesDocuments();
     const visits = [
       ...(await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND)),
-      ...(await documents.list(VILLAGES_PACKAGE_ID, "spinoff")),
       ...(await documents.list(VILLAGES_PACKAGE_ID, "scene-terminal")),
       ...(await documents.list(VILLAGES_PACKAGE_ID, "project-scene-evidence")),
     ];

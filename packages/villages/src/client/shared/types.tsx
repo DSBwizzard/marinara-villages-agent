@@ -272,34 +272,6 @@ export type RoomStep = {
   gazeAt?: string;
 };
 
-// ── RETIRED 0.4.43 — the gate the tab drew while a villager was away. ───────
-//
-// What was here was `SceneGate({ lock, villageName, chatName, busy, error,
-// onGo, onBringBack, onForget })`, and it was drawn INSTEAD of the whole tab
-// whenever the scene listing carried a lock. The village stood still while a
-// villager was out: every route refused work, and this screen offered the three
-// things that were still on offer.
-//
-// It is retired because the lane it belonged to is gone. The lock needed a link
-// record to be true of, the link record is what 0.4.43 deleted, and the reason
-// it could be deleted is that a spin-off is a roleplay the player owns: the
-// village takes a snapshot and then has nothing left to wait for, so there is no
-// state for a gate to be the drawing of. The snapshot is *frozen*, which is the
-// whole answer to "how does the village still reach the chat without a live
-// feed" — a gate was only ever needed when the answer was a live feed.
-//
-// WHAT IS WORTH KEEPING, if a lock is ever wanted again:
-//   • `readVillageSceneLock` and the `VillageSceneLockView` shape, both of which
-//     are still in the server (`services/villages/spinoff.ts`) and still
-//     exported, kept rather than deleted for exactly this reason;
-//   • `sceneLockedRoutes(engine)` in `routes/villages.routes.ts`, which is the
-//     hook-free way to make every other route refuse, and the one line it takes
-//     to re-register;
-//   • `leaveForChat`, which is below and still live — it is how the player is
-//     put into a chat the Engine made, and the spawn path uses it on every run;
-//   • the `.${ELEMENT_TAG}-gate*` rules in the stylesheet, which are left in
-//     place and now match nothing.
-
 /**
  * Pages reachable from the village menu.
  */

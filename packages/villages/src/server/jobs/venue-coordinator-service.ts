@@ -42,7 +42,6 @@ import { sceneRevision } from "../domain/rules/scene-revision.js";
 import { coerceWorkFailure } from "../domain/rules/work-failure.js";
 import type { readInterpretationSettings } from "../features/settings/interpretation-settings.js";
 import { randomUUID } from "node:crypto";
-import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 export interface VenueCoordinatorPorts {
   operations: VenueOperationContext;
   villagesDocuments(): CapabilityDocumentStore;
@@ -694,8 +693,8 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         await updateWithSubmissions(sessionId, async (data, submissions, documents) => {
           villageSeed = typeof data.villageSeed === "string" ? data.villageSeed : undefined;
           controller.signal.throwIfAborted();
-          if (spinoffLocksScene(data.spinoff as import("../domain/models/spinoff-model.js").VillageSpinoff | undefined))
-            throw venueRefusal("SCENE_BUSY", "Finish or discard your spinoff before continuing in Villages.");
+          if (data.spinoff !== undefined)
+            throw venueRefusal("SCENE_BUSY", "This Scene uses a retired feature. Its saved data is preserved.");
           const prior = await operationEvidenceStore(documents).decode(data.operation, data as unknown as VenueScene);
           // A durable business result survives a crash before coordinator cleanup.
           // It cannot keep a later edited submission behind an interrupted request.

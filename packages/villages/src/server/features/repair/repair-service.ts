@@ -1243,8 +1243,7 @@ export function createRepairService(ports: RepairPorts) {
             !(belongsToCheckpoint && scene.id === checkpointSceneId && scene.status === "active")) ||
           (scene.operation && scene.operation.status !== "complete") ||
           scene.submissions?.some((turn) => turn.processing && unfinishedExchange(turn.processing)) ||
-          (scene.submissions && pendingProgressTurns(scene, state.foundedAt).length > 0) ||
-          (scene.spinoff && scene.spinoff.status !== "resolved")
+          (scene.submissions && pendingProgressTurns(scene, state.foundedAt).length > 0)
         )
           throw conflict(
             "A saved Scene has unresolved work. Recover or explicitly resolve it before restoring this checkpoint.",

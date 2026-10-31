@@ -1,12 +1,10 @@
 import { OpeningReminder } from "./OpeningReminder.js";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { VillageActivity } from "../shared/activity.js";
 import type { useVillageController } from "./useVillageController.js";
-import { SpinoffPanel } from "../features/scenes/SpinoffPanel.js";
 import { ReturnCatchup } from "../features/background/ReturnCatchup.js";
 type FrameProps = { controller: ReturnType<typeof useVillageController>; children: ReactNode };
 export function VillagesFrame({ controller, children }: FrameProps) {
-  const [spinoffLocked, setSpinoffLocked] = useState(false);
   return (
     <VillageActivity
       value={{
@@ -22,22 +20,7 @@ export function VillagesFrame({ controller, children }: FrameProps) {
       }}
     >
       <div style={{ position: "relative", height: "100%" }}>
-        <SpinoffPanel
-          element={controller.element}
-          scene={controller.room}
-          onLocked={setSpinoffLocked}
-          onResolved={async () => {
-            await controller.loadSnapshot();
-            const { request } = await import("../shared/api.js");
-            const { session } = await request<{ session: typeof controller.room }>("/rooms/active");
-            controller.setRoom(session);
-            if (session) controller.setScreen("room");
-          }}
-        >
-          <div inert={spinoffLocked} style={{ height: "100%" }}>
-            <VillageContent controller={controller}>{children}</VillageContent>
-          </div>
-        </SpinoffPanel>
+        <VillageContent controller={controller}>{children}</VillageContent>
         <ReturnCatchup
           enabled={controller.visible && !!controller.snapshot?.isFounded}
           onSettled={controller.loadSnapshot}

@@ -326,13 +326,7 @@ const VILLAGES_STYLES = `
 /*
   THE THREE DOTS, and everything the room can do behind them.
 
-  There used to be a bare row of buttons here — End Scene and Forget, then
-  the spin-off verb, then the debug pair — and it was read as a row of five equal
-  things when only one of them was the player's ordinary way out. The Engine's
-  own roleplay chats keep their commands behind a "..." in the corner, and this
-  is the same control doing the same job: the room is not a toolbar, and the two
-  presses a player makes in an hour should not be the two loudest things on the
-  screen.
+  Scene actions stay behind the menu so the reading remains visible.
 
   NO BACKDROP and no focus trap, deliberately: the menu hangs off a button in the
   top chrome rather than covering the tab, and the paragraph the player was
@@ -3032,115 +3026,6 @@ ${ELEMENT_TAG} {
   closed when it is not being read. The paragraph it used to carry is the button's
   title now, which costs nothing and is where a player looks for it anyway.
 */
-/*
-  The spawn sheet: the questions asked between pressing Create spinoff chat and
-the roleplay existing.
-
-  It is a SHEET over the whole window rather than a panel inside the tab, and
-  that is the one thing about it the player has to feel rather than read. Making
-a chat is the moment this tab stops being a picture of a village and starts
-  being a real roleplay in the player's own library, and a control that simply
-  changed a dropdown would let that happen without anybody noticing. The dim is
-  gentle on purpose — the game is still visible behind it and nothing is
-  destroyed — but it is there, because what is about to happen is not a setting.
-
-  Fixed rather than absolute, because the tab scrolls: a sheet anchored to the
-  document would open somewhere up the page from wherever the player was
-  standing. A transform on an ancestor would make this relative to that ancestor
-  instead of to the window — the one thing that could move it, and the reason
-  this is stated here rather than assumed.
-*/
-.${ELEMENT_TAG}-backdrop {
-  position: fixed; inset: 0; z-index: 60;
-  display: flex; align-items: center; justify-content: center;
-  padding: clamp(.75rem, 3vw, 2rem);
-  background: color-mix(in srgb, #05060a 52%, transparent);
-}
-.${ELEMENT_TAG}-sheet {
-  display: flex; flex-direction: column; gap: .75rem;
-  width: min(100%, 27rem); max-height: min(100%, 34rem);
-  border: 1px solid var(--border); border-radius: .875rem;
-  background: var(--popover, var(--background)); color: var(--foreground);
-  box-shadow: 0 1.5rem 3.5rem rgba(0, 0, 0, .45);
-  padding: .9375rem;
-  overflow: hidden;
-}
-.${ELEMENT_TAG}-sheet-head { display: flex; flex-direction: column; gap: .1875rem; }
-.${ELEMENT_TAG}-sheet-title { margin: 0; font-size: .9625rem; font-weight: 600; }
-.${ELEMENT_TAG}-sheet-note { margin: 0; font-size: .75rem; line-height: 1.5; color: var(--muted-foreground); }
-.${ELEMENT_TAG}-sheet-body {
-  display: flex; flex-direction: column; gap: .5rem;
-  min-height: 0; overflow-y: auto; padding-right: .125rem;
-}
-.${ELEMENT_TAG}-sheet-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .375rem; }
-.${ELEMENT_TAG}-sheet-actions-end { margin-left: auto; display: flex; flex-wrap: wrap; gap: .375rem; }
-/*  The one filled button in the package. Everywhere else the accent is a border,
-    because everywhere else the control sits inside the player's village and is
-    one of several. Here there is exactly one thing to do next. */
-.${ELEMENT_TAG}-button-primary {
-  border-color: var(--primary); background: var(--primary);
-  color: var(--primary-foreground, var(--background));
-}
-.${ELEMENT_TAG}-button-primary:hover { border-color: var(--primary); color: var(--primary-foreground, var(--background)); opacity: .9; }
-/*  A preset, as a row rather than as an option in a select. It is drawn as a
-    list because a preset is a choice with consequences — it decides how the
-    whole roleplay reads — and a dropdown hides the consequences behind a click. */
-.${ELEMENT_TAG}-choice {
-  display: flex; flex-direction: column; align-items: flex-start; gap: .125rem;
-  width: 100%; text-align: left;
-  border: 1px solid var(--border); border-radius: .5rem;
-  background: transparent; color: var(--foreground);
-  padding: .4375rem .625rem; font: inherit; font-size: .8125rem; cursor: pointer;
-}
-.${ELEMENT_TAG}-choice:hover { border-color: var(--primary); }
-.${ELEMENT_TAG}-choice[data-active="true"] { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
-.${ELEMENT_TAG}-choice-note { font-size: .6875rem; line-height: 1.45; color: var(--muted-foreground); }
-/*  One preset question, and the answers to it. The pills are the Engine's own
-    button mode; the list below is its listbox mode, which it reaches for by
-    itself once a question has enough answers that a wall of pills stops being
-    readable. Both are drawn here because the popup has to be able to show
-    whichever one the preset asked for. */
-.${ELEMENT_TAG}-var { display: flex; flex-direction: column; gap: .3125rem; }
-.${ELEMENT_TAG}-var-question { font-size: .75rem; font-weight: 600; line-height: 1.4; }
-.${ELEMENT_TAG}-var-options { display: flex; flex-wrap: wrap; gap: .25rem; }
-.${ELEMENT_TAG}-var-option {
-  display: inline-flex; align-items: center; gap: .3125rem;
-  border: 1px solid var(--border); border-radius: 999px;
-  padding: .1875rem .5rem; font-size: .75rem; line-height: 1.4; cursor: pointer;
-}
-.${ELEMENT_TAG}-var-option:hover { border-color: var(--primary); }
-.${ELEMENT_TAG}-var-option[data-on="true"] { border-color: var(--primary); color: var(--primary); }
-.${ELEMENT_TAG}-var-option input { flex: none; margin: 0; accent-color: var(--primary); }
-.${ELEMENT_TAG}-var-list {
-  font: inherit; font-size: .75rem; max-width: 100%; min-height: 7rem;
-  border: 1px solid var(--border); border-radius: .5rem;
-  background: var(--background); color: var(--foreground); padding: .25rem;
-}
-/*
-  RETIRED 0.4.43 — the gate: what the tab used to be while one of its villagers
-  was away in a scene.
-
-  The whole village was replaced rather than dimmed, and that was the narrative
-  rule the old feature was built on — while the player was doing something with
-  one character, the village was not a place to be rearranging. It said so, and
-  then gave three ways out: go to the chat, bring them home, or let the link go.
-
-  No element carries these classes any more: the component that drew them,
-  SceneGate, is retired next to the place it used to be defined. They are kept for
-  the same reason it is — they are the only drawing of a village standing still,
-  and a later lane that wants one again will want them again. Nothing reads a
-  -gate- rule, so nothing here costs anything.
-*/
-.${ELEMENT_TAG}-gate {
-  display: flex; flex-direction: column; gap: .75rem; align-items: flex-start;
-  margin: auto; width: min(100%, 32rem); padding: 1.25rem;
-  border: 1px solid var(--border); border-radius: .875rem;
-  background: var(--popover, var(--background));
-  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, .3);
-}
-.${ELEMENT_TAG}-gate-title { margin: 0; font-size: 1.125rem; font-weight: 600; }
-.${ELEMENT_TAG}-gate-note { margin: 0; font-size: .8125rem; line-height: 1.55; color: var(--muted-foreground); }
-.${ELEMENT_TAG}-gate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
 /*  The chip's own popover, hung off the toolbar button it belongs to. Absolute
     rather than fixed: it is a sentence about the button under the player's
     finger, and it should move with the chat chrome rather than with the page. */

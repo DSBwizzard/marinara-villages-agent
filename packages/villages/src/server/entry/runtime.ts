@@ -36,7 +36,6 @@ import { createNativeSchedules } from "../adapters/engine/native-schedules-servi
 import { configureNativeSchedules, readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
 import {
   configureRuntimeHost,
-  requireHost,
   VILLAGES_PACKAGE_ID,
   villagesDebugAgentsEnabled,
   villagesDocuments,
@@ -273,8 +272,6 @@ import { filterRelationshipNotices } from "../domain/rules/relationship-presenta
 import { createSceneWork } from "../features/scenes/scene-work-service.js";
 import { configureSceneWork, sceneWork } from "../features/scenes/scene-work.js";
 import { configureSceneQueries, sceneQueries } from "../features/scenes/services.js";
-import { createSpinoffs } from "../features/scenes/spinoff-service.js";
-import { configureSpinoffs } from "../features/scenes/spinoffs.js";
 import { configureSceneCommands, finishSemanticScene, sceneReplayEffects } from "../features/scenes/venue-session.js";
 import { createSceneWriting } from "../features/scenes/writing-service.js";
 import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
@@ -447,19 +444,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       void retirement.retireSettled().catch((error) => logRetirementFailure("Scene cleanup scan deferred", error));
     });
   const releaseSceneRepository = configureSceneRepository(sceneRepository);
-  const releaseSpinoffs = configureSpinoffs(
-    createSpinoffs({
-      repository: sceneRepository,
-      readVillageState: readVillageMemoryState,
-      mutateVillageState: mutateVillageMemoryState,
-      persistence: () => requireHost().persistence,
-      models: villagesLanguageModels,
-      connectionId: () => villagesConnectionIdFor("narration"),
-      now: villageNow,
-      busy: hasVenueOperation,
-      parseJson: (text) => requireHost().json.parseJsonish(text),
-    }),
-  );
   const releaseInterpretationEvidence = configureInterpretationEvidence(
     createInterpretationEvidence({
       VILLAGES_PACKAGE_ID,
@@ -1356,7 +1340,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseInterpretationDiagnostics();
     releaseUsage();
     releaseSceneRepository();
-    releaseSpinoffs();
     releaseOperations();
     releaseBackgroundContext();
     releaseGallery();

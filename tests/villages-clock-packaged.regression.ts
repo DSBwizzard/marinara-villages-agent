@@ -134,7 +134,6 @@ await runCase("village-clock-recovery", async () => {
     stop = await activate({
       api: {
         runtime,
-        registerSceneOrigin: () => () => {},
         registerPrivilegedRoutes: async (routes, options) => {
           await app.register(routes, options);
           return async () => {};
@@ -184,7 +183,6 @@ await runCase("village-clock-recovery", async () => {
     stop = await activate({
       api: {
         runtime,
-        registerSceneOrigin: () => () => {},
         registerPrivilegedRoutes: async (routes, options) => {
           await restartApp.register(routes, options);
           return async () => {};
@@ -246,7 +244,6 @@ await runCase("village-clock-recovery", async () => {
     stop = await activate({
       api: {
         runtime,
-        registerSceneOrigin: () => () => {},
         registerPrivilegedRoutes: async (routes, options) => {
           await finalApp.register(routes, options);
           return async () => {};

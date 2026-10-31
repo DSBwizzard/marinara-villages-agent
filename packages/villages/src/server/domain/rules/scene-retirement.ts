@@ -1,7 +1,6 @@
 import { unfinishedExchange } from "../decoding/exchange-codec.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
-import { spinoffLocksScene } from "../models/spinoff-model.js";
 import { pendingProgressTurns } from "./scene-record.js";
 import { asRecord } from "./coerce.js";
 import { EXCHANGE_DOMAINS } from "../models/exchange-model.js";
@@ -122,8 +121,7 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
 /** A closed Scene remains an outbox until every saved effect and operation settles. */
 export function sceneReadyForRetirement(scene: VenueScene, village: VillageState, activeId: string): boolean {
   if (!scene.id || !scene.villageSeed || scene.villageSeed !== village.seed || scene.status !== "closed") return false;
-  if (scene.id === activeId || spinoffLocksScene(scene.spinoff) || (scene.spinoff && !scene.spinoff.resolvedAt))
-    return false;
+  if (scene.id === activeId) return false;
   if (scene.operation && scene.operation.status !== "complete") return false;
   if (
     Object.keys(scene.operation?.checkpoints ?? {}).some((key) => key !== "abandoned-request") ||

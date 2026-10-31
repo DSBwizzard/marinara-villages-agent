@@ -4,8 +4,6 @@ import { activationScope } from "../adapters/engine/activation-scope.js";
 import { publicSceneRoutes } from "../adapters/http/public-scene-routes.js";
 import { withRepairWork } from "../adapters/storage/repair-gate.js";
 import { villageNow } from "../adapters/time/clock-gate.js";
-import { readActive, readSession } from "../adapters/storage/scene-store.js";
-import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { registerBackgroundRoutes } from "../features/background/routes.js";
 import { prepareReturnCatchup } from "../features/background/return-catchup.js";
@@ -26,7 +24,6 @@ import {
 } from "../features/residents/routes.js";
 import { registerSceneEntryRoutes, registerSceneOperationRoutes } from "../features/scenes/routes.js";
 import { projectSceneResponse } from "../features/scenes/services.js";
-import { registerSpinoffRoutes } from "../features/scenes/spinoff-routes.js";
 import {
   registerConnectionRoutes,
   registerInterpretationRoutes,
@@ -77,10 +74,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
       !["completed", "cancelled"].includes(state.returnCatchup.batch.status)
     )
       return "Village catch-up is still in progress. Finish or continue before changing the Village.";
-    if (path.startsWith("/spinoffs/")) return null;
-    const active = await readActive();
-    if (active.sessionId && spinoffLocksScene((await readSession(active.sessionId)).spinoff))
-      return "Your spinoff is still pending. You can browse Villages, but finish or discard it before changing Village state.";
     return null;
   };
   const surface = publicSceneRoutes(engine, projectSceneResponse, guard, [
@@ -101,7 +94,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
   registerTownMapRoutes(surface);
   registerResidentRoutes(surface);
   registerSceneEntryRoutes(surface);
-  registerSpinoffRoutes(surface);
   registerVenueAccessRoutes(surface);
   registerSceneOperationRoutes(surface);
   registerUsageRoutes(surface);

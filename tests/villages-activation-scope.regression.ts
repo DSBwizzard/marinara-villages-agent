@@ -172,7 +172,6 @@ async function productionHandlers() {
     const application = await startVillagesApplication({
       api: {
         runtime: f.runtime,
-        registerSceneOrigin: () => () => {},
         async registerPrivilegedRoutes(plugin, options) {
           capturedOwner = activationScope();
           await engine.register(plugin, options);
@@ -231,7 +230,6 @@ async function productionHandlers() {
       startVillagesApplication({
         api: {
           runtime: fixture("failed-replacement", false).runtime,
-          registerSceneOrigin: () => () => {},
           async registerPrivilegedRoutes() {
             failedOwner = activationScope();
             throw failedSetup;

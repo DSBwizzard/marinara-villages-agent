@@ -11,7 +11,7 @@ export const villagesDefinition = {
   category: "misc",
   kind: ["agent"],
   modes: ["conversation", "roleplay", "game"],
-  permissions: ["network", "routes", "storage", "ui", "scenes", "chat-read"],
+  permissions: ["network", "routes", "storage", "ui"],
   serverImport: "src/server/entry/index.ts",
   serverEntry: true,
   clientImport: "src/client/entry/index.tsx",
