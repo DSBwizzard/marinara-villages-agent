@@ -35,6 +35,7 @@ import type {
 } from "../domain/models/background-model.js";
 import type { VillageState } from "../domain/models/world.js";
 import { backgroundRevision, backgroundSlotId as slotId } from "../domain/rules/background-revision.js";
+import { backgroundCompletionId, readBackgroundCompletion } from "../adapters/storage/background-completions.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { copyBackgroundWork } from "../domain/rules/world-context-copy.js";
 import { capturedJobOwners } from "../adapters/storage/captured-admissions.js";
@@ -820,7 +821,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     }
     if (!job || stopped || ["failed", "interrupted", "completed", "obsolete"].includes(job.status)) return;
     const recorded = await readForJob(job);
-    if (recorded.backgroundReceipts[id] === job.id) {
+    const completionId = backgroundCompletionId({ format: 1, seed: job.seed, slotId: id, jobId: job.id });
+    const completion =
+      recorded.backgroundReceipts[id] === job.id ? null : await documents.getById(VILLAGES_PACKAGE_ID, completionId);
+    if (completion) {
+      readBackgroundCompletion(completion);
+      if (completion.id !== completionId) throw new Error("Background completion proof identity changed.");
+    }
+    if (recorded.backgroundReceipts[id] === job.id || completion) {
       job = await updateJob((current) => {
         if (current?.id !== job!.id || current.attempt !== job!.attempt)
           throw new Obsolete("Background acknowledgement ownership changed.");

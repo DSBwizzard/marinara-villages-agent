@@ -4,6 +4,7 @@ type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumen
 import { createActivationBinding } from "../engine/activation-scope.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { createRepairTransactionCodec, type ReplayWrite } from "./repair-transaction-codec.js";
+import { BACKGROUND_COMPLETION_KIND, retainReplacedBackgroundReceipts } from "./background-completions.js";
 import {
   repairDigest,
   repairDocumentDigest,
@@ -53,6 +54,7 @@ const clean = (row: CapabilityDocumentRecord | null): RepairDocument | null =>
 export function createRepairGate(backing: CapabilityDocumentStore, admission = createRepairAdmission()) {
   let allocatedBytes = 0;
   const allocationKinds = new Set([
+    BACKGROUND_COMPLETION_KIND,
     "generation-response",
     "memory-payload",
     "memory-page",
@@ -63,9 +65,27 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     "operation-evidence",
     "sprite-file",
   ]);
-  const raw = new Proxy(backing, {
+  const raw: CapabilityDocumentStore = new Proxy(backing, {
     get(target, key) {
       const value = Reflect.get(target, key);
+      if (key === "update")
+        return async (input: Parameters<CapabilityDocumentStore["update"]>[0]) => {
+          if (input.packageId === PACKAGE && input.id === "villages-village" && Object.hasOwn(input, "data")) {
+            const before = await target.getById(PACKAGE, input.id);
+            if (before && before.revision === input.expectedRevision)
+              await retainReplacedBackgroundReceipts(raw, before, input.data);
+          }
+          return target.update(input);
+        };
+      if (key === "remove")
+        return async (...args: Parameters<CapabilityDocumentStore["remove"]>) => {
+          const [packageId, id, expectedRevision] = args;
+          if (packageId === PACKAGE && id === "villages-village") {
+            const before = await target.getById(packageId, id);
+            if (before && before.revision === expectedRevision) await retainReplacedBackgroundReceipts(raw, before);
+          }
+          return target.remove(...args);
+        };
       if (key !== "create") return typeof value === "function" ? value.bind(target) : value;
       return (input: Parameters<CapabilityDocumentStore["create"]>[0]) => {
         // An estimate may overcount a failed create, but never understates attempted allocation.

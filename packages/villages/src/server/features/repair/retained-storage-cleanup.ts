@@ -37,7 +37,20 @@ import { createSceneSubmissionTracer } from "../../adapters/storage/scene-submis
 import { createScenePublicHistoryTracer } from "../../adapters/storage/scene-public-history.js";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
 import { worldWishOwners } from "../../adapters/storage/world-wishes.js";
-import { capturedWorldOwners, capturedJobOwners } from "../../adapters/storage/captured-admissions.js";
+import {
+  capturedWorldOwners,
+  capturedJobOwners,
+  validateCapturedSources,
+} from "../../adapters/storage/captured-admissions.js";
+import type { Job } from "../../domain/models/background-model.js";
+import { backgroundRecoveryState } from "../../domain/rules/work-recovery.js";
+import { backgroundSlotId } from "../../domain/rules/background-revision.js";
+import {
+  BACKGROUND_COMPLETION_KIND,
+  backgroundCompletionId,
+  readBackgroundCompletion,
+  worldBackgroundCompletions,
+} from "../../adapters/storage/background-completions.js";
 import { createWishHistoryTracer } from "../../adapters/storage/wish-history.js";
 import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
 import {
@@ -85,6 +98,7 @@ const CANDIDATES = [
   RELATIONSHIP_PAYLOAD_KIND,
   OPERATION_EVIDENCE_KIND,
   SPRITE_FILE_KIND,
+  BACKGROUND_COMPLETION_KIND,
 ];
 const HISTORY_ID = /^villages-memory-([a-f0-9]{32})-[a-f0-9-]{36}$/;
 const ordinaryKinds = new Set([
@@ -123,6 +137,7 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
     const raw = gate.raw,
       cache = new Map<string, Row | null>(),
       candidates: Row[] = [],
+      completions = new Set<string>(),
       marked = new Set<string>(),
       sceneOwners = new Set<string>();
     const sceneKey = (sceneId: string, villageSeed: string) => JSON.stringify([sceneId, villageSeed]);
@@ -193,7 +208,10 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         else if (kind === "repair-undo") undoBody(row);
         else if (kind === RELATIONSHIP_PAYLOAD_KIND) relationshipPayloadData(row);
         else if (kind === OPERATION_EVIDENCE_KIND) evidenceBody(row);
-        else if (kind === SPRITE_FILE_KIND) {
+        else if (kind === BACKGROUND_COMPLETION_KIND) {
+          readBackgroundCompletion(row);
+          completions.add(row.id);
+        } else if (kind === SPRITE_FILE_KIND) {
           const file = readSpriteFileAllocation(row);
           memoryRequire(row.revision === (file.ready ? 2 : 1), "owned sprite acknowledgement changed");
           if (!file.ready && file.process === spriteFileProcess) marked.add(row.id);
@@ -354,6 +372,13 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
         if (!Object.hasOwn(frame, "memoryPages") && frame.after !== null) await snapshot(frame.after, view);
       if (Object.hasOwn(value.history, "writeRefs")) await writes(value.history.writeRefs, view, value.history);
     }
+    const completionFor = (job: Pick<Job, "seed" | "id" | "kind" | "subjectId">) =>
+      backgroundCompletionId({
+        format: 1,
+        seed: job.seed,
+        slotId: backgroundSlotId(job),
+        jobId: job.id,
+      });
     async function sourceOwners(row: RepairDocument, view: Scope) {
       for (const id of retainedSpriteFiles(row.kind, row.data)) marked.add(id);
       const captures =
@@ -368,6 +393,10 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
       }
       if (["background-work", "background-history"].includes(row.kind)) {
         validateBackgroundJobRecord(row);
+        // Repair sources own the physical historical root as well as its copied dependencies.
+        marked.add(row.id);
+        const proof = completionFor(row.data as Job);
+        if (completions.has(proof)) marked.add(proof);
         for (const id of await validateBackgroundResponseOwners(row.data, view.lookup)) marked.add(id);
       } else if (row.kind === "village") {
         memoryObject(row.data);
@@ -378,6 +407,12 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",
         );
+        for (const world of [row.data, row.data.returnCatchup?.capture?.world])
+          if (world !== undefined)
+            for (const proof of worldBackgroundCompletions(world)) {
+              const id = backgroundCompletionId(proof);
+              if (completions.has(id)) marked.add(id);
+            }
         if (row.data.opening?.stage === "gathering" && row.data.opening.gatheringSceneId !== undefined) {
           const id = row.data.opening.gatheringSceneId;
           memoryRequire(typeof id === "string", "invalid prospective gathering Scene owner");
@@ -529,9 +564,12 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
       responses.push({ row, receipt, bodies });
     }
     const root = await documents.getById(PACKAGE, "villages-village");
+    const acknowledged = new Set(completions.keys()),
+      retiredBackground: Row[] = [];
     if (root) {
       memoryRequire(root.packageId === PACKAGE && root.kind === "village", "invalid current Village identity");
       await sourceOwners(root, physical);
+      for (const proof of worldBackgroundCompletions(root.data)) acknowledged.add(backgroundCompletionId(proof));
     }
     for (const row of await listed("repair-checkpoint")) {
       storage.checkpointRow(row);
@@ -548,7 +586,22 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
     }
     for (const row of await listed("venue-visit")) await sourceOwners(row, physical);
     for (const kind of ["background-work", "background-history"])
-      for (const row of await listed(kind)) await sourceOwners(row, physical);
+      for (const row of await listed(kind)) {
+        validateBackgroundJobRecord(row);
+        const job = row.data as Job;
+        if (kind === "background-history") memoryRequire(row.revision === 1, "retained background attempt changed");
+        if (
+          kind === "background-history" &&
+          !job.replacement &&
+          acknowledged.has(completionFor(job)) &&
+          backgroundRecoveryState({ ...job, status: "obsolete" }) !== "uncertain"
+        ) {
+          retainedSpriteFiles(row.kind, row.data);
+          await validateBackgroundResponseOwners(row.data, physical.lookup);
+          retiredBackground.push(row);
+        } else await sourceOwners(row, physical);
+      }
+    await validateCapturedSources(documents, retiredBackground);
     for (const row of await listed("sprite-setup")) await sourceOwners(row, physical);
     const active = await readActiveSceneOwner(documents);
     if (active.scene) await sourceOwners(active.scene, physical);
@@ -638,11 +691,14 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
     // No writer can publish now, and startup replay finished before exclusion was acquired.
     // Partial preparations have no surviving producer; actual owners above protect committed data.
     // Dispatch owners go first, so interrupted cleanup cannot leave a live selector without its body.
+    const retiredRoots = retiredBackground.filter((row) => !marked.has(row.id));
     const retired = [
+      ...retiredRoots,
       ...retiredResponses,
       ...intents,
       ...relationshipIntents,
-      ...candidates.filter((row) => !marked.has(row.id)),
+      ...candidates.filter((row) => !marked.has(row.id) && row.kind !== BACKGROUND_COMPLETION_KIND),
+      ...candidates.filter((row) => !marked.has(row.id) && row.kind === BACKGROUND_COMPLETION_KIND),
     ];
     const retiredIds = new Set(retired.map((row) => row.id));
     memoryRequire(
@@ -650,9 +706,13 @@ export async function collectRetainedStorage(gate: RepairGate, removeSpriteFile?
       "owned sprite cleanup is unavailable",
     );
     const spriteFiles = retired.filter((row) => row.kind === SPRITE_FILE_KIND).map(readSpriteFileAllocation);
-    if (spriteFiles.length) await removeSpriteFile!(spriteFiles);
     let removedBytes = 0;
-    for (const row of retired) {
+    for (const row of retiredRoots) {
+      memoryRequire(await raw.remove(PACKAGE, row.id, row.revision), "retained cleanup changed");
+      removedBytes += Buffer.byteLength(JSON.stringify(row));
+    }
+    if (spriteFiles.length) await removeSpriteFile!(spriteFiles);
+    for (const row of retired.slice(retiredRoots.length)) {
       if (row.kind === SPRITE_FILE_KIND) {
         const file = readSpriteFileAllocation(row);
         removedBytes += file.bytes;

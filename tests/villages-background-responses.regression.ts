@@ -7,6 +7,7 @@ import {
   backgroundResponseStore,
   createBackgroundResponses,
   nativeBackgroundJob,
+  retainBackgroundJob,
   validateBackgroundResponse,
 } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 import { createRepairGate, configureRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -26,6 +27,11 @@ import {
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { Job } from "../packages/villages/src/server/domain/models/background-model.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import {
+  BACKGROUND_COMPLETION_KIND,
+  backgroundCompletionId,
+} from "../packages/villages/src/server/adapters/storage/background-completions.js";
 
 function storage() {
   const rows = new Map<string, any>();
@@ -807,6 +813,230 @@ for (const failure of [
   } finally {
     unsubscribe();
     cleanup.dispose();
+    unbind();
+    gate.dispose();
+  }
+}
+// A durable application proof closes only fully known history, independently of Undo and uncertain siblings.
+for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
+  const undo = mode === "undo",
+    uncertain = mode === "uncertain";
+  const db = storage(),
+    gate = createRepairGate(db.documents),
+    unbind = configureRepairGate(gate);
+  const repo = createVillageRepository(() => gate.documents),
+    at = "2026-10-31T00:00:00.000Z";
+  const job = {
+    id: "closed-logical-job",
+    seed: "closure-retirement-" + mode,
+    kind: "agenda",
+    subjectId: "resident",
+    revision: "closed-input",
+    finite: true,
+    label: "Closed",
+    input: {},
+    status: "failed",
+    owner: "prior-owner",
+    attempt: 1,
+    steps: [{ fingerprint: "purchased-input", status: "running" }],
+    settings: {},
+    hasResult: false,
+    requests: 1,
+    tokens: 17,
+    error: "",
+    failedStep: null,
+    retryActions: [],
+    retrying: false,
+    connectionId: "test",
+    highWaterDate: "",
+    connectionPaused: false,
+    completedCount: 0,
+    usageComplete: true,
+  } as Job;
+  const slot = backgroundSlotId(job),
+    proofId = backgroundCompletionId({ format: 1, seed: job.seed, slotId: slot, jobId: job.id });
+  try {
+    await repo.mutateAuthority((state) => {
+      state.seed = job.seed;
+      state.setupAt = at;
+      state.backgroundReceipts = { [slot]: job.id };
+    });
+    job.steps[0].responseClaim = backgroundResponseClaim(job, 0);
+    await saveClaim(gate.documents, job);
+    const saved = await createBackgroundResponses(gate.documents).publish(job, 0, completion);
+    const known = { ...job, steps: [{ ...job.steps[0], status: "completed" as const, responseRef: saved.ref }] };
+    await retainBackgroundJob(gate.documents, nativeBackgroundJob(known));
+    const history = [...db.rows.values()].find((row) => row.kind === "background-history")!;
+    const repair = createRepairStorage(gate.documents, gate.documents);
+    const saveUndo = (id: string, writes: any[] = []) =>
+      repair.saveHistory(
+        {
+          id,
+          seed: job.seed,
+          setupAt: at,
+          title: "Repair",
+          at,
+          changes: [],
+          affected: [],
+          undone: false,
+          canUndo: true,
+          guard: "guard",
+          request: { recordId: "job", action: "retry", knowers: [] },
+          undoWrites: writes,
+        } as any,
+        [],
+      );
+    if (undo)
+      await saveUndo("held-closure", [
+        {
+          before: {
+            id: history.id,
+            kind: history.kind,
+            name: history.name,
+            description: history.description,
+            data: history.data,
+          },
+          after: null,
+        },
+      ]);
+    else if (uncertain) {
+      await retainBackgroundJob(
+        gate.documents,
+        nativeBackgroundJob({
+          ...job,
+          attempt: 2,
+          status: "interrupted",
+          steps: [],
+          optionalAttempts: { review: { status: "unknown", elapsedMs: 10 } },
+          usageComplete: false,
+        }),
+      );
+      const pending: Job = {
+        ...job,
+        attempt: 3,
+        status: "interrupted",
+        steps: [{ fingerprint: "late-unknown", status: "running" }],
+      };
+      pending.steps[0].responseClaim = backgroundResponseClaim(pending, 0);
+      await retainBackgroundJob(gate.documents, nativeBackgroundJob(pending));
+      await createBackgroundResponses(gate.documents).publish(pending, 0, {
+        content: "Known late bytes, still unreconciled usage",
+        finishReason: "stop",
+      });
+    }
+    const current = db.rows.get(slot);
+    await gate.documents.update({
+      id: slot,
+      packageId: "villages",
+      expectedRevision: current.revision,
+      data: nativeBackgroundJob({ ...job, id: "newer-job", status: "completed", steps: [], input: null }),
+      updatedAt: at,
+    });
+    await repo.mutateAuthority((state) => {
+      state.backgroundReceipts[slot] = "newer-job";
+    });
+    assert.ok(db.rows.has(proofId), "receipt replacement preserves the old durable acknowledgement");
+    if (mode === "closed-before") {
+      const newer = db.rows.get(slot);
+      await gate.documents.update({
+        id: slot,
+        packageId: "villages",
+        expectedRevision: newer.revision,
+        data: nativeBackgroundJob({ ...job, steps: [] }),
+        updatedAt: at,
+      });
+      let generated = 0,
+        applied = 0;
+      const bg = createBackgroundWork({
+        villagesDocuments: () => gate.documents,
+        villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
+        readVillageState: () => repo.readAuthority(),
+        readVillageAuthority: () => repo.readAuthority(),
+        mutateVillageState: (update) => repo.mutateAuthority(update),
+        withUsagePurpose: (_purpose, work) => work(),
+        measurePipeline: (_name, _tags, work) => work(),
+        runtimeDebug() {},
+        backgroundCalls: createBackgroundContext().backgroundCalls,
+        withRepairWork: (work) => gate.work(work),
+        handlers: [
+          [
+            "agenda",
+            {
+              authority: "raw",
+              valid: () => true,
+              async generate() {
+                generated++;
+                throw Error("An applied job must not purchase work");
+              },
+              apply() {
+                applied++;
+              },
+            },
+          ],
+        ],
+      });
+      const stop = bg.startBackgroundWork();
+      try {
+        await bg.retryBackgroundJob(slot, job.attempt, "closure-replay-test");
+        await bg.settleBackgroundWork();
+        assert.equal(generated, 0, "archived acknowledgement prevents another provider purchase");
+        assert.equal(applied, 0, "archived acknowledgement rejects duplicate effects after the World slot advances");
+        assert.equal(db.rows.get(slot).data.status, "completed");
+      } finally {
+        stop();
+      }
+      const restored = db.rows.get(slot);
+      await gate.documents.update({
+        id: slot,
+        packageId: "villages",
+        expectedRevision: restored.revision,
+        data: newer.data,
+        updatedAt: at,
+      });
+    }
+    if (mode.startsWith("closed-")) {
+      const remove = db.documents.remove;
+      let interrupt = true;
+      db.documents.remove = async (pkg, id, revision) => {
+        if (id === history.id && interrupt) {
+          interrupt = false;
+          if (mode === "closed-after") await remove(pkg, id, revision);
+          throw Error("Interrupted historical retirement");
+        }
+        return remove(pkg, id, revision);
+      };
+      await assert.rejects(collectRetainedStorage(gate), /Interrupted historical retirement/);
+      assert.ok(db.rows.has(saved.ref.id), "interrupted owner retirement cannot delete its body first");
+      assert.ok(db.rows.has(proofId), "completion proof retires after historical roots and bodies");
+    }
+    await collectRetainedStorage(gate);
+    assert.equal(db.rows.has(history.id), undo, "only an available Undo keeps the closed physical history root");
+    assert.equal(db.rows.has(saved.ref.id), undo, "copied Undo dependencies remain independently owned");
+    assert.equal(
+      db.rows.has(proofId),
+      undo || uncertain,
+      "only ongoing Undo or unreconciled siblings retain the closure proof",
+    );
+    if (undo) {
+      for (let index = 0; index < 10; index++) await saveUndo("newer-undo-" + index);
+      await collectRetainedStorage(gate);
+      assert.equal(db.rows.has(history.id), false);
+      assert.equal(db.rows.has(saved.ref.id), false);
+      assert.equal([...db.rows.values()].filter((row) => row.kind === "repair-undo").length, 10);
+    } else if (uncertain) {
+      const held = [...db.rows.values()].filter((row) => row.kind === "background-history");
+      assert.equal(held.length, 2, "unknown optional work and a late principal response are not compacted as settled");
+      assert.ok(held.some((row) => row.data.optionalAttempts?.review.status === "unknown"));
+      assert.ok(
+        [...db.rows.values()].some((row) => row.kind === "generation-response"),
+        "unreconciled late response remains available",
+      );
+      for (const row of held) await gate.documents.remove("villages", row.id, row.revision);
+      await collectRetainedStorage(gate);
+    }
+    assert.equal(db.rows.has(proofId), false, "proof retires only after its last recovery or Undo owner ends");
+    assert.equal([...db.rows.values()].filter((row) => row.kind === BACKGROUND_COMPLETION_KIND).length, 0);
+  } finally {
     unbind();
     gate.dispose();
   }

@@ -1,4 +1,4 @@
-// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry
+// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry, retained-storage/background-sprite-retirement
 import assert from "node:assert/strict";
 import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
@@ -44,6 +44,14 @@ import {
   spriteFileProcess,
 } from "../packages/villages/src/server/adapters/storage/sprite-files.js";
 import { emptySpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
+import type { Job } from "../packages/villages/src/server/domain/models/background-model.js";
+import {
+  nativeBackgroundJob,
+  retainBackgroundJob,
+  backgroundHistoryId,
+} from "../packages/villages/src/server/adapters/storage/background-responses.js";
+import { backgroundSlotId } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { backgroundCompletionId } from "../packages/villages/src/server/adapters/storage/background-completions.js";
 
 async function fixture() {
   const rows = new Map<string, any>(),
@@ -839,4 +847,103 @@ await runCase("retained-storage/payload-identity", async () => {
     before,
     "Missing namespace and malformed identity cannot jointly validate an unknown candidate.",
   );
+});
+
+await runCase("retained-storage/background-sprite-retirement", async () => {
+  const f = await fixture(),
+    world = await f.repo.readAuthority();
+  const assetId = "villages-" + randomUUID();
+  const source = await f.gate.work(() =>
+    createSpriteFiles(f.gate.documents)(assetId, "original", "data:image/png;base64,UE5H", async () => ({
+      filename: "original.png",
+      url: `/api/sprites/${assetId}/file/original.png`,
+    })),
+  );
+  const manager = emptySpriteManager();
+  manager.artwork.push({
+    id: "art",
+    name: "Captured",
+    assetId,
+    origin: "upload",
+    source: { ...source, width: 1, height: 1, sha256: memoryDigest("PNG") },
+    rendered: source,
+    frame: { x: 0, y: 0, width: 1, height: 1, scale: 1, offsetX: 0, offsetY: 0 },
+    warnings: [],
+  });
+  const stamp = memoryTime();
+  const job = {
+    id: "closed-sprite-job",
+    seed: world.seed,
+    kind: "resident-planning",
+    subjectId: "mara",
+    revision: "closed-input",
+    attempt: 1,
+    status: "failed",
+    requests: 0,
+    hasResult: true,
+    result: {},
+    steps: [],
+    input: {
+      admitted: {
+        admissionFormat: 1,
+        seed: world.seed,
+        setupAt: world.setupAt,
+        villagers: [
+          {
+            characterId: "mara",
+            wishHead: null,
+            cardSnapshot: { name: "Mara", capturedAt: stamp },
+            spriteManager: manager,
+          },
+        ],
+      },
+      opportunity: { actorIds: ["mara"] },
+      actorIncarnations: { mara: stamp },
+      context: { residents: [{ characterId: "mara", capturedAt: stamp }], social: { head: null } },
+    },
+  } as Job;
+  const native = nativeBackgroundJob(job),
+    rootId = backgroundHistoryId(native),
+    slot = backgroundSlotId(job);
+  const proofId = backgroundCompletionId({ format: 1, seed: job.seed, slotId: slot, jobId: job.id });
+  await retainBackgroundJob(f.gate.documents, native);
+  await f.repo.mutateAuthority((state) => {
+    state.backgroundReceipts[slot] = job.id;
+  });
+  await f.repo.mutateAuthority((state) => {
+    state.backgroundReceipts[slot] = "newer-job";
+  });
+  const remove = f.store.remove;
+  let physicalDeletes = 0;
+  f.store.remove = async (pkg: string, id: string, revision: number) => {
+    if (id === rootId) throw Error("Root removal failed");
+    return remove(pkg, id, revision);
+  };
+  await assert.rejects(
+    collectRetainedStorage(f.gate, async () => {
+      physicalDeletes++;
+    }),
+    /Root removal failed/,
+  );
+  assert.equal(physicalDeletes, 0, "no physical dependency deletion before historical root acknowledgement");
+  assert.ok(f.rows.has(rootId));
+  assert.ok(f.rows.has(proofId));
+  f.store.remove = remove;
+  await assert.rejects(
+    collectRetainedStorage(f.gate, async () => {
+      assert.equal(f.rows.has(rootId), false, "the historical root is gone before any sprite deletion");
+      physicalDeletes++;
+      throw Error("Physical delete acknowledgement lost");
+    }),
+    /Physical delete acknowledgement lost/,
+  );
+  assert.ok(f.rows.has(proofId), "the proof survives failed dependency cleanup");
+  await collectRetainedStorage(f.gate, async () => {
+    assert.equal(f.rows.has(rootId), false);
+    physicalDeletes++;
+  });
+  assert.equal(physicalDeletes, 2);
+  assert.equal(f.rows.has(spriteFileId(assetId, "original")), false);
+  assert.equal(f.rows.has(proofId), false, "the final proof retires after root and dependencies");
+  f.gate.dispose();
 });
