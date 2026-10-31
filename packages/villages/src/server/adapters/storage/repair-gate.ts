@@ -19,12 +19,14 @@ const PACKAGE = "villages";
 const CONTROL = "villages-repair-control";
 const simulations = new WeakMap<CapabilityDocumentStore, () => boolean>();
 export const isRepairSimulation = (documents: CapabilityDocumentStore) => simulations.get(documents)?.() ?? false;
+type PageInventory = { active: boolean; pages?: Promise<Map<string, CapabilityDocumentRecord | null>> };
 type Context = {
   epoch: number;
   owners?: { active: boolean }[];
   administrative?: boolean;
   transaction?: Map<string, RepairWrite>;
   revisions?: Map<string, number>;
+  inventory?: PageInventory;
 };
 type Control = { version: 3; epoch: number; pending?: { id: string; writes: string } };
 /** Shared only by activations using the same canonical Engine backend. */
@@ -92,6 +94,51 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
   const requireAlive = () => {
     if (!alive) throw conflict("This Village runtime is no longer active.");
   };
+  async function physicalGet(packageId: string, id: string): Promise<CapabilityDocumentRecord | null> {
+    const owner = context.getStore(),
+      inventory = owner?.inventory;
+    for (;;) {
+      if (
+        !owner?.administrative ||
+        !inventory?.active ||
+        admission.exclusive !== activation ||
+        packageId !== PACKAGE ||
+        !id.startsWith("villages-memory-page-")
+      )
+        return raw.getById(packageId, id);
+      // Engine point lookups scan its table; one private inventory avoids repeated administrative scans.
+      const loading = (inventory.pages ??= raw.list(PACKAGE, "memory-page").then((rows) => {
+        const pages = new Map<string, CapabilityDocumentRecord | null>();
+        for (const row of rows) {
+          if (row.packageId !== PACKAGE || row.kind !== "memory-page" || pages.has(row.id))
+            throw conflict("The saved history page inventory is invalid.");
+          pages.set(row.id, row);
+        }
+        return pages;
+      }));
+      let pages: Map<string, CapabilityDocumentRecord | null>;
+      try {
+        pages = await loading;
+      } catch (error) {
+        if (inventory.pages === loading) inventory.pages = undefined;
+        throw error;
+      }
+      if (inventory.pages !== loading) continue;
+      if (!pages.has(id)) {
+        // Kind membership cannot prove absence: a conflicting record may use another kind.
+        const row = await raw.getById(packageId, id);
+        if (inventory.pages !== loading) continue;
+        pages.set(id, row);
+      }
+      return structuredClone(pages.get(id)!);
+    }
+  }
+  function invalidatePage(packageId: string, id: string) {
+    if (packageId === PACKAGE && id.startsWith("villages-memory-page-")) {
+      const inventory = context.getStore()?.inventory;
+      if (inventory) inventory.pages = undefined;
+    }
+  }
   function beginMaintenance() {
     let finish!: () => void;
     const done = new Promise<void>((resolve) => {
@@ -142,7 +189,7 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     for (const write of pending.writes) {
       requireAlive();
       const id = write.id;
-      const current = await raw.getById(PACKAGE, id);
+      const current = await physicalGet(PACKAGE, id);
       requireAlive();
       const digest = repairDocumentDigest(clean(current));
       if (digest !== repairDocumentDigest(write.after) && digest !== write.beforeDigest)
@@ -216,15 +263,20 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
             throw conflict("Earlier Village work is still settling. Try again after it finishes.");
           admission.exclusive = activation;
           const recovering = beginMaintenance();
+          const inventory: PageInventory = { active: true };
           try {
             const fresh = await raw.getById(PACKAGE, CONTROL);
             if (fresh?.revision !== row.revision) continue;
             controlRevision = row.revision;
             admission.epoch = Math.max(admission.epoch, saved!.epoch);
-            await replay({ id: pending.id, writes: await codec.decodeWrites(pending.writes) });
+            await context.run({ epoch: admission.epoch, administrative: true, inventory }, async () =>
+              replay({ id: pending.id, writes: await codec.decodeWrites(pending.writes) }),
+            );
             readyEpoch = admission.epoch;
             return;
           } finally {
+            inventory.active = false;
+            inventory.pages = undefined;
             if (admission.exclusive === activation) admission.exclusive = null;
             if (admission.maintenance === recovering) admission.maintenance = null;
             recovering.finish();
@@ -290,7 +342,7 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
             updatedAt: "",
           }
         : null;
-    const row = await raw.getById(packageId, id);
+    const row = await physicalGet(packageId, id);
     if (context.getStore()?.transaction) {
       const digest = repairDocumentDigest(clean(row)),
         prior = readSet?.get(id);
@@ -330,7 +382,13 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       await ensureReady();
       assertWrite();
       const staged = context.getStore()?.transaction;
-      if (!staged) return raw.create(input);
+      if (!staged) {
+        try {
+          return await raw.create(input);
+        } finally {
+          invalidatePage(input.packageId, input.id);
+        }
+      }
       const old = await get(input.packageId, input.id);
       if (old) throw conflict("That record already exists.");
       staged.set(input.id, {
@@ -344,7 +402,13 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       await ensureReady();
       assertWrite();
       const staged = context.getStore()?.transaction;
-      if (!staged) return raw.update(input);
+      if (!staged) {
+        try {
+          return await raw.update(input);
+        } finally {
+          invalidatePage(input.packageId, input.id);
+        }
+      }
       const old = await get(input.packageId, input.id);
       if (!old || old.revision !== input.expectedRevision) return null;
       const after = { ...old, ...input, revision: old.revision + 1 };
@@ -359,7 +423,13 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       await ensureReady();
       assertWrite();
       const staged = context.getStore()?.transaction;
-      if (!staged) return raw.remove(packageId, id, revision);
+      if (!staged) {
+        try {
+          return await raw.remove(packageId, id, revision);
+        } finally {
+          invalidatePage(packageId, id);
+        }
+      }
       const old = await get(packageId, id);
       if (!old || old.revision !== revision) return false;
       staged.set(id, { before: staged.has(id) ? staged.get(id)!.before : clean(old), after: null });
@@ -388,9 +458,12 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
     if (mode === "cleanup") {
       cleanup = beginMaintenance();
     }
+    const inventory: PageInventory = { active: true };
     try {
-      return await context.run({ epoch: admission.epoch, administrative: true }, fn);
+      return await context.run({ epoch: admission.epoch, administrative: true, inventory }, fn);
     } finally {
+      inventory.active = false;
+      inventory.pages = undefined;
       if (admission.exclusive === activation) admission.exclusive = null;
       if (cleanup) {
         if (admission.maintenance === cleanup) admission.maintenance = null;
@@ -401,7 +474,7 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
   }
   async function guards(transaction: RepairTransaction) {
     for (const expected of transaction.reads)
-      if (repairDocumentDigest(clean(await raw.getById(PACKAGE, expected.id))) !== expected.digest)
+      if (repairDocumentDigest(clean(await physicalGet(PACKAGE, expected.id))) !== expected.digest)
         throw conflict("A reviewed record changed. Review the repair again; your draft is kept.");
     for (const expected of transaction.lists) {
       const current = await raw.list(PACKAGE, expected.kind);
@@ -421,7 +494,13 @@ export function createRepairGate(backing: CapabilityDocumentStore, admission = c
       try {
         const revisions = new Map<string, number>();
         const value = await context.run(
-          { epoch: admission.epoch, administrative: true, transaction: staged, revisions },
+          {
+            epoch: admission.epoch,
+            administrative: true,
+            transaction: staged,
+            revisions,
+            inventory: context.getStore()?.inventory,
+          },
           async () => {
             for (const write of reviewed?.writes ?? []) {
               const id = (write.after ?? write.before)!.id,
