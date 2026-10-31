@@ -64,7 +64,7 @@ The physical storage contract supports one persistent state patch per exchange, 
 
 The Agenda is the resident's schedule; Routine is its recurring foundation. Wishes are resident-owned desires with attention and approach separate from retention. They are stored independently of the Agenda.
 
-Founding now uses independent, versioned Routine (the existing agenda job slot) and Initial Wish jobs. Routines run in roster order, followed by Initial Wishes, under existing connection concurrency limits. Timeout and response-validation failures do not stop other residents; definitive connection/auth/JSON-mode configuration failures stop the pass. Readiness requires a completion receipt for both tasks for every resident. A null Wish is a completed task; reserving a task alone is not.
+Founding uses independent, versioned Routine (the existing agenda job slot) and Initial Wish jobs. Routines run in roster order, followed by Initial Wishes, under existing connection concurrency limits. Timeout and response-validation failures do not stop other residents; definitive connection/auth/JSON-mode configuration failures stop the pass. Preparation completion requires a receipt for both tasks for each founding resident. A null Wish is a completed task; reserving a task alone is not. Usable places and local routines allow automatic entry while optional preparation continues server-side. Failed preparation remains recoverable under REPAIR → Progress.
 
 Each request carries one instruction block and structured identity, setting, circumstances, role, relevant places and lore. Complete authored identity is preserved; context fitting must fail rather than drop it. Routine requests reserve at most 2,048 output tokens; Initial Wish requests reserve at most 1,536, both respecting the connection cap. Both use JSON mode, no requested reasoning, the shared two-minute provider watchdog, and no automatic replacement request. The watchdog allows legitimate longer System work to finish while retaining cancellation, late-response evidence and explicit retry after timeout. Shared bounded JSON recovery precedes domain validation.
 
@@ -72,7 +72,7 @@ Routine application preserves Wishes; initial Wish application preserves the sch
 
 The existing preparation retry route accepts a resident/task target, expected attempt and action ID. Batch retries skip completed work and include untouched pending tasks. Repeated action IDs reuse the same admission. Reads and startup never authorize new founding requests. Interrupted work waits for explicit retry; already saved results can apply locally.
 
-Village format 6 requires a fresh world. Legacy combined Routine/Wish responses are not adopted or converted. Current task results and unknown-billing evidence retain the ordinary explicit-retry lifecycle.
+Village format 13 requires a fresh world. Legacy combined Routine/Wish responses are not adopted or converted. Current task results and unknown-billing evidence retain the ordinary explicit-retry lifecycle.
 
 Provider-free coverage includes founding-preparation, founding-requests, compact-founding, social-wishes, founding-preparation browser and founding-jobs-packaged regressions. This establishes contracts and recovery behavior, not real-provider latency or output quality.
 

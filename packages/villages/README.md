@@ -46,11 +46,11 @@ The setup steps are **Place → People → Map → Venues → Review**.
 2. **People:** Choose your Persona and one to three residents. Write **Your backstory** for your own situation. Optional **Homeworld** and **Add starting note** fields explain each resident's connection to the setting. The **Village world** label can help distinguish shared and different origins.
 3. **Map:** Use the simple starting map, upload artwork, or deliberately generate it. The first map uses the Village's name. For generated artwork, describe the area actually shown, whether it is a building interior or a neighborhood.
 4. **Venues:** Select a Venue on the map or in the selector, then tap the map to move its marker; arrow keys make small adjustments. Pan and zoom as on the in-game Map. **Edit** opens its physical form, Zones and artwork. Added Zones start with blank Used for and Long-term details fields and keep the current tab. **Quick Start** always asks before replacing the Venue drafts with fresh templates: Entrance, Common and Private Zones for each residence, tailored to its resident or your persona; Entrance and Common for the Community Venue, tailored to the Village. Those defaults impose no layout requirements afterward: every Venue needs only its Entrance and may have up to six additional Zones. All Zone details and saved artwork are visible without a first visit. Entry still follows each Zone’s access rules.
-5. **Review:** Resolve the listed setup problems and found the Village. Usable places and local routines let you **Enter Village** while optional details, personal routines and initial Wishes are prepared. Unfinished extras and deliberate retries remain in **More → Founding extras**. A resident having no initial Wish is a valid result.
+5. **Review:** Resolve the listed setup problems and found the Village. The Village opens automatically once places and local routines are usable. Optional details, personal routines and initial Wishes continue preparing in the background. A resident having no initial Wish is a valid result.
 
 Map uploads need at least **768 pixels on the shorter side** and **1024 on the longer side**, with proportions between **2:3 and 2:1**. Generation requests an overhead map at 2560 × 1440; providers may return other dimensions.
 
-Setup drafts save on your device, so finish them in the same browser. If suggestions finish after your connection drops, use **Check suggestions** to retrieve them. **Retry preparation** keeps usable completed work rather than starting everything over.
+Setup drafts save on your device, so finish them in the same browser. If suggestions finish after your connection drops, use **Check suggestions** to retrieve them. Failed optional preparation can be retried under **REPAIR → Progress**, preserving completed work.
 
 Characters keep their authored histories, relationships, secrets, and limits on what they know. Sharing a homeworld does not automatically make them acquainted. Optional lorebooks provide reference context without being rewritten.
 
@@ -206,7 +206,7 @@ Background work shows progress, failures, and provider-reported usage where avai
 | ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Founding asks for connections | Select available language connections for both **System** and **Narration**.                                      |
 | A setup suggestion seems lost | Use **Check suggestions** before requesting another result.                                                       |
-| Preparation stops             | Read the task error, fix any connection problem, then use **Retry preparation**. Completed usable tasks are kept. |
+| Preparation stops             | Fix any connection problem, then retry unfinished work under **REPAIR → Progress**. Completed tasks are kept. |
 | A Scene send fails            | Keep or edit the retained draft. An unchanged submission can reuse saved work.                                    |
 | Saved output needs applying   | Use **Replay saved work** when offered. This applies saved output without buying another interpretation.          |
 | A turn is held with HALT      | Read the notice and rewrite the preserved input. That turn has not become story history.                          |
