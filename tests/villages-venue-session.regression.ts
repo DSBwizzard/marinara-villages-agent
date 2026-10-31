@@ -1497,6 +1497,7 @@ async function main() {
         {
           characterId: "bob",
           cardSnapshot: card("bob"),
+          wishes: [],
           agenda: agenda("park"),
           addedAt: now.toISOString(),
           ingestSchedule: false,
@@ -1504,6 +1505,7 @@ async function main() {
         {
           characterId: "tina",
           cardSnapshot: card("tina"),
+          wishes: [],
           agenda: agenda("park", [
             {
               id: "wish-tina",
@@ -2387,6 +2389,7 @@ async function main() {
           state.villagers.push({
             characterId: "sam",
             cardSnapshot: card("sam"),
+            wishes: [],
             agenda: agenda("park"),
             addedAt: now.toISOString(),
             ingestSchedule: false,

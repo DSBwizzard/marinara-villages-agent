@@ -87,7 +87,7 @@ export function createWorldCoordination({
       (state) => {
         Object.assign(state, defaultVillageState());
       },
-      { memories: true },
+      { memories: true, wishes: true },
     );
     return buildVillageSnapshot();
   }
@@ -114,8 +114,8 @@ export function createWorldCoordination({
     if (!options.advanceTime) await reconcileNarrative?.(options.now ?? villageNow());
     if (options.advanceTime) {
       const request = options.advanceTime;
-      const departure = await readVillageAuthority({ memories: true });
-      const hydrated = await readVillageState({ memories: true });
+      const departure = await readVillageAuthority({ memories: true, wishes: true });
+      const hydrated = await readVillageState({ memories: true, wishes: true });
       await advanceVillageClock(request, (state, from, until) => {
         if (
           state.seed !== departure.seed ||

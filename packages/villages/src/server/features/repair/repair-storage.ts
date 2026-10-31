@@ -1,5 +1,6 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
+import { worldWishOwners, validateWorldWishHistory } from "../../adapters/storage/world-wishes.js";
 import { createHash } from "node:crypto";
 import type {
   RepairCheckpoint,
@@ -95,6 +96,7 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
         "snapshot Village ownership changed",
       );
       departureHistoryOwner(row.data);
+      worldWishOwners(row.data);
     } else if (row.kind === "relationships") {
       const root = readRelationshipRoot(row.data, owner);
       memoryRequire(row.id === relationshipDocumentId(root.seed), "snapshot relationship ownership changed");
@@ -138,7 +140,32 @@ function worldSources<T extends RepairDocument>(
 
 export function createRepairStorage(documents: CapabilityDocumentStore, artifacts: CapabilityDocumentStore) {
   const snapshots = createRepairSnapshots(artifacts);
-  async function validateResponseWrites(writes: RepairWrite[]) {
+  async function validateResponseWrites(writes: RepairWrite[], proposed: RepairWrite[] = []) {
+    const afters = new Map(proposed.map((write) => [(write.after ?? write.before)!.id, write.after] as const));
+    const view = {
+      getById: async (pkg: string, id: string) => {
+        const row = afters.get(id);
+        return afters.has(id)
+          ? row
+            ? { ...row, packageId: pkg, revision: 1, createdAt: "", updatedAt: "" }
+            : null
+          : documents.getById(pkg, id);
+      },
+    };
+    await validateWorldWishHistory(
+      documents,
+      writes
+        .map((write) => write.before)
+        .filter((row) => row?.kind === "village")
+        .map((row) => row!.data),
+    );
+    await validateWorldWishHistory(
+      view,
+      writes
+        .map((write) => write.after)
+        .filter((row) => row?.kind === "village")
+        .map((row) => row!.data),
+    );
     for (const row of writes.flatMap((write) => [write.before, write.after]))
       if (row && ["background-work", "background-history"].includes(row.kind)) {
         validateBackgroundJobRecord(row);
@@ -149,7 +176,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     const { undoWrites, ...kept } = history;
     return { ...kept, ...(undoWrites ? { writeRefs: await snapshots.captureWrites(undoWrites) } : {}) };
   }
-  async function decodeHistory(raw: unknown): Promise<HistoryData> {
+  async function decodeHistory(raw: unknown, proposed?: RepairWrite[]): Promise<HistoryData> {
     memoryObject(raw);
     memoryRequire(
       typeof raw.id === "string" &&
@@ -162,7 +189,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     );
     const { writeRefs, ...kept } = raw as StoredHistory;
     const writes = Object.hasOwn(raw, "writeRefs") ? await snapshots.restoreWrites(writeRefs!) : undefined;
-    if (writes) await validateResponseWrites(writes);
+    if (writes) await validateResponseWrites(writes, proposed);
     return {
       ...kept,
       ...(writes ? { undoWrites: writes } : {}),

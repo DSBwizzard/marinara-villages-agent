@@ -80,7 +80,7 @@ async function populate(fixture: ReturnType<typeof f>, count: number) {
     kind: "village",
     name: "World",
     description: "",
-    data: { ...mechanics, seed, setupAt: at, memoryHead: null },
+    data: { ...mechanics, seed, setupAt: at, memoryHead: null, wishArchiveHead: { count: 0, root: null } },
   });
   const scene = coerceSession({
     version: 3,

@@ -4,6 +4,7 @@ import type { SocialWish, WishDisclosure } from "../../../shared/contracts/wishe
 import type { VillageState, VillageVillager } from "../models/world.js";
 import { rememberDomainFact } from "./domain-memories.js";
 import { projectMemories } from "./memory-views.js";
+import { immutableMemoryValue } from "./memory-integrity.js";
 
 const text = z.string().trim().min(1).max(320);
 const attention = z.object({ state: z.enum(["background", "foreground"]), reason: text }).strict();
@@ -128,51 +129,114 @@ Existing rows use exact supplied IDs and their complete captured conditions/hist
 Approach requires approach:string (empty means stop this attempt); it records the owner's actual chosen response, not instructions or mandatory steps. Attention requires attention:{state:"background|foreground",reason}; retention alone never demands attention. Most conversations have no Wish relevance. A sustained preoccupation needs grounded character/circumstance support. No principal-Wish quota. Existing approaches, refusals and history matter: repeated solicitation needs a genuinely new reason, not merely an open Wish.
 Progress/fulfilled require actual new witnessed interaction establishing the desired outcome, every applicable essential condition, and any specified participant/channel. An invitation, accepted plan, promise, gratitude, claim or elapsed time alone is not the requested shared experience. Apologizing differs from being forgiven. Other participants decide independently; cite their actual response where necessary. Never invent affection or automatic rewards. NPC-only interaction can fulfill a Wish without player participation or knowledge. Evidence must be heard by the owner and cite at least one current line. Owner-only claims about an earlier event do not prove that earlier event; earlier supplied history may support conditions but cannot replace new evidence. No unsupported physical results. For fulfilled reason briefly identifies the outcome actually established.`;
 
+const savedWishCondition = z
+  .object({
+    id: z.string(),
+    quote: text,
+    at: z.string().datetime(),
+    sourceId: z.string(),
+    lineIds: z.array(z.string()),
+  })
+  .strict();
+const savedWishHistory = z
+  .object({
+    id: z.string(),
+    at: z.string().datetime(),
+    kind: z.string(),
+    text,
+    sourceId: z.string(),
+    lineIds: z.array(z.string()),
+  })
+  .strict();
+const savedSocialWishHeader = z
+  .object({
+    id: z.string().min(1),
+    revision: z.number().int().positive(),
+    wish: text,
+    reason: text,
+    status: z.enum(["open", "fulfilled", "withdrawn"]),
+    addedAt: z.string().datetime(),
+    changedAt: z.string().datetime(),
+    origin: z
+      .object({
+        kind: z.enum(["preparation", "scene", "encounter", "mail", "reflection"]),
+        sourceId: z.string().min(1),
+        lineIds: z.array(z.string()),
+      })
+      .strict(),
+    attention,
+    approach: z.string().max(320),
+  })
+  .strict();
+const savedSocialWish = savedSocialWishHeader.extend({
+  conditions: z.array(savedWishCondition),
+  history: z.array(savedWishHistory),
+});
 export function readSocialWish(value: unknown): SocialWish {
-  return z
-    .object({
-      id: z.string().min(1),
-      revision: z.number().int().positive(),
-      wish: text,
-      reason: text,
-      status: z.enum(["open", "fulfilled", "withdrawn"]),
-      addedAt: z.string().datetime(),
-      changedAt: z.string().datetime(),
-      origin: z
-        .object({
-          kind: z.enum(["preparation", "scene", "encounter", "mail", "reflection"]),
-          sourceId: z.string().min(1),
-          lineIds: z.array(z.string()),
-        })
-        .strict(),
-      attention,
-      approach: z.string().max(320),
-      conditions: z.array(
-        z
-          .object({
-            id: z.string(),
-            quote: text,
-            at: z.string().datetime(),
-            sourceId: z.string(),
-            lineIds: z.array(z.string()),
-          })
-          .strict(),
-      ),
-      history: z.array(
-        z
-          .object({
-            id: z.string(),
-            at: z.string().datetime(),
-            kind: z.string(),
-            text,
-            sourceId: z.string(),
-            lineIds: z.array(z.string()),
-          })
-          .strict(),
-      ),
-    })
-    .strict()
-    .parse(value);
+  return savedSocialWish.parse(value);
+}
+
+const frozenWishes = new WeakSet<object>();
+const frozenWishCollections = new WeakSet<object>();
+const conditionValues = new WeakSet<object>();
+const historyValues = new WeakSet<object>();
+const collectionSources = new WeakMap<SocialWish[], SocialWish[]>();
+function sharedSocialWish(source: SocialWish) {
+  if (frozenWishes.has(source)) return source;
+  const { conditions, history, ...fields } = source;
+  if (!Array.isArray(conditions) || !Array.isArray(history)) return readSocialWish(source);
+  return {
+    ...savedSocialWishHeader.parse(fields),
+    conditions: conditions.map((row) => (conditionValues.has(row) ? row : savedWishCondition.parse(row))),
+    history: history.map((row) => (historyValues.has(row) ? row : savedWishHistory.parse(row))),
+  };
+}
+export function immutableSocialWishes(value: SocialWish[]): SocialWish[] {
+  if (frozenWishCollections.has(value)) return value;
+  const result = value.map((source) => {
+    if (frozenWishes.has(source)) return source;
+    const wish = sharedSocialWish(source);
+    const frozen = immutableMemoryValue(wish);
+    for (const row of frozen.conditions) conditionValues.add(row);
+    for (const row of frozen.history) historyValues.add(row);
+    frozenWishes.add(frozen);
+    return frozen;
+  });
+  const frozen = immutableMemoryValue(result);
+  frozenWishCollections.add(frozen);
+  return frozen;
+}
+export function copySocialWishes(value: unknown): SocialWish[] {
+  if (!Array.isArray(value)) return [];
+  if (!frozenWishCollections.has(value) && !collectionSources.has(value)) return value.map(readSocialWish);
+  const result = value.map(sharedSocialWish);
+  collectionSources.set(result, collectionSources.get(value) ?? value);
+  return result;
+}
+export function socialWishCollectionSource(value: SocialWish[]) {
+  return collectionSources.get(value) ?? value;
+}
+export function mutableSocialWish(value: SocialWish): SocialWish {
+  return {
+    ...value,
+    attention: { ...value.attention },
+    conditions: [...value.conditions],
+    history: [...value.history],
+  };
+}
+function unavailableWishes(): never {
+  throw new Error("Wishes were not loaded for this operation.");
+}
+export function blockWishHistory(owner: { wishes: SocialWish[] }) {
+  Object.defineProperty(owner, "wishes", {
+    configurable: true,
+    enumerable: false,
+    get: unavailableWishes,
+    set: unavailableWishes,
+  });
+}
+export function wishHistoryLoaded(owner: { wishes: SocialWish[] }) {
+  return Object.getOwnPropertyDescriptor(owner, "wishes")?.get !== unavailableWishes;
 }
 
 export function newSocialWish(
@@ -309,6 +373,11 @@ export function applyWishSource(
         }
       }
       if (!rejection && wish) {
+        if (frozenWishes.has(wish)) {
+          const index = resident.wishes.indexOf(wish);
+          wish = mutableSocialWish(wish);
+          resident.wishes[index] = wish;
+        }
         if (row.intent === "clarify") {
           if (row.supersedes && !wish.conditions.some((c) => c.id === row.supersedes))
             rejection = "The corrected condition is unavailable.";
@@ -515,6 +584,11 @@ export function applyWishReflection(
   if (row.wishId) {
     const prior = original.wishes.find((w) => w.id === row.wishId);
     if (!wish || !prior || wishFingerprint(wish) !== wishFingerprint(prior) || row.desire) return;
+    if (frozenWishes.has(wish)) {
+      const index = resident.wishes.indexOf(wish);
+      wish = mutableSocialWish(wish);
+      resident.wishes[index] = wish;
+    }
     const decision = row.decision ?? "attention";
     if (decision === "withdrawn") {
       wish.status = "withdrawn";

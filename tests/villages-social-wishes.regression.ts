@@ -1,7 +1,7 @@
 import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { sceneHaltWorldConflict } from "../packages/villages/src/server/domain/rules/scene-halt-world.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
-// Test cases: social-wishes/source, social-wishes/privacy, social-wishes/replay, social-wishes/revisions, social-wishes/conditions, social-wishes/continuity, social-wishes/following, social-wishes/reflection, social-wishes/fresh-world
+// Test cases: social-wishes/source, social-wishes/privacy, social-wishes/replay, social-wishes/revisions, social-wishes/conditions, social-wishes/continuity, social-wishes/following, social-wishes/reflection, social-wishes/fresh-world, social-wishes/shared-history
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -17,6 +17,12 @@ import {
   readSocialWishChanges,
   knownSocialWishes,
   publishWishDisclosure,
+  immutableSocialWishes,
+  copySocialWishes,
+  mutableSocialWish,
+  socialWishCollectionSource,
+  blockWishHistory,
+  wishHistoryLoaded,
 } from "../packages/villages/src/server/domain/rules/social-wishes.js";
 import { forgetVillageMemory } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { createWishes } from "../packages/villages/src/server/features/residents/wishes/service.js";
@@ -434,3 +440,67 @@ await runCase("social-wishes/fresh-world", () => {
   );
 });
 console.log("Social Wishes source authority, privacy, continuity, retention and replay passed.");
+await runCase("social-wishes/shared-history", () => {
+  const initial = fixtureWish({ wish: goal });
+  const first = immutableSocialWishes([
+    {
+      ...initial,
+      history: [
+        {
+          id: "prior",
+          at: wishTime(1),
+          kind: "progress",
+          text: "Exact original evidence",
+          sourceId: "source:prior",
+          lineIds: ["line:prior"],
+        },
+      ],
+    },
+  ]);
+  const changed = copySocialWishes(first);
+  assert.notEqual(changed, first);
+  assert.equal(changed[0], first[0]);
+  assert.equal(socialWishCollectionSource(changed), first);
+  changed[0] = mutableSocialWish(changed[0]);
+  changed[0].history.push({
+    id: "next",
+    at: wishTime(2),
+    kind: "progress",
+    text: "Exact next evidence",
+    sourceId: "source:next",
+    lineIds: ["line:next"],
+  });
+  const second = immutableSocialWishes(changed);
+  assert(Object.isFrozen(first) && Object.isFrozen(second[0]) && Object.isFrozen(second[0].history));
+  assert.equal(first[0].history.length, 1, "A later update cannot rewrite a retained snapshot");
+  assert.equal(second[0].history[0], first[0].history[0], "Unchanged exact events remain shared for page publication");
+  assert.equal(second[0].history.length, 2);
+  const unavailable = { wishes: [] as typeof changed };
+  blockWishHistory(unavailable);
+  assert.equal(wishHistoryLoaded(unavailable), false);
+  assert.throws(() => unavailable.wishes, /Wishes were not loaded/);
+  assert.throws(() => {
+    unavailable.wishes = changed;
+  }, /Wishes were not loaded/);
+  const world = wishWorld();
+  world.villagers[0].wishes = copySocialWishes(first);
+  const captured = world.villagers.map((resident) => ({
+    ...resident,
+    wishes: copySocialWishes(immutableSocialWishes(resident.wishes)),
+  }));
+  applyWishReflection(
+    world,
+    {
+      actorId: "a",
+      wishId: first[0].id,
+      decision: "approach",
+      approach: "Ask about pottery",
+      reason: "A grounded new choice",
+    },
+    "frozen-reflection",
+    wishTime(3),
+    captured,
+  );
+  assert.equal(world.villagers[0].wishes[0].approach, "Ask about pottery");
+  assert.equal(first[0].approach, "", "Reflection replaces the live value without editing frozen history");
+});

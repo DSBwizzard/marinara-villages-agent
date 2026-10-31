@@ -8,6 +8,8 @@ import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapt
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { wishFingerprint } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   createSceneWriting,
@@ -24,7 +26,7 @@ function deferred() {
   const promise = new Promise<void>((done) => (resolve = done));
   return { promise, resolve };
 }
-function fixture(label: string) {
+function fixture(label: string, checkpointed = false) {
   const world = defaultVillageState();
   world.seed = "same-seed";
   world.name = label;
@@ -55,6 +57,7 @@ function fixture(label: string) {
     guardDisposed = false,
     brokenReply = false;
   const owner = createActivationScope();
+  const checkpoints = new Map<string, unknown>();
   let roomInterpretation: Awaited<ReturnType<SceneWritingPorts["interpretRoomReply"]>> = null;
   async function touch(stage: string) {
     calls.push(stage);
@@ -124,7 +127,24 @@ function fixture(label: string) {
       calls.push("debug");
     },
     venueOperationId: () => label + " operation",
-    venueOperationInput: () => ({ interactionScopeVersion: 1 }),
+    venueOperationInput: () => ({
+      interactionScopeVersion: 1,
+      ...(checkpointed
+        ? {
+            writingContractVersion: 3,
+            writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+          }
+        : {}),
+    }),
+    venueCheckpoint: async <T>(stage: string, work: () => Promise<T>): Promise<T> => {
+      if (!checkpointed) return work();
+      if (checkpoints.has(stage)) return structuredClone(checkpoints.get(stage)) as T;
+      const value = await work();
+      checkpoints.set(stage, structuredClone(value));
+      return value;
+    },
+    venueSavedCheckpoint: <T>(stage: string) =>
+      checkpointed && checkpoints.has(stage) ? (structuredClone(checkpoints.get(stage)) as T) : undefined,
     venueOperationSignal: () => undefined,
     rejectVenueCompletion: async () => {
       calls.push("reject");
@@ -139,6 +159,7 @@ function fixture(label: string) {
         content: brokenReply
           ? "invalid"
           : JSON.stringify({
+              ...(checkpointed ? { playerSpeechCapture: { status: "silent", segments: [] } } : {}),
               segments: [{ kind: "narration", text: label + " room remains quiet." }],
               heardPlayerBy: [],
               wishChanges: [],
@@ -155,7 +176,8 @@ function fixture(label: string) {
     },
     interpretRoomReply: async (selected, current) => {
       assert.equal(selected, scene);
-      assert.equal(current, world);
+      if (checkpointed) assert.equal(current.seed, world.seed);
+      else assert.equal(current, world);
       await touch("interpretation");
       return roomInterpretation;
     },
@@ -206,6 +228,37 @@ assert.equal(reply.lines[0]?.content, "A room remains quiet.");
 assert.equal(reply.roomInterpretation, null);
 assert.equal(complete.calls.filter((x) => x === "completion").length, 1);
 assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
+{
+  const replay = fixture("replay", true);
+  replay.world.villagers = [wishWorld().villagers[0]];
+  const initial = fixtureWish({ wish: "Original captured desire" }, "same-wish", stamp);
+  replay.world.villagers[0].wishes = [initial];
+  replay.scene.participants = [{ characterId: "a", name: "Ada", doing: "Waiting" }];
+  replay.scene.activeIds = ["a"];
+  replay.scene.continuity = captureSceneContinuity(replay.world, replay.scene, Date.parse(stamp));
+  replay.fail("interpretation");
+  await assert.rejects(replay.run(), (error) => error === replay.exact);
+  assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1);
+  const updated = { ...initial, revision: 2, wish: "Later committed desire" };
+  replay.world.villagers[0].wishes = [updated];
+  replay.scene.submissions.push({ id: "earlier", at: stamp } as never);
+  replay.world.exchangeReceipts.late = {
+    id: "late",
+    sceneId: replay.scene.id,
+    submissionId: "earlier",
+    status: "applied",
+    sceneFacts: { wish: { actorId: "a", wishId: initial.id, value: updated } },
+  } as never;
+  replay.fail("");
+  const reply = await replay.run();
+  assert.equal(
+    reply.wishContexts[0].wishes[0].wish,
+    initial.wish,
+    "Saved writing and its recovery baseline remain one purchased request despite delayed earlier Scene effects",
+  );
+  assert.equal(reply.wishContexts[0].wishes[0].revision, 1);
+  assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1, "Retry reuses the purchased response");
+}
 for (const source of ["decisions", "system"] as const) {
   const invitation = fixture(source);
   invitation.world.venues = [

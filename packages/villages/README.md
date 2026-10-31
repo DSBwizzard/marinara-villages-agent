@@ -150,7 +150,7 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 
 The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
 
-This build requires a fresh format-10 Village. Older worlds and setup records remain stored and are rejected without conversion.
+This build requires a fresh format-11 Village. Older worlds and setup records remain stored and are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 

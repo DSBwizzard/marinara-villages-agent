@@ -20,7 +20,7 @@ import { wishes } from "./wishes/service.js";
 export function registerRelationshipRoutes(engine: FastifyInstance) {
   engine.get<{ Params: { characterId: string } }>("/villagers/:characterId/wishes/inspect", async (request, reply) => {
     try {
-      const state = await readVillageState();
+      const state = await readVillageState({ wishes: [request.params.characterId] });
       const resident = state.villagers.find((r) => r.characterId === request.params.characterId);
       if (!resident) throw badRequest("Choose a resident.");
       return { wishes: resident.wishes };

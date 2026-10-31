@@ -28,6 +28,7 @@ import {
 } from "../../domain/rules/resident-actions.js";
 import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
+import { wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import {
   readSceneBoundary,
   readSceneHalt,
@@ -94,6 +95,17 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
 }
 
 export function createSemanticService(ports: SemanticPorts) {
+  async function readSceneAuthority(scene: VenueScene) {
+    const state = await ports.readVillageState();
+    const actors = scene.contactGeneration?.actorIds ?? [
+      ...scene.activeIds,
+      ...(scene.contactGeneration?.remoteIds ?? []),
+    ];
+    const captured = scene.continuity && scene.continuity.seed === state.seed && scene.villageSeed === state.seed;
+    return !captured && state.villagers.some((row) => actors.includes(row.characterId) && !wishHistoryLoaded(row))
+      ? ports.readVillageState({ wishes: actors })
+      : state;
+  }
   async function ask<Input, Result>(
     stage: string,
     input: Input,
@@ -396,7 +408,7 @@ export function createSemanticService(ports: SemanticPorts) {
   }
 
   async function intent(scene: VenueScene, message: string): Promise<SemanticIntent> {
-    const state = await ports.readVillageState();
+    const state = await readSceneAuthority(scene);
     return ask(
       "intent",
       {
@@ -425,7 +437,7 @@ export function createSemanticService(ports: SemanticPorts) {
     residentActionsOmitted = false,
     narrativeGrant?: NarrativeAdmission | null,
   ): Promise<SemanticExchange> {
-    const state = await ports.readVillageState();
+    const state = await readSceneAuthority(scene);
     const sceneState = sceneContinuityView(state, scene);
     const evidence = semanticEvidence(lines);
     const combined = scene.operation?.input.semanticPipelineVersion === 3;

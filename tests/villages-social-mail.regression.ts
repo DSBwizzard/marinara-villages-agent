@@ -1159,7 +1159,14 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
     id: "villages-village",
     packageId: "villages",
     kind: "village",
-    data: { version: 10, seed: village.seed, setupAt: village.setupAt, memoryHead: null },
+    data: {
+      version: 11,
+      seed: village.seed,
+      setupAt: village.setupAt,
+      memoryHead: null,
+      villagers: [],
+      wishArchiveHead: { count: 0, root: null },
+    },
   });
   let gate = createRepairGate(documents);
   const reopen = () => {

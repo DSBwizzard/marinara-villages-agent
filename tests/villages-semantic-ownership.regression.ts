@@ -1,4 +1,5 @@
 import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { wishWorld } from "./helpers/social-wishes-fixture.js";
 import assert from "node:assert/strict";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -637,6 +638,7 @@ async function main() {
   const generated = await createSceneWriting(writerPorts).generate(scene, "Ordinary conversation", "chat", "", null);
   let replayLoreReads = 0;
   const capturedWriting = {
+    wishContexts: [],
     fitted: {
       messages: [{ role: "system", content: "Exact captured request with purchased lore" }],
       loreEntries: [],
@@ -663,6 +665,14 @@ async function main() {
   const capturedPrompt = await replayWriting.prepareVenueTurnMessages(scene, "Retained message", "chat", "", null);
   assert.deepEqual(capturedPrompt.fitted, capturedWriting.fitted);
   assert.equal(replayLoreReads, 0, "Captured writing reuses its exact prompt before any fresh lore I/O");
+  await assert.rejects(
+    createSceneWriting({
+      ...writerPorts,
+      venueOperationInput: () => ({ writingContractVersion: 3 }),
+      venueSavedCheckpoint: () => ({ ...capturedWriting, wishContexts: undefined }) as any,
+    }).prepareVenueTurnMessages(scene, "Lost retained context", "chat", "", null),
+    /saved Wish writing context is unavailable/,
+  );
   const beforeOutage = calls.length;
   await assert.rejects(
     createSceneWriting({
@@ -1011,6 +1021,10 @@ async function main() {
   // Invalid Project metadata must retain the exact bounded rejection reason.
   {
     const projectWorld = structuredClone(state);
+    const host = wishWorld().villagers[0];
+    host.characterId = host.cardSnapshot.id = "host";
+    host.cardSnapshot.name = "Host";
+    projectWorld.villagers = [host];
     projectWorld.projects = [
       {
         id: "diagnostic-project",
@@ -1063,7 +1077,7 @@ async function main() {
         readVillageState: async () => projectWorld,
         rejectVenueCompletion: async () => {},
 
-        readEffectiveVillagerCard: async () => ({ id: "host", name: "Host", description: "Builder" }),
+        readEffectiveVillagerCard: () => ({ ...host.cardSnapshot, description: "Builder" }),
         venueOperationInput: () => ({
           semanticPipelineVersion: 3,
           writingContractVersion: 3,

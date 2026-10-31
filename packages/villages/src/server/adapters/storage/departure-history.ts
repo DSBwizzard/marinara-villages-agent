@@ -20,7 +20,7 @@ export function departureHistoryOwner(
 ): (Omit<RelationshipHistoryOwner, "head"> & { head: RelationshipHistoryOwner["head"] | null }) | undefined {
   memoryObject(value);
   memoryRequire(
-    value.version === 10 && typeof value.seed === "string" && typeof value.setupAt === "string",
+    value.version === 11 && typeof value.seed === "string" && typeof value.setupAt === "string",
     "unsupported Village ownership; start a fresh Village",
   );
   if (value.returnCatchup === undefined) return undefined;

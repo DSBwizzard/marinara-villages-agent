@@ -16,6 +16,7 @@ import {
 } from "./memory-payload-store.js";
 import { withRepairWork } from "./repair-gate.js";
 import { createDepartureHistory, departureHistoryOwner } from "./departure-history.js";
+import { createWorldWishes, worldWishOwners } from "./world-wishes.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["memories", "memoryScenes", "memoryReceipts"] as const;
@@ -31,8 +32,9 @@ function rootData(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 10) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 11) throw new Error("Unsupported Village format. Start a fresh Village.");
   departureHistoryOwner(raw);
+  worldWishOwners(raw);
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
   readMemoryHead(raw.memoryHead);
   return raw;
@@ -50,7 +52,11 @@ function blockHistory(state: VillageState) {
       },
     });
 }
-function encodeRoot(state: VillageState, memoryHead: MemoryHead | null, returnCatchup: unknown) {
+function encodeRoot(
+  state: VillageState,
+  memoryHead: MemoryHead | null,
+  wishes: Awaited<ReturnType<ReturnType<typeof createWorldWishes>["encode"]>>,
+) {
   return {
     ...Object.fromEntries(
       Object.keys(state)
@@ -58,7 +64,7 @@ function encodeRoot(state: VillageState, memoryHead: MemoryHead | null, returnCa
         .map((key) => [key, state[key as keyof VillageState]]),
     ),
     memoryHead,
-    returnCatchup,
+    ...wishes,
   };
 }
 /** Ordinary world reads never materialize history; memory consumers opt in. */
@@ -90,14 +96,17 @@ export function createVillageRepository(
       release();
     }
   }
-  async function load(store: CapabilityDocumentStore, include: VillageMemoryWrite["memories"]) {
+  async function load(store: CapabilityDocumentStore, options?: VillageMemoryWrite) {
     const payloads = memoryStore(store);
+    const wishes = createWorldWishes(store),
+      include = options?.memories;
     for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
       const record = await store.getById(VILLAGES_PACKAGE_ID, VILLAGE_DOC_ID),
         raw = rootData(record);
       if (!raw) return { record, head: null, state: defaultVillageState(), loaded: true };
       const head = readMemoryHead(raw.memoryHead);
-      const logical = await createDepartureHistory(store).decode(raw);
+      wishes.retain(raw);
+      const logical = await wishes.decode(await createDepartureHistory(store).decode(raw), options?.wishes);
       let state = coerceVillageState({ ...logical, ...emptyMemoryPayload() });
       if (head) assertMemoryWorld(head, state);
       const loaded = !head || include === true || (typeof include === "function" && include(state));
@@ -111,6 +120,7 @@ export function createVillageRepository(
         }
         state = coerceVillageState({ ...logical, ...payload });
       } else if (!loaded) blockHistory(state);
+      wishes.block(state, raw, options?.wishes);
       return { record, head, state, loaded };
     }
     throw new Error("Memories kept changing while being read. Please try again.");
@@ -118,7 +128,7 @@ export function createVillageRepository(
   return {
     withAuthorityLock,
     async readAuthority(options) {
-      return withRepairWork(async () => (await load(documents(), options?.memories)).state);
+      return withRepairWork(async () => (await load(documents(), options)).state);
     },
     async mutateAuthority(update, options) {
       return withRepairWork(() =>
@@ -126,12 +136,12 @@ export function createVillageRepository(
           const store = documents(),
             payloads = memoryStore(store);
           for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
-            const { record, head, state, loaded } = await load(store, options?.memories);
+            const { record, head, state, loaded } = await load(store, options);
             const identity = JSON.stringify([state.seed, state.setupAt]);
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 10, "invalid Village mutation format");
+            memoryRequire(state.version === 11, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
@@ -142,8 +152,9 @@ export function createVillageRepository(
             );
             const nextHead = loaded ? await payloads.prepare(state, head, record?.revision ?? 0) : head;
             const returnCatchup = await createDepartureHistory(store).encode(state, record?.data);
+            const wishes = await createWorldWishes(store).encode(state, record?.data, returnCatchup);
             const stamp = new Date().toISOString(),
-              data = encodeRoot(state, nextHead, returnCatchup);
+              data = encodeRoot(state, nextHead, wishes);
             let committed = false;
             try {
               if (record)
@@ -185,6 +196,7 @@ export function createVillageRepository(
             }
             if (!committed) continue;
             payloads.published(nextHead);
+            createWorldWishes(store).retain(data, state);
             return;
           }
           throw new Error("The village kept changing while it was being saved. Please try again.");

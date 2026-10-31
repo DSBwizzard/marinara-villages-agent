@@ -6,7 +6,7 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 // Fresh-world contract: neither an empty setup nor a played old world is converted.
-for (const version of [0, 5, 6, 7, 8]) {
+for (const version of [0, 5, 6, 7, 8, 9, 10]) {
   for (const played of [false, true]) {
     const state = {
       ...defaultVillageState(),
@@ -45,7 +45,7 @@ for (const version of [0, 5, 6, 7, 8]) {
     assert.deepEqual(record, saved);
   }
 }
-assert.equal(coerceVillageState(undefined).version, 10);
+assert.equal(coerceVillageState(undefined).version, 11);
 const fresh = coerceVillageState(defaultVillageState());
 assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(fresh))), fresh);
 console.log("Fresh worlds reload; incompatible setup and played worlds remain untouched.");

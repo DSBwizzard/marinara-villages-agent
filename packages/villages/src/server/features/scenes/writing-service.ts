@@ -95,7 +95,7 @@ import {
 import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
 import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
-import { wishWritingContext } from "../../domain/rules/social-wishes.js";
+import { immutableSocialWishes, wishHistoryLoaded, wishWritingContext } from "../../domain/rules/social-wishes.js";
 import {
   describeSpriteExpressions,
   resolveSceneSpriteExpressions,
@@ -258,14 +258,21 @@ export function createSceneWriting({
             fitted: ReturnType<typeof fitVenueWritingMessages>;
             ordinary?: ReturnType<typeof fitVenueWritingMessages>;
             loreInspection?: LoreInspection;
+            wishContexts: NonNullable<VenueScene["submissions"][number]["wishContexts"]>;
           }>("writing-request:" + requestKey)
         : undefined;
+    if (captured && !Array.isArray(captured.wishContexts))
+      throw conflict("The saved Wish writing context is unavailable. Its source is retained.");
     if (writingVersion !== undefined && writingVersion !== 1 && writingVersion !== 2 && writingVersion !== 3)
       throw conflict("This saved request uses an unsupported writing contract. Its history is preserved.");
     const sparse = writingVersion === 2 || writingVersion === 3;
     const preparationStarted = performance.now();
     const [authority, connectionId] = await Promise.all([readVillageState(), villagesConnectionIdFor("narration")]);
-    const village = sceneContinuityView(authority, session);
+    let village = sceneContinuityView(authority, session);
+    if (village.villagers.some((resident) => !wishHistoryLoaded(resident))) {
+      if (village !== authority) throw conflict("The captured Wish context is unavailable. Its source is retained.");
+      village = sceneContinuityView(await readVillageState({ wishes: true }), session);
+    }
     signal?.throwIfAborted();
     trace?.("preparation", performance.now() - preparationStarted);
     const player = readPlayerIdentity(village);
@@ -840,6 +847,18 @@ export function createSceneWriting({
       maxTokens,
       model,
       village: authority,
+      wishContexts: captured
+        ? captured.wishContexts.map((owner) => ({ ...owner, wishes: immutableSocialWishes(owner.wishes) }))
+        : active.map((person) => {
+            const owner = village.villagers.find((row) => row.characterId === person.characterId)!;
+            return {
+              actorId: owner.characterId,
+              wishId: "",
+              fingerprint: "",
+              wishes: immutableSocialWishes(owner.wishes),
+              capturedAt: owner.cardSnapshot.capturedAt,
+            };
+          }),
       audience,
       active,
       pendingMoves: authority.residences.filter(
@@ -929,7 +948,7 @@ export function createSceneWriting({
       args[7],
       replacement ? null : offer,
     );
-    let { fitted, earlierEvidence, promptMemories, loreInspection } = prepared;
+    let { fitted, earlierEvidence, promptMemories, loreInspection, wishContexts } = prepared;
     const {
       sparse,
       writingVersion,
@@ -938,7 +957,6 @@ export function createSceneWriting({
       model,
       village,
       audience,
-      active,
       pendingMoves,
       storedPlace,
       place,
@@ -953,8 +971,9 @@ export function createSceneWriting({
         earlierEvidence,
         promptMemories,
         loreInspection,
+        wishContexts,
       }));
-      ({ fitted, earlierEvidence, promptMemories, loreInspection } = saved);
+      ({ fitted, earlierEvidence, promptMemories, loreInspection, wishContexts } = saved);
       ordinary = saved.ordinary;
     }
     const dispatch = narrativeVersion
@@ -1755,16 +1774,7 @@ export function createSceneWriting({
           ? (semanticResult.effects.earlierLineIds as string[])
           : earlierEvidence.map((line) => line.id),
         wishChanges: raw?.wishChanges,
-        wishContexts: active.map((person) => {
-          const owner = village.villagers.find((r) => r.characterId === person.characterId)!;
-          return {
-            actorId: owner.characterId,
-            wishId: "",
-            fingerprint: "",
-            wishes: structuredClone(owner.wishes),
-            capturedAt: owner.cardSnapshot.capturedAt,
-          };
-        }),
+        wishContexts,
       };
     } catch (error) {
       if (semanticResult) await semantic?.rejectExchange?.(semanticResult);

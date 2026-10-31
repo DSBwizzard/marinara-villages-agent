@@ -256,7 +256,7 @@ try {
     kind: "village",
     name: "World",
     description: "",
-    data: { ...facts, memoryHead: null },
+    data: { ...facts, memoryHead: null, wishArchiveHead: { count: 0, root: null } },
   });
   const repair = createRepairService({
     gate: f.gate,

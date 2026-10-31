@@ -303,11 +303,14 @@ export function createLiveScenes({
           state.villageSeed ||= village.seed;
         });
       let continuity!: NonNullable<VenueScene["continuity"]>;
-      await mutateVillageState((state) => {
-        // Capture while relationship authority is hydrated. The public world
-        // mutation result intentionally strips that transient context.
-        continuity = captureSceneContinuity(state, session, now);
-      });
+      await mutateVillageState(
+        (state) => {
+          // Capture while relationship authority is hydrated. The public world
+          // mutation result intentionally strips that transient context.
+          continuity = captureSceneContinuity(state, session, now);
+        },
+        { wishes: true },
+      );
       session = await changeSession(session.id, (state) => {
         if (state.status === "closed" || (!completing && hasVenueOperation(session.id))) return;
         state.continuity ??= continuity;

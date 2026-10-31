@@ -55,8 +55,11 @@ export function retireBackgroundResident(state: VillageState, characterId: strin
     delete state.backgroundReceipts[slotId({ kind, subjectId: characterId })];
 }
 export interface BackgroundWorkPorts {
-  readVillageAuthority?: () => Promise<VillageState>;
-  mutateVillageAuthority?: (update: (state: VillageState) => void) => Promise<void>;
+  readVillageAuthority?: typeof import("../features/world/village-store.js").readVillageAuthority;
+  mutateVillageAuthority?: (
+    update: (state: VillageState) => void,
+    options?: import("../domain/models/world-repository.js").VillageMemoryWrite,
+  ) => Promise<void>;
   villagesDocuments(): CapabilityDocumentStore;
   villagesLogger(): CapabilityRuntimeLogger;
   readVillageState: typeof readVillageState;
@@ -484,13 +487,25 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     return input.catchupBatchId;
   }
   function readForJob(job: Job): Promise<VillageState> {
-    if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority) return ports.readVillageAuthority();
-    return readVillageState(catchupBatchId(job) ? { memories: true } : undefined);
+    const options = {
+      memories: !!catchupBatchId(job),
+      wishes:
+        job.kind === "resident-planning" || !!catchupBatchId(job)
+          ? (true as const)
+          : ["wish", "agenda"].includes(job.kind)
+            ? [job.subjectId]
+            : undefined,
+    };
+    if (handlers.get(job.kind)?.authority === "raw" && ports.readVillageAuthority)
+      return ports.readVillageAuthority(options);
+    return readVillageState(options);
   }
   function mutateForJob(job: Job, update: (state: VillageState) => void): Promise<unknown> {
     return handlers.get(job.kind)?.authority === "raw" && ports.mutateVillageAuthority
-      ? ports.mutateVillageAuthority(update)
-      : mutateVillageState(update);
+      ? ports.mutateVillageAuthority(update, { wishes: catchupBatchId(job) ? true : undefined })
+      : mutateVillageState(update, {
+          wishes: job.kind === "resident-planning" ? true : job.kind === "wish" ? [job.subjectId] : undefined,
+        });
   }
   function checkCurrent(job: Job, state: VillageState): void {
     if (state.backgroundReceipts[slotId(job)] === job.id) return;

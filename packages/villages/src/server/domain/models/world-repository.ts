@@ -1,7 +1,9 @@
 import type { VillageState } from "./world.js";
 
-export type VillageMemoryRead = { memories?: boolean };
-export type VillageMemoryWrite = { memories?: boolean | ((state: VillageState) => boolean) };
+export type VillageMemoryRead = { memories?: boolean; wishes?: true | readonly string[] };
+export type VillageMemoryWrite = Omit<VillageMemoryRead, "memories"> & {
+  memories?: boolean | ((state: VillageState) => boolean);
+};
 
 /** Raw saved authority; relationship hydration and side effects belong to its service. */
 export interface VillageRepository {

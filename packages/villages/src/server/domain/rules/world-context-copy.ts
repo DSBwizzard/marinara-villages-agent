@@ -1,11 +1,25 @@
 import type { RelationshipState } from "../models/relationship-types.js";
-import type { ReturnCatchupCapture, VillageState } from "../models/world.js";
+import type { ReturnCatchupCapture, VillageState, VillageVillager } from "../models/world.js";
 import { coerceRelationshipState, immutableRelationshipState } from "./relationship-rules.js";
+import { blockWishHistory, copySocialWishes, immutableSocialWishes, wishHistoryLoaded } from "./social-wishes.js";
 
-/** Clone mutable world facts while retaining only a verified immutable relationship body. */
-export function cloneWorldContext<T extends { relationshipContext?: RelationshipState }>(value: T): T {
-  const { relationshipContext, ...facts } = value;
+/** Clone mutable world facts while sharing verified immutable history leaves. */
+export function cloneWorldContext<T extends { relationshipContext?: RelationshipState; villagers?: VillageVillager[] }>(
+  value: T,
+): T {
+  const { relationshipContext, villagers, ...facts } = value;
   const result = structuredClone(facts) as T;
+  if (villagers)
+    result.villagers = villagers.map((resident) => {
+      // Frozen-context revisions include field order.
+      const fields = Object.fromEntries(
+        Object.entries(resident).map(([key, value]) => [key, key === "wishes" ? undefined : value]),
+      );
+      const copy = structuredClone(fields) as VillageVillager;
+      if (wishHistoryLoaded(resident)) copy.wishes = copySocialWishes(immutableSocialWishes(resident.wishes));
+      else blockWishHistory(copy);
+      return copy;
+    });
   if (relationshipContext)
     result.relationshipContext = immutableRelationshipState(relationshipContext.seed, relationshipContext);
   return result;
