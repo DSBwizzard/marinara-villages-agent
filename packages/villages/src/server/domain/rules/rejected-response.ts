@@ -1,5 +1,4 @@
 /** Private diagnostics, bounded across all Scenes. No prompts or connection configuration. */
-export const REJECTED_RESPONSE_LIMIT = 5;
 export const REJECTED_RESPONSE_TEXT_LIMIT = 24_000;
 export type RejectedResponseContext = { model: string; connectionId: string; reason: string };
 export type RejectedResponse = RejectedResponseContext & {
@@ -40,7 +39,4 @@ export function rejectedSyntaxError(content: string): string {
   } catch (error) {
     return boundedRejectedText(error instanceof Error ? error.message : "JSON syntax error").slice(0, 500);
   }
-}
-export function retainRejectedResponses(entries: RejectedResponse[], entry: RejectedResponse): RejectedResponse[] {
-  return [...entries, entry].slice(-REJECTED_RESPONSE_LIMIT);
 }

@@ -1,3 +1,4 @@
+import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import {
   villageFixtureDocuments,
   fixtureSceneState,
@@ -1402,9 +1403,9 @@ async function main() {
     assert.equal(narrationDispatches, 1);
     assert.equal(systemDispatches, 1);
     assert(
-      records
-        .get("villages-rejected-responses")
-        .data.entries.some((e: any) => e.sceneId === "typed-review" && e.content.includes("residentActionReview")),
+      readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
+        (e: any) => e.sceneId === "typed-review" && e.content.includes("residentActionReview"),
+      ),
       "Rejected System dispositions retained in existing private journal",
     );
     await assert.rejects(
@@ -1452,11 +1453,9 @@ async function main() {
       /Invalid proposal/,
     );
     assert(
-      records
-        .get("villages-rejected-responses")
-        .data.entries.some(
-          (e: any) => e.sceneId === "typed-invalid-narration" && e.content.includes("residentActions"),
-        ),
+      readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
+        (e: any) => e.sceneId === "typed-invalid-narration" && e.content.includes("residentActions"),
+      ),
       "Targeted Narration rejection retains raw proposal diagnostics",
     );
     console.log("villages-venue-coordinator: ok");
