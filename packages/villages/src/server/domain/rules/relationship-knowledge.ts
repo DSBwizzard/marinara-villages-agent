@@ -2,7 +2,7 @@ import type { RelationshipProfile } from "../../../shared/contracts/relationship
 import type { RelationshipState } from "../models/relationship-types.js";
 import type { VillageState } from "../models/world.js";
 import { projectMemories } from "./memory-views.js";
-import { knownWishes } from "./wish-journal.js";
+import { knownSocialWishes as knownWishes } from "./social-wishes.js";
 export type { RelationshipProfile } from "../../../shared/contracts/relationships.js";
 
 /** Learned values are saved disclosures, never a projection of private social authority. */
