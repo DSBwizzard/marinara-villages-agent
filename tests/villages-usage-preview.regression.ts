@@ -141,6 +141,8 @@ async function main() {
     assert.equal(plan.requests, 1, "one owned routine request, no translation");
     assert.equal(plan.residents[0]?.requests, 1);
     assert.ok(plan.dollars);
+    assert.match(plan.note, /Base estimate excludes automatic retries/);
+    assert.match(plan.note, /one extra response/);
     assert.equal(calls, 0);
     assert.equal(writes, 0, "previews do not reconcile or write village state");
     const context = {
@@ -235,6 +237,7 @@ async function main() {
       connectionId: "picture",
     });
     assert.equal(images.requests, 3);
+    assert.doesNotMatch(images.note, /automatic retries/);
     assert.ok((images.dollars?.min ?? 0) >= 0.12);
     const unknown = await previewVillageBurst({ action: "images", count: 2, connectionId: "unpriced" });
     assert.equal(unknown.unknownCosts, 2);
