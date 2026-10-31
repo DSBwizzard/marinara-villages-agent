@@ -455,7 +455,9 @@ export function createSocialMail(ports: SocialMailPorts) {
               )
                 continue;
               const value = receipt.sceneFacts.wish.value;
-              original.wishes = [...original.wishes.filter((w) => w.id !== value.id), structuredClone(value)];
+              const index = original.wishes.findIndex((wish) => wish.id === value.id);
+              if (index < 0) original.wishes.push(value);
+              else original.wishes[index] = value;
             }
           }
         const lines = [
@@ -492,7 +494,16 @@ export function createSocialMail(ports: SocialMailPorts) {
           learn: false,
         }).disclosures;
       },
-      { wishes: [input.residentId] },
+      {
+        wishes: [input.residentId],
+        wishEffects:
+          bundle === "reply"
+            ? (state) =>
+                Object.entries(state.exchangeReceipts)
+                  .filter(([, receipt]) => receipt.sceneId === "mail:" + sourceId + ":source")
+                  .map(([id]) => id)
+            : undefined,
+      },
     );
     await ports.mutateRelationships(input.seed, (state) => {
       const message = mutablePersonalMessage(state, input.threadId, bundle === "reply" ? replyId : sourceId);
