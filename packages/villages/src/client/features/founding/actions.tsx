@@ -7,7 +7,7 @@ import {
   townMapUploadError,
 } from "../../../shared/helpers/town-map-upload.js";
 import type { PlayerBackground } from "../../../shared/contracts/player-background.js";
-import type { SetupMapRequest, TownMapView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import type { SetupMapRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
@@ -357,6 +357,10 @@ export function useOpenSetup(ports: {
   } = ports;
   return useCallback(
     (fresh: boolean, village: VillageSnapshot | null) => {
+      if (village?.isFounded) {
+        setScreen("home");
+        return;
+      }
       setSettingsError("");
       setSetupProblem("");
       setResetArmed(false);
@@ -367,7 +371,7 @@ export function useOpenSetup(ports: {
       setSetupShowIssues(false);
       setSetupFocusIssue(null);
       // Unfounded snapshots have a server fallback name; authored drafts restore their own name separately.
-      setSetupName(fresh || !village?.isFounded ? "" : village.village.name);
+      setSetupName("");
       setSetupWorldName?.(fresh ? "" : (village?.settings.worldName ?? ""));
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       setSetupPlayerBackground(fresh ? "" : (village?.settings.playerBackground ?? ""));
@@ -386,8 +390,8 @@ export function useOpenSetup(ports: {
         ),
       );
       setSetupEditorOpen(false);
-      setSceneryStyle(fresh || !village?.isFounded ? "" : (village.settings.sceneryArtStyle ?? ""));
-      setSceneryStyleProfileId(fresh || !village?.isFounded ? "" : (village.settings.sceneryStyleProfileId ?? null));
+      setSceneryStyle("");
+      setSceneryStyleProfileId("");
       setPersonalizeHomes(village?.settings.personalizeVenueImagesByDefault !== false);
       setVisualLoreDefault(village?.settings.useVisualLoreByDefault !== false);
       setMapVisualLore(village?.settings.useVisualLoreByDefault !== false);
@@ -396,7 +400,7 @@ export function useOpenSetup(ports: {
       setSetupPlacementError("");
       setSetupLorebookDraft(fresh ? [] : (village?.settings.selectedLorebookIds ?? []));
       setSetupLoreTokenBudgetDraft(fresh ? 1600 : (village?.settings.loreTokenBudget ?? 1600));
-      setSetupMapSource(!fresh && village?.isFounded ? "existing" : "simple");
+      setSetupMapSource("simple");
       setSetupMapImage("");
       setSetupMapImageSource(null);
       setSetupMapGeneratedKey("");
@@ -406,10 +410,6 @@ export function useOpenSetup(ports: {
       setSetupMapBusy(false);
       setSetupMapProblem("");
       updateSetupMapRequest(null);
-      // Coming back through the wizard over a village that already exists keeps
-      // the Persona it is linked to, exactly as it keeps the name and the
-      // setting: the second run is a chance to redraw the map, not to be told
-      // something new about yourself by accident.
       setPersonaDraft(fresh ? "" : (village?.settings.playerPersonaId ?? ""));
       // Load the Persona and lorebook choices as the wizard opens so their
       // respective steps are ready when the player reaches them.
@@ -474,7 +474,6 @@ export function useFoundVillage(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   residentContextProblem: "" | "Check starting notes in People.";
-  savedTownMapView: TownMapView;
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
   selectedResidentAdmissions: { [k: string]: ResidentAdmission };
@@ -493,7 +492,6 @@ export function useFoundVillage(ports: {
   setupFoundingVillagerIds: string[];
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
-  setupMapSource: SetupMapSource;
   setupMapSrc: string;
   setupName: string;
   setupTimeZone?: string;
@@ -501,7 +499,6 @@ export function useFoundVillage(ports: {
   setupWorldName?: string;
   setupSetting: string;
   setupVenues: VillageVenue[];
-  setupWorldFacts: string[];
   snapshot: VillageSnapshot;
   visualLoreDefault: boolean;
 }) {
@@ -515,7 +512,6 @@ export function useFoundVillage(ports: {
     personaDraft,
     personalizeHomes,
     residentContextProblem,
-    savedTownMapView,
     sceneryStyle,
     sceneryStyleProfileId,
     selectedResidentAdmissions,
@@ -532,19 +528,21 @@ export function useFoundVillage(ports: {
     setupFoundingVillagerIds,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupPlayerBackground,
     setupWorldName,
     setupSetting,
     setupVenues,
-    setupWorldFacts,
     snapshot,
     visualLoreDefault,
   } = ports;
   return useCallback(async () => {
-    if (!snapshot?.isFounded && residentContextProblem) {
+    if (snapshot?.isFounded) {
+      setSetupProblem("This Village is already founded. Use World Configuration.");
+      return;
+    }
+    if (residentContextProblem) {
       setSetupProblem(residentContextProblem);
       return;
     }
@@ -555,7 +553,7 @@ export function useFoundVillage(ports: {
           !venue.name.trim() ||
           !venue.form?.trim() ||
           !venue.description.trim() ||
-          (!snapshot?.isFounded && venue.layoutVersion === 1 && !venue.layout) ||
+          (venue.layoutVersion === 1 && !venue.layout) ||
           (venueHasCommon(venue) && !venue.spaces?.[0]?.description.trim()),
       );
       if (incomplete) {
@@ -576,7 +574,7 @@ export function useFoundVillage(ports: {
     setBusy(true);
     setSetupProblem("");
     try {
-      if (!snapshot?.isFounded) await flushSetupDraft();
+      await flushSetupDraft();
       const founded = await request<VillageSnapshot>("/setup", {
         method: "POST",
         body: JSON.stringify({
@@ -584,12 +582,11 @@ export function useFoundVillage(ports: {
           timeZone: setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
           worldName: setupWorldName,
           setting: setupSetting.trim(),
-          foundingReason: snapshot?.isFounded ? snapshot.settings.foundingReason : "none",
-          foundingDetails: snapshot?.isFounded ? snapshot.settings.foundingDetails : "",
-          ...(snapshot?.isFounded ? { foundingGuidance: snapshot.settings.foundingGuidance } : {}),
-          playerBackground: snapshot?.isFounded ? (snapshot.settings.playerBackground ?? "") : setupPlayerBackground,
-          scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
-          worldFacts: snapshot?.isFounded ? setupWorldFacts.map((line) => line.trim()).filter(Boolean) : [],
+          foundingReason: "none",
+          foundingDetails: "",
+          playerBackground: setupPlayerBackground,
+          scenarioImprint: null,
+          worldFacts: [],
           selectedLorebookIds: setupLorebookDraft,
           personalizeVenueImagesByDefault: personalizeHomes,
           useVisualLoreByDefault: visualLoreDefault,
@@ -599,26 +596,20 @@ export function useFoundVillage(ports: {
           loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
           townMapImage: setupMapSrc ?? "",
-          townMapView: setupMapSource === "existing" ? savedTownMapView : defaultView("cover"),
+          townMapView: defaultView("cover"),
           // Founding is authoritative: submit the complete graph, including
           // the named public center, rather than relying on stored destinations.
           venues: setupVenues,
           foundingSpriteRevisions: setupSpriteRevisions,
-          foundingCharacterIds: snapshot?.isFounded ? undefined : setupFoundingVillagerIds,
-          foundingResidentAdmissions: snapshot?.isFounded ? undefined : selectedResidentAdmissions,
+          foundingCharacterIds: setupFoundingVillagerIds,
+          foundingResidentAdmissions: selectedResidentAdmissions,
         }),
       });
       setSnapshot(founded);
       setDraftReady(false);
       await draftSaveQueue.current;
       await removeDeviceDraft(API_PATH).catch(() => undefined);
-      setScreen(
-        !snapshot?.isFounded ||
-          founded.foundingPreparation?.status === "pending" ||
-          founded.foundingPreparation?.status === "failed"
-          ? "preparing"
-          : "home",
-      );
+      setScreen("preparing");
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "The village could not be founded."));
     } finally {
@@ -628,11 +619,6 @@ export function useFoundVillage(ports: {
     snapshot?.isFounded,
     snapshot?.clock?.timeZone,
     snapshot?.village?.timeZone,
-    snapshot?.settings?.foundingReason,
-    snapshot?.settings?.foundingDetails,
-    snapshot?.settings?.foundingGuidance,
-    snapshot?.settings?.playerBackground,
-    snapshot?.settings?.scenarioImprint,
     residentContextProblem,
     setupBlocker,
     setBusy,
@@ -647,7 +633,6 @@ export function useFoundVillage(ports: {
     setupWorldName,
     setupSetting,
     setupPlayerBackground,
-    setupWorldFacts,
     setupLorebookDraft,
     personalizeHomes,
     visualLoreDefault,
@@ -657,8 +642,6 @@ export function useFoundVillage(ports: {
     setupLoreTokenBudgetDraft,
     personaDraft,
     setupMapSrc,
-    setupMapSource,
-    savedTownMapView,
     setupSpriteRevisions,
     setupFoundingVillagerIds,
     selectedResidentAdmissions,

@@ -12,6 +12,7 @@ import {
   villagesRuntimeEpoch,
 } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { startVillagesApplication, type ActivationContext } from "../packages/villages/src/server/entry/application.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
@@ -65,6 +66,7 @@ function fixture(name: string, decisionsEnabled: boolean) {
   return {
     runtime,
     reads,
+    state,
     holdInterpretation(work: typeof onInterpretation) {
       onInterpretation = work;
     },
@@ -179,6 +181,24 @@ async function productionHandlers() {
       false,
       "actual late handler retains its original document store",
     );
+    a.state.setupAt = "already-founded";
+    const savedA = structuredClone(a.state),
+      beforeSetup = a.reads.length;
+    const unexpectedClock = async () => {
+      throw new Error("Rejected setup must not observe the clock");
+    };
+    const releaseClock = a.owner.run(() =>
+      configureVillageClock({ now: () => new Date(), observe: unexpectedClock, resolve: unexpectedClock }),
+    );
+    try {
+      const rejected = await a.engine.inject({ method: "POST", url: "/api/villages/setup", payload: {} });
+      assert.equal(rejected.statusCode, 409, rejected.body);
+      assert.match(rejected.json().error, /already founded/);
+      assert.deepEqual(a.state, savedA, "Rejected setup preserves saved authority");
+      assert.deepEqual(a.reads.slice(beforeSetup), ["villages-village"], "Only raw admission runs");
+    } finally {
+      releaseClock();
+    }
     const failedSetup = new Error("synthetic route admission failed");
     let failedOwner: ReturnType<typeof activationScope>;
     await assert.rejects(
