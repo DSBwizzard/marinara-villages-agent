@@ -209,21 +209,28 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
     }
   }
   const baselineReceipts = new Set(context.receiptIds);
+  const residents = new Map<string, VillageState["villagers"][number]>();
+  for (const resident of view.villagers)
+    if (!residents.has(resident.characterId)) residents.set(resident.characterId, resident);
+  const wishUpdates = new Map<VillageState["villagers"][number], Map<string, VillageWish>>();
   for (const id of sceneWishEffectIds(current, scene)) {
     const { actorId, wishId, value } = current.exchangeReceipts[id].sceneFacts!.wish!;
-    const resident = view.villagers.find((row) => row.characterId === actorId);
+    const resident = residents.get(actorId);
     if (!resident) continue;
-    if (value === undefined) blockWishHistory(resident);
-    else if (wishHistoryLoaded(resident)) {
-      const wishes = [...resident.wishes],
-        index = wishes.findIndex((wish) => wish.id === wishId);
-      if (!value) {
-        if (index >= 0) wishes.splice(index, 1);
-      } else if (index >= 0) wishes[index] = value;
-      else wishes.push(value);
-      resident.wishes = immutableSocialWishes(wishes);
+    if (value === undefined) {
+      blockWishHistory(resident);
+      wishUpdates.delete(resident);
+    } else if (wishHistoryLoaded(resident)) {
+      let wishes = wishUpdates.get(resident);
+      if (!wishes) {
+        wishes = new Map(resident.wishes.map((wish) => [wish.id, wish]));
+        wishUpdates.set(resident, wishes);
+      }
+      if (!value) wishes.delete(wishId);
+      else wishes.set(wishId, value);
     }
   }
+  for (const [resident, wishes] of wishUpdates) resident.wishes = immutableSocialWishes([...wishes.values()]);
 
   if (view.relationshipContext && current.relationshipContext) {
     const ledger = current.relationshipContext.intentionReceipts;
