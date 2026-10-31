@@ -9,7 +9,6 @@ import { villagesDefinition as feature } from "../packages/villages/package-defi
 import { letterFontSources } from "../packages/villages/letter-font-assets.mjs";
 import { assertPackagePrivateImportBoundary } from "./package-engine-boundary.mjs";
 import { createDeterministicZip } from "./deterministic-zip.mjs";
-import { withPackageActivationGuidance } from "./catalog-package-guidance.mjs";
 import { writeEnglishPackageLocale } from "./package-locales.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -67,7 +66,7 @@ try {
   ) {
     throw new Error("Private Engine Decisions implementations cannot be bundled.");
   }
-  const description = withPackageActivationGuidance(feature.id, feature.description);
+  const description = feature.description;
   const agents = [
     {
       id: feature.id,
@@ -148,7 +147,6 @@ try {
       "scripts/esbuild.mjs",
       "scripts/deterministic-zip.mjs",
       "scripts/package-engine-boundary.mjs",
-      "scripts/catalog-package-guidance.mjs",
       "scripts/package-locales.mjs",
       ...(feature.assetPaths ?? []).flatMap((p) =>
         (letterFontSources[p] ?? [p]).map((source) => `packages/villages/${source}`),
