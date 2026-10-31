@@ -1,3 +1,4 @@
+import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -87,11 +88,12 @@ const release = configureVillagesRuntime({
 try {
   const response = { content: '{"value":"Bearer secret-token" "ready":false}', finishReason: "stop" };
   const original = structuredClone(response);
-  for (let i = 0; i < 7; i++) await retainJsonRepair({ model: "synthetic", connectionId: "fixture" }, response, 3000);
-  const record = records.get("villages-json-repairs");
+  for (let i = 0; i < 107; i++) await retainJsonRepair({ model: "synthetic", connectionId: "fixture" }, response, 3000);
+  const record = records.get("villages-private-diagnostics");
   assert.equal(record.kind, "private-diagnostics");
-  assert.equal(record.data.entries.length, 5);
-  assert.equal(record.data.entries[0].status, "candidate");
+  assert.equal(readPrivateDiagnostics(record.data).entries.length, 100);
+  assert.ok(readPrivateDiagnostics(record.data).entries.every((entry: any) => entry.source === "json-repair"));
+  assert.equal(readPrivateDiagnostics(record.data).entries[0].status, "candidate");
   assert.doesNotMatch(JSON.stringify(record), /secret-token/);
   assert.deepEqual(response, original, "Provider evidence is immutable");
   failWrites = true;

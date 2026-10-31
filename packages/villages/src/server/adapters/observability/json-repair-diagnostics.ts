@@ -2,8 +2,7 @@ import { mutateDocument } from "../storage/document-store.js";
 import { villagesLogger } from "../engine/runtime-host.js";
 import { venueDebugContext } from "../operations/operation-context.js";
 import { readModelJsonObject } from "../../domain/rules/json-reply.js";
-import { boundedRejectedText, REJECTED_RESPONSE_LIMIT } from "../../domain/rules/rejected-response.js";
-import { asRecord } from "../../domain/rules/coerce.js";
+import { retainPrivateDiagnostic } from "./private-diagnostics.js";
 
 /** Private candidate evidence only. Validation decides acceptance; never changes the completion or retries. */
 export async function retainJsonRepair(
@@ -28,24 +27,10 @@ export async function retainJsonRepair(
       edits: parsed.edits,
       status: "candidate",
       responseLength: content.length,
-      content: boundedRejectedText(content),
+      content,
       truncated: content.length > 24000,
     };
-    await mutateDocument(
-      "villages-json-repairs",
-      {
-        kind: "private-diagnostics",
-        name: "JSON repair candidates",
-        description: "Bounded original model responses; syntax repair does not authorize domain updates.",
-        coerce: (raw) => ({
-          entries: Array.isArray(asRecord(raw).entries) ? (asRecord(raw).entries as (typeof entry)[]) : [],
-        }),
-        label: () => "JSON repair candidates",
-      },
-      (state) => {
-        state.entries = [...state.entries, entry].slice(-REJECTED_RESPONSE_LIMIT);
-      },
-    );
+    await retainPrivateDiagnostic(mutateDocument, "json-repair", entry);
   } catch {
     try {
       villagesLogger().warn("[villages] Could not retain private JSON-repair diagnostics");

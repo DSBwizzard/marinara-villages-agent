@@ -1,3 +1,4 @@
+import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -55,7 +56,7 @@ async function main() {
       return structuredClone(row);
     },
     async update(input: any) {
-      if (input.id === "villages-rejected-responses") {
+      if (input.id === "villages-private-diagnostics") {
         if (failDiagnostics) throw Error("fixture diagnostic failure");
         if (conflictDiagnostics) {
           conflictDiagnostics = false;
@@ -267,7 +268,7 @@ async function main() {
       }),
       /fixture validation rejection/,
     );
-    const diagnostic = rows.get("villages-rejected-responses").data.entries.at(-1);
+    const diagnostic = readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries.at(-1);
     assert.equal(diagnostic.content, "not JSON");
     assert.equal(diagnostic.reason, "invalid-json");
     assert.equal(diagnostic.model, "fixture");
@@ -283,7 +284,7 @@ async function main() {
       !JSON.stringify(await readVenueOperation("legacy-paid")).includes("not JSON"),
       "public recovery summary never exposes rejected text",
     );
-    for (let index = 0; index < 7; index++) {
+    for (let index = 0; index < 107; index++) {
       const id = "diagnostic-bound-" + index;
       makeLegacy(id, "rejected");
       await assert.rejects(
@@ -296,11 +297,14 @@ async function main() {
       );
     }
     assert.equal(
-      rows.get("villages-rejected-responses").data.entries.length,
-      5,
+      readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries.length,
+      100,
       "diagnostics bounded globally across Scenes",
     );
-    assert.equal(rows.get("villages-rejected-responses").data.entries[0].sceneId, "diagnostic-bound-2");
+    assert.equal(
+      readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries[0].sceneId,
+      "diagnostic-bound-7",
+    );
     const capture = async (id: string) => {
       makeLegacy(id, "rejected");
       await assert.rejects(
@@ -314,10 +318,10 @@ async function main() {
     };
     conflictDiagnostics = true;
     await Promise.all([capture("concurrent-diagnostic-a"), capture("concurrent-diagnostic-b")]);
-    const concurrent = rows.get("villages-rejected-responses").data.entries;
+    const concurrent = readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries;
     assert.ok(concurrent.some((entry: any) => entry.sceneId === "concurrent-diagnostic-a"));
     assert.ok(concurrent.some((entry: any) => entry.sceneId === "concurrent-diagnostic-b"));
-    assert.equal(concurrent.length, 5);
+    assert.equal(concurrent.length, 100);
     failDiagnostics = true;
     await capture("diagnostic-write-failed");
     failDiagnostics = false;
@@ -325,7 +329,7 @@ async function main() {
       rows.get("villages-venue-visit-diagnostic-write-failed").data.operation.attempts["turn:0:" + formatHash].status,
       "rejected",
     );
-    assert.equal(rows.get("villages-rejected-responses").data.entries.length, 5);
+    assert.equal(readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries.length, 100);
     const afterDiagnosticFixtures = calls;
     const paidAttempts = rows.get("villages-venue-visit-legacy-paid").data.operation.attempts;
     assert.equal(paidAttempts["turn:0:" + formatHash].status, "rejected", "rejection targets the exact paid retry");
@@ -334,7 +338,7 @@ async function main() {
       "complete",
       "legacy response is not incorrectly rejected",
     );
-    assert.equal(afterDiagnosticFixtures - beforePaid, 11);
+    assert.equal(afterDiagnosticFixtures - beforePaid, 111);
     await assert.rejects(
       coordinateVenue(
         "legacy-paid",

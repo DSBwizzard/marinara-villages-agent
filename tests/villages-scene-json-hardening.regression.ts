@@ -7,10 +7,6 @@ import {
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
 import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
-import {
-  retainRejectedResponses,
-  type RejectedResponse,
-} from "../packages/villages/src/server/domain/rules/rejected-response.js";
 const scene = {
   heardPlayerBy: ["a"],
   segments: [{ kind: "dialogue", speakerId: "a", text: 'A {gate}: "hello", [friend].', heardBy: ["a"] }],
@@ -62,16 +58,7 @@ await runCase("scene-json-hardening/syntax", async () => {
       ["a"],
     ),
   );
-  let entries: RejectedResponse[] = [];
-  for (let i = 0; i < 12; i++)
-    entries = retainRejectedResponses(entries, { operationId: String(i) } as RejectedResponse);
-  assert.deepEqual(
-    entries.map((x) => x.operationId),
-    ["7", "8", "9", "10", "11"],
-  );
-  console.log(
-    "scene-json-hardening: syntax-only recovery, value fidelity, ambiguity refusals and global diagnostic bounds passed",
-  );
+  console.log("scene-json-hardening: syntax-only recovery, value fidelity and ambiguity refusals passed");
 });
 
 await runCase("scene-json-hardening/ambiguity", async () => {

@@ -1,3 +1,4 @@
+import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import assert from "node:assert/strict";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 import {
@@ -115,10 +116,11 @@ async function main() {
     assert.equal(calls, before + 1, "Read/activation never retries failed provider work");
     assert.equal(zone.description, original.description);
     assert.deepEqual(zone.state, original.state);
-    const record = records.get("villages-private-space-failures");
+    const record = records.get("villages-private-diagnostics");
     assert.equal(record.kind, "private-diagnostics");
-    assert(record.data.entries.length <= 5);
-    const entry = record.data.entries.at(-1);
+    assert(readPrivateDiagnostics(record.data).entries.length <= 100);
+    const entry = readPrivateDiagnostics(record.data).entries.at(-1);
+    assert.equal(entry.source, "space");
     assert(entry.issues.includes(issue));
     assert.equal(entry.model, "synthetic-model");
     assert.equal(entry.requestedOutputTokens, 3000);
@@ -128,8 +130,8 @@ async function main() {
     assert.equal(entry.usage.completionTokens, 409);
     assert(!JSON.stringify(zone.preparation).includes(content));
   }
-  const entries = records.get("villages-private-space-failures").data.entries;
-  assert.equal(entries.length, 5);
+  const entries = readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries;
+  assert.equal(entries.length, failures.length);
   const last = entries.at(-1);
   assert(last.content.length <= 24000);
   assert(last.truncated);

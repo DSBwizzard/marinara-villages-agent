@@ -1,10 +1,7 @@
 import { backgroundRevision } from "../domain/rules/background-revision.js";
 import type { mutateDocument } from "../adapters/storage/document-store.js";
-import {
-  boundedRejectedText,
-  rejectedSyntaxError,
-  REJECTED_RESPONSE_LIMIT,
-} from "../domain/rules/rejected-response.js";
+import { rejectedSyntaxError } from "../domain/rules/rejected-response.js";
+import { retainPrivateDiagnostic } from "../adapters/observability/private-diagnostics.js";
 import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import type { readVillageLore } from "../adapters/engine/lorebooks.js";
@@ -302,26 +299,12 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
                   completionReasoningTokens: result.usage.completionReasoningTokens,
                 }
               : undefined,
-            content: boundedRejectedText(content),
+            content,
             truncated: content.length > 24_000,
             syntaxError: raw ? "" : rejectedSyntaxError(content),
           };
           try {
-            await mutateDocument(
-              "villages-private-space-failures",
-              {
-                kind: "private-diagnostics",
-                name: "Rejected space responses",
-                description: "Server-only bounded space preparation failures.",
-                coerce: (value) => ({
-                  entries: Array.isArray(asRecord(value).entries) ? (asRecord(value).entries as (typeof entry)[]) : [],
-                }),
-                label: () => "Rejected space responses",
-              },
-              (state) => {
-                state.entries = [...state.entries, entry].slice(-REJECTED_RESPONSE_LIMIT);
-              },
-            );
+            await retainPrivateDiagnostic(mutateDocument, "space", entry);
           } catch {
             try {
               villagesLogger().warn("[villages] Could not retain private space-response diagnostics");

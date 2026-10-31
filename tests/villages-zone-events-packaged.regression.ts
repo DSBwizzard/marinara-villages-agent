@@ -1,3 +1,4 @@
+import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
@@ -1469,11 +1470,9 @@ try {
       ),
     );
     assert(
-      records
-        .get("villages-rejected-responses")
-        .data.entries.some(
-          (entry: any) => entry.reason === "invalid-narrated-sound" && entry.content.includes("x".repeat(301)),
-        ),
+      readPrivateDiagnostics(records.get("villages-private-diagnostics").data).entries.some(
+        (entry: any) => entry.reason === "invalid-narrated-sound" && entry.content.includes("x".repeat(301)),
+      ),
       "the rejected writer response remains in bounded server-only diagnostics",
     );
     const afterFailure = modelCalls;

@@ -19,10 +19,9 @@ import {
   operationCheckpointPrefix,
 } from "../adapters/storage/operation-evidence.js";
 import { createSceneResponseReceipts } from "../adapters/storage/scene-response-receipts.js";
+import { retainPrivateDiagnostic } from "../adapters/observability/private-diagnostics.js";
 import {
-  boundedRejectedText,
   rejectedSyntaxError,
-  retainRejectedResponses,
   type RejectedResponse,
   type RejectedResponseContext,
 } from "../domain/rules/rejected-response.js";
@@ -516,27 +515,11 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
           capturedAt: new Date().toISOString(),
           finishReason: String(result.finishReason ?? "unknown").slice(0, 80),
           responseLength: result.content.length,
-          content: boundedRejectedText(result.content),
+          content: result.content,
           truncated: result.content.length > 24_000,
           syntaxError: rejectedSyntaxError(result.content),
         };
-        await createDocumentMutator(villagesDocuments)(
-          "villages-rejected-responses",
-          {
-            kind: "private-diagnostics",
-            name: "Rejected model responses",
-            description: "Latest five rejected Scene replies; server-only diagnostic evidence.",
-            coerce: (raw) => ({
-              entries: Array.isArray((raw as { entries?: unknown } | null)?.entries)
-                ? (raw as { entries: RejectedResponse[] }).entries
-                : [],
-            }),
-            label: () => "Rejected model responses",
-          },
-          (state) => {
-            state.entries = retainRejectedResponses(state.entries, entry);
-          },
-        );
+        await retainPrivateDiagnostic(createDocumentMutator(villagesDocuments), "scene", entry);
       } catch {
         try {
           villagesLogger().warn("[villages] Could not retain private rejected-response diagnostics");

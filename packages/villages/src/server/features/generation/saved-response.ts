@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { CapabilityLanguageModelCompletion as Completion } from "@marinara-engine/shared";
 import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { VillageCompletionOptions } from "../../domain/models/completion-model.js";
-import { boundedRejectedText } from "../../domain/rules/rejected-response.js";
+import { retainPrivateDiagnostic } from "../../adapters/observability/private-diagnostics.js";
 
 type Response = { token: string; digest: string; result: Completion };
 const usageFields = ["promptTokens", "completionTokens", "completionReasoningTokens", "totalTokens"] as const;
@@ -176,25 +176,9 @@ export async function claimSavedResponse(
           finishReason: result.finishReason,
           usage: result.usage,
           responseLength: content.length,
-          content: boundedRejectedText(content),
+          content,
         };
-        await mutate(
-          "villages-rejected-generation-responses",
-          {
-            kind: "private-diagnostics",
-            name: "Rejected generation responses",
-            description: "Recent rejected standalone responses; not recovery authority",
-            label: () => "Rejected generation responses",
-            coerce: (raw: unknown) => ({
-              entries: Array.isArray((raw as { entries?: unknown })?.entries)
-                ? (raw as { entries: (typeof entry)[] }).entries
-                : [],
-            }),
-          },
-          (state) => {
-            state.entries = [...state.entries, entry].slice(-100);
-          },
-        );
+        await retainPrivateDiagnostic(mutate, "generation", entry);
       } catch {
         warn();
       }

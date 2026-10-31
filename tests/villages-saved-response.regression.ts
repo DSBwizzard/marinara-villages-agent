@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import {
+  retainPrivateDiagnostic,
+  PRIVATE_DIAGNOSTICS_ID,
+  readPrivateDiagnostics,
+} from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import { claimSavedResponse } from "../packages/villages/src/server/features/generation/saved-response.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
 import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
@@ -11,6 +16,14 @@ let writes = 0,
   readBytes = 0,
   writeBytes = 0;
 let failSelectedWrite: "before" | "after" | undefined;
+function assertOpaqueDiagnostic(row: any) {
+  if (row.id !== PRIVATE_DIAGNOSTICS_ID) return;
+  const visit = (value: any): void => {
+    if (typeof value === "string") assert.doesNotMatch(value, /^(?:global-gallery|gallery):/);
+    else if (value && typeof value === "object") Object.values(value).forEach(visit);
+  };
+  visit(row.data);
+}
 const documents = {
   getById: async (_package: string, id: string) => {
     const value = rows.get(id);
@@ -18,6 +31,7 @@ const documents = {
     return structuredClone(value ?? null);
   },
   create: async (row: any) => {
+    assertOpaqueDiagnostic(row);
     if (rows.has(row.id)) throw new Error("Already exists");
     rows.set(row.id, structuredClone({ ...row, revision: 1 }));
     writes++;
@@ -25,6 +39,7 @@ const documents = {
     return structuredClone(rows.get(row.id));
   },
   update: async (row: any) => {
+    assertOpaqueDiagnostic(row);
     if (rows.get(row.id)?.revision !== row.expectedRevision) return null;
     const fault = row.data.selected ? failSelectedWrite : undefined;
     if (fault) failSelectedWrite = undefined;
@@ -116,7 +131,7 @@ assert.equal(receipt("rejected").rejected, 120);
 assert.equal(receipt("rejected").usage.completionTokens.known, 1200);
 assert.equal(receipt("rejected").usage.totalTokens.unknown, 120);
 assert.ok(JSON.stringify(receipt("rejected")).length < 1500);
-const diagnostics = rows.get("villages-rejected-generation-responses").data.entries;
+const diagnostics = readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries;
 assert.equal(diagnostics.length, 100);
 assert.match(diagnostics[0].content, /^invalid:20:/);
 assert.ok(diagnostics.every((entry: any) => entry.content.length <= 24_000));
@@ -127,6 +142,70 @@ assert.ok(
   "Ordinary successful retry does not read or rewrite rejected diagnostic history",
 );
 assert.equal((await claim("rejected", false)).cached?.content, "valid:recovered");
+
+const retainedSelection = structuredClone(receipt("race").selected);
+await claim("pending-during-diagnostics");
+const diagnosticSources = ["scene", "space", "json-repair", "generation"] as const;
+for (let index = 0; index < 120; index++) {
+  await retainPrivateDiagnostic(mutate, diagnosticSources[index % diagnosticSources.length], {
+    capturedAt: "2026-10-30T12:00:00.000Z",
+    sequence: index,
+    content: `Diagnostic ${index} Bearer private-token ${"x".repeat(30_000)}`,
+  });
+}
+const mixedLog = rows.get(PRIVATE_DIAGNOSTICS_ID);
+const mixedEntries = readPrivateDiagnostics(mixedLog.data).entries;
+assert.equal(mixedEntries.length, 100, "All ordinary diagnostic sources share one retention limit.");
+assert.equal(mixedEntries[0].sequence, 20);
+assert.equal(mixedEntries.at(-1).sequence, 119);
+assert.equal(new Set(mixedEntries.map((entry: any) => entry.source)).size, 4);
+assert.ok(mixedEntries.every((entry: any) => entry.content.length <= 24_000));
+assert.doesNotMatch(JSON.stringify(mixedLog), /private-token/);
+assert.equal(receipt("pending-during-diagnostics").pending.length, 1, "Uncertain work has no diagnostic expiry.");
+assert.deepEqual(receipt("race").selected, retainedSelection, "Diagnostic eviction cannot discard purchased replay.");
+await assert.rejects(retainPrivateDiagnostic(mutate, "scene", { capturedAt: "invalid", content: "invalid date" }));
+assert.deepEqual(rows.get(PRIVATE_DIAGNOSTICS_ID), mixedLog, "Invalid new diagnostics cannot poison the saved log.");
+let diagnosticWarnings = 0;
+for (const corruption of ["format", "kind", "payload"] as const) {
+  const malformed = structuredClone(mixedLog);
+  if (corruption === "format") malformed.data.format = 2;
+  else if (corruption === "kind") malformed.kind = "other-kind";
+  else malformed.data.payload = "gallery:untrusted-diagnostic";
+  rows.set(PRIVATE_DIAGNOSTICS_ID, malformed);
+  const attempted = await claimSavedResponse(
+    mutate,
+    request("diagnostic-failure-" + corruption),
+    ["exact inputs"],
+    () => {
+      diagnosticWarnings++;
+    },
+  );
+  await attempted.retain(result("invalid:diagnostic-write"), true);
+  assert.deepEqual(rows.get(PRIVATE_DIAGNOSTICS_ID), malformed, "An unknown diagnostic owner is not overwritten.");
+  assert.equal(
+    receipt("diagnostic-failure-" + corruption).rejected,
+    1,
+    "Diagnostic failure preserves the real outcome.",
+  );
+  assert.equal(receipt("diagnostic-failure-" + corruption).pending.length, 0);
+}
+assert.equal(diagnosticWarnings, 3);
+rows.set(PRIVATE_DIAGNOSTICS_ID, mixedLog);
+for (const prefix of ["gallery:", "global-gallery:"]) {
+  const content = prefix + "quoted nonexistent media reference";
+  await retainPrivateDiagnostic(mutate, "scene", {
+    capturedAt: "2026-10-30T12:00:00.000Z",
+    content,
+    model: prefix + "model",
+    connectionId: prefix + "connection",
+  });
+  const stored = rows.get(PRIVATE_DIAGNOSTICS_ID);
+  assert.match(stored.data.payload, /^diagnostic:/);
+  const entry = readPrivateDiagnostics(stored.data).entries.at(-1)!;
+  assert.equal(entry.content, content);
+  assert.equal(entry.model, prefix + "model");
+  assert.equal(entry.connectionId, prefix + "connection");
+}
 
 // A projected completion keeps exact accepted content, finish reason and usage across caller rollback/restart.
 let calls = 0;
