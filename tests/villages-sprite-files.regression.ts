@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
+import { villageEngineJson } from "../packages/villages/src/server/adapters/engine/engine-transport.js";
 import { createSpriteFileRemoval } from "../packages/villages/src/server/adapters/engine/sprite-file-removal.js";
 import {
   readSpriteFileAllocation,
@@ -168,6 +169,20 @@ for (const count of [500, 5000]) {
   console.log(
     JSON.stringify({ spriteFiles: count, directoryReads: lists, fileReads: reads, fileBytes: readBytes, deletes }),
   );
+}
+const originalFetch = globalThis.fetch;
+try {
+  globalThis.fetch = async () => {
+    throw new TypeError("fetch failed");
+  };
+  await assert.rejects(
+    villageEngineJson("/api/sprites/" + assetId),
+    (error: any) => error.code === "engine_unavailable",
+  );
+  globalThis.fetch = async () => Response.json({ error: "Forbidden" }, { status: 403 });
+  await assert.rejects(villageEngineJson("/api/sprites/" + assetId), (error: any) => error.code === undefined);
+} finally {
+  globalThis.fetch = originalFetch;
 }
 console.log(
   "Owned sprite files: strict typed owners, exact bytes, ambiguous paths, partial uploads and lost acknowledgements passed.",

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SpriteFileAllocation } from "../storage/sprite-files.js";
 import { memoryRequire } from "../../domain/rules/memory-integrity.js";
+import { VillagesRequestError } from "../../domain/rules/errors.js";
 
 /** Only fresh, never-reused Villages upload paths are candidates; Engine originals are outside this namespace. */
 export function createSpriteFileRemoval(ports: {
@@ -29,7 +30,12 @@ export function createSpriteFileRemoval(ports: {
         sameStem.length <= 1 && (!sameStem.length || sameStem[0] === file.filename),
         "owned sprite file path is ambiguous",
       );
-      const response = await ports.read(`/api/sprites/${file.assetId}/file/${file.filename}`);
+      let response: Response;
+      try {
+        response = await ports.read(`/api/sprites/${file.assetId}/file/${file.filename}`);
+      } catch {
+        throw new VillagesRequestError(502, "The Engine is unavailable for sprite file cleanup.", "engine_unavailable");
+      }
       memoryRequire(response.ok || response.status === 404, "owned sprite file could not be inspected");
       if (response.ok) memoryRequire(sameStem.length === 1, "owned sprite file listing changed");
       if (response.ok && file.ready) {

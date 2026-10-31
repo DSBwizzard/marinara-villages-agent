@@ -1,4 +1,5 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { VillagesRequestError } from "../../domain/rules/errors.js";
 import {
   activationScope,
   bindActivationService,
@@ -702,9 +703,9 @@ export function createRetainedStorageCleanup(
         initial = false;
         threshold = gate.allocatedBytes() + Math.max(FLOOR, retainedBytes);
       } catch (error) {
-        if (!gate.isIdle()) return;
-        initial = false;
-        threshold = gate.allocatedBytes() + Math.max(FLOOR, retainedBytes);
+        if (error instanceof VillagesRequestError && error.statusCode === 409) return;
+        initial = error instanceof VillagesRequestError && error.code === "engine_unavailable";
+        if (!initial) threshold = gate.allocatedBytes() + Math.max(FLOOR, retainedBytes);
         try {
           onFailure(error);
         } catch {

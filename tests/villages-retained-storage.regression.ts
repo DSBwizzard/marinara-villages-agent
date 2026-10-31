@@ -1,5 +1,6 @@
-// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds
+// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry
 import assert from "node:assert/strict";
+import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -244,6 +245,94 @@ await runCase("retained-storage/sprite-upload-holds", async () => {
   await assert.rejects(collectRetainedStorage(f.gate), /work is active/);
   release();
   await writing;
+});
+await runCase("retained-storage/sprite-startup-retry", async () => {
+  for (const integrityFailure of [false, true]) {
+    const f = await fixture(),
+      failures: unknown[] = [];
+    const assetId = "villages-" + randomUUID(),
+      expression = "r-" + randomUUID().replaceAll("-", "");
+    await f.gate.work(() =>
+      createSpriteFiles(f.gate.documents)(assetId, expression, "data:image/png;base64,UE5H", async () => {}),
+    );
+    if (integrityFailure) await f.insert("villages-sprite-setup-invalid", "sprite-setup", { manager: {} });
+    let calls = 0;
+    const cleanup = createRetainedStorageCleanup(
+      f.gate,
+      (error) => failures.push(error),
+      async () => {
+        if (++calls === 1) throw new VillagesRequestError(502, "Engine is not listening yet", "engine_unavailable");
+      },
+    );
+    const stop = cleanup.start();
+    try {
+      await cleanup.request();
+      assert.equal(failures.length, 1);
+      assert(f.rows.has(spriteFileId(assetId, expression)), "A failed sweep keeps its allocation");
+      const passes = f.lists.filter((kind) => kind === "repair-snapshot").length;
+      for (let i = 0; i < 5; i++) {
+        await f.gate.work(async () => {});
+        await cleanup.request();
+      }
+      if (integrityFailure) {
+        assert.equal(calls, 0);
+        assert.equal(
+          f.lists.filter((kind) => kind === "repair-snapshot").length,
+          passes,
+          "Integrity failures retain allocation backoff instead of rescanning on every ordinary read",
+        );
+      } else {
+        assert.equal(calls, 2, "The next admitted idle retries temporary Engine unavailability without new allocation");
+        assert(!f.rows.has(spriteFileId(assetId, expression)));
+        assert.equal(
+          f.lists.filter((kind) => kind === "repair-snapshot").length,
+          passes + 1,
+          "Successful retry restores normal allocation-based scheduling",
+        );
+      }
+    } finally {
+      stop();
+      cleanup.dispose();
+    }
+  }
+  const f = await fixture(),
+    failures: unknown[] = [];
+  await f.insert("villages-sprite-setup-racing-invalid", "sprite-setup", { manager: {} });
+  let enter!: () => void, release!: () => void, held: Promise<void> | undefined;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const unsubscribe = f.gate.whenIdle(() => {
+    held ??= f.gate.work(async () => {
+      enter();
+      await hold;
+    });
+  });
+  const cleanup = createRetainedStorageCleanup(f.gate, (error) => failures.push(error));
+  const stop = cleanup.start();
+  try {
+    await cleanup.request();
+    await entered;
+    assert.equal(failures.length, 1, "A newly admitted reader cannot hide the preceding integrity failure");
+    const passes = f.lists.filter((kind) => kind === "repair-snapshot").length;
+    release();
+    await held;
+    await cleanup.request();
+    assert.equal(
+      f.lists.filter((kind) => kind === "repair-snapshot").length,
+      passes,
+      "Integrity backoff remains established when another reader entered during exclusion release",
+    );
+  } finally {
+    release();
+    await held;
+    unsubscribe();
+    stop();
+    cleanup.dispose();
+  }
 });
 function relationshipStore(gate: ReturnType<typeof createRepairGate>) {
   return createRelationshipStore({
