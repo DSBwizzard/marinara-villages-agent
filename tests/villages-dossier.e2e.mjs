@@ -273,6 +273,7 @@ try {
         const body = request.postDataJSON();
         assert.equal(body.id, "history-job");
         assert.equal(body.expectedAttempt, 1);
+        assert.equal(body.expectedInstanceId, "30000000-0000-4000-8000-000000000000");
         assert.ok(body.actionId);
         historyRetried = true;
       } else if (path.includes("/mailbox")) {
@@ -391,6 +392,7 @@ try {
           processing: [
             {
               id: "history-job",
+              instanceId: "30000000-0000-4000-8000-000000000000",
               attempt: historyRetried ? 2 : 1,
               label: "Interpret starting relationships",
               status: historyRetried ? "completed" : "failed",

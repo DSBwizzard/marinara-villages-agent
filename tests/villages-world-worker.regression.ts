@@ -113,6 +113,7 @@ const narrative = createNarrative({
   afterCatchup: async () => {},
 });
 const background = createBackgroundWork({
+  withCurrentJobWrite: (work) => work(),
   villagesDocuments: () =>
     (documents ??= {
       getById: async (_pkg: string, id: string) => structuredClone(rows.get(id) ?? null),

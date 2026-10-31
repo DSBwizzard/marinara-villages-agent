@@ -75,7 +75,7 @@ function encodeRoot(
 export function createVillageRepository(
   documents: () => CapabilityDocumentStore,
   warn: (message: string) => void = () => {},
-): VillageRepository {
+): VillageRepository & Required<Pick<VillageRepository, "withAuthorityLock">> {
   const payloadStores = new WeakMap<CapabilityDocumentStore, ReturnType<typeof createMemoryPayloadStore>>();
   function memoryStore(store: CapabilityDocumentStore) {
     let payloads = payloadStores.get(store);
@@ -161,8 +161,13 @@ export function createVillageRepository(
             const stamp = new Date().toISOString(),
               data = encodeRoot(state, nextHead, wishes);
             worldWishOwners(data);
-            if (state.socialOutbox?.length || state.socialMailOutbox?.length) {
-              const protectedOwners = await capturedPublicationOwners(store, record, options?.sourceJobs);
+            const hasOutbox = state.socialOutbox?.length || state.socialMailOutbox?.length;
+            const protectedOwners = await capturedPublicationOwners(
+              store,
+              hasOutbox ? record : undefined,
+              options?.sourceJobs,
+            );
+            if (hasOutbox) {
               // These heads were prepared in this same admitted publication, before its root CAS.
               protectedOwners.wishes.push(...worldWishOwners(data).owners);
               Object.assign(data, await createCapturedAdmissions(store).prepareWorld(data, protectedOwners));

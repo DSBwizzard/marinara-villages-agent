@@ -65,7 +65,7 @@ const planning = (capturedAt = "first-incarnation") => ({
   context: { residents: [{ characterId: "ada", capturedAt }], social: { head: original } },
 });
 const job = {
-  responseStorage: 3,
+  responseStorage: 4,
   seed: scope.seed,
   kind: "resident-planning",
   input: planning(),
@@ -79,7 +79,7 @@ assert.deepEqual(
 assert.equal(declared.relationships.length, 2);
 
 const recovery = capturedJobOwners({
-  responseStorage: 3,
+  responseStorage: 4,
   seed: scope.seed,
   kind: "social-recovery",
   input: {
@@ -92,6 +92,124 @@ assert.deepEqual(
   [original, review],
   "frozen and review projections remain distinct",
 );
+// Current-job CAS and World publication share the existing authority lock through acknowledgement.
+{
+  const f = sceneHistoryFixture(),
+    repository = createVillageRepository(() => f.gate.documents);
+  const context = createBackgroundContext(),
+    foreign = new AsyncResource("background-replacement-race");
+  let writeRequested: (() => void) | undefined;
+  const background = createBackgroundWork({
+    withCurrentJobWrite(work) {
+      writeRequested?.();
+      return repository.withAuthorityLock(work);
+    },
+    villagesDocuments: () => f.gate.documents,
+    villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
+    readVillageState: (options) => repository.readAuthority(options),
+    async mutateVillageState(update, options) {
+      await repository.mutateAuthority(update, options);
+      return repository.readAuthority();
+    },
+    withUsagePurpose: (_purpose, work) => work(),
+    measurePipeline: (_name, _tags, work) => work(),
+    runtimeDebug() {},
+    backgroundCalls: context.backgroundCalls,
+    handlers: [
+      [
+        "agenda",
+        {
+          valid: () => true,
+          generate: async () => {
+            throw Error("Hold without purchasing");
+          },
+          apply() {},
+        },
+      ],
+    ],
+  });
+  const stop = background.startBackgroundWork();
+  let release: (() => void) | undefined;
+  const update = f.documents.update;
+  try {
+    await repository.mutateAuthority((state) => {
+      state.seed = "job-lock";
+    });
+    const work = {
+      kind: "agenda" as const,
+      subjectId: "same",
+      seed: "job-lock",
+      revision: "first",
+      finite: true,
+      label: "Held",
+      input: {},
+    };
+    await background.queueBackgroundJob(work);
+    await background.settleBackgroundWork();
+    const current = [...f.rows.values()].find((row) => row.kind === "background-work")!;
+    const sourceJobs = [
+      { slot: current.id, id: current.data.id, instanceId: current.data.instanceId, attempt: current.data.attempt },
+    ];
+    let entered!: () => void, requested!: () => void;
+    const atWorldCAS = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const atJobCAS = new Promise<void>((resolve) => {
+      requested = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const order: string[] = [];
+    f.documents.update = async (input) => {
+      if (input.id === "villages-village") {
+        entered();
+        await held;
+        order.push("World");
+      } else if (input.id === current.id) order.push("job");
+      return update(input);
+    };
+    const publication = repository.mutateAuthority(
+      (state) => {
+        state.setting = "Old job applied before replacement";
+      },
+      { sourceJobs },
+    );
+    await atWorldCAS;
+    writeRequested = requested;
+    const replacement = foreign.runInAsyncScope(() => background.queueBackgroundJob({ ...work, revision: "second" }));
+    await atJobCAS;
+    assert.equal(
+      f.rows.get(current.id).data.instanceId,
+      current.data.instanceId,
+      "A replacement waits until the admitted World CAS acknowledges",
+    );
+    release();
+    await Promise.all([publication, replacement]);
+    await background.settleBackgroundWork();
+    assert.deepEqual(order.slice(0, 2), ["World", "job"]);
+    assert.notEqual(f.rows.get(current.id).data.instanceId, current.data.instanceId);
+    const revision = f.rows.get("villages-village").revision;
+    await assert.rejects(
+      repository.mutateAuthority(
+        (state) => {
+          state.setting = "Late obsolete effect";
+        },
+        { sourceJobs },
+      ),
+      /source job changed/,
+    );
+    assert.equal(f.rows.get("villages-village").revision, revision);
+  } finally {
+    release?.();
+    stop();
+    await background.settleBackgroundWork();
+    f.documents.update = update;
+    foreign.emitDestroy();
+    f.release();
+    f.gate.dispose();
+  }
+}
 // A foreign authority writer waits for selected settlement, including through the real repair simulation.
 {
   const f = sceneHistoryFixture(),
@@ -1063,6 +1181,7 @@ for (const patch of [
   const expected = hash(wish);
   let admission: any, measured: any;
   const background = createBackgroundWork({
+    withCurrentJobWrite: (work) => repository.withAuthorityLock(work),
     villagesDocuments: () => f.gate.documents,
     villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
     readVillageState: (options) => repository.readAuthority(options),
@@ -1175,7 +1294,9 @@ for (const patch of [
     const current = [...f.rows.values()].find((row) => row.kind === "background-work")!;
     assert.equal(current.data.status, "failed");
     assert.equal(current.data.input.admitted.villagers[0].wishes, undefined);
-    const protectedJob = [{ slot: current.id, id: current.data.id, attempt: current.data.attempt }];
+    const protectedJob = [
+      { slot: current.id, id: current.data.id, instanceId: current.data.instanceId, attempt: current.data.attempt },
+    ];
     const root = f.rows.get("villages-village");
     for (const bad of [
       { ...root, kind: "unrelated" },
@@ -1189,6 +1310,21 @@ for (const patch of [
       /source job is missing or changed/,
     );
     const revision = root.revision;
+    for (const mismatch of [
+      { ...protectedJob[0], instanceId: "00000000-0000-4000-8000-000000000000" },
+      { ...protectedJob[0], attempt: current.data.attempt + 1 },
+    ]) {
+      await assert.rejects(
+        repository.mutateAuthority(
+          (state) => {
+            state.setting = "must not publish without an outbox either";
+          },
+          { sourceJobs: [mismatch] },
+        ),
+        /source job changed/,
+      );
+      assert.equal(f.rows.get(root.id).revision, revision);
+    }
     await assert.rejects(
       repository.mutateAuthority(
         (state) => {

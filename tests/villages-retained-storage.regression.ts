@@ -872,6 +872,7 @@ await runCase("retained-storage/background-sprite-retirement", async () => {
   });
   const stamp = memoryTime();
   const job = {
+    instanceId: randomUUID(),
     id: "closed-sprite-job",
     seed: world.seed,
     kind: "resident-planning",
