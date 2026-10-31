@@ -109,7 +109,7 @@ async function main() {
   try {
     seed("mismatched-owner");
     row("mismatched-owner").data.id = "another-scene";
-    await readVenueOperation("mismatched-owner");
+    await assert.rejects(readVenueOperation("mismatched-owner"), /identity/);
     const mismatched = structuredClone(records);
     await assert.rejects(
       coordinateVenue("mismatched-owner", "turn", "turn", {}, 0, undefined, () => paid()),

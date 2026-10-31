@@ -32,6 +32,7 @@ import {
 import { useTurnRecovery } from "./turn-recovery.js";
 import type { LegacySceneRecovery } from "./useScenesState.js";
 import { sceneResend } from "./villages-venue-send";
+import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 
 function sameSavedOperation(
   expected: RoomOperation,
@@ -447,9 +448,11 @@ export function useLeaveRoom(ports: {
         void loadSnapshot();
         return;
       }
-      const recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
-        ? latest
-        : await completedRoomAfterFailure(room.id, submissionId, () => lifetime.owns(claim));
+      const recovered =
+        hasPublishedRoomSubmission(latest, submissionId) ||
+        (latest && operation?.id === submissionId && operation.committed && operation.replyReady)
+          ? latest
+          : await completedRoomAfterFailure(room.id, submissionId, () => lifetime.owns(claim));
       if (!lifetime.owns(claim)) return;
       if (latest) setRoom(currentRoom(latest));
       if (recovered) {
@@ -866,6 +869,7 @@ export function useSendRoom(ports: {
         return;
       }
       const mine: RoomLine = {
+        id: "optimistic:" + submissionId,
         speakerId: "",
         name: "",
         role: "user",
@@ -951,13 +955,15 @@ export function useSendRoom(ports: {
         }
         // A turn can commit between recovery reads. Check the final active read
         // for our receipt before restoring the draft or displaying the POST error.
-        let recovered = latest?.submissions?.some((entry) => entry.id === submissionId)
-          ? latest
-          : await completedRoomAfterFailure(room.id, submissionId, owns);
+        let recovered =
+          hasPublishedRoomSubmission(latest, submissionId) ||
+          (latest && operation?.id === submissionId && operation.committed && operation.replyReady)
+            ? latest
+            : await completedRoomAfterFailure(room.id, submissionId, owns);
         if (!owns()) return;
         const authoritative = recovered ? null : await refreshSceneAfterFailure(room.id, submissionId, owns);
         if (!owns()) return;
-        if (authoritative?.submissions?.some((entry) => entry.id === submissionId)) recovered = authoritative;
+        if (hasPublishedRoomSubmission(authoritative, submissionId)) recovered = authoritative;
         if (recovered) {
           if (replacement) setLegacyRecovery(null);
           if (latest) setRoom(currentRoom(latest));
@@ -1527,6 +1533,7 @@ export function useOpenRoom(ports: {
         activeIds: [],
         participants: [],
         lines: [],
+        playback: { sceneId: "", scope: "", version: "", total: 0, totalParagraphs: 0, moments: [] },
       };
       lifetime.handoff(claim, placeholder, false);
       setRoom(placeholder);

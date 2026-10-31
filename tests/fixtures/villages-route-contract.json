@@ -198,6 +198,10 @@
     },
     {
       "method": "get",
+      "path": "/rooms/:id/playback"
+    },
+    {
+      "method": "get",
       "path": "/rooms/:id/history"
     },
     {

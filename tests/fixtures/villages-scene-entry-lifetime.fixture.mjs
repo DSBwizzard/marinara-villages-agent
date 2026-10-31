@@ -1,3 +1,4 @@
+import { scenePlaybackFixtures } from "./scene-browser.fixture.mjs";
 import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../../scripts/esbuild.mjs";
@@ -5,16 +6,18 @@ import { expect } from "@playwright/test";
 
 /** Actual mounted entry/actions; synthetic HTTP owns each independently held reply. */
 export async function verifySceneEntryLifetimes(browser) {
+  const { authorSceneView } = await scenePlaybackFixtures();
   const bundle = await build({
     stdin: {
       contents: `
 import {createRoot} from 'react-dom/client';
 import {StrictMode,useEffect,useState} from 'react';
 import {useSceneRecord} from './packages/villages/src/client/features/scenes/useSceneRecord.js';
+import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 import {useScenesState} from './packages/villages/src/client/features/scenes/useScenesState.js';
 import {useOpenRoom,useGreetRoom,useContinueRoomWithoutGreeting,useCloseRoom} from './packages/villages/src/client/features/scenes/actions.js';
-function scene(id,revision=0,status='active'){return {id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,
- status,activeIds:[],participants:[],lines:[],submissions:[],startedAt:'',endedAt:''};}
+function scene(id,revision=0,status='active'){return authorSceneView({id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,
+ status,activeIds:[],participants:[],lines:[],submissions:[],startedAt:'',endedAt:''},'b'.repeat(64));}
 function Harness(){
  const [room,setRoom]=useSceneRecord(),[founded,setFounded]=useState(window.options.hydrate?undefined:true),[screen,setScreen]=useState('home');
  const state=useScenesState(founded),noop=()=>{};
@@ -59,20 +62,23 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     jsx: "automatic",
   });
   function scene(id, revision = 2, status = "active") {
-    return {
-      id,
-      version: 2,
-      sceneRevision: revision,
-      placeId: "mill",
-      placeName: id,
-      status,
-      activeIds: [],
-      participants: [],
-      lines: [],
-      submissions: [],
-      startedAt: "",
-      endedAt: "",
-    };
+    return authorSceneView(
+      {
+        id,
+        version: 2,
+        sceneRevision: revision,
+        placeId: "mill",
+        placeName: id,
+        status,
+        activeIds: [],
+        participants: [],
+        lines: [],
+        submissions: [],
+        startedAt: "",
+        endedAt: "",
+      },
+      "b".repeat(64),
+    );
   }
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });

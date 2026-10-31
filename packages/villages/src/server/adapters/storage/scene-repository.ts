@@ -13,9 +13,10 @@ import { memoryRequire } from "../../domain/rules/memory-integrity.js";
 export interface SceneRepositoryPorts {
   villagesDocuments(): CapabilityDocumentStore;
   mutateDocument: typeof import("./document-store.js").mutateDocument;
+  onPlaybackReleased?(id: string): void;
 }
 /** Scene storage commands resolve only their supplied connections; construction is inert. */
-export function createSceneRepository({ villagesDocuments, mutateDocument }: SceneRepositoryPorts) {
+export function createSceneRepository({ villagesDocuments, mutateDocument, onPlaybackReleased }: SceneRepositoryPorts) {
   async function readActive(): Promise<ActiveVenue> {
     return withRepairWork(async () => {
       const documents = villagesDocuments();
@@ -65,14 +66,27 @@ export function createSceneRepository({ villagesDocuments, mutateDocument }: Sce
     return result!;
   }
 
-  async function clearActivePointer(id: string): Promise<void> {
+  async function selectActiveScene(id: string, placeId: string): Promise<void> {
+    let released = "";
+    await mutateDocument(ACTIVE_ID, activeSlot, (state) => {
+      if (state.sessionId && state.sessionId !== id) throw conflict("Finish the active Scene first.");
+      released = state.playbackSceneId ?? "";
+      state.sessionId = id;
+      state.placeId = placeId;
+      delete state.playbackSceneId;
+    });
+    if (released && released !== id) onPlaybackReleased?.(released);
+  }
+  async function clearActivePointer(id: string, preservePlayback = false): Promise<void> {
     await mutateDocument(ACTIVE_ID, activeSlot, (state) => {
       if (state.sessionId === id) {
         state.sessionId = "";
         state.placeId = "";
+        if (preservePlayback) state.playbackSceneId = id;
       }
+      if (!preservePlayback && state.playbackSceneId === id) delete state.playbackSceneId;
     });
   }
-  return { readActive, readSession, changeSession, changeSpinoffSession, clearActivePointer };
+  return { readActive, readSession, changeSession, changeSpinoffSession, selectActiveScene, clearActivePointer };
 }
 export type SceneRepository = ReturnType<typeof createSceneRepository>;

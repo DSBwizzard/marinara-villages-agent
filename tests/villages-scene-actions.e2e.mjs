@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -29,6 +31,7 @@ try {
       startedAt: now,
       lastActivityAt: now,
       activeIds: ["mara"],
+      initialActiveIds: ["mara"],
       participants: [{ characterId: "mara", name: "Mara", doing: "listening" }],
       submissions: [],
       lines: [
@@ -121,7 +124,11 @@ try {
         };
         value = { session: scene, recordEvents: [] };
       }
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.goto("http://actions.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -162,8 +169,10 @@ try {
     assert.equal(lastContact.mode, "chat");
     assert.equal(lastContact.contact, undefined);
     finishContact();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("No answer.");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+    await next.click();
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
     while (await next.isEnabled()) {
       await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
       await expect(composer).toHaveCount(0);

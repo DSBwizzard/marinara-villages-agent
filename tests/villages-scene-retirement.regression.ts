@@ -418,6 +418,7 @@ await runCase("scene-retirement/publication", async () => {
   let present = true;
   let failEvidence = false;
   let active = "";
+  let playback = "";
   let responsePresent = true;
   let sceneConflict = false;
   const calls: string[] = [];
@@ -451,7 +452,7 @@ await runCase("scene-retirement/publication", async () => {
         return true;
       },
     }),
-    readActive: async () => ({ sessionId: active, placeId: "" }),
+    readActive: async () => ({ sessionId: active, placeId: "", playbackSceneId: playback }),
     readVillageState: async () => world,
     readVillageMemoryState: async () => world,
     mutateVillageMemoryState: async (update) => {
@@ -478,6 +479,10 @@ await runCase("scene-retirement/publication", async () => {
   assert.equal(await service.retire("scene"), false);
   assert.deepEqual(calls, []);
   active = "";
+  playback = "scene";
+  assert.equal(await service.retire("scene"), false, "The displayed closed Scene remains a live prose owner");
+  assert.deepEqual(calls, []);
+  playback = "";
   failEvidence = true;
   await assert.rejects(() => service.retire("scene"), /storage/);
   assert.equal(present, true);

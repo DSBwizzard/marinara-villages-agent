@@ -2,7 +2,7 @@ import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js"
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { createHash, randomUUID } from "node:crypto";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-import { ACTIVE_ID, activeSlot, SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
+import { SESSION_PREFIX, sessionSlot } from "../../adapters/storage/scene-slots.js";
 import { createSceneHistory } from "../../adapters/storage/scene-history.js";
 import { villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
 import { unfinishedExchange } from "../../domain/decoding/exchange-codec.js";
@@ -188,6 +188,7 @@ export interface SceneCommandPorts {
   mutateDocument: typeof import("../../adapters/storage/document-store.js").mutateDocument;
   changeSession: typeof import("../../adapters/storage/scene-store.js").changeSession;
   clearActivePointer: typeof import("../../adapters/storage/scene-store.js").clearActivePointer;
+  selectActiveScene: typeof import("../../adapters/storage/scene-store.js").selectActiveScene;
   readActive: typeof import("../../adapters/storage/scene-store.js").readActive;
   readSession: typeof import("../../adapters/storage/scene-store.js").readSession;
   cancelVenueOperation: typeof import("../../jobs/venue-coordinator.js").cancelVenueOperation;
@@ -249,6 +250,7 @@ export function createSceneCommands({
   mutateDocument,
   changeSession,
   clearActivePointer,
+  selectActiveScene,
   readActive,
   readSession,
   cancelVenueOperation,
@@ -1064,11 +1066,7 @@ export function createSceneCommands({
           });
           return prior;
         }
-        await mutateDocument(ACTIVE_ID, activeSlot, (active) => {
-          if (active.sessionId && active.sessionId !== id) throw conflict("Finish the active Scene first.");
-          active.sessionId = id;
-          active.placeId = placeId;
-        });
+        await selectActiveScene(id, placeId);
         return refreshZoneParticipants(prior);
       }
     }
@@ -1206,11 +1204,7 @@ export function createSceneCommands({
       if (gathering && value.id) return;
       Object.assign(value, session);
     });
-    await mutateDocument(ACTIVE_ID, activeSlot, (active) => {
-      if (active.sessionId) throw conflict("Finish the active Scene first.");
-      active.sessionId = id;
-      active.placeId = placeId;
-    });
+    await selectActiveScene(id, placeId);
     const settled = await refreshZoneParticipants(session);
     await markZoneSeen(settled);
     return settled;
@@ -2837,7 +2831,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     if (updated.status === "closed") {
       finalSession = await closeVenueSession(updated.id);
       const byId = new Map(
-        [...recordEvents, ...(await sceneReceipts(finalSession))].map((event) => [event.id, event] as const),
+        [...recordEvents, ...(await latestSceneReceipts(finalSession))].map((event) => [event.id, event] as const),
       );
       recordEvents = [...byId.values()];
     }
@@ -3766,12 +3760,11 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     return combined;
   }
 
-  async function sceneReceipts(session: VenueScene): Promise<VenueRecordEvent[]> {
+  async function latestSceneReceipts(session: VenueScene): Promise<VenueRecordEvent[]> {
     const current = await readVillageSnapshot();
+    // Earlier changes remain in the paged changes feed; closing acknowledges the latest exchange.
     return [
-      ...new Map(
-        session.submissions.flatMap((turn) => turn.recordEvents ?? []).map((event) => [event.id, event]),
-      ).values(),
+      ...new Map((session.submissions.at(-1)?.recordEvents ?? []).map((event) => [event.id, event])).values(),
     ].filter((event) => !current.dismissedNoticeIds.includes(event.id));
   }
 
@@ -3782,7 +3775,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
   /** Close the Scene and return its committed visible changes. */
   async function endVenueSessionWithReceipts(id: string, retryOfAttemptId?: string) {
     const session = await endVenueSession(id, retryOfAttemptId);
-    return { session, recordEvents: await sceneReceipts(session) };
+    return { session, recordEvents: await latestSceneReceipts(session) };
   }
 
   /** Archive the Scene after recovering saved exchange work; no closing review. */
@@ -3860,7 +3853,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
     abandonOperationId?: string,
   ) {
     const session = await closeVenueSession(id, expectedSceneRevision, retryOfAttemptId, abandonOperationId);
-    return { session, recordEvents: await sceneReceipts(session) };
+    return { session, recordEvents: await latestSceneReceipts(session) };
   }
 
   async function closeLiveScene(session: VenueScene): Promise<VenueScene> {
@@ -3880,7 +3873,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       )
         state.opening.stage = "complete";
     });
-    await clearActivePointer(session.id);
+    await clearActivePointer(session.id, true);
     return closed;
   }
 

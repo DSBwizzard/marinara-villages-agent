@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { mobileReadingCounter } from "../packages/villages/src/client/features/scenes/villages-mobile-scene.js";
 import {
+  initialStaging,
   mobileSceneLayout,
-  mobileReadingCounter,
-} from "../packages/villages/src/client/features/scenes/villages-mobile-scene.js";
-import { initialStaging, replayStaging, stagingLayout } from "../packages/villages/src/shared/helpers/scene-staging.js";
+  replayStaging,
+  stagingLayout,
+} from "../packages/villages/src/shared/helpers/scene-staging.js";
 
 const ids = ["a", "b", "c", "d"];
 for (const [count, expected] of [

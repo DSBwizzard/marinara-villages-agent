@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
@@ -170,7 +172,7 @@ try {
             return abort(route, "failed");
           }
           if (delayUnavailableResponse) await new Promise((resolve) => setTimeout(resolve, 800));
-          return fulfill(route, { status: 200, json: result });
+          return fulfill(route, { status: 200, json: authorSceneResponse(result, snapshot.worldScope) });
         }
         if (failure) {
           const message =
@@ -198,9 +200,16 @@ try {
         }
         const beforeSuccess = structuredClone(session);
         session.lines.push(
-          { id: "player-" + turns.length, role: "user", speakerId: "", name: "", content: input.message, at: now },
           {
-            id: "reply-" + turns.length,
+            id: "player-" + input.submissionId,
+            role: "user",
+            speakerId: "",
+            name: "",
+            content: input.message,
+            at: now,
+          },
+          {
+            id: "reply-" + input.submissionId,
             role: "assistant",
             speakerId: "mara",
             kind: "dialogue",
@@ -238,7 +247,7 @@ try {
         }
         value = { session, recordEvents: [] };
       }
-      await fulfill(route, { status: 200, json: value });
+      await fulfill(route, { status: 200, json: authorSceneResponse(value, snapshot.worldScope) });
     });
     await page.route("http://scene-send.test/", (route) =>
       fulfill(route, {

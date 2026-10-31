@@ -78,7 +78,7 @@ export function createLiveScenes({
     session = await alignSceneClock(session);
     if (session.status === "closed") {
       await completeGathering(session);
-      await clearActivePointer(session.id);
+      await clearActivePointer(session.id, true);
       return null;
     }
     if (hasVenueOperation(session.id)) return session;

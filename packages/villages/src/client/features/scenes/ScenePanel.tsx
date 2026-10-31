@@ -9,33 +9,29 @@ import {
   type ReactNode,
 } from "react";
 import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
+import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
 import type {
   ResidentSprite,
-  RoomLine,
   RoomRecordEvent,
+  RoomOperation,
   SceneChangeIssue,
   SceneView,
 } from "../../../shared/contracts/village.js";
-import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
-import {
-  initialStaging,
-  lineStagingCues,
-  replayStaging,
-  stagingBoundaries,
-  stagingLayout,
-} from "../../../shared/helpers/scene-staging.js";
+import { createStagingCursor, stagingPresentation } from "../../../shared/helpers/scene-staging.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
-import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
+import type { Portrait, PortraitMap, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
 import type { SceneReadingSession } from "./reading-session.js";
 import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
 import { CardFlipSprite } from "./villages-card-flip-sprite.js";
-import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
-import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
+import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
+import { scenePlaybackSteps } from "./scene-playback.js";
+import { useScenePlayback } from "./useScenePlayback.js";
+import { mobileReadingCounter } from "./villages-mobile-scene.js";
 import { useReadingPages } from "./villages-reading-viewport.js";
-import { hasCompletedRoomSubmission, nextRoomReadIndex } from "./villages-room-reading";
+import { hasCompletedRoomSubmission } from "./villages-room-reading";
 import { SceneAsides } from "./villages-scene-asides.js";
 import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
@@ -123,7 +119,16 @@ export async function completedRoomAfterFailure(
       signal: AbortSignal.timeout(5_000),
     });
     if (!owns()) return null;
-    return hasCompletedRoomSubmission(visit, submissionId) ? currentRoom(visit) : null;
+    if (hasCompletedRoomSubmission(visit, submissionId)) return currentRoom(visit);
+    if (visit.status !== "closed") return null;
+    const { operation } = await request<{ operation: RoomOperation | null }>(
+      `/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`,
+      { signal: AbortSignal.timeout(5_000) },
+    );
+    if (!owns()) return null;
+    return operation?.id === submissionId && operation.committed === true && operation.replyReady === true
+      ? currentRoom(visit)
+      : null;
   } catch {
     return null;
   }
@@ -299,8 +304,9 @@ export function RoomPanel({
   currentZoneLabel: string;
 }) {
   /** The current paragraph in this Scene's ordered reading. */
-  const { checkpoint, reset, isFounded, previousReading } = sceneReading;
+  const { checkpoint, reset, isFounded } = sceneReading;
   const [readStep, setReadStep] = useState(() => checkpoint.current.readStep);
+  const playback = useScenePlayback(room, worldScope, sceneReading);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -467,6 +473,22 @@ export function RoomPanel({
       message: greetingNotice,
       fields: requestFields,
     });
+  if (playback.error)
+    errorItems.push({
+      id: "reading",
+      title: "Scene reading",
+      message: playback.error,
+      actions: (
+        <>
+          <button type="button" onClick={() => void playback.retry()}>
+            Retry
+          </button>
+          <button type="button" onClick={playback.newest}>
+            Latest
+          </button>
+        </>
+      ),
+    });
   for (const change of unresolvedChanges ?? []) {
     if (change.status === "pending") continue;
     errorItems.push({
@@ -555,98 +577,57 @@ export function RoomPanel({
    * is the whole defence this drawing needs against a player writing somebody
    * else's name into the room's record.
    */
-  const steps = useMemo<RoomStep[]>(() => {
-    const built: RoomStep[] = [];
-    const boundaries = stagingBoundaries(room.lines, room.submissions ?? []);
-    const mainLines = room.lines.filter((line) => !isSceneAside(line));
-    if (!mainLines.length && room.lines.length) mainLines.push(room.lines[0]!);
-    const mainSet = new Set(mainLines);
-    const mainById = new Map<string, RoomLine>();
-    for (const line of mainLines) if (line.id && !mainById.has(line.id)) mainById.set(line.id, line);
-    const participantNames = new Map<string, string>();
-    for (const person of room.participants)
-      if (!participantNames.has(person.characterId)) participantNames.set(person.characterId, person.name);
-    const stageAsides = new Map<RoomLine, RoomLine[]>();
-    const attached = new Map<RoomLine, RoomStep["asides"]>();
-    let previousMain: RoomLine | undefined;
-    for (const line of room.lines) {
-      if (mainSet.has(line)) {
-        previousMain = line;
-        continue;
-      }
-      if (!isSceneAside(line)) continue;
-      // Also repair orphaned anchors in already-saved Scenes, without changing evidence.
-      const anchor = mainById.get(line.asideFor ?? "") ?? previousMain ?? mainLines[0];
-      if (!anchor) continue;
-      const list = attached.get(anchor) ?? [];
-      list.push({
-        register: speechDelivery(line) === "ordinary" ? "side" : (speechDelivery(line) as "whisper" | "shout"),
-        text: line.content,
-        ...(line.targetId
-          ? {
-              target: line.targetId === "player" ? playerName : (participantNames.get(line.targetId) ?? line.targetId),
-            }
-          : {}),
-        speakerId: line.speakerId,
-        name: line.name,
-        expression: line.expression,
-        gazeAt: line.gazeAt,
-      });
-      attached.set(anchor, list);
-      const staged = stageAsides.get(anchor) ?? [];
-      staged.push(line);
-      stageAsides.set(anchor, staged);
-    }
-    for (const line of room.lines) {
-      if (!mainSet.has(line)) continue;
-      const player = line.speakerId.length === 0;
-      const walk = villagesWalk(line.content, line.beats ?? null);
-      const asideLines = stageAsides.get(line) ?? [];
-      const momentBoundaries = [line, ...asideLines].map((item) => boundaries.get(item.id ?? ""));
-      const beforeIds = momentBoundaries.find((item) => item?.beforeIds)?.beforeIds;
-      const afterIds = momentBoundaries.find((item) => item?.afterIds)?.afterIds;
-      walk.paragraphs.forEach((paragraph, index) => {
-        built.push({
-          key: `${built.length}`,
-          ...(room.stagingVersion === 1
-            ? {
-                stagingEvent: {
-                  cues: [
-                    ...(index === 0 ? lineStagingCues(line) : []),
-                    ...(index === walk.paragraphs.length - 1 ? asideLines.flatMap(lineStagingCues) : []),
-                  ],
-                  ...(index === 0 && beforeIds ? { beforeIds } : {}),
-                  ...(index === walk.paragraphs.length - 1 && afterIds ? { afterIds } : {}),
-                },
-              }
-            : {}),
-          speakerId: player ? "" : line.speakerId,
-          name: player ? playerName : line.name,
-          player,
-          text: paragraph,
-          delivery: speechDelivery(line),
-          asides: [
-            ...(walk.asides[index] ?? []),
-            ...(index === walk.paragraphs.length - 1 ? (attached.get(line) ?? []) : []),
-          ],
-          ...(line.kind ? { register: line.kind === "narration" ? "narration" : "speech" } : {}),
-          ...(line.expression ? { expression: line.expression } : {}),
-          ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
-        });
-      });
-    }
-    return built;
-  }, [playerName, room.lines, room.participants, room.stagingVersion, room.submissions]);
-
+  const steps = useMemo(
+    () => scenePlaybackSteps(playback.window, playerName, room.activeIds),
+    [playback.window, playerName, room.activeIds],
+  );
+  const targetStep = useRef<string | null>(null);
+  const positionedWindow = useRef<ScenePlaybackWindow | null>(null);
   /** A new visit opens at its latest line; each append opens at its first new paragraph. */
   useLayoutEffect(() => {
+    const select = (index: number) => {
+      targetStep.current = steps[index]?.key ?? null;
+      setReadStep(index);
+    };
     if (isFounded === false) {
+      positionedWindow.current = null;
       setReadStep(0);
       return;
     }
-    setReadStep((current) => nextRoomReadIndex(previousReading.current, room.id, steps.length, current));
-    previousReading.current = { roomId: room.id, stepCount: steps.length };
-  }, [room.id, steps.length, previousReading, reset, isFounded]);
+    if (playback.restoring || positionedWindow.current === playback.window) return;
+    const bookmark = checkpoint.current.bookmark;
+    positionedWindow.current = playback.window;
+    if (playback.entry === "first")
+      select(
+        Math.max(
+          0,
+          playback.advanceOwned && bookmark ? steps.findIndex((step) => step.momentIndex > bookmark.momentIndex) : 0,
+        ),
+      );
+    else if (playback.entry === "last") select(Math.max(0, steps.length - 1));
+    else if (bookmark?.scope === worldScope && bookmark.sceneId === room.id) {
+      const saved = steps.findIndex((step) => step.lineId === bookmark.lineId && step.paragraph === bookmark.paragraph);
+      const newer =
+        bookmark.atEnd || playback.advanceFrom !== undefined
+          ? steps.findIndex((step) => step.momentIndex > (playback.advanceFrom ?? bookmark.momentIndex))
+          : -1;
+      if (newer >= 0) select(newer);
+      else if (saved >= 0) select(saved);
+      else if (!playback.restoring) select(Math.max(0, steps.length - 1));
+    } else select(Math.max(0, steps.length - 1));
+  }, [
+    room.id,
+    steps,
+    reset,
+    isFounded,
+    worldScope,
+    checkpoint,
+    playback.entry,
+    playback.restoring,
+    playback.advanceOwned,
+    playback.advanceFrom,
+    playback.window,
+  ]);
 
   useLayoutEffect(() => {
     if (isFounded !== false) checkpoint.current.readStep = readStep;
@@ -654,42 +635,65 @@ export function RoomPanel({
 
   const at = Math.min(readStep, Math.max(0, steps.length - 1));
   const step = steps[at];
-  const readingPages = useReadingPages(step?.text ?? "", `${room.id}:${at}`, readingRef, sceneReading);
-  const stagingFrames = useMemo(
-    () =>
-      room.stagingVersion === 1
-        ? replayStaging(
-            room.participants.map((person) => person.characterId),
-            steps.map((item) => item.stagingEvent ?? {}),
-          )
-        : [],
-    [room.stagingVersion, room.participants, steps],
+  const readingOrdinal = step?.paragraphIndex ?? 0;
+  const readingTotal = Math.max(1, room.playback.totalParagraphs, (steps.at(-1)?.paragraphIndex ?? -1) + 1);
+  const stageRoomId = JSON.stringify([worldScope, room.id]);
+  const readingPages = useReadingPages(
+    step?.text ?? "",
+    step?.key ?? JSON.stringify([worldScope, room.id, "empty"]),
+    readingRef,
+    sceneReading,
   );
-  const stagingFrame = stagingFrames[at];
-  const stagingState = {
-    ...initialStaging(room.participants.map((person) => person.characterId)),
-    ...stagingFrame?.state,
-  };
-  const previousStageReading = useRef<{ roomId: string; at: number; restoring: boolean } | null>(null);
+  const emptyFrame = useMemo(
+    () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
+    [room.activeIds],
+  );
+  const stagingFrame = playback.restoring ? emptyFrame : (step?.presentation ?? emptyFrame);
+  const stagingState = stagingFrame.state;
+  const previousStageReading = useRef<{ roomId: string; key?: string; at: number; restoring: boolean } | null>(null);
   const animateStaging = useMemo(
     () =>
-      previousStageReading.current?.roomId === room.id &&
+      previousStageReading.current?.roomId === stageRoomId &&
+      previousStageReading.current.key !== step?.key &&
       !previousStageReading.current.restoring &&
-      at > previousStageReading.current.at,
-    [room.id, at],
+      readingOrdinal > previousStageReading.current.at,
+    [stageRoomId, readingOrdinal, step?.key],
   );
   useLayoutEffect(() => {
-    const initialRead = previousStageReading.current?.roomId !== room.id;
+    const initialRead = previousStageReading.current?.roomId !== stageRoomId;
     previousStageReading.current = {
-      roomId: room.id,
-      at,
-      restoring: initialRead && at !== Math.max(0, steps.length - 1),
+      roomId: stageRoomId,
+      key: step?.key,
+      at: readingOrdinal,
+      restoring: initialRead && readingOrdinal !== readingTotal - 1,
     };
-  }, [room.id, at, steps.length]);
-  const canReadPrevious = at > 0 || readingPages.index > 0;
-  const canReadNext = at < steps.length - 1 || readingPages.index < readingPages.count - 1;
+  }, [stageRoomId, readingOrdinal, readingTotal, step?.key]);
+  const canReadPrevious = at > 0 || readingPages.index > 0 || !!playback.window.olderCursor;
+  const canReadNext =
+    at < steps.length - 1 ||
+    readingPages.index < readingPages.count - 1 ||
+    (!playback.atLatest && !!playback.window.newerCursor);
+  useLayoutEffect(() => {
+    if (isFounded === false || playback.restoring) return;
+    if (!step) {
+      checkpoint.current.window = playback.window;
+      return;
+    }
+    if (targetStep.current && targetStep.current !== step.key) return;
+    targetStep.current = null;
+    checkpoint.current.bookmark = {
+      scope: worldScope,
+      sceneId: room.id,
+      lineId: step.lineId,
+      paragraph: step.paragraph,
+      momentIndex: step.momentIndex,
+      anchorCursor: step.anchorCursor,
+      atEnd: !canReadNext,
+    };
+    checkpoint.current.window = playback.window;
+  }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !room.openingReader && !ended && room.status === "active";
-  const canCompose = canDraft && !busy && !canReadNext && !historyOpen;
+  const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -752,32 +756,15 @@ export function RoomPanel({
   const cast =
     !canReadNext && !historyOpen && !ended
       ? activeParticipants
-      : room.stagingVersion === 1
-        ? room.participants.filter((person) => (stagingFrame?.activeIds ?? room.activeIds).includes(person.characterId))
-        : room.status === "closed" && activeParticipants.length === 0
-          ? room.participants
-          : activeParticipants;
+      : playback.window.participants.filter((person) => stagingFrame.activeIds.includes(person.characterId));
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
   const displayed = cast.slice(0, 4);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
-  const mobileLayout = mobileSceneLayout(
-    displayed.map((person) => person.characterId),
-    stagingState,
-    steps.slice(0, at + 1).map((item) => item.stagingEvent ?? {}),
-  );
-  const stageLayout = stagingLayout(
-    displayed.map((person) => person.characterId),
-    stagingState,
-  );
-  const asideSide = (
-    room.stagingVersion === 1
-      ? (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5
-      : displayed.findIndex((person) => person.characterId === speaker?.characterId) >= 2
-  )
-    ? "left"
-    : "right";
+  const mobileLayout = stagingFrame.mobile;
+  const stageLayout = stagingFrame.desktop;
+  const asideSide = (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5 ? "left" : "right";
 
   /**
    * The wait, in the room's own words.
@@ -1193,7 +1180,7 @@ export function RoomPanel({
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
         <div
           className={`${ELEMENT_TAG}-chat-cast`}
-          data-staging={room.stagingVersion === 1 ? "true" : "false"}
+          data-staging="true"
           data-animate={animateStaging ? "true" : "false"}
         >
           {displayed.map((villager, index) => {
@@ -1201,7 +1188,7 @@ export function RoomPanel({
             const isSpeaker = villager.characterId === speaker?.characterId;
             const mobileSlot = mobileLayout[villager.characterId];
             const aside = step?.asides.find((item) => item.speakerId === villager.characterId);
-            const slot = room.stagingVersion === 1 ? stageLayout[villager.characterId] : undefined;
+            const slot = stageLayout[villager.characterId];
             const wanted = slot
               ? stagingState[villager.characterId].expression
               : isSpeaker
@@ -1247,7 +1234,7 @@ export function RoomPanel({
                     framing={sprite?.framing.mode ?? "full"}
                     enabled={spriteCardFlipEnabled}
                     animate={animateStaging}
-                    stepKey={room.id + ":" + at}
+                    stepKey={step?.key ?? stageRoomId}
                     onError={(url) => setFailedSpriteUrls((previous) => new Set([...previous, url]))}
                   />
                 ) : (
@@ -1430,13 +1417,8 @@ export function RoomPanel({
                       · 📣
                     </span>
                   ) : null}
-                  {room.lines.some(
-                    (line) =>
-                      line.viaDoorway && line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
-                  )
-                    ? room.lines.find(
-                        (line) => line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
-                      )?.remoteDelivery === "loud"
+                  {step?.viaDoorway
+                    ? step.remoteDelivery === "loud"
                       ? " · calling from inside"
                       : " · through the doorway"
                     : ""}
@@ -1450,7 +1432,9 @@ export function RoomPanel({
                 aria-live="polite"
                 tabIndex={0}
               >
-                {step ? (
+                {playback.restoring ? (
+                  <p role="status">{playback.error ? "Passage unavailable." : "Loading…"}</p>
+                ) : step ? (
                   register === "narration" ? (
                     <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
                       {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
@@ -1483,17 +1467,20 @@ export function RoomPanel({
           <div className={`${ELEMENT_TAG}-room-panel-tools`}>
             <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
               {mobile
-                ? mobileReadingCounter(at, steps.length, readingPages.index, readingPages.count)
-                : `${at + 1} / ${Math.max(1, steps.length)}`}
+                ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
+                : `${readingOrdinal + 1} / ${readingTotal}`}
             </span>
             <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-chat-vn-button`}
                 onClick={() => {
-                  if (!readingPages.move(-1)) setReadStep(at - 1);
+                  if (!readingPages.move(-1)) {
+                    if (at > 0) setReadStep(at - 1);
+                    else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
+                  }
                 }}
-                disabled={!canReadPrevious}
+                disabled={!canReadPrevious || playback.busy}
                 aria-label="Previous paragraph"
               >
                 ‹ <span>Previous</span>
@@ -1507,9 +1494,13 @@ export function RoomPanel({
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}
                   onClick={() => {
-                    if (!readingPages.move(1)) setReadStep(at + 1);
+                    if (!readingPages.move(1)) {
+                      if (at < steps.length - 1) setReadStep(at + 1);
+                      else if (!playback.atLatest && playback.window.newerCursor)
+                        void playback.load(playback.window.newerCursor, "first");
+                    }
                   }}
-                  disabled={!canReadNext}
+                  disabled={!canReadNext || playback.busy}
                   aria-label="Next paragraph"
                 >
                   <span>Next</span> ›

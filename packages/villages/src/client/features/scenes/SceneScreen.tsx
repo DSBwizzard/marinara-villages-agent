@@ -15,11 +15,12 @@ import type { SceneErrorItem } from "./scene-errors.js";
 import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
+import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
 
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
-  const displayedSubmissionId = controller.room?.submissions?.at(-1)?.id;
+  const displayedSubmissionId = controller.room?.latestTurn?.published ? controller.room.latestTurn.id : undefined;
   useEffect(() => {
     if (displayedSubmissionId && controller.room?.id)
       recordTurnTiming(controller.room.id, displayedSubmissionId, "displayed");
@@ -257,7 +258,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
                 if (
                   summary &&
                   (summary.status === "interrupted" || summary.error) &&
-                  !session.submissions?.some((entry) => entry.id === summary.id)
+                  !hasPublishedRoomSubmission(session, summary.id)
                 ) {
                   latest = (
                     await request<{ operation: RoomOperation | null }>(

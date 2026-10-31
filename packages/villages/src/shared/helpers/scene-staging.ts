@@ -1,3 +1,5 @@
+import { groupSceneMoments } from "./scene-speech.js";
+
 /** Presentation-only cues shared by the Villages server and scene renderer. */
 export type StagingLook =
   | { target: "player" }
@@ -17,6 +19,26 @@ export type StagingLine = {
 };
 export type StagingTurn = { activeIdsAtTurn?: string[]; activeIdsAfterTurn?: string[]; replyLineIds?: string[] };
 export type StagingEvent = { cues?: StagingCue[]; beforeIds?: readonly string[]; afterIds?: readonly string[] };
+
+type StagingIndex = { order: Map<string, number>; groups: Record<StagingPosition, number[]> };
+function stagingIndex(state: StagingState): StagingIndex {
+  const result: StagingIndex = { order: new Map(), groups: { left: [], center: [], right: [] } };
+  for (const [index, id] of Object.keys(state).entries()) {
+    result.order.set(id, index);
+    result.groups[state[id].position].push(index);
+  }
+  return result;
+}
+function stageRank(group: readonly number[], ordinal: number) {
+  let low = 0,
+    high = group.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (group[middle] < ordinal) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
 
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -118,6 +140,189 @@ export function replayStaging(
   });
 }
 
+export type StagingCursor = {
+  state: StagingState;
+  activeIds: readonly string[];
+  active: Set<string>;
+  allowed: Set<string>;
+  index: StagingIndex;
+  watchers: Map<string, Set<string>>;
+  explicit: Set<string>;
+  initialSlots: string[];
+  firstBefore?: string[];
+  seenAttendance: string[];
+};
+export type StagingPresentation = {
+  state: StagingState;
+  activeIds: string[];
+  desktop: ReturnType<typeof stagingLayout>;
+  mobile: ReturnType<typeof mobileSceneLayout>;
+};
+export type StagingCheckpoint = {
+  actors: Array<{ id: string; person?: StagingPerson; explicit: boolean }>;
+  activeIds: string[];
+  initialSlots: string[];
+  firstBefore?: string[];
+  seenAttendance: string[];
+};
+
+export function stagingCheckpoint(cursor: StagingCursor): StagingCheckpoint {
+  return {
+    actors: [...cursor.index.order.keys(), ...[...cursor.explicit].filter((id) => !cursor.index.order.has(id))].map(
+      (id) => ({
+        id,
+        ...(Object.hasOwn(cursor.state, id)
+          ? { person: { ...cursor.state[id], look: { ...cursor.state[id].look } } }
+          : {}),
+        explicit: cursor.explicit.has(id),
+      }),
+    ),
+    activeIds: [...cursor.activeIds],
+    initialSlots: [...cursor.initialSlots],
+    ...(cursor.firstBefore ? { firstBefore: [...cursor.firstBefore] } : {}),
+    seenAttendance: [...cursor.seenAttendance],
+  };
+}
+
+/** Restored actor order keeps departed desktop slots without replaying old prose. */
+export function restoreStagingCursor(saved: StagingCheckpoint, cast: readonly string[]): StagingCursor {
+  const cursor = createStagingCursor([], cast);
+  if (saved.actors.some(({ id }) => !cursor.allowed.has(id))) throw new Error("Uncaptured staging actor");
+  const actors = new Set(saved.actors.filter(({ person }) => person).map(({ id }) => id));
+  if (
+    [...saved.activeIds, ...saved.initialSlots, ...(saved.firstBefore ?? []), ...saved.seenAttendance].some(
+      (id) => !actors.has(id),
+    )
+  )
+    throw new Error("Missing staging actor");
+  for (const { id, person, explicit } of saved.actors) {
+    if (person) {
+      cursor.state[id] = { ...person, look: { ...person.look } };
+      const ordinal = cursor.index.order.size;
+      cursor.index.order.set(id, ordinal);
+      cursor.index.groups[person.position].push(ordinal);
+    }
+    if (explicit) cursor.explicit.add(id);
+    if (person?.look.target === "villager") {
+      const watchers = cursor.watchers.get(person.look.characterId) ?? new Set<string>();
+      watchers.add(id);
+      cursor.watchers.set(person.look.characterId, watchers);
+    }
+  }
+  cursor.activeIds = [...saved.activeIds];
+  cursor.active = new Set(saved.activeIds);
+  cursor.initialSlots = [...saved.initialSlots];
+  cursor.firstBefore = saved.firstBefore ? [...saved.firstBefore] : undefined;
+  cursor.seenAttendance = [...saved.seenAttendance];
+  return cursor;
+}
+
+/** One working accumulator; historical moments keep only their visible presentation. */
+export function createStagingCursor(initialIds: readonly string[], cast: readonly string[]): StagingCursor {
+  const allowed = new Set(cast);
+  if (initialIds.some((id) => !allowed.has(id))) throw new Error("Uncaptured initial staging actor");
+  const state = Object.assign(Object.create(null) as StagingState, initialStaging(initialIds));
+  return {
+    state,
+    activeIds: [...initialIds],
+    active: new Set(initialIds),
+    allowed,
+    index: stagingIndex(state),
+    watchers: new Map(),
+    explicit: new Set(),
+    initialSlots: Object.keys(state).slice(0, 4),
+    seenAttendance: [],
+  };
+}
+function admitStageActors(cursor: StagingCursor, ids: readonly string[]) {
+  const added = [...new Set(ids)].filter((id) => cursor.allowed.has(id) && !cursor.index.order.has(id));
+  const count = cursor.index.order.size + added.length;
+  for (const id of added) {
+    const ordinal = cursor.index.order.size;
+    const position = count === 3 && ordinal === 1 ? "center" : ordinal < Math.ceil(count / 2) ? "left" : "right";
+    cursor.state[id] = { position, expression: "", look: { target: "player" } };
+    cursor.index.order.set(id, ordinal);
+    cursor.index.groups[position].push(ordinal);
+    if (cursor.initialSlots.length < 4) cursor.initialSlots.push(id);
+  }
+}
+function stageAttendance(cursor: StagingCursor, ids: readonly string[], before: boolean) {
+  admitStageActors(cursor, ids);
+  const known = [...new Set(ids)].filter((id) => Object.hasOwn(cursor.state, id));
+  if (before && cursor.firstBefore === undefined) cursor.firstBefore = known.slice(0, 4);
+  for (const id of known)
+    if (cursor.seenAttendance.length < 4 && !cursor.seenAttendance.includes(id)) cursor.seenAttendance.push(id);
+  cursor.activeIds = known;
+  cursor.active = new Set(known);
+  for (const [target, watchers] of cursor.watchers) {
+    if (cursor.active.has(target)) continue;
+    for (const id of watchers) cursor.state[id] = { ...cursor.state[id], look: { target: "player" } };
+    cursor.watchers.delete(target);
+  }
+}
+/** Cues replace person values, so previously captured visible frames stay immutable. */
+export function advanceStaging(cursor: StagingCursor, event: StagingEvent) {
+  if (event.beforeIds) stageAttendance(cursor, event.beforeIds, true);
+  for (const cue of event.cues ?? []) {
+    if (cue.position && cursor.allowed.has(cue.characterId)) cursor.explicit.add(cue.characterId);
+    if (!cursor.active.has(cue.characterId) || !Object.hasOwn(cursor.state, cue.characterId)) continue;
+    const prior = cursor.state[cue.characterId],
+      { characterId, ...fields } = cue;
+    const person = { ...prior, ...fields, look: fields.look ? { ...fields.look } : prior.look };
+    if (prior.position !== person.position) {
+      const ordinal = cursor.index.order.get(characterId)!;
+      const before = cursor.index.groups[prior.position],
+        after = cursor.index.groups[person.position];
+      before.splice(stageRank(before, ordinal), 1);
+      after.splice(stageRank(after, ordinal), 0, ordinal);
+    }
+    if (prior.look.target === "villager") {
+      const watchers = cursor.watchers.get(prior.look.characterId);
+      watchers?.delete(characterId);
+      if (!watchers?.size) cursor.watchers.delete(prior.look.characterId);
+    }
+    if (person.look.target === "villager") {
+      const watchers = cursor.watchers.get(person.look.characterId) ?? new Set<string>();
+      watchers.add(characterId);
+      cursor.watchers.set(person.look.characterId, watchers);
+    }
+    cursor.state[characterId] = person;
+  }
+  if (event.afterIds) stageAttendance(cursor, event.afterIds, false);
+}
+export function stagingPresentation(cursor: StagingCursor): StagingPresentation {
+  const activeIds = cursor.activeIds.filter((id) => Object.hasOwn(cursor.state, id));
+  const visible = new Set(activeIds);
+  const state = Object.fromEntries(
+    activeIds.map((id) => {
+      const person = cursor.state[id];
+      return [
+        id,
+        {
+          ...person,
+          look:
+            person.look.target === "villager" && !visible.has(person.look.characterId)
+              ? { target: "player" as const }
+              : { ...person.look },
+        },
+      ];
+    }),
+  );
+  const slots =
+    cursor.firstBefore === undefined
+      ? cursor.initialSlots
+      : [...new Set([...cursor.firstBefore, ...cursor.seenAttendance])].slice(0, 4);
+  const cues = [...new Set([...slots, ...activeIds])]
+    .filter((id) => cursor.explicit.has(id) && Object.hasOwn(cursor.state, id))
+    .map((characterId) => ({ characterId, position: cursor.state[characterId].position }));
+  return {
+    state,
+    activeIds: [...activeIds],
+    desktop: stagingLayout(activeIds, cursor.state, cursor.index),
+    mobile: mobileSceneLayout(activeIds, cursor.state, [{ beforeIds: slots, cues }]),
+  };
+}
+
 /** Turn boundaries also reconstruct the cast for player lines and departures. */
 export function stagingBoundaries(
   lines: readonly { id?: string; role: string; physicalIdsAfter?: string[] }[],
@@ -145,21 +350,20 @@ export function stagingBoundaries(
 export function stagingLayout(
   ids: readonly string[],
   state: StagingState,
+  index = stagingIndex(state),
 ): Record<string, { x: number; width: number; facing: "front" | "left" | "right" }> {
   const zones: StagingPosition[] = ["left", "center", "right"];
-  const layout: Record<string, { x: number; width: number; facing: "front" | "left" | "right" }> = {};
-  zones.forEach((zone, zoneIndex) => {
-    // Keep departed residents’ slots reserved so survivors do not jump sideways.
-    const group = Object.keys(state).filter((id) => state[id]?.position === zone);
-    group.forEach((id, index) => {
-      layout[id] = {
-        x: (zoneIndex + (index + 0.5) / group.length) / 3,
-        width: Math.min(0.25, 0.9 / (3 * group.length)),
-        facing: "front",
-      };
-    });
-  });
-  for (const id of Object.keys(layout)) if (!ids.includes(id)) delete layout[id];
+  const layout: Record<string, { x: number; width: number; facing: "front" | "left" | "right" }> = Object.create(null);
+  for (const id of ids) {
+    if (!Object.hasOwn(state, id)) continue;
+    const group = index.groups[state[id].position],
+      rank = stageRank(group, index.order.get(id)!);
+    layout[id] = {
+      x: (zones.indexOf(state[id].position) + (rank + 0.5) / group.length) / 3,
+      width: Math.min(0.25, 0.9 / (3 * group.length)),
+      facing: "front",
+    };
+  }
   for (const id of ids) {
     const slot = layout[id];
     if (!slot) continue;
@@ -179,19 +383,77 @@ export function stagingTranscriptEvents(
   turns: readonly StagingTurn[],
 ): StagingEvent[] {
   const boundaries = stagingBoundaries(lines, turns);
-  const attached = new Map<string, (typeof lines)[number][]>();
-  for (const line of lines)
-    if (line.asideFor && (line.kind === "side" || line.kind === "whisper"))
-      attached.set(line.asideFor, [...(attached.get(line.asideFor) ?? []), line]);
-  return lines
-    .filter((line) => line.kind !== "side" && line.kind !== "whisper")
-    .map((line) => {
-      const moment = [line, ...(attached.get(line.id) ?? [])];
-      const edges = moment.map((item) => boundaries.get(item.id));
-      return {
-        cues: moment.flatMap(lineStagingCues),
-        beforeIds: edges.find((edge) => edge?.beforeIds)?.beforeIds,
-        afterIds: edges.find((edge) => edge?.afterIds)?.afterIds,
-      };
+  return groupSceneMoments(lines).map(({ line, asides }) => {
+    const moment = [line, ...asides];
+    const edges = moment.map((item) => boundaries.get(item.id));
+    return {
+      cues: moment.flatMap(lineStagingCues),
+      beforeIds: edges.find((edge) => edge?.beforeIds)?.beforeIds,
+      afterIds: edges.find((edge) => edge?.afterIds)?.afterIds,
+    };
+  });
+}
+
+/** Mobile projection only. Never write these default groups back to Scene state. */
+export function mobileSceneLayout(ids: readonly string[], state: StagingState, events: readonly StagingEvent[]) {
+  const explicit = new Set(
+    events.flatMap((event) => (event.cues ?? []).filter((cue) => cue.position).map((cue) => cue.characterId)),
+  );
+  // State includes the whole saved cast, potentially even later arrivals. Start
+  // with the first attendance boundary and reserve departed stage slots. Extra
+  // residents use the overflow indicator until a stage slot becomes available.
+  const initial = events.find((event) => event.beforeIds)?.beforeIds ?? Object.keys(state);
+  const order = [
+    ...new Set([
+      ...initial,
+      ...events.flatMap((event) => [...(event.beforeIds ?? []), ...(event.afterIds ?? [])]),
+      ...ids,
+    ]),
+  ].filter((id) => state[id]);
+  const all = order.slice(0, 4);
+  for (const id of ids) {
+    if (all.includes(id) || !state[id]) continue;
+    const vacancy = all.findIndex((reserved) => !ids.includes(reserved));
+    if (vacancy >= 0) all[vacancy] = id;
+  }
+  const positions = Object.fromEntries(
+    all.map((id, index) => [
+      id,
+      explicit.has(id)
+        ? state[id].position
+        : all.length === 1
+          ? "center"
+          : index < Math.ceil(all.length / 2)
+            ? "left"
+            : "right",
+    ]),
+  );
+  const result: Record<string, { x: number; depth: number; facing: "front" | "left" | "right" }> = Object.create(null);
+  for (const zone of ["left", "center", "right"] as StagingPosition[]) {
+    const group = all.filter((id) => positions[id] === zone);
+    group.forEach((id, index) => {
+      const [from, to] = zone === "left" ? [0.11, 0.26] : zone === "right" ? [0.74, 0.89] : [0.44, 0.56];
+      const x =
+        group.length === 1
+          ? zone === "left"
+            ? 0.26
+            : zone === "right"
+              ? 0.74
+              : 0.5
+          : from + ((to - from) * index) / (group.length - 1);
+      result[id] = { x, depth: group.length > 1 && index % 2 === 1 ? 16 : 0, facing: "front" };
     });
+  }
+  for (const id of ids) {
+    const slot = result[id];
+    if (!slot) continue;
+    const look = state[id].look;
+    if (look.target === "direction") slot.facing = look.direction;
+    else if (look.target === "villager" && ids.includes(look.characterId) && result[look.characterId]) {
+      const target = result[look.characterId].x;
+      slot.facing = target === slot.x ? "front" : target < slot.x ? "left" : "right";
+    }
+  }
+  for (const id of all) if (!ids.includes(id)) delete result[id];
+  return result;
 }

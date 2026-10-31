@@ -3208,6 +3208,7 @@ async function main() {
     assert.equal(memoryCalls, beforeLive.memoryCalls, "fresh Scene closing makes no memory review calls");
     assert.equal(reviewCalls, beforeLive.reviewCalls, "fresh Scene closing makes no relationship review calls");
     await saveVillageWriting({ writingGuidance: "An old village's style" });
+    await resetVenueSessions();
     await resetVillage();
     assert.deepEqual((await readVillageState({ memories: true })).narrationStyle, defaultVillageState().narrationStyle);
     console.log("villages-venue-session: ok");

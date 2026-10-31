@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 // Test cases: repair-ui/desktop, repair-ui/phone, repair-ui/retry, repair-ui/checkpoints
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -117,7 +119,7 @@ try {
       await page.route("**/api/villages**", async (route) => {
         const url = new URL(route.request().url()),
           path = url.pathname.replace("/api/villages", "");
-        const json = (value) => fulfill(route, { json: value });
+        const json = (value) => fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
         if (path === "/rooms/active") return json({ session });
         if (path === "/repair") return json(index());
         if (path === "/repair/cancel") {

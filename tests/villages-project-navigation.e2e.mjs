@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { tsImport } from "tsx/esm/api";
 const { readBaseVenueLayout, validateLayoutZones } = await tsImport(
@@ -78,7 +80,7 @@ async function checkMapPlacement(width, activeScene = false) {
         return;
       }
     }
-    await fulfill(route, { json: value });
+    await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
   });
   await page.route("http://project-placement.test/", (route) =>
     fulfill(route, {

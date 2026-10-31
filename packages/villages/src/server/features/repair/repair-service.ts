@@ -306,12 +306,28 @@ export function createRepairService(ports: RepairPorts) {
   async function readPlan(row: Doc): Promise<PlanData> {
     const saved = row.data as PlanData;
     const transaction = await codec.decode(saved?.transaction);
+    await storage.validateSceneView(
+      transaction.writes.map((write) => ({ id: (write.after ?? write.before)!.id, after: write.after })),
+    );
+    for (const side of ["before", "after"] as const)
+      storage.validateScenePointers(
+        transaction.writes.flatMap((write) => (write[side] ? [write[side]!] : [])),
+        saved,
+      );
     const history = await storage.decodeHistory(saved?.history, transaction.writes);
     if (!storage.owns(history, saved) || history.id !== saved.review.id)
       throw conflict("This review belongs to another Village.");
     return { ...saved, transaction, history };
   }
   async function savePlan(plan: PlanData): Promise<RepairReview> {
+    await storage.validateSceneView(
+      plan.transaction.writes.map((write) => ({ id: (write.after ?? write.before)!.id, after: write.after })),
+    );
+    for (const side of ["before", "after"] as const)
+      storage.validateScenePointers(
+        plan.transaction.writes.flatMap((write) => (write[side] ? [write[side]!] : [])),
+        plan,
+      );
     return gate.alone(async () => {
       const state = await repository.readAuthority();
       if (state.seed !== plan.seed || state.setupAt !== plan.setupAt) throw conflict("The Village changed.");
@@ -572,13 +588,13 @@ export function createRepairService(ports: RepairPorts) {
     // The copied root owns its immutable Memory head and all transitive pages.
     for (const kind of GAME_KINDS) for (const row of await documents.list(PKG, kind)) rows.push(copy(row));
     const active = await readActiveSceneOwner(documents);
-    if (
-      active.scene &&
-      ((active.scene.data as { villageSeed?: string }).villageSeed !== state.seed ||
-        repairDocumentDigest(rows.find((row) => row.id === active.scene!.id) ?? null) !==
-          repairDocumentDigest(copy(active.scene)))
-    )
-      throw conflict("The active Scene source ownership is missing from this checkpoint.");
+    for (const scene of [active.scene, active.playbackScene])
+      if (
+        scene &&
+        ((scene.data as { villageSeed?: string }).villageSeed !== state.seed ||
+          repairDocumentDigest(rows.find((row) => row.id === scene.id) ?? null) !== repairDocumentDigest(copy(scene)))
+      )
+        throw conflict("The active Scene source ownership is missing from this checkpoint.");
     const social = await currentSocial(state),
       listed = rows.find((row) => row.id === relationshipDocumentId(state.seed));
     if (repairDocumentDigest(listed ?? null) !== repairDocumentDigest(social ? copy(social) : null))

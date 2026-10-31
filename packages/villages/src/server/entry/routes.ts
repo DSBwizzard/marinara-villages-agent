@@ -25,6 +25,7 @@ import {
   registerResidentRoutes,
 } from "../features/residents/routes.js";
 import { registerSceneEntryRoutes, registerSceneOperationRoutes } from "../features/scenes/routes.js";
+import { projectSceneResponse } from "../features/scenes/services.js";
 import { registerSpinoffRoutes } from "../features/scenes/spinoff-routes.js";
 import {
   registerConnectionRoutes,
@@ -82,9 +83,10 @@ export async function villagesRoutes(engine: FastifyInstance) {
       return "Your spinoff is still pending. You can browse Villages, but finish or discard it before changing Village state.";
     return null;
   };
-  const surface = publicSceneRoutes(engine, guard, [
+  const surface = publicSceneRoutes(engine, projectSceneResponse, guard, [
     "get /memories",
     "get /rooms/:id/history",
+    "get /rooms/:id/playback",
     "get /memories/inspect",
     "get /memories/:id/evidence",
     "get /memories/inspect/:id",

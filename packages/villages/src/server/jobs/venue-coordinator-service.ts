@@ -8,12 +8,13 @@ import { asRecord } from "../domain/rules/coerce.js";
 import { createDocumentMutator } from "../adapters/storage/document-store.js";
 import {
   sceneHistoryOwners,
+  readSceneIndex,
   readSceneWorkIndex,
   publishSceneOperationHistory,
 } from "../adapters/storage/scene-history.js";
 import { readSceneSubmissionHead, sceneSubmissionStore } from "../adapters/storage/scene-submission-pages.js";
 import { coerceSession } from "../domain/decoding/scene-codec.js";
-import { sameSceneHistoryTurnPolicy } from "../domain/rules/scene-public.js";
+import { sameSceneHistoryTurnPolicy, sceneTurnPublished } from "../domain/rules/scene-public.js";
 import { mutableSceneSubmission } from "../domain/rules/scene-submissions.js";
 import { memoryRequire } from "../domain/rules/memory-integrity.js";
 import { immutableMemoryValue } from "../domain/rules/memory-integrity.js";
@@ -1079,7 +1080,12 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
       };
     }
     const data = record.data as Record<string, unknown>;
+    memoryRequire(
+      record.id === prefix + id && record.packageId === VILLAGES_PACKAGE_ID && record.kind === "venue-visit",
+      "invalid Scene operation owner identity",
+    );
     sceneHistoryOwners(data);
+    memoryRequire(data.id === id, "Scene operation owner identity changed");
     const operation = data.operation as VenueOperation | undefined;
     const rejected = (data.rejectedSubmissions as VenueScene["rejectedSubmissions"])?.find(
       (row) => row.id === (operationId ?? operation?.id),
@@ -1092,16 +1098,42 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         turnOutcome: rejected.turnOutcome,
         input: operation?.id === rejected.id ? operation.input : null,
       };
+    const requested = operationId ?? operation?.id;
+    const header = readSceneIndex(data),
+      head = readSceneSubmissionHead(data.submissionHistory, header);
+    const latest =
+      requested && head.count
+        ? (
+            await sceneSubmissionStore(documents).readPositions(
+              head,
+              { ...header, continuity: (data as VenueScene).continuity },
+              [head.count - 1],
+            )
+          )[0]
+        : undefined;
+    const publication =
+      latest && latest.id === requested
+        ? { committed: true as const, replyReady: sceneTurnPublished(latest) }
+        : undefined;
     if (operationId && operation?.id !== operationId) {
+      if (publication) return { id: operationId, status: "complete", input: null, ...publication };
       const { submissions } = await readSceneWorkIndex(documents, data);
-      const saved =
-        submissions.some((item) => item.id === operationId) ||
-        (data.navigationReceipts as { id: string }[] | undefined)?.some((item) => item.id === operationId);
-      return saved ? { id: operationId, status: "complete", input: null } : null;
+      const saved = submissions.find((item) => item.id === operationId),
+        navigation = (data.navigationReceipts as { id: string }[] | undefined)?.some((item) => item.id === operationId);
+      return saved || navigation
+        ? {
+            id: operationId,
+            status: "complete",
+            input: null,
+            committed: true,
+            replyReady: !saved || sceneTurnPublished(saved),
+          }
+        : null;
     }
     return operation
       ? {
           ...operationSummary(operation),
+          ...publication,
           id: operation.id,
           status: operation.status,
           kind: operation.kind,

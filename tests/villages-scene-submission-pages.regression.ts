@@ -429,6 +429,77 @@ for (const count of [1000, 10_000, 25_000]) {
         { id: sceneId, villageSeed: seed },
       ),
     );
+    const logger = { debug() {}, info() {}, warn() {}, error() {} };
+    const coordinator = createVenueCoordinator({
+      operations: createVenueOperationContext(() => logger as any),
+      villagesDocuments: () => fixture.gate.documents,
+      villagesLogger: () => logger as any,
+      runtimeDebug() {},
+      readInterpretationSettings: async () => ({}) as any,
+      withRepairWork: (work) => fixture.gate.work(work),
+    });
+    const requested = "turn:" + (count - 1);
+    fixture.reset();
+    const proofBefore = structuredClone(fixture.rows);
+    assert.deepEqual(
+      await coordinator.readVenueOperation(sceneId, requested),
+      {
+        id: requested,
+        status: "complete",
+        input: null,
+        committed: true,
+        replyReady: true,
+      },
+      "A later close operation cannot hide a saved turn outside the visible playback window",
+    );
+    const proofIo = fixture.metrics();
+    assert(
+      proofIo.readBytes < 128 * 1024 && proofIo.writtenBytes === 0,
+      "Latest-turn recovery reads one saved submission, not the complete history: " + JSON.stringify(proofIo),
+    );
+    assert.deepEqual(fixture.rows, proofBefore, "Recovery status cannot start work or alter evidence");
+    console.log(`Latest operation proof ${count}: ${proofIo.readBytes} read bytes, no writes or model requests`);
+    if (count === 1000) {
+      await fixture.repository.changeSession(sceneId, (scene) => {
+        Object.assign(mutableSceneSubmission(scene, requested)!, {
+          semanticProvenance: { version: 2 },
+          semanticReady: false,
+        });
+      });
+      assert.deepEqual(
+        await coordinator.readVenueOperation(sceneId, requested),
+        {
+          id: requested,
+          status: "complete",
+          input: null,
+          committed: true,
+          replyReady: false,
+        },
+        "Committed but unpublished work keeps its recovery hold",
+      );
+      await fixture.repository.changeSession(sceneId, (scene) => {
+        mutableSceneSubmission(scene, requested)!.semanticReady = true;
+      });
+      assert.deepEqual(await coordinator.readVenueOperation(sceneId, requested), {
+        id: requested,
+        status: "complete",
+        input: null,
+        committed: true,
+        replyReady: true,
+      });
+      assert.deepEqual(
+        await coordinator.readVenueOperation(sceneId, "turn:0"),
+        {
+          id: "turn:0",
+          status: "complete",
+          input: null,
+          committed: true,
+          replyReady: true,
+        },
+        "Explicit recovery of an older turn retains the complete evidence lookup",
+      );
+      assert.equal(await coordinator.readVenueOperation(sceneId, "never-purchased"), null);
+    }
     const initialBytes = [...fixture.rows.values()].reduce(
       (sum, row) => sum + Buffer.byteLength(JSON.stringify(row)),
       0,
