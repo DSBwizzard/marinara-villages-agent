@@ -48,6 +48,7 @@ export function createRelationships(ports: RelationshipPorts) {
         .filter((row) => ["starting-ties", "resident-planning", "personal-mail", "social-recovery"].includes(row.kind))
         .map((row) => ({
           id: row.id,
+          instanceId: row.instanceId,
           attempt: row.attempt,
           label: row.label,
           status: row.status,

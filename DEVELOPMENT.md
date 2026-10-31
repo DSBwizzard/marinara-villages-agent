@@ -27,6 +27,8 @@ On resume inspect the owned checkout and PR, and read current tracked guidance b
 
 Task scratch files belong in `.build-tmp/`; generated conversation assets belong in ignored `output/`. Technical review is proportional to risk as described in AGENTS.md. Routine copy/layout corrections need no separate preview acceptance; significant new behavior does.
 
+Keep routine planning to the outcome, scope and affected checks. Review material assumptions when they change; do not restart a full review for cosmetic follow-ups or repeat an unchanged local package proof without a concrete unresolved question. Required CI still qualifies the current merge candidate.
+
 Worktree archival is separate housekeeping. Preserve active, unknown and unrelated dirty checkouts.
 
 ## Commands and coverage
@@ -43,7 +45,7 @@ npm run validate          # full static + two builds + package + regression/brow
 
 Install the locked Chromium runtime locally with `npx playwright install chromium`. CI runs full static/build/regression validation on Linux and Windows without browser provisioning, plus the complete browser inventory split into two fixed partitions per OS (`--shard=1/2`, `--shard=2/2`). Linux browser jobs use the official Playwright Noble image pinned by version and digest, with its preinstalled browsers at `/ms-playwright`; update that pin together with the locked Playwright dependency. Windows browser jobs cache the locked Chromium runtime. Node is pinned and npm downloads are cached. Package parity waits for every partition. Required job names are `validate`, `validate-windows`, and `package-parity`. A new PR head cancels its superseded run. CI runs on PRs and manual dispatch. Protected current-base requirements apply.
 
-Only regular UTF-8 edits to root `AGENTS.md` and `DEVELOPMENT.md` qualify for instruction-only CI. The exact PR merge parent must match the event base; missing history, mode changes, new/deleted/renamed files, other paths and manual dispatch use full CI. Existing job/check names remain successful, both platforms still install locked dependencies and build twice, and artifact receipts/package parity remain current. Product static checks and regression/browser execution are omitted only for that narrow path; no prior results are reused.
+Only regular UTF-8 edits to root `AGENTS.md` and `DEVELOPMENT.md` qualify for instruction-only CI. The exact PR merge parent must match the event base; missing history, mode changes, new/deleted/renamed files, other paths and manual dispatch use full CI. Both platforms must independently confirm qualification, every required job must succeed and the final gate must check their agreement. These instruction files are not package inputs, so this path performs no dependency installation, product builds, tests or artifact comparison. It produces no qualified package and reuses no prior results. Executable and ambiguous changes retain complete validation, reproducible builds, artifacts and package parity.
 
 Manual workflow operations must explicitly select the intended ref, for example `gh workflow run ci.yml --ref staging` or an explicitly chosen task branch. Default `main` still contains older workflow machinery; do not rely on an implicit default ref.
 

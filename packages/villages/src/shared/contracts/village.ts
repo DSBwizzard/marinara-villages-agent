@@ -79,6 +79,7 @@ export type VillageNarrativeConsequence = "gentle" | "moderate" | "dramatic";
 
 export type BackgroundWork = {
   id: string;
+  instanceId: string;
   kind:
     | "story" // Retired saved job identity; no generation or retry.
     | "resident-planning"

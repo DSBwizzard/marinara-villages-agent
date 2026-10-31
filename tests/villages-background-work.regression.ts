@@ -391,7 +391,12 @@ async function main() {
     await settleBackgroundWork();
     assert.equal(calls.length, 2, "restart does not retry a failed story");
     failStep = "";
-    await retryBackgroundJob(story.id, (await summary("saved-story")).attempt, "resume-legacy-story");
+    await retryBackgroundJob(
+      story.id,
+      (await summary("saved-story")).attempt,
+      "resume-legacy-story",
+      (await summary("saved-story")).instanceId,
+    );
     await settleBackgroundWork();
     assert.equal((await summary("saved-story")).status, "completed");
     assert.equal(calls.length, 3, "the purchased first story response replays without another call");
@@ -469,13 +474,13 @@ async function main() {
     );
     failStep = "";
     await Promise.all([
-      retryBackgroundJob(failed.id, failed.attempt, "retry-one"),
-      retryBackgroundJob(failed.id, failed.attempt, "retry-one"),
+      retryBackgroundJob(failed.id, failed.attempt, "retry-one", failed.instanceId),
+      retryBackgroundJob(failed.id, failed.attempt, "retry-one", failed.instanceId),
     ]);
     await settleBackgroundWork();
     assert.deepEqual(calls, ["routine", "Monday", "Tuesday", "Wednesday", "Wednesday", "Thursday", "Friday", "other"]);
     assert.equal((await summary("week")).status, "completed");
-    await retryBackgroundJob(failed.id, failed.attempt, "retry-one");
+    await retryBackgroundJob(failed.id, failed.attempt, "retry-one", failed.instanceId);
     await settleBackgroundWork();
     assert.equal(calls.length, 8, "lost retry HTTP response reuses the same action");
     await recoverBackgroundWork();
@@ -499,14 +504,14 @@ async function main() {
     await settleBackgroundWork();
     assert.deepEqual(calls, ["offline", "other"], "transient failure blocks its own retry, not other work");
     failStep = "";
-    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout");
+    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout", timedOut.instanceId);
     await settleBackgroundWork();
     const history = rows.get(timedOut.id).data.attemptHistory;
     assert.equal(history.length, 1);
     assert.equal(history[0].steps[0].timing.outcome, "unknown");
     assert.equal(history[0].tokens, null);
     assert.equal(history[0].steps[0].response, undefined);
-    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout");
+    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout", timedOut.instanceId);
     assert.equal(rows.get(timedOut.id).data.attemptHistory.length, 1, "duplicate retry does not duplicate diagnostics");
     failure = "401 Invalid API key";
 
@@ -524,7 +529,7 @@ async function main() {
     assert.equal(calls.length, 1, "connection pause survives replacement of the failed job and a restart");
     failStep = "";
     const pausedOffline = await summary("offline");
-    await retryBackgroundJob(pausedOffline.id, pausedOffline.attempt, "recover-offline");
+    await retryBackgroundJob(pausedOffline.id, pausedOffline.attempt, "recover-offline", pausedOffline.instanceId);
     await settleBackgroundWork();
     assert.equal(calls.length, 2);
 
@@ -669,7 +674,7 @@ async function main() {
     assert.equal((await summary("shutdown")).status, "interrupted");
     assert.deepEqual(calls, ["shutdown"], "teardown/restart never automatically repeats a dispatched request");
     const interrupted = await summary("shutdown");
-    await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-shutdown");
+    await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-shutdown", interrupted.instanceId);
     await settleBackgroundWork();
     assert.equal(calls.length, 1, "deliberate recovery reuses the reply saved after shutdown");
 
@@ -853,9 +858,9 @@ async function main() {
       await settleBackgroundWork();
       assert.deepEqual(calls, expectedCalls, "Restart preserves the original uncertainty hold.");
       const interrupted = await summary("replace");
-      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement");
+      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement", interrupted.instanceId);
       await settleBackgroundWork();
-      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement");
+      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement", interrupted.instanceId);
       await settleBackgroundWork();
       assert.deepEqual(
         calls,
@@ -1023,7 +1028,7 @@ async function main() {
     await settleBackgroundWork();
     let pending = await summary("retry-before-dispatch");
     assert.equal(pending.status, "paused");
-    await retryBackgroundJob(pending.id, pending.attempt, "retry-before-visible");
+    await retryBackgroundJob(pending.id, pending.attempt, "retry-before-visible", pending.instanceId);
     await settleBackgroundWork();
     assert.equal(calls.includes("retry-before-dispatch"), false, "An explicit retry cannot dispatch while hidden.");
     await villageBackgroundPresence("retry-session", true);
@@ -1043,7 +1048,7 @@ async function main() {
     await queueBackgroundJob(catchupWork("retry-over-budget", "retry-over-budget"));
     await settleBackgroundWork();
     pending = await summary("retry-over-budget");
-    await retryBackgroundJob(pending.id, pending.attempt, "retry-without-allowance");
+    await retryBackgroundJob(pending.id, pending.attempt, "retry-without-allowance", pending.instanceId);
     await settleBackgroundWork();
     await villageBackgroundPresence("retry-session", true);
     await settleBackgroundWork();

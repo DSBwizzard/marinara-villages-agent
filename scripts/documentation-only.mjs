@@ -42,7 +42,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const only = documentationOnly();
   console.log(
     only
-      ? "Instruction-only change: package qualification retained; product tests omitted."
+      ? "Instruction-only change: source qualification passed; no product build or tests required."
       : "Full CI qualification required.",
   );
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `only=${only}\n`);

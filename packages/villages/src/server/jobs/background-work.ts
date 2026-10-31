@@ -53,8 +53,10 @@ export function queueBackgroundJob(work: BackgroundInput): Promise<void> {
 export function cancelReturnCatchup(batchId: string): Promise<void> {
   return binding.get().cancelReturnCatchup(batchId);
 }
-export async function retryBackgroundJob(id: string, expectedAttempt: number, actionId: string): Promise<void> {
-  return binding.get().retryBackgroundJob(id, expectedAttempt, actionId);
+export async function retryBackgroundJob(
+  ...args: Parameters<BackgroundWorkService["retryBackgroundJob"]>
+): Promise<void> {
+  return binding.get().retryBackgroundJob(...args);
 }
 export async function recoverBackgroundWork(): Promise<void> {
   return binding.get().recoverBackgroundWork();

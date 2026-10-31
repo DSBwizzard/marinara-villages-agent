@@ -206,7 +206,7 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             const retryable =
               prior && prior.revision === task?.revision && ["failed", "interrupted", "paused"].includes(prior.status);
             if (retryable && marker.retryActions?.length)
-              await retryBackgroundJob(task!.jobId, prior.attempt, marker.retryActions.at(-1)!);
+              await retryBackgroundJob(task!.jobId, prior.attempt, marker.retryActions.at(-1)!, prior.instanceId);
             else if (kind === "routine") await queueVillagerAgenda(id, true, "founding");
             else {
               const context = await readFoundingResidentContext(id);
