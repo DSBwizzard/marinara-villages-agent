@@ -120,7 +120,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // These routes inspect raw saved authority. Do not observe clocks or process outboxes.
   const repairSurface = Object.create(engine) as FastifyInstance;
   const owner = activationScope();
-  for (const method of ["get", "post"] as const) {
+  for (const method of ["get", "post", "delete"] as const) {
     repairSurface[method] = ((path: string, handler: (request: never, reply: never) => unknown) => {
       const run = async (request: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply) => {
         const blocked = await guard(method, path, request.body);
