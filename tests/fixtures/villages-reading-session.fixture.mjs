@@ -135,6 +135,61 @@ window.mount();
     await expect(page.locator("#session")).toHaveCount(0);
     await page.evaluate(() => window.mount());
     await expect(text).toHaveText("A one.");
+    if (!strict) {
+      for (const count of [1000, 10_000, 25_000]) {
+        await page.evaluate((count) => {
+          const room = window.r.make(
+            "growth-" + count,
+            Array.from({ length: count }, (_, index) => "Growth " + index + "."),
+          );
+          room.participants = [{ characterId: "speaker", name: "Speaker", doing: "Talking" }];
+          room.activeIds = ["speaker"];
+          const metrics = { idReads: 0, includesWork: 0 };
+          for (const [index, line] of room.lines.entries()) {
+            if (index % 2)
+              Object.assign(line, {
+                kind: "side",
+                speakerId: "speaker",
+                name: "Speaker",
+                asideFor: room.lines[index - 1].id,
+              });
+            const id = line.id;
+            Object.defineProperty(line, "id", {
+              enumerable: true,
+              get() {
+                metrics.idReads++;
+                return id;
+              },
+            });
+          }
+          const lines = new Set(room.lines),
+            includes = Array.prototype.includes;
+          Array.prototype.includes = function (value, from) {
+            if (lines.has(value)) metrics.includesWork += this.length;
+            return includes.call(this, value, from);
+          };
+          metrics.idReads = 0;
+          window.growth = {
+            metrics,
+            restore: () => {
+              Array.prototype.includes = includes;
+            },
+          };
+          window.r.setRoom(room);
+        }, count);
+        try {
+          await expect(text).toHaveText("Growth " + (count - 2) + ".", { timeout: 60_000 });
+          const metrics = await page.evaluate(() => window.growth.metrics);
+          assert(metrics.idReads < count * 100, "Aside anchors use linear ID lookup work");
+          assert(metrics.includesWork < count * 30, "Main-line membership never rescans the transcript per line");
+          console.log(
+            `Actual RoomPanel ${count}: ${JSON.stringify(metrics)}; latest main paragraph and its aside remain readable.`,
+          );
+        } finally {
+          await page.evaluate(() => window.growth.restore());
+        }
+      }
+    }
     assert.deepEqual(errors, []);
     await page.close();
     console.log(

@@ -134,10 +134,11 @@ export function sceneWishEffectIds(current: VillageState, scene: VenueScene): st
 
 /** Narrator continuity never grants resident knowledge or supplies save evidence. */
 export function visibleSceneContinuity(scene: VenueScene): string {
-  const lines = scene.lines.filter((line) => line.kind === "narration" && !line.contactHidden && !line.contactReport);
   const recent: string[] = [];
   let size = 0;
-  for (const line of lines.slice(-8).reverse()) {
+  for (let index = scene.lines.length - 1; index >= 0 && recent.length < 8; index--) {
+    const line = scene.lines[index];
+    if (line.kind !== "narration" || line.contactHidden || line.contactReport) continue;
     if (size + line.content.length > 6000) break;
     recent.unshift(line.content);
     size += line.content.length;
@@ -225,14 +226,17 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
   }
 
   if (view.relationshipContext && current.relationshipContext) {
+    const ledger = current.relationshipContext.intentionReceipts;
+    const byTurn = new Map<string, Array<[string, (typeof ledger)[string]]>>();
+    for (const [id, receipt] of Object.entries(ledger)) {
+      if (receipt.sceneId !== scene.id || !receipt.submissionId) continue;
+      const entries = byTurn.get(receipt.submissionId) ?? [];
+      entries.push([id, receipt]);
+      byTurn.set(receipt.submissionId, entries);
+    }
     for (const turn of scene.submissions)
-      for (const [id, receipt] of Object.entries(current.relationshipContext.intentionReceipts)) {
-        if (
-          receipt.sceneId !== scene.id ||
-          receipt.submissionId !== turn.id ||
-          view.relationshipContext.intentionReceipts[id]
-        )
-          continue;
+      for (const [id, receipt] of byTurn.get(turn.id) ?? []) {
+        if (view.relationshipContext.intentionReceipts[id]) continue;
         view.relationshipContext.intentions[receipt.actorId] = structuredClone(receipt.sceneAfter);
         view.relationshipContext.intentionRevisions[receipt.actorId] = receipt.sceneRevision;
         view.relationshipContext.intentionReceipts[id] = structuredClone(receipt);
