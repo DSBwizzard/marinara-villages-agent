@@ -33,7 +33,8 @@ for (const count of [1000, 10_000, 25_000]) {
   try {
     const world = defaultVillageState();
     world.seed = "history-api-world";
-    world.setupAt = world.foundedAt = at;
+    world.setupAt = count === 10_000 ? "" : at;
+    world.foundedAt = at;
     const worlds = createVillageRepository(() => f.gate.documents);
     await worlds.mutateAuthority((saved) => Object.assign(saved, world));
     const scene = coerceSession({

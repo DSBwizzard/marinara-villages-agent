@@ -57,7 +57,7 @@ export function createSceneQueryService({
     const documents = villagesDocuments();
     const rawWorld = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
     if (!rawWorld) throw notFound("That Village is no longer available.");
-    const world = z.object({ seed: z.string().min(1), setupAt: z.string().min(1) }).parse(rawWorld),
+    const world = z.object({ seed: z.string().min(1), setupAt: z.string() }).parse(rawWorld),
       scope = villageWorldScope(world);
     if (query.scope !== scope) throw conflict("That Village changed. Reopen the Scene.");
     const row = await documents.getById(VILLAGES_PACKAGE_ID, "villages-venue-visit-" + id);
