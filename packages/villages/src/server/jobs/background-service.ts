@@ -1216,7 +1216,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               : {}),
           };
         },
-        (paused || obsolete) && !dispatched && catchupBatchId(job) && lastIndex >= 0 ? lastIndex : undefined,
+        (paused || obsolete) &&
+          !dispatched &&
+          catchupBatchId(job) &&
+          job.steps[lastIndex]?.status === "running" &&
+          !job.steps[lastIndex].responseRef
+          ? lastIndex
+          : undefined,
       );
       await handlers
         .get(job.kind)

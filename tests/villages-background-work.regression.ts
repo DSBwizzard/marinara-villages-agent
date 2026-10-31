@@ -916,6 +916,39 @@ async function main() {
     await settleBackgroundWork();
     assert.ok(calls.includes("hidden-during-count"), "The unstarted request resumes after visibility returns.");
     await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("stale-saved-response", true);
+    registerBackgroundHandler("resident-planning", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        await mutateVillageState((state) => {
+          state.setting = "Source changed after response storage";
+        });
+        return {};
+      },
+      valid: (state) => state.setting !== "Source changed after response storage",
+      apply() {
+        throw new Error("An obsolete source cannot apply");
+      },
+    });
+    await queueBackgroundJob(catchupWork("stale-after-response", "stale-after-response"));
+    await settleBackgroundWork();
+    assert.equal(calls.filter((step) => step === "stale-after-response").length, 1);
+    assert.equal(
+      (await summary("stale-after-response")).status,
+      "obsolete",
+      "A saved reply is already dispatched work",
+    );
+    const staleAttempt = [...rows.values()].find(
+      (row) => row.kind === "background-history" && row.data.subjectId === "stale-after-response",
+    );
+    assert.equal(staleAttempt.data.steps[0].status, "completed");
+    assert.ok(staleAttempt.data.steps[0].responseRef);
+    assert.equal(staleAttempt.data.hasResult, true, "The paid result remains owned after its source becomes obsolete");
+    await reset();
     await mutateVillageMemoryState((state) => {
       state.backgroundPace = "quiet";
       state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
