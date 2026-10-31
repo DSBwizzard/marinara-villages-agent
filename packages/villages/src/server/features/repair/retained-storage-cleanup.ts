@@ -42,6 +42,7 @@ import {
   traceOperationEvidence,
   operationCheckpointClaims,
   operationEvidenceValue,
+  operationWishReferences,
 } from "../../adapters/storage/operation-evidence.js";
 import {
   RELATIONSHIP_PAYLOAD_KIND,
@@ -346,7 +347,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
         for (const owner of sceneTranscriptOwners(row.data))
           await view.transcripts.trace(owner.head, owner.participants);
         for (const owner of sceneSubmissionOwners(row.data))
-          await view.submissions.trace(owner.head, owner.participants);
+          await view.submissions.trace(owner.head, owner.participants, owner.scene);
         const scene = row.data as { id: string; villageSeed?: string; operation?: unknown };
         await traceOperationEvidence(
           scene.operation,
@@ -355,6 +356,11 @@ export async function collectRetainedStorage(gate: RepairGate) {
             const body = await view.lookup(ref.id);
             memoryRequire(body, "owned operation evidence is missing");
             const { data } = evidenceBody(body, scene, ref);
+            for (const owner of operationWishReferences(
+              data,
+              row.data as import("../../domain/models/scene-model.js").VenueScene,
+            ))
+              await view.wishes.trace(owner.head, owner.scope);
             marked.add(ref.id);
             return resolveValue ? operationEvidenceValue(data) : undefined;
           },
@@ -364,6 +370,11 @@ export async function collectRetainedStorage(gate: RepairGate) {
               if (!body) continue;
               const { data } = evidenceBody(body, scene);
               memoryRequire(data.claim === claim.token, "pending checkpoint publication identity changed");
+              for (const owner of operationWishReferences(
+                data,
+                row.data as import("../../domain/models/scene-model.js").VenueScene,
+              ))
+                await view.wishes.trace(owner.head, owner.scope);
               marked.add(body.id);
             }
           },

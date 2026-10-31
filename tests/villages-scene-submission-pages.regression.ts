@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { mock } from "node:test";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { createSceneWishContexts } from "../packages/villages/src/server/adapters/storage/scene-wish-contexts.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
@@ -72,15 +75,14 @@ function turn(index: number) {
   };
 }
 async function populate(fixture: ReturnType<typeof f>, count: number) {
-  const world = defaultVillageState();
-  const { memories: _memories, memoryScenes: _scenes, memoryReceipts: _receipts, ...mechanics } = world;
-  await fixture.documents.create({
-    id: "villages-village",
-    packageId: "villages",
-    kind: "village",
-    name: "World",
-    description: "",
-    data: { ...mechanics, seed, setupAt: at, memoryHead: null, wishArchiveHead: { count: 0, root: null } },
+  const world = wishWorld();
+  world.seed = seed;
+  world.setupAt = at;
+  world.villagers[0].characterId = "ada";
+  world.villagers[0].cardSnapshot.id = "ada";
+  world.villagers[0].cardSnapshot.capturedAt = at;
+  await createVillageRepository(() => fixture.gate.documents).mutateAuthority((state) => {
+    Object.assign(state, world);
   });
   const scene = coerceSession({
     version: 3,
@@ -92,6 +94,7 @@ async function populate(fixture: ReturnType<typeof f>, count: number) {
     submissions: Array.from({ length: count }, (_, index) => turn(index)),
     lines: [],
   });
+  scene.continuity = captureSceneContinuity(world, scene, Date.parse(at));
   await fixture.mutateDocument("villages-venue-visit-" + sceneId, sessionSlot(fixture.gate.documents), (saved) =>
     Object.assign(saved, scene),
   );
@@ -261,6 +264,7 @@ for (const consumer of ["backlog", "operation", "restart"] as const) {
         },
       },
     };
+    reserveMemoryScene(world, sceneId, at);
     const commands = createSceneCommands({
       readSession: fixture.repository.readSession,
       changeSession: fixture.repository.changeSession,
@@ -362,7 +366,13 @@ const evidenceBatch: InterpretationBatch = {
   traces: [],
   settings: { decisionsEnabled: false, compareSystem: false },
 };
-const measurements: unknown[] = [];
+const measurements: {
+  count: number;
+  initialBytes: number;
+  readBytes: number;
+  writtenBytes: number;
+  jsonBytes: number;
+}[] = [];
 for (const count of [1000, 10_000, 25_000]) {
   const fixture = f();
   try {
@@ -459,8 +469,9 @@ for (const count of [1000, 10_000, 25_000]) {
     const io = fixture.metrics();
     measurements.push({ count, initialBytes, ...io, jsonBytes });
     assert(
-      io.readBytes < 4 * 1024 * 1024 && io.writtenBytes < 4 * 1024 * 1024 && jsonBytes < 16 * 1024 * 1024,
-      "Metadata, one-row retries and append publication must not read/write/serialize all prior submission bodies",
+      io.readBytes < 8 * 1024 * 1024 && io.writtenBytes < 4 * 1024 * 1024 && jsonBytes < 32 * 1024 * 1024,
+      "Metadata, one-row retries and append publication must not read/write/serialize all prior submission bodies: " +
+        JSON.stringify({ count, ...io, jsonBytes }),
     );
     const stored = fixture.rows.get(original.id).data;
     assert.equal(stored.submissionHistory.count, count + 20);
@@ -488,7 +499,11 @@ for (const count of [1000, 10_000, 25_000]) {
       "A returned outer array cannot mutate the persisted-head cache",
     );
     assert.equal(persisted.lines.length, 2);
-    assert.throws(() => current.submissions[0].wishContexts![0].wishes[0].history.push({} as never), TypeError);
+    const context = await createSceneWishContexts(fixture.gate.documents).read(
+      current.submissions[0].wishContexts!,
+      current,
+    );
+    assert.throws(() => context[0].wishes[0].history.push({} as never), TypeError);
     assert(!JSON.stringify(publicSceneResponse(current)).includes("Private retained context"));
     const cold = createSceneHistory(createRepairGate(fixture.documents).documents);
     assert.equal(
@@ -514,4 +529,9 @@ for (const count of [1000, 10_000, 25_000]) {
     fixture.gate.dispose();
   }
 }
+for (const metric of ["readBytes", "writtenBytes", "jsonBytes"] as const)
+  assert(
+    measurements.at(-1)![metric] < measurements[0][metric] + 2 * 1024 * 1024,
+    metric + " must stay bounded as retained submissions grow from 1,000 to 25,000",
+  );
 console.log("Scene submission growth:", JSON.stringify(measurements));

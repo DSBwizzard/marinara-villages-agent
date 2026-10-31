@@ -932,12 +932,20 @@ try {
   const failedCloseKey = "villages-venue-visit-" + failedCloseId;
   const failedCloseRow = clone(records.get("villages-venue-visit-" + scene.id));
   failedCloseRow.id = failedCloseKey;
-  failedCloseRow.data = fixtureSceneState(failedCloseRow.data, records);
+  failedCloseRow.data = clone(fixtureSceneState(failedCloseRow.data, records));
   failedCloseRow.data.id = failedCloseId;
   failedCloseRow.data.operation.snapshot = {
-    ...fixtureSceneState(failedCloseRow.data.operation.snapshot, records),
+    ...clone(fixtureSceneState(failedCloseRow.data.operation.snapshot, records)),
     id: failedCloseId,
   };
+  // This fixture authors a separate Scene; its typed captures must name that new owner.
+  const rebindCapture = (value: any) => {
+    if (value?.wishContexts?.format === 1) value.wishContexts.sceneId = failedCloseId;
+  };
+  for (const value of [failedCloseRow.data, failedCloseRow.data.operation.snapshot]) {
+    for (const turn of value.submissions) rebindCapture(turn);
+    for (const checkpoint of Object.values(value.operation?.checkpoints ?? {})) rebindCapture(checkpoint);
+  }
   const originalLines = clone(failedCloseRow.data.lines);
   failedCloseRow.data = authorSceneFixture(records, failedCloseRow.data);
   records.set(failedCloseKey, failedCloseRow);
@@ -1259,6 +1267,11 @@ try {
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
     version: 3,
     ...clone(scene),
+    continuity: captureSceneContinuity(
+      fixtureVillageState(records.get("villages-village").data, records),
+      scene,
+      Date.parse(now),
+    ),
     semanticVersion: 2,
     lines: [],
     submissions: [],
@@ -1588,6 +1601,11 @@ try {
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
     version: 3,
     ...clone(scene),
+    continuity: captureSceneContinuity(
+      fixtureVillageState(records.get("villages-village").data, records),
+      scene,
+      Date.parse(now),
+    ),
     semanticVersion: 2,
     status: "opening",
     lines: [],
@@ -2023,7 +2041,17 @@ try {
     const retained = clone(records),
       oldIntent = clone(semanticIntentAnswer),
       oldExchange = clone(semanticExchangeAnswer);
-    const blocked = coerceSession({ version: 3, ...clone(scene), semanticVersion: 2, sceneRevision: 0 });
+    const blocked = coerceSession({
+      version: 3,
+      ...clone(scene),
+      continuity: captureSceneContinuity(
+        fixtureVillageState(records.get("villages-village").data, records),
+        scene,
+        Date.parse(now),
+      ),
+      semanticVersion: 2,
+      sceneRevision: 0,
+    });
     blocked.sceneAttendance!.occupants.find((row) => row.characterId === "distant")!.zoneId = "kitchen";
     records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen = true;
     records.get("villages-venue-visit-" + scene.id).data = blocked;

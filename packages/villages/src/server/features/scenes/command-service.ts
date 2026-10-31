@@ -128,6 +128,9 @@ import { acousticInstructions } from "./acoustic-prompt.js";
 import { interpretAttention } from "./attention-interpretation.js";
 import { type SceneReply } from "./writing.js";
 export interface SceneCommandPorts {
+  readCapturedWishContexts: ReturnType<
+    typeof import("../../adapters/storage/scene-wish-contexts.js").createSceneWishContexts
+  >["read"];
   sceneNarrative?: import("./scene-narrative-service.js").SceneNarrative;
   applySavedStartingTies?: () => Promise<void>;
   withVillageSceneAcceptance?: typeof import("../world/village-store.js").withVillageSceneAcceptance;
@@ -210,6 +213,7 @@ export interface SceneCommandPorts {
 }
 /** Inert Scene command orchestration; callbacks retain originating feature connections. */
 export function createSceneCommands({
+  readCapturedWishContexts,
   sceneNarrative,
   applySavedStartingTies,
   withVillageSceneAcceptance,
@@ -269,6 +273,11 @@ export function createSceneCommands({
   queueVillageVenueRequest,
   semantic,
 }: SceneCommandPorts) {
+  async function exactWishContexts(contexts: VenueSubmission["wishContexts"], scene: VenueScene) {
+    if (Array.isArray(contexts)) return contexts;
+    if (!contexts) throw conflict("The saved Wish context is unavailable. Its source is retained.");
+    return readCapturedWishContexts(contexts, scene);
+  }
   /** Only this explicit request may replace missing/invalid metadata with another interpretation. */
   async function retrySceneChangeInterpretation(
     id: string,
@@ -312,6 +321,7 @@ export function createSceneCommands({
     const village = await readVillageState();
     if (village.seed !== scene.villageSeed) throw conflict("Village identity changed.");
     const proposals = turn.liveProposals;
+    const interpretationWishes = domain === "wishes" ? await exactWishContexts(turn.wishContexts, scene) : undefined;
     const originalProjectProposals = JSON.stringify(turn.projectSpeech ?? []);
     const originalSourceHash = turn.semanticProvenance?.sourceHash;
     const result = await venueCheckpoint("change-interpretation", async () => {
@@ -351,7 +361,7 @@ export function createSceneCommands({
               : {}),
             ...(domain === "wishes"
               ? {
-                  owners: turn.wishContexts ?? [],
+                  owners: interpretationWishes,
                 }
               : {}),
             ...(domain === "relationships"
@@ -524,7 +534,7 @@ export function createSceneCommands({
           saved.lines,
           entry.liveProposals.playerLineId,
           entry.liveProposals.replyLineIds,
-          entry.wishContexts,
+          interpretationWishes,
           entry.semanticProvenance?.version === 2,
         );
         entry.wishProposals = bound.proposals;
@@ -1351,6 +1361,10 @@ export function createSceneCommands({
     validateCurrentRoomInvitation(reply, greetingVillage);
     if (reply.narrativeSource?.development)
       provisionalSceneNarrative(greetingVillage, greetingVillage, reply.narrativeSource);
+    const greetingWishContexts =
+      Array.isArray(reply.wishChanges) && reply.wishChanges.length
+        ? await exactWishContexts(reply.wishContexts, session)
+        : [];
     const greeted = await changeSession(id, (state) => {
       signal.throwIfAborted();
       if (state.status !== "opening") return;
@@ -1366,7 +1380,7 @@ export function createSceneCommands({
           state.lines,
           "",
           savedLineIds,
-          reply.wishContexts,
+          greetingWishContexts,
           state.semanticVersion === 2,
         );
         state.submissions.push({
@@ -2502,6 +2516,10 @@ Keep dialogue attributed to the target. The server conveys it through the messen
         "",
       );
     }
+    const acceptedWishContexts =
+      Array.isArray(reply.wishChanges) && reply.wishChanges.length
+        ? await exactWishContexts(reply.wishContexts, session)
+        : [];
     const commitTurn = async (current: VillageState) => {
       if (reply.narrativeSource?.development) provisionalSceneNarrative(current, current, reply.narrativeSource);
       if (venueOperationInput()?.preservationVersion === 1 && sceneHaltWorldConflict(session, current, reply))
@@ -2632,7 +2650,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
           state.lines,
           playerLineId,
           replyLineIds,
-          reply.wishContexts,
+          acceptedWishContexts,
           state.semanticVersion === 2,
         );
         if (reply.recap) state.recap = reply.recap;

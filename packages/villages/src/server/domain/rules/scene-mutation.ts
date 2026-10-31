@@ -68,7 +68,16 @@ function mutationSnapshot(session: VenueScene) {
     text: JSON.stringify(value),
     bodies,
     lines: session.lines.map((line) => (isImmutableSceneLine(line) ? line : JSON.stringify(line))),
-    submissions: session.submissions.map((row) => (isImmutableSceneSubmission(row) ? row : JSON.stringify(row))),
+    submissions: session.submissions.map((row) =>
+      isImmutableSceneSubmission(row)
+        ? row
+        : JSON.stringify({
+            ...row,
+            wishContexts: Array.isArray(row.wishContexts)
+              ? row.wishContexts.map((owner) => ({ ...owner, wishes: evidence(owner.wishes) }))
+              : row.wishContexts,
+          }),
+    ),
   };
 }
 

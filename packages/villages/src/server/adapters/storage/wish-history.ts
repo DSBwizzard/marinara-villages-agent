@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { SocialWish } from "../../../shared/contracts/wishes.js";
+import type { WishHistoryReference } from "../../domain/models/wish-check-model.js";
 import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { immutableSocialWishes, readSocialWish, socialWishCollectionSource } from "../../domain/rules/social-wishes.js";
 import {
@@ -17,7 +18,7 @@ import {
 import { isRepairSimulation } from "./repair-gate.js";
 
 export type WishHistoryScope = { seed: string; setupAt: string; actorId: string };
-export type WishHistoryHead = { format: 1; world: string; count: number; root: HistoryPageRef };
+export type WishHistoryHead = WishHistoryReference;
 export type WishArchiveEntry = { actorId: string; name: string; head: WishHistoryHead };
 export type WishWorldScope = { seed: string; setupAt: string };
 type Tail = { count: number; root: HistoryPageRef | null };
@@ -236,12 +237,18 @@ export function decodeWishHistorySync(
 }
 
 export function createWishHistoryStore(documents: CapabilityDocumentStore) {
+  type Owner = { head: WishHistoryHead | null; rows?: SocialWish[] };
   const associations = new WeakMap<SocialWish[], Layout>();
   const cached = new Map<string, { layout: Layout; bytes: number }>();
   const live = new Map<string, Layout>();
   let liveHeads = new Set<string>();
   let worldHeads = new Set<string>();
   let sceneHeads = new Set<string>();
+  let sceneOwners: Owner[] = [];
+  let activeScene: string | undefined;
+  const capturedOwners = new Map<string, Owner>();
+  const sceneKey = (scope: WishWorldScope & { sceneId: string }) =>
+    JSON.stringify([scope.sceneId, scope.seed, scope.setupAt]);
   let cachedBytes = 0;
   const usable = () => !isRepairSimulation(documents);
   const key = (head: WishHistoryHead) => JSON.stringify(head);
@@ -355,15 +362,20 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
     await publish(writer.pages);
     return { count: entries.size, root: saved.root };
   }
-  type Owner = { head: WishHistoryHead | null; rows?: SocialWish[] };
   function retain(owners: Owner[], scene: boolean) {
     if (!usable()) return;
     const heads = new Set(owners.flatMap(({ head }) => (head ? [key(head)] : [])));
-    if (scene) sceneHeads = heads;
-    else worldHeads = heads;
-    liveHeads = new Set([...worldHeads, ...sceneHeads]);
+    if (scene) {
+      sceneHeads = heads;
+      sceneOwners = owners;
+    } else worldHeads = heads;
+    liveHeads = new Set([
+      ...worldHeads,
+      ...sceneHeads,
+      ...[...capturedOwners.values()].flatMap(({ head }) => (head ? [key(head)] : [])),
+    ]);
     for (const id of live.keys()) if (!liveHeads.has(id)) live.delete(id);
-    for (const { head, rows } of owners) {
+    for (const { head, rows } of [...owners, ...capturedOwners.values()]) {
       if (!head) continue;
       const id = key(head),
         known = rows ? associations.get(socialWishCollectionSource(rows)) : undefined;
@@ -376,7 +388,21 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
     prepare,
     appendArchive,
     retain: (owners: Owner[]) => retain(owners, false),
-    retainScene: (owners: Owner[]) => retain(owners, true),
+    retainScene: (owners: Owner[], scope?: WishWorldScope & { sceneId: string }) => {
+      if (!usable()) return;
+      const identity = scope && sceneKey(scope);
+      if (identity !== activeScene) capturedOwners.clear();
+      activeScene = identity;
+      retain(owners, true);
+    },
+    retainSceneWork: (
+      scope: WishWorldScope & { sceneId: string },
+      owner: Owner & { actorId: string; wishId?: string },
+    ) => {
+      if (!usable() || sceneKey(scope) !== activeScene) return;
+      capturedOwners.set(JSON.stringify([owner.actorId, owner.wishId ?? null]), owner);
+      retain(sceneOwners, true);
+    },
   };
 }
 

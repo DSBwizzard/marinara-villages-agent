@@ -1,4 +1,27 @@
 import type { VenueRecordEvent } from "./scene-model.js";
+import type { VillageWish } from "./world.js";
+
+export type WishHistoryReference = {
+  format: 1;
+  world: string;
+  count: number;
+  root: { id: string; digest: string; height: number };
+};
+export type CapturedWishOwner = {
+  actorId: string;
+  wishId: string;
+  fingerprint: string;
+  capturedAt: string;
+  wishes: VillageWish[];
+};
+export type CapturedWishSnapshot = {
+  format: 1;
+  sceneId: string;
+  seed: string;
+  setupAt: string;
+  owners: (Omit<CapturedWishOwner, "wishes"> & { head: WishHistoryReference | null })[];
+};
+export type CapturedWishContexts = CapturedWishOwner[] | CapturedWishSnapshot;
 
 export type ExchangeEffectReceipt = {
   wishOutcome?: "fulfilled" | "corrected";

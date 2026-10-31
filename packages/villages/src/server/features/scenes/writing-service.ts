@@ -150,6 +150,9 @@ import {
   zoneEventScene,
 } from "../../domain/rules/zone-events.js";
 export interface SceneWritingPorts {
+  readCapturedWishContexts: ReturnType<
+    typeof import("../../adapters/storage/scene-wish-contexts.js").createSceneWishContexts
+  >["read"];
   sceneNarrative?: import("./scene-narrative-service.js").SceneNarrative;
   semantic?: import("../../domain/models/semantic-model.js").SemanticInterpreter;
   venueCheckpoint?: typeof import("../../jobs/venue-coordinator.js").venueCheckpoint;
@@ -180,6 +183,7 @@ export const VENUE_REPLY_MAX_TOKENS = 4_096;
 const VENUE_REPLY_TEMPERATURE = 0.85;
 /** Inert Scene prompt fitting, response validation and room interpretation with originating connections. */
 export function createSceneWriting({
+  readCapturedWishContexts,
   sceneNarrative,
   venueCheckpoint = async (_stage, work) => work(),
   venueSavedCheckpoint,
@@ -262,8 +266,13 @@ export function createSceneWriting({
             wishContexts: NonNullable<VenueScene["submissions"][number]["wishContexts"]>;
           }>("writing-request:" + requestKey)
         : undefined;
-    if (captured && !Array.isArray(captured.wishContexts))
+    if (captured && !captured.wishContexts)
       throw conflict("The saved Wish writing context is unavailable. Its source is retained.");
+    const capturedWishes = captured
+      ? Array.isArray(captured.wishContexts)
+        ? captured.wishContexts
+        : await readCapturedWishContexts(captured.wishContexts, session)
+      : undefined;
     if (writingVersion !== undefined && writingVersion !== 1 && writingVersion !== 2 && writingVersion !== 3)
       throw conflict("This saved request uses an unsupported writing contract. Its history is preserved.");
     const sparse = writingVersion === 2 || writingVersion === 3;
@@ -852,8 +861,8 @@ export function createSceneWriting({
       maxTokens,
       model,
       village: authority,
-      wishContexts: captured
-        ? captured.wishContexts.map((owner) => ({ ...owner, wishes: immutableSocialWishes(owner.wishes) }))
+      wishContexts: (capturedWishes
+        ? capturedWishes.map((owner) => ({ ...owner, wishes: immutableSocialWishes(owner.wishes) }))
         : active.map((person) => {
             const owner = village.villagers.find((row) => row.characterId === person.characterId)!;
             return {
@@ -863,7 +872,7 @@ export function createSceneWriting({
               wishes: immutableSocialWishes(owner.wishes),
               capturedAt: owner.cardSnapshot.capturedAt,
             };
-          }),
+          })) as import("../../domain/models/wish-check-model.js").CapturedWishContexts,
       audience,
       active,
       pendingMoves: authority.residences.filter(

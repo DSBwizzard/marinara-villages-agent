@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
+import { immutableSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 
 // Direct domain tests: no host, document store, network, timers, or paid provider.
 const stamp = "2026-10-06T12:00:00.000Z";
@@ -109,6 +111,38 @@ assert.equal(
   false,
 );
 assert.deepEqual(currentAction.submissions[0]!.processing, currentProcessing);
+const captured = scene([
+  {
+    id: "captured",
+    message: "Same visible turn",
+    wishContexts: [
+      {
+        actorId: "resident",
+        wishId: "",
+        fingerprint: "",
+        capturedAt: stamp,
+        wishes: immutableSocialWishes([fixtureWish({ wish: "Original exact capture" })]),
+      },
+    ],
+  },
+]);
+assert.equal(
+  applySceneMutation(captured, "scene", () => {}),
+  false,
+);
+assert.equal(
+  applySceneMutation(captured, "scene", (saved) => {
+    const contexts = saved.submissions[0].wishContexts!;
+    assert(Array.isArray(contexts));
+    contexts[0].wishes = immutableSocialWishes([fixtureWish({ wish: "Corrected exact capture" })]);
+  }),
+  undefined,
+  "A changed immutable Wish capture still requires persistence when visible turn text is unchanged",
+);
+assert.equal(
+  applySceneMutation(captured, "scene", () => {}),
+  false,
+);
 console.log(
   "Scene mutation domain passed: no-op, identity, revision, notice ordering, replayable processing and current Act admission; no Engine or providers.",
 );

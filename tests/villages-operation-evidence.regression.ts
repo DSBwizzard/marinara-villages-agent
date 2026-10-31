@@ -7,7 +7,9 @@ import { applySceneMutation } from "../packages/villages/src/server/domain/rules
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
 import { coerceInterpretationSettings } from "../packages/villages/src/server/domain/rules/interpretation-policy.js";
-import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { createSceneWishContexts } from "../packages/villages/src/server/adapters/storage/scene-wish-contexts.js";
 import {
   createOperationEvidence,
   encodeOperationEvidence,
@@ -26,6 +28,7 @@ import { sessionSlot } from "../packages/villages/src/server/adapters/storage/sc
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
+import { createSceneWorkFence } from "../packages/villages/src/server/jobs/scene-work-fence.js";
 
 const scope = { id: "evidence", villageSeed: "evidence-world" },
   at = "2026-10-30T00:00:00.000Z";
@@ -67,13 +70,14 @@ async function world(f: ReturnType<typeof sceneHistoryFixture>) {
 }
 function coordinatorFor(f: ReturnType<typeof sceneHistoryFixture>) {
   const logger = { debug() {}, info() {}, warn() {}, error() {} };
+  const fence = createSceneWorkFence();
   return createVenueCoordinator({
     operations: createVenueOperationContext(() => logger),
     villagesDocuments: () => f.gate.documents,
     villagesLogger: () => logger,
     runtimeDebug() {},
     readInterpretationSettings: async () => coerceInterpretationSettings({}),
-    withSceneWork: (_id, work) => f.gate.work(work),
+    withSceneWork: (id, work) => fence.run(id, work),
     withRepairWork: (work) => f.gate.work(work),
   });
 }
@@ -81,12 +85,45 @@ for (const fault of ["before", "after"] as const) {
   const f = sceneHistoryFixture();
   try {
     await world(f);
+    const repository = createVillageRepository(() => f.gate.documents),
+      initial = wishWorld();
+    initial.seed = scope.villageSeed;
+    initial.setupAt = at;
+    initial.villagers[0].wishes = [fixtureWish({ wish: "Original World Wish" })];
+    await repository.mutateAuthority((state) => Object.assign(state, initial));
+    const baseline = await repository.readAuthority({ wishes: true });
+    const capturedScene = coerceSession({ version: 3, ...scope, status: "active", startedAt: at });
+    capturedScene.continuity = captureSceneContinuity(baseline, capturedScene, Date.parse(at));
+    const capturedOwners = [
+      {
+        actorId: "a",
+        wishId: "",
+        fingerprint: "",
+        capturedAt: baseline.villagers[0].cardSnapshot.capturedAt,
+        wishes: [{ ...baseline.villagers[0].wishes[0], wish: "Exact unacknowledged capture café 東京" }],
+      },
+    ];
     await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (scene) =>
-      Object.assign(scene, coerceSession({ version: 3, ...scope, status: "active", startedAt: at })),
+      Object.assign(scene, capturedScene),
     );
     const coordinator = () => coordinatorFor(f);
     const first = coordinator(),
       update = f.documents.update;
+    const originalPages = new Set(f.rows.keys());
+    let publicationStarted = false,
+      unsafePublicationGaps = 0;
+    const stop = f.gate.whenIdle(() => {
+      if (
+        !publicationStarted ||
+        !f.gate.isIdle() ||
+        ![...f.rows.values()].some((row) => row.kind === "memory-page" && !originalPages.has(row.id))
+      )
+        return;
+      const operation = f.rows.get("villages-venue-visit-" + scope.id)?.data.operation;
+      const reference = operation?.checkpoints?.["local-evidence"],
+        pending = operation?.checkpointClaims?.["local-evidence"];
+      if (!(reference && f.rows.has(reference.id)) && !(pending && f.rows.has(pending.bodyId))) unsafePublicationGaps++;
+    });
     f.documents.update = async (input: any) => {
       if (input.id === "villages-venue-visit-" + scope.id && input.data.operation.checkpoints["local-evidence"]) {
         if (fault === "after") await update(input);
@@ -99,10 +136,17 @@ for (const fault of ["before", "after"] as const) {
       first.coordinateVenue(scope.id, "turn", "turn", {}, 0, undefined, () =>
         first.venueCheckpoint("local-evidence", async () => {
           computations++;
-          return { exact: "First accepted café 🌼 evidence" };
+          publicationStarted = true;
+          return { exact: "First accepted café 🌼 evidence", wishContexts: capturedOwners };
         }),
       ),
       /acknowledgement/,
+    );
+    stop();
+    assert.equal(
+      unsafePublicationGaps,
+      0,
+      "Cleanup never sees idle storage between creating Wish pages and their published checkpoint owner",
     );
     const retainedScene = f.rows.get("villages-venue-visit-" + scope.id).data;
     const publishedRef = retainedScene.operation.checkpoints["local-evidence"];
@@ -129,6 +173,15 @@ for (const fault of ["before", "after"] as const) {
     }
     await collectRetainedStorage(f.gate);
     assert(f.rows.has(expectedBody), "Collection preserves a prospective or published checkpoint value");
+    const packet = (operationEvidenceValue(f.rows.get(expectedBody).data) as any).wishContexts;
+    assert(!Array.isArray(packet));
+    const root = f.rows.get(packet.owners[0].head.root.id),
+      child = f.rows.get(root.data.node.content.id);
+    f.rows.delete(child.id);
+    const held = structuredClone(f.rows);
+    await assert.rejects(collectRetainedStorage(f.gate), /missing/);
+    assert.deepEqual(f.rows, held, "A missing Wish page in an unfinished checkpoint holds all cleanup deletion");
+    f.rows.set(child.id, child);
     if (pendingClaim) {
       const wrongStage = structuredClone(retainedScene.operation);
       wrongStage.checkpointClaims.other = wrongStage.checkpointClaims["local-evidence"];
@@ -153,7 +206,12 @@ for (const fault of ["before", "after"] as const) {
       { recovery: true },
     );
     assert.equal(computations, 1, "A durable but unacknowledged parsed checkpoint must not be recomputed");
-    assert.deepEqual(value, { exact: "First accepted café 🌼 evidence" });
+    assert.equal(value.exact, "First accepted café 🌼 evidence");
+    assert.deepEqual(
+      await createSceneWishContexts({ ...f.gate.documents }).read((value as any).wishContexts, capturedScene),
+      capturedOwners,
+      "Restart recovery reuses the exact captured library without recomputing the checkpoint",
+    );
   } finally {
     f.release();
   }
@@ -424,19 +482,32 @@ for (const fault of ["before", "after"] as const) {
 {
   const f = sceneHistoryFixture();
   try {
+    const state = wishWorld();
+    state.seed = scope.villageSeed;
+    state.villagers[0].wishes = Array.from({ length: 25_000 }, (_, index) =>
+      fixtureWish({ wish: "Exact retained wish " + index }, "wish:" + index, at),
+    );
+    const repository = createVillageRepository(() => f.gate.documents);
+    await repository.mutateAuthority((world) => Object.assign(world, state));
+    const captured = await repository.readAuthority({ wishes: true });
+    const scene = coerceSession({ version: 3, ...scope, status: "active", startedAt: at });
+    scene.continuity = captureSceneContinuity(captured, scene, Date.parse(at));
+    await f.mutateDocument("villages-venue-visit-" + scope.id, sessionSlot(f.gate.documents), (value) =>
+      Object.assign(value, scene),
+    );
     const rich = {
       wishContexts: [
         {
-          actorId: "ada",
-          capturedAt: at,
+          actorId: "a",
+          capturedAt: captured.villagers[0].cardSnapshot.capturedAt,
+          wishId: "",
           fingerprint: "captured",
-          wishes: Array.from({ length: 25_000 }, (_, index) =>
-            fixtureWish({ wish: "Exact retained wish " + index }, "wish:" + index, at),
-          ),
+          wishes: captured.villagers[0].wishes,
         },
       ],
     };
-    const saved = prepareOperationValue(rich, scope);
+    assert.throws(() => prepareOperationValue(rich, scope), /require canonical references/);
+    const saved = await f.gate.work(() => operationEvidenceStore(f.gate.documents).prepare(rich, scene));
     await f.gate.work(() => operationEvidenceStore(f.gate.documents).publish(new Map([[saved.ref.id, saved.data]])));
     let nodes = 0;
     const pending: unknown[] = [f.rows.get(saved.ref.id).data];
@@ -447,11 +518,13 @@ for (const fault of ["before", "after"] as const) {
       else if (typeof value === "string") assert.equal(value.startsWith("global-gallery:"), false);
     }
     assert(nodes < 32, "A 25k-Wish checkpoint stays opaque to Host native-reference traversal");
+    assert(saved.data.payload.length < 1024, "A full library is referenced once instead of copied into the checkpoint");
     const cold = createOperationEvidence(f.documents);
+    const restored = (await cold.read(saved.ref, scope, true)) as typeof rich;
     assert.deepEqual(
-      await cold.read(saved.ref, scope, true),
-      rich,
-      "Large structured exact evidence round-trips through a cold persisted body",
+      await createSceneWishContexts(f.documents).read(restored.wishContexts, scene),
+      rich.wishContexts,
+      "The compact cold checkpoint explicitly resolves its exact captured library",
     );
     for (const value of [undefined, null]) {
       const body = prepareOperationValue(value, scope);
