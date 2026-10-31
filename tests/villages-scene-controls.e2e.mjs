@@ -176,6 +176,11 @@ try {
       await page.getByRole("button", { name: "History", exact: true }).click();
       await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
       await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Rain taps against the window.");
+      const historyPages = page.getByRole("navigation", { name: "Scene history pages" });
+      assert.equal(
+        (await historyPages.getByRole("button", { name: "Refresh", exact: true }).boundingBox()).height,
+        mobile ? 44 : 32,
+      );
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
       await expect(composer).toHaveCount(0);
       await expect(send).toHaveCount(0);
