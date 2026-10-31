@@ -9,7 +9,7 @@ export type VillageMemoryRead = {
 export type VillageMemoryWrite = Omit<VillageMemoryRead, "memories"> & {
   memories?: boolean | ((state: VillageState) => boolean);
   /** Publication hints only: the repository rechecks the physical saved job under repair admission. */
-  sourceJobs?: readonly { slot: string; id: string; attempt: number }[];
+  sourceJobs?: readonly { slot: string; id: string; instanceId: string; attempt: number }[];
 };
 
 /** Raw saved authority; relationship hydration and side effects belong to its service. */

@@ -17,6 +17,7 @@ export type BackgroundKind =
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
 export type BackgroundSummary = {
   id: string;
+  instanceId: string;
   kind: BackgroundKind;
   subjectId: string;
   label: string;
@@ -38,7 +39,7 @@ export type Step = {
   fingerprint: string;
   status: "running" | "completed";
   response?: Awaited<ReturnType<BackgroundCompletion>>;
-  responseClaim?: { attempt: number; id: string };
+  responseClaim?: { instanceId: string; attempt: number; id: string };
   responseRef?: { id: string; digest: string };
   responseDiagnostics?: ResponseDiagnostics;
   timing?: {
@@ -67,11 +68,14 @@ export type BackgroundInput = {
   legacyError?: string;
   automaticDate?: string;
   expectedAttempt?: number;
+  /** Paired with expectedAttempt; null asserts that the slot is empty. */
+  expectedInstanceId?: string | null;
   /** Server-owned explicit retry admission for a replacement with changed source inputs. */
   retryActionId?: string;
 };
 export type Job = BackgroundInput & {
   id: string;
+  instanceId: string;
   status: BackgroundStatus;
   owner: string;
   attempt: number;

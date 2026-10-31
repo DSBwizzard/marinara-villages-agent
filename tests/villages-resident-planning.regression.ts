@@ -624,6 +624,7 @@ state.seed = "retirement";
 let dispatched = 0,
   applied = 0;
 const work = createBackgroundWork({
+  withCurrentJobWrite: (work) => work(),
   villagesDocuments: () =>
     ({
       getById: async (_p: string, id: string) => structuredClone(rows.get(id) ?? null),
@@ -710,7 +711,7 @@ for (const id of ids) {
     validateBackgroundResponse(rows.get(rows.get(id).data.steps[0].responseRef.id)).response,
     rawResponse,
   );
-  await assert.rejects(work.retryBackgroundJob(id, 1, "retry-old"), /retired/);
+  await assert.rejects(work.retryBackgroundJob(id, 1, "retry-old", rows.get(id).data.instanceId), /retired/);
 }
 assert.equal(dispatched, 0);
 assert.equal(applied, 0);

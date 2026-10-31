@@ -3,32 +3,46 @@ import type { CapabilityDocumentStore, CapabilityLanguageModelCompletion } from 
 import type { Job, Step } from "../../domain/models/background-model.js";
 import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isRepairSimulation, withRepairWork } from "./repair-gate.js";
-import { backgroundSlotId } from "../../domain/rules/background-revision.js";
+import { backgroundSlotId, isBackgroundInstance } from "../../domain/rules/background-revision.js";
 import { capturedJobOwners } from "./captured-admissions.js";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const prefix = "background:";
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
-type NativeJob = Omit<Job, "steps"> & { responseStorage: 3; steps: Omit<Step, "response">[] };
-function identity(job: Job, index: number, attempt: number) {
+type NativeJob = Omit<Job, "steps"> & { responseStorage: 4; steps: Omit<Step, "response">[] };
+function identity(job: Job, index: number, claim: Pick<NonNullable<Step["responseClaim"]>, "instanceId" | "attempt">) {
+  memoryRequire(isBackgroundInstance(claim.instanceId), "invalid background instance identity");
   const step = job.steps[index];
-  return { seed: job.seed, jobId: job.id, attempt, index, key: step.key ?? null, fingerprint: step.fingerprint };
+  return {
+    seed: job.seed,
+    jobId: job.id,
+    instanceId: claim.instanceId,
+    attempt: claim.attempt,
+    index,
+    key: step.key ?? null,
+    fingerprint: step.fingerprint,
+  };
 }
 const bodyId = (scope: ReturnType<typeof identity>) =>
   "villages-generation-response-" +
-  hash([scope.seed, scope.jobId, scope.attempt, scope.index, scope.key, scope.fingerprint]);
+  hash([scope.seed, scope.jobId, scope.instanceId, scope.attempt, scope.index, scope.key, scope.fingerprint]);
 export function backgroundResponseClaim(job: Job, index: number, attempt = job.attempt) {
-  return { attempt, id: bodyId(identity(job, index, attempt)) };
+  const claim = { instanceId: job.instanceId, attempt };
+  return { ...claim, id: bodyId(identity(job, index, claim)) };
 }
 export function backgroundResponseOwners(raw: unknown) {
   memoryObject(raw);
   memoryRequire(
-    raw.responseStorage === 3 && Array.isArray(raw.steps),
+    raw.responseStorage === 4 && Array.isArray(raw.steps),
     "unsupported background format; start a fresh Village",
   );
   const job = raw as NativeJob;
   memoryRequire(
-    typeof job.id === "string" && typeof job.seed === "string" && Number.isSafeInteger(job.attempt) && job.attempt > 0,
+    typeof job.id === "string" &&
+      typeof job.seed === "string" &&
+      isBackgroundInstance(job.instanceId) &&
+      Number.isSafeInteger(job.attempt) &&
+      job.attempt > 0,
     "invalid background response owner",
   );
   return job.steps.map((step, index) => {
@@ -38,13 +52,13 @@ export function backgroundResponseOwners(raw: unknown) {
       typeof step.fingerprint === "string" && ["running", "completed"].includes(step.status),
       "invalid background step",
     );
-    memoryObject(step.responseClaim, ["id", "attempt"]);
+    memoryObject(step.responseClaim, ["id", "instanceId", "attempt"]);
     const claim = step.responseClaim;
     memoryRequire(
       Number.isSafeInteger(claim.attempt) &&
         claim.attempt > 0 &&
-        claim.attempt <= job.attempt &&
-        claim.id === backgroundResponseClaim(job as Job, index, claim.attempt).id,
+        (claim.instanceId === job.instanceId ? claim.attempt <= job.attempt : Object.hasOwn(step, "responseRef")) &&
+        claim.id === bodyId(identity(job as Job, index, claim)),
       "background response claim changed",
     );
     if (Object.hasOwn(step, "responseRef")) {
@@ -60,13 +74,13 @@ export function backgroundResponseOwners(raw: unknown) {
       (step.status === "completed") === Object.hasOwn(step, "responseRef"),
       "background response publication is incomplete",
     );
-    return { ...identity(job as Job, index, claim.attempt), claim, ref: step.responseRef };
+    return { ...identity(job as Job, index, claim), claim, ref: step.responseRef };
   });
 }
 export function nativeBackgroundJob(job: Job): NativeJob {
   const native = {
     ...job,
-    responseStorage: 3 as const,
+    responseStorage: 4 as const,
     steps: job.steps.map(({ response: _response, ...step }) => step),
   };
   backgroundResponseOwners(native);
@@ -120,15 +134,12 @@ export function validateBackgroundJobRecord(row: Pick<Row, "id" | "kind" | "data
 }
 export function prepareBackgroundResponse(job: Job, index: number, response: CapabilityLanguageModelCompletion) {
   const claim = job.steps[index].responseClaim!;
-  memoryRequire(
-    claim.id === backgroundResponseClaim(job, index, claim.attempt).id,
-    "background response claim changed",
-  );
+  memoryRequire(claim.id === bodyId(identity(job, index, claim)), "background response claim changed");
   const payload = prefix + JSON.stringify({ response });
   const data = {
-    format: 1,
+    format: 2,
     purpose: "background",
-    ...identity(job, index, claim.attempt),
+    ...identity(job, index, claim),
     payload,
     payloadDigest: hash(payload),
   };
@@ -149,6 +160,7 @@ export function validateBackgroundResponse(
     "purpose",
     "seed",
     "jobId",
+    "instanceId",
     "attempt",
     "index",
     "key",
@@ -158,10 +170,11 @@ export function validateBackgroundResponse(
   ]);
   const data = row.data;
   memoryRequire(
-    data.format === 1 &&
+    data.format === 2 &&
       data.purpose === "background" &&
       typeof data.seed === "string" &&
       typeof data.jobId === "string" &&
+      isBackgroundInstance(data.instanceId) &&
       Number.isSafeInteger(data.attempt) &&
       data.attempt > 0 &&
       Number.isSafeInteger(data.index) &&
@@ -178,6 +191,7 @@ export function validateBackgroundResponse(
   const scope = {
     seed: data.seed,
     jobId: data.jobId,
+    instanceId: data.instanceId,
     attempt: data.attempt,
     index: data.index,
     key: data.key,
@@ -237,11 +251,8 @@ export function createBackgroundResponses(documents: CapabilityDocumentStore) {
   }
   async function pending(job: Job, index: number, physical = false) {
     const claim = job.steps[index].responseClaim!;
-    memoryRequire(
-      claim && claim.id === backgroundResponseClaim(job, index, claim.attempt).id,
-      "background response claim changed",
-    );
-    const owner = { ...identity(job, index, claim.attempt), claim, ref: job.steps[index].responseRef };
+    memoryRequire(claim && claim.id === bodyId(identity(job, index, claim)), "background response claim changed");
+    const owner = { ...identity(job, index, claim), claim, ref: job.steps[index].responseRef };
     const cached = !physical && !isRepairSimulation(documents) ? cache.get(owner.claim.id) : undefined;
     if (cached) {
       memoryRequire(!owner.ref || owner.ref.digest === cached.ref.digest, "cached background response changed");
