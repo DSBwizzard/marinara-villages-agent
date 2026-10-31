@@ -696,6 +696,27 @@ async function main() {
     assert.deepEqual(effects, ["replace"]);
     assert.equal((await readVillageState({ memories: true })).setting, "new-input");
 
+    await reset();
+    blockStep = "paid-first";
+    await queueBackgroundJob(work("replace", ["paid-first", "unsubmitted-second"]));
+    await until(() => !!providerGate);
+    holdPendingTiming = true;
+    providerGate!();
+    await until(() => !!releasePendingTiming);
+    await queueBackgroundJob({ ...work("replace", ["replacement-after-reservation"]), revision: "new" });
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["paid-first", "replacement-after-reservation"]);
+    const retainedPaid = [...rows.values()].filter((row) => row.kind === "background-history");
+    assert.equal(retainedPaid.length, 1, "The earlier purchased reply remains retained after supersession.");
+    assert.equal(
+      retainedPaid[0].data.steps.length,
+      1,
+      "The unsubmitted sibling cannot become an uncertain historical claim.",
+    );
+    assert.equal(retainedPaid[0].data.steps[0].status, "completed");
+    assert.equal(retainedPaid[0].data.requests, 1, "Only actual old request progress is retained.");
+
     for (const status of ["completed", "running", "obsolete"] as const) {
       await reset();
       await queueBackgroundJob(work("replace", ["original-before-restart"]));
@@ -748,7 +769,7 @@ async function main() {
       const held = rows.get((await summary("replace")).id);
       assert.equal(held.data.status, "interrupted", "Supersession preserves the uncertain original request.");
       assert.equal(held.data.replacement.revision, "next");
-      if (optional) assert.equal(held.data.optionalAttempts["uncertain-optional"].status, "dispatching");
+      if (optional) assert.equal(held.data.optionalAttempts["uncertain-optional"].status, "unknown");
       else assert.equal(held.data.steps[0].status, "running");
       const expectedCalls = [optional ? "optional-original" : "uncertain-original"];
       assert.deepEqual(calls, expectedCalls, "A replacement cannot dispatch while the original remains uncertain.");
@@ -771,7 +792,7 @@ async function main() {
         (row) => row.kind === "background-history" && row.data.id === held.data.id,
       );
       assert.ok(retained, "Replacement Retry retains the original uncertain request and its captured source.");
-      if (optional) assert.equal(retained.data.optionalAttempts["uncertain-optional"].status, "dispatching");
+      if (optional) assert.equal(retained.data.optionalAttempts["uncertain-optional"].status, "unknown");
       else assert.equal(retained.data.steps[0].status, "running");
     }
 

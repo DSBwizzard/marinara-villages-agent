@@ -51,6 +51,7 @@ import {
 } from "../domain/rules/work-recovery.js";
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 const KIND = "background-work";
+type Unsubmitted = { step?: number; optional?: readonly string[] };
 const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
   "villages-background-" + backgroundRevision([work.kind, work.subjectId]);
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);
@@ -289,16 +290,16 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     id: string,
     change: (job: Job | null) => Job,
     documents = villagesDocuments(),
-    undispatchedStep?: number,
+    unsubmitted: Unsubmitted = {},
   ): Promise<Job> {
-    const save = () => saveJob(id, change, documents, undispatchedStep);
+    const save = () => saveJob(id, change, documents, unsubmitted);
     return ports.withRepairWork ? ports.withRepairWork(save) : save();
   }
   async function saveJob(
     id: string,
     change: (job: Job | null) => Job,
     documents: CapabilityDocumentStore,
-    undispatchedStep?: number,
+    unsubmitted: Unsubmitted,
   ): Promise<Job> {
     const responses = backgroundResponseStore(documents);
     for (let attempt = 0; attempt < 8; attempt++) {
@@ -315,9 +316,20 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       if (record) {
         const before = record.data as Job,
           claims = new Set(backgroundResponseOwners(data).map((owner) => owner.claim.id));
+        const optional = new Set(unsubmitted.optional);
+        if (
+          (unsubmitted.step !== undefined || optional.size) &&
+          (before.id !== next.id || before.attempt !== next.attempt || before.owner !== next.owner)
+        )
+          throw new Error("Unsubmitted background ownership changed.");
+        for (const key of optional) {
+          const saved = before.optionalAttempts?.[key];
+          if (saved && (saved.status !== "dispatching" || saved.result !== undefined || data.optionalAttempts?.[key]))
+            throw new Error("Unsubmitted optional reservation changed.");
+        }
         const releasedClaims = backgroundResponseOwners(before).filter((owner) => {
           if (claims.has(owner.claim.id)) return false;
-          if (owner.index !== undispatchedStep) return true;
+          if (owner.index !== unsubmitted.step) return true;
           if (owner.ref || before.steps[owner.index].status !== "running" || data.steps[owner.index])
             throw new Error("Undispatched background reservation changed.");
           return false;
@@ -338,11 +350,26 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             before.steps.length === 0 &&
             next.failure?.cause !== "unknown_request");
         if (released) {
-          const recovery = backgroundRecoveryState({
+          // A proven unsubmitted reservation must not become an uncertain historical claim.
+          const retained = {
             ...before,
+            steps: before.steps.filter((_step, index) => index !== unsubmitted.step),
+            ...(before.optionalAttempts
+              ? {
+                  optionalAttempts: Object.fromEntries(
+                    Object.entries(before.optionalAttempts).filter(([key]) => !optional.has(key)),
+                  ),
+                }
+              : {}),
+            requests:
+              unsubmitted.step !== undefined || optional.size
+                ? Math.min(before.requests, next.requests)
+                : before.requests,
+          };
+          const recovery = backgroundRecoveryState({
+            ...retained,
             replacement: undefined,
             status: "obsolete",
-            steps: before.steps.filter((_step, index) => index !== undispatchedStep),
           });
           if (recovery === "uncertain" || recovery === "recoverable") {
             const state = await (ports.readVillageAuthority ?? readVillageState)();
@@ -351,7 +378,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               next.status === "completed" &&
               next.id === before.id &&
               state.backgroundReceipts[id] === before.id;
-            if (state.seed === before.seed && !acknowledged) await retainBackgroundJob(documents, record.data);
+            if (state.seed === before.seed && !acknowledged) await retainBackgroundJob(documents, retained);
           }
         }
       }
@@ -720,8 +747,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   async function runMeasuredJob(id: string, documents: CapabilityDocumentStore): Promise<void> {
     const runOwner = owner;
     const responses = backgroundResponseStore(documents);
-    const updateJob = (update: Parameters<typeof changeJob>[1], undispatchedStep?: number) =>
-      changeJob(id, update, documents, undispatchedStep);
+    const updateJob = (update: Parameters<typeof changeJob>[1], unsubmitted?: Unsubmitted) =>
+      changeJob(id, update, documents, unsubmitted);
     let job = await readJob(id, documents);
     if (job) job = (await promoteReplacement(id, job, documents, runOwner)) ?? job;
     if (job?.replacement && uncertainAttempt(job)) {
@@ -790,6 +817,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     let invoked = false;
     let stage = "generation";
     let dispatched = false;
+    const unsubmittedSteps = new Set<string>(),
+      unsubmittedOptional = new Set<string>();
     const complete: BackgroundCompletion = async (model, messages, maxTokens, options) => {
       // Provider and token-limit changes do not invalidate already purchased responses.
       const fingerprint = backgroundRevision(messages);
@@ -863,13 +892,10 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           current.connectionId = model.connectionId;
           current.steps[index] = { key: options.checkpointId, fingerprint, status: "running" };
           current.steps[index].responseClaim = backgroundResponseClaim(current, index);
+          unsubmittedSteps.add(current.steps[index].responseClaim.id);
           if (!catchupBatchId(job!)) current.requests++;
           return current;
         });
-        if (!catchupBatchId(job!)) {
-          invoked = true;
-          dispatched = true;
-        }
         const timing = {
           queuedAt: new Date(queuedAt).toISOString(),
           admittedAt: new Date(admittedAt).toISOString(),
@@ -896,8 +922,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         let response: Awaited<ReturnType<BackgroundCompletion>>;
         try {
           const startRequest = () =>
-            withUsagePurpose(options.usagePurpose ?? "background", () =>
-              model.chatComplete(messages, {
+            withUsagePurpose(options.usagePurpose ?? "background", () => {
+              unsubmittedSteps.delete(job!.steps[index].responseClaim!.id);
+              invoked = true;
+              dispatched = true;
+              return model.chatComplete(messages, {
                 ...(typeof options.temperature === "number" ? { temperature: options.temperature } : {}),
                 ...(options.reasoningEffort ? { reasoningEffort: options.reasoningEffort } : {}),
                 ...(options.verbosity ? { verbosity: options.verbosity } : {}),
@@ -905,8 +934,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                 maxTokens,
                 debugMode: false,
                 signal: options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal,
-              }),
-            );
+              });
+            });
           const request = catchupBatchId(job!)
             ? (
                 await withCatchupAdmission(async () => {
@@ -926,19 +955,20 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
                     controller.signal.aborted ||
                     superseded.has(runJobId)
                   ) {
-                    job = await updateJob((current) => {
-                      if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
-                        throw new Obsolete("Request admission ownership changed.");
-                      current.requests = Math.max(0, current.requests - 1);
-                      if (current.steps[index]?.status === "running") current.steps.splice(index, 1);
-                      return current;
-                    }, index);
+                    job = await updateJob(
+                      (current) => {
+                        if (current?.id !== runJobId || current.attempt !== runAttempt || current.owner !== runOwner)
+                          throw new Obsolete("Request admission ownership changed.");
+                        current.requests = Math.max(0, current.requests - 1);
+                        if (current.steps[index]?.status === "running") current.steps.splice(index, 1);
+                        return current;
+                      },
+                      { step: index },
+                    );
                     assertActive();
                     throw new Paused("Waiting until Villages is visible.");
                   }
                   assertActive();
-                  invoked = true;
-                  dispatched = true;
                   return { pending: startRequest() };
                 })
               ).pending
@@ -1028,10 +1058,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       fingerprint: string,
       work: (signal: AbortSignal) => Promise<T>,
     ): Promise<T | undefined> => {
-      const assertOwner = () => {
+      const assertStorageOwner = () => {
         if (stopped || owner !== runOwner) throw new Paused("Background generation stopped.");
-        if (superseded.has(job!.id)) throw new Obsolete("This job was replaced.");
         controller.signal.throwIfAborted();
+      };
+      const assertOwner = () => {
+        assertStorageOwner();
+        if (superseded.has(job!.id)) throw new Obsolete("This job was replaced.");
       };
       assertOwner();
       const prior = job!.optionalAttempts?.[fingerprint];
@@ -1062,12 +1095,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           current.optionalAttempts ??= {};
           if (current.optionalAttempts[fingerprint]) throw new Paused("Optional request already reserved.");
           current.optionalAttempts[fingerprint] = { status: "dispatching", elapsedMs: allowance };
+          unsubmittedOptional.add(fingerprint);
           current.owner = runOwner;
           current.status = "running";
           current.requests++;
           current.usageComplete = false;
           return current;
         });
+        assertOwner();
         const started = performance.now();
         const timeout = new AbortController();
         const signal = AbortSignal.any([controller.signal, timeout.signal]);
@@ -1077,26 +1112,27 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         let status: "complete" | "unknown" = "unknown";
         try {
           result = await Promise.race([
-            work(signal),
+            (() => {
+              unsubmittedOptional.delete(fingerprint);
+              return work(signal);
+            })(),
             new Promise<never>((_resolve, reject) => {
               onAbort = () => reject(signal.reason);
               signal.addEventListener("abort", onAbort, { once: true });
               if (signal.aborted) onAbort();
             }),
           ]);
-          assertOwner();
           status = "complete";
         } catch {
-          assertOwner();
+          // An exception does not prove whether an opaque provider request incurred costs.
         } finally {
           clearTimeout(timer);
           signal.removeEventListener("abort", onAbort);
         }
-        assertOwner();
-        checkCurrent(job!, await readForJob(job!));
+        assertStorageOwner();
         // Persistence/ownership errors propagate: they never authorize a System request.
         job = await updateJob((current) => {
-          assertOwner();
+          assertStorageOwner();
           if (
             !current ||
             current.id !== runJobId ||
@@ -1112,6 +1148,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           };
           return current;
         });
+        assertOwner();
+        checkCurrent(job!, await readForJob(job!));
         return result;
       });
     };
@@ -1228,17 +1266,26 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             (current.owner !== runOwner && current.status === "running")
           )
             throw new Obsolete("This job was replaced.");
-          // Catch-up marks a step before entering the admission gate. If visibility
-          // was lost there, no provider call began and this is an ordinary pause.
+          // Only this live invocation can prove a saved reservation never reached its provider.
           if (
             (paused || obsolete) &&
-            !dispatched &&
-            catchupBatchId(current) &&
             lastIndex >= 0 &&
             current.steps[lastIndex]?.status === "running" &&
-            !current.steps[lastIndex].responseRef
-          )
+            !current.steps[lastIndex].responseRef &&
+            unsubmittedSteps.has(current.steps[lastIndex].responseClaim!.id)
+          ) {
             current.steps.splice(lastIndex, 1);
+            if (!catchupBatchId(current)) current.requests = Math.max(0, current.requests - 1);
+          }
+          if (paused || obsolete)
+            for (const key of unsubmittedOptional) {
+              const saved = current.optionalAttempts?.[key];
+              if (!saved) continue;
+              if (saved?.status !== "dispatching" || saved.result !== undefined)
+                throw new Obsolete("Optional reservation changed.");
+              delete current.optionalAttempts![key];
+              current.requests = Math.max(0, current.requests - 1);
+            }
           if (obsolete && current.replacement && uncertainAttempt(current)) return holdReplacement(current);
           return {
             ...current!,
@@ -1273,12 +1320,14 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               : {}),
           };
         },
-        (paused || obsolete) &&
-          !dispatched &&
-          catchupBatchId(job) &&
-          job.steps[lastIndex]?.status === "running" &&
-          !job.steps[lastIndex].responseRef
-          ? lastIndex
+        paused || obsolete
+          ? {
+              step:
+                job.steps[lastIndex]?.responseClaim && unsubmittedSteps.has(job.steps[lastIndex].responseClaim!.id)
+                  ? lastIndex
+                  : undefined,
+              optional: [...unsubmittedOptional],
+            }
           : undefined,
       );
       await handlers
