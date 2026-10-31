@@ -916,7 +916,17 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         }
         checkCurrent(job!, await readForJob(job!));
         if (options.beforeBackgroundDispatch) {
-          await options.beforeBackgroundDispatch();
+          const fittedTokens = await options.beforeBackgroundDispatch();
+          if (fittedTokens !== undefined) {
+            if (
+              typeof fittedTokens !== "number" ||
+              !Number.isSafeInteger(fittedTokens) ||
+              fittedTokens < 1 ||
+              fittedTokens > maxTokens
+            )
+              throw new Error("Invalid background output-token allowance.");
+            maxTokens = fittedTokens;
+          }
           if (stopped || owner !== runOwner || controller.signal.aborted)
             throw new Paused("Background generation stopped.");
           if (superseded.has(runJobId)) throw new Obsolete("This job was replaced.");

@@ -4,8 +4,8 @@ export type VillageCompletionOptions = {
   responseFormat?: Readonly<{ type: string; [key: string]: unknown }>;
   /** Stable background request identity; optional for legacy sequential generators. */
   checkpointId?: string;
-  /** Background-only guard for new work, after saved-response replay and before any request reservation. */
-  beforeBackgroundDispatch?: () => Promise<void>;
+  /** New-work preflight after replay and before reservation; may lower the output allowance. */
+  beforeBackgroundDispatch?: () => Promise<number | void>;
   /** Durable replay response for a standalone task, separate from applying its effects. */
   savedRequest?: {
     key: string;

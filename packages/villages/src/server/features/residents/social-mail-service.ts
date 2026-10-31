@@ -173,13 +173,17 @@ export function createSocialMail(ports: SocialMailPorts) {
     maxTokens: number,
     beforeBackgroundDispatch?: () => Promise<void>,
   ) {
-    const requestTokens = fitMailContext(model, messages, maxTokens, role).maxTokens;
+    let requestTokens = Math.min(maxTokens, model.maxOutputTokens ?? maxTokens);
     const result = await ports.completeWithRoom(model, messages, requestTokens, {
       responseFormat: { type: "json_object" },
       retryEmpty: false,
       debugMode: false,
       checkpointId: key,
-      beforeBackgroundDispatch,
+      beforeBackgroundDispatch: async () => {
+        requestTokens = fitMailContext(model, messages, maxTokens, role).maxTokens;
+        await beforeBackgroundDispatch?.();
+        return requestTokens;
+      },
       temperature: role === "narration" ? 0.7 : 0.1,
       ...(role === "system" ? { reasoningEffort: "low" as const } : {}),
       usagePurpose: role === "system" ? "checks" : "background",
