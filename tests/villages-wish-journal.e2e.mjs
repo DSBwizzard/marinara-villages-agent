@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -180,7 +182,10 @@ try {
       else if (path.endsWith("/rooms/activity")) value = { session };
       else if (/generate|regenerate|\/greet|\/turn|\/interpret/.test(path))
         throw Error("Unexpected model-capable request: " + path);
-      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {

@@ -82,7 +82,7 @@ import {
   classifyVillagesParagraph,
   splitVillagesParagraphs,
   villagesWalk,
-} from "../packages/villages/src/client/features/scenes/villages-chat-paragraphs.ts";
+} from "../packages/villages/src/shared/helpers/scene-paragraphs.ts";
 
 const shape = classifyVillagesParagraph;
 

@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -164,7 +166,7 @@ try {
           return;
         }
       } else if (path.endsWith("/image/generate")) value = { ...snapshot };
-      await fulfill(route, { json: value });
+      await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
     });
     await page.route("http://venue.test/", (route) =>
       fulfill(route, {

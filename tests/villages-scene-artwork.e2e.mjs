@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
@@ -113,7 +115,7 @@ try {
               };
       } else if (req.method() !== "GET" && /\/rooms(?:\/|$)/.test(path))
         assert.fail("artwork must not mutate the Scene");
-      await fulfill(route, { json: value });
+      await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
     });
     await page.goto("http://scene-artwork.test/");
     await page.addScriptTag({ content: bundle.outputFiles[0].text });

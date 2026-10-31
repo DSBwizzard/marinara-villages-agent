@@ -749,6 +749,8 @@ type RoomParticipant = {
   doing: string;
 };
 export type RoomOperation = {
+  committed?: boolean;
+  replyReady?: boolean;
   /** The Scene has ended and its completed transcript is no longer retained. */
   terminal?: boolean;
   recordEvents?: RoomRecordEvent[];
@@ -794,7 +796,6 @@ export type SceneView = {
   version: 1;
   sceneRevision?: number;
   operation?: RoomOperation | null;
-  stagingVersion?: 1;
   id: string;
   placeId: string;
   /** The name that place had when the room opened, for the plate. */
@@ -818,15 +819,8 @@ export type SceneView = {
   /** Residents encountered during this Scene; activeIds identifies the current Zone audience. */
   participants: RoomParticipant[];
   lines: RoomLine[];
-  submissions?: {
-    id: string;
-    activeIdsAtTurn?: string[];
-    activeIdsAfterTurn?: string[];
-    replyLineIds?: string[];
-    mode?: string;
-    at?: string;
-    action?: { happened: boolean; narration: string };
-  }[];
+  playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
+  latestTurn?: { id: string; at: string; published: boolean };
 };
 
 export type RoomRecordEvent = {

@@ -32,7 +32,11 @@ import { coerceVillageState } from "./village-codec.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
   const raw = asRecord(value);
-  return { sessionId: asTrimmedString(raw.sessionId), placeId: asTrimmedString(raw.placeId) };
+  return {
+    sessionId: asTrimmedString(raw.sessionId),
+    placeId: asTrimmedString(raw.placeId),
+    ...(raw.playbackSceneId ? { playbackSceneId: asTrimmedString(raw.playbackSceneId) } : {}),
+  };
 }
 function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   if (value === undefined) return undefined;

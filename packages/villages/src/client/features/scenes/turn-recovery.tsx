@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SceneView } from "../../../shared/contracts/village.js";
 import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { refreshSceneAfterFailure } from "./ScenePanel.js";
+import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 import { request } from "../../shared/api.js";
 import type { RoomOperation } from "../../../shared/contracts/village.js";
 import { isSceneTurnOutcome, sceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
@@ -116,7 +117,10 @@ export function useTurnRecovery(ports: {
         setStatus("");
         return;
       }
-      if (scene?.submissions?.some((entry) => entry.id === pending.submissionId)) {
+      if (
+        hasPublishedRoomSubmission(scene, pending.submissionId) ||
+        (scene && operation?.id === pending.submissionId && operation.committed && operation.replyReady)
+      ) {
         recordTurnTiming(pending.sceneId, pending.submissionId, "recovered");
         latest.current.setRoom(scene);
         latest.current.setRoomEnded(scene.status === "closed");

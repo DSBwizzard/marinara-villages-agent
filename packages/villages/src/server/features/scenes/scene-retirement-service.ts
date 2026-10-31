@@ -40,7 +40,12 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         const scene = await createSceneHistory(documents).decode(saved.data);
         const village = await ports.readVillageState();
         const active = await ports.readActive();
-        if (ports.hasVenueOperation(id) || !sceneReadyForRetirement(scene, village, active.sessionId)) return false;
+        if (
+          ports.hasVenueOperation(id) ||
+          active.playbackSceneId === id ||
+          !sceneReadyForRetirement(scene, village, active.sessionId)
+        )
+          return false;
         const annotationId = `villages-repair-annotation-${createHash("sha256").update(id).digest("hex")}`;
         const annotation = await documents.getById(VILLAGES_PACKAGE_ID, annotationId);
         if (annotation) {
@@ -59,7 +64,9 @@ export function createSceneRetirement(ports: SceneRetirementPorts) {
         }
         await ports.saveProjectEvidence(scene, saved.revision);
         await ports.saveTerminal(scene, saved.revision);
-        if (ports.hasVenueOperation(id) || (await ports.readActive()).sessionId === id) return false;
+        const currentPointer = await ports.readActive();
+        if (ports.hasVenueOperation(id) || currentPointer.sessionId === id || currentPointer.playbackSceneId === id)
+          return false;
         if ((await ports.readVillageState()).seed !== scene.villageSeed) return false;
         const removed = await ports.withLateResponseWork(id, async () => {
           if (!(await documents.remove(VILLAGES_PACKAGE_ID, saved.id, saved.revision))) return false;

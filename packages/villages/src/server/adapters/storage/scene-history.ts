@@ -1,5 +1,6 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import { readVillageRoot } from "./village-repository.js";
 import {
   operationEvidenceReferences,
   operationEvidenceStore,
@@ -24,7 +25,6 @@ import {
   readScenePublicHistoryHead,
   scenePublicHistoryStore,
   createScenePublicHistoryTracer,
-  type ScenePublicHistoryHead,
   rebindScenePublicHistory,
 } from "./scene-public-history.js";
 import { publicSceneHistoryHearing } from "../../domain/rules/scene-public.js";
@@ -48,7 +48,7 @@ import {
   type RelationshipScope,
 } from "./relationship-payload-store.js";
 
-export const SCENE_STORAGE_FORMAT = 12;
+export const SCENE_STORAGE_FORMAT = 13;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
 const associations = new WeakMap<RelationshipState, { scope: RelationshipScope; head: RelationshipHead }>();
 const identity = (head: RelationshipHead) => head.id + ":" + head.digest;
@@ -62,7 +62,7 @@ function publicHistoryHead(raw: Record<string, any>) {
 }
 export async function readActiveSceneOwner(documents: Pick<CapabilityDocumentStore, "getById">) {
   const pointer = await documents.getById("villages", "villages-active-venue");
-  if (!pointer) return { pointer, scene: null };
+  if (!pointer) return { pointer, scene: null, playbackScene: null };
   memoryRequire(
     pointer.id === "villages-active-venue" && pointer.packageId === "villages" && pointer.kind === "venue-active",
     "invalid active Scene owner identity",
@@ -70,18 +70,39 @@ export async function readActiveSceneOwner(documents: Pick<CapabilityDocumentSto
   memoryObject(pointer.data);
   const id = pointer.data.sessionId;
   memoryRequire(id === undefined || id === null || typeof id === "string", "invalid active Scene reference");
-  if (!id) return { pointer, scene: null };
-  const scene = await documents.getById("villages", "villages-venue-visit-" + id);
+  const playbackId = pointer.data.playbackSceneId;
   memoryRequire(
-    scene &&
-      scene.id === "villages-venue-visit-" + id &&
-      scene.packageId === "villages" &&
-      scene.kind === "venue-visit",
-    "active Scene ownership is missing or changed",
+    playbackId === undefined || (typeof playbackId === "string" && !!playbackId && playbackId !== id),
+    "invalid playback Scene reference",
   );
-  sceneHistoryOwners(scene.data);
-  memoryRequire((scene.data as { id?: string }).id === id, "active Scene owner identity changed");
-  return { pointer, scene };
+  const read = async (sceneId: string) => {
+    const scene = await documents.getById("villages", "villages-venue-visit-" + sceneId);
+    memoryRequire(
+      scene &&
+        scene.id === "villages-venue-visit-" + sceneId &&
+        scene.packageId === "villages" &&
+        scene.kind === "venue-visit",
+      "active Scene ownership is missing or changed",
+    );
+    sceneHistoryOwners(scene.data);
+    memoryRequire((scene.data as { id?: string }).id === sceneId, "active Scene owner identity changed");
+    return scene;
+  };
+  const scene = id ? await read(id) : null;
+  const playbackScene = playbackId ? await read(playbackId as string) : null;
+  if (playbackScene) {
+    const world = readVillageRoot(await documents.getById("villages", "villages-village"));
+    const saved = playbackScene.data as VenueScene;
+    memoryRequire(saved.status === "closed", "playback Scene is not closed");
+    memoryRequire(
+      world &&
+        saved.villageSeed === world.seed &&
+        saved.continuity?.seed === world.seed &&
+        saved.continuity.setupAt === world.setupAt,
+      "playback Scene belongs to another Village",
+    );
+  }
+  return { pointer, scene, playbackScene };
 }
 
 function storedContinuity(raw: unknown, scene: Record<string, any>) {
@@ -192,10 +213,13 @@ export function sceneSubmissionOwners(
     scene: owner,
   }));
 }
-export function scenePublicHistoryOwners(value: unknown): ScenePublicHistoryHead[] {
+export function scenePublicHistoryOwners(value: unknown) {
   sceneHistoryOwners(value);
   const raw = value as Record<string, any>;
-  return [raw, ...(raw.operation?.snapshot ? [raw.operation.snapshot] : [])].map(publicHistoryHead);
+  return [raw, ...(raw.operation?.snapshot ? [raw.operation.snapshot] : [])].map((scene) => ({
+    head: publicHistoryHead(scene),
+    scene: scene as VenueScene,
+  }));
 }
 async function validatePublicHistory(documents: Pick<CapabilityDocumentStore, "getById">, scenes: unknown[]) {
   const tracer = createScenePublicHistoryTracer(async (id) => {
@@ -206,7 +230,7 @@ async function validatePublicHistory(documents: Pick<CapabilityDocumentStore, "g
     );
     return row.data as MemoryPageData;
   });
-  for (const head of scenes.flatMap(scenePublicHistoryOwners)) await tracer.trace(head);
+  for (const { head, scene } of scenes.flatMap(scenePublicHistoryOwners)) await tracer.trace(head, scene);
 }
 /** Consequential retirement checks the authored source before permissive logical field decoding. */
 export async function readSceneRetirementSource(documents: Pick<CapabilityDocumentStore, "getById">, value: unknown) {

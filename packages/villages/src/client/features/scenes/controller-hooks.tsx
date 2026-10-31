@@ -10,7 +10,7 @@ import {
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
-import { isLocalRoomCompletion } from "./villages-room-reading";
+import { isLocalRoomCompletion, hasPublishedRoomSubmission } from "./villages-room-reading";
 
 export function useSceneChangesPolling(ports: {
   visible: boolean;
@@ -38,17 +38,8 @@ export function useSceneChangesPolling(ports: {
   const focusRevision = useFocusRevision(ports.visible && ports.viewing);
   const sceneChanges = ports.snapshot?.sceneChanges;
   const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
-  const jobs = "";
   useEffect(() => {
-    if (
-      !room?.id ||
-      room.memoryMode !== "live" ||
-      room.status === "closed" ||
-      !ports.visible ||
-      !ports.viewing ||
-      ports.busy
-    )
-      return;
+    if (!room?.id || room.memoryMode !== "live" || !ports.visible || !ports.viewing || ports.busy) return;
     if (cursorRef.current.sceneId !== room.id) {
       cursorRef.current = { sceneId: room.id, cursor: "" };
       setRoomChangeStatus({ pending: 0, failed: 0, rejected: 0 });
@@ -91,10 +82,10 @@ export function useSceneChangesPolling(ports: {
         // The operation/recovery monitor owns a running turn. This loop owns only its asynchronous Wish checks.
         const active = answer.backgroundChecks?.some((job) => ["queued", "running"].includes(job.status));
         if (answer.hasMore) timer = setTimeout(() => void poll(), 25);
-        else if (active) {
+        else if (room.status !== "closed" && active) {
           wasActive = true;
           timer = setTimeout(() => void poll(), 1500);
-        } else if (wasActive && !settling) {
+        } else if (room.status !== "closed" && wasActive && !settling) {
           settling = true;
           timer = setTimeout(() => void poll(), 1500);
         }
@@ -120,7 +111,6 @@ export function useSceneChangesPolling(ports: {
     ports.busy,
     revision,
     focusRevision,
-    jobs,
     receiveRoomRecordEvents,
     setRoomChangeStatus,
     setRoomUnresolvedChanges,
@@ -336,7 +326,7 @@ export function useSceneInterruptedSubmission(ports: {
     if (
       !room?.id ||
       (room.operation?.status !== "interrupted" && !room.operation?.error) ||
-      room.submissions?.some((entry) => entry.id === room.operation?.id)
+      hasPublishedRoomSubmission(room, room.operation?.id)
     )
       return;
     const restoreKey = `${room.id}:${room.operation?.id}:${room.operation?.attemptId}`;
@@ -374,12 +364,7 @@ export function useSceneInterruptedSubmission(ports: {
       disposed = true;
     };
   }, [
-    room?.id,
-    room?.operation?.id,
-    room?.operation?.attemptId,
-    room?.operation?.status,
-    room?.operation?.error,
-    room?.submissions,
+    room,
     restoredSceneDraftRef,
     composerEditVersionRef,
     setRoomDraft,

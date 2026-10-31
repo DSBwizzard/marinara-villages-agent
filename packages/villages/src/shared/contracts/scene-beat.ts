@@ -6,3 +6,4 @@ export type VillagesWalkBeat = {
   target?: string;
   expression?: string;
 };
+export type VillagesWalkAside = { register: "side" | "whisper" | "shout"; text: string; target?: string };

@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
@@ -76,7 +78,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
       greetingBodies.push(body);
       if (body.retryOfAttemptId === "failed-attempt" || body.recovery === true || succeedNextGreeting) {
         complete();
-        return fulfill(route, { json: { session } });
+        return fulfill(route, { json: authorSceneResponse({ session }, snapshot.worldScope) });
       }
       recoveryPending = true;
       if (recovery === "immediate") complete();
@@ -132,7 +134,11 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
         },
       };
     else value = [];
-    await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+    await fulfill(route, {
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+    });
   });
   async function mount() {
     await page.goto("http://villages.test/");

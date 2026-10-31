@@ -1,9 +1,12 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
@@ -88,7 +91,7 @@ let calls = 0,
   holdNext = true;
 let disconnectNext = false;
 const publicRoom = () => {
-  const { storageFormat: _storageFormat, ...fields } = structuredClone(record.data);
+  const fields = coerceSession(record.data);
   return { ...fields, operation: operationSummary(record.data.operation) };
 };
 const errors = [],
@@ -158,13 +161,22 @@ try {
                 at: now,
               },
             );
-            record.data.submissions.push({ id: body.submissionId });
+            record.data.submissions.push({
+              id: body.submissionId,
+              activeIdsAtTurn: ["mara"],
+              activeIdsAfterTurn: ["mara"],
+              replyLineIds: [body.submissionId + ":reply"],
+            });
             record.data.sceneRevision++;
           },
         );
         value = { session: publicRoom(), verdict: null, recordEvents: [] };
       }
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     } catch (error) {
       routeErrors.push(error.message);
       await fulfill(route, {

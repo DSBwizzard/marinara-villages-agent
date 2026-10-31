@@ -1,13 +1,12 @@
 import type { FastifyInstance } from "fastify";
-import { publicSceneResponse } from "../../domain/rules/scene-public.js";
 import { activationScope } from "../engine/activation-scope.js";
-import { operationSummary } from "../operations/operation-context.js";
 import { withRepairWork } from "../storage/repair-gate.js";
 import { withVillageClockWork } from "../time/clock-gate.js";
-import type { VillageRouteHandler } from "./route-support.js";
+import { fail, type VillageRouteHandler } from "./route-support.js";
 
 export function publicSceneRoutes(
   engine: FastifyInstance,
+  projectScene: (scene: Record<string, unknown>) => Promise<unknown>,
   guard?: (method: string, path: string, body: unknown) => Promise<string | null>,
   clockIndependentRoutes: readonly string[] = [],
 ): FastifyInstance {
@@ -20,34 +19,25 @@ export function publicSceneRoutes(
         const work = async () => {
           const blocked = await guard?.(method, path, request.body);
           if (blocked) return reply.code(409).send({ error: blocked });
-          return handler(request, reply);
-        };
-        const result = await withRepairWork(() =>
-          clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work),
-        );
-        if (result && typeof result === "object") {
-          const payload = result as Record<string, unknown>;
-          for (const key of ["session", "visit"]) {
-            const saved = payload[key] as Record<string, unknown> | undefined;
-            if (saved) {
-              const scene = publicSceneResponse(saved);
-              payload[key] = {
-                ...scene,
-                relationshipReview: scene.relationshipReview
-                  ? {
-                      applied: (scene.relationshipReview as { applied?: boolean }).applied,
-                      receipts: (scene.relationshipReview as { receipts?: unknown[] }).receipts ?? [],
-                    }
-                  : undefined,
-                operation: operationSummary(
-                  saved.operation as import("../../domain/models/operation-model.js").VenueOperation | undefined,
-                  saved.rejectedSubmissions as import("../../domain/models/scene-model.js").VenueScene["rejectedSubmissions"],
-                ),
-              };
+          const result = await handler(request, reply);
+          if (result && typeof result === "object") {
+            const payload = result as Record<string, unknown>;
+            for (const key of ["session", "visit"]) {
+              const saved = payload[key] as Record<string, unknown> | undefined;
+              if (saved) {
+                try {
+                  payload[key] = await projectScene(saved);
+                } catch (error) {
+                  return fail(reply, error, "reading Scene playback");
+                }
+              }
             }
           }
-        }
-        return result;
+          return result;
+        };
+        return withRepairWork(() =>
+          clockIndependentRoutes.includes(`${method} ${path}`) ? work() : withVillageClockWork(work),
+        );
       };
       return owner ? owner.bind(wrapped) : wrapped;
     };

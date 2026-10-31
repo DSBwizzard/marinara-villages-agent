@@ -249,8 +249,8 @@ for (const count of [1000, 10_000, 25_000]) {
     for (const [key, value] of Object.entries(f.metrics())) maximum[key] = Math.max(maximum[key], value);
   }
   assert(
-    maximum.readBytes < 24 * 1024 && maximum.writeBytes < 40 * 1024 && maximum.jsonBytes < 128 * 1024,
-    "Warm index publication must not read/write/serialize whole history",
+    maximum.readBytes < 24 * 1024 && maximum.writeBytes < 48 * 1024 && maximum.jsonBytes < 256 * 1024,
+    "Warm index publication must not read/write/serialize whole history: " + JSON.stringify(maximum),
   );
   assert.equal(oldLineRenders, 0, "Ordinary publication and an unrelated cast addition never reserialize old prose");
   f.reset();

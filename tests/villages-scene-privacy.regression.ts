@@ -3,9 +3,12 @@ import { publicSceneRoutes } from "../packages/villages/src/server/adapters/http
 import type { FastifyInstance } from "fastify";
 import {
   publicSceneResponse,
+  publicSceneAuthority,
   publicSceneHistoryProjection,
   sameSceneHistoryTurnPolicy,
 } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { operationSummary } from "../packages/villages/src/server/adapters/operations/operation-context.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 
 async function main() {
   {
@@ -81,7 +84,14 @@ async function main() {
       },
     ]),
   );
-  const surface = publicSceneRoutes(collector as unknown as FastifyInstance);
+  const surface = publicSceneRoutes(collector as unknown as FastifyInstance, async (value) => {
+    const scene = value as VenueScene;
+    return {
+      ...publicSceneAuthority(scene),
+      lines: publicSceneResponse(scene).lines,
+      operation: operationSummary(scene.operation, scene.rejectedSubmissions),
+    };
+  });
   const scene = {
     id: "fixture",
     participants: [{ characterId: "visible", name: "Visible" }],
@@ -128,9 +138,10 @@ async function main() {
     assert.equal(result[key].operation.recoverable, true, "Recovery is derived before stripping checkpoints");
     assert.equal(result[key].operation.error, "Opening failed");
     assert.deepEqual(result[key].lines[0].heardBy, ["visible"]);
-    assert.deepEqual(result[key].submissions[0].processing, { version: 1, domains: { memory: { status: "pending" } } });
+    assert.equal(Object.hasOwn(result[key], "submissions"), false);
+    assert.equal(result[key].latestTurn.id, "turn");
     assert.deepEqual(result[key].processingSummary, { pending: 1, failed: 0, rejected: 0 });
-    assert.deepEqual(result[key].relationshipReview, { applied: true, receipts: [] });
+    assert.equal(Object.hasOwn(result[key], "relationshipReview"), false);
   }
   assert.deepEqual(scene, before, "projection preserves server-owned Scene records");
   const diagnostic = {

@@ -1,4 +1,6 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { checkReadingSessionLifecycle } from "./fixtures/villages-reading-session.fixture.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -75,27 +77,54 @@ try {
       submissions: [],
     };
     let events = [{ id: "heart", kind: "relationship-up", text: "Mara's warmth toward you increased (0 → 2)." }];
+    const closedCursors = [];
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = snapshot;
       if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
-      else if (path.endsWith("/changes"))
+      else if (path.endsWith("/changes") && session.status === "closed") {
+        const cursor = new URL(route.request().url()).searchParams.get("cursor");
+        closedCursors.push(cursor);
+        const first = cursor !== "2:0:0";
+        value = {
+          changes: [
+            {
+              notices: [
+                {
+                  id: first ? "recovered-older" : "recovered-final",
+                  kind: "memory",
+                  text: first ? "Earlier turn recovered during close." : "Final recovery notice.",
+                },
+              ],
+            },
+          ],
+          notices: [],
+          dismissedNoticeIds: [],
+          nextCursor: first ? "2:0:0" : "3:0:0",
+          hasMore: first,
+          processingSummary: { pending: 0, failed: 0, rejected: 0 },
+        };
+      } else if (path.endsWith("/changes"))
         value = {
           changes: [],
           notices: events,
           dismissedNoticeIds: [],
-          nextCursor: "",
+          nextCursor: "1:0:0",
           processingSummary: { pending: 0, failed: 0, rejected: 0 },
         };
       else if (path.endsWith("/rooms/close") || path.endsWith("/rooms/end")) {
         session.status = "closed";
         session.endedAt = now;
         session.memoryReview = { status: "complete", decisions: [] };
-        value = { session, recordEvents: events };
+        value = { session, recordEvents: [] };
       } else if (path.endsWith("/interpretation-settings"))
         value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
       else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.route("http://reading.test/", (route) =>
       fulfill(route, {
@@ -286,7 +315,16 @@ try {
     await page.getByRole("menuitem", { name: "End Scene now" }).click();
     await expect(draft).toHaveCount(0);
     await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toHaveCount(0);
-    await expect(tray).toHaveAttribute("aria-expanded", "false");
+    await expect(tray).toHaveAccessibleName("5 World changes");
+    assert.deepEqual(
+      closedCursors,
+      ["1:0:0", "2:0:0"],
+      "Closing drains new pages after the existing cursor exactly once",
+    );
+    if ((await tray.getAttribute("aria-expanded")) !== "true") await tray.click();
+    await expect(page.getByText("Earlier turn recovered during close.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Final recovery notice.", { exact: true })).toBeVisible();
+    await tray.click();
     const box = await dock.boundingBox();
     assert.ok(Math.abs(box.y + box.height - height) <= 1, "ended dialogue dock reaches the bottom");
     await page.screenshot({ path: `artifacts/compact-scene-ended-${width}x${height}.png` });

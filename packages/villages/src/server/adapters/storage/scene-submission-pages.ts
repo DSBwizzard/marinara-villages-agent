@@ -85,6 +85,11 @@ function submissionStore(
 ) {
   const wishes = createSceneWishContexts(documents as CapabilityDocumentStore);
   return {
+    async readPositions(head: SceneSubmissionHead, scene: VenueScene, positions: readonly number[]) {
+      const rows = await store.readPositions(internal(head), scene, positions);
+      for (const row of rows) packet(row as VenueSubmission, scene);
+      return rows as VenueSubmission[];
+    },
     async read(head: SceneSubmissionHead, scene: VenueScene) {
       const { rows, layout } = await store.read(internal(head), scene);
       for (const row of rows) packet(row as VenueSubmission, scene);
