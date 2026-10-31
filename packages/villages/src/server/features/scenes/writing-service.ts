@@ -96,7 +96,8 @@ import {
 import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
 import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
-import { immutableSocialWishes, wishHistoryLoaded, wishWritingContext } from "../../domain/rules/social-wishes.js";
+import { immutableSocialWishes, wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
+import { fitWishWritingContext } from "../../domain/rules/wish-writing-context.js";
 import {
   describeSpriteExpressions,
   resolveSceneSpriteExpressions,
@@ -254,9 +255,7 @@ export function createSceneWriting({
     introduction?: NarrativeAdmission | null,
   ) {
     const writingVersion = venueOperationInput()?.writingContractVersion;
-    const requestKey = createHash("sha256")
-      .update(JSON.stringify([session.id, mode, message]))
-      .digest("hex");
+    const requestKey = writingRequestKey(session, message, mode);
     const captured =
       writingVersion === 3
         ? venueSavedCheckpoint?.<{
@@ -333,6 +332,8 @@ export function createSceneWriting({
     const memoryContext = "Memories: " + recalled.serialized;
     const optionalKnowledge: VenueWritingBlock[] = [{ text: memoryContext, optional: "memory" }];
     const residentContexts: string[] = [];
+    const wishWritingActors: { actorId: string; wishes: import("../../../shared/contracts/wishes.js").SocialWish[] }[] =
+      [];
     const expressionContexts: string[] = [];
     const profiles = active.map((person) => {
       const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
@@ -359,6 +360,7 @@ export function createSceneWriting({
         (entry) => entry.characterId === person.characterId,
       );
       const spriteLabels = describeSpriteExpressions(resident.sprite, village.spriteVariantsEnabled !== false);
+      wishWritingActors.push({ actorId: person.characterId, wishes: resident.wishes });
 
       residentContexts.push(
         [
@@ -371,7 +373,6 @@ export function createSceneWriting({
               .map((venue) => `${venue.name} (${venue.id})`)
               .join(", ") || "none"
           }.`,
-          `Retained personal desires of ${card.name} (availability is separate from attention): ${JSON.stringify(wishWritingContext(resident.wishes, "")) || "none"}. These can inform a relevant choice; they require no gesture, hint, mention, or player errand.`,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -446,6 +447,7 @@ export function createSceneWriting({
       });
     const [lore, model] = await Promise.all([lorePromise, modelPromise]);
     signal?.throwIfAborted();
+    if (!captured) optionalKnowledge.push({ text: fitWishWritingContext(model, wishWritingActors), optional: "wish" });
     const projectContexts =
       mode === "chat" || mode === "ask"
         ? projectSpeechContexts(
@@ -815,7 +817,9 @@ export function createSceneWriting({
     blocks.push({
       text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
     });
-    const ordinary = captured?.ordinary ?? fitVenueWritingMessages(model, blocks, input, maxTokens);
+    const ordinary = captured
+      ? (captured.ordinary ?? captured.fitted)
+      : fitVenueWritingMessages(model, blocks, input, maxTokens);
     if (introduction)
       blocks.push({ text: SCENE_DEVELOPMENT_WRITING + " Immutable local admission: " + JSON.stringify(introduction) });
     let fitted = captured?.fitted ?? ordinary;
@@ -898,14 +902,18 @@ export function createSceneWriting({
     requestKey: string;
     outcome: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
   };
-  function writingRequestKey(args: Parameters<typeof prepareVenueTurnMessages>) {
+  function writingRequestKey(
+    session: VenueScene,
+    message: string,
+    mode: Parameters<typeof prepareVenueTurnMessages>[2],
+  ) {
     return createHash("sha256")
-      .update(JSON.stringify([args[0].id, args[2], args[1]]))
+      .update(JSON.stringify([session.id, mode, message]))
       .digest("hex");
   }
   async function generateOnce(...args: Parameters<typeof prepareVenueTurnMessages>) {
     return measurePipeline("Scene interpretation", { sceneId: args[0].id, mode: args[2] }, async () => {
-      const requestKey = writingRequestKey(args);
+      const requestKey = writingRequestKey(args[0], args[1], args[2]);
       const replacementKey = "scene-boundary-replacement";
       const saved = venueSavedCheckpoint?.<BoundaryReplacement>(replacementKey);
       const replace = async (replacement: BoundaryReplacement) => {
@@ -943,7 +951,7 @@ export function createSceneWriting({
     const [, message, mode] = args;
     const signal = args[5];
     const trace = args[6];
-    const originalKey = writingRequestKey(args);
+    const originalKey = writingRequestKey(session, message, mode);
     const narrativeVersion =
       venueOperationInput()?.narrativeIntroductionVersion === 1 && session.semanticVersion === 2 && !!sceneNarrative;
     const offer = narrativeVersion
@@ -1024,6 +1032,13 @@ export function createSceneWriting({
       fitted = { ...corrected, loreEntries: fitted.loreEntries };
     }
     if (loreInspection) runtimeDebug("lore inspection", loreInspection);
+    if (session.semanticVersion === 2) {
+      if (!semantic) throw conflict("System interpretation is not configured.");
+      // A purchased draft must remain replayable even when the current connection can no longer fit it.
+      if (writingVersion !== 3 || venueSavedCheckpoint?.("writing-completion:" + requestKey) === undefined)
+        await semantic.preflight(session, message, narrativeVersion ? (narrativeGrant ?? null) : undefined);
+      signal?.throwIfAborted();
+    }
     trace?.("model request", 0, `${model.model} (${model.connectionId})`);
     let attempts = 0;
     const requestCompletion = () =>
@@ -1905,6 +1920,14 @@ export function createSceneWriting({
           const venue = state.venues.find((row) => row.id === session.placeId);
           if (venue) session = zoneEventScene(session, venue);
         }
+        if (
+          mode !== "greet" &&
+          venueOperationInput()?.semanticPipelineVersion !== 3 &&
+          !session.semanticIntent &&
+          (venueOperationInput()?.writingContractVersion !== 3 ||
+            venueSavedCheckpoint?.("writing-completion:" + writingRequestKey(session, message, mode)) === undefined)
+        )
+          await semantic.preflight(session, message);
         const intent =
           mode === "greet" || venueOperationInput()?.semanticPipelineVersion === 3
             ? null
@@ -1996,6 +2019,13 @@ export function createSceneWriting({
     try {
       if (scene.semanticVersion === 2) {
         if (!semantic) throw conflict("System interpretation is not configured.");
+        if (
+          venueOperationInput()?.semanticPipelineVersion !== 3 &&
+          !scene.semanticIntent &&
+          (venueOperationInput()?.writingContractVersion !== 3 ||
+            venueSavedCheckpoint?.("writing-completion:" + writingRequestKey(scene, message, "chat")) === undefined)
+        )
+          await semantic.preflight(scene, message);
         const intent =
           venueOperationInput()?.semanticPipelineVersion === 3
             ? null

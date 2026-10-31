@@ -33,7 +33,7 @@ export function venueCardProfile(
 export const EVENT_MEMORY_GUIDANCE =
   "Record what was said or done in this encounter, with its context. A pause, reserved delivery, temporary uncertainty, or the narrator's interpretation is not a stable personality trait. Preserve explicit preferences and commitments without generalizing a moment into who the character is.";
 
-export type VenueWritingBlock = { text: string; optional?: "history" | "memory" | "lore" };
+export type VenueWritingBlock = { text: string; optional?: "wish" | "history" | "memory" | "lore" };
 
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
@@ -96,7 +96,7 @@ export function fitVenueWritingMessages(
     if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
       return { ...fitted, loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text) };
     const optional =
-      ["history", "memory", "lore"]
+      ["wish", "history", "memory", "lore"]
         .map((kind) =>
           kind === "lore"
             ? kept.findLastIndex((block) => block.optional === kind)

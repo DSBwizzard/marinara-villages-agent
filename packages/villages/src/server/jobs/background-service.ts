@@ -915,6 +915,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           throw new Paused("This connection is paused. Retry an affected job to resume it.");
         }
         checkCurrent(job!, await readForJob(job!));
+        if (options.beforeBackgroundDispatch) {
+          await options.beforeBackgroundDispatch();
+          if (stopped || owner !== runOwner || controller.signal.aborted)
+            throw new Paused("Background generation stopped.");
+          if (superseded.has(runJobId)) throw new Obsolete("This job was replaced.");
+          checkCurrent(job!, await readForJob(job!));
+        }
         if (
           ["resident-planning", "world-development"].includes(job!.kind) &&
           job!.automaticDate &&

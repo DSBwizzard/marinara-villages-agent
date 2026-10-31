@@ -94,6 +94,106 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
   ])}`;
 }
 
+function systemMessages(input: unknown, systemPrompt: string, sourceHash: string) {
+  const { _memoryWrite: _privateMemoryWrite, ...context } = asRecord(asRecord(input).context);
+  return [
+    { role: "system" as const, content: systemPrompt },
+    { role: "user" as const, content: JSON.stringify({ sourceHash, input: { ...asRecord(input), context } }) },
+  ];
+}
+
+function exchangeInstruction(
+  scene: VenueScene,
+  context: ReturnType<typeof semanticContext>,
+  {
+    combined,
+    movementReview,
+    actionContractV2,
+    residentActionsOmitted,
+    narrativeGrant,
+    residentActions,
+  }: {
+    combined: boolean;
+    movementReview: boolean;
+    actionContractV2: boolean;
+    residentActionsOmitted: boolean;
+    narrativeGrant?: NarrativeAdmission | null;
+    residentActions?: ResidentAccessAction[];
+  },
+): string {
+  return (
+    (residentActionsOmitted
+      ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
+      : "") +
+    (narrativeGrant !== undefined
+      ? SCENE_DEVELOPMENT_REVIEW +
+        (narrativeGrant ? " Environmental development schema and bounds: " + SCENE_DEVELOPMENT_SCHEMA : "")
+      : "") +
+    (residentActions
+      ? (actionContractV2
+          ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
+          : RESIDENT_ACTION_REVIEW_V1) + " "
+      : "") +
+    (combined
+      ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. An empty player input is normal for a Scene greeting: return resolved intent with empty instructions and timeline, null action and movement; still independently validate all draft evidence. Include every meaningful input span in source order. Only explicit Move changes the player Zone. Local walking within the current Zone is kind:action, not movement. Identify an actual attempted crossing as kind:movement with exact destination zoneId; code blocks the entire turn. Never invent or complete a player crossing. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
+      : "") +
+    (combined ? INTENT_TIMELINE_RULE : "") +
+    (movementReview
+      ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. residentRequestLocalIds lists ALL residents physically with the player before this reply, including passive residents absent from context.actors. context.actors is the selected reply cast, never the complete set of possible addressees. Resolve group references from the original input, these local IDs and established context before considering the draft. For example, when four residents are here and two others are already in the Studio, 'Can the four of you join those two in the Studio now?' requests the four local residents, not the selected four-person reply cast. Polite Can/Could/Would questions asking for movement now are immediate requests, not hypothetical merely because of modal wording. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
+      : "") +
+    "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
+    (scene.operation?.input.developmentVersion === 1 ? "developmentChanges:[]," : "") +
+    (movementReview ? "immediateResidentMoves:[{characterIds:[residentIds],zoneId,source}]," : "") +
+    (combined
+      ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
+      : "") +
+    (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
+    "consistent:true,reason,playerAgencyViolation:null,authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
+    (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
+    "}. Return exactly one JSON object. " +
+    (actionContractV2
+      ? 'residentActionReview is required even when residentActions is empty: independently review every player-heard non-player segment. Populate coverage for each such segment; no access action means status:"none" with actionIds:[], not an omitted review or empty coverage. '
+      : "") +
+    (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
+    "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
+    'Review every draft segment for claims that the player spoke, acted, felt or committed. Include indirect narration such as "Your greeting carries across the room" or a resident reacting to words the player never said. A Scene arrival establishes only presence and entry, not a greeting or other voluntary action. If a current player claim is unsupported by the current input or already established Scene evidence, return consistent:false and playerAgencyViolation:{segment:zero-based draft index,quote:"exact excerpt asserting the unsupported claim"}. Otherwise return playerAgencyViolation:null. Distinguish a resident addressing the player, hypothetical speech, and a response to actual player input from invented player actions. Do not reject established prior actions or mere observation. ' +
+    PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:") +
+    "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported placeUpdate, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
+    "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures and contactEnd sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact. " +
+    (context.preservation
+      ? "Only the player's Conclude ends this Scene; never return sceneEnded. "
+      : "Ending an in-person visit is sceneEnded:{source} with exact resident farewell speech, or omit the event when unsupported. ") +
+    "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, venueRequest:{source,name,classes}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
+    (actionContractV2
+      ? ""
+      : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
+    'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Opening pitches are reported in openingSignal, not projectSpeech. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. ' +
+    'When context.opening.gathering is present, return gatheringContributions:[{residentId,quote}] with one row per founder whose spoken interest and idea are both explained in this reply, and openingSignal:null. Cite exact player-heard dialogue by that founder. Missing explanations must be omitted; no narration, private thought or merely hello counts. The gathering uses only gatheringContributions; it cannot record an individual introduction or first use. Otherwise, when context.opening is present, return openingSignal:null or {kind:"pitch|first-use",residentId,segment,playerQuote}. A pitch requires context.opening.proposal. When context.opening.requiredPitch is true, a complete pitch is required in this opening reply: its idea, purpose and practical work must all be spoken. A pitch must be actual player-heard dialogue by the supplied proposal resident explaining that exact named proposal, purpose and work; never an invented commitment or private thought. A first-use requires context.opening.firstUse and actual current player participation plus player-heard response depicting that use. Entering, greetings, promises and hypothetical descriptions do not count. For openingSignal, segment is the numeric index from evidence draft:N of one supporting player-heard response segment; for a pitch choose dialogue by that resident naming the supplied proposal. Judge completeness from the FULL reply, including a pitch spread across several speech segments, then cite one supporting segment. Do not return quote, join speech, summarize it or insert ellipses; code copies the exact saved segment. For first-use, playerQuote must be an exact current player input substring. Omit venueRequest for the supplied opening pitch. ' +
+    (actionContractV2
+      ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
+      : LIVE_MEMORY_INSTRUCTION
+    )
+      .replaceAll('evidence:["player",0]', "evidence:[0]")
+      .replaceAll('lineIds:["player",0]', "lineIds:[0]")
+      .replace(
+        'lineId is "player", current zero-based segment index, or',
+        "lineId is a current zero-based segment index or",
+      )
+      .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
+      .replace('"player" for the current player line, or ', "") +
+    " " +
+    " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire is valid. " +
+    WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
+    ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
+    " Use numeric indexes matching evidence draft:N for Wish evidence. Existing goals keep exact IDs; genuinely new social desires use new:local-key. Memory learners must witness all supporting context. " +
+    (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
+    " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
+    (context.preservation
+      ? SCENE_HALT_INSTRUCTION + (context.preservation.sceneBoundaryVersion === 1 ? SCENE_BOUNDARY_INSTRUCTION : "")
+      : "")
+  );
+}
+
 export function createSemanticService(ports: SemanticPorts) {
   async function readSceneAuthority(scene: VenueScene) {
     const wishEffects = (state: import("../../domain/models/world.js").VillageState) =>
@@ -107,6 +207,55 @@ export function createSemanticService(ports: SemanticPorts) {
     return !captured && state.villagers.some((row) => actors.includes(row.characterId) && !wishHistoryLoaded(row))
       ? ports.readVillageState({ wishes: actors, wishEffects })
       : state;
+  }
+  async function preflight(
+    scene: VenueScene,
+    message: string,
+    narrativeGrant?: NarrativeAdmission | null,
+  ): Promise<void> {
+    const state = await readSceneAuthority(scene);
+    const combined = scene.operation?.input.semanticPipelineVersion === 3;
+    const movementReview = scene.operation?.input.residentMovementReviewVersion === 1;
+    const context = semanticContext(scene, state, message, combined, true, sceneContinuityView(state, scene));
+    const policy = {
+      combined,
+      movementReview,
+      actionContractV2: true,
+      residentActionsOmitted: true,
+      residentActions: [],
+      narrativeGrant,
+    };
+    const input = {
+      message,
+      turnPolicyVersion: 1,
+      ...(movementReview
+        ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
+        : {}),
+      residentActionsOmitted: true,
+      evidence: [],
+      prepared: scene.semanticIntent ?? null,
+      context,
+      ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
+      ...(combined ? { pipelineVersion: 3 } : {}),
+      residentActions: [],
+    };
+    const requested = await ports.villagesConnectionIdFor("system");
+    const model = await ports.villagesLanguageModels().resolveForRequest({ connectionId: requested ?? undefined });
+    const output = Math.min(model.maxOutputTokens ?? (combined ? 4096 : 8192), combined ? 4096 : 8192);
+    if (output < 1024) throw badGateway("System interpretation needs more context allowance; no request was made.");
+    // Future draft evidence is checked again after generation; known authority already has to fit now.
+    const messages = systemMessages(
+      input,
+      SYSTEM_BASE + SYSTEM_CURRENT_SCENE + exchangeInstruction(scene, context, policy),
+      "0".repeat(semanticHash(null).length),
+    );
+    const fitted = model.fitContext(messages, { maxTokens: output });
+    if (
+      fitted.trimmed ||
+      JSON.stringify(fitted.messages) !== JSON.stringify(messages) ||
+      (fitted.maxTokens ?? output) < 1024
+    )
+      throw badGateway("Essential System evidence does not fit; no reply was requested.");
   }
   async function ask<Input, Result>(
     stage: string,
@@ -192,18 +341,12 @@ export function createSemanticService(ports: SemanticPorts) {
                   context: { ...context, lore },
                 }
           ) as Input;
-          const { _memoryWrite: _privateMemoryWrite, ...promptContext } = asRecord(asRecord(input).context);
           const sourceHash = semanticHash(input);
-          const messages = [
-            {
-              role: "system" as const,
-              content: snapshot.systemPrompt ?? SYSTEM_BASE + SYSTEM_RETRIEVAL + (snapshot.instruction ?? instruction),
-            },
-            {
-              role: "user" as const,
-              content: JSON.stringify({ sourceHash, input: { ...asRecord(input), context: promptContext } }),
-            },
-          ];
+          const messages = systemMessages(
+            input,
+            snapshot.systemPrompt ?? SYSTEM_BASE + SYSTEM_RETRIEVAL + (snapshot.instruction ?? instruction),
+            sourceHash,
+          );
           const fitted = model.fitContext(messages, { maxTokens: output });
           if (
             !fitted.trimmed &&
@@ -470,75 +613,14 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      (residentActionsOmitted
-        ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
-        : "") +
-        (narrativeGrant !== undefined
-          ? SCENE_DEVELOPMENT_REVIEW +
-            (narrativeGrant ? " Environmental development schema and bounds: " + SCENE_DEVELOPMENT_SCHEMA : "")
-          : "") +
-        (residentActions
-          ? (actionContractV2
-              ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
-              : RESIDENT_ACTION_REVIEW_V1) + " "
-          : "") +
-        (combined
-          ? 'Also interpret the original player input in this same response: intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span",zoneId?,targetId?,delivery?:"ordinary|whisper|shout"}]}. An empty player input is normal for a Scene greeting: return resolved intent with empty instructions and timeline, null action and movement; still independently validate all draft evidence. Include every meaningful input span in source order. Only explicit Move changes the player Zone. Local walking within the current Zone is kind:action, not movement. Identify an actual attempted crossing as kind:movement with exact destination zoneId; code blocks the entire turn. Never invent or complete a player crossing. Distinguish thoughts, quoted/hypothetical speech, requests and completed actions. Check the draft against this intent, rejecting omitted or reordered speech and unsupported actions. Uncertain necessary meaning is unresolved. Do not guess consent or rewrite the input. '
-          : "") +
-        (combined ? INTENT_TIMELINE_RULE : "") +
-        (movementReview
-          ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. residentRequestLocalIds lists ALL residents physically with the player before this reply, including passive residents absent from context.actors. context.actors is the selected reply cast, never the complete set of possible addressees. Resolve group references from the original input, these local IDs and established context before considering the draft. For example, when four residents are here and two others are already in the Studio, 'Can the four of you join those two in the Studio now?' requests the four local residents, not the selected four-person reply cast. Polite Can/Could/Would questions asking for movement now are immediate requests, not hypothetical merely because of modal wording. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
-          : "") +
-        "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
-        (scene.operation?.input.developmentVersion === 1 ? "developmentChanges:[]," : "") +
-        (movementReview ? "immediateResidentMoves:[{characterIds:[residentIds],zoneId,source}]," : "") +
-        (combined
-          ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
-          : "") +
-        (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
-        "consistent:true,reason,playerAgencyViolation:null,authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
-        (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
-        "}. Return exactly one JSON object. " +
-        (actionContractV2
-          ? 'residentActionReview is required even when residentActions is empty: independently review every player-heard non-player segment. Populate coverage for each such segment; no access action means status:"none" with actionIds:[], not an omitted review or empty coverage. '
-          : "") +
-        (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
-        "Set each authority flag true exactly when the corresponding action/resolved access/Project/standing permission event is present; missing authority metadata must not masquerade as a harmless missing memory update. " +
-        'Review every draft segment for claims that the player spoke, acted, felt or committed. Include indirect narration such as "Your greeting carries across the room" or a resident reacting to words the player never said. A Scene arrival establishes only presence and entry, not a greeting or other voluntary action. If a current player claim is unsupported by the current input or already established Scene evidence, return consistent:false and playerAgencyViolation:{segment:zero-based draft index,quote:"exact excerpt asserting the unsupported claim"}. Otherwise return playerAgencyViolation:null. Distinguish a resident addressing the player, hypothetical speech, and a response to actual player input from invented player actions. Do not reject established prior actions or mere observation. ' +
-        PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:") +
-        "consistent=false if the draft asserts an unsupported consequential outcome, misclassifies private thought/quoted/hypothetical speech as spoken words, changes intended delivery/addressees, or gives a character unreachable knowledge. action is the fully supported placeUpdate, with happened:true and segment:exact current narration index; null if no physical effect. Prepared actions are not committed receipts. Do not silently change a prepared outcome that the prose contradicts. " +
-        "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}. departures and contactEnd sources must cite actual resident speech: never a player segment or narration. Door-closing narration cannot be a contactEnd source. contactEnd ends an active cross-Zone contact. " +
-        (context.preservation
-          ? "Only the player's Conclude ends this Scene; never return sceneEnded. "
-          : "Ending an in-person visit is sceneEnded:{source} with exact resident farewell speech, or omit the event when unsupported. ") +
-        "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, venueRequest:{source,name,classes}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
-        (actionContractV2
-          ? ""
-          : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
-        'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Opening pitches are reported in openingSignal, not projectSpeech. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. ' +
-        'When context.opening.gathering is present, return gatheringContributions:[{residentId,quote}] with one row per founder whose spoken interest and idea are both explained in this reply, and openingSignal:null. Cite exact player-heard dialogue by that founder. Missing explanations must be omitted; no narration, private thought or merely hello counts. The gathering uses only gatheringContributions; it cannot record an individual introduction or first use. Otherwise, when context.opening is present, return openingSignal:null or {kind:"pitch|first-use",residentId,segment,playerQuote}. A pitch requires context.opening.proposal. When context.opening.requiredPitch is true, a complete pitch is required in this opening reply: its idea, purpose and practical work must all be spoken. A pitch must be actual player-heard dialogue by the supplied proposal resident explaining that exact named proposal, purpose and work; never an invented commitment or private thought. A first-use requires context.opening.firstUse and actual current player participation plus player-heard response depicting that use. Entering, greetings, promises and hypothetical descriptions do not count. For openingSignal, segment is the numeric index from evidence draft:N of one supporting player-heard response segment; for a pitch choose dialogue by that resident naming the supplied proposal. Judge completeness from the FULL reply, including a pitch spread across several speech segments, then cite one supporting segment. Do not return quote, join speech, summarize it or insert ellipses; code copies the exact saved segment. For first-use, playerQuote must be an exact current player input substring. Omit venueRequest for the supplied opening pitch. ' +
-        (actionContractV2
-          ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
-          : LIVE_MEMORY_INSTRUCTION
-        )
-          .replaceAll('evidence:["player",0]', "evidence:[0]")
-          .replaceAll('lineIds:["player",0]', "lineIds:[0]")
-          .replace(
-            'lineId is "player", current zero-based segment index, or',
-            "lineId is a current zero-based segment index or",
-          )
-          .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
-          .replace('"player" for the current player line, or ', "") +
-        " " +
-        " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire is valid. " +
-        WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
-        ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
-        " Use numeric indexes matching evidence draft:N for Wish evidence. Existing goals keep exact IDs; genuinely new social desires use new:local-key. Memory learners must witness all supporting context. " +
-        (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
-        " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
-        (context.preservation
-          ? SCENE_HALT_INSTRUCTION + (context.preservation.sceneBoundaryVersion === 1 ? SCENE_BOUNDARY_INSTRUCTION : "")
-          : ""),
+      exchangeInstruction(scene, context, {
+        combined,
+        movementReview,
+        actionContractV2,
+        residentActionsOmitted,
+        narrativeGrant,
+        residentActions,
+      }),
       (raw, hash, savedInput): SemanticExchange => {
         if (savedInput.context.preservation) {
           const finding =
@@ -915,6 +997,6 @@ export function createSemanticService(ports: SemanticPorts) {
   async function rejectExchange(result: SemanticExchange) {
     await ports.rejectVenueCompletion(undefined, { preserveWriting: true, stages: [result.checkpointKey] });
   }
-  return { intent, exchange, rejectExchange };
+  return { preflight, intent, exchange, rejectExchange };
 }
 export type SemanticService = ReturnType<typeof createSemanticService>;
