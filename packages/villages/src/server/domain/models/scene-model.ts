@@ -10,7 +10,7 @@ import type { LiveExchangeProposals } from "./memory-model.js";
 import type { VenueOperation, VenueRequestMetrics } from "./operation-model.js";
 import type { VenueActionResult } from "./venue-action-model.js";
 import type { WishProposal } from "./wish-check-model.js";
-import type { VillageVenueClass, VillageWish } from "./world.js";
+import type { VillageVenueClass } from "./world.js";
 
 export type VenueLine = {
   speechSource?: { version: 3; spans: import("../rules/player-speech-capture.js").SpeechSource[] };
@@ -132,7 +132,7 @@ export type VenueSubmission = {
   semanticContinuedDomains?: import("./exchange-model.js").ExchangeDomain[];
   semanticProvenance?: import("./semantic-model.js").SemanticProvenance;
   liveProposals?: LiveExchangeProposals;
-  wishContexts?: { actorId: string; wishId: string; fingerprint: string; wishes: VillageWish[]; capturedAt: string }[];
+  wishContexts?: import("./wish-check-model.js").CapturedWishContexts;
   requestMetrics?: VenueRequestMetrics;
   timing?: import("./operation-model.js").VenueTiming;
   interpretationHistory?: {

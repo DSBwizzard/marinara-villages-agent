@@ -82,6 +82,7 @@ import {
 import { createDocumentMutator, mutateDocument } from "../adapters/storage/document-store.js";
 import { repairGate, withRepairWork } from "../adapters/storage/repair-gate.js";
 import { createSceneRepository } from "../adapters/storage/scene-repository.js";
+import { createSceneWishContexts } from "../adapters/storage/scene-wish-contexts.js";
 import {
   changeSession,
   clearActivePointer,
@@ -738,6 +739,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const releaseSceneWriting = configureSceneWriting(
     createSceneWriting({
+      readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
       sceneNarrative,
       semantic,
       venueCheckpoint,
@@ -762,6 +764,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
       sceneNarrative,
       applySavedStartingTies: startingTies.applySaved,
       withVillageSceneAcceptance,

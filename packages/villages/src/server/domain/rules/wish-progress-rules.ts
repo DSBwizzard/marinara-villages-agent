@@ -28,10 +28,14 @@ export function bindWishProposals(
       error: "Wish interpretation is incomplete; explicitly retry saved interpretation.",
     };
   }
+  if (_contexts !== undefined && !Array.isArray(_contexts))
+    throw new WishInterpretationError("Saved Wish interpretation context requires explicit loading.");
   const snapshots = Array.isArray(_contexts)
     ? (_contexts as { actorId: string; wishes: import("../models/world.js").VillageWish[]; capturedAt: string }[])
     : [];
   const actors = new Set(rows.map((row) => row.actorId));
+  if (_contexts !== undefined && rows.some((row) => !snapshots.some((owner) => owner.actorId === row.actorId)))
+    throw new WishInterpretationError("Saved Wish interpretation context is incomplete.");
   const captured = state.villagers
     .filter((owner) => actors.has(owner.characterId))
     .map((owner) => {

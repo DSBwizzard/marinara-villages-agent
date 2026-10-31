@@ -240,6 +240,24 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
   wrapped.add(result);
   return result;
 }
+function authorCapturedWishes(rows: Map<string, any>, value: any, scene: any) {
+  if (!value || !Array.isArray(value.wishContexts) || !value.wishContexts.length) return value;
+  const scope = { seed: scene.continuity?.seed ?? scene.villageSeed ?? "", setupAt: scene.continuity?.setupAt ?? "" };
+  return {
+    ...value,
+    wishContexts: {
+      format: 1,
+      sceneId: scene.id,
+      ...scope,
+      owners: value.wishContexts.map(({ wishes, ...owner }: any) => {
+        const encoded = encodeWishHistory(wishes, { ...scope, actorId: owner.actorId });
+        for (const [id, data] of encoded.pages)
+          rows.set(id, { id, packageId: "villages", kind: MEMORY_PAGE_KIND, revision: 1, data });
+        return { wishId: "", fingerprint: "", ...owner, head: encoded.head };
+      }),
+    },
+  };
+}
 export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { seed?: string; setupAt?: string }): any {
   if (!raw || Object.hasOwn(raw, "storageFormat") || raw.version !== 3) return raw;
   const scene = {
@@ -249,6 +267,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
   };
   const normalized = coerceSession({ ...raw, continuity: undefined, operation: undefined });
   const encoded = encodeSceneTranscript(normalized.lines, scene);
+  normalized.submissions = normalized.submissions.map((row) => authorCapturedWishes(rows, row, scene));
   const submissions = encodeSceneSubmissions(normalized.submissions, scene);
   for (const [id, data] of [...encoded.pages, ...submissions.pages])
     rows.set(id, {
@@ -278,6 +297,15 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
   if (scene.operation?.snapshot)
     scene.operation = { ...scene.operation, snapshot: authorSceneFixture(rows, scene.operation.snapshot, world) };
   if (scene.operation) {
+    scene.operation = {
+      ...scene.operation,
+      checkpoints: Object.fromEntries(
+        Object.entries(scene.operation.checkpoints ?? {}).map(([stage, value]) => [
+          stage,
+          stage === "abandoned-request" ? value : authorCapturedWishes(rows, value, scene),
+        ]),
+      ),
+    };
     for (const [stage, attempt] of Object.entries(scene.operation.attempts ?? {}) as [string, any][]) {
       if (
         attempt.response &&

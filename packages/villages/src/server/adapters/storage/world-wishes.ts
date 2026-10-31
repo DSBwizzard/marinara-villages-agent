@@ -144,7 +144,12 @@ export function createWorldWishes(documents: CapabilityDocumentStore) {
     const ids = typeof include === "function" ? include(state) : include,
       wanted = ids === true ? true : new Set(ids);
     for (const owner of worldWishOwners(raw).effects) {
-      if (!owner.head || (wanted !== true && !wanted.has(owner.id))) continue;
+      if (wanted !== true && !wanted.has(owner.id)) continue;
+      payloads.retainSceneWork(
+        { ...owner.scope, sceneId: state.exchangeReceipts[owner.id].sceneId },
+        { actorId: owner.scope.actorId, wishId: owner.wishId, head: owner.head },
+      );
+      if (!owner.head) continue;
       const rows = await payloads.read(owner.head, owner.scope);
       memoryRequire(rows.length === 1 && rows[0].id === owner.wishId, "Wish after-image identity changed");
       const wish = immutableMemoryValue({ actorId: owner.scope.actorId, wishId: owner.wishId, value: rows[0] });

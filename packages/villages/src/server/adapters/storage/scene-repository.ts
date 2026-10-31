@@ -20,7 +20,13 @@ export function createSceneRepository({ villagesDocuments, mutateDocument }: Sce
     return withRepairWork(async () => {
       const documents = villagesDocuments();
       const active = await readActiveSceneOwner(documents);
-      wishHistoryStore(documents).retainScene(active.scene ? sceneWishOwners(active.scene.data) : []);
+      const scene = active.scene?.data as VenueScene | undefined;
+      wishHistoryStore(documents).retainScene(
+        scene ? sceneWishOwners(scene) : [],
+        scene?.continuity
+          ? { sceneId: scene.id, seed: scene.continuity.seed, setupAt: scene.continuity.setupAt }
+          : undefined,
+      );
       return coerceActive(active.pointer?.data);
     });
   }
