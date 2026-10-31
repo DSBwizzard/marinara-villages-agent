@@ -155,6 +155,7 @@ const background = createBackgroundWork({
   withCurrentJobWrite: (work) => work(),
   villagesDocuments: () =>
     ({
+      getById: async (_pkg: string, id: string) => structuredClone(rows.get(id) ?? null),
       list: async (_pkg: string, kind: string) =>
         structuredClone([...rows.values()].filter((row) => row.kind === kind)),
       remove: async (_pkg: string, id: string, revision: number) => {

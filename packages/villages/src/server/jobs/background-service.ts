@@ -45,6 +45,7 @@ import { copyBackgroundWork } from "../domain/rules/world-context-copy.js";
 import { capturedJobOwners } from "../adapters/storage/captured-admissions.js";
 import { capturedPublicationOwners } from "../adapters/storage/captured-admission-owners.js";
 import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
+import { readVillageRoot } from "../adapters/storage/village-repository.js";
 import { connectionFailureKind } from "../domain/rules/connection-failure.js";
 import { badRequest, conflict } from "../domain/rules/errors.js";
 import { reserveEventAttempt } from "../domain/rules/event-attempts.js";
@@ -60,6 +61,23 @@ import {
 } from "../domain/rules/work-recovery.js";
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 const KIND = "background-work";
+type JobRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
+function sameCurrentJob(current: JobRecord | null, expected: JobRecord): boolean {
+  if (!current) return false;
+  validateBackgroundJobRecord(current);
+  const before = expected.data as Job,
+    next = current.data as Job;
+  return (
+    current.id === expected.id &&
+    current.packageId === VILLAGES_PACKAGE_ID &&
+    current.kind === KIND &&
+    current.revision === expected.revision &&
+    next.id === before.id &&
+    next.instanceId === before.instanceId &&
+    next.attempt === before.attempt &&
+    next.owner === before.owner
+  );
+}
 type Unsubmitted = { step?: number; optional?: readonly string[] };
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);
 const activityDispatched = (job: Job) =>
@@ -115,6 +133,7 @@ export interface BackgroundWorkPorts {
   handlers: Iterable<readonly [BackgroundKind, Handler]>;
   activityChanged?: () => void;
   withRepairWork?<T>(work: () => Promise<T>): Promise<T>;
+  /** Full repair admission, then the existing World authority mutex, through acknowledgement. */
   withCurrentJobWrite<T>(work: () => Promise<T>): Promise<T>;
 }
 /** An application owns its handler registry, admission, recovery and provider queues. */
@@ -357,6 +376,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       next.input = data.input;
       next.replacement = data.replacement;
       if (record && JSON.stringify(data) === JSON.stringify(record.data)) return next;
+      let retention: { data: Job; uncertain: boolean } | undefined;
       if (record) {
         const before = record.data as Job,
           claims = new Set(backgroundResponseOwners(data).map((owner) => owner.claim.id));
@@ -419,21 +439,25 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             replacement: undefined,
             status: "obsolete",
           });
-          if (recovery === "uncertain" || recovery === "recoverable") {
-            const state = await (ports.readVillageAuthority ?? readVillageState)();
-            const acknowledged =
-              recovery !== "uncertain" &&
-              next.status === "completed" &&
-              next.id === before.id &&
-              state.backgroundReceipts[id] === before.id;
-            if (state.seed === before.seed && !acknowledged) await retainBackgroundJob(documents, retained);
-          }
+          if (recovery === "uncertain" || recovery === "recoverable")
+            retention = { data: retained, uncertain: recovery === "uncertain" };
         }
       }
       const stamp = new Date().toISOString();
       if (record) {
-        const updated = await ports.withCurrentJobWrite(() =>
-          documents.update({
+        const updated = await ports.withCurrentJobWrite(async () => {
+          if (!sameCurrentJob(await documents.getById(VILLAGES_PACKAGE_ID, id), record)) return null;
+          if (retention) {
+            const state = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
+            const acknowledged =
+              !retention.uncertain &&
+              next.status === "completed" &&
+              next.id === retention.data.id &&
+              state?.backgroundReceipts[id] === retention.data.id;
+            if (state?.seed === retention.data.seed && !acknowledged)
+              await retainBackgroundJob(documents, retention.data);
+          }
+          return documents.update({
             id,
             packageId: VILLAGES_PACKAGE_ID,
             expectedRevision: record.revision,
@@ -441,8 +465,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             description: "Villages background generation checkpoint",
             data,
             updatedAt: stamp,
-          }),
-        );
+          });
+        });
         if (updated) return next;
       } else {
         try {
@@ -465,6 +489,50 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       }
     }
     throw new Error("Background work kept changing while it was saved.");
+  }
+  async function retainOptionalOutcome(
+    job: Job,
+    fingerprint: string,
+    outcome: NonNullable<Job["optionalAttempts"]>[string],
+    documents: CapabilityDocumentStore,
+  ) {
+    const retain = () =>
+      ports.withCurrentJobWrite(async () => {
+        const world = readVillageRoot(await documents.getById(VILLAGES_PACKAGE_ID, "villages-village"));
+        if (world?.seed !== job.seed) return;
+        const owns = (row: JobRecord | null) => {
+          if (!row) return false;
+          if (row.packageId !== VILLAGES_PACKAGE_ID || !Number.isSafeInteger(row.revision) || row.revision < 1)
+            throw new Error("Background optional reservation identity changed.");
+          validateBackgroundJobRecord(row);
+          if (row.kind === "background-history" && row.revision !== 1)
+            throw new Error("Retained background attempt changed.");
+          const source = row.data as Job;
+          return (
+            source.seed === job.seed &&
+            slotId(source) === slotId(job) &&
+            source.id === job.id &&
+            source.instanceId === job.instanceId &&
+            source.attempt === job.attempt &&
+            source.optionalAttempts?.[fingerprint]?.status === "dispatching" &&
+            JSON.stringify(source.input) === JSON.stringify(job.input)
+          );
+        };
+        let source = await documents.getById(VILLAGES_PACKAGE_ID, slotId(job));
+        if (source && (source.id !== slotId(job) || source.kind !== KIND))
+          throw new Error("Background optional reservation identity changed.");
+        if (!owns(source))
+          source = (await documents.list(VILLAGES_PACKAGE_ID, "background-history")).find(owns) ?? null;
+        if (source && owns(source))
+          await retainBackgroundJob(
+            documents,
+            nativeBackgroundJob({
+              ...(source.data as Job),
+              optionalAttempts: { ...(source.data as Job).optionalAttempts, [fingerprint]: outcome },
+            }),
+          );
+      });
+    return ports.withRepairWork ? ports.withRepairWork(retain) : retain();
   }
   async function persistConnectionPause(
     connectionId: string,
@@ -1302,14 +1370,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         } catch (error) {
           // Preserve a known purchased result without writing into a replacement job.
           if (status === "complete")
-            await retainBackgroundJob(
-              documents,
-              nativeBackgroundJob({
-                ...job!,
-                input: admitted!.nativeInput,
-                optionalAttempts: { ...job!.optionalAttempts, [fingerprint]: outcome },
-              }),
-            );
+            await retainOptionalOutcome({ ...job!, input: admitted!.nativeInput }, fingerprint, outcome, documents);
           throw error;
         }
         assertOwner();
@@ -1651,6 +1712,19 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         (original.steps.some((step) => step.status === "running") ||
           Object.values(original.optionalAttempts ?? {}).some((attempt) => attempt.status === "dispatching"));
       const job = await adoptLateResponses(record.id, original, documents);
+      const recovering = (current: Job | null) => {
+        if (
+          stopped ||
+          owner !== recoveryOwner ||
+          !current ||
+          current.id !== job.id ||
+          current.instanceId !== job.instanceId ||
+          current.attempt !== job.attempt ||
+          (current.owner !== job.owner && current.owner !== recoveryOwner)
+        )
+          throw new Obsolete("Background recovery ownership changed.");
+        return current;
+      };
       if (job.kind === "story") {
         await retireStory(record.id, documents);
         continue;
@@ -1673,7 +1747,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         await changeJob(
           record.id,
           (current) => ({
-            ...current!,
+            ...recovering(current),
             status: "interrupted",
             owner,
             error: "Generation was interrupted. This request may already have incurred costs.",
@@ -1696,7 +1770,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         await changeJob(
           record.id,
           (current) => ({
-            ...current!,
+            ...recovering(current),
             status: "interrupted",
             owner,
             error: "Preparation interrupted. Retry deliberately.",
@@ -1742,7 +1816,11 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         const disposable = oldWorld || ["completed", "failed", "abandoned"].includes(recovery);
         if (disposable && removed++ < 8 && !running.has(record.id))
           if (
-            await ports.withCurrentJobWrite(() => documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision))
+            await ports.withCurrentJobWrite(
+              async () =>
+                sameCurrentJob(await documents.getById(VILLAGES_PACKAGE_ID, record.id), record) &&
+                documents.remove(VILLAGES_PACKAGE_ID, record.id, record.revision),
+            )
           ) {
             const subjectGone =
               job?.kind !== "resident-planning" &&

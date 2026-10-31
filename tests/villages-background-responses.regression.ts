@@ -90,6 +90,11 @@ const completion = {
   finishReason: "stop",
   usage: { totalTokens: 17 },
 };
+async function saveWorld(db: ReturnType<typeof storage>, world: ReturnType<typeof defaultVillageState>) {
+  await createVillageRepository(() => db.documents).mutateAuthority((state) => {
+    Object.assign(state, world);
+  });
+}
 function saveClaim(documents: CapabilityDocumentStore, job: Job) {
   return documents.create({
     id: backgroundSlotId(job),
@@ -107,7 +112,10 @@ for (const failure of ["before", "after"] as const) {
     context = createBackgroundContext();
   const world = defaultVillageState();
   world.seed = "background-evidence";
-  world.villagers = [{ characterId: "resident", cardSnapshot: { name: "Resident" } }] as any;
+  world.villagers = [
+    { characterId: "resident", cardSnapshot: { name: "Resident", capturedAt: "2026-10-30T00:00:00.000Z" }, wishes: [] },
+  ] as any;
+  await saveWorld(db, world);
   let calls = 0,
     applied = 0;
   const service = () =>
@@ -123,6 +131,7 @@ for (const failure of ["before", "after"] as const) {
           row.data.optionalAttempts = { review: { status: "unknown", elapsedMs: 10 } };
           row.revision++;
         }
+        await saveWorld(db, world);
         return world;
       },
       withUsagePurpose: (_purpose, work) => work(),
@@ -578,6 +587,7 @@ for (const failure of [
     context = createBackgroundContext(),
     world = defaultVillageState();
   world.seed = "replacement-evidence";
+  await saveWorld(db, world);
   let calls = 0;
   const background = createBackgroundWork({
     withCurrentJobWrite: (work) => work(),
@@ -674,7 +684,10 @@ for (const failure of [
     }
     return update(input);
   };
-  if (failure === "reset") world.seed = "replacement-after-reset";
+  if (failure === "reset") {
+    world.seed = "replacement-after-reset";
+    await saveWorld(db, world);
+  }
   const replace = () =>
     background.queueBackgroundJob({
       ...work,
