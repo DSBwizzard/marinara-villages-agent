@@ -133,7 +133,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
     projectFor(state, projectId);
     const { listVenueVisits, activeVenueSession, listRetiredProjectScenes } = sceneQueries();
     const active = await activeVenueSession();
-    const original = await listVenueVisits();
+    const original = await listVenueVisits({ villageSeed: state.seed, limit: 20 });
     const originalIds = new Set(original.map((scene) => scene.id));
     const compact = (await listRetiredProjectScenes?.(state.seed)) ?? [];
     const closed = [...original, ...compact.filter((scene) => !originalIds.has(scene.id))]
