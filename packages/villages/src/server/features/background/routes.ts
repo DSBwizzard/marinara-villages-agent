@@ -125,19 +125,25 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
       return fail(reply, error, "continuing to the Village");
     }
   });
-  app.post<{ Body: { id?: unknown; expectedAttempt?: unknown; actionId?: unknown } }>(
+  app.post<{ Body: { id?: unknown; expectedAttempt?: unknown; actionId?: unknown; expectedInstanceId?: unknown } }>(
     "/background/retry",
     async (request, reply) => {
       try {
         if (
           typeof request.body?.id !== "string" ||
           typeof request.body.actionId !== "string" ||
+          typeof request.body.expectedInstanceId !== "string" ||
           !Number.isInteger(request.body.expectedAttempt)
         )
           throw badRequest("Choose a background job to retry.");
         const job = (await backgroundWorkSummaries()).find((row) => row.id === request.body!.id);
         if (job?.kind === "personal-mail") throw badRequest("Retry letter processing from the Mailbox.");
-        await retryBackgroundJob(request.body.id, request.body.expectedAttempt as number, request.body.actionId);
+        await retryBackgroundJob(
+          request.body.id,
+          request.body.expectedAttempt as number,
+          request.body.actionId,
+          request.body.expectedInstanceId,
+        );
         return await buildVillageSnapshot();
       } catch (error) {
         return fail(reply, error, "retrying village background work");

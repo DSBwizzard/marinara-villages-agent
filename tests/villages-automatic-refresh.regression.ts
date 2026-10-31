@@ -380,12 +380,12 @@ async function main() {
     assert.equal(agendaRequests.length, 1, "daily ticks cannot retry an unresolved request");
     failWednesday = false;
     await Promise.all([
-      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry"),
-      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry"),
+      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry", agendaFailure.instanceId),
+      retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry", agendaFailure.instanceId),
     ]);
     await settleBackgroundWork();
     assert.equal(agendaRequests.length, 2);
-    await retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry");
+    await retryBackgroundJob(agendaFailure.id, agendaFailure.attempt, "same-profile-retry", agendaFailure.instanceId);
     await settleBackgroundWork();
     assert.equal(agendaRequests.length, 2, "lost retry responses do not repeat a successful request");
     assert.equal((await readVillageState()).villagers[0]!.agenda!.personalizationPending, false);
