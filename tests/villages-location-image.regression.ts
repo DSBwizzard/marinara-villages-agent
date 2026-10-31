@@ -803,7 +803,6 @@ async function main() {
           return false;
         },
       },
-      registerSceneOrigin: () => () => {},
       async registerPrivilegedRoutes(routes: any, options: { prefix: string }) {
         await app.register(routes, { prefix: options.prefix });
         await app.ready();

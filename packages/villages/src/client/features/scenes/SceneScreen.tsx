@@ -1,4 +1,4 @@
-import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   isSceneTurnOutcome,
   isSceneTurnOutcomeMessage,
@@ -14,7 +14,6 @@ import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
 import type { SceneErrorItem } from "./scene-errors.js";
 import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
-import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
@@ -25,8 +24,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     if (displayedSubmissionId && controller.room?.id)
       recordTurnTiming(controller.room.id, displayedSubmissionId, "displayed");
   }, [controller.room?.id, displayedSubmissionId]);
-  const startSpinoff = useContext(SpinoffActionContext);
-  const spinoffError = useContext(SpinoffErrorContext);
   const [reportedErrors, setReportedErrors] = useState<
     { sceneId: string; id: string; title: string; message: string }[]
   >([]);
@@ -188,7 +185,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               ...reportedErrors
                 .filter((entry) => entry.sceneId === room.id)
                 .map(({ sceneId: _sceneId, ...entry }) => entry),
-              ...(spinoffError ? [{ id: "spinoff", title: "Spinoff request failed", message: spinoffError }] : []),
             ]
               .filter(
                 (entry, index, all) =>
@@ -370,7 +366,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             void loadSnapshot();
           }}
           onEnd={() => void closeRoom()}
-          onStartSpinoff={startSpinoff}
           notices={roomNotices}
           onDismissNotice={dismissRoomNotice}
           onOpenWish={(actorId, wishId) => {

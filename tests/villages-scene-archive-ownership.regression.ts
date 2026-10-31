@@ -27,7 +27,6 @@ put(SESSION_PREFIX + closed.id, SESSION_KIND, closed);
 put(SESSION_PREFIX + active.id, SESSION_KIND, active);
 put("terminal", "scene-terminal");
 put("project-evidence", "project-scene-evidence");
-put("spinoff", "spinoff");
 let activeId = "active";
 const readIds: string[] = [];
 const service = createSceneArchive({

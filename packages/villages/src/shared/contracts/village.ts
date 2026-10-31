@@ -788,7 +788,6 @@ export type SceneView = {
   capturedContext?: true;
   playerName?: string;
   /** An existing handoff needs return/recovery controls; private context stays server-side. */
-  spinoffPending?: boolean;
   openingReader?: boolean;
   openingIntroductionResidentId?: string;
   semanticVersion?: 2;

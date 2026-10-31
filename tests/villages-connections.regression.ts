@@ -562,7 +562,6 @@ async function main() {
           return false;
         },
       },
-      registerSceneOrigin: () => () => {},
       async registerPrivilegedRoutes(routes: any, options: { prefix: string }) {
         registrations.push(options);
         await app.register(routes, { prefix: options.prefix });

@@ -138,7 +138,6 @@ async function start() {
   stop = await activate({
     api: {
       runtime,
-      registerSceneOrigin: () => () => {},
       registerPrivilegedRoutes: async (routes: any, options: any) => {
         await app.register(async (instance) => {
           await routes(

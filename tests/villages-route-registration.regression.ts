@@ -187,6 +187,14 @@ async function currentSceneAndWritingHttp() {
       for (const url of ["/spinoffs/prompts", "/presets/preset-1/variables", "/spinoffs/chat-1"]) {
         assert.equal((await app.inject({ method: "GET", url })).statusCode, 404, `${url} is retired`);
       }
+      for (const [method, url] of [
+        ["GET", "/spinoffs/active"],
+        ["POST", "/spinoffs/begin"],
+        ["POST", "/spinoffs/prepare"],
+        ["POST", "/spinoffs/resolve"],
+      ] as const) {
+        assert.equal((await app.inject({ method, url })).statusCode, 404, `${method} ${url} is retired`);
+      }
       const scene = await app.inject({ method: "GET", url: "/rooms/active" });
       assert.equal(scene.statusCode, 200);
       assert.equal(scene.json().session, null, "the current Scene route remains available in a fresh world");

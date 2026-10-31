@@ -96,7 +96,6 @@ export function publicSceneAuthority(scene: VenueScene) {
     continuity: scene.continuity,
     sceneAttendance: scene.sceneAttendance,
     pendingAttention: scene.pendingAttention,
-    spinoff: scene.spinoff,
   });
   const last = scene.submissions.at(-1);
   const { lines: _lines, submissions: _submissions, ...authority } = projected;
@@ -171,11 +170,6 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
                     asRecord(asRecord(row.continuity).facts).playerPersonaName ||
                     asRecord(asRecord(row.continuity).facts).playerName ||
                     "You",
-                }
-              : {}),
-            ...(row.spinoff
-              ? {
-                  spinoffPending: asRecord(row.spinoff).status !== "resolved" || !asRecord(row.spinoff).resolvedAt,
                 }
               : {}),
             ...(Array.isArray(asRecord(row.sceneAttendance).layout)

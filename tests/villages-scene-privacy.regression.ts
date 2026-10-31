@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { publicSceneRoutes } from "../packages/villages/src/server/adapters/http/public-scene-routes.js";
 import type { FastifyInstance } from "fastify";
 import {
@@ -11,6 +12,20 @@ import { operationSummary } from "../packages/villages/src/server/adapters/opera
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 
 async function main() {
+  for (const status of ["prepared", "running", "returned", "resolved"]) {
+    const retired = {
+      version: 3,
+      id: "retired",
+      participants: [],
+      lines: [],
+      submissions: [],
+      spinoff: { id: "old", sessionId: "retired", status, context: "PRIVATE RETIRED EVIDENCE" },
+    };
+    const before = structuredClone(retired);
+    assert.throws(() => coerceSession(retired), /retired feature/);
+    assert.deepEqual(retired, before, "Retired feature rejection preserves the saved record");
+    assert.equal(JSON.stringify(publicSceneResponse(retired)).includes("PRIVATE RETIRED EVIDENCE"), false);
+  }
   {
     const held = { semanticProvenance: { version: 2 }, processing: { lineIds: ["held-line"] } };
     assert(sameSceneHistoryTurnPolicy(held, { ...held, timing: { elapsedMs: 4 } }));

@@ -122,7 +122,6 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-error-trigger:focus-visible, .${tag}-scene-error-item summary:focus-visible, .${tag}-scene-error-panel button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .${tag}-scene-modal-errors { position: relative; margin-bottom: .5rem; }
 .${tag}-scene-modal-errors .${tag}-scene-error-panel { z-index: 40; }
-.${tag}-spinoff-error-notice .${tag}-scene-error-panel { top: auto; bottom: calc(100% + .5rem); max-height: 50cqh; }
 @media (min-width: 768px) {
   .${tag}-room-screen .${tag}-chat-vn-row { padding: 1rem; gap: 1rem; }
   .${tag}-room-screen .${tag}-chat-input { padding: .625rem 1rem; gap: .5rem; }
