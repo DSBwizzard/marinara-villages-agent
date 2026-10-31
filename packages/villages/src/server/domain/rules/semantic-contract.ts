@@ -15,7 +15,6 @@ import { sceneLayoutVenue } from "./scene-layout.js";
 import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
 import { socialContextState } from "./social-context.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
-import { wishCheckKnowledge } from "./wish-journal.js";
 import { zoneEventHearingContext } from "./zone-events.js";
 
 export const SEMANTIC_VERSION = 2;
@@ -139,10 +138,7 @@ export function semanticContext(
             }
           : row.cardSnapshot,
         admission: row.admission,
-        wishes: (row.wishes ?? []).map((wish) => ({
-          ...wish,
-          knowledge: wishCheckKnowledge(state, row.characterId, wish.id),
-        })),
+        wishes: (row.wishes ?? []).map((wish) => ({ ...wish })),
       })),
     zones: layout
       ? venueZones(layout)
