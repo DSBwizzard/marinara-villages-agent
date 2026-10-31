@@ -26,6 +26,8 @@ const frame = (capturedAt = "first-incarnation") => ({
 });
 const planning = (capturedAt = "first-incarnation") => ({
   admitted: frame(capturedAt),
+  opportunity: { actorIds: ["ada"] },
+  actorIncarnations: { ada: capturedAt },
   context: { residents: [{ characterId: "ada", capturedAt }], social: { head: original } },
 });
 const job = {
@@ -46,7 +48,10 @@ const recovery = capturedJobOwners({
   responseStorage: 3,
   seed: scope.seed,
   kind: "social-recovery",
-  input: { entry: { seed: scope.seed, admitted: frame(), relationshipHead: original }, socialHead: review },
+  input: {
+    entry: { seed: scope.seed, admitted: frame(), relationshipHead: original, opportunity: { actorIds: ["ada"] } },
+    socialHead: review,
+  },
 });
 assert.deepEqual(
   recovery.relationships.map((owner) => owner.head),
@@ -56,8 +61,19 @@ assert.deepEqual(
 const world = {
   version: 13,
   ...scope,
-  socialOutbox: [{ seed: scope.seed, admitted: frame(), relationshipHead: original }],
-  socialMailOutbox: [{ input: { seed: scope.seed, admitted: { ...frame(), relationshipHead: sender } } }],
+  socialOutbox: [
+    { seed: scope.seed, admitted: frame(), relationshipHead: original, opportunity: { actorIds: ["ada"] } },
+  ],
+  socialMailOutbox: [
+    {
+      input: {
+        seed: scope.seed,
+        residentId: "ada",
+        incarnation: "first-incarnation",
+        admitted: { ...frame(), relationshipHead: sender },
+      },
+    },
+  ],
 };
 assert.deepEqual(
   capturedWorldOwners(world).relationships.map((owner) => owner.head),
@@ -66,6 +82,30 @@ assert.deepEqual(
 assert.equal(capturedWorldOwners(world).wishes.length, 2);
 
 for (const change of [
+  (value: any) => {
+    delete value.input.admitted;
+  },
+  (value: any) => {
+    delete value.input.context;
+  },
+  (value: any) => {
+    delete value.input.context.residents;
+  },
+  (value: any) => {
+    delete value.input.context.social.head;
+  },
+  (value: any) => {
+    delete value.input.actorIncarnations.ada;
+  },
+  (value: any) => {
+    value.input.actorIncarnations.ada = "foreign";
+  },
+  (value: any) => {
+    value.input.opportunity.actorIds = ["missing"];
+  },
+  (value: any) => {
+    value.input.context.residents = [];
+  },
   (value: any) => {
     delete value.input.admitted.setupAt;
   },
@@ -109,6 +149,24 @@ for (const change of [
 }
 for (const change of [
   (value: any) => {
+    delete value.socialOutbox[0].admitted;
+  },
+  (value: any) => {
+    delete value.socialOutbox[0].relationshipHead;
+  },
+  (value: any) => {
+    value.socialOutbox[0].opportunity.actorIds = ["missing"];
+  },
+  (value: any) => {
+    value.socialMailOutbox[0].input.residentId = "missing";
+  },
+  (value: any) => {
+    value.socialMailOutbox[0].input.incarnation = "foreign";
+  },
+  (value: any) => {
+    delete value.socialMailOutbox[0].input.admitted.relationshipHead;
+  },
+  (value: any) => {
     value.socialOutbox = {};
   },
   (value: any) => {
@@ -133,8 +191,36 @@ for (const change of [
 }
 const empty = frame();
 empty.villagers[0].wishHead = null;
-assert.equal(capturedJobOwners({ ...job, input: { admitted: empty }, replacement: undefined }).wishes[0].head, null);
-assert.deepEqual(capturedJobOwners({ ...job, input: { prose: JSON.stringify(world) }, replacement: undefined }), {
-  wishes: [],
-  relationships: [],
-});
+assert.equal(
+  capturedJobOwners({ ...job, input: { ...planning(), admitted: empty }, replacement: undefined }).wishes[0].head,
+  null,
+);
+assert.deepEqual(
+  capturedJobOwners({ ...job, kind: "agenda", input: { prose: JSON.stringify(world) }, replacement: undefined }),
+  {
+    wishes: [],
+    relationships: [],
+  },
+);
+for (const kind of ["resident-planning", "personal-mail", "social-recovery"])
+  for (const input of [undefined, null, false, 0, [], "captured prose", {}])
+    assert.throws(() => capturedJobOwners({ ...job, kind, input, replacement: undefined }));
+const mail = { ...job, kind: "personal-mail", input: world.socialMailOutbox[0].input, replacement: undefined };
+assert.equal(capturedJobOwners(mail).wishes.length, 1);
+for (const input of [
+  { ...mail.input, residentId: "missing" },
+  { ...mail.input, incarnation: "foreign" },
+  { ...mail.input, admitted: undefined },
+])
+  assert.throws(() => capturedJobOwners({ ...mail, input }));
+const closed = { ...job, status: "completed", input: null, steps: [], hasResult: false, replacement: undefined };
+assert.deepEqual(capturedJobOwners(closed), { wishes: [], relationships: [] });
+for (const patch of [
+  { status: "failed" },
+  { steps: [{}] },
+  { hasResult: true },
+  { result: {} },
+  { partialResult: true },
+  { optionalAttempts: { review: { status: "unknown" } } },
+])
+  assert.throws(() => capturedJobOwners({ ...closed, ...patch }));

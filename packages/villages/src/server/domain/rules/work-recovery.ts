@@ -32,6 +32,8 @@ const kinds: Record<Job["kind"], true> = {
   "personal-mail": true,
   "social-recovery": true,
 };
+export const isBackgroundKind = (value: unknown): value is Job["kind"] =>
+  typeof value === "string" && Object.hasOwn(kinds, value);
 
 /** Minimum evidence/identity shape required for retention and summary projection, not a legacy decoder. */
 export function isBackgroundRecoveryRecord(value: unknown): value is Job {
@@ -42,7 +44,7 @@ export function isBackgroundRecoveryRecord(value: unknown): value is Job {
   )
     return false;
   if (!["id", "seed", "kind", "subjectId"].every((key) => typeof value[key] === "string")) return false;
-  if (!Object.hasOwn(kinds, value.kind as string)) return false;
+  if (!isBackgroundKind(value.kind)) return false;
   if (!Number.isSafeInteger(value.requests) || Number(value.requests) < 0 || typeof value.hasResult !== "boolean")
     return false;
   if (

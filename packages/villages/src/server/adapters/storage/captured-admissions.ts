@@ -1,5 +1,6 @@
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import type { BackgroundKind } from "../../domain/models/background-model.js";
+import { isBackgroundKind } from "../../domain/rules/work-recovery.js";
 import { wishResidentOwners, type WishHistoryHead, type WishHistoryScope } from "./wish-history.js";
 import {
   assertRelationshipWorld,
@@ -36,7 +37,9 @@ function admission(raw: unknown, seed: string, into: CapturedAdmissionOwners): R
   for (const [index, owner] of wishResidentOwners(raw.villagers, scope).entries()) {
     const row = raw.villagers[index];
     memoryRequire(
-      owns(row, "wishHead") && typeof row.cardSnapshot.capturedAt === "string",
+      owns(row, "wishHead") &&
+        typeof row.cardSnapshot.capturedAt === "string" &&
+        row.cardSnapshot.capturedAt.length > 0,
       "invalid admitted Wish owner",
     );
     into.wishes.push({ scope: owner.scope, head: owner.head, capturedAt: row.cardSnapshot.capturedAt });
@@ -45,23 +48,69 @@ function admission(raw: unknown, seed: string, into: CapturedAdmissionOwners): R
   return scope;
 }
 
+function directory(raw: Record<string, any>): Map<string, string> {
+  return new Map(raw.villagers.map((row: any) => [row.characterId, row.cardSnapshot.capturedAt]));
+}
+function actors(opportunity: unknown, stamps: Map<string, string>): string[] {
+  memoryObject(opportunity);
+  memoryRequire(
+    Array.isArray(opportunity.actorIds) &&
+      opportunity.actorIds.length > 0 &&
+      new Set(opportunity.actorIds).size === opportunity.actorIds.length &&
+      opportunity.actorIds.every((id: unknown) => typeof id === "string" && stamps.has(id)),
+    "captured opportunity actor is unavailable",
+  );
+  return opportunity.actorIds;
+}
+function mail(raw: unknown, seed: string, into: CapturedAdmissionOwners): RelationshipScope {
+  memoryObject(raw);
+  memoryRequire(raw.seed === seed, "captured mail belongs to another World");
+  const scope = admission(raw.admitted, seed, into),
+    stamps = directory(raw.admitted);
+  memoryRequire(
+    typeof raw.residentId === "string" &&
+      typeof raw.incarnation === "string" &&
+      stamps.get(raw.residentId) === raw.incarnation &&
+      owns(raw.admitted, "relationshipHead"),
+    "captured mail recipient changed incarnation",
+  );
+  return scope;
+}
+
 function socialEntry(raw: unknown, seed: string, into: CapturedAdmissionOwners): RelationshipScope {
   memoryObject(raw);
-  memoryRequire(raw.seed === seed && !owns(raw, "relationshipSnapshot"), "invalid captured social source");
+  memoryRequire(
+    raw.seed === seed && !owns(raw, "relationshipSnapshot") && owns(raw, "relationshipHead"),
+    "invalid captured social source",
+  );
   const scope = admission(raw.admitted, seed, into);
+  actors(raw.opportunity, directory(raw.admitted));
   relationship(raw, "relationshipHead", scope, into);
   return scope;
 }
 
 function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedAdmissionOwners) {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+  if (!["resident-planning", "personal-mail", "social-recovery"].includes(kind)) return;
+  memoryObject(raw);
   const value = raw as Record<string, any>,
     firstOwner = into.wishes.length;
   memoryRequire(!owns(value, "seed") || value.seed === seed, "captured input belongs to another World");
-  if (owns(value, "admitted")) admission(value.admitted, seed, into);
-  if (kind === "resident-planning" && value.context) {
+  if (kind === "personal-mail") {
+    mail(value, seed, into);
+    return;
+  }
+  if (kind === "resident-planning") {
+    admission(value.admitted, seed, into);
     memoryObject(value.context);
-    if (owns(value.context, "residents")) {
+    memoryObject(value.actorIncarnations);
+    const stamps = directory(value.admitted),
+      active = actors(value.opportunity, stamps);
+    memoryRequire(
+      Object.entries(value.actorIncarnations).every(([id, stamp]) => stamps.get(id) === stamp) &&
+        active.every((id) => owns(value.actorIncarnations, id)),
+      "captured activity actor changed incarnation",
+    );
+    {
       memoryRequire(Array.isArray(value.context.residents), "invalid admitted resident view");
       const ids = new Set<string>(),
         directory = new Map(into.wishes.slice(firstOwner).map((owner) => [owner.scope.actorId, owner]));
@@ -74,8 +123,12 @@ function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedA
         );
         ids.add(row.characterId);
       }
+      memoryRequire(
+        active.every((id) => ids.has(id)),
+        "captured activity actor has no context",
+      );
     }
-    if (owns(value.context, "social")) {
+    {
       memoryObject(value.context.social);
       memoryRequire(
         !owns(value.context.social, "state") && owns(value.context.social, "head"),
@@ -85,7 +138,7 @@ function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedA
       relationship(value.context.social, "head", { seed, setupAt: value.admitted.setupAt }, into);
     }
   }
-  if (kind === "social-recovery" && owns(value, "entry")) {
+  if (kind === "social-recovery") {
     const scope = socialEntry(value.entry, seed, into);
     memoryRequire(!owns(value, "social") && owns(value, "socialHead"), "inline social recovery baseline");
     relationship(value, "socialHead", scope, into);
@@ -95,12 +148,33 @@ function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedA
 /** Closed paths only: prose and arbitrary saved objects cannot create history ownership. */
 export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
   memoryObject(raw);
-  memoryRequire(raw.responseStorage === 3 && typeof raw.seed === "string", "unsupported captured background format");
+  memoryRequire(
+    raw.responseStorage === 3 && typeof raw.seed === "string" && isBackgroundKind(raw.kind),
+    "unsupported captured background format",
+  );
   const into = emptyOwners();
-  input(raw.kind, raw.input, raw.seed, into);
+  if (raw.input === null) {
+    memoryRequire(
+      ["completed", "obsolete"].includes(raw.status) &&
+        Array.isArray(raw.steps) &&
+        raw.steps.length === 0 &&
+        raw.hasResult === false &&
+        raw.result === undefined &&
+        !raw.partialResult &&
+        (raw.optionalAttempts === undefined ||
+          (typeof raw.optionalAttempts === "object" &&
+            raw.optionalAttempts !== null &&
+            !Array.isArray(raw.optionalAttempts) &&
+            Object.keys(raw.optionalAttempts).length === 0)),
+      "unfinished background capture was released",
+    );
+  } else input(raw.kind, raw.input, raw.seed, into);
   if (owns(raw, "replacement") && raw.replacement !== undefined) {
     memoryObject(raw.replacement);
-    memoryRequire(typeof raw.replacement.seed === "string", "invalid replacement capture scope");
+    memoryRequire(
+      typeof raw.replacement.seed === "string" && isBackgroundKind(raw.replacement.kind),
+      "invalid replacement capture scope",
+    );
     input(raw.replacement.kind, raw.replacement.input, raw.replacement.seed, into);
   }
   return into;
@@ -125,8 +199,7 @@ export function capturedWorldOwners(raw: unknown): CapturedAdmissionOwners {
     for (const row of raw.socialMailOutbox) {
       memoryObject(row);
       memoryObject(row.input);
-      memoryRequire(row.input.seed === raw.seed, "captured mail belongs to another World");
-      const scope = admission(row.input.admitted, raw.seed, into);
+      const scope = mail(row.input, raw.seed, into);
       memoryRequire(scope.setupAt === raw.setupAt, "mail capture belongs to another World setup");
     }
   }
