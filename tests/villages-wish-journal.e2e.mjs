@@ -253,7 +253,41 @@ try {
     await expect(details.getByRole("combobox")).toHaveCount(0);
     await expect(section.getByRole("tab")).toHaveCount(2);
     const noScroll = async () => {
-      await expect(profile.getByRole("button", { name: "Close ×", exact: true })).toBeInViewport({ ratio: 1 });
+      const close = profile.getByRole("button", { name: "Close ×", exact: true });
+      try {
+        await expect(close).toBeInViewport({ ratio: 1 });
+      } catch (error) {
+        const layout = await close.evaluate((node) => {
+          const ancestors = [];
+          for (let current = node; current && ancestors.length < 12; current = current.parentElement) {
+            const rect = current.getBoundingClientRect(),
+              style = getComputedStyle(current);
+            ancestors.push({
+              class: current.className,
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+              scrollTop: current.scrollTop,
+              scrollLeft: current.scrollLeft,
+              overflow: [style.overflowX, style.overflowY],
+              transform: style.transform,
+              font: style.font,
+            });
+          }
+          return {
+            viewport: [innerWidth, innerHeight],
+            scroll: [scrollX, scrollY],
+            fonts: document.fonts.status,
+            ancestors,
+          };
+        });
+        await page.screenshot({
+          path: resolve(`.build-tmp/wish-journal/failure-${width}-${height}.png`),
+          fullPage: true,
+        });
+        throw new Error("Wish notebook controls clipped: " + JSON.stringify(layout), { cause: error });
+      }
       await expect(profile.getByRole("button", { name: /^(Inspect|Leave Inspect)$/ })).toBeInViewport({ ratio: 1 });
       await expect(details.getByRole("button", { name: "← Wishes", exact: true })).toBeInViewport({ ratio: 1 });
       await expect(section).toBeInViewport({ ratio: 1 });
