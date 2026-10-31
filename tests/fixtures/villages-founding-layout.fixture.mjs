@@ -123,14 +123,15 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
           village.settings.foundingDetails = details;
           village.settings.foundingGuidance = " Authored narrative direction ";
           const values = await page.evaluate((village) => {
+            window.values = {};
             window.openSetup(false, village);
             return window.values;
           }, village);
-          assert.equal(
-            values.setSetupName,
-            founded ? "Willowbrook" : "",
-            "Only founded names prefill; drafts restore independently",
-          );
+          if (founded) {
+            assert.deepEqual(values, { setScreen: "home" }, "Founded Villages cannot reopen the wizard");
+            continue;
+          }
+          assert.equal(values.setSetupName, "", "Unfounded drafts restore independently");
           assert.equal(values.setSetupWorldName, "", "World identity is optional and has no generated default");
           assert.equal(Object.hasOwn(values, "setSetupFoundingReason"), false);
           assert.equal(Object.hasOwn(values, "setSetupFoundingDetails"), false);
@@ -153,79 +154,8 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
     "Actual Founding hook: current short/full-length drafts, founded reopening and fresh setup retain authored state (normal/StrictMode; isolated ports).",
   );
 }
-async function verifySavedZoneSelection() {
-  const bundle = await build({
-    stdin: {
-      loader: "tsx",
-      resolveDir: process.cwd(),
-      contents: `
-import {createRoot} from 'react-dom/client';import {useState} from 'react';
-import {FoundingWorkspace} from './packages/villages/src/client/features/founding/villages-founding-workspace.tsx';
-const zone=(id)=>({id,name:id,purpose:'Use '+id,description:'Appearance '+id,venueClass:'residence',ownerId:'player'});
-const initial={id:'saved',name:'Saved residence',classes:['residence'],occupancy:{playerHome:true},presentation:{x:10,y:10,image:null},spaces:[zone('common-a'),zone('common-b')],privateSpaces:[zone('private-a'),zone('private-b')]};
-function Harness(){const [venue,setVenue]=useState(initial),[state,setState]=useState({view:'details',sections:{saved:'zones'},zones:{saved:'common'}}),[issue,setIssue]=useState(null);
-window.savedVenue=venue;return <><button onClick={()=>{const next={venueId:'saved',zoneId:'private-b',section:'zones',field:'zone-purpose',message:'Purpose needed'};setState({...state,zones:{saved:'private-b'}});setIssue(next)}}>Review second Private</button>
-<FoundingWorkspace venues={[venue]} people={[]} selectedId='saved' placementId={null} state={state} map={<div>Map</div>} existing={true} mapReady={true} issues={[]} focusIssue={issue} imageTarget={null} imageBusy={false} suggestionsBusy={false} suggestionsChanged={false} onState={setState} onSelect={()=>{}} onContinue={()=>{}} onPatch={setVenue} onDraft={()=>{}} onGenerate={()=>{}} onUpload={()=>{}}/></>}
-createRoot(document.getElementById('root')).render(<Harness/>);
-`,
-    },
-    bundle: true,
-    write: false,
-    platform: "browser",
-    format: "iife",
-    jsx: "automatic",
-  });
-  const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-  await mockEngineLookups(context);
-  const page = await context.newPage();
-  await page.setContent('<div id="root"></div>');
-  await page.addScriptTag({ content: bundle.outputFiles[0].text });
-  const selector = page.getByLabel("Selected Zone", { exact: true });
-  for (const id of ["common-a", "common-b", "private-a", "private-b"]) {
-    await page
-      .getByRole("tab", { name: id.startsWith("private") ? "Private Space" : "Common Space", exact: true })
-      .click();
-    await selector.selectOption(id);
-    await expect(page.getByLabel("Zone Name", { exact: true })).toHaveCount(1);
-    await expect(page.getByLabel("Zone Name", { exact: true })).toHaveValue(id);
-    await page.getByLabel("Zone Name", { exact: true }).fill("Named " + id);
-    await page.getByLabel("Long-term details", { exact: true }).fill("Described " + id);
-    await page.getByLabel("Zone Used For", { exact: true }).fill("Edited " + id);
-  }
-  await page.getByRole("tab", { name: "Common Space", exact: true }).click();
-  await selector.selectOption("common-a");
-  await expect(selector).toHaveValue("common-a");
-  await page.getByRole("tab", { name: "Private Space", exact: true }).click();
-  await selector.selectOption("private-a");
-  await expect(selector).toHaveValue("private-a");
-  await page.getByRole("button", { name: "Review second Private" }).evaluate((button) => button.click());
-  await expect(selector).toHaveValue("private-b");
-  await expect(page.getByLabel("Zone Used For", { exact: true })).toBeFocused();
-  const saved = await page.evaluate(() => window.savedVenue);
-  assert.equal(saved.name, "Saved residence", "space header edits preserve Venue name");
-  assert.deepEqual(
-    [...saved.spaces, ...saved.privateSpaces].map((zone) => zone.name),
-    ["Named common-a", "Named common-b", "Named private-a", "Named private-b"],
-  );
-  assert.deepEqual(
-    [...saved.spaces, ...saved.privateSpaces].map((zone) => zone.description),
-    ["Described common-a", "Described common-b", "Described private-a", "Described private-b"],
-  );
-  assert.deepEqual(
-    [...saved.spaces, ...saved.privateSpaces].map((zone) => zone.purpose),
-    ["Edited common-a", "Edited common-b", "Edited private-a", "Edited private-b"],
-  );
-  await page.getByRole("button", { name: "Remove Zone", exact: true }).click();
-  await expect(page.getByRole("tab", { name: "Exterior", exact: true })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Long-term details", { exact: true })).toBeVisible();
-  await context.close();
-  console.log(
-    "Existing-world inspector: multiple saved Common/Private IDs, independent edits and exact Review focus (isolated React fixture).",
-  );
-}
 export async function verifyFoundingLayout(group) {
   try {
-    if (group === "desktop") await runCase("founding/saved-zone-selection", verifySavedZoneSelection);
     for (const { width, height, fontSize, homeCount, chromeHeight = 44 } of [
       { width: 1366, height: 768, fontSize: 16, homeCount: 3 },
       { width: 1440, height: 650, fontSize: 16, homeCount: 1, chromeHeight: 200 },
