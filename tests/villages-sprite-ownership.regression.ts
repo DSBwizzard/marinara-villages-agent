@@ -96,14 +96,9 @@ function fixture(name: string) {
     async readSpriteFile() {
       throw new Error("No file read expected");
     },
-    async deleteVillageSpriteFile() {
-      events.push("delete:" + name);
+    async saveSpriteFile(_assetId, _expression, _image, upload) {
+      return upload();
     },
-    villagesLogger: () => ({
-      warn() {
-        events.push("warn:" + name);
-      },
-    }),
     writes: createSpriteWrites(),
   };
   const service = createSpriteManager(ports);
