@@ -278,6 +278,10 @@ db.failBody("after");
 const saved = await store.publish(job, 0, completion);
 job.steps[0] = { ...job.steps[0], status: "completed", response: saved.response, responseRef: saved.ref };
 const native = nativeBackgroundJob(job);
+assert.throws(
+  () => nativeBackgroundJob({ ...job, automaticRetryUsed: false } as unknown as Job),
+  /invalid automatic retry allowance/,
+);
 assert.equal(Object.hasOwn(native.steps[0], "response"), false);
 assert.ok(JSON.stringify(native).length < 800);
 const priorReads = db.metrics().bodyReads;

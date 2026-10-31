@@ -44,6 +44,8 @@ let holdPendingTiming = false;
 let releasePendingTiming: (() => void) | null = null;
 let holdRequestCount = false;
 let releaseRequestCount: (() => void) | null = null;
+let holdAutomaticGeneration = false;
+let releaseAutomaticGeneration: (() => void) | null = null;
 const documents = {
   async list(packageId: string, kind: string) {
     return structuredClone([...rows.values()].filter((row) => row.packageId === packageId && row.kind === kind));
@@ -151,7 +153,7 @@ const model = {
       if (plan) {
         const response = plan.shift();
         assert.ok(response, "No unplanned provider request is allowed.");
-        return { ...response, usage: { totalTokens: 11 } };
+        return { content: response.content, finishReason: response.finishReason, usage: { totalTokens: 11 } };
       }
       await new Promise<void>((resolve) => setImmediate(resolve));
       return { content: text, finishReason: "stop", usage: { totalTokens: 11 } };
@@ -180,6 +182,17 @@ let now = 0;
 const effects: string[] = [];
 registerBackgroundHandler("agenda", {
   async generate(input) {
+    if (
+      holdAutomaticGeneration &&
+      [...rows.values()].some(
+        (row) => row.kind === "background-work" && row.data.subjectId === input.subject && row.data.automaticRetryUsed,
+      )
+    ) {
+      holdAutomaticGeneration = false;
+      await new Promise<void>((resolve) => {
+        releaseAutomaticGeneration = resolve;
+      });
+    }
     const result: string[] = [];
     if (input.optional)
       await backgroundCalls.getStore()!.optionalCompletion!("uncertain-optional", async () => {
@@ -309,6 +322,8 @@ async function reset() {
   releasePendingTiming = null;
   holdRequestCount = false;
   releaseRequestCount = null;
+  holdAutomaticGeneration = false;
+  releaseAutomaticGeneration = null;
   now = 0;
   await mutateVillageState((state) => {
     Object.assign(state, defaultVillageState());
@@ -390,11 +405,44 @@ async function main() {
     providerGate!();
     await waiting;
     assert.equal((await summary("a")).status, "completed");
+    assert.equal((await summary("a")).requests, 2);
+    assert.equal((await summary("a")).tokens, 22);
     assert.deepEqual(calls, ["automatic", "automatic"]);
     assert.deepEqual(effects, ["a"]);
     assert.deepEqual(failedEffects, []);
     const completedAuto = [...rows.values()].find((row) => row.kind === "background-work")!;
     assert.equal(completedAuto.data.automaticRetryUsed, true);
+
+    await reset();
+    await villageBackgroundPresence("automatic-pause", true);
+    responsePlans.set("automatic-pause", [
+      { content: "", finishReason: "stop" },
+      { content: "must not dispatch", finishReason: "stop" },
+    ]);
+    holdAutomaticGeneration = true;
+    try {
+      await queueBackgroundJob(work("a", ["automatic-pause"], false));
+      await until(() => !!releaseAutomaticGeneration);
+      failStep = "configuration-stop";
+      failure = "401 Invalid API key";
+      await queueBackgroundJob(work("b", [failStep]));
+      await until(() => [...rows.values()].some((row) => row.kind === "background-connection"));
+    } finally {
+      releaseAutomaticGeneration?.();
+    }
+    await settleBackgroundWork();
+    assert.deepEqual(
+      calls,
+      ["automatic-pause", "configuration-stop"],
+      "Automatic retry cannot bypass a newly paused connection.",
+    );
+    assert.equal((await summary("a")).status, "paused");
+    const pausedAutomatic = [...rows.values()].find(
+      (row) => row.kind === "background-work" && row.data.subjectId === "a",
+    )!;
+    assert.equal(pausedAutomatic.data.finite, false, "Automatic retry does not grant deliberate-run admission.");
+    assert.equal(pausedAutomatic.data.retrying, false);
+    assert.equal(pausedAutomatic.data.automaticRetryUsed, true);
 
     for (const cause of ["invalid_json", "missing_result", "duplicate_result"] as const) {
       await reset();
@@ -1404,6 +1452,7 @@ async function main() {
       "villages-background-work: concurrency, checkpoint retry, fairness, presence, recovery, stale results, bounded storage ok",
     );
   } finally {
+    releaseAutomaticGeneration?.();
     stop?.();
     await settleBackgroundWork();
     release();
