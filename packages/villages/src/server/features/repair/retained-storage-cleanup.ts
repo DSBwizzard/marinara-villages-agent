@@ -60,6 +60,7 @@ import {
 } from "../../adapters/storage/relationship-payload-store.js";
 import { createRepairStorage, repairStorageId } from "./repair-storage.js";
 import { readSceneResponseReceipt, sceneResponseReceiptId } from "../../adapters/storage/scene-response-receipts.js";
+import { readSceneTerminal } from "../scenes/scene-terminal.js";
 import {
   validateBackgroundResponse,
   validateBackgroundResponseOwners,
@@ -112,7 +113,9 @@ export async function collectRetainedStorage(gate: RepairGate) {
     const raw = gate.raw,
       cache = new Map<string, Row | null>(),
       candidates: Row[] = [],
-      marked = new Set<string>();
+      marked = new Set<string>(),
+      sceneOwners = new Set<string>();
+    const sceneKey = (sceneId: string, villageSeed: string) => JSON.stringify([sceneId, villageSeed]);
     const checkedEvidence = new WeakMap<object, ReturnType<typeof validateOperationEvidence>>();
     function evidenceBody(
       row: RepairDocument,
@@ -347,6 +350,12 @@ export async function collectRetainedStorage(gate: RepairGate) {
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",
         );
+        if (row.data.opening?.stage === "gathering" && row.data.opening.gatheringSceneId !== undefined) {
+          const id = row.data.opening.gatheringSceneId;
+          memoryRequire(typeof id === "string", "invalid prospective gathering Scene owner");
+          // Founding can publish this fixed ID first; restoration trims both identities.
+          if (id.trim()) sceneOwners.add(sceneKey(id.trim(), row.data.seed.trim()));
+        }
         const head = readMemoryHead(row.data.memoryHead);
         if (head) await history(head, row.data as { seed: string; setupAt: string }, view);
         const departure = departureHistoryOwner(row.data);
@@ -360,10 +369,12 @@ export async function collectRetainedStorage(gate: RepairGate) {
         memoryRequire(row.id === relationshipDocumentId(root.seed), "unknown relationship root identity");
         await relationshipHistory(root.head, root, view);
       } else if (row.kind === "venue-visit") {
+        memoryObject(row.data);
         memoryRequire(
           row.id === "villages-venue-visit-" + (row.data as { id?: string }).id,
           "invalid Scene owner identity",
         );
+        sceneOwners.add(sceneKey(row.data.id, row.data.villageSeed));
         for (const owner of sceneHistoryOwners(row.data)) await relationshipHistory(owner.head, owner.scope, view);
         for (const owner of sceneWishOwners(row.data)) await view.wishes.trace(owner.head, owner.scope);
         for (const owner of sceneTranscriptOwners(row.data))
@@ -454,6 +465,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
       }
     }
     const physical = scope();
+    const responses: { row: Row; receipt: ReturnType<typeof readSceneResponseReceipt>; bodies: string[] }[] = [];
     for (const row of await listed("generation-response")) {
       memoryObject(row.data);
       if (row.data.purpose === "background") {
@@ -470,20 +482,22 @@ export async function collectRetainedStorage(gate: RepairGate) {
       }
       const receipt = readSceneResponseReceipt(row.data);
       memoryRequire(row.id === sceneResponseReceiptId(receipt.signature), "Scene response owner identity changed");
-      const owner = { id: receipt.sceneId, villageSeed: receipt.villageSeed };
+      const owner = { id: receipt.sceneId, villageSeed: receipt.villageSeed },
+        bodies: string[] = [];
       if (receipt.selected) {
         const body = await physical.lookup(receipt.selected.ref.id);
         memoryRequire(body, "selected Scene response is missing");
         evidenceBody(body, owner, receipt.selected.ref);
-        marked.add(body.id);
+        bodies.push(body.id);
       }
       for (const claim of receipt.pending) {
         const body = await physical.lookup(claim.bodyId);
         if (!body) continue;
         const { data } = evidenceBody(body, owner);
         memoryRequire(data.claim === claim.token, "pending Scene response identity changed");
-        marked.add(body.id);
+        bodies.push(body.id);
       }
+      responses.push({ row, receipt, bodies });
     }
     const root = await documents.getById(PACKAGE, "villages-village");
     if (root) {
@@ -518,6 +532,40 @@ export async function collectRetainedStorage(gate: RepairGate) {
         );
         await sourceOwners(owner, physical);
       }
+    }
+    const retiredResponses: Row[] = [],
+      verifiedRetiredScenes = new Set<string>();
+    for (const { row, receipt, bodies } of responses) {
+      let retired = false;
+      const key = sceneKey(receipt.sceneId, receipt.villageSeed);
+      if (!receipt.pending.length && !sceneOwners.has(key)) {
+        if (verifiedRetiredScenes.has(key)) retired = true;
+        else {
+          memoryRequire(
+            !(await documents.getById(PACKAGE, "villages-venue-visit-" + receipt.sceneId)),
+            "retired Scene owner is still present or changed",
+          );
+          const id = "villages-scene-terminal-" + receipt.sceneId,
+            terminal = await documents.getById(PACKAGE, id);
+          if (terminal) {
+            memoryRequire(
+              terminal.id === id &&
+                terminal.kind === "scene-terminal" &&
+                terminal.packageId === PACKAGE &&
+                Number.isSafeInteger(terminal.revision) &&
+                terminal.revision > 0,
+              "invalid retired Scene receipt identity",
+            );
+            memoryObject(terminal.data);
+            const saved = readSceneTerminal(terminal.data, receipt.sceneId);
+            memoryRequire(saved.villageSeed === receipt.villageSeed, "retired Scene belongs to another Village");
+            retired = true;
+            verifiedRetiredScenes.add(key);
+          }
+        }
+      }
+      if (retired) retiredResponses.push(row);
+      else for (const id of bodies) marked.add(id);
     }
     const intents = await listed("memory-payload-intent");
     for (const row of intents) {
@@ -558,7 +606,14 @@ export async function collectRetainedStorage(gate: RepairGate) {
     }
     // No writer can publish now, and startup replay finished before exclusion was acquired.
     // Partial preparations have no surviving producer; actual owners above protect committed data.
-    const retired = [...intents, ...relationshipIntents, ...candidates.filter((row) => !marked.has(row.id))];
+    // Dispatch owners go first, so interrupted cleanup cannot leave a live selector without its body.
+    const retired = [
+      ...retiredResponses,
+      ...intents,
+      ...relationshipIntents,
+      ...candidates.filter((row) => !marked.has(row.id)),
+    ];
+    const retiredIds = new Set(retired.map((row) => row.id));
     let removedBytes = 0;
     for (const row of retired) {
       memoryRequire(await raw.remove(PACKAGE, row.id, row.revision), "retained cleanup changed");
@@ -571,6 +626,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
       .filter(
         (row): row is Row =>
           !!row &&
+          !retiredIds.has(row.id) &&
           !CANDIDATES.includes(row.kind) &&
           !["memory-payload-intent", RELATIONSHIP_INTENT_KIND].includes(row.kind),
       )

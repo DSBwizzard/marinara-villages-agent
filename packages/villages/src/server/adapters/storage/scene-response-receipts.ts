@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createDocumentMutator } from "./document-store.js";
+import { withRepairWork } from "./repair-gate.js";
 import {
   operationEvidenceStore,
   operationResponseBodyId,
@@ -165,7 +166,7 @@ export function createSceneResponseReceipts(documents: CapabilityDocumentStore) 
     });
     return selected;
   }
-  async function read(scope: OperationEvidenceScope, signature: string) {
+  async function readReceipt(scope: OperationEvidenceScope, signature: string) {
     const row = await documents.getById("villages", sceneResponseReceiptId(signature));
     if (!row) return undefined;
     memoryRequire(
@@ -174,7 +175,11 @@ export function createSceneResponseReceipts(documents: CapabilityDocumentStore) 
         row.packageId === "villages",
       "Scene response owner identity changed",
     );
-    const receipt = readSceneResponseReceipt(row.data, scope, signature);
+    return readSceneResponseReceipt(row.data, scope, signature);
+  }
+  async function read(scope: OperationEvidenceScope, signature: string) {
+    const receipt = await readReceipt(scope, signature);
+    if (!receipt) return undefined;
     for (const claim of receipt.pending) {
       const body = await documents.getById("villages", claim.bodyId);
       if (!body) continue;
@@ -215,12 +220,26 @@ export function createSceneResponseReceipts(documents: CapabilityDocumentStore) 
       : { claim };
   }
   async function retain(scope: OperationEvidenceScope, signature: string, claim: Claim, value: unknown) {
-    const prepared = prepareOperationValue(value, scope, claim.token);
-    await evidence.publish(new Map([[prepared.ref.id, prepared.data]]));
-    const selected = await settle(scope, signature, claim, prepared.ref);
-    return selected
-      ? { ref: selected.ref, claim: selected.token, value: await evidence.read(selected.ref, scope) }
-      : undefined;
+    return withRepairWork(async () => {
+      const receipt = await readReceipt(scope, signature);
+      const pending = receipt?.pending.find((pending) => pending.token === claim.token);
+      // Retirement removes the dispatch owner first; an old callback cannot recreate its body.
+      if (!pending)
+        return receipt?.selected
+          ? {
+              ref: receipt.selected.ref,
+              claim: receipt.selected.token,
+              value: await evidence.read(receipt.selected.ref, scope),
+            }
+          : undefined;
+      memoryRequire(JSON.stringify(pending) === JSON.stringify(claim), "response publication identity changed");
+      const prepared = prepareOperationValue(value, scope, claim.token);
+      await evidence.publish(new Map([[prepared.ref.id, prepared.data]]));
+      const selected = await settle(scope, signature, claim, prepared.ref);
+      return selected
+        ? { ref: selected.ref, claim: selected.token, value: await evidence.read(selected.ref, scope) }
+        : undefined;
+    });
   }
   async function reject(
     scope: OperationEvidenceScope,

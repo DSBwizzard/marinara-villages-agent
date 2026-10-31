@@ -143,6 +143,10 @@ function slot(id: string): DocumentSlot<SceneTerminal> {
   };
 }
 
+export function readSceneTerminal(value: unknown, id: string): SceneTerminal {
+  return slot(id).coerce(value);
+}
+
 export function terminalForScene(scene: VenueScene, sourceRevision: number): SceneTerminal {
   if (!scene.villageSeed || scene.status !== "closed" || !Number.isSafeInteger(sourceRevision) || sourceRevision < 1)
     throw new Error("Scene is not ready for a terminal receipt.");
@@ -210,7 +214,7 @@ export function createSceneTerminalStore(ports: {
 }) {
   async function read(id: string): Promise<SceneTerminal | null> {
     const saved = await ports.villagesDocuments().getById(VILLAGES_PACKAGE_ID, SCENE_TERMINAL_PREFIX + id);
-    return saved ? slot(id).coerce(saved.data) : null;
+    return saved ? readSceneTerminal(saved.data, id) : null;
   }
   async function save(scene: VenueScene, sourceRevision: number): Promise<void> {
     const receipt = terminalForScene(scene, sourceRevision);
