@@ -315,6 +315,13 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
     remember(encoded);
     return { head: encoded.head, rows: encoded.rows };
   }
+  function fingerprint(input: SocialWish[], scope: WishHistoryScope): string {
+    const world = wishHistoryWorld(scope),
+      original = usable() ? associations.get(socialWishCollectionSource(input)) : undefined;
+    const encoded = encodeWishHistory(input, scope, original?.head?.world === world ? original : undefined);
+    // Comparison only: no publication, ownership or persisted-head cache entry.
+    return "wishes:" + world + ":" + createHash("sha256").update(JSON.stringify(encoded.head)).digest("hex");
+  }
   async function publish(pages: Map<string, MemoryPageData>) {
     for (const [id, data] of pages) {
       const existing = await documents.getById("villages", id);
@@ -386,6 +393,7 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
   return {
     read,
     prepare,
+    fingerprint,
     appendArchive,
     retain: (owners: Owner[]) => retain(owners, false),
     retainScene: (owners: Owner[], scope?: WishWorldScope & { sceneId: string }) => {

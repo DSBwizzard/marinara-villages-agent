@@ -63,6 +63,8 @@ for (const workload of ["many-wishes", "one-long-history"] as const) {
     let current = await store.prepare(input, scope, null);
     const initial = current.head!,
       initialPages = f.rows.size;
+    assert.notEqual(store.fingerprint([], scope), store.fingerprint([], { ...scope, actorId: "other" }));
+    assert.notEqual(store.fingerprint([], scope), store.fingerprint([], { ...scope, setupAt: wishTime(1) }));
     assert.ok(JSON.stringify(initial).length < 512, "The owner stores a compact head");
     assert.equal(JSON.stringify(initial).includes("Retained private"), false);
     const heads = [initial],
@@ -79,13 +81,18 @@ for (const workload of ["many-wishes", "one-long-history"] as const) {
     });
     try {
       for (let index = 0; index < 20; index++) {
+        const priorFingerprint = store.fingerprint(current.rows, scope);
         const next = copySocialWishes(current.rows);
         next[0] = mutableSocialWish(next[0]);
         next[0].revision++;
         next[0].history.push(event(25_000 + index));
         f.reset();
         serialized = 0;
+        const fingerprint = store.fingerprint(next, scope);
+        assert.notEqual(fingerprint, priorFingerprint, "an unpublished exact change alters its comparison identity");
+        assert.deepEqual(f.metrics(), { readBytes: 0, writtenBytes: 0 }, "comparison grants no publication ownership");
         current = await store.prepare(next, scope, current.head);
+        assert.equal(store.fingerprint(current.rows, scope), fingerprint, "publication preserves the exact comparison");
         heads.push(current.head!);
         const io = f.metrics();
         maxRead = Math.max(maxRead, io.readBytes);
