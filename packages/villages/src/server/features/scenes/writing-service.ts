@@ -2,12 +2,7 @@ import { createHash } from "node:crypto";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
-import {
-  initialStaging,
-  replayStaging,
-  stagingLayout,
-  stagingTranscriptEvents,
-} from "../../../shared/helpers/scene-staging.js";
+import { currentStaging, stagingLayout, stagingTranscriptEvents } from "../../../shared/helpers/scene-staging.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { GreetingTrace, VenueReplyFailureKind, VenueScene } from "../../domain/models/scene-model.js";
@@ -386,14 +381,13 @@ export function createSceneWriting({
     const stageIds = session.participants
       .filter((person) => session.activeIds.includes(person.characterId))
       .map((person) => person.characterId);
-    const stage = replayStaging(
+    const stageState = currentStaging(
       stageIds,
       stagingTranscriptEvents(
         session.lines.filter((line) => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId),
         session.submissions,
       ),
-    ).at(-1)?.state;
-    const stageState = stage ?? initialStaging(stageIds);
+    );
     const layout = stagingLayout(session.activeIds, stageState);
     const audience = active.map((person) => person.characterId);
     const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
@@ -1224,14 +1218,13 @@ export function createSceneWriting({
       );
       for (const [index, spans] of captureSources ?? []) parsed.lines[index].speechSource = { version: 3, spans };
       const stageIds = session.participants.map((person) => person.characterId);
-      const currentStage =
-        replayStaging(
-          stageIds,
-          stagingTranscriptEvents(
-            session.lines.filter((line) => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId),
-            session.submissions,
-          ),
-        ).at(-1)?.state ?? initialStaging(stageIds);
+      const currentStage = currentStaging(
+        stageIds,
+        stagingTranscriptEvents(
+          session.lines.filter((line) => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId),
+          session.submissions,
+        ),
+      );
       resolveSceneSpriteExpressions(
         parsed.lines,
         currentStage,

@@ -3,13 +3,13 @@ import {
   advanceStaging,
   createStagingCursor,
   mobileSceneLayout,
-  replayStaging,
   restoreStagingCursor,
   stagingCheckpoint,
   stagingLayout,
   stagingPresentation,
   type StagingEvent,
 } from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { replayStaging } from "./helpers/scene-staging.fixture.js";
 
 const cast = ["a", "b", "c", "d", "e", "f"];
 const events: StagingEvent[] = [
