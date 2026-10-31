@@ -7,6 +7,7 @@ import type { VillageState } from "../models/world.js";
 import { accessManagementPrompt } from "./access-speech.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
+import { memoryTerms } from "./memory-protection.js";
 import { openingSemanticContext } from "./opening-context.js";
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
@@ -14,6 +15,7 @@ import { sharedLoreHistory } from "./scene-writing-history.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
 import { sceneMemoryContext, sceneMemoryUnit } from "./scene-memories.js";
 import { socialContextState } from "./social-context.js";
+import { readSocialWishChanges } from "./social-wishes.js";
 import { venueZones, zoneControllerIds } from "./venue-zones.js";
 import { zoneEventHearingContext } from "./zone-events.js";
 
@@ -82,6 +84,8 @@ export function semanticContext(
     if (compact && Buffer.byteLength(JSON.stringify([row, ...history]), "utf8") > 6000) continue;
     history.unshift(row);
   }
+  const wishQuery = [query, narration, ...history.map((row) => row.content)].join("\n");
+  const wishTerms = new Set(memoryTerms(wishQuery));
   return {
     ...(scene.operation?.input.preservationVersion === 1 || scene.operation?.input.sceneBoundaryVersion === 1
       ? {
@@ -138,7 +142,24 @@ export function semanticContext(
             }
           : row.cardSnapshot,
         admission: row.admission,
-        wishes: (row.wishes ?? []).map((wish) => ({ ...wish })),
+        // shortcut: keep all open Wishes whole; narrow them only if measured open-ledger size blocks play.
+        wishes: (row.wishes ?? [])
+          .filter(
+            (wish) =>
+              !compact ||
+              wish.status === "open" ||
+              wishQuery.includes(wish.id) ||
+              memoryTerms(
+                [
+                  wish.wish,
+                  wish.reason,
+                  wish.approach,
+                  ...wish.conditions.map((condition) => condition.quote),
+                  ...wish.history.map((event) => event.text),
+                ].join("\n"),
+              ).some((term) => wishTerms.has(term)),
+          )
+          .map((wish) => ({ ...wish })),
       })),
     zones: layout
       ? venueZones(layout)
@@ -208,6 +229,29 @@ export function semanticContext(
       residences: state.residences.filter((row) => row.status === "pending"),
     },
   };
+}
+
+/** Full private application authority cannot substitute for evidence actually supplied to System. */
+export function semanticWishChangesCovered(
+  value: unknown,
+  actors: readonly { id: string; wishes: readonly { id: string }[] }[],
+): boolean {
+  try {
+    const created = new Set<string>();
+    return readSocialWishChanges(value).every((change) => {
+      const owner = actors.find((actor) => actor.id === change.actorId);
+      if (!owner) return false;
+      const key = JSON.stringify([change.actorId, change.wishId]);
+      if (change.intent === "create") {
+        if (!change.wishId.startsWith("new:") || !change.desire) return false;
+        created.add(key);
+        return true;
+      }
+      return created.has(key) || owner.wishes.some((wish) => wish.id === change.wishId);
+    });
+  } catch {
+    return false;
+  }
 }
 
 /** System chooses meaning; code binds exact immutable source bytes and known event shapes. */

@@ -41,6 +41,7 @@ import {
   semanticEvidence,
   semanticHash,
   semanticImmediate,
+  semanticWishChangesCovered,
 } from "../../domain/rules/semantic-contract.js";
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { managesAccess, readAccessCommand } from "../../domain/rules/venue-access.js";
@@ -715,6 +716,7 @@ export function createSemanticService(ports: SemanticPorts) {
           };
         }
         const effects = readSemanticEffects(raw, hash);
+        if (!semanticWishChangesCovered(effects.wishChanges, savedInput.context.actors)) delete effects.wishChanges;
         if (savedInput.narrativeGrant !== undefined)
           effects.narrativeDevelopment = readSceneNarrativeReview(
             raw.narrativeIntroduction,
