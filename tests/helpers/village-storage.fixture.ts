@@ -113,7 +113,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       ...((data as any)?.operation?.snapshot?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ??
         []),
       ...operationEvidenceReferences((data as any)?.operation, data as any),
-      ...((data as any)?.responseStorage === 1 ? (data as any).steps.map((step: any) => step.responseRef) : []),
+      ...((data as any)?.responseStorage === 2 ? (data as any).steps.map((step: any) => step.responseRef) : []),
     ];
     if (!heads.some((head) => head && virtual.has(head.id))) return;
     // All virtual page documents are committed before a real root may reference them.
@@ -225,7 +225,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (
         input.id === "villages-village" ||
         (input.data as any)?.format === 4 ||
-        (input.data as any)?.responseStorage === 1 ||
+        (input.data as any)?.responseStorage === 2 ||
         (input.data as any)?.storageFormat === SCENE_STORAGE_FORMAT
       )
         await ensure(input.data);

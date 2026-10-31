@@ -471,6 +471,85 @@ corruptGate.dispose();
   assert.ok(db.rows.has(orphan.body), "a missing owned reply holds cleanup before any deletion");
   gate.dispose();
 }
+// Replacing a slot cannot erase an uncertain attempt before its late reply arrives.
+{
+  const db = storage(),
+    gate = createRepairGate(db.documents),
+    context = createBackgroundContext(),
+    world = defaultVillageState();
+  world.seed = "replacement-evidence";
+  let calls = 0;
+  const background = createBackgroundWork({
+    villagesDocuments: () => gate.documents,
+    withRepairWork: (callback) => gate.work(callback),
+    villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
+    readVillageState: async () => world,
+    mutateVillageState: async (update) => {
+      update(world);
+      return world;
+    },
+    withUsagePurpose: (_purpose, callback) => callback(),
+    measurePipeline: (_name, _tags, callback) => callback(),
+    runtimeDebug() {},
+    backgroundCalls: context.backgroundCalls,
+    handlers: [
+      [
+        "agenda",
+        {
+          valid: () => true,
+          async generate(input) {
+            return context.backgroundCalls.getStore()!(
+              {
+                model: "synthetic",
+                connectionId: "synthetic",
+                async chatComplete() {
+                  calls++;
+                  throw new Error("The provider outcome is unknown");
+                },
+              } as any,
+              [{ role: "user", content: input.exact }],
+              100,
+              { checkpointId: "reply" },
+            );
+          },
+          apply() {},
+        },
+      ],
+    ],
+  });
+  const work = {
+    kind: "agenda" as const,
+    subjectId: "resident",
+    seed: world.seed,
+    revision: "first",
+    finite: true,
+    label: "Request",
+    input: { exact: "Original private café 東京 evidence" },
+  };
+  const stop = background.startBackgroundWork();
+  await background.queueBackgroundJob(work);
+  await background.settleBackgroundWork();
+  const old = (await background.backgroundJobSnapshot(work.kind, work.subjectId))!;
+  assert.equal(calls, 1);
+  assert.equal(old.steps[0].status, "running");
+  await background.queueBackgroundJob({ ...work, revision: "second", finite: false, input: { exact: "New input" } });
+  await background.settleBackgroundWork();
+  assert.equal(calls, 1, "replacement automatic work remains paused without presence");
+  const histories = [...db.rows.values()].filter((row) => row.kind === "background-history");
+  assert.equal(histories.length, 1, "the released physical claim keeps its exact attempt owner");
+  assert.deepEqual(histories[0].data.input, work.input);
+  assert.equal(histories[0].data.steps[0].responseClaim.id, old.steps[0].responseClaim!.id);
+  const late = await createBackgroundResponses(gate.documents).publish(old, 0, {
+    content: "Purchased late café 東京 reply",
+    finishReason: "stop",
+  });
+  await collectRetainedStorage(gate);
+  const cold = createBackgroundResponses(gate.documents);
+  assert.equal((await cold.pending(histories[0].data, 0))!.response.content, "Purchased late café 東京 reply");
+  assert.ok(db.rows.has(late.ref.id));
+  stop();
+  gate.dispose();
+}
 console.log(
   "Background responses: exact bodies, bounded metadata writes, lost acknowledgements, restart/reuse, ownership and usage passed.",
 );

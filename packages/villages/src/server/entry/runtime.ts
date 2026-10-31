@@ -1182,6 +1182,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseRetainedCleanup = configureRetainedStorageCleanup(retainedCleanup);
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
+      withRepairWork,
       activityChanged: requestVillageRefresh,
       readVillageAuthority,
       mutateVillageAuthority: (update, options) => villageRepository.mutateAuthority(update, options),
