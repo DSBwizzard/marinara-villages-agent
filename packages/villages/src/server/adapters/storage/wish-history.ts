@@ -287,11 +287,22 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
     remember(next.value);
     return next.value.rows;
   }
-  async function prepare(input: SocialWish[], scope: WishHistoryScope, previous: WishHistoryHead | null) {
+  async function prepare(
+    input: SocialWish[],
+    scope: WishHistoryScope,
+    previous: WishHistoryHead | null,
+    source?: { head: WishHistoryHead | null; rows: SocialWish[] },
+  ) {
     readWishHistoryHead(previous, scope);
     const original = usable() ? associations.get(socialWishCollectionSource(input)) : undefined;
+    if (source) readWishHistoryHead(source.head, scope);
+    const shared = source && usable() ? associations.get(socialWishCollectionSource(source.rows)) : undefined;
     const protectedLayout =
-      original && JSON.stringify(original.head) === JSON.stringify(previous) ? original : undefined;
+      original && JSON.stringify(original.head) === JSON.stringify(previous)
+        ? original
+        : shared && JSON.stringify(shared.head) === JSON.stringify(source!.head)
+          ? shared
+          : undefined;
     const encoded = encodeWishHistory(input, scope, protectedLayout);
     await publish(encoded.pages);
     remember(encoded);
@@ -460,13 +471,18 @@ export function createWishHistoryTracer(get: (id: string) => Promise<MemoryPageD
     checked.set(ref.id, { height: ref.height, count, kind });
     return count;
   }
-  async function trace(raw: unknown, scope: WishHistoryScope) {
+  async function trace(raw: unknown, scope: WishHistoryScope, wishId?: string) {
     const head = readWishHistoryHead(raw, scope);
     memoryRequire(
       (await tree(head?.root ?? null, wishHistoryWorld(scope), "wishes")) === (head?.count ?? 0),
       "Wish collection count changed",
     );
     distinct(head?.root ?? null);
+    if (head && wishId !== undefined) {
+      let ref = head.root;
+      while (keys.get(ref.id)!.children) ref = keys.get(ref.id)!.children![0];
+      memoryRequire(head.count === 1 && keys.get(ref.id)!.ids?.[0] === wishId, "Wish after-image identity changed");
+    }
   }
   const archives = new Map<string, { count: number; height: number }>();
   async function archiveTree(ref: HistoryPageRef | null, scope: WishWorldScope): Promise<number> {

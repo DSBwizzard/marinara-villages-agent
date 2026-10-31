@@ -148,7 +148,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
-      if (raw?.version !== 11) return metadata;
+      if (raw?.version !== 12) return metadata;
       if (Object.hasOwn(raw, "memoryHead"))
         return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(raw), memoryHead: raw.memoryHead }) };
       if (!raw.memories) return metadata;
@@ -272,7 +272,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
       scope = { seed: context.seed, setupAt: context.setupAt ?? world?.setupAt ?? "" },
       { relationshipContext, ...facts } = context.facts,
       head = relationshipContext ? authorRelationshipFixture(rows, relationshipContext, scope).head : null;
-    const villagers = authorWorldWishFixture(rows, { version: 11, ...facts, ...scope }).villagers;
+    const villagers = authorWorldWishFixture(rows, { version: 12, ...facts, ...scope }).villagers;
     scene.continuity = { ...context, ...scope, facts: { ...facts, villagers }, relationshipHead: head };
   }
   if (scene.operation?.snapshot)
@@ -342,7 +342,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
 export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
   raw = authorWorldWishFixture(rows, raw);
   const capture = raw?.returnCatchup?.capture;
-  if (raw?.version !== 11 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
+  if (raw?.version !== 12 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
   const { relationshipContext, ...world } = capture.world;
   const relationshipHead = relationshipContext
     ? authorRelationshipFixture(rows, relationshipContext, world).head
@@ -353,7 +353,7 @@ export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
   };
 }
 export function authorWorldWishFixture(rows: Map<string, any>, raw: any): any {
-  if (raw?.version !== 11) return raw;
+  if (raw?.version !== 12) return raw;
   const residents = (world: any) =>
     (world.villagers ?? []).map((row: any) => {
       if (Object.hasOwn(row, "wishHead")) return row;
@@ -381,6 +381,40 @@ export function authorWorldWishFixture(rows: Map<string, any>, raw: any): any {
     ...raw,
     villagers: residents(raw),
     wishArchiveHead: raw.wishArchiveHead ?? { count: 0, root: null },
+    exchangeReceipts: Object.fromEntries(
+      Object.entries(raw.exchangeReceipts ?? {}).map(([id, value]) => {
+        const receipt = value as any,
+          wish = receipt.sceneFacts?.wish;
+        if (!wish || Object.hasOwn(wish, "head")) return [id, receipt];
+        const saved = encodeWishHistory(wish.value ? [wish.value] : [], {
+          seed: raw.seed,
+          setupAt: raw.setupAt,
+          actorId: wish.actorId,
+        });
+        for (const [id, data] of saved.pages)
+          rows.set(id, {
+            id,
+            packageId: "villages",
+            kind: MEMORY_PAGE_KIND,
+            revision: 1,
+            data,
+            name: "Fixture Wish after-image",
+            description: "",
+            createdAt: raw.setupAt,
+            updatedAt: raw.setupAt,
+          });
+        return [
+          id,
+          {
+            ...receipt,
+            sceneFacts: {
+              ...receipt.sceneFacts,
+              wish: { actorId: wish.actorId, wishId: wish.wishId, head: saved.head },
+            },
+          },
+        ];
+      }),
+    ),
   };
   if (raw.returnCatchup?.capture)
     result.returnCatchup = {
@@ -473,7 +507,7 @@ export function storedVillage(rows: Map<string, any>) {
   return fixtureVillageState(rows.get("villages-village")?.data, rows);
 }
 export function fixtureVillageState(raw: any, rows?: Map<string, any>) {
-  if (raw?.version === 11) {
+  if (raw?.version === 12) {
     const residents = (world: any) =>
       (world.villagers ?? []).map((row: any) => {
         if (!Object.hasOwn(row, "wishHead")) return row;
@@ -488,6 +522,28 @@ export function fixtureVillageState(raw: any, rows?: Map<string, any>) {
         );
       });
     raw = { ...raw, villagers: residents(raw) };
+    raw.exchangeReceipts = Object.fromEntries(
+      Object.entries(raw.exchangeReceipts ?? {}).map(([id, value]) => {
+        const receipt = value as any,
+          wish = receipt.sceneFacts?.wish;
+        if (!wish || !Object.hasOwn(wish, "head")) return [id, receipt];
+        const values = decodeWishHistorySync(
+          wish.head,
+          { seed: raw.seed, setupAt: raw.setupAt, actorId: wish.actorId },
+          (id) => rows?.get(id)?.data ?? null,
+        ).rows;
+        return [
+          id,
+          {
+            ...receipt,
+            sceneFacts: {
+              ...receipt.sceneFacts,
+              wish: { actorId: wish.actorId, wishId: wish.wishId, value: values[0] ?? null },
+            },
+          },
+        ];
+      }),
+    );
     if (raw.returnCatchup?.capture)
       raw.returnCatchup = {
         ...raw.returnCatchup,

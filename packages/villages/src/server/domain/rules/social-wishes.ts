@@ -475,7 +475,7 @@ export function applyWishSource(
             wishOutcome:
               row.intent === "fulfilled" || (row.intent === "create" && row.fulfilled) ? "fulfilled" : undefined,
             wishGoal: wish.wish,
-            sceneFacts: { wish: { actorId: row.actorId, wishId: wish.id, value: structuredClone(wish) } },
+            sceneFacts: { wish: { actorId: row.actorId, wishId: wish.id, value: immutableSocialWishes([wish])[0] } },
             ...(source.learn && facts.length && state.wishFollowing?.[row.actorId + ":" + wish.id] !== false
               ? {
                   notice: {

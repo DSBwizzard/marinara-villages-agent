@@ -2,13 +2,38 @@ import type { RelationshipState } from "../models/relationship-types.js";
 import type { ReturnCatchupCapture, VillageState, VillageVillager } from "../models/world.js";
 import { coerceRelationshipState, immutableRelationshipState } from "./relationship-rules.js";
 import { blockWishHistory, copySocialWishes, immutableSocialWishes, wishHistoryLoaded } from "./social-wishes.js";
+import { isImmutableMemoryValue, memoryRequire } from "./memory-integrity.js";
+
+/** Receipt metadata is mutable; exact Wish after-images share immutable leaves. */
+export function copyExchangeReceipts(receipts: VillageState["exchangeReceipts"]): VillageState["exchangeReceipts"] {
+  return Object.fromEntries(
+    Object.entries(receipts).map(([id, receipt]) => {
+      const wish = receipt.sceneFacts?.wish;
+      if (!wish) return [id, structuredClone(receipt)];
+      memoryRequire(!Object.hasOwn(wish, "head"), "Wish after-images require explicit hydration");
+      const copy = structuredClone({
+        ...receipt,
+        sceneFacts: { ...receipt.sceneFacts, wish: undefined as typeof wish | undefined },
+      });
+      copy.sceneFacts.wish = isImmutableMemoryValue(wish as unknown)
+        ? wish
+        : { ...wish, ...(wish.value ? { value: immutableSocialWishes([wish.value])[0] } : {}) };
+      return [id, copy];
+    }),
+  );
+}
 
 /** Clone mutable world facts while sharing verified immutable history leaves. */
-export function cloneWorldContext<T extends { relationshipContext?: RelationshipState; villagers?: VillageVillager[] }>(
-  value: T,
-): T {
-  const { relationshipContext, villagers, ...facts } = value;
+export function cloneWorldContext<
+  T extends {
+    relationshipContext?: RelationshipState;
+    villagers?: VillageVillager[];
+    exchangeReceipts?: VillageState["exchangeReceipts"];
+  },
+>(value: T): T {
+  const { relationshipContext, villagers, exchangeReceipts, ...facts } = value;
   const result = structuredClone(facts) as T;
+  if (exchangeReceipts) result.exchangeReceipts = copyExchangeReceipts(exchangeReceipts);
   if (villagers)
     result.villagers = villagers.map((resident) => {
       // Frozen-context revisions include field order.

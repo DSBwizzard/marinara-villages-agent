@@ -564,7 +564,7 @@ await runCase("memories-storage/missing-page", async () => {
   const page = [...f.records.values()].find((r) => r.kind === "memory-page");
   f.records.delete(page.id);
   await assert.rejects(f.restart().readAuthority({ memories: true }), /history page is missing/);
-  assert.equal(f.root().data.version, 11, "Unreadable committed data is retained without reset or conversion.");
+  assert.equal(f.root().data.version, 12, "Unreadable committed data is retained without reset or conversion.");
   f.root().data.version = 7;
   await assert.rejects(f.restart().readAuthority(), /Unsupported Village format/);
 });

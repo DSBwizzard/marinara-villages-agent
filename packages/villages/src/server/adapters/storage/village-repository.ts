@@ -32,7 +32,7 @@ function rootData(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 11) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 12) throw new Error("Unsupported Village format. Start a fresh Village.");
   departureHistoryOwner(raw);
   worldWishOwners(raw);
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
@@ -120,6 +120,7 @@ export function createVillageRepository(
         }
         state = coerceVillageState({ ...logical, ...payload });
       } else if (!loaded) blockHistory(state);
+      await wishes.loadEffects(state, raw, options?.wishEffects);
       wishes.block(state, raw, options?.wishes);
       return { record, head, state, loaded };
     }
@@ -141,7 +142,7 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 11, "invalid Village mutation format");
+            memoryRequire(state.version === 12, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
@@ -155,6 +156,7 @@ export function createVillageRepository(
             const wishes = await createWorldWishes(store).encode(state, record?.data, returnCatchup);
             const stamp = new Date().toISOString(),
               data = encodeRoot(state, nextHead, wishes);
+            worldWishOwners(data);
             let committed = false;
             try {
               if (record)

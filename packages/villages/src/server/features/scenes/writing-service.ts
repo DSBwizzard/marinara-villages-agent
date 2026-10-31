@@ -75,6 +75,7 @@ import {
 } from "../../domain/rules/scene-compact-contract.js";
 import {
   sceneContinuityView,
+  sceneWishEffectIds,
   sceneLocationContext,
   visibleSceneContinuity,
 } from "../../domain/rules/scene-continuity.js";
@@ -267,11 +268,15 @@ export function createSceneWriting({
       throw conflict("This saved request uses an unsupported writing contract. Its history is preserved.");
     const sparse = writingVersion === 2 || writingVersion === 3;
     const preparationStarted = performance.now();
-    const [authority, connectionId] = await Promise.all([readVillageState(), villagesConnectionIdFor("narration")]);
+    const wishEffects = (state: VillageState) => sceneWishEffectIds(state, session);
+    const [authority, connectionId] = await Promise.all([
+      readVillageState({ wishEffects }),
+      villagesConnectionIdFor("narration"),
+    ]);
     let village = sceneContinuityView(authority, session);
     if (village.villagers.some((resident) => !wishHistoryLoaded(resident))) {
       if (village !== authority) throw conflict("The captured Wish context is unavailable. Its source is retained.");
-      village = sceneContinuityView(await readVillageState({ wishes: true }), session);
+      village = sceneContinuityView(await readVillageState({ wishes: true, wishEffects }), session);
     }
     signal?.throwIfAborted();
     trace?.("preparation", performance.now() - preparationStarted);

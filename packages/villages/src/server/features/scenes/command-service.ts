@@ -59,7 +59,7 @@ import {
   type AttentionPlan,
 } from "../../domain/rules/scene-attention.js";
 import { sceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
-import { sceneContinuityView, cloneSceneFacts } from "../../domain/rules/scene-continuity.js";
+import { sceneContinuityView, cloneSceneFacts, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { sceneHaltWorldConflict } from "../../domain/rules/scene-halt-world.js";
 import { provisionalSceneNarrative } from "../../domain/rules/scene-narrative-effects.js";
 import { HaltedSceneTurn } from "../../domain/rules/scene-halt.js";
@@ -80,7 +80,7 @@ import {
 import {
   readSemanticEffects,
   SEMANTIC_OPERATION_BUDGET,
-  semanticContext,
+  semanticSocialContext,
 } from "../../domain/rules/semantic-contract.js";
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import {
@@ -356,7 +356,7 @@ export function createSceneCommands({
               : {}),
             ...(domain === "relationships"
               ? {
-                  social: semanticContext(scene, village, "", true, false, sceneContinuityView(village, scene)).social,
+                  social: semanticSocialContext(scene, village, "", sceneContinuityView(village, scene)),
                   zones: village.venues.map((venue) => ({ id: venue.id, zones: venueZones(venue) })),
                   zoneControllers: village.venues.flatMap((venue) =>
                     venueZones(venue).map((zone) => ({
@@ -2768,6 +2768,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       updated =
         venueOperationInput()?.preservationVersion === 1 && withVillageSceneAcceptance
           ? await withVillageSceneAcceptance(commitTurn, {
+              wishEffects: (state) => sceneWishEffectIds(state, session),
               wishes: Array.isArray(reply.wishChanges)
                 ? [
                     ...new Set(

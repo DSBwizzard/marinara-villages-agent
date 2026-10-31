@@ -9,7 +9,7 @@ import { materializeConnections } from "../../../shared/helpers/zone-contact.js"
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
-import { cloneReturnCapture } from "../rules/world-context-copy.js";
+import { cloneReturnCapture, copyExchangeReceipts } from "../rules/world-context-copy.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -102,7 +102,7 @@ import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 11,
+    version: 12,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -1442,7 +1442,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 11) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 12) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1463,7 +1463,7 @@ export function coerceVillageState(value: unknown): VillageState {
   for (const id of Object.keys(memoryReceipts)) {
     memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
   }
-  const exchangeReceipts = structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"];
+  const exchangeReceipts = copyExchangeReceipts(asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"]);
   for (const [id, receipt] of Object.entries(exchangeReceipts)) {
     if (receipt?.domain !== "physical") continue;
     if (
@@ -1485,7 +1485,7 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
   const state: VillageState = {
-    version: 11,
+    version: 12,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(

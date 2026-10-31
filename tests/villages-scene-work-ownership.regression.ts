@@ -31,6 +31,16 @@ import {
 import { VENUE_REPLY_MAX_TOKENS } from "../packages/villages/src/server/features/scenes/writing.js";
 import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import {
+  captureSceneContinuity,
+  captureSceneWishEffect,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { mutableSocialWish } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {
@@ -967,6 +977,112 @@ try {
   assert.equal(calls, 1);
   assert.equal(JSON.stringify(current.scene), before, "A truncated retry preserves the saved exchange");
   current.owner.dispose();
+}
+
+// Relationship Retry uses only social context, even when an unrelated exact Wish body is unavailable.
+{
+  const storage = sceneHistoryFixture(),
+    repository = createVillageRepository(() => storage.gate.documents);
+  let current: ReturnType<typeof commandFixture> | undefined;
+  try {
+    const initial = wishWorld();
+    initial.seed = "same-seed";
+    initial.villagers[0].wishes = [fixtureWish({ wish: "Original private desire" })];
+    await repository.mutateAuthority((state) => {
+      Object.assign(state, initial);
+    });
+    const frozen = await repository.readAuthority({ memories: true, wishes: true });
+    frozen.relationshipContext = defaultRelationshipState(frozen.seed);
+    let completions = 0,
+      wishReads = 0;
+    current = commandFixture("Relationship retry with a prior Wish effect", ({ scene, world }) => {
+      Object.assign(world, frozen);
+      scene.activeIds = ["a"];
+      scene.participants = [{ characterId: "a", name: "Ada" }] as any;
+      scene.continuity = captureSceneContinuity(world, scene, Date.parse(scene.startedAt));
+      const turn = scene.submissions[0];
+      turn.processing!.domains.relationships.status = "failed";
+      turn.liveProposals = {
+        version: 1,
+        memoryChanges: [],
+        relationshipChanges: {},
+        memoryVersions: {},
+        earlierLineIds: [],
+        playerLineId: "",
+        replyLineIds: [],
+      };
+      const model = {
+        connectionId: "synthetic",
+        model: "synthetic",
+        fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
+      };
+      return {
+        coordinateVenue: async (_id, _request, _kind, _input, _expected, _retry, run) => run(),
+        readVillageState: async (options) => ({
+          ...(await repository.readAuthority({ memories: true, ...options })),
+          relationshipContext: frozen.relationshipContext,
+        }),
+        villagesDocuments: () => storage.gate.documents,
+        villagesConnectionIdFor: async () => "synthetic",
+        villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
+        venueCheckpoint: async (_key, run) => run(),
+        venueOperationSignal: () => new AbortController().signal,
+        venueRequestMetrics: () => [],
+        readSceneChanges: async () => ({}) as any,
+        completeWithRoom: async (_model, messages) => {
+          completions++;
+          const input = JSON.parse(messages[1].content);
+          assert.ok(input.social.capturedAndScene);
+          assert.ok(input.social.live);
+          assert.doesNotMatch(JSON.stringify(input), /Original private desire|Latest exact private desire/);
+          return {
+            content: JSON.stringify({ relationshipChanges: { changes: [], permissions: [], disclosures: [] } }),
+            finishReason: "stop",
+          };
+        },
+      };
+    });
+    await repository.mutateAuthority(
+      (state) => {
+        reserveMemoryScene(state, "same-scene", current!.scene.continuity!.capturedAt);
+        const wish = mutableSocialWish(state.villagers[0].wishes[0]);
+        wish.wish = "Latest exact private desire";
+        wish.revision++;
+        state.villagers[0].wishes[0] = wish;
+        state.exchangeReceipts["wish-effect"] = {
+          id: "wish-effect",
+          sceneId: "same-scene",
+          submissionId: "same-turn",
+          domain: "wishes",
+          status: "applied",
+          at: initial.foundedAt,
+          reason: "Earlier accepted effect",
+          evidenceIds: [],
+          sceneFacts: captureSceneWishEffect(state, "a", wish.id),
+        };
+      },
+      { memories: true, wishes: ["a"] },
+    );
+    const head = storage.rows.get("villages-village").data.exchangeReceipts["wish-effect"].sceneFacts.wish.head;
+    storage.rows.delete(head.root.id);
+    const get = storage.documents.getById;
+    storage.documents.getById = async (pkg: string, id: string) => {
+      if (id === head.root.id) wishReads++;
+      return get(pkg, id);
+    };
+    await current.owner.run(() =>
+      current!.service.retrySceneChangeInterpretation("same-scene", "same-turn", "relationships"),
+    );
+    await current.owner.run(() =>
+      current!.service.retrySceneChangeInterpretation("same-scene", "same-turn", "relationships"),
+    );
+    assert.equal(completions, 1, "One explicit Retry purchases once; a now-pending interpretation is not repeated");
+    assert.equal(wishReads, 0, "Relationship context never loads unrelated private Wish evidence");
+    assert.equal(storage.rows.has(head.root.id), false, "Retry does not fabricate the missing body");
+  } finally {
+    current?.owner.dispose();
+    storage.release();
+  }
 }
 
 // Conclude must admit the same current writing/privacy contract as an ordinary new turn.
