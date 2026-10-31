@@ -226,12 +226,25 @@ function fixture(label: string) {
 }
 
 async function dispatchPreflight() {
-  for (const outcome of ["reject", "stop", "replay"] as const) {
+  for (const outcome of ["reject", "stop", "replay", "limit", 0, -1, 0.5, NaN, Infinity, 101] as const) {
     const f = fixture("preflight-" + outcome);
     const entered = deferred(),
       release = deferred();
     let checks = 0,
       loseEnclosingResult = outcome === "replay";
+    const complete = f.model.chatComplete.bind(f.model);
+    f.model.chatComplete = async (messages, options) => {
+      assert.equal(
+        options?.maxTokens,
+        outcome === "limit" ? 37 : 100,
+        "The provider receives the fitted output allowance",
+      );
+      if (outcome === "limit") {
+        const current = [...f.records.values()].find((row) => row.kind === "background-work")!.data;
+        assert.equal(current.steps[0].timing.requestedOutputTokens, 37, "Fitted timing is durable before dispatch");
+      }
+      return complete(messages, options);
+    };
     const update = f.documents.update;
     f.documents.update = async (value) => {
       if (loseEnclosingResult && (value.data as any)?.hasResult) {
@@ -255,6 +268,8 @@ async function dispatchPreflight() {
               checks++;
               if (checks > 1) throw Error("A completed stage must replay without current context preflight");
               if (outcome === "reject") throw Error("Required System evidence does not fit");
+              if (outcome === "limit") return 37;
+              if (typeof outcome === "number") return outcome;
               if (outcome === "stop") {
                 entered.resolve();
                 await release.promise;
@@ -278,10 +293,14 @@ async function dispatchPreflight() {
       }
       await f.service.settleBackgroundWork();
       const saved = [...f.records.values()].find((row) => row.kind === "background-work")!.data;
-      if (outcome !== "replay") {
+      if (outcome === "reject" || outcome === "stop" || typeof outcome === "number") {
         assert.equal(f.calls.length, 0);
         assert.equal(saved.requests, 0, "Failed/cancelled preflight must not count a purchased request");
         assert.deepEqual(saved.steps, [], "Failed/cancelled preflight leaves no uncertain provider reservation");
+      } else if (outcome === "limit") {
+        assert.equal(f.calls.length, 1);
+        assert.equal(saved.requests, 1);
+        assert.equal(f.world().setting, "preflight-limit:same");
       } else {
         assert.equal(saved.steps[0].status, "completed");
         assert.equal(saved.hasResult, false);
