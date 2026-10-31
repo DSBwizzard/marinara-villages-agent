@@ -84,6 +84,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   };
   const surface = publicSceneRoutes(engine, guard, [
     "get /memories",
+    "get /rooms/:id/history",
     "get /memories/inspect",
     "get /memories/:id/evidence",
     "get /memories/inspect/:id",

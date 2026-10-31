@@ -24,7 +24,7 @@ function Harness(){
     [room,setRoom]=useState(make('A',['A zero.','A one.']));
   const reading=useSceneReadingSession(founded);
   window.r={reading,setFounded,setShown,setRoom,make};
-  const props={mobile:false,nameColors:{},speechColors:{},picture:'',draft:'',mode:'chat',
+  const props={worldScope:'a'.repeat(64),mobile:false,nameColors:{},speechColors:{},picture:'',draft:'',mode:'chat',
     targetId:'',busy:false,error:'',greetingNotice:'',ruling:'',open:true,ended:false,
     playerName:'Player',portraits:{},sprites:{},onDraft:noop,onMode:noop,onTarget:noop,
     onSend:noop,sendOnEnter:false,spriteCardFlipEnabled:false,onViewVenue:noop,onEnd:noop,

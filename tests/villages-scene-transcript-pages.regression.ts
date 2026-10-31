@@ -18,6 +18,11 @@ import {
   encodeSceneTranscript,
 } from "../packages/villages/src/server/adapters/storage/scene-transcript-pages.js";
 import { freezeSceneTranscript } from "../packages/villages/src/server/domain/rules/scene-transcript.js";
+import {
+  scenePublicHistoryStore,
+  readScenePublicHistoryRange,
+} from "../packages/villages/src/server/adapters/storage/scene-public-history.js";
+import { readSceneSubmissionHead } from "../packages/villages/src/server/adapters/storage/scene-submission-pages.js";
 import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -143,6 +148,12 @@ for (const count of [1000, 10_000, 25_000]) {
     );
     await collectRetainedStorage(f.gate);
     assert.equal((await createSceneHistory(f.gate.documents).decode(saved.operation.snapshot)).lines.length, count);
+    const admittedPublic = saved.operation.snapshot.publicHistory;
+    assert.equal(
+      (await readScenePublicHistoryRange(f.gate.documents, admittedPublic, count, count - 1, count))[0].id,
+      "line-" + (count - 1),
+      "The admitted Scene independently retains its exact public index",
+    );
   } finally {
     f.release();
     f.gate.dispose();
@@ -191,13 +202,25 @@ try {
       restarted.lines.some((entry) => entry.id === failure),
       failure === "after",
     );
+    const owner = f.rows.get("villages-venue-visit-faults").data;
+    const entries = await readScenePublicHistoryRange(
+      f.gate.documents,
+      owner.publicHistory,
+      owner.transcript.count,
+      0,
+      owner.publicHistory.count,
+    );
+    assert.equal(
+      entries.some((entry) => entry.id === failure),
+      failure === "after",
+    );
   }
   const native = f.rows.get("villages-venue-visit-faults");
   const head = structuredClone(native.data.transcript);
   // A malformed live reference must hold all deletion, including unrelated orphan pages.
   native.data.transcript.count++;
   const before = structuredClone(f.rows);
-  await assert.rejects(collectRetainedStorage(f.gate), /count/);
+  await assert.rejects(collectRetainedStorage(f.gate));
   assert.deepEqual(f.rows, before);
   native.data.transcript = head;
   const page = f.rows.get(head.lines.id);
@@ -226,6 +249,14 @@ try {
       data,
     });
   const broken = { ...native.data, transcript: invalid.head };
+  // Keep the independent publication binding valid so this case still reaches canonical transcript validation.
+  broken.publicHistory = await f.gate.work(() =>
+    scenePublicHistoryStore(f.gate.documents).prepare(
+      { ...logical, lines: [{ ...line("invalid"), content: "" }] },
+      invalid.head,
+      readSceneSubmissionHead(broken.submissionHistory, logical),
+    ),
+  );
   await assert.rejects(validateSceneHistory(f.gate.documents, [broken]), /canonical/);
   const valid = native.data;
   native.data = broken;
@@ -271,6 +302,19 @@ try {
   await f.gate.work(() => f.gate.documents.remove("villages", native.id, f.rows.get(native.id).revision));
   await collectRetainedStorage(f.gate);
   assert.equal(
+    (
+      await readScenePublicHistoryRange(
+        f.gate.documents,
+        retained.publicHistory,
+        retained.transcript.count,
+        0,
+        retained.publicHistory.count,
+      )
+    ).at(-1)?.id,
+    "staged",
+    "The checkpoint independently retains public history after Scene retirement",
+  );
+  assert.equal(
     (await createSceneHistory(f.gate.documents).decode(retained)).lines.at(-1)?.staging?.[0].look?.target,
     "villager",
   );
@@ -279,6 +323,24 @@ try {
   assert.deepEqual(
     (await f.repository.readSession("faults")).lines,
     (await createSceneHistory(f.gate.documents).decode(retained)).lines,
+  );
+  await f.repository.changeSession("faults", (saved) => saved.lines.push(line("undo-only")));
+  const undoOnly = structuredClone(f.rows.get(native.id).data);
+  const secondRestore = await repair.restore(checkpoint.id, "restore-transcript-again");
+  await repair.apply(secondRestore.id, secondRestore.token);
+  await collectRetainedStorage(f.gate);
+  assert.equal(
+    (
+      await readScenePublicHistoryRange(
+        f.gate.documents,
+        undoOnly.publicHistory,
+        undoOnly.transcript.count,
+        undoOnly.publicHistory.count - 1,
+        undoOnly.publicHistory.count,
+      )
+    )[0].id,
+    "undo-only",
+    "Available Undo retains the superseded index absent from the live Scene and checkpoint",
   );
 } finally {
   f.release();

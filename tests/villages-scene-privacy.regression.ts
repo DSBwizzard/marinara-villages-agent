@@ -1,8 +1,68 @@
 import assert from "node:assert/strict";
 import { publicSceneRoutes } from "../packages/villages/src/server/adapters/http/public-scene-routes.js";
 import type { FastifyInstance } from "fastify";
+import {
+  publicSceneResponse,
+  publicSceneHistoryProjection,
+} from "../packages/villages/src/server/domain/rules/scene-public.js";
 
 async function main() {
+  {
+    const scene = {
+      participants: [{ characterId: "visible" }],
+      operation: { input: { interactionScopeVersion: 6 } },
+      lines: [
+        { id: "spoken", content: "Exact public words", heardBy: ["visible", "private-knower"] },
+        ...Array.from({ length: 1000 }, (_, index) => ({
+          id: "private:" + index,
+          content: "Private words",
+          contactHidden: true,
+        })),
+        {
+          id: "sound",
+          content: "Private cause",
+          contactHidden: true,
+          soundOnly: { player: true, text: "A quiet knock." },
+        },
+        { id: "unaccepted", content: "Unaccepted draft" },
+      ],
+      submissions: [
+        { semanticProvenance: { version: 2 }, semanticReady: false, processing: { lineIds: ["unaccepted"] } },
+      ],
+    };
+    const { positions, privateHearing } = publicSceneHistoryProjection(scene as any);
+    assert.deepEqual(positions, [0, 1001], "Hidden-only spans and unaccepted drafts add no public positions");
+    const selected = positions.map(
+      (position) => publicSceneResponse([scene.lines[position]], new Set(["visible"]), privateHearing)[0],
+    );
+    assert.deepEqual(
+      selected,
+      publicSceneResponse(scene).lines,
+      "Indexed selected projection matches the complete privacy boundary",
+    );
+    assert.equal(selected[1].content, "A quiet knock.");
+    assert(!JSON.stringify(selected).includes("private-knower"));
+    assert(!JSON.stringify(selected).includes("Private cause"));
+    for (const flag of [{ zoneEventsVersion: 1 }, { attention: { validation: { version: 3 } } }]) {
+      const unready = {
+        ...scene,
+        operation: undefined,
+        submissions: scene.submissions.map((turn) => ({ ...turn, ...flag })),
+      };
+      const policy = publicSceneHistoryProjection(unready as any);
+      assert.equal(
+        policy.privateHearing,
+        false,
+        "Unpublished turn flags cannot change the existing Scene-wide hearing policy",
+      );
+      assert.deepEqual(
+        policy.positions.map(
+          (index) => publicSceneResponse([unready.lines[index]], new Set(["visible"]), policy.privateHearing)[0],
+        ),
+        publicSceneResponse(unready).lines,
+      );
+    }
+  }
   const handlers = new Map<string, (request: unknown, reply: unknown) => Promise<any>>();
   const collector = Object.fromEntries(
     ["get", "post", "put", "patch", "delete"].map((method) => [

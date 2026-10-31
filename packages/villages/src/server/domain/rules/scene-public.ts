@@ -1,5 +1,39 @@
 import type { VenueScene } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+function publishedTurn(value: unknown) {
+  const turn = asRecord(value);
+  return asRecord(turn.semanticProvenance).version !== 2 || turn.semanticReady === true;
+}
+function unpublishedLines(submissions: unknown[]) {
+  return new Set(
+    submissions.flatMap((entry) => {
+      const turn = asRecord(entry);
+      return !publishedTurn(turn) ? ((asRecord(turn.processing).lineIds as string[]) ?? []) : [];
+    }),
+  );
+}
+/** Positions enumerate only content that the ordinary public projection can publish. */
+export function publicSceneHistoryProjection(scene: VenueScene) {
+  const hidden = unpublishedLines(scene.submissions);
+  return {
+    positions: scene.lines.flatMap((line, position) =>
+      !hidden.has(line.id) && (line.contactHidden !== true || line.soundOnly?.player === true) ? [position] : [],
+    ),
+    privateHearing: privateSceneHearing({ ...scene, submissions: scene.submissions.filter(publishedTurn) }),
+  };
+}
+function privateSceneHearing(value: unknown): boolean {
+  const row = asRecord(value);
+  return (
+    (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
+    (asRecord(row.operation).input !== undefined &&
+      asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
+    asRecord(row.contactGeneration).zoneEvents === true ||
+    asRecord(row.contactGeneration).acoustics === true ||
+    (Array.isArray(row.submissions) &&
+      row.submissions.some((turn) => asRecord(asRecord(asRecord(turn).attention).validation).version === 3))
+  );
+}
 export function sceneProcessingSummary(scene: VenueScene) {
   const domains = scene.submissions.flatMap((turn) => (turn.processing ? Object.values(turn.processing.domains) : []));
   return {
@@ -33,27 +67,11 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
   if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return value;
   const row = { ...value } as Record<string, unknown>;
   if (Array.isArray(row.lines) && Array.isArray(row.submissions)) {
-    const hidden = new Set(
-      row.submissions.flatMap((entry) => {
-        const turn = asRecord(entry);
-        return asRecord(turn.semanticProvenance).version === 2 && turn.semanticReady !== true
-          ? ((asRecord(turn.processing).lineIds as string[]) ?? [])
-          : [];
-      }),
-    );
+    const hidden = unpublishedLines(row.submissions);
     row.lines = row.lines.filter((line) => !hidden.has(asRecord(line).id as string));
-    row.submissions = row.submissions.filter(
-      (entry) => asRecord(asRecord(entry).semanticProvenance).version !== 2 || asRecord(entry).semanticReady === true,
-    );
+    row.submissions = row.submissions.filter(publishedTurn);
   }
-  privateHearing ||=
-    (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
-    (asRecord(row.operation).input !== undefined &&
-      asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
-    asRecord(row.contactGeneration).zoneEvents === true ||
-    asRecord(row.contactGeneration).acoustics === true ||
-    (Array.isArray(row.submissions) &&
-      row.submissions.some((turn) => asRecord(asRecord(asRecord(turn).attention).validation).version === 3));
+  privateHearing ||= privateSceneHearing(row);
   const pending = asRecord(row.pendingAttention);
   const clarification =
     pending.id && pending.message && pending.originZoneId === row.zoneId && pending.revision === row.sceneRevision
