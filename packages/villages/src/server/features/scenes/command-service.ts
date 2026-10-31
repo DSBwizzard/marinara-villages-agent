@@ -80,7 +80,7 @@ import {
 import {
   readSemanticEffects,
   SEMANTIC_OPERATION_BUDGET,
-  semanticContext,
+  semanticSocialContext,
 } from "../../domain/rules/semantic-contract.js";
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import {
@@ -356,7 +356,7 @@ export function createSceneCommands({
               : {}),
             ...(domain === "relationships"
               ? {
-                  social: semanticContext(scene, village, "", true, false, sceneContinuityView(village, scene)).social,
+                  social: semanticSocialContext(scene, village, "", sceneContinuityView(village, scene)),
                   zones: village.venues.map((venue) => ({ id: venue.id, zones: venueZones(venue) })),
                   zoneControllers: village.venues.flatMap((venue) =>
                     venueZones(venue).map((zone) => ({

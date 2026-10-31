@@ -34,6 +34,28 @@ export const semanticNarrationCore = (raw: Record<string, unknown>) =>
 export const semanticHash = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+const semanticActors = (scene: VenueScene) =>
+  scene.contactGeneration?.actorIds ?? [
+    ...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])]),
+  ];
+
+/** Relationship-only retries do not need private Wish bodies or the rest of the Scene prompt. */
+export function semanticSocialContext(
+  scene: VenueScene,
+  authority: VillageState,
+  query: string,
+  presentation = authority,
+) {
+  const actors = semanticActors(scene);
+  return {
+    capturedAndScene: socialContextState(presentation.relationshipContext, actors, query),
+    live: socialContextState(authority.relationshipContext, actors, query),
+    liveAt: new Date().toISOString(),
+    intentions: Object.fromEntries(actors.map((id) => [id, presentation.relationshipContext?.intentions[id] ?? []])),
+    rule: "Each changed pair must cite its exact current live revision. sceneAfter and liveAfter are separate interpretations of this same event; never import later live facts into Scene continuity.",
+  };
+}
+
 /** Shared context is server-only. Actor-scoped audiences remain explicit on every fact. */
 export function semanticContext(
   scene: VenueScene,
@@ -46,9 +68,7 @@ export function semanticContext(
 ) {
   const authority = state;
   state = presentation;
-  const actors = scene.contactGeneration?.actorIds ?? [
-    ...new Set([...scene.activeIds, ...(scene.contactGeneration?.remoteIds ?? [])]),
-  ];
+  const actors = semanticActors(scene);
   const venue = state.venues.find((row) => row.id === scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
   const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
@@ -104,13 +124,7 @@ export function semanticContext(
         }
       : undefined,
     revision: scene.sceneRevision,
-    social: {
-      capturedAndScene: socialContextState(state.relationshipContext, actors, query),
-      live: socialContextState(authority.relationshipContext, actors, query),
-      liveAt: new Date().toISOString(),
-      intentions: Object.fromEntries(actors.map((id) => [id, state.relationshipContext?.intentions[id] ?? []])),
-      rule: "Each changed pair must cite its exact current live revision. sceneAfter and liveAfter are separate interpretations of this same event; never import later live facts into Scene continuity.",
-    },
+    social: semanticSocialContext(scene, authority, query, state),
     zoneId: scene.zoneId,
     actors: state.villagers
       .filter((row) => actors.includes(row.characterId))
