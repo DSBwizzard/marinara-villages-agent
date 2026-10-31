@@ -34,6 +34,7 @@ import {
   semanticEvidence,
   semanticImmediate,
   semanticUnit,
+  semanticWishChangesCovered,
 } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import {
   applyAccessCommand,
@@ -172,6 +173,74 @@ async function main() {
     assert.equal(JSON.stringify(state), before, "Prompt construction preserves the saved ledger");
   }
 
+  // Closed archives are optional; open desires and every selected unit remain complete.
+  {
+    const state = wishWorld();
+    const open = fixtureWish({ wish: "Visit the pottery studio" }, "open-pottery");
+    const archive = Array.from({ length: 60 }, (_, index) => {
+      const wish = fixtureWish({ wish: "Chart the constellations " + index }, "closed-star-" + index);
+      wish.status = index % 2 ? "withdrawn" : "fulfilled";
+      wish.history = Array.from({ length: 30 }, (_, event) => ({
+        id: "history-" + event,
+        at: wish.addedAt,
+        kind: "progress",
+        text: "Retained telescope observation " + "café 東京 ".repeat(12),
+        sourceId: "source-" + event,
+        lineIds: ["line-" + event],
+      }));
+      return wish;
+    });
+    const target = archive[0];
+    target.conditions = [
+      {
+        id: "consent",
+        quote: "Only by the blue observatory.",
+        at: target.addedAt,
+        sourceId: "consent",
+        lineIds: ["c"],
+      },
+    ];
+    state.villagers[0].wishes = [open, ...archive];
+    const scene = { id: "archive", activeIds: ["a"], lines: [], placeId: "missing" } as any;
+    const before = JSON.stringify(state);
+    const selected = semanticContext(scene, state, "Hello there", true);
+    assert.deepEqual(selected.actors[0].wishes, [open], "Unrelated closed history cannot crowd out ordinary speech");
+    const full = semanticContext(scene, state, "Hello there", false);
+    assert(JSON.stringify(selected).length < JSON.stringify(full).length / 10, "Closed-archive payload falls over 90%");
+    for (const query of [target.id, "constellations", "blue observatory", "東京"])
+      assert.deepEqual(
+        semanticContext(scene, state, query, true).actors[0].wishes.find((wish) => wish.id === target.id),
+        target,
+        "Referenced closed records keep exact conditions, history and sources",
+      );
+    assert.deepEqual(
+      semanticContext(scene, state, "Hello there", true, false, state, target.id).actors[0].wishes,
+      [open, target],
+      "The current draft can introduce a reference absent from the input",
+    );
+    scene.lines = [{ content: "blue observatory", heardBy: ["a"] }];
+    assert(semanticContext(scene, state, "How was it?", true).actors[0].wishes.some((wish) => wish.id === target.id));
+    assert.equal(JSON.stringify(state), before, "Selection never rewrites retained history");
+
+    const proposal = { actorId: "a", wishId: open.id, intent: "progress", evidence: [0], reason: "Witnessed outcome" };
+    assert(semanticWishChangesCovered([proposal], selected.actors));
+    assert(!semanticWishChangesCovered([{ ...proposal, wishId: target.id }], selected.actors));
+    assert(!semanticWishChangesCovered([{ ...proposal, actorId: "b" }], selected.actors));
+    assert(!semanticWishChangesCovered([{ ...proposal, wishId: "forged" }], selected.actors));
+    assert(!semanticWishChangesCovered([{}], selected.actors));
+    const create = {
+      ...proposal,
+      wishId: "new:tea",
+      intent: "create",
+      desire: { wish: "Have tea", reason: "Company" },
+    };
+    const follow = { ...proposal, wishId: create.wishId };
+    assert(semanticWishChangesCovered([create, follow], selected.actors), "Same-source aliases remain supported");
+    assert(!semanticWishChangesCovered([follow, create], selected.actors), "A future alias is not supplied evidence");
+    assert(!semanticWishChangesCovered([create, { ...follow, actorId: "b" }], selected.actors));
+    assert(!semanticWishChangesCovered([{ ...create, actorId: "b" }], selected.actors));
+  }
+
   // Enforce JSON-mode compatibility using actual resident planning and offscreen review prompts.
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const eventMoment = deriveVillageMoment({
@@ -287,6 +356,7 @@ async function main() {
   let inputEstimate = 1000;
   let contextTrimmed = false;
   let rejectSystemPreflight = false;
+  let systemByteLimit = Infinity;
   let lastFitted: any;
   let loreReads = 0;
   let accessRows: any[] = [];
@@ -295,6 +365,7 @@ async function main() {
     systemPrompt = "";
   let narrativeActions: unknown;
   let developmentReply: unknown;
+  let systemWishChanges: unknown = [];
   let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" | "project-authority" = "valid";
   let lastPacket: any;
   let openingSignal: unknown = null;
@@ -315,6 +386,7 @@ async function main() {
         estimatedTokensAfter: inputEstimate,
         trimmed:
           contextTrimmed ||
+          Buffer.byteLength(JSON.stringify(messages), "utf8") > systemByteLimit ||
           (rejectSystemPreflight && messages[0]?.content.startsWith("You interpret Villages gameplay.")),
       };
     },
@@ -408,7 +480,7 @@ async function main() {
             action: null,
             memoryChanges: [],
             relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-            wishChanges: [],
+            wishChanges: systemWishChanges,
             projectSpeech: [],
             access: accessRows,
             events: openingEvents,
@@ -491,7 +563,7 @@ async function main() {
     try {
       await service.preflight(
         { ...scene, activeIds: ["a"], participants: [{ characterId: "a", name: "Ada", doing: "Talking" }] } as any,
-        "An ordinary reply",
+        "Tell me about that shared experience",
       );
       const packet = JSON.stringify(lastFitted);
       assert(
@@ -504,6 +576,61 @@ async function main() {
       assert.equal(checkpoints.size, known, "Preflight is a read-only check, not another saved inference stage");
       assert.equal(calls.length, paid);
     } finally {
+      state.villagers = original;
+    }
+  }
+  {
+    const original = state.villagers;
+    const authority = wishWorld();
+    const closed = fixtureWish({ wish: "Chart constellations" }, "closed-constellations");
+    closed.status = "withdrawn";
+    closed.history = Array.from({ length: 400 }, (_, index) => ({
+      id: "old-" + index,
+      at: closed.addedAt,
+      kind: "progress",
+      text: "The telescope remained unused. ".repeat(8),
+      sourceId: "source-" + index,
+      lineIds: ["line-" + index],
+    }));
+    const open = fixtureWish({ wish: "Have tea" }, "open-tea");
+    authority.villagers[0].wishes = [open, closed];
+    state.villagers = authority.villagers;
+    const compactScene = {
+      ...scene,
+      activeIds: ["a"],
+      participants: [{ characterId: "a", name: "Ada", doing: "Talking" }],
+      operation: { input: { semanticPipelineVersion: 3 } },
+    } as any;
+    const paid = calls.length;
+    const before = JSON.stringify(state);
+    checkpoints.clear();
+    try {
+      systemByteLimit = 30_000;
+      await service.preflight(compactScene, "Hello there");
+      await assert.rejects(service.preflight(compactScene, closed.id), /Essential System evidence does not fit/);
+      assert.equal(calls.length, paid, "Known oversized targets stop before a writing purchase");
+      const draft = [{ speakerId: "a", kind: "dialogue", content: closed.id, heardBy: ["a"] }] as any;
+      const originalDraft = JSON.stringify(draft);
+      await assert.rejects(service.exchange(compactScene, "Hello there", draft, null), /does not fit/);
+      assert.equal(JSON.stringify(draft), originalDraft, "A draft-only oversized target remains recoverable");
+      assert.equal(calls.length, paid);
+      checkpoints.clear();
+      systemWishChanges = [{ actorId: "a", wishId: closed.id, intent: "progress", evidence: [0], reason: "Claim" }];
+      const result = await service.exchange(compactScene, "Hello there", [], null);
+      assert.equal(result.effects.wishChanges, undefined, "An omitted target holds the Wish domain, never applies []");
+      assert.deepEqual(result.effects.memoryChanges, [], "Independent effects survive");
+      assert.equal(calls.length, paid + 1, "Coverage checks add no inference request");
+      const frozen = JSON.stringify(lastPacket);
+      closed.status = "open";
+      checkpoints.delete(result.checkpointKey);
+      const retried = await service.exchange(compactScene, "Hello there", [], null);
+      assert.equal(retried.effects.wishChanges, undefined, "Current authority cannot enlarge frozen supplied evidence");
+      assert.equal(JSON.stringify(lastPacket), frozen);
+      closed.status = "withdrawn";
+      assert.equal(JSON.stringify(state), before, "Context selection and coverage never edit saved history");
+    } finally {
+      systemByteLimit = Infinity;
+      systemWishChanges = [];
       state.villagers = original;
     }
   }
@@ -1133,6 +1260,21 @@ async function main() {
   assert.deepEqual(calls, ["narration", "exchange"], "Current writer checks input and reply with one System request");
   assert.equal(combined.semanticProvenance?.pipelineVersion, 3);
   assert.equal(combined.semanticProvenance?.authority?.physical, false);
+  {
+    checkpoints.clear();
+    const paid = calls.length;
+    systemWishChanges = [{ actorId: "absent", wishId: "omitted", intent: "progress", evidence: [0], reason: "Claim" }];
+    try {
+      const held = await combinedWriter.generate(combinedScene, "Keep the ordinary reply", "chat", "", null);
+      assert.equal(held.lines[0].content, "The room is quiet.");
+      assert.equal(held.effectFailures?.wishes?.kind, "metadata", "Unsupplied Wish effects enter existing recovery");
+      assert.deepEqual(held.memoryChanges, [], "Independent updates remain usable");
+      assert.equal(held.wishChanges, undefined);
+      assert.deepEqual(calls.slice(paid), ["narration", "exchange"], "No expansion or replacement is purchased");
+    } finally {
+      systemWishChanges = [];
+    }
+  }
   for (const route of ["legacy", "contact", "combined"] as const) {
     const input = {
       writingContractVersion: 3,
