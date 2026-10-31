@@ -333,6 +333,7 @@ import {
   configureVillageStateService,
   mutateVillageMemoryState,
   mutateVillageState,
+  peekVillageAuthority,
   readVillageAuthority,
   readVillageMemoryAuthority,
   readVillageMemorySnapshot,
@@ -1029,6 +1030,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFoundingSetup = configureFoundingSetup(
     createFoundingSetup({
+      peekVillageAuthority,
       preparedSpriteManager,
       readVillageState,
       mutateVillageState: mutateVillageMemoryState,
@@ -1040,7 +1042,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       listVillagerCards,
       prepareFoundedVillage,
       queueStartingTies: startingTies.queue,
-      queueVillagerAgenda,
       queueMicrotask,
       readVillageLore,
       proposeVillage,

@@ -20,10 +20,8 @@ import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { useFoundingKeyboardOverlay } from "./useFoundingKeyboardOverlay.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
 import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
-import { FoundingWorkspace } from "./villages-founding-workspace";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
 import { playerBackgroundProblem, PlayerBackgroundSummary } from "./villages-player-background.js";
-
 const MAP_EXAMPLES = [
   "An inn beside the river, with homes around a central square.",
   "Bedrooms along an indoor corridor, with a shared kitchen at one end.",
@@ -34,7 +32,6 @@ const PLACE_ERRORS = {
   name: "Give the village a name.",
   setting: "Describe the place.",
 };
-
 export function FoundingScreen({ controller }: { controller: FoundingScreenController }) {
   const {
     busy,
@@ -61,7 +58,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     placeSetupPin,
     portraits,
     retrySetupSaving,
-    savedTownMapView,
     sceneryStyle,
     sceneryStyleProfileId,
     screen,
@@ -73,10 +69,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setPersonaDraft,
     setSceneryStyle,
     setSceneryStyleProfileId,
-    setScreen,
     setSelectedSetupVenueId,
     setSetupFocusIssue,
-
     setSetupSpriteRevisions,
     setupSpriteRevisions,
     setSetupFoundingVillagerIds,
@@ -95,15 +89,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupShowIssues,
     setSetupVenues,
     setSetupWorkspace,
-    setSetupWorldFacts,
     settingsError,
-    setupBeginningSourceKey,
     setupEditorOpen,
     setupFocusIssue,
-
     setupFoundingVillagerIds,
     setupImageClaim,
-    setupImageTarget,
     setupLoreTokenBudgetDraft,
     setupLorebookDraft,
     setupMapBusy,
@@ -127,17 +117,14 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupStep,
     setupSuggestionsBusy,
     setupSuggestionsClaim,
-    setupSuggestionsKey,
     setupVenueBusy,
     setupVenues,
     setupWorkspace,
-    setupWorldFacts,
     snapshot,
     suggestSetupVenues,
     updateSetupMapRequest,
     uploadSetupImage,
   } = controller;
-
   const rootRef = useRef<HTMLDivElement>(null);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
@@ -150,7 +137,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     if (
       screen !== "setup" ||
       setupStep < 3 ||
-      snapshot?.isFounded ||
       !setupMapSrc ||
       !setupVenues.length ||
       cameraSource.current === setupMapSrc
@@ -159,7 +145,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     cameraSource.current = setupMapSrc;
     const venue = setupVenues.find((row) => row.id === selectedSetupVenueId) ?? setupVenues[0]!;
     setMapNavigation({ zoom: 1, centerX: venue.presentation.x ?? 0.5, centerY: venue.presentation.y ?? 0.5 });
-  }, [screen, setupStep, setupMapSrc, setupVenues, selectedSetupVenueId, snapshot?.isFounded]);
+  }, [screen, setupStep, setupMapSrc, setupVenues, selectedSetupVenueId]);
   const [validationAttempt, setValidationAttempt] = useState(0);
   const focusedValidationAttempt = useRef(0);
   const [validatedFields, setValidatedFields] = useState<string[]>([]);
@@ -198,7 +184,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     });
     return () => cancelAnimationFrame(frame);
   }, [setupProblem, inlineProblem, backgroundError, validationAttempt]);
-
   if (screen === "setup") {
     const wizardVillagers = setupFoundingVillagerIds.map((id) => ({
       id,
@@ -207,12 +192,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
     const nextPin =
       setupVenues.find((venue) => venue.id === movingSetupVenueId) ??
-      (!snapshot?.isFounded ? setupVenues.find((venue) => venue.id === selectedSetupVenueId) : undefined) ??
+      setupVenues.find((venue) => venue.id === selectedSetupVenueId) ??
       (setupWorkspace.paused
         ? undefined
         : setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null));
-    const simpleVenueEditor = !snapshot?.isFounded;
-    const setupIssues = foundingVenueIssues(setupVenues, snapshot?.isFounded ?? false);
+    const setupIssues = foundingVenueIssues(setupVenues, false);
     const openIssue = (issue: FoundingIssue) => {
       setSelectedSetupVenueId(issue.venueId);
       setSetupFocusIssue(issue);
@@ -229,7 +213,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       }));
       setMovingSetupVenueId(issue.field === "placement" ? issue.venueId : null);
     };
-    const mapReady = !!snapshot?.isFounded || (!!setupMapSrc && !setupMapBusy);
+    const mapReady = !!setupMapSrc && !setupMapBusy;
     const map = (interactive: boolean) => (
       <div className="villages-forging-map">
         {setupMapProblem ? (
@@ -248,21 +232,17 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           <MapStage
             src={setupMapSrc}
             alt={`Map of ${setupName || "your village"}`}
-            pins={
-              !snapshot?.isFounded
-                ? draftPins.map((pin) => ({
-                    ...pin,
-                    selected: nextPin?.id === pin.id,
-                    onSelect: interactive
-                      ? () => {
-                          setSelectedSetupVenueId(pin.id);
-                          setMovingSetupVenueId(pin.id);
-                          setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
-                        }
-                      : pin.onSelect,
-                  }))
-                : draftPins
-            }
+            pins={draftPins.map((pin) => ({
+              ...pin,
+              selected: nextPin?.id === pin.id,
+              onSelect: interactive
+                ? () => {
+                    setSelectedSetupVenueId(pin.id);
+                    setMovingSetupVenueId(pin.id);
+                    setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+                  }
+                : pin.onSelect,
+            }))}
             placing={
               interactive &&
               !!nextPin &&
@@ -270,30 +250,21 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               !setupEditorOpen &&
               setupWorkspace.view !== "details" &&
               !setupSuggestionsBusy &&
-              !setupVenueBusy &&
-              !snapshot?.isFounded
+              !setupVenueBusy
             }
-            view={
-              interactive
-                ? defaultView("contain")
-                : setupMapSource === "existing"
-                  ? savedTownMapView
-                  : defaultView("contain")
-            }
+            view={defaultView("contain")}
             shape={setupMapShape}
-            onPlace={
-              interactive && !snapshot?.isFounded ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined
-            }
+            onPlace={interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
             compact={false}
             mobile={false}
             fitToRoom={false}
-            exploration={!snapshot?.isFounded}
+            exploration
             navigationView={mapNavigation}
             onNavigationView={setMapNavigation}
             navigationControlsWhilePlacing
             keyboardPlacementId={interactive ? nextPin?.id : undefined}
             onNudgePin={
-              interactive && !snapshot?.isFounded && mapReady && !setupSuggestionsBusy && !setupVenueBusy
+              interactive && mapReady && !setupSuggestionsBusy && !setupVenueBusy
                 ? (id, dx, dy) => {
                     const venue = setupVenues.find((row) => row.id === id);
                     if (!venue) return;
@@ -321,7 +292,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       <div
         className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}
         data-step={setupStep}
-        data-map-first={setupStep === 3 && !snapshot?.isFounded ? "true" : undefined}
+        data-map-first={setupStep === 3 ? "true" : undefined}
         ref={rootRef}
       >
         <header className={`${ELEMENT_TAG}-setup-heading villages-forging-heading`}>
@@ -363,7 +334,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 <h3 className="villages-initial-residents" aria-label="Initial residents">
                   Initial residents
                 </h3>
-                {villagersError && !snapshot?.isFounded ? (
+                {villagersError ? (
                   <p role="alert" data-founding-problem tabIndex={-1}>
                     Choose one to three available founding villagers.
                   </p>
@@ -382,21 +353,17 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   portraits={portraits}
                   selectedIds={setupFoundingVillagerIds}
                   onChange={chooseRoster}
-                  disabled={busy || !!snapshot?.isFounded}
-                />
-              </section>
-              {!snapshot?.isFounded ? (
-                <FoundingAdmissions
-                  people={wizardVillagers}
-                  playerBackground={setupPlayerBackground ?? ""}
-                  admissions={setupResidentAdmissions}
-                  onPlayer={setSetupPlayerBackground}
-                  onAdmissions={setSetupResidentAdmissions}
                   disabled={busy}
                 />
-              ) : (
-                <PlayerBackgroundSummary background={setupPlayerBackground} />
-              )}
+              </section>
+              <FoundingAdmissions
+                people={wizardVillagers}
+                playerBackground={setupPlayerBackground ?? ""}
+                admissions={setupResidentAdmissions}
+                onPlayer={setSetupPlayerBackground}
+                onAdmissions={setSetupResidentAdmissions}
+                disabled={busy}
+              />
             </div>
           </div>
           {setupStep === 0 ? (
@@ -410,7 +377,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   >
                     <select
                       aria-label="Village Timezone"
-                      disabled={!!snapshot?.isFounded || busy}
+                      disabled={busy}
                       value={
                         controller.setupTimeZone || snapshot?.clock?.timeZone || snapshot?.village.timeZone || "UTC"
                       }
@@ -507,16 +474,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     max={snapshot?.settings.loreTokenBudgetMax ?? 3200}
                     disabled={busy}
                   />
-                  {snapshot?.isFounded ? (
-                    <label>
-                      Current World Facts
-                      <textarea
-                        autoComplete="off"
-                        value={setupWorldFacts.join("\n")}
-                        onChange={(event) => setSetupWorldFacts(event.target.value.split(/\r?\n/u))}
-                      />
-                    </label>
-                  ) : null}
                 </section>
               </div>
             </>
@@ -532,284 +489,230 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           {setupStep === 2 ? (
             <section className="villages-forging-card villages-map-panel" aria-label="Map artwork">
               <h3 aria-label="Map">Map</h3>
-              {snapshot?.isFounded ? (
-                <p>
-                  Change artwork and Venue markers in More → World Configuration → Maps. Existing locations are
-                  retained.
-                </p>
-              ) : (
-                <div className="villages-place-map-editor">
-                  <div className="villages-map-sources" role="group" aria-label="Map source">
-                    {(
-                      [
-                        ["simple", "Simple map", "Start now and replace the artwork later."],
-                        ["generate", "Generate artwork", "Generate a map from the information provided so far"],
-                        ["upload", "Upload image", "Use your own map artwork."],
-                      ] as const
-                    ).map(([value, label, description]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        aria-label={label}
-                        aria-pressed={setupMapSource === value}
-                        onClick={() => {
-                          if (setupMapSource === "upload" && value === "generate") setSetupMapProblem("");
-                          setSetupMapSource(value);
-                          setSetupMapReviewed(false);
-                        }}
-                      >
-                        <span className="villages-map-source-indicator" aria-hidden="true" />
-                        <span>
-                          <span className="villages-map-source-title">{label}</span>
-                          <small>{description}</small>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                  {setupMapSource === "generate" ? (
-                    <>
-                      <FoundingField
-                        title="Map Details"
-                        optional
-                        help="Describe what you want shown, arranged, or left out of the artwork."
-                      >
-                        <CircumstanceInput
-                          examples={MAP_EXAMPLES}
-                          aria-label="Map Details"
-                          rows={3}
-                          maxLength={1500}
-                          value={setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? "" : setupMapPrompt}
-                          onChange={(event) => setSetupMapPrompt(event.target.value)}
-                        />
-                      </FoundingField>
-                      <label>
-                        Art Style
-                        <SceneryStylePicker
-                          profileId={sceneryStyleProfileId}
-                          onChange={(id) => {
-                            setSceneryStyleProfileId(id);
-                            if (id !== null) setSceneryStyle("");
-                          }}
-                        />
-                      </label>
-                      {sceneryStyleProfileId === null ? (
-                        <label>
-                          Style Description
-                          <textarea
-                            autoComplete="off"
-                            aria-label="Scenery Style Description"
-                            maxLength={600}
-                            value={sceneryStyle}
-                            onChange={(event) => setSceneryStyle(event.target.value)}
-                          />
-                        </label>
-                      ) : null}
-                      <details>
-                        <summary>More options</summary>
-                        <label>
-                          Things to Avoid
-                          <textarea
-                            autoComplete="off"
-                            value={setupMapNegativePrompt}
-                            maxLength={1500}
-                            onChange={(event) => setSetupMapNegativePrompt(event.target.value)}
-                          />
-                        </label>
-                        <label>
-                          <input
-                            autoComplete="off"
-                            type="checkbox"
-                            checked={mapVisualLore}
-                            onChange={(event) => setMapVisualLore(event.target.checked)}
-                          />
-                          Use Village Lorebooks for map artwork
-                        </label>
-                      </details>
-                      <button
-                        type="button"
-                        className="villages-forging-primary villages-map-generate"
-                        disabled={busy || setupMapBusy || !setupSetting.trim()}
-                        onClick={() => void generateSetupTownMap()}
-                      >
-                        {setupMapBusy
-                          ? "Generating map…"
-                          : setupMapImageSource === "generate"
-                            ? "Generate again"
-                            : "Generate map"}
-                      </button>
-                      {setupMapProblem ? (
-                        <p className={`${ELEMENT_TAG}-error`} role="alert">
-                          {setupMapProblem}
-                        </p>
-                      ) : null}
-                      {!setupSetting.trim() ? <p>Add a Setting description first.</p> : null}
-                    </>
-                  ) : null}
-                  {setupMapSource === "upload" ? (
-                    <>
-                      <p className="villages-map-context">{MAP_UPLOAD_GUIDANCE}</p>
-                      <label>
-                        Upload image
-                        <input
-                          autoComplete="off"
-                          aria-label="Upload map image"
-                          type="file"
-                          accept="image/*"
-                          disabled={setupMapBusy}
-                          onChange={(event) => {
-                            void pickSetupTownMap(event.target.files?.[0]);
-                            event.target.value = "";
-                          }}
-                        />
-                      </label>
-                      {setupMapProblem ? (
-                        <p className={`${ELEMENT_TAG}-error`} role="alert">
-                          {setupMapProblem}
-                        </p>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {setupMapSrc ? (
-                    <figure>
-                      <img
-                        className="villages-forging-preview"
-                        src={setupMapSrc}
-                        width={setupMapSize?.width}
-                        height={setupMapSize?.height}
-                        alt="Selected village map"
-                      />
-                      {setupMapSize &&
-                      setupMapImageSource === "generate" &&
-                      Math.abs(setupMapSize.width / setupMapSize.height - 1.5) > 0.2 ? (
-                        <figcaption>
-                          The image provider returned a different shape from the requested 3:2 landscape map. This
-                          preview keeps the original proportions.
-                        </figcaption>
-                      ) : null}
-                    </figure>
-                  ) : null}
-                  {setupMapRequest?.phase === "paused" ? (
+              <div className="villages-place-map-editor">
+                <div className="villages-map-sources" role="group" aria-label="Map source">
+                  {(
+                    [
+                      ["simple", "Simple map", "Start now and replace the artwork later."],
+                      ["generate", "Generate artwork", "Generate a map from the information provided so far"],
+                      ["upload", "Upload image", "Use your own map artwork."],
+                    ] as const
+                  ).map(([value, label, description]) => (
                     <button
+                      key={value}
                       type="button"
+                      aria-label={label}
+                      aria-pressed={setupMapSource === value}
                       onClick={() => {
-                        setSetupMapProblem("");
-                        setSetupMapBusy(true);
-                        updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
+                        if (setupMapSource === "upload" && value === "generate") setSetupMapProblem("");
+                        setSetupMapSource(value);
+                        setSetupMapReviewed(false);
                       }}
                     >
-                      Check map status
+                      <span className="villages-map-source-indicator" aria-hidden="true" />
+                      <span>
+                        <span className="villages-map-source-title">{label}</span>
+                        <small>{description}</small>
+                      </span>
                     </button>
-                  ) : null}
+                  ))}
                 </div>
-              )}
+                {setupMapSource === "generate" ? (
+                  <>
+                    <FoundingField
+                      title="Map Details"
+                      optional
+                      help="Describe what you want shown, arranged, or left out of the artwork."
+                    >
+                      <CircumstanceInput
+                        examples={MAP_EXAMPLES}
+                        aria-label="Map Details"
+                        rows={3}
+                        maxLength={1500}
+                        value={setupMapPrompt === snapshot?.settings.townMapLayoutPrompt ? "" : setupMapPrompt}
+                        onChange={(event) => setSetupMapPrompt(event.target.value)}
+                      />
+                    </FoundingField>
+                    <label>
+                      Art Style
+                      <SceneryStylePicker
+                        profileId={sceneryStyleProfileId}
+                        onChange={(id) => {
+                          setSceneryStyleProfileId(id);
+                          if (id !== null) setSceneryStyle("");
+                        }}
+                      />
+                    </label>
+                    {sceneryStyleProfileId === null ? (
+                      <label>
+                        Style Description
+                        <textarea
+                          autoComplete="off"
+                          aria-label="Scenery Style Description"
+                          maxLength={600}
+                          value={sceneryStyle}
+                          onChange={(event) => setSceneryStyle(event.target.value)}
+                        />
+                      </label>
+                    ) : null}
+                    <details>
+                      <summary>More options</summary>
+                      <label>
+                        Things to Avoid
+                        <textarea
+                          autoComplete="off"
+                          value={setupMapNegativePrompt}
+                          maxLength={1500}
+                          onChange={(event) => setSetupMapNegativePrompt(event.target.value)}
+                        />
+                      </label>
+                      <label>
+                        <input
+                          autoComplete="off"
+                          type="checkbox"
+                          checked={mapVisualLore}
+                          onChange={(event) => setMapVisualLore(event.target.checked)}
+                        />
+                        Use Village Lorebooks for map artwork
+                      </label>
+                    </details>
+                    <button
+                      type="button"
+                      className="villages-forging-primary villages-map-generate"
+                      disabled={busy || setupMapBusy || !setupSetting.trim()}
+                      onClick={() => void generateSetupTownMap()}
+                    >
+                      {setupMapBusy
+                        ? "Generating map…"
+                        : setupMapImageSource === "generate"
+                          ? "Generate again"
+                          : "Generate map"}
+                    </button>
+                    {setupMapProblem ? (
+                      <p className={`${ELEMENT_TAG}-error`} role="alert">
+                        {setupMapProblem}
+                      </p>
+                    ) : null}
+                    {!setupSetting.trim() ? <p>Add a Setting description first.</p> : null}
+                  </>
+                ) : null}
+                {setupMapSource === "upload" ? (
+                  <>
+                    <p className="villages-map-context">{MAP_UPLOAD_GUIDANCE}</p>
+                    <label>
+                      Upload image
+                      <input
+                        autoComplete="off"
+                        aria-label="Upload map image"
+                        type="file"
+                        accept="image/*"
+                        disabled={setupMapBusy}
+                        onChange={(event) => {
+                          void pickSetupTownMap(event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {setupMapProblem ? (
+                      <p className={`${ELEMENT_TAG}-error`} role="alert">
+                        {setupMapProblem}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+                {setupMapSrc ? (
+                  <figure>
+                    <img
+                      className="villages-forging-preview"
+                      src={setupMapSrc}
+                      width={setupMapSize?.width}
+                      height={setupMapSize?.height}
+                      alt="Selected village map"
+                    />
+                    {setupMapSize &&
+                    setupMapImageSource === "generate" &&
+                    Math.abs(setupMapSize.width / setupMapSize.height - 1.5) > 0.2 ? (
+                      <figcaption>
+                        The image provider returned a different shape from the requested 3:2 landscape map. This preview
+                        keeps the original proportions.
+                      </figcaption>
+                    ) : null}
+                  </figure>
+                ) : null}
+                {setupMapRequest?.phase === "paused" ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSetupMapProblem("");
+                      setSetupMapBusy(true);
+                      updateSetupMapRequest({ ...setupMapRequest, phase: "waiting" });
+                    }}
+                  >
+                    Check map status
+                  </button>
+                ) : null}
+              </div>
             </section>
           ) : null}
           {setupStep === 3 ? (
             <>
-              {!snapshot?.isFounded ? (
-                <div className="villages-venue-heading">
-                  <h2>Starting Venues</h2>
-                  <div className="villages-quick-switch" role="group" aria-label="Venue setup">
-                    <QuickStartButton
-                      busy={setupSuggestionsBusy}
-                      disabled={setupVenueBusy || !setupVenues.length}
-                      pending={!!setupWorkspace.suggestionRequest}
-                      onGenerate={() => void suggestSetupVenues({ quickStart: true })}
-                    />
-                  </div>
+              <div className="villages-venue-heading">
+                <h2>Starting Venues</h2>
+                <div className="villages-quick-switch" role="group" aria-label="Venue setup">
+                  <QuickStartButton
+                    busy={setupSuggestionsBusy}
+                    disabled={setupVenueBusy || !setupVenues.length}
+                    pending={!!setupWorkspace.suggestionRequest}
+                    onGenerate={() => void suggestSetupVenues({ quickStart: true })}
+                  />
                 </div>
-              ) : null}
-              {simpleVenueEditor ? (
-                <QuickStartVenues
-                  venues={setupVenues}
-                  people={wizardVillagers}
-                  selectedId={selectedSetupVenueId}
-                  state={setupWorkspace}
-                  busy={setupSuggestionsBusy}
-                  imageBusy={setupVenueBusy || setupSuggestionsBusy}
-                  focusIssue={setupFocusIssue}
-                  saveError={draftSaveError || undefined}
-                  problem={setupProblem || undefined}
-                  map={
-                    <>
-                      {map(true)}
-                      {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
-                    </>
-                  }
-                  onState={setSetupWorkspace}
-                  onSelect={(venue) => {
-                    setSelectedSetupVenueId(venue.id);
-                    setSetupFocusIssue(null);
+              </div>
+              <QuickStartVenues
+                venues={setupVenues}
+                people={wizardVillagers}
+                selectedId={selectedSetupVenueId}
+                state={setupWorkspace}
+                busy={setupSuggestionsBusy}
+                imageBusy={setupVenueBusy || setupSuggestionsBusy}
+                focusIssue={setupFocusIssue}
+                saveError={draftSaveError || undefined}
+                problem={setupProblem || undefined}
+                map=<>
+                  {map(true)}
+                  {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
+                </>
+                onState={setSetupWorkspace}
+                onSelect={(venue) => {
+                  setSelectedSetupVenueId(venue.id);
+                  setSetupFocusIssue(null);
+                  setMovingSetupVenueId(null);
+                  setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
+                }}
+                onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
+                onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
+                onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
+                onArrange={() => {
+                  setMapNavigation(null);
+                  setSetupVenues((venues) => arrangeQuickStartVenues(venues, true));
+                  setSetupMapReviewed(false);
+                }}
+                onMove={(venue) => {
+                  if (!venue) {
+                    setSelectedSetupVenueId(null);
                     setMovingSetupVenueId(null);
-                    setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
-                  }}
-                  onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
-                  onGenerateImage={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
-                  onUploadImage={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
-                  onArrange={() => {
-                    setMapNavigation(null);
-                    setSetupVenues((venues) => arrangeQuickStartVenues(venues, true));
-                    setSetupMapReviewed(false);
-                  }}
-                  onMove={(venue) => {
-                    if (!venue) {
-                      setSelectedSetupVenueId(null);
-                      setMovingSetupVenueId(null);
-                      setSetupWorkspace((state) => ({ ...state, paused: true, view: "map" }));
-                      return;
-                    }
-                    setMapNavigation((current) => ({
-                      zoom: current?.zoom ?? 1,
-                      centerX: venue.presentation.x ?? 0.5,
-                      centerY: venue.presentation.y ?? 0.5,
-                    }));
-                    setSelectedSetupVenueId(venue.id);
-                    setMovingSetupVenueId(venue.id);
-                    setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
-                  }}
-                />
-              ) : (
-                <FoundingWorkspace
-                  venues={setupVenues}
-                  people={wizardVillagers}
-                  selectedId={selectedSetupVenueId}
-                  placementId={nextPin?.id ?? null}
-                  state={setupWorkspace}
-                  map={
-                    <>
-                      {map(true)}
-                      {setupPlacementError ? <p role="alert">{setupPlacementError}</p> : null}
-                    </>
+                    setSetupWorkspace((state) => ({ ...state, paused: true, view: "map" }));
+                    return;
                   }
-                  existing={snapshot?.isFounded ?? false}
-                  mapReady={mapReady}
-                  issues={setupIssues}
-                  focusIssue={setupFocusIssue}
-                  imageTarget={setupImageTarget}
-                  imageBusy={setupVenueBusy || setupSuggestionsBusy}
-                  suggestionsBusy={setupSuggestionsBusy}
-                  suggestionsChanged={!!setupSuggestionsKey && setupSuggestionsKey !== setupBeginningSourceKey}
-                  saveError={draftSaveError || undefined}
-                  onState={setSetupWorkspace}
-                  onSelect={(venue) => {
-                    setSelectedSetupVenueId(venue.id);
-                    setMovingSetupVenueId(null);
-                    setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
-                  }}
-                  onContinue={() => {
-                    const next = setupVenues.find(
-                      (venue) => venue.presentation.x === null || venue.presentation.y === null,
-                    );
-                    setSelectedSetupVenueId(next?.id ?? null);
-                    setMovingSetupVenueId(next?.id ?? null);
-                    setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
-                  }}
-                  onPatch={(venue) => patchSetupVenue(venue.id, () => venue)}
-                  onDraft={() => void suggestSetupVenues()}
-                  onGenerate={(venue, area, zoneId) => void generateSetupImage(venue, area, zoneId)}
-                  onUpload={(venue, area, file, zoneId) => void uploadSetupImage(venue, area, file, zoneId)}
-                />
-              )}
+                  setMapNavigation((current) => ({
+                    zoom: current?.zoom ?? 1,
+                    centerX: venue.presentation.x ?? 0.5,
+                    centerY: venue.presentation.y ?? 0.5,
+                  }));
+                  setSelectedSetupVenueId(venue.id);
+                  setMovingSetupVenueId(venue.id);
+                  setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+                }}
+              />
             </>
           ) : null}
           {setupStep === 4 ? (
@@ -831,7 +734,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       return (
                         <div key={person.id} className="villages-resident-review">
                           <strong>{person.name}</strong>
-                          {!snapshot?.isFounded && context ? (
+                          {context ? (
                             <>
                               {context.homeworld ? <p>Homeworld: {context.homeworld}</p> : null}
                               {context.startingSituation ? <p>{context.startingSituation}</p> : null}
@@ -956,26 +859,23 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             </button>
           ) : null}
           <span role="status" className="villages-forging-saved">
-            {snapshot?.isFounded
-              ? "Editing existing village"
-              : draftSaveError
-                ? "Draft not saved"
-                : draftSaving
-                  ? "Saving…"
-                  : draftSavedAt
-                    ? `Saved ${new Date(draftSavedAt).toLocaleTimeString()}`
-                    : "Preparing draft storage…"}
+            {draftSaveError
+              ? "Draft not saved"
+              : draftSaving
+                ? "Saving…"
+                : draftSavedAt
+                  ? `Saved ${new Date(draftSavedAt).toLocaleTimeString()}`
+                  : "Preparing draft storage…"}
           </span>
           <button
             type="button"
             disabled={busy || setupEditorOpen || setupVenueBusy || setupSuggestionsBusy}
             onClick={() => {
               if (setupImageClaim.current || setupSuggestionsClaim.current) return;
-              if (snapshot?.isFounded) setScreen("home");
-              else void exitSetupDraft();
+              void exitSetupDraft();
             }}
           >
-            {snapshot?.isFounded ? "Cancel changes" : "Save & exit"}
+            Save & exit
           </button>
           <button
             type="button"
@@ -1011,9 +911,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             {busy
               ? "Saving village…"
               : setupStep === 4
-                ? snapshot?.isFounded
-                  ? "Save this village"
-                  : "Found village"
+                ? "Found village"
                 : setupStep === 3
                   ? "Review village"
                   : setupStep === 2

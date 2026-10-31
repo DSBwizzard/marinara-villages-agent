@@ -84,14 +84,18 @@ function fixture(name: string) {
     owners.push(scopedActivation());
   };
   const service = createFoundingSetup({
-    async readVillageState() {
-      note("read");
+    async peekVillageAuthority() {
+      note("peek");
       if (pause) {
         pause = false;
         entered.resolve();
         await gate.promise;
         owners.push(scopedActivation());
       }
+      return structuredClone(state);
+    },
+    async readVillageState() {
+      note("read");
       return structuredClone(state);
     },
     async mutateVillageState(update) {
@@ -158,9 +162,6 @@ function fixture(name: string) {
       note("prepare");
       assert.equal(state.villagers.length, 1);
       assert(state.setupAt);
-    },
-    async queueVillagerAgenda(id) {
-      note("agenda:" + id);
     },
     queueMicrotask(work) {
       note("schedule");
@@ -279,12 +280,12 @@ for (const invalid of ["missing-purpose", "layout-mismatch"]) {
       url: "/setup",
       payload: { ...payload, timeZone: "America/Los_Angeles" },
     });
-    assert.equal(changed.statusCode, 400);
-    assert.deepEqual(api.state, before, "An existing world's timezone stays fixed");
+    assert.equal(changed.statusCode, 409);
+    assert.deepEqual(api.state, before, "A second setup cannot change an existing world");
     const { timeZone: _timeZone, foundingResidentAdmissions: _admissions, ...legacyPayload } = payload;
     const legacy = await server.inject({ method: "POST", url: "/setup", payload: legacyPayload });
-    assert.equal(legacy.statusCode, 200, legacy.body);
-    assert.equal(api.state.timeZone, "Asia/Tokyo", "Omitting timezone preserves existing saved worlds");
+    assert.equal(legacy.statusCode, 409, legacy.body);
+    assert.deepEqual(api.state, before, "Omitting founding fields cannot reopen setup");
   } finally {
     dispose();
     await server.close();
@@ -323,28 +324,23 @@ assert.equal(direct.calls.filter((call) => call === "mutate").length, 2);
 assert.equal(direct.calls.filter((call) => call === "schedule").length, 1);
 assert.equal(direct.calls.filter((call) => call === "prepare").length, 1);
 assert(!direct.calls.includes("propose"));
-assert(
-  !direct.calls.includes("agenda:same"),
-  "Fresh setup schedules preparation rather than separate duplicate admission.",
-);
 const saved = structuredClone(direct.state);
+const callsBeforeReopening = direct.calls.length;
 await assert.rejects(
   direct.service.runVillageSetup({ ...input("Direct"), foundingDetails: "Changed starting history" }),
-  /locked/,
+  /already founded/,
 );
 assert.deepEqual(direct.state, saved);
-await direct.service.runVillageSetup({
-  ...input("Direct"),
-  foundingResidentAdmissions: undefined,
-  foundingSpriteRevisions: { same: -1 },
-});
-assert.equal(
-  direct.calls.filter((call) => call === "sprites:same").length,
-  1,
-  "Later village setup does not consume an existing resident's obsolete sprite draft.",
+await assert.rejects(
+  direct.service.runVillageSetup({
+    ...input("Direct"),
+    foundingResidentAdmissions: undefined,
+    foundingSpriteRevisions: { same: -1 },
+  }),
+  /already founded/,
 );
-assert.deepEqual(direct.state.villagers, saved.villagers);
-assert.equal(direct.state.setupAt, saved.setupAt, "Configuration saves retain checkpoint and history ownership.");
+assert.deepEqual(direct.state, saved);
+assert.deepEqual(direct.calls.slice(callsBeforeReopening), ["peek", "peek"], "Rejected setup has no side effects");
 
 const suggestions = fixture("Suggestions");
 assert.deepEqual(await suggestions.service.suggestFoundingPlaces("Observatory", ["book"], 1600), {
