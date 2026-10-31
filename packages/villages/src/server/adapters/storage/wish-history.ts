@@ -94,6 +94,10 @@ export function readWishHistoryHead(raw: unknown, scope: WishHistoryScope): Wish
   memoryRequire(tail.root && tail.count > 0, "empty Wish history must have no head");
   return immutableMemoryValue({ format: 1, world, count: tail.count, root: tail.root });
 }
+export function wishHistoryFingerprint(raw: unknown, scope: WishHistoryScope): string {
+  const head = readWishHistoryHead(raw, scope);
+  return "wishes:" + wishHistoryWorld(scope) + ":" + createHash("sha256").update(JSON.stringify(head)).digest("hex");
+}
 function header(raw: unknown, id: string, world: string): Header {
   memoryObject(raw, ["fields", "conditions", "history"]);
   memoryObject(raw.fields);
@@ -342,7 +346,7 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
       original = usable() ? associations.get(socialWishCollectionSource(input)) : undefined;
     const encoded = encodeWishHistory(input, scope, original?.head?.world === world ? original : undefined);
     // Comparison only: no publication, ownership or persisted-head cache entry.
-    return "wishes:" + world + ":" + createHash("sha256").update(JSON.stringify(encoded.head)).digest("hex");
+    return wishHistoryFingerprint(encoded.head, scope);
   }
   async function publish(pages: Map<string, MemoryPageData>) {
     for (const [id, data] of pages) {

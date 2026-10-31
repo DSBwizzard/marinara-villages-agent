@@ -151,6 +151,11 @@ function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedA
     relationship(value, "socialHead", scope, into);
   }
 }
+export function capturedInputOwners(kind: BackgroundKind, raw: unknown, seed: string): CapturedAdmissionOwners {
+  const into = emptyOwners();
+  input(kind, raw, seed, into);
+  return into;
+}
 
 /** Closed paths only: prose and arbitrary saved objects cannot create history ownership. */
 export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {

@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mock } from "node:test";
+import { createCapturedAdmissions } from "../packages/villages/src/server/adapters/storage/captured-admission-store.js";
 import {
   capturedJobOwners,
   capturedWorldOwners,
@@ -12,6 +15,7 @@ import {
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { fixtureWish, wishTime } from "./helpers/social-wishes-fixture.js";
+import { withRepairWork } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 
 const scope = { seed: "captured-admissions", setupAt: wishTime() };
 const head = encodeWishHistory([fixtureWish({ wish: "Preserve exact café 東京 evidence" })], {
@@ -152,6 +156,291 @@ for (const change of [
   const invalid = structuredClone(job);
   change(invalid);
   assert.throws(() => capturedJobOwners(invalid));
+}
+
+// Publish and reload exact typed roles using the real immutable page stores.
+{
+  const f = sceneHistoryFixture(),
+    store = createCapturedAdmissions(f.gate.documents),
+    none = { wishes: [], relationships: [] };
+  try {
+    const wish = {
+      ...fixtureWish({ wish: "A lasting shared experience" }),
+      history: Array.from({ length: 25_000 }, (_, index) => ({
+        id: "event:" + index,
+        at: wishTime(),
+        kind: "progress" as const,
+        text: "Exact private café 東京 history " + index + " evidence.".repeat(8),
+        sourceId: "source:" + index,
+        lineIds: ["line:" + index],
+      })),
+    };
+    assert(Buffer.byteLength(JSON.stringify(wish)) > 4 * 1024 * 1024);
+    const logicalFrame = {
+      ...scope,
+      villagers: [
+        { characterId: "ada", cardSnapshot: { name: "Ada", capturedAt: "first-incarnation" }, wishes: [wish] },
+      ],
+    };
+    function social(label: string) {
+      const state = defaultRelationshipState(scope.seed);
+      state.edges[JSON.stringify(["ada", "player"])] = {
+        fromId: "ada",
+        toId: "player",
+        revision: 1,
+        connection: "Neighbor",
+        stance: label,
+        expectations: [],
+        concerns: [],
+        experiences: [],
+        updatedAt: wishTime(),
+        records: {
+          boundary: {
+            id: "boundary",
+            revision: 1,
+            kind: "boundary",
+            text: "Exact private agreement " + label,
+            participants: ["ada", "player"],
+            status: "stated",
+            knownBy: ["ada"],
+            evidenceIds: ["exact:line"],
+          },
+        },
+      };
+      return state;
+    }
+    const input = {
+      ...planning(),
+      admitted: logicalFrame,
+      context: {
+        residents: [{ characterId: "ada", capturedAt: "first-incarnation", wishes: [wish] }],
+        social: { state: social("original") },
+      },
+    };
+    const native = await withRepairWork(async () => {
+      const prepared = await store.prepareInput("resident-planning", input, scope.seed, none);
+      await f.gate.documents.create({
+        id: "captured-job",
+        packageId: "villages",
+        kind: "background-work",
+        name: "Capture",
+        description: "",
+        data: { ...job, replacement: undefined, input: prepared },
+        createdAt: wishTime(),
+        updatedAt: wishTime(),
+      });
+      return prepared;
+    });
+    assert.equal(native.context.residents[0].wishes, undefined);
+    assert.equal(native.admitted.villagers[0].wishes, undefined);
+    assert.equal(native.context.social.state, undefined);
+    assert(Buffer.byteLength(JSON.stringify(native)) < 5000);
+    const decoded = await store.readInput("resident-planning", structuredClone(native), scope.seed);
+    const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+    assert.equal(digest(decoded.admitted.villagers[0].wishes[0]), digest(wish));
+    assert.deepEqual(decoded.context.social.state, input.context.social.state);
+    assert.notEqual(decoded.context.residents[0].wishes, decoded.admitted.villagers[0].wishes);
+    assert.throws(() => {
+      decoded.admitted.villagers[0].wishes[0].history[10_000].text = "Caller rewrite";
+    }, TypeError);
+    decoded.context.residents[0].wishes.pop();
+    assert.equal(
+      decoded.admitted.villagers[0].wishes.length,
+      1,
+      "Context views do not share mutable collection arrays.",
+    );
+    const restarted = createCapturedAdmissions(f.documents),
+      restored = await restarted.readInput("resident-planning", native, scope.seed);
+    assert.equal(
+      digest(restored.admitted.villagers[0].wishes[0]),
+      digest(wish),
+      "Cold input loading preserves exact evidence.",
+    );
+
+    const stringify = JSON.stringify;
+    let serialized = 0,
+      interior = false,
+      maxSerialized = 0,
+      maxRead = 0,
+      maxWritten = 0;
+    const spy = mock.method(JSON, "stringify", (...args: unknown[]) => {
+      const text = Reflect.apply(stringify, JSON, args);
+      if (typeof text === "string") {
+        serialized += Buffer.byteLength(text);
+        interior ||= text.includes("Exact private café 東京 history 10000");
+      }
+      return text;
+    });
+    try {
+      for (let index = 0; index < 20; index++) {
+        f.reset();
+        serialized = 0;
+        await withRepairWork(async () => {
+          const owner = await f.gate.documents.getById("villages", "captured-job");
+          const prepared = await restarted.prepareInput(
+            "resident-planning",
+            restored,
+            scope.seed,
+            capturedJobOwners(owner!.data),
+          );
+          await f.gate.documents.update({
+            id: owner!.id,
+            packageId: "villages",
+            expectedRevision: owner!.revision,
+            name: "Capture",
+            description: "",
+            data: { ...owner!.data, input: prepared, checkpoint: index },
+            updatedAt: wishTime(),
+          });
+        });
+        const io = f.metrics();
+        maxRead = Math.max(maxRead, io.readBytes);
+        maxWritten = Math.max(maxWritten, io.writtenBytes);
+        maxSerialized = Math.max(maxSerialized, serialized);
+      }
+    } finally {
+      spy.mock.restore();
+    }
+    assert.equal(interior, false, "Repeated job metadata publication never serializes retained interior history.");
+    assert(
+      maxRead < 64_000 && maxWritten < 64_000 && maxSerialized < 128_000,
+      JSON.stringify({ maxRead, maxWritten, maxSerialized }),
+    );
+    console.log(
+      JSON.stringify({
+        workload: "captured-background-input",
+        events: 25_000,
+        updates: 20,
+        maxRead,
+        maxWritten,
+        maxSerialized,
+      }),
+    );
+
+    const socialInput = {
+      entry: {
+        seed: scope.seed,
+        opportunity: { actorIds: ["ada"] },
+        admitted: restored.admitted,
+        relationshipSnapshot: social("original"),
+      },
+      social: social("review"),
+    };
+    const encodedSocial = await withRepairWork(() =>
+      store.prepareInput("social-recovery", socialInput, scope.seed, none),
+    );
+    assert.notDeepEqual(encodedSocial.entry.relationshipHead, encodedSocial.socialHead);
+    const socialRead = await store.readInput("social-recovery", encodedSocial, scope.seed);
+    assert.deepEqual(socialRead.entry.relationshipSnapshot, socialInput.entry.relationshipSnapshot);
+    assert.deepEqual(socialRead.social, socialInput.social);
+    const mailInput = {
+      seed: scope.seed,
+      residentId: "ada",
+      incarnation: "first-incarnation",
+      admitted: { ...restored.admitted, relationshipContext: social("sender") },
+    };
+    const encodedMail = await withRepairWork(() => store.prepareInput("personal-mail", mailInput, scope.seed, none));
+    const mailRead = await store.readInput("personal-mail", encodedMail, scope.seed);
+    assert.deepEqual(mailRead.admitted.relationshipContext, mailInput.admitted.relationshipContext);
+    const unknown = await withRepairWork(() =>
+      store.prepareInput(
+        "personal-mail",
+        {
+          ...mailInput,
+          admitted: { ...restored.admitted, relationshipContext: undefined },
+        },
+        scope.seed,
+        none,
+      ),
+    );
+    const knownEmpty = await withRepairWork(() =>
+      store.prepareInput(
+        "personal-mail",
+        {
+          ...mailInput,
+          admitted: { ...restored.admitted, relationshipContext: defaultRelationshipState(scope.seed) },
+        },
+        scope.seed,
+        none,
+      ),
+    );
+    assert.equal(unknown.admitted.relationshipHead, null);
+    assert(knownEmpty.admitted.relationshipHead);
+
+    const outboxes = await withRepairWork(() =>
+      store.prepareWorld(
+        {
+          version: 13,
+          ...scope,
+          socialOutbox: [socialInput.entry],
+          socialMailOutbox: [{ input: mailInput }],
+        },
+        none,
+      ),
+    );
+    assert.equal(capturedWorldOwners({ version: 13, ...scope, ...outboxes }).wishes.length, 2);
+    for (const action of ["prepare", "read"] as const) {
+      let resume!: () => void, started!: () => void;
+      const held = new Promise<void>((resolve) => {
+          resume = resolve;
+        }),
+        waiting = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+      let paused = false;
+      const documents = new Proxy(f.gate.documents, {
+        get(target, key) {
+          if (key === "getById")
+            return async (pkg: string, id: string) => {
+              if (!paused && id === native.admitted.villagers[0].wishHead.root.id) {
+                paused = true;
+                started();
+                await held;
+              }
+              return target.getById(pkg, id);
+            };
+          const value = Reflect.get(target, key);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const caller = structuredClone(native),
+        racing = createCapturedAdmissions(documents);
+      const pending =
+        action === "prepare"
+          ? withRepairWork(() => racing.prepareInput("resident-planning", caller, scope.seed, none))
+          : racing.readInput("resident-planning", caller, scope.seed);
+      await waiting;
+      caller.admitted.villagers[0].wishHead = encodeWishHistory([fixtureWish({ wish: "Unpublished swapped value" })], {
+        ...scope,
+        actorId: "ada",
+      }).head;
+      caller.context.social.head = relationship("9");
+      resume();
+      const captured = await pending;
+      if (action === "prepare") {
+        assert.deepEqual(captured.admitted.villagers[0].wishHead, native.admitted.villagers[0].wishHead);
+        assert.deepEqual(captured.context.social.head, native.context.social.head);
+      } else {
+        assert.equal(digest(captured.admitted.villagers[0].wishes[0]), digest(wish));
+        assert.deepEqual(captured.context.social.state, input.context.social.state);
+      }
+    }
+    const savedChild = [...f.rows.values()].find(
+      (row) => row.kind === "memory-page" && JSON.stringify(row.data).includes("Exact private café 東京 history 10000"),
+    );
+    assert(savedChild);
+    f.rows.delete(savedChild.id);
+    const before = structuredClone(f.rows);
+    await assert.rejects(withRepairWork(() => store.prepareInput("resident-planning", native, scope.seed, none)));
+    assert.deepEqual(
+      f.rows,
+      before,
+      "Warm decoded data cannot republish a native reference with a missing dependency.",
+    );
+  } finally {
+    f.release();
+    f.gate.dispose();
+  }
 }
 for (const change of [
   (value: any) => {
