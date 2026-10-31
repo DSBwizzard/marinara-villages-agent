@@ -12,7 +12,9 @@ export interface SceneArchivePorts {
 }
 /** Owns archive commands and their lazy connections. Construction performs no work. */
 export function createSceneArchive({ villagesDocuments, readActive }: SceneArchivePorts) {
-  async function listVenueVisits(filter: { placeId?: string; characterId?: string } = {}): Promise<VenueScene[]> {
+  async function listVenueVisits(
+    filter: { placeId?: string; characterId?: string; villageSeed?: string; limit?: number } = {},
+  ): Promise<VenueScene[]> {
     return withRepairWork(async () => {
       const documents = villagesDocuments();
       const records = await documents.list(VILLAGES_PACKAGE_ID, SESSION_KIND);
@@ -21,10 +23,14 @@ export function createSceneArchive({ villagesDocuments, readActive }: SceneArchi
         .filter(
           ({ session }) =>
             session.status === "closed" &&
+            (!filter.villageSeed || session.villageSeed === filter.villageSeed) &&
             (!filter.placeId || session.placeId === filter.placeId) &&
             (!filter.characterId || session.participants.some((person) => person.characterId === filter.characterId)),
         )
-        .sort((a, b) => b.session.startedAt.localeCompare(a.session.startedAt));
+        .sort(
+          (a, b) => b.session.startedAt.localeCompare(a.session.startedAt) || a.session.id.localeCompare(b.session.id),
+        )
+        .slice(0, filter.limit);
       const scenes: VenueScene[] = [];
       for (const { record } of selected) scenes.push(await readSceneTranscriptIndex(documents, record.data));
       return scenes;
