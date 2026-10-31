@@ -9,6 +9,7 @@ import AdmZip from "adm-zip";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import type { SceneOriginProvider } from "../sources/package-shared.js";
 
 // Archive-identical production server + actual HTTP routes. Synthetic host/models, zero external providers.
@@ -43,6 +44,7 @@ village.villagers = [
     },
     addedAt: at,
     ingestSchedule: false,
+    wishes: [],
   },
 ] as unknown as typeof village.villagers;
 const scene = coerceSession({
@@ -66,6 +68,7 @@ const scene = coerceSession({
   lines: [],
   submissions: [],
 });
+scene.continuity = captureSceneContinuity(village, scene, Date.parse(at));
 const records = new Map<string, { id: string; packageId: string; kind: string; revision: number; data: unknown }>([
   ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: village }],
   [

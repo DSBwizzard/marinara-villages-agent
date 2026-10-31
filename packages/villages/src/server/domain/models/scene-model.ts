@@ -248,7 +248,7 @@ export type VenueScene = {
   recap: string;
 };
 export type VenueSession = VenueScene;
-export type ActiveVenue = { sessionId: string; placeId: string };
+export type ActiveVenue = { sessionId: string; placeId: string; playbackSceneId?: string };
 export type GreetingTrace = (stage: string, elapsedMs: number, detail?: string) => void;
 export type VenueReplyFailureKind =
   | "invalid-json"

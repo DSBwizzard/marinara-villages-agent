@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -13,6 +15,7 @@ const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const now = new Date().toISOString();
 const snapshot = {
+  worldScope: "a".repeat(64),
   status: "ready",
   isFounded: true,
   village: {
@@ -126,7 +129,11 @@ const api = async (route) => {
   } else if (path.endsWith("/operation")) value = { operation: null };
   else if (path.endsWith("/catalog")) value = { characters: [] };
   else if (path.endsWith("/relationships")) value = { profiles: [], starting: { pending: false, summaries: [] } };
-  await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+  await fulfill(route, {
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+  });
 };
 const html =
   "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>";

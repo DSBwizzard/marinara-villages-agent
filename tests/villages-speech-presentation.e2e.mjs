@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -51,7 +53,11 @@ try {
       else if (path.endsWith("/interpretation-settings"))
         value = { settings: { decisionsEnabled: false }, status: { available: false } };
       else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.route("http://speech.test/", (route) =>
       fulfill(route, {

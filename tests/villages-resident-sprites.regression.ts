@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { villagesWalk } from "../packages/villages/src/client/features/scenes/villages-chat-paragraphs.ts";
+import { villagesWalk } from "../packages/villages/src/shared/helpers/scene-paragraphs.ts";
 import {
   selectSpriteImage,
   spriteFacing,

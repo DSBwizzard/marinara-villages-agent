@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -61,6 +63,7 @@ const place = (id, x, y) => ({
   state: { revision: 0, recent: null, updatedAt: now },
 });
 const snapshot = {
+  worldScope: "a".repeat(64),
   status: "ready",
   isFounded: true,
   village: {
@@ -225,7 +228,10 @@ try {
         value = { session, recordEvents: [] };
       } else if (/rooms\/(greet|turn)|town-map\/generate/.test(path))
         throw Error("Unexpected generation request: " + path);
-      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+      });
     });
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {

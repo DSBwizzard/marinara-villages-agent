@@ -1,5 +1,4 @@
-import type { VillagesWalkBeat } from "../../../shared/contracts/scene-beat.js";
-import type { VillagesWalkAside } from "../../shared/types.js";
+import type { VillagesWalkBeat, VillagesWalkAside } from "../contracts/scene-beat.js";
 
 // Villages — reading a villager's answer a paragraph at a time.
 //

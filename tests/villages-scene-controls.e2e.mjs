@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
@@ -138,7 +140,11 @@ try {
             };
           value = { session, recordEvents: [] };
         }
-        await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+        await fulfill(route, {
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+        });
       });
       await page.route("http://scene-controls.test/", (route) =>
         fulfill(route, {

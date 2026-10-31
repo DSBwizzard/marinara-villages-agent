@@ -6,6 +6,8 @@ export interface SceneQueries {
   readProjectTurnEvidence: import("./scene-query-service.js").SceneQueryService["readProjectTurnEvidence"];
   progressBacklog: import("./scene-query-service.js").SceneQueryService["progressBacklog"];
   readHistoryPage: import("./scene-query-service.js").SceneQueryService["readHistoryPage"];
+  readPlaybackPage: import("./scene-query-service.js").SceneQueryService["readPlaybackPage"];
+  projectSceneResponse: import("./scene-query-service.js").SceneQueryService["projectSceneResponse"];
   listVenueVisits: typeof import("./archive.js").listVenueVisits;
   listRetiredProjectScenes?: (seed: string) => Promise<import("../../domain/models/scene-model.js").VenueScene[]>;
   processSavedExchange: typeof import("./progress.js").processSavedExchange;
@@ -27,4 +29,10 @@ export async function progressBacklog(...args: Parameters<SceneQueries["progress
 }
 export async function readHistoryPage(...args: Parameters<SceneQueries["readHistoryPage"]>) {
   return queriesBinding.get().readHistoryPage(...args);
+}
+export async function readPlaybackPage(...args: Parameters<SceneQueries["readPlaybackPage"]>) {
+  return queriesBinding.get().readPlaybackPage(...args);
+}
+export async function projectSceneResponse(...args: Parameters<SceneQueries["projectSceneResponse"]>) {
+  return queriesBinding.get().projectSceneResponse(...args);
 }

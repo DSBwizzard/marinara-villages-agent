@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -232,6 +234,7 @@ try {
         const message = lastTurn.message;
         session = {
           ...session,
+          submissions: [...(session.submissions ?? []), { id: lastTurn.submissionId, replyLineIds: ["answer"] }],
           lines: [
             ...session.lines,
             { id: "player", role: "user", speakerId: "", name: "", content: message, at: now },
@@ -285,7 +288,11 @@ try {
         session = { ...session, status: "closed", endedAt: now };
         value = { session, recordEvents: [] };
       }
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, fixtureSnapshot.worldScope)),
+      });
     });
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {

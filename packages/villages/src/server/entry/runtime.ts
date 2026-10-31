@@ -397,6 +397,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const sceneRepository = createSceneRepository({
     villagesDocuments,
     mutateDocument: createDocumentMutator(villagesDocuments),
+    onPlaybackReleased: (id) => scheduleRetirement(id),
   });
   const sceneTerminals = createSceneTerminalStore({
     villagesDocuments,
@@ -771,6 +772,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseSceneCommands = configureSceneCommands(
     createSceneCommands({
+      selectActiveScene: sceneRepository.selectActiveScene,
       readCapturedWishContexts: (contexts, scene) => createSceneWishContexts(villagesDocuments()).read(contexts, scene),
       sceneNarrative,
       applySavedStartingTies: startingTies.applySaved,

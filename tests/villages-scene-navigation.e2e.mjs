@@ -1,4 +1,6 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { build } from "../scripts/esbuild.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -66,7 +68,7 @@ try {
           }
           return fulfill(route, {
             contentType: "application/json",
-            body: JSON.stringify({ session: restore ? session : null }),
+            body: JSON.stringify(authorSceneResponse({ session: restore ? session : null }, snapshot.worldScope)),
           });
         }
         return fulfill(route, { contentType: "application/json", body: JSON.stringify(sceneSnapshot) });
@@ -152,7 +154,12 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
     }
     return fulfill(route, {
       contentType: "application/json",
-      body: JSON.stringify(route.request().url().endsWith("/rooms/active") ? { session } : snapshot),
+      body: JSON.stringify(
+        authorSceneResponse(
+          route.request().url().endsWith("/rooms/active") ? { session } : snapshot,
+          snapshot.worldScope,
+        ),
+      ),
     });
   });
   await page.goto("http://scene-guard.test/");
@@ -221,7 +228,7 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   await expect.poll(() => !!guardRead).toBe(true);
   await fulfill(guardRead, {
     contentType: "application/json",
-    body: JSON.stringify({ session: { ...session, status: "opening" } }),
+    body: JSON.stringify(authorSceneResponse({ session: { ...session, status: "opening" } }, snapshot.worldScope)),
   });
   await expect(page.locator("#screen")).toHaveText("room");
   await expect.poll(() => page.evaluate(() => window.navigation.room?.id)).toBe("guard");

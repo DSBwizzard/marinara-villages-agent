@@ -1,6 +1,6 @@
 import type { VenueScene } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-function publishedTurn(value: unknown) {
+export function sceneTurnPublished(value: unknown) {
   const turn = asRecord(value);
   return asRecord(turn.semanticProvenance).version !== 2 || turn.semanticReady === true;
 }
@@ -8,7 +8,7 @@ function unpublishedLines(submissions: unknown[]) {
   return new Set(
     submissions.flatMap((entry) => {
       const turn = asRecord(entry);
-      return !publishedTurn(turn) ? ((asRecord(turn.processing).lineIds as string[]) ?? []) : [];
+      return !sceneTurnPublished(turn) ? ((asRecord(turn.processing).lineIds as string[]) ?? []) : [];
     }),
   );
 }
@@ -26,14 +26,17 @@ export function publicSceneHistoryHearing(value: unknown) {
   const scene = asRecord(value);
   return privateSceneHearing({
     ...scene,
-    submissions: Array.isArray(scene.submissions) ? scene.submissions.filter(publishedTurn) : [],
+    submissions: Array.isArray(scene.submissions) ? scene.submissions.filter(sceneTurnPublished) : [],
   });
 }
 export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
   const policy = (turn: unknown) => [
-    publishedTurn(turn),
+    sceneTurnPublished(turn),
     publicSceneHistoryHearing({ submissions: [turn] }),
     [...unpublishedLines([turn])],
+    asRecord(turn).activeIdsAtTurn,
+    asRecord(turn).activeIdsAfterTurn,
+    asRecord(turn).replyLineIds,
   ];
   return JSON.stringify(policy(before)) === JSON.stringify(policy(after));
 }
@@ -55,6 +58,53 @@ export function sceneProcessingSummary(scene: VenueScene) {
     pending: domains.filter((domain) => domain.status === "pending").length,
     failed: domains.filter((domain) => domain.status === "failed").length,
     rejected: domains.filter((domain) => domain.status === "rejected").length,
+  };
+}
+/** Current authority is explicit; immutable playback carries the separately paged prose. */
+export function publicSceneAuthority(scene: VenueScene) {
+  const fields = [
+    "id",
+    "placeId",
+    "placeName",
+    "spaceClass",
+    "zoneId",
+    "grantedZoneIds",
+    "privateSpaceId",
+    "zoneGrants",
+    "doorwayContacts",
+    "entryOffers",
+    "area",
+    "privateOwnerId",
+    "privateAccessOwnerId",
+    "startedAt",
+    "endedAt",
+    "lastActivityAt",
+    "endReason",
+    "status",
+    "activeIds",
+    "sceneRevision",
+    "memoryMode",
+    "openingReader",
+    "openingIntroductionResidentId",
+    "semanticVersion",
+  ] as const;
+  const selected = Object.fromEntries(fields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]]));
+  const projected = publicSceneResponse({
+    ...selected,
+    lines: [],
+    submissions: [],
+    continuity: scene.continuity,
+    sceneAttendance: scene.sceneAttendance,
+    pendingAttention: scene.pendingAttention,
+    spinoff: scene.spinoff,
+  });
+  const last = scene.submissions.at(-1);
+  const { lines: _lines, submissions: _submissions, ...authority } = projected;
+  return {
+    ...authority,
+    version: 1 as const,
+    processingSummary: sceneProcessingSummary(scene),
+    ...(last ? { latestTurn: { id: last.id, at: last.at, published: sceneTurnPublished(last) } } : {}),
   };
 }
 export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, privateHearing = false): T {
@@ -84,7 +134,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
   if (Array.isArray(row.lines) && Array.isArray(row.submissions)) {
     const hidden = unpublishedLines(row.submissions);
     row.lines = row.lines.filter((line) => !hidden.has(asRecord(line).id as string));
-    row.submissions = row.submissions.filter(publishedTurn);
+    row.submissions = row.submissions.filter(sceneTurnPublished);
   }
   privateHearing ||= privateSceneHearing(row);
   const pending = asRecord(row.pendingAttention);

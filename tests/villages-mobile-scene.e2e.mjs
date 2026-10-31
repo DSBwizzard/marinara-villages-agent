@@ -1,4 +1,6 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -174,7 +176,11 @@ try {
         session.endedAt = now;
         value = { session, recordEvents: [] };
       }
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+      });
     });
     await page.route("http://scene-groups.test/", (route) =>
       fulfill(route, {

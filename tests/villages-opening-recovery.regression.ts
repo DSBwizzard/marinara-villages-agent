@@ -115,6 +115,10 @@ const commands = createSceneCommands({
   mutateVillageState,
   readSession: async () => saved,
   refreshZoneParticipants: async (scene: typeof saved) => scene,
+  selectActiveScene: async (id: string, placeId: string) => {
+    sceneWrites++;
+    pointer = { sessionId: id, placeId };
+  },
   mutateDocument: async (id: string, _slot: unknown, mutate: (value: typeof pointer) => void) => {
     assert.equal(id, ACTIVE_ID, "recovery cannot replace a saved Scene");
     sceneWrites++;

@@ -1,6 +1,7 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
-import { sceneFixture } from "./fixtures/scene-browser.fixture.mjs";
+import { sceneFixture, scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const sceneBundle = await sceneFixture();
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
@@ -221,18 +222,14 @@ try {
               activeIdsAfterTurn: session.activeIds,
               replyLineIds: ["bye"],
             });
-          } else {
-            session = {
-              ...session,
-              stagingVersion: undefined,
-              activeIds: castIds,
-              lines: [session.lines[0]],
-              submissions: [],
-            };
           }
           value = { session, verdict: null, action: null, recordEvents: [] };
         }
-        await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+        await fulfill(route, {
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+        });
       };
       await page.route("**/api/villages**", api);
       async function mount(target = page) {
@@ -470,13 +467,7 @@ try {
         await expect(people).toHaveCount(count, "backward reading restores departed residents");
         await next.click();
       }
-      // Older visits retain their row centers with enlarged mobile artwork.
-      await composer.fill("A legacy visit.");
-      if (count === 1) phase = 2;
-      await page.getByRole("button", { name: "Send", exact: true }).click();
-      await expect(cast).toHaveAttribute("data-staging", "false");
-      assert.equal(await mara.evaluate((node) => getComputedStyle(node).position), mobile ? "absolute" : "relative");
-      await checkSpriteSize(mobile);
+      session = { ...session, id: "sprite-" + count, activeIds: castIds, lines: [session.lines[0]], submissions: [] };
       fixture.villagers[0].sprite.framing.mode = "half";
       await page.reload();
       await page.addScriptTag({ content: sceneBundle });
@@ -563,7 +554,7 @@ try {
         assert.equal(
           await page.evaluate(() => window.spriteFlips.length),
           beforeLoading,
-          "loading does not start a flip",
+          "loading does not start a flip: " + JSON.stringify(await page.evaluate(() => window.spriteFlips)),
         );
         releaseArtwork();
         await expect(img).toHaveAttribute("src", "http://villages.test/delayed.png");
@@ -656,7 +647,11 @@ try {
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
       const value = path.endsWith("/rooms/active") ? { session } : fixture;
-      return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      return fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+      });
     });
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {

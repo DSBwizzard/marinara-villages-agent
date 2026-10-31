@@ -16,7 +16,12 @@ import { conflict } from "../../domain/rules/errors.js";
 import type { RepairDocument, RepairWrite } from "../../adapters/storage/repair-gate.js";
 import { createRepairSnapshots } from "../../adapters/storage/repair-snapshot-store.js";
 import { readRelationshipRoot, relationshipDocumentId } from "../../adapters/storage/relationship-payload-store.js";
-import { sceneHistoryOwners, sceneWishOwners, validateSceneHistory } from "../../adapters/storage/scene-history.js";
+import {
+  sceneHistoryOwners,
+  sceneWishOwners,
+  validateSceneHistory,
+  readActiveSceneOwner,
+} from "../../adapters/storage/scene-history.js";
 import {
   validateBackgroundJobRecord,
   validateBackgroundResponseOwners,
@@ -85,6 +90,40 @@ type Retention = { format: 1; next: number; undoIds: string[]; automaticIds: str
 type StoredHistory = Omit<HistoryData, "undoWrites"> & { writeRefs?: { references: string; presence: string } };
 const owns = (value: { seed: string; setupAt: string }, world: Pick<VillageState, "seed" | "setupAt">) =>
   value.seed === world.seed && value.setupAt === world.setupAt;
+function validateScenePointers(rows: RepairDocument[], owner: { seed: string; setupAt: string }) {
+  for (const pointer of rows.filter((row) => row.kind === "venue-active")) {
+    memoryObject(pointer.data);
+    memoryRequire(pointer.id === "villages-active-venue", "snapshot Scene pointer identity changed");
+    const { sessionId, playbackSceneId } = pointer.data as { sessionId?: unknown; playbackSceneId?: unknown };
+    memoryRequire(
+      sessionId === undefined || sessionId === null || typeof sessionId === "string",
+      "invalid snapshot active Scene reference",
+    );
+    memoryRequire(
+      playbackSceneId === undefined ||
+        (typeof playbackSceneId === "string" && !!playbackSceneId && playbackSceneId !== sessionId),
+      "invalid snapshot playback Scene reference",
+    );
+    for (const id of [sessionId, playbackSceneId].filter(Boolean)) {
+      const scene = rows.find((row) => row.id === "villages-venue-visit-" + id);
+      memoryRequire(scene?.kind === "venue-visit", "snapshot Scene pointer ownership is missing or changed");
+      memoryObject(scene.data);
+      for (const context of [...sceneHistoryOwners(scene.data), ...sceneWishOwners(scene.data)])
+        memoryRequire(owns(context.scope, owner), "snapshot Scene pointer belongs to another world");
+      memoryRequire(
+        scene?.kind === "venue-visit" && scene.data.id === id && scene.data.villageSeed === owner.seed,
+        "snapshot Scene pointer ownership is missing or changed",
+      );
+      if (id === playbackSceneId)
+        memoryRequire(
+          scene.data.status === "closed" &&
+            scene.data.continuity?.seed === owner.seed &&
+            scene.data.continuity?.setupAt === owner.setupAt,
+          "snapshot playback Scene belongs to another world or is not closed",
+        );
+    }
+  }
+}
 function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt: string }, checkpoint: boolean) {
   const allowed = ["village", ...REPAIR_GAME_KINDS, ...(checkpoint ? [] : ["background-work", "background-history"])];
   for (const row of rows) {
@@ -117,6 +156,7 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
         if (Object.hasOwn(row.data, key))
           memoryRequire(row.data[key] === owner.seed, "snapshot source belongs to another Village");
   }
+  validateScenePointers(rows, owner);
   if (checkpoint)
     memoryRequire(rows.filter((row) => row.kind === "village").length === 1, "checkpoint must own one Village root");
 }
@@ -142,9 +182,9 @@ function worldSources<T extends RepairDocument>(
 
 export function createRepairStorage(documents: CapabilityDocumentStore, artifacts: CapabilityDocumentStore) {
   const snapshots = createRepairSnapshots(artifacts);
-  async function validateResponseWrites(writes: RepairWrite[], proposed: RepairWrite[] = []) {
-    const afters = new Map(proposed.map((write) => [(write.after ?? write.before)!.id, write.after] as const));
-    const view = {
+  function proposedSources(writes: readonly { id: string; after: RepairDocument | null }[]) {
+    const afters = new Map(writes.map((write) => [write.id, write.after] as const));
+    return {
       getById: async (pkg: string, id: string) => {
         const row = afters.get(id);
         return afters.has(id)
@@ -154,6 +194,15 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
           : documents.getById(pkg, id);
       },
     };
+  }
+  async function validateSceneView(writes: readonly { id: string; after: RepairDocument | null }[]) {
+    await readActiveSceneOwner(proposedSources(writes));
+  }
+  async function validateResponseWrites(writes: RepairWrite[], proposed: RepairWrite[] = []) {
+    const view = proposedSources(
+      proposed.map((write) => ({ id: (write.after ?? write.before)!.id, after: write.after })),
+    );
+    await readActiveSceneOwner(view);
     await validateCapturedSources(
       documents,
       writes.flatMap((write) => (write.before ? [write.before] : [])),
@@ -207,6 +256,7 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     );
     const { writeRefs, ...kept } = raw as StoredHistory;
     const writes = Object.hasOwn(raw, "writeRefs") ? await snapshots.restoreWrites(writeRefs!) : undefined;
+    if (writes) validateUndoSources(raw as { seed: string; setupAt: string }, writes);
     if (writes) await validateResponseWrites(writes, proposed);
     return {
       ...kept,
@@ -374,15 +424,11 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     const { format: _format, order: _order, undoId: _undoId, command: _command, ...entry } = header;
     const writes = Object.hasOwn(body, "writes") ? await snapshots.restoreWrites(body.writes!) : undefined;
     if (writes) await validateResponseWrites(writes);
-    if (writes)
-      validateSources(
-        writes.flatMap((write) => [write.before, write.after].filter((value): value is RepairDocument => !!value)),
-        header,
-        false,
-      );
+    if (writes) validateUndoSources(header, writes);
     return { ...entry, ...structuredClone(body.payload), ...(writes ? { undoWrites: writes } : {}) };
   }
   async function saveHistory(history: HistoryData, automaticIds: string[]) {
+    if (history.undoWrites) validateUndoSources(history, history.undoWrites);
     const meta = await retention(),
       order = meta.value.next++;
     memoryRequire(Number.isSafeInteger(meta.value.next), "repair sequence exhausted");
@@ -463,11 +509,12 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     validateSources(rows, value, true);
   }
   function validateUndoSources(owner: { seed: string; setupAt: string }, rows: RepairWrite[]) {
-    validateSources(
-      rows.flatMap((write) => [write.before, write.after].filter((row): row is RepairDocument => !!row)),
-      owner,
-      false,
-    );
+    for (const side of ["before", "after"] as const)
+      validateSources(
+        rows.flatMap((write) => (write[side] ? [write[side]!] : [])),
+        owner,
+        false,
+      );
   }
   return {
     checkpoint,
@@ -483,6 +530,8 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
     restoreCheckpoint,
     validateCheckpointSources,
     validateUndoSources,
+    validateScenePointers,
+    validateSceneView,
     owns,
     worldSources,
   };

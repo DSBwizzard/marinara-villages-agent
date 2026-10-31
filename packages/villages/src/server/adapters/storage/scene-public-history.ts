@@ -19,11 +19,18 @@ import {
 } from "./memory-pages.js";
 import { readSceneTranscriptHead, type SceneTranscriptHead } from "./scene-transcript-pages.js";
 import { readSceneSubmissionHead, type SceneSubmissionHead } from "./scene-submission-pages.js";
+import {
+  createScenePresentations,
+  createScenePresentationTracer,
+  encodeScenePresentations,
+  readScenePresentationHead,
+  type ScenePresentationHead,
+} from "./scene-presentation-pages.js";
 
 type Owner = Pick<VenueScene, "id" | "villageSeed" | "participants">;
 export type PublicScenePosition = { id: string; position: number; publicDigest: string };
 export type ScenePublicHistoryHead = {
-  format: 1;
+  format: 2;
   world: string;
   count: number;
   lineCount: number;
@@ -31,6 +38,7 @@ export type ScenePublicHistoryHead = {
   source: string;
   publicVersion: string;
   privateHearing: boolean;
+  presentation: ScenePresentationHead;
 };
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const emptyVersion = hash("public-empty");
@@ -61,6 +69,7 @@ export function readScenePublicHistoryHead(
     "source",
     "publicVersion",
     "privateHearing",
+    "presentation",
   ]);
   memoryRequire(
     Array.isArray(scene.participants) &&
@@ -68,7 +77,7 @@ export function readScenePublicHistoryHead(
     "invalid public Scene history source ownership",
   );
   memoryRequire(
-    value.format === 1 &&
+    value.format === 2 &&
       value.world === worldOf(scene) &&
       Number.isSafeInteger(value.count) &&
       value.count >= 0 &&
@@ -89,6 +98,11 @@ export function readScenePublicHistoryHead(
       ? value.count > 0 && positions.height === historyPageHeight(value.count)
       : value.count === 0 && value.publicVersion === emptyVersion,
     "invalid public Scene history count",
+  );
+  const presentation = readScenePresentationHead(value.presentation, scene);
+  memoryRequire(
+    presentation.count <= value.count && presentation.source === value.source,
+    "invalid Scene presentation source or count",
   );
   return value as ScenePublicHistoryHead;
 }
@@ -113,8 +127,9 @@ export function rebindScenePublicHistory(
   transcript: SceneTranscriptHead,
   submissions: SceneSubmissionHead,
 ) {
+  const source = sourceOf(scene, transcript, submissions, head.privateHearing);
   return readScenePublicHistoryHead(
-    { ...head, source: sourceOf(scene, transcript, submissions, head.privateHearing) },
+    { ...head, source, presentation: { ...head.presentation, source } },
     scene,
     transcript,
     submissions,
@@ -215,7 +230,7 @@ export async function readScenePublicHistoryRange(
   );
   return rows;
 }
-export function encodeScenePublicHistory(
+function encodePositions(
   scene: VenueScene,
   transcript: SceneTranscriptHead,
   submissions: SceneSubmissionHead,
@@ -243,8 +258,8 @@ export function encodeScenePublicHistory(
       rows.map((row) => [row.id, row]),
       old?.layout,
     );
-  const head: ScenePublicHistoryHead = {
-    format: 1,
+  const head: Omit<ScenePublicHistoryHead, "presentation"> = {
+    format: 2,
     world: worldOf(scene),
     count: rows.length,
     lineCount: transcript.count,
@@ -255,10 +270,24 @@ export function encodeScenePublicHistory(
   };
   return { head, rows, layout, pages: writer.pages };
 }
+export function encodeScenePublicHistory(
+  scene: VenueScene,
+  transcript: SceneTranscriptHead,
+  submissions: SceneSubmissionHead,
+) {
+  const result = encodePositions(scene, transcript, submissions);
+  const presentation = encodeScenePresentations(scene, result.rows, result.head.privateHearing, result.head.source);
+  return {
+    ...result,
+    head: { ...result.head, presentation: presentation.head },
+    pages: new Map([...result.pages, ...presentation.pages]),
+  };
+}
 export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore, "getById" | "create">) {
   type Entry = { rows: PublicScenePosition[]; layout: HistoryPageTree };
   const cached = new Map<string, Entry>(),
     versions = new WeakMap<HistoryPageRef, string>();
+  const presentations = createScenePresentations(documents);
   const usable = () => !isRepairSimulation(documents as CapabilityDocumentStore);
   const identity = (head: ScenePublicHistoryHead) => JSON.stringify([head.world, head.count, head.positions]);
   const page = (id: string) => readPublicPage(documents, id);
@@ -303,7 +332,16 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
   ) {
     memoryRequire(!previous || previous.world === worldOf(scene), "public Scene history publication source changed");
     const old = previous ? await read(previous, previous.lineCount) : undefined;
-    const { head, rows, layout, pages } = encodeScenePublicHistory(scene, transcript, submissions, old, versions);
+    const encoded = encodePositions(scene, transcript, submissions, old, versions);
+    const { rows, layout, pages } = encoded;
+    const presentation = await presentations.prepare(
+      scene,
+      rows,
+      encoded.head.privateHearing,
+      encoded.head.source,
+      previous?.presentation,
+    );
+    const head = { ...encoded.head, presentation };
     const stamp = new Date().toISOString();
     for (const [id, data] of pages) {
       const existing = await documents.getById("villages", id);
@@ -346,8 +384,23 @@ export function scenePublicHistoryStore(documents: CapabilityDocumentStore) {
 }
 
 export function createScenePublicHistoryTracer(get: (id: string) => Promise<MemoryPageData | null>) {
-  const tracer = createMemoryPageTracer(get);
-  type Summary = { height: number; count: number; first: number; last: number; version: string };
+  const pages = new Map<string, Promise<MemoryPageData | null>>();
+  const page = (id: string) => {
+    let value = pages.get(id);
+    if (!value) pages.set(id, (value = get(id)));
+    return value;
+  };
+  const tracer = createMemoryPageTracer(page);
+  const presentation = createScenePresentationTracer(page);
+  type Summary = {
+    height: number;
+    count: number;
+    first: number;
+    last: number;
+    version: string;
+    rows?: PublicScenePosition[];
+    children?: HistoryPageRef[];
+  };
   const checked = new Map<string, Summary>();
   async function inspect(ref: HistoryPageRef, world: string): Promise<Summary> {
     const known = checked.get(ref.id);
@@ -361,8 +414,9 @@ export function createScenePublicHistoryTracer(get: (id: string) => Promise<Memo
       first = -1,
       last = -1,
       version: string;
+    let leafRows: PublicScenePosition[] | undefined, children: HistoryPageRef[] | undefined;
     if (node.type === "branch") {
-      const children = node.children.map((child) => readHistoryPageRef(child, world)!);
+      children = node.children.map((child) => readHistoryPageRef(child, world)!);
       const hashes: string[] = [],
         capacity = 64 * 32 ** (ref.height - 1);
       for (const [index, child] of children.entries()) {
@@ -382,12 +436,14 @@ export function createScenePublicHistoryTracer(get: (id: string) => Promise<Memo
       memoryRequire(Array.isArray(rows) && rows.length > 0 && rows.length <= 64, "invalid public Scene history block");
       const hashes: string[] = [],
         ids = new Set<string>();
+      leafRows = [];
       for (const row of rows) {
         memoryRequire(
           Array.isArray(row) && row.length === 2 && typeof row[0] === "string" && !ids.has(row[0]),
           "invalid public Scene history identity",
         );
         const value = readPosition(row[1], row[0], Number.MAX_SAFE_INTEGER);
+        leafRows.push(value);
         memoryRequire(value.position > last, "public Scene history order changed");
         if (first === -1) first = value.position;
         last = value.position;
@@ -397,16 +453,17 @@ export function createScenePublicHistoryTracer(get: (id: string) => Promise<Memo
       count = rows.length;
       version = hash("public-leaf:" + hashes.join(""));
     }
-    const summary = { height: ref.height, count, first, last, version };
+    const summary = { height: ref.height, count, first, last, version, rows: leafRows, children };
     checked.set(ref.id, summary);
     return summary;
   }
   return {
-    async trace(head: ScenePublicHistoryHead) {
+    async trace(head: ScenePublicHistoryHead, scene: Owner) {
       memoryRequire(
         head.positions ? head.count > 0 && head.positions.height === historyPageHeight(head.count) : head.count === 0,
         "invalid public Scene history depth",
       );
+      const coverage = await presentation.trace(head.presentation, scene, head.lineCount);
       const value = head.positions
         ? await inspect(head.positions, head.world)
         : { count: 0, last: -1, version: emptyVersion };
@@ -414,6 +471,19 @@ export function createScenePublicHistoryTracer(get: (id: string) => Promise<Memo
         value.count === head.count && value.last < head.lineCount && value.version === head.publicVersion,
         "public Scene history count or version changed",
       );
+      memoryRequire(coverage.size === head.count, "Scene presentation coverage changed");
+      function compare(ref: HistoryPageRef) {
+        const summary = checked.get(ref.id)!;
+        for (const row of summary.rows ?? []) {
+          const moment = coverage.get(row.position);
+          memoryRequire(
+            moment?.id === row.id && moment.publicDigest === row.publicDigest,
+            "Scene presentation coverage changed",
+          );
+        }
+        for (const child of summary.children ?? []) compare(child);
+      }
+      if (head.positions) compare(head.positions);
     },
   };
 }

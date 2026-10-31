@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
@@ -64,9 +66,16 @@ try {
           entryOffers: [{ zoneId: "common", label: "Common Space", controllerId: "mara", accompanies: false }],
           lines: [
             ...session.lines,
-            { id: "player", role: "user", speakerId: "", name: "", content: submitted.message, at: now },
             {
-              id: "answer",
+              id: "player:" + submitted.submissionId,
+              role: "user",
+              speakerId: "",
+              name: "",
+              content: submitted.message,
+              at: now,
+            },
+            {
+              id: "answer:" + submitted.submissionId,
               role: "assistant",
               kind: "dialogue",
               speakerId: "mara",
@@ -79,15 +88,20 @@ try {
             },
           ],
           submissions: [
-            { id: submitted.submissionId, activeIdsAtTurn: [], activeIdsAfterTurn: [], replyLineIds: ["answer"] },
+            ...session.submissions,
+            {
+              id: submitted.submissionId,
+              activeIdsAtTurn: [],
+              activeIdsAfterTurn: [],
+              replyLineIds: ["answer:" + submitted.submissionId],
+            },
           ],
         };
         if (submitted.message === "I look around.") {
-          session.participants = [];
           session.doorwayContacts = [];
           session.entryOffers = [];
           session.lines[session.lines.length - 1] = {
-            id: "local-answer",
+            id: "answer:" + submitted.submissionId,
             role: "assistant",
             kind: "narration",
             speakerId: "__venue_scene__",
@@ -110,7 +124,11 @@ try {
         };
         value = { session };
       }
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });

@@ -317,12 +317,22 @@ export async function collectRetainedStorage(gate: RepairGate) {
       );
       const codec = createRepairTransactionCodec(documents),
         inspected = await codec.inspect(value.transaction);
+      storage.validateScenePointers(
+        inspected.writes.flatMap((write) => (write.after ? [write.after] : [])),
+        value as { seed: string; setupAt: string },
+      );
       const overlay = new Map(inherited.overlay);
       for (const write of inspected.writes) {
         overlay.set(write.id, write.after);
         if (write.after && CANDIDATES.includes(write.after.kind)) marked.add(write.after.id);
       }
       const view = scope(overlay);
+      await readActiveSceneOwner({
+        getById: async (pkg, id) => {
+          const source = await view.lookup(id);
+          return source ? { ...source, packageId: pkg, revision: 1, createdAt: "", updatedAt: "" } : null;
+        },
+      });
       for (const frame of JSON.parse(value.transaction.writes))
         if (!Object.hasOwn(frame, "memoryPages") && frame.after !== null) await snapshot(frame.after, view);
       if (Object.hasOwn(value.history, "writeRefs")) await writes(value.history.writeRefs, view, value.history);
@@ -381,7 +391,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
           await view.transcripts.trace(owner.head, owner.participants);
         for (const owner of sceneSubmissionOwners(row.data))
           await view.submissions.trace(owner.head, owner.participants, owner.scene);
-        for (const head of scenePublicHistoryOwners(row.data)) await view.publicHistory.trace(head);
+        for (const { head, scene } of scenePublicHistoryOwners(row.data)) await view.publicHistory.trace(head, scene);
         const scene = row.data as { id: string; villageSeed?: string; operation?: unknown };
         await traceOperationEvidence(
           scene.operation,
@@ -522,6 +532,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
       for (const row of await listed(kind)) await sourceOwners(row, physical);
     const active = await readActiveSceneOwner(documents);
     if (active.scene) await sourceOwners(active.scene, physical);
+    if (active.playbackScene) await sourceOwners(active.playbackScene, physical);
     if (root) {
       const id = relationshipDocumentId((root.data as { seed: string }).seed),
         owner = await documents.getById(PACKAGE, id);

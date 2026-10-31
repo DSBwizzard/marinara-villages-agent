@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
@@ -105,7 +107,7 @@ try {
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/lorebooks")) value = { books: [] };
       else if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
-      await fulfill(route, { json: value });
+      await fulfill(route, { json: authorSceneResponse(value, state.worldScope) });
     });
     await page.route("http://villages.test/", (route) => fulfill(route, { contentType: "text/html", body: html }));
     const mount = async () => {

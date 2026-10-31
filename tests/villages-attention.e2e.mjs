@@ -1,3 +1,5 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
@@ -120,7 +122,11 @@ try {
         }
         value = { session: scene, recordEvents: [] };
       }
-      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.goto("http://attention.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -136,6 +142,10 @@ try {
     const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/rooms/active"));
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await refreshed;
+    await expect(page.getByRole("status").filter({ hasText: "Passage unavailable." })).toBeVisible();
+    await page.getByRole("button", { name: "1 Scene error", exact: true }).click();
+    await page.locator("summary").filter({ hasText: "Scene reading" }).click();
+    await page.getByRole("button", { name: "Latest", exact: true }).click();
     await expect(page.getByText("The Scene refreshed.", { exact: true })).toBeVisible();
     await expect(composer).toHaveValue("");
     await expect(page.getByRole("group", { name: "Clarify who to reach" })).toHaveCount(0);

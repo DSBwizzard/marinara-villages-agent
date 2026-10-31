@@ -1,3 +1,4 @@
+import { scenePlaybackFixtures } from "./scene-browser.fixture.mjs";
 import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../../scripts/esbuild.mjs";
@@ -6,18 +7,20 @@ import { runCase, wantsCase } from "../../scripts/test-cases.mjs";
 
 /** Actual mounted hooks; HTTP and authoritative selection/reset are controlled inputs. */
 export async function verifySceneActionLifetimes(browser) {
+  const { authorSceneView } = await scenePlaybackFixtures();
   const bundle = await build({
     stdin: {
       contents: `
 import {createRoot} from 'react-dom/client';
 import {StrictMode,useEffect,useState} from 'react';
 import {useSceneRecord} from './packages/villages/src/client/features/scenes/useSceneRecord.js';
+import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 import {useScenesState} from './packages/villages/src/client/features/scenes/useScenesState.js';
 import {useMoveRoom,useContinueRoomWithoutGreeting,useCloseRoom,useLeaveRoom,useRetrySavedScene} from './packages/villages/src/client/features/scenes/actions.js';
-function scene(id,revision=0,status='active'){return {id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,
+function scene(id,revision=0,status='active'){return authorSceneView({id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,
  zoneId:'exterior',area:'public',status,startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:00:00Z',
  endedAt:'',participants:[],activeIds:[],lines:[],submissions:[],
- operation:window.operation?{...window.operation,id:id+'-saved',attemptId:id+'-attempt'}:undefined};}
+ operation:window.operation?{...window.operation,id:id+'-saved',attemptId:id+'-attempt'}:undefined},'b'.repeat(64));}
 function Harness(){
  const [room,setRoom]=useSceneRecord(),[founded,setFounded]=useState(window.hydrate?undefined:true);
  const [screen,setScreen]=useState('room');
@@ -84,18 +87,21 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   });
 
   function scene(id, operationId, closed = false, revision = 2) {
-    return {
-      id,
-      version: 2,
-      sceneRevision: revision,
-      placeId: "mill",
-      zoneId: "private-" + id,
-      status: closed ? "closed" : "active",
-      participants: [],
-      activeIds: [],
-      lines: [],
-      submissions: operationId ? [{ id: operationId }] : [],
-    };
+    return authorSceneView(
+      {
+        id,
+        version: 2,
+        sceneRevision: revision,
+        placeId: "mill",
+        zoneId: "private-" + id,
+        status: closed ? "closed" : "active",
+        participants: [],
+        activeIds: [],
+        lines: [],
+        submissions: operationId ? [{ id: operationId }] : [],
+      },
+      "b".repeat(64),
+    );
   }
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });

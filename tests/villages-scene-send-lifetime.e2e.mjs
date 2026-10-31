@@ -4,6 +4,9 @@ import { resolve } from "node:path";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+const encode = (value) => JSON.stringify(authorSceneResponse(value, snapshot.worldScope));
 const bundle = await build({
   stdin: {
     contents: `
@@ -11,9 +14,10 @@ import {createRoot} from 'react-dom/client';
 import {StrictMode,useEffect,useRef,useState} from 'react';
 import {useSceneRecord} from './packages/villages/src/client/features/scenes/useSceneRecord.js';
 import {useSendRoom} from './packages/villages/src/client/features/scenes/actions.js';
+import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 const noop=()=>{};
-function scene(id){return {id,version:1,sceneRevision:0,placeId:'mill',placeName:id,zoneId:'exterior',area:'public',
-status:'active',startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:00:00Z',endedAt:'',participants:[],activeIds:[],lines:[],submissions:[]};}
+function scene(id){return authorSceneView({id,version:1,sceneRevision:0,placeId:'mill',placeName:id,zoneId:'exterior',area:'public',
+status:'active',startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:00:00Z',endedAt:'',participants:[],activeIds:[],lines:[],submissions:[]},window.snapshot?.worldScope??window.loadedSnapshot.worldScope);}
 function Harness(){
  const [room,setRoom]=useSceneRecord();
  const [draft,setDraft]=useState('A draft'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[ended,setEnded]=useState(false);
@@ -125,14 +129,14 @@ async function mount({
       return fulfill(route, {
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ session: { ...scene(id), sceneRevision: activeReads === 1 ? 10 : 2 } }),
+        body: encode({ session: { ...scene(id), sceneRevision: activeReads === 1 ? 10 : 2 } }),
       });
     }
     if (learnedRecovery && kind === "archive")
       return fulfill(route, {
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
+        body: encode({
           visit: {
             ...scene(id, learnedRecovery === "recovered-older" ? [{ id: submissions.get(id) }] : []),
             status: learnedRecovery === "recovered-older" ? "closed" : "active",
@@ -151,7 +155,7 @@ async function mount({
             : kind === "archive"
               ? { visit: missingClosed ? { ...saved, status: "closed" } : saved }
               : {};
-    return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(answer) });
+    return fulfill(route, { status: 200, contentType: "application/json", body: encode(answer) });
   });
   await page.goto("http://send-hooks.test/");
   await page.evaluate(
@@ -196,7 +200,7 @@ async function mount({
             : item.kind === "archive"
               ? { visit: missingClosed ? { ...saved, status: "closed" } : saved }
               : {};
-    await fulfill(item.route, { status, contentType: "application/json", body: JSON.stringify(body) });
+    await fulfill(item.route, { status, contentType: "application/json", body: encode(body) });
   };
   return {
     page,

@@ -1,6 +1,7 @@
 import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/contracts/village.js";
 import type { SpeechDelivery } from "../../shared/helpers/scene-speech.js";
-import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
+import type { StagingPresentation } from "../../shared/helpers/scene-staging.js";
+import type { VillagesWalkAside } from "../../shared/contracts/scene-beat.js";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
 export type SetupMapSource = "existing" | "simple" | "generate" | "upload";
@@ -246,27 +247,18 @@ export type IdentityPreview = IdentityChoice & {
   context: string;
 };
 
-/** One line attached to a Scene paragraph instead of becoming a separate step. */
-export type VillagesWalkAside = {
-  register: "side" | "whisper" | "shout";
-  /** The words, with the tag taken off. */
-  text: string;
-  /** The listener, on a whisper. Absent when the villager did not name one. */
-  target?: string;
-};
-
 /** One paragraph in a Scene, with its speaker and attached asides. */
 export type RoomStep = {
-  stagingEvent?: StagingEvent;
-  /**
-   * Stable under append, which is the only thing a room's history ever does.
-   *
-   * The position in the walk rather than the time on the line: two paragraphs can
-   * share a second, and a key made of the clock would collide on the first fast
-   * answer. Nothing is ever removed from the middle of a room, so a number that
-   * only ever counts up cannot go stale.
-   */
+  /** World/Scene/line/paragraph identity survives window changes and reflow. */
   key: string;
+  lineId: string;
+  paragraph: number;
+  paragraphIndex: number;
+  momentIndex: number;
+  anchorCursor?: string;
+  presentation: StagingPresentation;
+  viaDoorway?: boolean;
+  remoteDelivery?: "loud";
   /** A character id, or `""` for the player's own paragraph. */
   speakerId: string;
   /** What is printed over the paragraph: their name, or the player's. */
