@@ -71,7 +71,7 @@ documents.get(SESSION_PREFIX + "closed")!.data = authorSceneFixture(
 );
 for (const [id, row] of otherPages) documents.set(id, row);
 readIds.length = 0;
-await assert.rejects(service.readVenueVisit("closed"), /unavailable/);
+await assert.rejects(service.readVenueVisit("closed"), /no longer available/);
 assert.deepEqual(
   readIds,
   [SESSION_PREFIX + "closed"],

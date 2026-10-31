@@ -36,9 +36,9 @@ export function createSceneArchive({ villagesDocuments, readActive }: SceneArchi
       const documents = villagesDocuments();
       const row = await documents.getById(VILLAGES_PACKAGE_ID, SESSION_PREFIX + id);
       if (!row || row.id !== SESSION_PREFIX + id || row.packageId !== VILLAGES_PACKAGE_ID || row.kind !== SESSION_KIND)
-        throw notFound("That Scene is unavailable.");
+        throw notFound("That Scene is no longer available.");
       const index = readSceneIndex(row.data);
-      if (index.id !== id) throw notFound("That Scene is unavailable.");
+      if (index.id !== id) throw notFound("That Scene is no longer available.");
       if (index.status !== "closed") throw notFound("That Scene is not closed.");
       return readSceneTranscriptIndex(documents, row.data);
     });
