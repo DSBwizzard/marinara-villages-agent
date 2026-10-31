@@ -9,14 +9,20 @@ import {
   nativeBackgroundJob,
   validateBackgroundResponse,
 } from "../packages/villages/src/server/adapters/storage/background-responses.js";
-import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
+import { createRepairGate, configureRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createRepairSnapshots } from "../packages/villages/src/server/adapters/storage/repair-snapshot-store.js";
 import {
   createRepairStorage,
   repairStorageId,
 } from "../packages/villages/src/server/features/repair/repair-storage.js";
-import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
-import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import {
+  collectRetainedStorage,
+  createRetainedStorageCleanup,
+} from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
+import {
+  backgroundRevision,
+  backgroundSlotId,
+} from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { Job } from "../packages/villages/src/server/domain/models/background-model.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
@@ -77,6 +83,18 @@ const completion = {
   finishReason: "stop",
   usage: { totalTokens: 17 },
 };
+function saveClaim(documents: CapabilityDocumentStore, job: Job) {
+  return documents.create({
+    id: backgroundSlotId(job),
+    packageId: "villages",
+    kind: "background-work",
+    name: "Claim",
+    description: "",
+    data: nativeBackgroundJob(job),
+    createdAt: "2026-10-30T00:00:00.000Z",
+    updatedAt: "2026-10-30T00:00:00.000Z",
+  });
+}
 for (const failure of ["before", "after"] as const) {
   const db = storage(),
     context = createBackgroundContext();
@@ -183,10 +201,13 @@ const db = storage(),
 const job = {
   id: "logical-job",
   seed: "world",
+  kind: "agenda",
+  subjectId: "resident",
   attempt: 1,
   steps: [{ key: "answer", fingerprint: "exact-input", status: "running" }],
 } as Job;
 job.steps[0].responseClaim = backgroundResponseClaim(job, 0);
+await saveClaim(db.documents, job);
 db.failBody("after");
 const saved = await store.publish(job, 0, completion);
 job.steps[0] = { ...job.steps[0], status: "completed", response: saved.response, responseRef: saved.ref };
@@ -201,7 +222,7 @@ await assert.rejects(
   store.publish(job, 0, { ...completion, content: "different answer" }),
   /physical background response changed/,
 );
-assert.equal(db.rows.size, 1);
+assert.equal([...db.rows.values()].filter((row) => row.kind === "generation-response").length, 1);
 const cold = createBackgroundResponses(db.documents);
 assert.equal((await cold.decode(native)).steps[0].response!.content, completion.content);
 for (const change of [
@@ -273,6 +294,8 @@ corruptGate.dispose();
     steps: [{ key: "same", fingerprint: "same", status: "running" }],
   } as Job;
   logical.steps[0].responseClaim = backgroundResponseClaim(logical, 0);
+  await saveClaim(a.documents, logical);
+  await saveClaim(b.documents, logical);
   const first = await backgroundResponseStore(a.documents).publish(logical, 0, {
     content: "A private reply",
     finishReason: "stop",
@@ -294,14 +317,11 @@ corruptGate.dispose();
     [a, nativeA],
     [b, nativeB],
   ] as const)
-    await target.documents.create({
+    await target.documents.update({
       id: slot,
       packageId: "villages",
-      kind: "background-work",
-      name: "Same",
-      description: "",
+      expectedRevision: 1,
       data,
-      createdAt: "2026-10-30T00:00:00.000Z",
       updatedAt: "2026-10-30T00:00:00.000Z",
     });
   let selected = a.documents,
@@ -432,6 +452,7 @@ corruptGate.dispose();
     steps: [{ fingerprint: "input", status: "running" }],
   } as Job;
   job.steps[0].responseClaim = backgroundResponseClaim(job, 0);
+  await saveClaim(gate.documents, job);
   const reply = await responses.publish(job, 0, { content: "Undo exact reply", finishReason: "stop" });
   const before = {
     id: "villages-background-" + backgroundRevision([job.kind, job.subjectId]),
@@ -441,10 +462,10 @@ corruptGate.dispose();
     data: nativeBackgroundJob({ ...job, steps: [{ ...job.steps[0], status: "completed", responseRef: reply.ref }] }),
   };
   const after = { ...before, data: nativeBackgroundJob({ ...job, steps: [] }) };
-  await gate.documents.create({
+  await gate.documents.update({
     ...after,
     packageId: "villages",
-    createdAt: "2026-10-30T00:00:00.000Z",
+    expectedRevision: 1,
     updatedAt: "2026-10-30T00:00:00.000Z",
   });
   const repair = createRepairStorage(gate.documents, gate.documents);
@@ -649,6 +670,146 @@ for (const failure of [
   }
   stop();
   gate.dispose();
+}
+// The durable claim check and body publication share one admission; retired callbacks cannot recreate bodies.
+{
+  const db = storage();
+  const job = {
+    id: "fenced-job",
+    seed: "fenced-world",
+    kind: "agenda",
+    subjectId: "resident",
+    attempt: 1,
+    steps: [{ fingerprint: "fenced-input", status: "running" }],
+  } as Job;
+  job.steps[0].responseClaim = backgroundResponseClaim(job, 0);
+  const slot = backgroundSlotId(job),
+    get = db.documents.getById,
+    list = db.documents.list;
+  let hold = false,
+    lists = 0,
+    entered!: () => void,
+    release!: () => void;
+  const reading = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const resume = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  db.documents.getById = async (pkg, id) => {
+    const row = await get(pkg, id);
+    if (hold && id === slot) {
+      entered();
+      await resume;
+    }
+    return row;
+  };
+  db.documents.list = async (pkg, kind) => {
+    lists++;
+    return list(pkg, kind);
+  };
+  const gate = createRepairGate(db.documents),
+    unbind = configureRepairGate(gate);
+  try {
+    await saveClaim(gate.documents, job);
+    const responses = createBackgroundResponses(gate.documents);
+    hold = true;
+    const publishing = responses.publish(job, 0, { content: "Exact late café 東京 reply", finishReason: "stop" });
+    await reading;
+    await assert.rejects(collectRetainedStorage(gate), /Other Village work is active/);
+    hold = false;
+    release();
+    const saved = await publishing;
+    assert.equal(lists, 0, "ordinary publication reads its current slot without scanning retained history");
+    assert.equal(
+      (await createBackgroundResponses(gate.documents).pending(job, 0))!.response.content,
+      "Exact late café 東京 reply",
+    );
+    const completed = db.rows.get(slot);
+    completed.data = nativeBackgroundJob({
+      ...job,
+      steps: [{ ...job.steps[0], status: "completed", responseRef: saved.ref }],
+    });
+    completed.revision++;
+    db.rows.delete(saved.ref.id);
+    await assert.rejects(
+      responses.publish(job, 0, { content: "A different physical reply", finishReason: "stop" }),
+      /physical background response changed/,
+    );
+    assert.equal(db.rows.has(saved.ref.id), false, "a completed owner's digest is enforced before recreating any body");
+    await responses.publish(job, 0, { content: "Exact late café 東京 reply", finishReason: "stop" });
+    await collectRetainedStorage(gate);
+    assert.ok(db.rows.has(saved.ref.id), "a completed current reference protects its exact body");
+    const current = db.rows.get(slot);
+    await gate.documents.remove("villages", slot, current.revision);
+    await collectRetainedStorage(gate);
+    assert.equal(db.rows.has(saved.ref.id), false, "an unowned body can retire");
+    const before = [...db.rows.keys()];
+    await assert.rejects(
+      responses.publish(job, 0, { content: "Exact late café 東京 reply", finishReason: "stop" }),
+      /claim is no longer retained/,
+    );
+    assert.deepEqual([...db.rows.keys()], before, "a warm callback cannot recreate a retired body");
+    await saveClaim(gate.documents, { ...job, attempt: 2, steps: [] });
+    await assert.rejects(
+      createBackgroundResponses(gate.documents).publish(job, 0, completion),
+      /claim is no longer retained/,
+    );
+    assert.equal(db.rows.has(saved.ref.id), false, "a newer attempt does not own the old physical request");
+  } finally {
+    release();
+    unbind();
+    gate.dispose();
+  }
+}
+// Response allocation alone schedules cleanup during a running session, without another history writer or restart.
+{
+  const db = storage(),
+    list = db.documents.list;
+  let passes = 0;
+  db.documents.list = async (pkg, kind) => {
+    if (kind === "repair-snapshot") passes++;
+    return list(pkg, kind);
+  };
+  const gate = createRepairGate(db.documents),
+    unbind = configureRepairGate(gate),
+    failures: unknown[] = [];
+  const cleanup = createRetainedStorageCleanup(gate, (error) => failures.push(error));
+  const unsubscribe = gate.whenIdle(() => {
+    void cleanup.request();
+  });
+  try {
+    await cleanup.request();
+    assert.equal(passes, 1);
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      await gate.work(async () => {
+        const job = {
+          id: "allocation-job-" + attempt,
+          seed: "allocation-world",
+          kind: "agenda",
+          subjectId: "resident",
+          attempt,
+          steps: [{ fingerprint: "allocation-input-" + attempt, status: "running" }],
+        } as Job;
+        job.steps[0].responseClaim = backgroundResponseClaim(job, 0);
+        const owner = await saveClaim(gate.documents, job);
+        await createBackgroundResponses(gate.documents).publish(job, 0, {
+          content: "x".repeat(2 * 1024 * 1024),
+          finishReason: "stop",
+        });
+        await gate.documents.remove("villages", owner.id, owner.revision);
+      });
+      await cleanup.request();
+      assert.equal(passes, attempt + 1, "released provider bytes trigger the existing allocation-driven sweep");
+      assert.equal([...db.rows.values()].filter((row) => row.kind === "generation-response").length, 0);
+    }
+    assert.deepEqual(failures, []);
+  } finally {
+    unsubscribe();
+    cleanup.dispose();
+    unbind();
+    gate.dispose();
+  }
 }
 console.log(
   "Background responses: exact bodies, bounded metadata writes, lost acknowledgements, restart/reuse, ownership and usage passed.",

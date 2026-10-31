@@ -53,6 +53,7 @@ const clean = (row: CapabilityDocumentRecord | null): RepairDocument | null =>
 export function createRepairGate(backing: CapabilityDocumentStore, admission = createRepairAdmission()) {
   let allocatedBytes = 0;
   const allocationKinds = new Set([
+    "generation-response",
     "memory-payload",
     "memory-page",
     "repair-snapshot",

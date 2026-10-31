@@ -34,7 +34,7 @@ import type {
   Ticket,
 } from "../domain/models/background-model.js";
 import type { VillageState } from "../domain/models/world.js";
-import { backgroundRevision } from "../domain/rules/background-revision.js";
+import { backgroundRevision, backgroundSlotId as slotId } from "../domain/rules/background-revision.js";
 import { asRecord } from "../domain/rules/coerce.js";
 import { copyBackgroundWork } from "../domain/rules/world-context-copy.js";
 import { capturedJobOwners } from "../adapters/storage/captured-admissions.js";
@@ -56,8 +56,6 @@ import {
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 const KIND = "background-work";
 type Unsubmitted = { step?: number; optional?: readonly string[] };
-const slotId = (work: Pick<BackgroundInput, "kind" | "subjectId">) =>
-  "villages-background-" + backgroundRevision([work.kind, work.subjectId]);
 const jobId = (work: BackgroundInput) => backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]);
 const activityDispatched = (job: Job) =>
   job.requests > 0 || job.attemptHistory?.some((attempt) => attempt.requests > 0) === true;
