@@ -133,9 +133,9 @@ async function main() {
     accesses = 0;
   let selected: CapabilityDocumentStore;
   const firstDocuments = {
-    async getById() {
+    async getById(_pkg: string, id: string) {
       selected = secondDocuments;
-      return structuredClone(firstRecord);
+      return id === "villages-village" ? structuredClone(firstRecord) : null;
     },
     async update(change: { data: VillageState }) {
       firstWrites++;
@@ -148,8 +148,8 @@ async function main() {
     },
   } as unknown as CapabilityDocumentStore;
   const secondDocuments = {
-    async getById() {
-      return structuredClone(secondRecord);
+    async getById(_pkg: string, id: string) {
+      return id === "villages-village" ? structuredClone(secondRecord) : null;
     },
     async update() {
       secondWrites++;

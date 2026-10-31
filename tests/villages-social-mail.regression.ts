@@ -1,4 +1,5 @@
 import { fixtureCapturedAdmissions } from "./helpers/village-storage.fixture.js";
+import { createCapturedAdmissions } from "../packages/villages/src/server/adapters/storage/captured-admission-store.js";
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -65,6 +66,7 @@ let conflictRetirementId = "";
 let competeAtReply: (() => void) | undefined;
 const authorityGate = createVillageRepository(() => ({}) as any);
 let savedVillage: ReturnType<typeof createVillageRepository> | undefined;
+let captures = fixtureCapturedAdmissions;
 const retries: string[] = [];
 const snapshot = async () => ({ ...structuredClone(village), relationshipContext: structuredClone(social) });
 const projection = (connection: string) => ({
@@ -86,7 +88,7 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
 let active: SocialMailInput;
 const promptHistory: string[] = [];
 const coreService = createSocialMail({
-  readMailInput: fixtureCapturedAdmissions.readMailInput,
+  readMailInput: (...args) => captures.readMailInput(...args),
   withWork: async (work: any) => work(),
   withVillageSceneAcceptance: async (work: any) => {
     if (testActor.getStore() === "contender") beforeContenderAuthority?.();
@@ -1185,7 +1187,7 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
     packageId: "villages",
     kind: "village",
     data: {
-      version: 12,
+      version: 13,
       seed: village.seed,
       setupAt: village.setupAt,
       memoryHead: null,
@@ -1300,6 +1302,7 @@ for (const kind of ["progress", "create"] as const)
   for (const cold of [false, true]) {
     const f = sceneHistoryFixture();
     let repository = createVillageRepository(() => f.gate.documents);
+    captures = createCapturedAdmissions(f.gate.documents);
     const id = "canonical-mail-" + kind + "-" + cold;
     const wish = fixtureWish({ wish: "Exchange friendly letters" }, id),
       neighbour = fixtureWish({ wish: "Visit the orchard" }, id + "-neighbour");
@@ -1384,6 +1387,7 @@ for (const kind of ["progress", "create"] as const)
       assert.equal(calls, paid, "source and reply recovery do not purchase replacement work");
     } finally {
       savedVillage = undefined;
+      captures = fixtureCapturedAdmissions;
       afterWorldCommit = undefined;
       f.release();
       f.gate.dispose();

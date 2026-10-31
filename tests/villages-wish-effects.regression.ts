@@ -119,7 +119,7 @@ for (const workload of ["many-wishes", "one-long-history"] as const) {
     }
     assert.ok(f.rows.size - initialPages < 500, "Twenty after-images retain only changed pages");
     const root = f.rows.get("villages-village").data;
-    assert.equal(root.version, 12);
+    assert.equal(root.version, 13);
     assert.equal(root.exchangeReceipts["effect:19"].sceneFacts.wish.head.count, 1);
     assert.equal(Object.hasOwn(root.exchangeReceipts["effect:19"].sceneFacts.wish, "value"), false);
     scene.submissions = Array.from({ length: 20 }, (_, index) => ({

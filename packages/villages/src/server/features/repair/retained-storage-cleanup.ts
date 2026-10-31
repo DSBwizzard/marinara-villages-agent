@@ -34,6 +34,7 @@ import { createSceneTranscriptTracer } from "../../adapters/storage/scene-transc
 import { createSceneSubmissionTracer } from "../../adapters/storage/scene-submission-pages.js";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
 import { worldWishOwners } from "../../adapters/storage/world-wishes.js";
+import { capturedWorldOwners, capturedJobOwners } from "../../adapters/storage/captured-admissions.js";
 import { createWishHistoryTracer } from "../../adapters/storage/wish-history.js";
 import { createRelationshipPageTracer } from "../../adapters/storage/relationship-pages.js";
 import {
@@ -313,6 +314,16 @@ export async function collectRetainedStorage(gate: RepairGate) {
       if (Object.hasOwn(value.history, "writeRefs")) await writes(value.history.writeRefs, view, value.history);
     }
     async function sourceOwners(row: RepairDocument, view: Scope) {
+      const captures =
+        row.kind === "village"
+          ? capturedWorldOwners(row.data)
+          : ["background-work", "background-history"].includes(row.kind)
+            ? capturedJobOwners(row.data)
+            : undefined;
+      if (captures) {
+        for (const owner of captures.wishes) await view.wishes.trace(owner.head, owner.scope);
+        for (const owner of captures.relationships) await relationshipHistory(owner.head, owner.scope, view);
+      }
       if (["background-work", "background-history"].includes(row.kind)) {
         validateBackgroundJobRecord(row);
         for (const id of await validateBackgroundResponseOwners(row.data, view.lookup)) marked.add(id);
@@ -320,7 +331,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
         memoryObject(row.data);
         memoryRequire(
           row.id === "villages-village" &&
-            row.data.version === 12 &&
+            row.data.version === 13 &&
             typeof row.data.seed === "string" &&
             typeof row.data.setupAt === "string",
           "unsupported Village ownership",

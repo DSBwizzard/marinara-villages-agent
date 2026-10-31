@@ -22,6 +22,20 @@ import { createRelationshipSocial } from "../packages/villages/src/server/featur
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
 import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
+import { capturedPublicationOwners } from "../packages/villages/src/server/adapters/storage/captured-admission-owners.js";
+import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
+import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
+import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
+import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
+import {
+  createRepairStorage,
+  repairStorageId,
+} from "../packages/villages/src/server/features/repair/repair-storage.js";
+import { returnCaptureRevision } from "../packages/villages/src/server/domain/rules/return-capture-revision.js";
+import { sameReturnResident } from "../packages/villages/src/server/domain/rules/return-catchup-authority.js";
+import { repairId } from "../packages/villages/src/server/domain/rules/repair-records.js";
+import { venue } from "./fixtures/villages-projects.fixture.js";
+import { wishHistoryStore } from "../packages/villages/src/server/adapters/storage/wish-history.js";
 import {
   captureResidentActivity,
   copySocialOutboxEntry,
@@ -1022,6 +1036,358 @@ for (const patch of [
     f.rows.delete(child);
     await assert.rejects(validateCapturedOwners(f.gate.documents, owners));
   } finally {
+    f.release();
+    f.gate.dispose();
+  }
+}
+
+// Exercise the actual publishers and retained owners, rather than only the capture codec.
+{
+  const f = sceneHistoryFixture(),
+    repository = createVillageRepository(() => f.gate.documents);
+  const context = createBackgroundContext();
+  const wishes = wishHistoryStore(f.gate.documents);
+  const identify = (rows: any, owner: any) => wishes.fingerprint(rows, owner);
+  const wish = {
+    ...fixtureWish({ wish: "Keep exact native publication evidence" }),
+    history: Array.from({ length: 25_000 }, (_, index) => ({
+      id: "native-event:" + index,
+      at: wishTime(),
+      kind: "progress" as const,
+      text: "Exact native private café 東京 history " + index + " evidence.".repeat(8),
+      sourceId: "native-source:" + index,
+      lineIds: ["native-line:" + index],
+    })),
+  };
+  const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const expected = hash(wish);
+  let admission: any, measured: any;
+  const background = createBackgroundWork({
+    villagesDocuments: () => f.gate.documents,
+    villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
+    readVillageState: (options) => repository.readAuthority(options),
+    mutateVillageState: async (update, options) => {
+      await repository.mutateAuthority(update, options);
+      return repository.readAuthority();
+    },
+    withUsagePurpose: (_purpose, work) => work(),
+    measurePipeline: (_name, _tags, work) => work(),
+    runtimeDebug() {},
+    backgroundCalls: context.backgroundCalls,
+    withRepairWork,
+    handlers: [
+      [
+        "resident-planning",
+        {
+          valid: () => true,
+          generate: async (input) => {
+            admission = input;
+            assert.equal(hash(input.admitted.villagers[0].wishes[0]), expected);
+            const stringify = JSON.stringify;
+            let maxRead = 0,
+              maxWrite = 0,
+              maxJSON = 0,
+              bytes = 0,
+              interior = false;
+            const spy = mock.method(JSON, "stringify", (...args: any[]) => {
+              const result = Reflect.apply(stringify, JSON, args);
+              if (typeof result === "string") {
+                bytes += Buffer.byteLength(result);
+                interior ||= result.includes("Exact native private");
+              }
+              return result;
+            });
+            try {
+              const captured = { at: wishTime(), memoryRevision: 0, world: input.admitted };
+              for (let index = 0; index < 20; index++) {
+                f.reset();
+                bytes = 0;
+                await context.backgroundSetting("setting:" + index, () => index);
+                returnCaptureRevision(captured, () => "known-relationships", identify);
+                assert(
+                  sameReturnResident(
+                    input.admitted.villagers[0],
+                    input.admitted.villagers[0],
+                    new Date(wishTime()),
+                    input.admitted,
+                    identify,
+                  ),
+                );
+                const io = f.metrics();
+                maxRead = Math.max(maxRead, io.readBytes);
+                maxWrite = Math.max(maxWrite, io.writtenBytes);
+                maxJSON = Math.max(maxJSON, bytes);
+              }
+            } finally {
+              spy.mock.restore();
+            }
+            assert(
+              !interior,
+              "Actual background metadata saves and catch-up comparisons never serialize interior history",
+            );
+            measured = { maxRead, maxWrite, maxJSON };
+            assert(maxRead < 128_000 && maxWrite < 64_000 && maxJSON < 256_000, stringify(measured));
+            throw Error("Hold this provider-free capture for recovery");
+          },
+          apply() {
+            throw Error("The deliberately held job cannot apply");
+          },
+        },
+      ],
+    ],
+  });
+  const stop = background.startBackgroundWork();
+  try {
+    await background.recoverBackgroundWork();
+    await repository.mutateAuthority((state) => {
+      Object.assign(state, scope);
+      state.venues = [venue()];
+      state.villagers = [
+        {
+          characterId: "ada",
+          cardSnapshot: { id: "ada", revision: 1, sourceStatus: "available", name: "Ada", capturedAt: wishTime() },
+          wishes: [],
+        },
+      ] as any;
+    });
+    const live = await repository.readAuthority({ wishes: true });
+    const admitted = captureResidentActivity(live);
+    admitted.villagers[0].wishes = [wish];
+    await background.queueBackgroundJob({
+      kind: "resident-planning",
+      subjectId: "native-capture",
+      seed: scope.seed,
+      revision: "native-source",
+      finite: true,
+      label: "Native capture",
+      input: {
+        admitted,
+        opportunity: { actorIds: ["ada"] },
+        actorIncarnations: { ada: wishTime() },
+        context: {
+          residents: [{ characterId: "ada", capturedAt: wishTime(), wishes: [wish] }],
+          social: { state: defaultRelationshipState(scope.seed) },
+        },
+      },
+    });
+    await background.settleBackgroundWork();
+    assert(measured, "The real executor loaded the selected admission");
+    const current = [...f.rows.values()].find((row) => row.kind === "background-work")!;
+    assert.equal(current.data.status, "failed");
+    assert.equal(current.data.input.admitted.villagers[0].wishes, undefined);
+    const protectedJob = [{ slot: current.id, id: current.data.id, attempt: current.data.attempt }];
+    const root = f.rows.get("villages-village");
+    for (const bad of [
+      { ...root, kind: "unrelated" },
+      { ...root, id: "another-world" },
+      { ...root, packageId: "another-package" },
+    ])
+      await assert.rejects(capturedPublicationOwners(f.gate.documents, bad), /World owner identity/);
+    const wrongRow = { ...f.gate.documents, getById: async () => ({ ...current, id: "foreign-slot" }) };
+    await assert.rejects(
+      capturedPublicationOwners(wrongRow, undefined, protectedJob),
+      /source job is missing or changed/,
+    );
+    const revision = root.revision;
+    await assert.rejects(
+      repository.mutateAuthority(
+        (state) => {
+          state.setting = "must not publish";
+          state.socialOutbox = [
+            { seed: scope.seed, admitted: admission.admitted, opportunity: { actorIds: ["ada"] } },
+          ] as any;
+        },
+        { sourceJobs: [{ ...protectedJob[0], attempt: current.data.attempt + 1 }] },
+      ),
+      /source job changed/,
+    );
+    assert.equal(f.rows.get(root.id).revision, revision);
+    f.rows.set(root.id, { ...root, kind: "unrelated" });
+    const rejected = structuredClone(f.rows);
+    await assert.rejects(
+      background.queueBackgroundJob({
+        kind: "resident-planning",
+        subjectId: "native-capture",
+        seed: scope.seed,
+        revision: "rejected-owner",
+        finite: true,
+        label: "Rejected source",
+        input: admission,
+      }),
+      /World owner identity/,
+    );
+    assert.deepEqual(f.rows, rejected, "Invalid physical World ownership cannot publish even an orphan preparation");
+    f.rows.set(root.id, root);
+
+    const entry = {
+      id: "native-social",
+      seed: scope.seed,
+      at: wishTime(),
+      opportunity: { actorIds: ["ada"] },
+      candidates: [],
+      proposal: {},
+      admitted: admission.admitted,
+      relationshipSnapshot: admission.context.social.state,
+    };
+    const mail = {
+      seed: scope.seed,
+      residentId: "ada",
+      incarnation: wishTime(),
+      admitted: { ...admission.admitted, relationshipContext: admission.context.social.state },
+    };
+    await repository.mutateAuthority(
+      (state) => {
+        state.socialOutbox = [entry] as any;
+        state.socialMailOutbox = [{ id: "native-mail", input: mail, result: {} }] as any;
+      },
+      { sourceJobs: protectedJob },
+    );
+    const source = ({ id, kind, name, description, data }: any) =>
+      structuredClone({ id, kind, name, description, data });
+    const before = source(f.rows.get(root.id));
+    const api = createRepairService({
+      gate: f.gate,
+      repository,
+      resumeProject: async () => {},
+      cancelProject: async () => {},
+      replaySaved: async () => {},
+      continueSaved: async () => {},
+    });
+    const checkpoint = await api.createCheckpoint("Keep captured sources", "captured-sources");
+    const corrected = await api.inspect(repairId("zone", "cafe", "common"));
+    await repository.mutateAuthority((state) => {
+      state.socialOutbox = [];
+      state.socialMailOutbox = [];
+      state.venues[0].zones!.find((zone) => zone.id === "common")!.description = "Temporary corrected room";
+    });
+    const after = source(f.rows.get(root.id));
+    const repair = createRepairStorage(f.gate.documents, f.gate.documents);
+    await repair.saveHistory(
+      {
+        id: "captured-undo",
+        ...scope,
+        title: "Capture removal",
+        at: wishTime(),
+        changes: [],
+        affected: [],
+        undone: false,
+        canUndo: true,
+        guard: "guard",
+        record: corrected,
+        request: {
+          recordId: corrected.id,
+          action: "correct",
+          knowers: [],
+          values: { description: "Temporary corrected room" },
+        },
+        undoWrites: [{ before, after }],
+      } as any,
+      [],
+    );
+    const undo = f.rows.get(repairStorageId("repair-history", "captured-undo"));
+    f.rows.set(current.id, {
+      ...current,
+      data: {
+        ...current.data,
+        input: null,
+        status: "completed",
+        steps: [],
+        optionalAttempts: {},
+        hasResult: false,
+        result: undefined,
+      },
+    });
+    await collectRetainedStorage(f.gate);
+    const savedEntry = before.data.socialOutbox[0];
+    const head = savedEntry.admitted.villagers[0].wishHead.root.id;
+    assert(f.rows.has(head), "Checkpoint and Undo own captured Wishes after live and current-job release");
+    const missing = f.rows.get(head);
+    f.rows.delete(head);
+    const inventory = structuredClone(f.rows);
+    await assert.rejects(collectRetainedStorage(f.gate), /missing/);
+    assert.deepEqual(f.rows, inventory, "A missing captured dependency holds cleanup before any deletion");
+    f.rows.set(head, missing);
+    await api.deleteCheckpoint(checkpoint.id, checkpoint.token);
+    await collectRetainedStorage(f.gate);
+    assert(f.rows.has(head), "Available Undo retains capture dependencies independently of checkpoints");
+    await repair.readHistory(undo);
+    const restored = await createCapturedAdmissions({ ...f.documents }).readSocialEntry(savedEntry, scope.seed);
+    assert.equal(
+      hash(restored.admitted!.villagers[0].wishes[0]),
+      expected,
+      "Cold loading preserves exact captured evidence after cleanup",
+    );
+    const reviewedUndo = await api.undo("captured-undo", "apply-captured-undo");
+    await collectRetainedStorage(f.gate);
+    assert(f.rows.has(head), "A prepared Undo owns proposed capture dependencies before publication");
+    await api.apply(reviewedUndo.id, reviewedUndo.token);
+    const restoredWorld = await createVillageRepository(() => ({ ...f.documents })).readAuthority();
+    const applied = await createCapturedAdmissions({ ...f.documents }).readSocialEntry(
+      restoredWorld.socialOutbox![0],
+      scope.seed,
+    );
+    assert.equal(
+      hash(applied.admitted!.villagers[0].wishes[0]),
+      expected,
+      "Actual Undo apply restores native captures across restart",
+    );
+    assert.equal(f.rows.get(undo.id).data.canUndo, false);
+    await repository.mutateAuthority((state) => {
+      state.socialOutbox = [];
+      state.socialMailOutbox = [];
+    });
+    await collectRetainedStorage(f.gate);
+    assert(!f.rows.has(head), "Explicitly released final owners permit unused capture pages to be reclaimed");
+    for (const failure of ["before", "after"] as const) {
+      const update = f.documents.update;
+      let release!: () => void, entered!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const atWrite = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      f.documents.update = async (input: any) => {
+        if (input.id !== root.id) return update(input);
+        if (failure === "after") await update(input);
+        entered();
+        await held;
+        throw Error("Interrupted " + failure + " capture publication");
+      };
+      const publication = repository.mutateAuthority((state) => {
+        state.socialOutbox = [entry] as any;
+      });
+      const failed = assert.rejects(publication, new RegExp("Interrupted " + failure));
+      try {
+        await atWrite;
+        const retained = structuredClone(f.rows);
+        await assert.rejects(collectRetainedStorage(f.gate), /work is active/);
+        assert.deepEqual(f.rows, retained, "Cleanup cannot enter before the actual capture owner CAS acknowledges");
+      } finally {
+        release();
+        await failed;
+        f.documents.update = update;
+      }
+      await collectRetainedStorage(f.gate);
+      const restarted = createVillageRepository(() => ({ ...f.documents }));
+      const saved = await restarted.readAuthority();
+      if (failure === "before") assert.equal(saved.socialOutbox?.length, 0);
+      else {
+        const loaded = await createCapturedAdmissions({ ...f.documents }).readSocialEntry(
+          saved.socialOutbox![0],
+          scope.seed,
+        );
+        assert.equal(
+          hash(loaded.admitted!.villagers[0].wishes[0]),
+          expected,
+          "Lost capture acknowledgement remains recoverable across restart and cleanup",
+        );
+      }
+    }
+    console.log(JSON.stringify({ workload: "native-capture-publication", events: 25_000, updates: 20, ...measured }));
+  } finally {
+    stop();
+    await background.settleBackgroundWork();
     f.release();
     f.gate.dispose();
   }

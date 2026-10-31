@@ -1,4 +1,4 @@
-import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
 import { validateBackgroundResponse } from "../packages/villages/src/server/adapters/storage/background-responses.js";
@@ -96,6 +96,7 @@ function fixture() {
   };
   const service = createResidentPlanning({
     relationshipIdentity: fixtureRelationshipIdentity,
+    wishIdentity: fixtureWishIdentity,
     readVillageState: async () => state,
     readEffectiveVillagerCard,
     queueBackgroundJob: async (input) => {

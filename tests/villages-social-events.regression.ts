@@ -1,5 +1,9 @@
 import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
-import { fixtureCapturedAdmissions, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import {
+  fixtureCapturedAdmissions,
+  fixtureRelationshipIdentity,
+  fixtureWishIdentity,
+} from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -365,6 +369,7 @@ batchSource.reinterpretRequired = undefined;
 const batchSettlement = createReturnCatchupSettlement({
   socialIdentity: fixtureCapturedAdmissions.socialIdentity,
   relationshipIdentity: fixtureRelationshipIdentity,
+  wishIdentity: fixtureWishIdentity,
   gate: { simulate: async (work: any) => ({ value: await work(), transaction: {} }), commit: async () => {} },
   readSnapshot: snapshot,
   mutate: applyWorld,
@@ -380,6 +385,7 @@ assert.ok(projectMemories(village.memories, ["a"]).some((row) => row.text === "B
 const nextJobs: any[] = [];
 const nextPlanner = createResidentPlanning({
   relationshipIdentity: fixtureRelationshipIdentity,
+  wishIdentity: fixtureWishIdentity,
   readVillageState: snapshot,
   readEffectiveVillagerCard,
   queueBackgroundJob: async (work: any) => {
@@ -520,6 +526,7 @@ const realSettlement = () =>
   createReturnCatchupSettlement({
     socialIdentity: fixtureCapturedAdmissions.socialIdentity,
     relationshipIdentity: fixtureRelationshipIdentity,
+    wishIdentity: fixtureWishIdentity,
     gate: realGate,
     readSnapshot: readGated,
     mutate: mutateGated,
@@ -674,6 +681,7 @@ failSettlement = false;
 const conflictSettlement = createReturnCatchupSettlement({
   socialIdentity: fixtureCapturedAdmissions.socialIdentity,
   relationshipIdentity: fixtureRelationshipIdentity,
+  wishIdentity: fixtureWishIdentity,
   gate: {
     simulate: realGate.simulate,
     commit: async (id: string, transaction: any) => {
@@ -776,6 +784,7 @@ console.log(
 let automaticCalls = 0;
 const writer = createResidentPlanning({
   relationshipIdentity: fixtureRelationshipIdentity,
+  wishIdentity: fixtureWishIdentity,
   villagesLanguageModels: () => ({
     resolveForRequest: async () => ({
       model: "fixture",

@@ -1,4 +1,8 @@
-import { fixtureCapturedAdmissions, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import {
+  fixtureCapturedAdmissions,
+  fixtureRelationshipIdentity,
+  fixtureWishIdentity,
+} from "./helpers/village-storage.fixture.js";
 import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 // Test cases: encounter-places/evidence, encounter-places/settlement, encounter-places/recovery, encounter-places/conflict, encounter-places/catchup
 import assert from "node:assert/strict";
@@ -289,6 +293,7 @@ await runCase("encounter-places/catchup", async () => {
   let work: any;
   const planning = createResidentPlanning({
     relationshipIdentity: fixtureRelationshipIdentity,
+    wishIdentity: fixtureWishIdentity,
     readVillageState: async () => world,
     readEffectiveVillagerCard,
     queueBackgroundJob: async (value) => {
@@ -410,6 +415,7 @@ await runCase("encounter-places/catchup", async () => {
     const settlement = createReturnCatchupSettlement({
       socialIdentity: fixtureCapturedAdmissions.socialIdentity,
       relationshipIdentity: fixtureRelationshipIdentity,
+      wishIdentity: fixtureWishIdentity,
       gate,
       readSnapshot: snapshot,
       mutate,

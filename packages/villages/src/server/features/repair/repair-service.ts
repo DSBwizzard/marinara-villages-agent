@@ -2,6 +2,7 @@ import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
 import { createDepartureHistory, validateDepartureHistory } from "../../adapters/storage/departure-history.js";
 import { createWorldWishes, validateWorldWishHistory } from "../../adapters/storage/world-wishes.js";
+import { validateCapturedSources } from "../../adapters/storage/captured-admissions.js";
 import { mutableSocialWish } from "../../domain/rules/social-wishes.js";
 import { createHash, randomUUID } from "node:crypto";
 import type {
@@ -595,6 +596,7 @@ export function createRepairService(ports: RepairPorts) {
       documents,
       rows.filter((row) => row.kind === "village").map((row) => row.data),
     );
+    await validateCapturedSources(documents, rows);
     return storage.checkpoint(state, rows, id, title, randomUUID(), mode);
   }
   async function retireWorldJob(row: Doc, at: string) {
@@ -1212,6 +1214,7 @@ export function createRepairService(ports: RepairPorts) {
         documents,
         checkpointDocuments.filter((row) => row.kind === "village").map((row) => row.data),
       );
+      await validateCapturedSources(documents, checkpointDocuments);
       let current: Doc[] = [];
       await currentSocial(state);
       for (const kind of GAME_KINDS) current.push(...(await documents.list(PKG, kind)));

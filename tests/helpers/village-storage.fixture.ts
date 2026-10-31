@@ -12,6 +12,7 @@ import { coerceVillageState } from "../../packages/villages/src/server/domain/de
 import {
   encodeWishHistory,
   decodeWishHistorySync,
+  wishHistoryStore,
 } from "../../packages/villages/src/server/adapters/storage/wish-history.js";
 import {
   encodeRelationshipPages,
@@ -21,7 +22,10 @@ import {
   createRelationshipPayloadStore,
   relationshipWorldKey,
 } from "../../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
-import type { RelationshipIdentity } from "../../packages/villages/src/server/domain/rules/return-capture-revision.js";
+import type {
+  RelationshipIdentity,
+  WishIdentity,
+} from "../../packages/villages/src/server/domain/rules/return-capture-revision.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { SCENE_STORAGE_FORMAT } from "../../packages/villages/src/server/adapters/storage/scene-history.js";
 import {
@@ -59,6 +63,55 @@ export const fixtureCapturedAdmissions = createCapturedAdmissions({
     throw new Error("This fixture authors logical captures, not native history references.");
   },
 } as unknown as CapabilityDocumentStore);
+function authorAdmissionFixture(rows: Map<string, any>, raw: any, mail = false): any {
+  if (!raw || raw.admissionFormat !== undefined || !Array.isArray(raw.villagers)) return raw;
+  const { relationshipContext, ...facts } = raw;
+  return {
+    ...facts,
+    admissionFormat: 1,
+    villagers: authorWorldWishFixture(rows, { ...facts, version: 13 }).villagers,
+    ...(mail || Object.hasOwn(raw, "relationshipContext")
+      ? {
+          relationshipHead: relationshipContext ? authorRelationshipFixture(rows, relationshipContext, raw).head : null,
+        }
+      : {}),
+  };
+}
+function authorSocialCaptureFixture(rows: Map<string, any>, raw: any): any {
+  if (!raw || Object.hasOwn(raw, "relationshipHead")) return raw;
+  const { relationshipSnapshot, ...facts } = raw;
+  return {
+    ...facts,
+    admitted: authorAdmissionFixture(rows, raw.admitted),
+    relationshipHead: relationshipSnapshot
+      ? authorRelationshipFixture(rows, relationshipSnapshot, raw.admitted).head
+      : null,
+  };
+}
+function authorCapturedInputFixture(rows: Map<string, any>, kind: string, raw: any): any {
+  if (!raw) return raw;
+  if (kind === "personal-mail") return { ...raw, admitted: authorAdmissionFixture(rows, raw.admitted, true) };
+  if (kind === "social-recovery") {
+    if (Object.hasOwn(raw, "socialHead")) return raw;
+    const { social, ...facts } = raw;
+    return {
+      ...facts,
+      entry: authorSocialCaptureFixture(rows, raw.entry),
+      socialHead: social ? authorRelationshipFixture(rows, social, raw.entry.admitted).head : null,
+    };
+  }
+  if (kind !== "resident-planning" || raw.admitted?.admissionFormat === 1) return raw;
+  const { state, ...social } = raw.context.social;
+  return {
+    ...raw,
+    admitted: authorAdmissionFixture(rows, raw.admitted),
+    context: {
+      ...raw.context,
+      residents: raw.context.residents.map(({ wishes: _wishes, ...row }: any) => row),
+      social: { ...social, head: state ? authorRelationshipFixture(rows, state, raw.admitted).head : null },
+    },
+  };
+}
 export function authorBackgroundFixture(rows: Map<string, any>, raw: unknown) {
   const job = structuredClone(raw) as Job & { responseStorage?: number };
   if (
@@ -85,10 +138,15 @@ export function authorBackgroundFixture(rows: Map<string, any>, raw: unknown) {
       step.responseRef = saved.ref;
     }
   }
+  job.input = authorCapturedInputFixture(rows, job.kind, job.input);
+  if (job.replacement)
+    job.replacement.input = authorCapturedInputFixture(rows, job.replacement.kind, job.replacement.input);
   return nativeBackgroundJob(job);
 }
 export const fixtureRelationshipIdentity: RelationshipIdentity = (world) =>
   identities.fingerprint(world.relationshipContext, world);
+const wishIdentities = wishHistoryStore({} as CapabilityDocumentStore);
+export const fixtureWishIdentity: WishIdentity = (rows, scope) => wishIdentities.fingerprint(rows, scope);
 /** Native fixture authorship is projected into the current saved layout without
  * introducing writes into read-only/ownership tests. Production has no inline reader. */
 export function villageFixtureDocuments(store: CapabilityDocumentStore): CapabilityDocumentStore {
@@ -119,7 +177,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       ...((data as any)?.operation?.snapshot?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ??
         []),
       ...operationEvidenceReferences((data as any)?.operation, data as any),
-      ...((data as any)?.responseStorage === 2 ? (data as any).steps.map((step: any) => step.responseRef) : []),
+      ...((data as any)?.responseStorage === 3 ? (data as any).steps.map((step: any) => step.responseRef) : []),
     ];
     if (!heads.some((head) => head && virtual.has(head.id))) return;
     // All virtual page documents are committed before a real root may reference them.
@@ -154,7 +212,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
-      if (raw?.version !== 12) return metadata;
+      if (raw?.version !== 13) return metadata;
       if (Object.hasOwn(raw, "memoryHead"))
         return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(raw), memoryHead: raw.memoryHead }) };
       if (!raw.memories) return metadata;
@@ -231,7 +289,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (
         input.id === "villages-village" ||
         (input.data as any)?.format === 4 ||
-        (input.data as any)?.responseStorage === 2 ||
+        (input.data as any)?.responseStorage === 3 ||
         (input.data as any)?.storageFormat === SCENE_STORAGE_FORMAT
       )
         await ensure(input.data);
@@ -297,7 +355,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
       scope = { seed: context.seed, setupAt: context.setupAt ?? world?.setupAt ?? "" },
       { relationshipContext, ...facts } = context.facts,
       head = relationshipContext ? authorRelationshipFixture(rows, relationshipContext, scope).head : null;
-    const villagers = authorWorldWishFixture(rows, { version: 12, ...facts, ...scope }).villagers;
+    const villagers = authorWorldWishFixture(rows, { version: 13, ...facts, ...scope }).villagers;
     scene.continuity = { ...context, ...scope, facts: { ...facts, villagers }, relationshipHead: head };
   }
   if (scene.operation?.snapshot)
@@ -375,8 +433,23 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
 }
 export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
   raw = authorWorldWishFixture(rows, raw);
+  if (raw?.version === 13)
+    raw = {
+      ...raw,
+      ...(raw.socialOutbox
+        ? { socialOutbox: raw.socialOutbox.map((entry: any) => authorSocialCaptureFixture(rows, entry)) }
+        : {}),
+      ...(raw.socialMailOutbox
+        ? {
+            socialMailOutbox: raw.socialMailOutbox.map((entry: any) => ({
+              ...entry,
+              input: authorCapturedInputFixture(rows, "personal-mail", entry.input),
+            })),
+          }
+        : {}),
+    };
   const capture = raw?.returnCatchup?.capture;
-  if (raw?.version !== 12 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
+  if (raw?.version !== 13 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
   const { relationshipContext, ...world } = capture.world;
   const relationshipHead = relationshipContext
     ? authorRelationshipFixture(rows, relationshipContext, world).head
@@ -387,7 +460,7 @@ export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
   };
 }
 export function authorWorldWishFixture(rows: Map<string, any>, raw: any): any {
-  if (raw?.version !== 12) return raw;
+  if (raw?.version !== 13) return raw;
   const residents = (world: any) =>
     (world.villagers ?? []).map((row: any) => {
       if (Object.hasOwn(row, "wishHead")) return row;
@@ -541,7 +614,55 @@ export function storedVillage(rows: Map<string, any>) {
   return fixtureVillageState(rows.get("villages-village")?.data, rows);
 }
 export function fixtureVillageState(raw: any, rows?: Map<string, any>) {
-  if (raw?.version === 12) {
+  if (raw?.version === 13) {
+    const admission = (value: any): any => {
+      if (value?.admissionFormat !== 1) return value;
+      const { admissionFormat: _format, relationshipHead, ...facts } = value;
+      return {
+        ...facts,
+        villagers: value.villagers.map((row: any) => {
+          const { wishHead, ...facts } = row;
+          return {
+            ...facts,
+            wishes: decodeWishHistorySync(
+              wishHead,
+              { ...value, actorId: row.characterId },
+              (id) => rows?.get(id)?.data ?? null,
+            ).rows,
+          };
+        }),
+        ...(Object.hasOwn(value, "relationshipHead")
+          ? {
+              relationshipContext: relationshipHead
+                ? fixtureRelationshipState({ data: { head: relationshipHead } }, rows!)
+                : undefined,
+            }
+          : {}),
+      };
+    };
+    if (raw.socialOutbox)
+      raw = {
+        ...raw,
+        socialOutbox: raw.socialOutbox.map((entry: any) => {
+          if (!Object.hasOwn(entry, "relationshipHead")) return entry;
+          const { relationshipHead, ...facts } = entry;
+          return {
+            ...facts,
+            admitted: admission(entry.admitted),
+            relationshipSnapshot: relationshipHead
+              ? fixtureRelationshipState({ data: { head: relationshipHead } }, rows!)
+              : undefined,
+          };
+        }),
+      };
+    if (raw.socialMailOutbox)
+      raw = {
+        ...raw,
+        socialMailOutbox: raw.socialMailOutbox.map((entry: any) => ({
+          ...entry,
+          input: { ...entry.input, admitted: admission(entry.input.admitted) },
+        })),
+      };
     const residents = (world: any) =>
       (world.villagers ?? []).map((row: any) => {
         if (!Object.hasOwn(row, "wishHead")) return row;

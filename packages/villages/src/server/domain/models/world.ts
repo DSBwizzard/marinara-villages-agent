@@ -957,7 +957,7 @@ export type VillageState = {
   socialOutbox?: import("./social-outbox-model.js").WorldSocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  version: 12;
+  version: 13;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;

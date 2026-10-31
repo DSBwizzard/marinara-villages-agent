@@ -36,6 +36,10 @@ import type {
 import type { VillageState } from "../domain/models/world.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
 import { asRecord } from "../domain/rules/coerce.js";
+import { copyBackgroundWork } from "../domain/rules/world-context-copy.js";
+import { capturedJobOwners } from "../adapters/storage/captured-admissions.js";
+import { capturedPublicationOwners } from "../adapters/storage/captured-admission-owners.js";
+import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
 import { connectionFailureKind } from "../domain/rules/connection-failure.js";
 import { badRequest, conflict } from "../domain/rules/errors.js";
 import { reserveEventAttempt } from "../domain/rules/event-attempts.js";
@@ -312,6 +316,35 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
       await assertVillageClockWrite();
       const next = change(record ? await responses.decode(record.data) : null);
       const data = nativeBackgroundJob(next);
+      const capturedKinds = ["resident-planning", "personal-mail", "social-recovery"];
+      if (
+        (next.input !== null && capturedKinds.includes(next.kind)) ||
+        (next.replacement && capturedKinds.includes(next.replacement.kind))
+      ) {
+        const world = await documents.getById(VILLAGES_PACKAGE_ID, "villages-village");
+        const protectedOwners = await capturedPublicationOwners(documents, world);
+        if (record) {
+          const before = capturedJobOwners(record.data);
+          protectedOwners.wishes.push(...before.wishes);
+          protectedOwners.relationships.push(...before.relationships);
+        }
+        const captures = createCapturedAdmissions(documents);
+        if (next.input !== null)
+          data.input = await captures.prepareInput(next.kind, next.input, next.seed, protectedOwners);
+        if (next.replacement)
+          data.replacement = {
+            ...next.replacement,
+            input: await captures.prepareInput(
+              next.replacement.kind,
+              next.replacement.input,
+              next.replacement.seed,
+              protectedOwners,
+            ),
+          };
+      }
+      capturedJobOwners(data);
+      next.input = data.input;
+      next.replacement = data.replacement;
       if (record && JSON.stringify(data) === JSON.stringify(record.data)) return next;
       if (record) {
         const before = record.data as Job,
@@ -469,7 +502,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   }
   function fresh(work: BackgroundInput, previous?: Job | null): Job {
     return {
-      ...structuredClone(work),
+      ...copyBackgroundWork(work),
       id: jobId(work),
       status: work.legacyError ? "failed" : "queued",
       owner,
@@ -636,10 +669,12 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     return readVillageState(options);
   }
   function mutateForJob(job: Job, update: (state: VillageState) => void): Promise<unknown> {
+    const sourceJobs = [{ slot: slotId(job), id: job.id, attempt: job.attempt }];
     return handlers.get(job.kind)?.authority === "raw" && ports.mutateVillageAuthority
-      ? ports.mutateVillageAuthority(update, { wishes: catchupBatchId(job) ? true : undefined })
+      ? ports.mutateVillageAuthority(update, { wishes: catchupBatchId(job) ? true : undefined, sourceJobs })
       : mutateVillageState(update, {
           wishes: job.kind === "resident-planning" ? true : job.kind === "wish" ? [job.subjectId] : undefined,
+          sourceJobs,
         });
   }
   function checkCurrent(job: Job, state: VillageState): void {
@@ -683,6 +718,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
     running.set(id, task);
   }
   function queueBackgroundJob(work: BackgroundInput, documents = villagesDocuments()): Promise<void> {
+    work = copyBackgroundWork(work);
     const id = slotId(work);
     const existing = reserving.get(id);
     if (existing) return existing.then(() => queueBackgroundJob(work, documents));
@@ -727,7 +763,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
             return previous;
           if (running.has(id) && previous) {
             superseded.add(previous.id);
-            previous.replacement = structuredClone(work);
+            previous.replacement = copyBackgroundWork(work);
             return previous;
           }
           return fresh(work, previous);
@@ -747,8 +783,13 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   async function runMeasuredJob(id: string, documents: CapabilityDocumentStore): Promise<void> {
     const runOwner = owner;
     const responses = backgroundResponseStore(documents);
-    const updateJob = (update: Parameters<typeof changeJob>[1], unsubmitted?: Unsubmitted) =>
-      changeJob(id, update, documents, unsubmitted);
+    let admitted: { id: string; attempt: number; input: unknown } | undefined;
+    const updateJob = async (update: Parameters<typeof changeJob>[1], unsubmitted?: Unsubmitted) => {
+      const saved = await changeJob(id, update, documents, unsubmitted);
+      return admitted && saved.id === admitted.id && saved.attempt === admitted.attempt && saved.input !== null
+        ? { ...saved, input: admitted.input }
+        : saved;
+    };
     let job = await readJob(id, documents);
     if (job) job = (await promoteReplacement(id, job, documents, runOwner)) ?? job;
     if (job?.replacement && uncertainAttempt(job)) {
@@ -806,6 +847,27 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
         },
         owner: runOwner,
       }));
+      return;
+    }
+    try {
+      admitted = {
+        id: job.id,
+        attempt: job.attempt,
+        input: await createCapturedAdmissions(documents).readInput(job.kind, job.input, job.seed),
+      };
+      job = { ...job, input: admitted.input };
+    } catch {
+      await updateJob((current) => {
+        if (!current || current.id !== job!.id || current.attempt !== job!.attempt)
+          throw new Obsolete("Background capture ownership changed.");
+        const message = "Saved background context is unavailable. Restore it from a checkpoint.";
+        return {
+          ...current,
+          status: "failed",
+          error: message,
+          failure: { cause: "storage_application", stage: "recovery", message },
+        };
+      });
       return;
     }
     const controller = new AbortController();

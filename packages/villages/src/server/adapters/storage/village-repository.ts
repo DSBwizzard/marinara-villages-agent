@@ -17,6 +17,9 @@ import {
 import { withRepairWork } from "./repair-gate.js";
 import { createDepartureHistory, departureHistoryOwner } from "./departure-history.js";
 import { createWorldWishes, worldWishOwners } from "./world-wishes.js";
+import { capturedWorldOwners } from "./captured-admissions.js";
+import { capturedPublicationOwners } from "./captured-admission-owners.js";
+import { createCapturedAdmissions } from "./captured-admission-store.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
 const historyFields = ["memories", "memoryScenes", "memoryReceipts"] as const;
@@ -32,9 +35,10 @@ function rootData(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 12) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 13) throw new Error("Unsupported Village format. Start a fresh Village.");
   departureHistoryOwner(raw);
   worldWishOwners(raw);
+  capturedWorldOwners(raw);
   memoryRequire(!historyFields.some((key) => Object.hasOwn(raw, key)), "history cannot be stored in the Village root");
   readMemoryHead(raw.memoryHead);
   return raw;
@@ -142,7 +146,7 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 12, "invalid Village mutation format");
+            memoryRequire(state.version === 13, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",
@@ -157,6 +161,13 @@ export function createVillageRepository(
             const stamp = new Date().toISOString(),
               data = encodeRoot(state, nextHead, wishes);
             worldWishOwners(data);
+            if (state.socialOutbox?.length || state.socialMailOutbox?.length) {
+              const protectedOwners = await capturedPublicationOwners(store, record, options?.sourceJobs);
+              // These heads were prepared in this same admitted publication, before its root CAS.
+              protectedOwners.wishes.push(...worldWishOwners(data).owners);
+              Object.assign(data, await createCapturedAdmissions(store).prepareWorld(data, protectedOwners));
+            }
+            capturedWorldOwners(data);
             let committed = false;
             try {
               if (record)

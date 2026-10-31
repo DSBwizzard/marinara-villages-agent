@@ -2,6 +2,7 @@ import type { VillageState } from "../models/world.js";
 import { planRoutineDays } from "./resident-agenda.js";
 import { localDateKey } from "./resident-planning.js";
 import { cloneVillageContext } from "./world-context-copy.js";
+import type { WishIdentity } from "./return-capture-revision.js";
 
 export const returnCatchupSubject = (batchId: string, opportunityId: string): string =>
   "return:" + batchId + ":" + opportunityId;
@@ -13,11 +14,14 @@ export function sameReturnResident(
   live: VillageState["villagers"][number],
   at: Date,
   historical: VillageState,
+  identifyWishes: WishIdentity,
 ): boolean {
   const date = localDateKey(at);
-  const { agenda: oldAgenda, ...oldResident } = before;
-  const { agenda: newAgenda, ...newResident } = live;
+  const { agenda: oldAgenda, wishes: oldWishes, ...oldResident } = before;
+  const { agenda: newAgenda, wishes: newWishes, ...newResident } = live;
   if (JSON.stringify(oldResident) !== JSON.stringify(newResident)) return false;
+  const scope = { seed: historical.seed, setupAt: historical.setupAt, actorId: before.characterId };
+  if (identifyWishes(oldWishes, scope) !== identifyWishes(newWishes, scope)) return false;
   if (!oldAgenda || !newAgenda) return oldAgenda === newAgenda;
   const { activeDay: oldDay, plannedDays: oldPlans, ...oldRoutine } = oldAgenda;
   const { activeDay: newDay, plannedDays: newPlans, ...newRoutine } = newAgenda;

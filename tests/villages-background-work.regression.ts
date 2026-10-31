@@ -12,6 +12,7 @@ import {
   mutateVillageMemoryState,
   mutateVillageState,
   readVillageState,
+  readVillageAuthority,
 } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   backgroundWorkSummaries,
@@ -225,6 +226,42 @@ const work = (subject: string, steps: string[], finite = true): BackgroundInput 
   label: subject,
   input: { subject, steps, expectedName: "Willowbrook" },
 });
+function capturedInput(kind: "resident-planning" | "personal-mail" | "social-recovery", input: any = {}) {
+  const capturedAt = "2026-09-01T00:00:00.000Z";
+  const admitted = {
+    seed: "fixture",
+    setupAt: capturedAt,
+    villagers: [{ characterId: "a", cardSnapshot: { name: "A", capturedAt }, wishes: [] }],
+  };
+  const opportunity = { actorIds: ["a"] };
+  if (kind === "personal-mail")
+    return { ...input, seed: "fixture", residentId: "a", incarnation: capturedAt, admitted };
+  if (kind === "social-recovery")
+    return { ...input, entry: { ...input.entry, seed: "fixture", admitted, opportunity } };
+  return {
+    ...input,
+    admitted,
+    opportunity,
+    actorIncarnations: { a: capturedAt },
+    context: {
+      ...input.context,
+      residents: [{ characterId: "a", capturedAt, wishes: [] }],
+      social: { state: undefined, candidates: [], relationships: [] },
+    },
+  };
+}
+function capturedOutbox(state: ReturnType<typeof defaultVillageState>, id: string, catchupBatchId?: string) {
+  const entry = capturedInput("social-recovery").entry;
+  return {
+    ...entry,
+    id,
+    catchupBatchId,
+    at: state.setupAt,
+    candidates: [],
+    proposal: {},
+    admitted: { ...entry.admitted, setupAt: state.setupAt },
+  };
+}
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function until(predicate: () => boolean) {
   for (let attempt = 0; attempt < 200 && !predicate(); attempt++) await tick();
@@ -335,11 +372,11 @@ async function main() {
       revision: "legacy-story",
       finite: true,
       label: "Saved story",
-      input: { context: frozenStory },
+      input: capturedInput("resident-planning", { context: frozenStory }),
     });
     await settleBackgroundWork();
     const story = await summary("saved-story");
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 2, story.error);
     assert.equal(calls[0].includes(frozenStory.setting), true, "planning keeps complete authored context");
     stop();
     stop = startBackgroundWork({ now: () => now });
@@ -824,7 +861,8 @@ async function main() {
       parent.data.replacement = replacement;
       const before = structuredClone([...rows.entries()]);
       stop = startBackgroundWork({ now: () => now });
-      await recoverBackgroundWork();
+      if (!("kind" in replacement)) await assert.rejects(recoverBackgroundWork(), /invalid replacement capture scope/);
+      else await recoverBackgroundWork();
       await settleBackgroundWork();
       assert.deepEqual(
         [...rows.entries()],
@@ -888,7 +926,7 @@ async function main() {
         revision: "source",
         finite: true,
         label: "Social recovery",
-        input: {},
+        input: capturedInput(kind),
       });
       await settleBackgroundWork();
       for (let read = 0; read < 2; read++) {
@@ -926,7 +964,7 @@ async function main() {
       finite: false,
       label: "Catch-up",
       automaticDate: currentDate,
-      input: { context: { catchup: true }, catchupBatchId: "return-batch", step },
+      input: capturedInput("resident-planning", { context: { catchup: true }, catchupBatchId: "return-batch", step }),
     });
     await queueBackgroundJob(catchupWork("return-one", "return-one"));
     await settleBackgroundWork();
@@ -1138,7 +1176,7 @@ async function main() {
       revision: step,
       finite: true,
       label: "Encounter meaning",
-      input: { entry: { catchupBatchId: "return-batch" }, step },
+      input: capturedInput("social-recovery", { entry: { catchupBatchId: "return-batch" }, step }),
     });
     await villageBackgroundPresence("interpretation-session", true);
     holdPendingTiming = true;
@@ -1187,10 +1225,13 @@ async function main() {
           records: [{ opportunityId: "safe", status: "settling" }],
         },
       };
-      state.socialOutbox = [{ id: "safe:social", catchupBatchId: "return-batch" }, { id: "unrelated:social" }] as any;
+      state.socialOutbox = [
+        capturedOutbox(state, "safe:social", "return-batch"),
+        capturedOutbox(state, "unrelated:social"),
+      ] as any;
     });
     await cancelReturnCatchup("return-batch");
-    const skipped = await readVillageState();
+    const skipped = await readVillageAuthority();
     assert.deepEqual(
       skipped.socialOutbox?.map((row) => row.id),
       ["unrelated:social"],
@@ -1203,7 +1244,7 @@ async function main() {
     });
     await mutateVillageState((state) => {
       state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
-      state.socialOutbox = [{ id: "partial:social", catchupBatchId: "return-batch" }] as any;
+      state.socialOutbox = [capturedOutbox(state, "partial:social", "return-batch")] as any;
     });
     await assert.rejects(() => cancelReturnCatchup("return-batch"), /recovering the saved encounter/);
     console.log(

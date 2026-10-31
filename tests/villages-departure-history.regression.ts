@@ -1,5 +1,6 @@
 // Test cases: departure-history/growth, departure-history/ownership, departure-history/publication, departure-history/comparison
 import assert from "node:assert/strict";
+import { fixtureWishIdentity } from "./helpers/village-storage.fixture.js";
 import { mock } from "node:test";
 import { runCase } from "../scripts/test-cases.mjs";
 import { configureRepairGate, createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
@@ -140,7 +141,7 @@ await runCase("departure-history/growth", async () => {
     try {
       const initial = await f.repository.readAuthority(),
         captured = initial.returnCatchup!.capture!;
-      const before = returnCaptureRevision(captured, f.identify);
+      const before = returnCaptureRevision(captured, f.identify, fixtureWishIdentity);
       await f.social.mutateRelationships(initial.seed, (state) => {
         state.edges[key].connection = "Later connection";
         state.edges[key].revision++;
@@ -173,7 +174,7 @@ await runCase("departure-history/growth", async () => {
             projection.returnCatchup!.capture!.world.relationshipContext!.edges[key].connection,
             "Departure connection",
           );
-          assert.equal(returnCaptureRevision(current.returnCatchup!.capture!, f.identify), before);
+          assert.equal(returnCaptureRevision(current.returnCatchup!.capture!, f.identify, fixtureWishIdentity), before);
           assert(!sameRelationshipContext(projection.relationshipContext, captured.world.relationshipContext));
         }
       } finally {
@@ -186,7 +187,7 @@ await runCase("departure-history/growth", async () => {
       assert.throws(() => coerceVillageState({ ...f.root().data, ...emptyMemoryPayload() }), /not loaded/);
       const cold = await createVillageRepository(() => f.documents).readAuthority();
       assert.equal(
-        returnCaptureRevision(cold.returnCatchup!.capture!, f.identify),
+        returnCaptureRevision(cold.returnCatchup!.capture!, f.identify, fixtureWishIdentity),
         before,
         "Cold hydration preserves the exact comparison identity",
       );

@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
+import { socialContextState } from "../packages/villages/src/server/domain/rules/social-context.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -1335,6 +1337,8 @@ async function main() {
       {
         id: "offscreen-grant",
         seed: socialWorld.seed,
+        admitted: captureResidentActivity(socialWorld),
+        relationshipSnapshot: socialContextState(socialWorld.relationshipContext, ["jim", "mara"], ""),
         at: socialAt,
         candidates: [],
         opportunity: {

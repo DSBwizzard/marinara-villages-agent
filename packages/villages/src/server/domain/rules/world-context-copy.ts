@@ -1,4 +1,5 @@
 import type { RelationshipState } from "../models/relationship-types.js";
+import type { BackgroundInput } from "../models/background-model.js";
 import type { SocialOutboxEntry } from "../models/social-outbox-model.js";
 import type { ReturnCatchupCapture, VillageState, VillageVillager } from "../models/world.js";
 import { coerceRelationshipState, immutableRelationshipState } from "./relationship-rules.js";
@@ -77,6 +78,51 @@ export function copySocialOutboxEntry(entry: SocialOutboxEntry): SocialOutboxEnt
       ? { relationshipSnapshot: immutableRelationshipState(entry.seed, relationshipSnapshot) }
       : {}),
   };
+}
+
+/** Snapshot mutable admission facts before asynchronous publication, sharing exact immutable history. */
+export function copyBackgroundWork(work: BackgroundInput): BackgroundInput {
+  const raw = work.input as any;
+  const facts = structuredClone({ ...work, input: undefined });
+  if (!raw || !["resident-planning", "personal-mail", "social-recovery"].includes(work.kind))
+    return { ...facts, input: structuredClone(raw) };
+  if (work.kind === "social-recovery") {
+    if (Object.hasOwn(raw, "socialHead")) return { ...facts, input: structuredClone(raw) };
+    const { entry, social, ...input } = raw;
+    return {
+      ...facts,
+      input: {
+        ...structuredClone(input),
+        entry: copySocialOutboxEntry(entry),
+        social: social ? immutableRelationshipState(work.seed, social) : undefined,
+      },
+    };
+  }
+  if (raw.admitted?.admissionFormat === 1) return { ...facts, input: structuredClone(raw) };
+  const { admitted, context, ...input } = raw;
+  const copy: any = { ...structuredClone(input), admitted: admitted ? cloneWorldContext(admitted) : admitted };
+  if (context) {
+    const { residents, social, ...metadata } = context;
+    copy.context = structuredClone(metadata);
+    if (residents)
+      copy.context.residents = residents.map((row: any) => {
+        const { wishes, ...metadata } = row;
+        return {
+          ...structuredClone(metadata),
+          ...(wishes ? { wishes: copySocialWishes(immutableSocialWishes(wishes)) } : {}),
+        };
+      });
+    if (social) {
+      const { state, ...metadata } = social;
+      copy.context.social = {
+        ...structuredClone(metadata),
+        ...(Object.hasOwn(social, "state")
+          ? { state: state ? immutableRelationshipState(work.seed, state) : undefined }
+          : {}),
+      };
+    }
+  }
+  return { ...facts, input: copy };
 }
 
 /** Historical projections must not duplicate either the live ledger or the departure ledger. */

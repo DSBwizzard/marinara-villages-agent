@@ -102,7 +102,7 @@ import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 12,
+    version: 13,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -1442,7 +1442,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 12) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 13) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1485,7 +1485,7 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
   const state: VillageState = {
-    version: 12,
+    version: 13,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(

@@ -50,7 +50,7 @@ assert.deepEqual(
 );
 await f.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 3)));
 assert.equal(f.get(r).status, "cancelled");
-assert.equal(coerceVillageState(undefined).version, 12);
+assert.equal(coerceVillageState(undefined).version, 13);
 for (const old of [{ version: 2 }, {}, { version: 0 }, { version: 5 }, { version: 6 }])
   assert.throws(() => coerceVillageState(old), /Unsupported Village format/);
 const fresh = defaultVillageState();

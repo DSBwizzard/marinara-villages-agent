@@ -170,7 +170,7 @@ export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
     "unsupported captured background format",
   );
   const into = emptyOwners();
-  if (raw.input === null) {
+  if (raw.input === null && ["resident-planning", "personal-mail", "social-recovery"].includes(raw.kind)) {
     memoryRequire(
       ["completed", "obsolete"].includes(raw.status) &&
         Array.isArray(raw.steps) &&
@@ -185,7 +185,7 @@ export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
             Object.keys(raw.optionalAttempts).length === 0)),
       "unfinished background capture was released",
     );
-  } else input(raw.kind, raw.input, raw.seed, into);
+  } else if (raw.input !== null) input(raw.kind, raw.input, raw.seed, into);
   if (owns(raw, "replacement") && raw.replacement !== undefined) {
     memoryObject(raw.replacement);
     memoryRequire(
@@ -246,4 +246,24 @@ export async function validateCapturedOwners(
   for (const owner of owners.wishes) await wishes.trace(owner.head, owner.scope);
   await validateRelationshipHistory({ getById: get }, owners.relationships);
   return retained;
+}
+
+export async function validateCapturedSources(
+  documents: Pick<CapabilityDocumentStore, "getById">,
+  rows: readonly { kind: string; data: unknown }[],
+) {
+  const into = emptyOwners();
+  for (const row of rows) {
+    const owners =
+      row.kind === "village"
+        ? capturedWorldOwners(row.data)
+        : ["background-work", "background-history"].includes(row.kind)
+          ? capturedJobOwners(row.data)
+          : undefined;
+    if (owners) {
+      into.wishes.push(...owners.wishes);
+      into.relationships.push(...owners.relationships);
+    }
+  }
+  return validateCapturedOwners(documents, into);
 }

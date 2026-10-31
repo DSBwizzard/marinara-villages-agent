@@ -1,4 +1,4 @@
-import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
@@ -66,6 +66,7 @@ const model: any = {
 let documents: any;
 const narrative = createNarrative({
   relationshipIdentity: fixtureRelationshipIdentity,
+  wishIdentity: fixtureWishIdentity,
   read: async () => structuredClone(state),
   mutate,
   socialSnapshot: async () => {
