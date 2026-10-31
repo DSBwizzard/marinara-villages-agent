@@ -939,6 +939,7 @@ try {
   const current = commandFixture("Truncated wish recovery", ({ scene, world }) => {
     const turn = scene.submissions[0];
     turn.processing!.domains.wishes.status = "failed";
+    turn.wishContexts = [];
     turn.semanticProvenance = { version: 2 } as any;
     turn.liveProposals = {
       version: 1,

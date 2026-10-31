@@ -5,6 +5,7 @@ import {
   operationEvidenceStore,
   operationCheckpointClaims,
   readOperationEvidenceReference,
+  operationWishReferences,
 } from "./operation-evidence.js";
 import type { RelationshipState } from "../../domain/models/relationship-types.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
@@ -39,7 +40,7 @@ import {
   type RelationshipScope,
 } from "./relationship-payload-store.js";
 
-export const SCENE_STORAGE_FORMAT = 10;
+export const SCENE_STORAGE_FORMAT = 11;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
 const associations = new WeakMap<RelationshipState, { scope: RelationshipScope; head: RelationshipHead }>();
 const identity = (head: RelationshipHead) => head.id + ":" + head.digest;
@@ -165,12 +166,13 @@ export function sceneTranscriptOwners(
 }
 export function sceneSubmissionOwners(
   value: unknown,
-): { head: SceneSubmissionHead; participants: VenueScene["participants"] }[] {
+): { head: SceneSubmissionHead; participants: VenueScene["participants"]; scene: VenueScene }[] {
   sceneHistoryOwners(value);
   const raw = value as Record<string, any>;
   return [raw, ...(raw.operation?.snapshot ? [raw.operation.snapshot] : [])].map((owner) => ({
     head: readSceneSubmissionHead(owner.submissionHistory, owner),
     participants: coerceSession({ version: 3, participants: owner.participants }).participants,
+    scene: owner,
   }));
 }
 /** Consequential retirement checks the authored source before permissive logical field decoding. */
@@ -244,7 +246,7 @@ export async function readSceneWorkIndex(documents: Pick<CapabilityDocumentStore
   const scene = readSceneIndex(value);
   const { submissions } = await sceneSubmissionStore(documents as CapabilityDocumentStore).read(
     readSceneSubmissionHead((value as Record<string, any>).submissionHistory, scene),
-    scene,
+    { ...scene, continuity: (value as VenueScene).continuity },
   );
   Object.defineProperty(scene, "submissions", {
     enumerable: true,
@@ -283,26 +285,39 @@ export async function validateSceneHistory(documents: Pick<CapabilityDocumentSto
     );
     return row.data as MemoryPageData;
   });
-  for (const owner of scenes.flatMap(sceneSubmissionOwners)) await submissions.trace(owner.head, owner.participants);
+  for (const owner of scenes.flatMap(sceneSubmissionOwners))
+    await submissions.trace(owner.head, owner.participants, owner.scene);
   for (const value of scenes) {
     const raw = value as Record<string, any>;
-    await validateOperationEvidenceOwners(documents, raw.operation, raw as VenueScene);
+    await validateOperationEvidenceOwners(documents, raw.operation, raw as VenueScene, undefined, false, wishes);
   }
 }
 export async function validateOperationEvidenceOwners(
   documents: Pick<CapabilityDocumentStore, "getById">,
   operation: unknown,
-  scope: { id: string; villageSeed?: string },
+  scope: Pick<VenueScene, "id" | "villageSeed" | "continuity">,
   mark: (id: string) => void = () => {},
   nested = false,
+  wishes = createWishHistoryTracer(async (id) => {
+    const row = await documents.getById("villages", id);
+    memoryRequire(
+      row?.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+      "owned captured Wish history is missing or changed",
+    );
+    return row.data as MemoryPageData;
+  }),
 ) {
   const store = operationEvidenceStore(documents as CapabilityDocumentStore);
   for (const claim of operationCheckpointClaims(operation, scope)) {
     const saved = await store.pending(claim, scope);
-    if (saved) mark(saved.ref.id);
+    if (saved) {
+      for (const owner of operationWishReferences(saved.data, scope)) await wishes.trace(owner.head, owner.scope);
+      mark(saved.ref.id);
+    }
   }
   for (const ref of operationEvidenceReferences(operation, scope, nested)) {
-    await store.inspect(ref, scope);
+    const data = await store.inspect(ref, scope);
+    for (const owner of operationWishReferences(data, scope)) await wishes.trace(owner.head, owner.scope);
     mark(ref.id);
   }
   const ref = (operation as Record<string, any> | undefined)?.checkpoints?.["abandoned-request"];
@@ -313,6 +328,7 @@ export async function validateOperationEvidenceOwners(
       scope,
       mark,
       true,
+      wishes,
     );
 }
 /** Logical Scenes stay host-free. Only this adapter binds an exact verified immutable body to a native reference. */
@@ -325,7 +341,13 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
   async function decode(value: unknown): Promise<VenueScene> {
     sceneHistoryOwners(value);
     const active = await readActiveSceneOwner(documents);
-    wishes.retainScene(active.scene ? sceneWishOwners(active.scene.data) : []);
+    const activeScene = active.scene?.data as VenueScene | undefined;
+    wishes.retainScene(
+      activeScene ? sceneWishOwners(activeScene) : [],
+      activeScene?.continuity
+        ? { sceneId: activeScene.id, seed: activeScene.continuity.seed, setupAt: activeScene.continuity.setupAt }
+        : undefined,
+    );
     const raw = value as Record<string, any>,
       { storageFormat: _format, transcript, submissionHistory, ...logical } = raw;
     logical.operation = await evidence.decode(raw.operation, raw as VenueScene);
@@ -354,7 +376,10 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
     const header = coerceSession({ ...logical, continuity: undefined, lines: [] });
     logical.lines = (await transcripts.read(readSceneTranscriptHead(transcript, header), header)).lines;
     logical.submissions = (
-      await submissions.read(readSceneSubmissionHead(submissionHistory, header), header)
+      await submissions.read(readSceneSubmissionHead(submissionHistory, header), {
+        ...header,
+        continuity: raw.continuity,
+      })
     ).submissions;
     // The coordinator retains its native admitted snapshot. Its sole consumer hydrates it explicitly.
     const scene = coerceSession(logical);

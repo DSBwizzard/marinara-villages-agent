@@ -15,7 +15,6 @@ import { immutableMemoryValue } from "../domain/rules/memory-integrity.js";
 import {
   operationEvidenceStore,
   operationResponseBodyId,
-  prepareOperationValue,
   operationCheckpointPrefix,
 } from "../adapters/storage/operation-evidence.js";
 import { createSceneResponseReceipts } from "../adapters/storage/scene-response-receipts.js";
@@ -175,6 +174,13 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
     id: string,
     mutate: (data: Record<string, unknown>, store: CapabilityDocumentStore) => void | Promise<void>,
   ) {
+    const publish = () => updateOnce(id, mutate);
+    return ports.withRepairWork ? ports.withRepairWork(publish) : publish();
+  }
+  async function updateOnce(
+    id: string,
+    mutate: (data: Record<string, unknown>, store: CapabilityDocumentStore) => void | Promise<void>,
+  ) {
     const store = villagesDocuments();
     for (let attempt = 0; attempt < 8; attempt++) {
       const record = await store.getById(VILLAGES_PACKAGE_ID, prefix + id);
@@ -215,6 +221,7 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         villageSeed: data.villageSeed,
         participants: data.participants,
       });
+      scene.continuity = data.continuity as VenueScene["continuity"];
       const previous = readSceneSubmissionHead(data.submissionHistory, scene),
         store = sceneSubmissionStore(documents);
       const prior = (await store.read(previous, scene)).submissions,
@@ -299,13 +306,24 @@ export function createVenueCoordinator(ports: VenueCoordinatorPorts) {
         "The previous request may have been billed. Explicitly retry the saved request to recover the unfinished stage.",
       );
     record(false);
-    if (claim) {
-      const saved = prepareOperationValue(result, owner, claim.token);
-      await evidence.publish(new Map([[saved.ref.id, saved.data]]));
-      current.operation.checkpoints[stage] = saved.value;
-    } else current.operation.checkpoints[stage] = immutableMemoryValue(result);
-    await publishCheckpoint(claim);
-    return result;
+    const publish = async () => {
+      if (claim) {
+        const record = await documents.getById(VILLAGES_PACKAGE_ID, prefix + current.sessionId);
+        memoryRequire(record, "Scene checkpoint owner is missing");
+        assertVenueOwnership(record.data as Record<string, unknown>);
+        const saved = await evidence.prepare(
+          result,
+          owner,
+          claim.token,
+          (record.data as Record<string, unknown>).operation,
+        );
+        await evidence.publish(new Map([[saved.ref.id, saved.data]]));
+        current.operation.checkpoints[stage] = saved.value;
+      } else current.operation.checkpoints[stage] = immutableMemoryValue(result);
+      await publishCheckpoint(claim);
+      return structuredClone(current.operation.checkpoints[stage]) as T;
+    };
+    return ports.withRepairWork ? ports.withRepairWork(publish) : publish();
   }
 
   /** Journal each provider attempt before dispatch. */

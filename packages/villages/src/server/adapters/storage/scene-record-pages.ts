@@ -212,9 +212,23 @@ export function sceneRecordStore(documents: CapabilityDocumentStore, kind: Kind)
   if (!entries) stores.set(documents, (entries = {}));
   return (entries[kind] ??= createSceneRecordStore(documents, kind));
 }
-export function createSceneRecordTracer(get: (id: string) => Promise<MemoryPageData | null>, kind: Kind) {
+export function createSceneRecordTracer(
+  get: (id: string) => Promise<MemoryPageData | null>,
+  kind: Kind,
+  visit?: (
+    row: Row,
+    world: string,
+  ) => Promise<readonly { actorId: string; capturedAt: string; seed: string; setupAt: string }[]>,
+) {
   const tracer = createMemoryPageTracer(get);
-  type Summary = { height: number; count: number; cast: Set<string>; ids?: string[]; children?: HistoryPageRef[] };
+  type Summary = {
+    height: number;
+    count: number;
+    cast: Set<string>;
+    captures: Map<string, { actorId: string; capturedAt: string; seed: string; setupAt: string }>;
+    ids?: string[];
+    children?: HistoryPageRef[];
+  };
   const checked = new Map<string, Summary>(),
     validatedHeads = new Set<string>();
   async function inspect(ref: HistoryPageRef, world: string): Promise<Summary> {
@@ -226,7 +240,8 @@ export function createSceneRecordTracer(get: (id: string) => Promise<MemoryPageD
     const node = await tracer.readNode(ref, world);
     memoryRequire(node.type !== "text", "invalid " + label(kind) + " directory");
     const ids = new Set<string>(),
-      cast = new Set<string>();
+      cast = new Set<string>(),
+      captures: Summary["captures"] = new Map();
     let count = 0,
       children: HistoryPageRef[] | undefined;
     if (node.type === "branch") {
@@ -235,6 +250,7 @@ export function createSceneRecordTracer(get: (id: string) => Promise<MemoryPageD
         const summary = await inspect(child, world);
         count += summary.count;
         for (const id of summary.cast) cast.add(id);
+        for (const [id, value] of summary.captures) captures.set(id, value);
       }
     } else {
       const rows = JSON.parse(await tracer.readText(node.content, world));
@@ -256,6 +272,8 @@ export function createSceneRecordTracer(get: (id: string) => Promise<MemoryPageD
         );
         ids.add(row[0]);
         for (const id of dependencies(row[1], kind)) cast.add(id);
+        for (const value of (await visit?.(row[1], world)) ?? [])
+          captures.set(JSON.stringify([value.seed, value.setupAt, value.actorId, value.capturedAt]), value);
       }
       const source = rows.map((row) => row[1]);
       const decoded = normalize(
@@ -266,13 +284,15 @@ export function createSceneRecordTracer(get: (id: string) => Promise<MemoryPageD
       memoryRequire(JSON.stringify(decoded[kind]) === JSON.stringify(source), "invalid canonical " + label(kind));
       count = ids.size;
     }
-    const result = { height: ref.height, count, cast, ...(children ? { children } : { ids: [...ids] }) };
+    const result = { height: ref.height, count, cast, captures, ...(children ? { children } : { ids: [...ids] }) };
     checked.set(ref.id, result);
     return result;
   }
   return {
     async trace(head: SceneRecordHead, participants: VenueScene["participants"]) {
-      const summary = head.root ? await inspect(head.root, head.world) : { count: 0, cast: new Set<string>() };
+      const summary = head.root
+        ? await inspect(head.root, head.world)
+        : { count: 0, cast: new Set<string>(), captures: new Map() };
       memoryRequire(summary.count === head.count, label(kind) + " count changed");
       const key = JSON.stringify(head);
       if (!validatedHeads.has(key)) {
@@ -294,6 +314,7 @@ export function createSceneRecordTracer(get: (id: string) => Promise<MemoryPageD
         [...summary.cast].every((id) => cast.has(id)),
         "invalid " + label(kind) + " participant identity",
       );
+      return [...summary.captures.values()];
     },
   };
 }

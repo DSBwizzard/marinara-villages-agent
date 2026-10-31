@@ -507,7 +507,7 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { liveProposals: structuredClone(row.liveProposals) as LiveExchangeProposals }
                 : {}),
               changeSequence: Math.max(0, Math.floor(Number(row.changeSequence) || 0)),
-              ...(Array.isArray(row.wishContexts)
+              ...(row.wishContexts !== undefined
                 ? { wishContexts: row.wishContexts as VenueSubmission["wishContexts"] }
                 : {}),
               ...(row.timing && typeof row.timing === "object"

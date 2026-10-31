@@ -127,7 +127,6 @@ export function sceneWishEffectIds(current: VillageState, scene: VenueScene): st
     for (const id of receipts.get(turn.id) ?? []) {
       const wish = current.exchangeReceipts[id].sceneFacts!.wish!;
       const key = JSON.stringify([wish.actorId, wish.wishId]);
-      latest.delete(key);
       latest.set(key, id);
     }
   return [...latest.values()];
@@ -214,11 +213,15 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
     const resident = view.villagers.find((row) => row.characterId === actorId);
     if (!resident) continue;
     if (value === undefined) blockWishHistory(resident);
-    else if (wishHistoryLoaded(resident))
-      resident.wishes = immutableSocialWishes([
-        ...resident.wishes.filter((w) => w.id !== wishId),
-        ...(value ? [value] : []),
-      ]);
+    else if (wishHistoryLoaded(resident)) {
+      const wishes = [...resident.wishes],
+        index = wishes.findIndex((wish) => wish.id === wishId);
+      if (!value) {
+        if (index >= 0) wishes.splice(index, 1);
+      } else if (index >= 0) wishes[index] = value;
+      else wishes.push(value);
+      resident.wishes = immutableSocialWishes(wishes);
+    }
   }
 
   if (view.relationshipContext && current.relationshipContext) {
