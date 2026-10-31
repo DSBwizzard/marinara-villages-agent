@@ -92,6 +92,8 @@ import {
 } from "../adapters/storage/scene-store.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
 import { relationshipPayloadStore } from "../adapters/storage/relationship-payload-store.js";
+import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
+import { wishHistoryStore } from "../adapters/storage/wish-history.js";
 import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
@@ -614,6 +616,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const relationshipSocial = createRelationshipSocial({
+    withVillageSceneAcceptance: (work, options) => withRepairWork(() => withVillageSceneAcceptance(work, options)),
+    readSocialEntry: (value, seed) => createCapturedAdmissions(villagesDocuments()).readSocialEntry(value, seed),
+    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
     mutateVillageState,
     mutateRelationships,
     processLiveMemories,
@@ -636,6 +641,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const personalMail = createSocialMail({
+    readMailInput: (value, seed) => createCapturedAdmissions(villagesDocuments()).readMailInput(value, seed),
     withWork: withRepairWork,
     processLiveMemories,
     withVillageSceneAcceptance,
@@ -1121,8 +1127,11 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const relationshipIdentity: import("../domain/rules/return-capture-revision.js").RelationshipIdentity = (world) =>
     relationshipPayloadStore(villagesDocuments()).fingerprint(world.relationshipContext, world);
+  const wishIdentity: import("../domain/rules/return-capture-revision.js").WishIdentity = (rows, scope) =>
+    wishHistoryStore(villagesDocuments()).fingerprint(rows, scope);
   const residentPlanning = createResidentPlanning({
     relationshipIdentity,
+    wishIdentity,
     afterCatchup: advanceReturnCatchup,
     afterCatchupFailure: advanceReturnCatchup,
     applySavedStartingTies: startingTies.applySaved,
@@ -1137,6 +1146,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   });
   const narrative = createNarrative({
     relationshipIdentity,
+    wishIdentity,
     read: readVillageAuthority,
     mutate: (update) => villageRepository.mutateAuthority(update),
     socialSnapshot: readVillageSnapshot,
@@ -1210,7 +1220,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const returnSettlement = createReturnCatchupSettlement({
+    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
     relationshipIdentity,
+    wishIdentity,
     gate: repairGate(),
     readSnapshot: readVillageSnapshot,
     mutate: mutateVillageMemoryState,

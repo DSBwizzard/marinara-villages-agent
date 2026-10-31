@@ -9,13 +9,22 @@ import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-ca
 import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
-import { cloneVillageContext, sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
+import {
+  captureResidentActivity,
+  cloneVillageContext,
+  sameRelationshipContext,
+} from "../../domain/rules/world-context-copy.js";
 import { immutableRelationshipState } from "../../domain/rules/relationship-rules.js";
-import { returnCaptureRevision, type RelationshipIdentity } from "../../domain/rules/return-capture-revision.js";
+import {
+  returnCaptureRevision,
+  type RelationshipIdentity,
+  type WishIdentity,
+} from "../../domain/rules/return-capture-revision.js";
 
 type Ports = {
+  socialIdentity: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["socialIdentity"];
   relationshipIdentity: RelationshipIdentity;
+  wishIdentity: WishIdentity;
   gate: Pick<RepairGate, "simulate" | "commit">;
   readSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
   mutate: typeof import("../world/village-store.js").mutateVillageState;
@@ -66,27 +75,24 @@ export function createReturnCatchupSettlement(ports: Ports) {
       );
       const projected = cloneVillageContext(historical);
       planRoutineDays(projected, at);
-      const admitted = {
-        villagers: projected.villagers,
-        venues: projected.venues,
-        residences: projected.residences,
-        projects: projected.projects,
-        timeZone: projected.timeZone,
-        opening: projected.opening,
+      const admitted = captureResidentActivity(projected, true);
+      const { admitted: _admitted, relationshipHead: _head, relationshipSnapshot: _snapshot, ...facts } = source;
+      const expected = {
+        ...facts,
+        admitted,
+        relationshipSnapshot: socialContextState(
+          projected.relationshipContext,
+          opportunity.actorIds,
+          opportunity.facts.join(" "),
+        ),
       };
-      if (
-        JSON.stringify(source.admitted) !== JSON.stringify(admitted) ||
-        JSON.stringify(source.relationshipSnapshot) !==
-          JSON.stringify(
-            socialContextState(projected.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
-          )
-      )
+      if (ports.socialIdentity(source, before) !== ports.socialIdentity(expected, before))
         throw conflict("The saved catch-up source does not match its captured authority.");
       if (
         opportunity.actorIds.some((id) => {
           const old = capture.world.villagers.find((row) => row.characterId === id);
           const live = before.villagers.find((row) => row.characterId === id);
-          return !old || !live || !sameReturnResident(old, live, at, historical);
+          return !old || !live || !sameReturnResident(old, live, at, historical, ports.wishIdentity);
         }) ||
         JSON.stringify(capture.world.venues.find((row) => row.id === opportunity.venueId)) !==
           JSON.stringify(before.venues.find((row) => row.id === opportunity.venueId))
@@ -109,8 +115,8 @@ export function createReturnCatchupSettlement(ports: Ports) {
           status: "recovering" as const,
           error: pending.error || "The saved encounter needs recovery.",
           reinterpretRequired: !!pending.reinterpretRequired,
-          captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity),
-          sourceRevision: backgroundRevision(source),
+          captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity),
+          sourceRevision: ports.socialIdentity(source, before),
         };
       await ports.mutate(
         (state) => {
@@ -168,8 +174,9 @@ export function createReturnCatchupSettlement(ports: Ports) {
           active.batch?.id !== batchId ||
           !record ||
           !source ||
-          returnCaptureRevision(active.capture, ports.relationshipIdentity) !== failure.captureRevision ||
-          backgroundRevision(source) !== failure.sourceRevision ||
+          returnCaptureRevision(active.capture, ports.relationshipIdentity, ports.wishIdentity) !==
+            failure.captureRevision ||
+          ports.socialIdentity(source, state) !== failure.sourceRevision ||
           !departureMemoriesAvailable(active.capture, state) ||
           !sameRelationshipContext(state.relationshipContext, active.capture.world.relationshipContext)
         )

@@ -928,7 +928,7 @@ export type VillageState = {
   memoryScenes: Record<string, import("./memories.js").MemorySceneState>;
   memoryReceipts: Record<string, import("./wish-check-model.js").ExchangeEffectReceipt>;
   socialContractVersion: 2;
-  socialMailOutbox?: import("./social-mail.js").SocialMailOutbox[];
+  socialMailOutbox?: import("./social-mail.js").WorldSocialMailOutbox[];
   socialPublications?: Record<string, true>;
   eventAttempts?: import("../rules/event-attempts.js").EventAttemptLedger;
   /** Current work remains separate from the recent, terminal debug history. */
@@ -954,10 +954,10 @@ export type VillageState = {
   noticeSequence: number;
   dismissedNoticeIds: string[];
   relationshipContext?: import("./relationship-types.js").RelationshipState;
-  socialOutbox?: import("./social-outbox-model.js").SocialOutboxEntry[];
+  socialOutbox?: import("./social-outbox-model.js").WorldSocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  version: 12;
+  version: 13;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;

@@ -1,4 +1,4 @@
-import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -540,6 +540,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     residentReads = 0;
   const service = createNarrative({
     relationshipIdentity: fixtureRelationshipIdentity,
+    wishIdentity: fixtureWishIdentity,
     read: async () => fixture.state,
     mutate: async (update) => {
       update(fixture.state);

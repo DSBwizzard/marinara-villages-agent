@@ -9,7 +9,7 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { SocialEncounter } from "../../domain/models/relationship-types.js";
-import type { SocialOutboxEntry } from "../../domain/models/social-outbox-model.js";
+import type { SocialOutboxEntry, WorldSocialOutboxEntry } from "../../domain/models/social-outbox-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { conflict } from "../../domain/rules/errors.js";
@@ -33,6 +33,10 @@ import type { mutateVillageState } from "../world/village-store.js";
 import type { mutateRelationships } from "./relationship-store.js";
 class EncounterInterpretationError extends Error {}
 export type RelationshipSocialPorts = {
+  /** Full repair admission and World authority ownership through provider-free settlement. */
+  withVillageSceneAcceptance: typeof import("../world/village-store.js").withVillageSceneAcceptance;
+  readSocialEntry: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["readSocialEntry"];
+  socialIdentity: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["socialIdentity"];
   readVillageSnapshot?: typeof import("../world/village-store.js").readVillageSnapshot;
   queueBackgroundJob?: typeof import("../../jobs/background-work.js").queueBackgroundJob;
   interpretSocialSource?: typeof import("../founding/village-bootstrap.js").interpretSocialSource;
@@ -149,13 +153,31 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
   }
 
   async function processSocialOutbox(village: VillageState, sourceId?: string): Promise<boolean> {
-    const pending = (village.socialOutbox ?? [])
-      .filter((entry) => !entry.processed && !entry.error && (sourceId ? entry.id === sourceId : !entry.catchupBatchId))
-      .slice(0, 8);
+    if (!village.socialOutbox?.some((entry) => pendingSource(entry, sourceId))) return false;
+    return ports.withVillageSceneAcceptance(async (authority) => {
+      if (authority.seed !== village.seed || authority.setupAt !== village.setupAt) return false;
+      return settleSocialOutbox(
+        { ...village, ...authority, relationshipContext: village.relationshipContext },
+        sourceId,
+      );
+    });
+  }
+  function pendingSource(entry: WorldSocialOutboxEntry, sourceId?: string) {
+    return !entry.processed && !entry.error && (sourceId ? entry.id === sourceId : !entry.catchupBatchId);
+  }
+  async function settleSocialOutbox(village: VillageState, sourceId?: string): Promise<boolean> {
+    const pending: WorldSocialOutboxEntry[] = [];
+    for (const entry of village.socialOutbox ?? []) {
+      if (pendingSource(entry, sourceId)) pending.push(entry);
+      if (pending.length === 8) break;
+    }
     if (!pending.length) return false;
-    for (const entry of pending) {
-      if (entry.seed !== village.seed) continue;
+    for (const source of pending) {
+      if (source.seed !== village.seed) continue;
+      let sourceRevision: string | undefined;
       try {
+        sourceRevision = ports.socialIdentity(source, village);
+        const entry = await ports.readSocialEntry(source, village.seed);
         const rawSource = asRecord(entry.proposal.encounter);
         if (
           Array.isArray(rawSource.lines) &&
@@ -366,8 +388,14 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         );
       } catch (error) {
         await mutateVillageState((state) => {
-          const saved = state.socialOutbox?.find((row) => row.id === entry.id);
-          if (saved) {
+          const saved = state.socialOutbox?.find((row) => row.id === source.id);
+          if (
+            saved &&
+            state.seed === source.seed &&
+            saved.seed === source.seed &&
+            sourceRevision !== undefined &&
+            ports.socialIdentity(saved, state) === sourceRevision
+          ) {
             saved.error = error instanceof Error ? error.message : "Encounter settlement needs recovery.";
             saved.reinterpretRequired =
               error instanceof SocialRevisionConflict ||
@@ -410,6 +438,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
     }
     if (input.reinterpret) {
       if (!ports.queueBackgroundJob) throw new Error("Encounter interpretation unavailable.");
+      const captured = await ports.readSocialEntry(entry, village.seed);
       await ports.queueBackgroundJob({
         kind: "social-recovery",
         subjectId: id,
@@ -418,7 +447,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         finite: true,
         label: "Encounter meaning",
         input: {
-          entry: structuredClone(entry),
+          entry: captured,
           social: socialContextState(village.relationshipContext, entry.opportunity.actorIds, ""),
           seed: village.seed,
           admittedAt: villageNow().toISOString(),
@@ -455,6 +484,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
     )
       throw conflict("The saved encounter changed before interpretation could be retried.");
     const historical = { ...village, ...tracking.capture.world };
+    const captured = await ports.readSocialEntry(entry, village.seed);
     await ports.queueBackgroundJob({
       kind: "social-recovery",
       subjectId: entry.id,
@@ -463,8 +493,8 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       finite: true,
       label: "Encounter meaning",
       input: {
-        entry: structuredClone(entry),
-        social: structuredClone(entry.relationshipSnapshot),
+        entry: captured,
+        social: captured.relationshipSnapshot,
         seed: village.seed,
         admittedAt: entry.at,
         memory: sceneMemoryContext(historical, entry.opportunity.actorIds, entry.opportunity.facts.join(" ")),
@@ -482,6 +512,7 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
       committedPhysical?: unknown;
     }) {
       if (!ports.interpretSocialSource) throw new Error("Encounter interpretation unavailable.");
+      if (!input.social) throw new Error("The captured relationship review context is unavailable.");
       const raw = input.entry.proposal.encounter as Record<string, unknown>;
       return ports.interpretSocialSource(
         raw.lines,
@@ -509,32 +540,50 @@ export function createRelationshipSocial(ports: RelationshipSocialPorts) {
         false,
       );
     },
-    valid: (state, input) =>
-      state.seed === input.seed &&
-      (!input.entry.catchupBatchId ||
-        (state.returnCatchup?.batch?.id === input.entry.catchupBatchId &&
-          state.returnCatchup.batch.status === "recovering" &&
-          !!state.returnCatchup.capture &&
-          departureMemoriesAvailable(state.returnCatchup.capture, state) &&
-          !!state.relationshipContext &&
-          !!state.returnCatchup.capture.world.relationshipContext &&
-          sameRelationshipContext(state.relationshipContext, state.returnCatchup.capture.world.relationshipContext) &&
-          JSON.stringify(state.socialOutbox?.find((row) => row.id === input.entry.id)) ===
-            JSON.stringify(input.entry))) &&
-      !!state.socialOutbox?.some((row) => row.id === input.entry.id) &&
-      input.entry.opportunity.actorIds.every((id: string) =>
-        state.villagers.some(
-          (person) =>
-            person.characterId === id &&
-            person.cardSnapshot.capturedAt ===
-              input.entry.admitted?.villagers.find((row: { characterId: string }) => row.characterId === id)
-                ?.cardSnapshot.capturedAt,
-        ),
-      ),
+    valid: (state, input) => {
+      const source = state.socialOutbox?.find((row) => row.id === input.entry.id);
+      return (
+        state.seed === input.seed &&
+        !!source &&
+        ports.socialIdentity(source, state) === ports.socialIdentity(input.entry, state) &&
+        (!input.entry.catchupBatchId ||
+          (state.returnCatchup?.batch?.id === input.entry.catchupBatchId &&
+            state.returnCatchup.batch.status === "recovering" &&
+            !!state.returnCatchup.capture &&
+            departureMemoriesAvailable(state.returnCatchup.capture, state) &&
+            !!state.relationshipContext &&
+            !!state.returnCatchup.capture.world.relationshipContext &&
+            sameRelationshipContext(
+              state.relationshipContext,
+              state.returnCatchup.capture.world.relationshipContext,
+            ))) &&
+        input.entry.opportunity.actorIds.every((id: string) =>
+          state.villagers.some(
+            (person) =>
+              person.characterId === id &&
+              person.cardSnapshot.capturedAt ===
+                input.entry.admitted?.villagers.find((row: { characterId: string }) => row.characterId === id)
+                  ?.cardSnapshot.capturedAt,
+          ),
+        )
+      );
+    },
     apply: (state, input, result) => {
-      const entry = state.socialOutbox!.find((row) => row.id === input.entry.id)!;
-      entry.proposal.encounter = { ...(entry.proposal.encounter as object), ...result };
-      entry.relationshipSnapshot = input.social;
+      const index = state.socialOutbox!.findIndex((row) => row.id === input.entry.id);
+      if (index < 0) throw conflict("The saved encounter source changed.");
+      const {
+        admitted: _admitted,
+        relationshipHead: _head,
+        relationshipSnapshot: _snapshot,
+        ...facts
+      } = state.socialOutbox![index];
+      const entry: SocialOutboxEntry = {
+        ...facts,
+        admitted: input.entry.admitted,
+        relationshipSnapshot: input.social,
+        proposal: { ...facts.proposal, encounter: { ...asRecord(facts.proposal.encounter), ...result } },
+      };
+      state.socialOutbox![index] = entry;
       entry.reinterpreted = true;
       entry.error = undefined;
       entry.reinterpretRequired = undefined;

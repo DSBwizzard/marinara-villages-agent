@@ -10,10 +10,11 @@ import {
   wishHistoryStore,
   readWishHistoryHead,
   createWishHistoryTracer,
+  wishResidentOwners,
   type WishHistoryHead,
 } from "./wish-history.js";
 import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
-import { worldWishOwners, wishResidentOwners } from "./world-wishes.js";
+import { worldWishOwners } from "./world-wishes.js";
 import { withRepairWork } from "./repair-gate.js";
 
 type Scope = Pick<VenueScene, "id" | "villageSeed" | "continuity">;

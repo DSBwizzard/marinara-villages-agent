@@ -1,6 +1,7 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { departureHistoryOwner } from "../../adapters/storage/departure-history.js";
 import { worldWishOwners, validateWorldWishHistory } from "../../adapters/storage/world-wishes.js";
+import { capturedWorldOwners, validateCapturedSources } from "../../adapters/storage/captured-admissions.js";
 import { createHash } from "node:crypto";
 import type {
   RepairCheckpoint,
@@ -97,6 +98,7 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
       );
       departureHistoryOwner(row.data);
       worldWishOwners(row.data);
+      capturedWorldOwners(row.data);
     } else if (row.kind === "relationships") {
       const root = readRelationshipRoot(row.data, owner);
       memoryRequire(row.id === relationshipDocumentId(root.seed), "snapshot relationship ownership changed");
@@ -152,6 +154,14 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
           : documents.getById(pkg, id);
       },
     };
+    await validateCapturedSources(
+      documents,
+      writes.flatMap((write) => (write.before ? [write.before] : [])),
+    );
+    await validateCapturedSources(
+      view,
+      writes.flatMap((write) => (write.after ? [write.after] : [])),
+    );
     await validateWorldWishHistory(
       documents,
       writes

@@ -8,40 +8,26 @@ import {
   createWishHistoryTracer,
   readWishHistoryHead,
   readWishArchiveHead,
+  wishResidentOwners,
   type WishArchiveEntry,
   type WishHistoryHead,
   type WishHistoryScope,
 } from "./wish-history.js";
 import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
 
-type Owner = { scope: WishHistoryScope; head: WishHistoryHead | null; name: string; departure: boolean };
+type Owner = {
+  scope: WishHistoryScope;
+  head: WishHistoryHead | null;
+  name: string;
+  departure: boolean;
+  capturedAt: string;
+};
 type EffectOwner = { id: string; scope: WishHistoryScope; head: WishHistoryHead | null; wishId: string };
 const effectOwners = new WeakMap<object, EffectOwner>();
-export function wishResidentOwners(value: unknown, scope: { seed: string; setupAt: string }) {
-  memoryRequire(Array.isArray(value), "invalid Wish resident directory");
-  const ids = new Set<string>();
-  return value.map((row) => {
-    memoryObject(row);
-    memoryObject(row.cardSnapshot);
-    memoryRequire(
-      typeof row.characterId === "string" &&
-        row.characterId.length > 0 &&
-        row.characterId === row.characterId.trim() &&
-        !ids.has(row.characterId) &&
-        typeof row.cardSnapshot.name === "string" &&
-        row.cardSnapshot.name.trim().length > 0 &&
-        !Object.hasOwn(row, "wishes"),
-      "invalid native Wish owner",
-    );
-    ids.add(row.characterId);
-    const owner = { ...scope, actorId: row.characterId };
-    return { scope: owner, head: readWishHistoryHead(row.wishHead, owner), name: row.cardSnapshot.name };
-  });
-}
 export function worldWishOwners(raw: unknown) {
   memoryObject(raw);
   memoryRequire(
-    raw.version === 12 && typeof raw.seed === "string" && typeof raw.setupAt === "string",
+    raw.version === 13 && typeof raw.seed === "string" && typeof raw.setupAt === "string",
     "unsupported Village Wish ownership; start a fresh Village",
   );
   const scope = { seed: raw.seed, setupAt: raw.setupAt },
@@ -52,7 +38,11 @@ export function worldWishOwners(raw: unknown) {
       value.seed === scope.seed && value.setupAt === scope.setupAt && Array.isArray(value.villagers),
       "invalid Village Wish ownership",
     );
-    for (const owner of wishResidentOwners(value.villagers, scope)) owners.push({ ...owner, departure });
+    for (const [index, owner] of wishResidentOwners(value.villagers, scope).entries()) {
+      const capturedAt = value.villagers[index].cardSnapshot.capturedAt;
+      memoryRequire(typeof capturedAt === "string" && capturedAt.length > 0, "invalid Wish owner incarnation");
+      owners.push({ ...owner, departure, capturedAt });
+    }
   }
   residents(raw, false);
   if (raw.returnCatchup !== undefined) {

@@ -218,7 +218,19 @@ try {
     finite: false,
     label: "Activity",
     automaticDate: "2026-10-31",
-    input: {},
+    input: {
+      admitted: {
+        seed: world.seed,
+        setupAt: world.setupAt,
+        villagers: [{ characterId: "actor", cardSnapshot: { name: "Actor", capturedAt: world.setupAt }, wishes: [] }],
+      },
+      opportunity: { actorIds: ["actor"] },
+      actorIncarnations: { actor: world.setupAt },
+      context: {
+        residents: [{ characterId: "actor", capturedAt: world.setupAt, wishes: [] }],
+        social: { state: undefined },
+      },
+    },
   });
   await service.settleBackgroundWork();
   const outcome = (await service.backgroundWorkSummaries())[0]!;

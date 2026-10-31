@@ -119,6 +119,7 @@ export type ResidentPlanningContext = {
   };
   residents: {
     characterId: string;
+    capturedAt: string;
     name: string;
     profile: string;
     doing: string;

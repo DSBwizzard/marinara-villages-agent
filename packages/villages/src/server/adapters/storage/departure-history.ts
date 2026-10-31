@@ -14,13 +14,13 @@ import {
 } from "./relationship-payload-store.js";
 
 const associations = new WeakMap<RelationshipState, RelationshipHistoryOwner>();
-/** The only historical relationship owner inside a native World is its explicit departure capture. */
+/** Explicit departure ownership; outbox captures declare their own separate typed owners. */
 export function departureHistoryOwner(
   value: unknown,
 ): (Omit<RelationshipHistoryOwner, "head"> & { head: RelationshipHistoryOwner["head"] | null }) | undefined {
   memoryObject(value);
   memoryRequire(
-    value.version === 12 && typeof value.seed === "string" && typeof value.setupAt === "string",
+    value.version === 13 && typeof value.seed === "string" && typeof value.setupAt === "string",
     "unsupported Village ownership; start a fresh Village",
   );
   if (value.returnCatchup === undefined) return undefined;

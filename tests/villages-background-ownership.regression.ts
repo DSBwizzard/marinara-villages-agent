@@ -76,6 +76,7 @@ function fixture(label: string) {
     timingGate = deferred();
   let holdTiming = false,
     timingEntered = false;
+  let optionalHold: "before" | "after" | undefined;
   const calls: string[] = [],
     signals: AbortSignal[] = [];
   const settings: string[] = [];
@@ -95,6 +96,16 @@ function fixture(label: string) {
       return structuredClone(row);
     },
     async update(value: any) {
+      const hold =
+        optionalHold &&
+        Object.values(value.data?.optionalAttempts ?? {}).some((row: any) => row.status === "dispatching")
+          ? optionalHold
+          : undefined;
+      if (hold) {
+        optionalHold = undefined;
+        timingEntered = true;
+      }
+      if (hold === "before") await timingGate.promise;
       if (holdTiming && value.data?.steps?.some((step: any) => step.timing?.outcome === "pending")) {
         timingEntered = true;
         holdTiming = false;
@@ -105,6 +116,7 @@ function fixture(label: string) {
       if (!old || old.revision !== value.expectedRevision) return null;
       const row = { ...old, ...structuredClone(value), revision: old.revision + 1 };
       records.set(value.id, row);
+      if (hold === "after") await timingGate.promise;
       return structuredClone(row);
     },
     async remove(_packageId: string, id: string, revision: number) {
@@ -174,6 +186,9 @@ function fixture(label: string) {
   return {
     holdTiming: () => {
       holdTiming = true;
+    },
+    holdOptional: (stage: "before" | "after") => {
+      optionalHold = stage;
     },
     timingEntered: () => timingEntered,
     timingGate,
@@ -475,6 +490,41 @@ async function main() {
     admission.timingGate.resolve();
     await admission.service.settleBackgroundWork();
   }
+  for (const stage of ["before", "after"] as const) {
+    const pending = fixture("unsubmitted-optional-" + stage);
+    pending.holdOptional(stage);
+    let calls = 0;
+    pending.service.registerBackgroundHandler("agenda", {
+      generate: async () =>
+        pending.context.backgroundCalls.getStore()!.optionalCompletion!("decision", async () => {
+          calls++;
+          return "done";
+        }),
+      valid: () => true,
+      apply(state, _input, result) {
+        state.setting = result;
+      },
+    });
+    const stop = pending.service.startBackgroundWork();
+    try {
+      await pending.service.queueBackgroundJob(input());
+      await until(pending.timingEntered);
+      await pending.service.queueBackgroundJob({ ...input(), revision: "replacement" });
+      pending.timingGate.resolve();
+      await pending.service.settleBackgroundWork();
+      assert.equal(calls, 1, "A superseded unsubmitted optional reservation never invokes its provider.");
+      assert.equal((await pending.service.backgroundWorkSummaries())[0].status, "completed");
+      assert.equal(
+        [...pending.records.values()].filter((row) => row.kind === "background-history").length,
+        0,
+        "Unsubmitted optional work cannot become uncertain history.",
+      );
+    } finally {
+      stop();
+      pending.timingGate.resolve();
+      await pending.service.settleBackgroundWork();
+    }
+  }
   const replaced = fixture("late-config");
   const stopReplaced = replaced.service.startBackgroundWork({ now: () => 0 });
   try {
@@ -484,10 +534,26 @@ async function main() {
     await replaced.service.queueBackgroundJob({ ...input(), revision: "new-input" });
     replaced.gate.resolve();
     await replaced.service.settleBackgroundWork();
-    // The replacement has its own configuration failure; the superseded attempt cannot create the pause.
-    const pauses = [...replaced.records.values()].filter((row) => row.kind === "background-connection");
-    assert.equal(replaced.calls.length, 2, "late failed attempt cannot block its replacement admission");
-    assert.equal(pauses.length, 1);
+    assert.equal(
+      replaced.calls.length,
+      1,
+      "An uncertain superseded request holds replacement work for explicit Retry.",
+    );
+    assert.equal(
+      [...replaced.records.values()].filter((row) => row.kind === "background-connection").length,
+      0,
+      "The old failed callback cannot impose a connection pause.",
+    );
+    const held = (await replaced.service.backgroundWorkSummaries())[0];
+    assert.equal(held.status, "interrupted");
+    await replaced.service.retryBackgroundJob(held.id, held.attempt, "retry-held-replacement");
+    await replaced.service.settleBackgroundWork();
+    assert.equal(replaced.calls.length, 2, "Explicit Retry authorizes the separately admitted replacement.");
+    assert.equal(
+      [...replaced.records.values()].filter((row) => row.kind === "background-connection").length,
+      1,
+      "Only the replacement's own failure can pause its connection.",
+    );
   } finally {
     stopReplaced();
     replaced.gate.resolve();

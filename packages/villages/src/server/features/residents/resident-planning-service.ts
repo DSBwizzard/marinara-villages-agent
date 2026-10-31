@@ -11,8 +11,16 @@ import type { VillageResidence } from "../../domain/models/world.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { cloneVillageContext, sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
-import { returnCaptureRevision, type RelationshipIdentity } from "../../domain/rules/return-capture-revision.js";
+import {
+  cloneVillageContext,
+  captureResidentActivity,
+  sameRelationshipContext,
+} from "../../domain/rules/world-context-copy.js";
+import {
+  returnCaptureRevision,
+  type RelationshipIdentity,
+  type WishIdentity,
+} from "../../domain/rules/return-capture-revision.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import {
   ReturnOpportunityUnavailable,
@@ -56,6 +64,7 @@ import { completionFailure, WorkFailureError } from "../../domain/rules/work-fai
 
 export type ResidentPlanningPorts = {
   relationshipIdentity: RelationshipIdentity;
+  wishIdentity: WishIdentity;
   afterCatchup?: (input: unknown) => Promise<void>;
   afterCatchupFailure?: (input: unknown) => Promise<void>;
   applySavedStartingTies?: () => Promise<void>;
@@ -157,6 +166,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         const card = readEffectiveVillagerCard(resident);
         return {
           characterId: resident.characterId,
+          capturedAt: resident.cardSnapshot.capturedAt,
           name: card.name,
           profile: venueCardProfile(card, readPlayerIdentity(village).name),
           doing: agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false)?.activity ?? "",
@@ -200,14 +210,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         now: now.toISOString(),
         socialPlanId: activePlan?.id,
         socialPlan: activePlan,
-        admitted: structuredClone({
-          villagers: village.villagers,
-          venues: village.venues,
-          residences: village.residences,
-          projects: village.projects,
-          timeZone: village.timeZone,
-          narrative: village.narrative,
-        }),
+        admitted: captureResidentActivity(village),
         actorIncarnations: Object.fromEntries(
           opportunity.actorIds.map((id) => [
             id,
@@ -236,8 +239,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       !Number.isFinite(returnAt) ||
       current.returnCatchup.batch.from !== capture.at ||
       !current.returnCatchup.capture ||
-      returnCaptureRevision(current.returnCatchup.capture, ports.relationshipIdentity) !==
-        returnCaptureRevision(capture, ports.relationshipIdentity) ||
+      returnCaptureRevision(current.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) !==
+        returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity) ||
       !current.returnCatchup.batch.opportunities?.some((row) => JSON.stringify(row) === JSON.stringify(opportunity)) ||
       eventAt < capturedAt ||
       eventAt > returnAt ||
@@ -284,6 +287,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
               historical.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone,
             ),
             historical,
+            ports.wishIdentity,
           )
         );
       })
@@ -334,6 +338,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           const card = readEffectiveVillagerCard(resident);
           return {
             characterId: resident.characterId,
+            capturedAt: resident.cardSnapshot.capturedAt,
             name: card.name,
             profile: venueCardProfile(card, readPlayerIdentity(historical).name),
             doing:
@@ -396,18 +401,10 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         dateKey,
         now: opportunity.startsAt,
         memoryRevision: capture.memoryRevision,
-        captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity),
+        captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity, ports.wishIdentity),
         returnUntil: current.returnCatchup.batch.until,
         relationshipRevision: ports.relationshipIdentity(capture.world),
-        admitted: structuredClone({
-          villagers: historical.villagers,
-          venues: historical.venues,
-          residences: historical.residences,
-          projects: historical.projects,
-          timeZone: historical.timeZone,
-          narrative: historical.narrative,
-          opening: historical.opening,
-        }),
+        admitted: captureResidentActivity(historical, true),
         actorIncarnations: Object.fromEntries(
           opportunity.actorIds.map((id) => [
             id,
@@ -582,7 +579,8 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           state.returnCatchup.batch.status === "running" &&
           state.returnCatchup.batch.until === input.returnUntil &&
           !!state.returnCatchup.capture &&
-          returnCaptureRevision(state.returnCatchup.capture, ports.relationshipIdentity) === input.captureRevision &&
+          returnCaptureRevision(state.returnCatchup.capture, ports.relationshipIdentity, ports.wishIdentity) ===
+            input.captureRevision &&
           !!state.returnCatchup.batch.opportunities?.some(
             (row) => JSON.stringify(row) === JSON.stringify(input.opportunity),
           ) &&
@@ -600,6 +598,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
                 live,
                 new ZonedDate(input.now, input.admitted.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone),
                 { ...state, ...input.admitted },
+                ports.wishIdentity,
               )
             );
           }) &&

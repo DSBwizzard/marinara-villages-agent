@@ -12,6 +12,7 @@ import {
   mutateVillageMemoryState,
   mutateVillageState,
   readVillageState,
+  readVillageAuthority,
 } from "../packages/villages/src/server/features/world/village-store.js";
 import {
   backgroundWorkSummaries,
@@ -29,6 +30,7 @@ import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixt
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { addMemory } from "./helpers/memories-fixture.js";
 import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
+import { backgroundCalls } from "../packages/villages/src/server/adapters/operations/background-context.js";
 
 const rows = new Map<string, any>();
 let writesFail = false;
@@ -163,6 +165,14 @@ const effects: string[] = [];
 registerBackgroundHandler("agenda", {
   async generate(input) {
     const result: string[] = [];
+    if (input.optional)
+      await backgroundCalls.getStore()!.optionalCompletion!("uncertain-optional", async () => {
+        calls.push("optional-original");
+        await new Promise<void>((resolve) => {
+          providerGate = resolve;
+        });
+        throw new Error("Optional request outcome unavailable");
+      });
     for (const step of input.steps) {
       const reply = await completeWithRoom(model as any, [{ role: "user", content: step }], 100, {
         temperature: 0,
@@ -216,6 +226,42 @@ const work = (subject: string, steps: string[], finite = true): BackgroundInput 
   label: subject,
   input: { subject, steps, expectedName: "Willowbrook" },
 });
+function capturedInput(kind: "resident-planning" | "personal-mail" | "social-recovery", input: any = {}) {
+  const capturedAt = "2026-09-01T00:00:00.000Z";
+  const admitted = {
+    seed: "fixture",
+    setupAt: capturedAt,
+    villagers: [{ characterId: "a", cardSnapshot: { name: "A", capturedAt }, wishes: [] }],
+  };
+  const opportunity = { actorIds: ["a"] };
+  if (kind === "personal-mail")
+    return { ...input, seed: "fixture", residentId: "a", incarnation: capturedAt, admitted };
+  if (kind === "social-recovery")
+    return { ...input, entry: { ...input.entry, seed: "fixture", admitted, opportunity } };
+  return {
+    ...input,
+    admitted,
+    opportunity,
+    actorIncarnations: { a: capturedAt },
+    context: {
+      ...input.context,
+      residents: [{ characterId: "a", capturedAt, wishes: [] }],
+      social: { state: undefined, candidates: [], relationships: [] },
+    },
+  };
+}
+function capturedOutbox(state: ReturnType<typeof defaultVillageState>, id: string, catchupBatchId?: string) {
+  const entry = capturedInput("social-recovery").entry;
+  return {
+    ...entry,
+    id,
+    catchupBatchId,
+    at: state.setupAt,
+    candidates: [],
+    proposal: {},
+    admitted: { ...entry.admitted, setupAt: state.setupAt },
+  };
+}
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function until(predicate: () => boolean) {
   for (let attempt = 0; attempt < 200 && !predicate(); attempt++) await tick();
@@ -326,11 +372,11 @@ async function main() {
       revision: "legacy-story",
       finite: true,
       label: "Saved story",
-      input: { context: frozenStory },
+      input: capturedInput("resident-planning", { context: frozenStory }),
     });
     await settleBackgroundWork();
     const story = await summary("saved-story");
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 2, story.error);
     assert.equal(calls[0].includes(frozenStory.setting), true, "planning keeps complete authored context");
     stop();
     stop = startBackgroundWork({ now: () => now });
@@ -688,6 +734,145 @@ async function main() {
     assert.equal((await readVillageState({ memories: true })).setting, "new-input");
 
     await reset();
+    blockStep = "paid-first";
+    await queueBackgroundJob(work("replace", ["paid-first", "unsubmitted-second"]));
+    await until(() => !!providerGate);
+    holdPendingTiming = true;
+    providerGate!();
+    await until(() => !!releasePendingTiming);
+    await queueBackgroundJob({ ...work("replace", ["replacement-after-reservation"]), revision: "new" });
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["paid-first", "replacement-after-reservation"]);
+    const retainedPaid = [...rows.values()].filter((row) => row.kind === "background-history");
+    assert.equal(retainedPaid.length, 1, "The earlier purchased reply remains retained after supersession.");
+    assert.equal(
+      retainedPaid[0].data.steps.length,
+      1,
+      "The unsubmitted sibling cannot become an uncertain historical claim.",
+    );
+    assert.equal(retainedPaid[0].data.steps[0].status, "completed");
+    assert.equal(retainedPaid[0].data.requests, 1, "Only actual old request progress is retained.");
+
+    for (const status of ["completed", "running", "obsolete"] as const) {
+      await reset();
+      await queueBackgroundJob(work("replace", ["original-before-restart"]));
+      await settleBackgroundWork();
+      stop();
+      const parent = rows.get((await summary("replace")).id);
+      parent.data.status = status;
+      parent.data.owner = "former-activation";
+      parent.data.replacement = { ...work("replace", ["replacement-after-restart"]), revision: "new" };
+      if (status === "obsolete")
+        await mutateVillageState((state) => {
+          delete state.backgroundReceipts[parent.id];
+        });
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, ["original-before-restart", "replacement-after-restart"], status);
+      assert.deepEqual(effects, ["replace", "replace"], "An accepted replacement applies exactly once after restart.");
+      assert.equal(rows.get(parent.id).data.replacement, undefined);
+      assert.equal((await readVillageState()).setting, "replacement-after-restart");
+    }
+
+    await reset();
+    failStep = "held-original";
+    failure = "401 Invalid API key";
+    await queueBackgroundJob(work("replace", ["held-original"]));
+    await settleBackgroundWork();
+    stop();
+    const heldParent = rows.get((await summary("replace")).id);
+    heldParent.data.replacement = { ...work("replace", ["held-replacement"]), revision: "next" };
+    stop = startBackgroundWork({ now: () => now });
+    await recoverBackgroundWork();
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["held-original"], "A queued replacement cannot bypass a saved connection hold.");
+    assert.equal(rows.get(heldParent.id).data.replacement.revision, "next");
+
+    for (const optional of [false, true]) {
+      await reset();
+      blockStep = failStep = "uncertain-original";
+      failure = "Request outcome unavailable";
+      const original = work("replace", ["uncertain-original"]);
+      if (optional) original.input = { ...(original.input as object), optional: true };
+      await queueBackgroundJob(original);
+      await until(() => !!providerGate);
+      await queueBackgroundJob({ ...work("replace", ["replacement-must-wait"]), revision: "next" });
+      providerGate!();
+      await settleBackgroundWork();
+      const held = rows.get((await summary("replace")).id);
+      assert.equal(held.data.status, "interrupted", "Supersession preserves the uncertain original request.");
+      assert.equal(held.data.replacement.revision, "next");
+      if (optional) assert.equal(held.data.optionalAttempts["uncertain-optional"].status, "unknown");
+      else assert.equal(held.data.steps[0].status, "running");
+      const expectedCalls = [optional ? "optional-original" : "uncertain-original"];
+      assert.deepEqual(calls, expectedCalls, "A replacement cannot dispatch while the original remains uncertain.");
+      stop();
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, expectedCalls, "Restart preserves the original uncertainty hold.");
+      const interrupted = await summary("replace");
+      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement");
+      await settleBackgroundWork();
+      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement");
+      await settleBackgroundWork();
+      assert.deepEqual(
+        calls,
+        [...expectedCalls, "replacement-must-wait"],
+        "Explicit Retry admits the replacement once.",
+      );
+      const retained = [...rows.values()].find(
+        (row) => row.kind === "background-history" && row.data.id === held.data.id,
+      );
+      assert.ok(retained, "Replacement Retry retains the original uncertain request and its captured source.");
+      if (optional) assert.equal(retained.data.optionalAttempts["uncertain-optional"].status, "unknown");
+      else assert.equal(retained.data.steps[0].status, "running");
+    }
+
+    for (const status of ["running", "completed"] as const) {
+      await reset();
+      await queueBackgroundJob(work("replace", ["committed-original"]));
+      await settleBackgroundWork();
+      stop();
+      const parent = rows.get((await summary("replace")).id);
+      parent.data.status = status;
+      parent.data.input = work("replace", ["committed-original"]).input;
+      parent.data.optionalAttempts = { review: { status: "unknown", elapsedMs: 10 } };
+      parent.data.replacement = { ...work("replace", ["committed-replacement-must-wait"]), revision: "next" };
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, ["committed-original"], "A committed main effect does not settle optional uncertainty.");
+      assert.equal(rows.get(parent.id).data.status, "interrupted");
+      assert.equal(rows.get(parent.id).data.optionalAttempts.review.status, "unknown");
+      assert.equal(rows.get(parent.id).data.replacement.revision, "next");
+    }
+
+    for (const replacement of [{}, { ...work("other", ["wrong-slot"]), revision: "foreign" }]) {
+      await reset();
+      await queueBackgroundJob(work("replace", ["valid-parent"]));
+      await settleBackgroundWork();
+      stop();
+      const parent = rows.get((await summary("replace")).id);
+      parent.data.replacement = replacement;
+      const before = structuredClone([...rows.entries()]);
+      stop = startBackgroundWork({ now: () => now });
+      if (!("kind" in replacement)) await assert.rejects(recoverBackgroundWork(), /invalid replacement capture scope/);
+      else await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(
+        [...rows.entries()],
+        before,
+        "Invalid or foreign-slot replacement cannot write over its parent.",
+      );
+      assert.deepEqual(calls, ["valid-parent"]);
+    }
+
+    await reset();
     await queueBackgroundJob(work("invalid", ["invalid"]));
     await settleBackgroundWork();
     await queueBackgroundJob(work("invalid", ["invalid"]));
@@ -741,7 +926,7 @@ async function main() {
         revision: "source",
         finite: true,
         label: "Social recovery",
-        input: {},
+        input: capturedInput(kind),
       });
       await settleBackgroundWork();
       for (let read = 0; read < 2; read++) {
@@ -779,7 +964,7 @@ async function main() {
       finite: false,
       label: "Catch-up",
       automaticDate: currentDate,
-      input: { context: { catchup: true }, catchupBatchId: "return-batch", step },
+      input: capturedInput("resident-planning", { context: { catchup: true }, catchupBatchId: "return-batch", step }),
     });
     await queueBackgroundJob(catchupWork("return-one", "return-one"));
     await settleBackgroundWork();
@@ -991,7 +1176,7 @@ async function main() {
       revision: step,
       finite: true,
       label: "Encounter meaning",
-      input: { entry: { catchupBatchId: "return-batch" }, step },
+      input: capturedInput("social-recovery", { entry: { catchupBatchId: "return-batch" }, step }),
     });
     await villageBackgroundPresence("interpretation-session", true);
     holdPendingTiming = true;
@@ -1040,10 +1225,13 @@ async function main() {
           records: [{ opportunityId: "safe", status: "settling" }],
         },
       };
-      state.socialOutbox = [{ id: "safe:social", catchupBatchId: "return-batch" }, { id: "unrelated:social" }] as any;
+      state.socialOutbox = [
+        capturedOutbox(state, "safe:social", "return-batch"),
+        capturedOutbox(state, "unrelated:social"),
+      ] as any;
     });
     await cancelReturnCatchup("return-batch");
-    const skipped = await readVillageState();
+    const skipped = await readVillageAuthority();
     assert.deepEqual(
       skipped.socialOutbox?.map((row) => row.id),
       ["unrelated:social"],
@@ -1056,7 +1244,7 @@ async function main() {
     });
     await mutateVillageState((state) => {
       state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
-      state.socialOutbox = [{ id: "partial:social", catchupBatchId: "return-batch" }] as any;
+      state.socialOutbox = [capturedOutbox(state, "partial:social", "return-batch")] as any;
     });
     await assert.rejects(() => cancelReturnCatchup("return-batch"), /recovering the saved encounter/);
     console.log(

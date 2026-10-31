@@ -1,3 +1,4 @@
+import { fixtureCapturedAdmissions } from "./helpers/village-storage.fixture.js";
 // Test cases: mailbox-pages/growth, mailbox-pages/navigation, mailbox-pages/privacy, mailbox-pages/identities, mailbox-pages/recovery, mailbox-pages/commands
 import assert from "node:assert/strict";
 import { mock } from "node:test";
@@ -181,6 +182,7 @@ await runCase("mailbox-pages/commands", async () => {
     modelRequests = 0,
     failWrite = false;
   const service = createSocialMail({
+    readMailInput: fixtureCapturedAdmissions.readMailInput,
     withWork: async (work: any) => work(),
     withVillageSceneAcceptance: async (work: any) => work(f.village),
     readVillageSnapshot: async (options?: { memories?: boolean }) => {

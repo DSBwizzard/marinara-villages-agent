@@ -1,4 +1,4 @@
-import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { authorBackgroundFixture } from "./helpers/village-storage.fixture.js";
 import { validateBackgroundResponse } from "../packages/villages/src/server/adapters/storage/background-responses.js";
@@ -96,6 +96,7 @@ function fixture() {
   };
   const service = createResidentPlanning({
     relationshipIdentity: fixtureRelationshipIdentity,
+    wishIdentity: fixtureWishIdentity,
     readVillageState: async () => state,
     readEffectiveVillagerCard,
     queueBackgroundJob: async (input) => {
@@ -136,6 +137,9 @@ assert.equal(f.calls.length, 0, "Discovery queues work without dispatching a mod
 assert.equal(f.queued[0].kind, "resident-planning");
 assert.equal(f.queued[0].finite, false);
 const input = f.queued[0].input;
+assert.equal(input.admitted.seed, f.state.seed);
+assert.equal(input.admitted.setupAt, f.state.setupAt);
+assert.equal(input.context.residents[0].capturedAt, f.state.villagers[0].cardSnapshot.capturedAt);
 assert.equal(input.opportunity.kind, "routine", "A lone resident still gets routine and housing choices");
 const quiet: any = await f.service.handler.generate(input);
 assert.equal(f.calls.length, 1);

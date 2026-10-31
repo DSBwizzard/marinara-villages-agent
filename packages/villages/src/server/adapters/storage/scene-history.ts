@@ -20,8 +20,8 @@ import {
   type SceneTranscriptHead,
 } from "./scene-transcript-pages.js";
 import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
-import { wishHistoryStore, createWishHistoryTracer } from "./wish-history.js";
-import { wishResidentOwners, worldWishOwners } from "./world-wishes.js";
+import { wishHistoryStore, createWishHistoryTracer, wishResidentOwners } from "./wish-history.js";
+import { worldWishOwners } from "./world-wishes.js";
 import {
   sceneSubmissionStore,
   readSceneSubmissionHead,

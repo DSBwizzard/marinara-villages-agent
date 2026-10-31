@@ -1,4 +1,4 @@
-import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import { wishWorld } from "./helpers/social-wishes-fixture.js";
 import assert from "node:assert/strict";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
@@ -156,6 +156,7 @@ async function main() {
   };
   const planning = createResidentPlanning({
     relationshipIdentity: fixtureRelationshipIdentity,
+    wishIdentity: fixtureWishIdentity,
     readVillageState: async () => defaultVillageState(),
     villagesLanguageModels: () => ({ resolveForRequest: async () => fakeSystem }),
     villagesConnectionIdFor: async () => "system",

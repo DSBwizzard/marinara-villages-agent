@@ -1,4 +1,9 @@
-import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import {
+  fixtureCapturedAdmissions,
+  fixtureRelationshipIdentity,
+  fixtureWishIdentity,
+} from "./helpers/village-storage.fixture.js";
+import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 // Test cases: encounter-places/evidence, encounter-places/settlement, encounter-places/recovery, encounter-places/conflict, encounter-places/catchup
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -17,10 +22,9 @@ import { createRelationshipSocial } from "../packages/villages/src/server/featur
 import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createReturnCatchupSettlement } from "../packages/villages/src/server/features/background/return-catchup-settlement.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
-import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
-import { socialContextState } from "../packages/villages/src/server/domain/rules/social-context.js";
-import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { venue } from "./fixtures/villages-projects.fixture.js";
 
 const at = "2026-10-28T12:00:00.000Z";
@@ -78,13 +82,7 @@ function fixture() {
       endsAt: at,
       facts: [],
     },
-    admitted: structuredClone({
-      villagers: state.villagers,
-      venues: state.venues,
-      residences: state.residences,
-      projects: state.projects,
-      timeZone: state.timeZone,
-    }),
+    admitted: captureResidentActivity(state),
     relationshipSnapshot: structuredClone(social),
     proposal: {
       encounter: {
@@ -142,6 +140,9 @@ function fixture() {
   };
   const native = createLiveMemory({ now: () => new Date(), mutateVillageState: mutate } as any);
   const api = createRelationshipSocial({
+    withVillageSceneAcceptance: async (work: any) => work(await snapshot()),
+    readSocialEntry: fixtureCapturedAdmissions.readSocialEntry,
+    socialIdentity: fixtureCapturedAdmissions.socialIdentity,
     readVillageSnapshot: snapshot,
     mutateVillageState: mutate,
     mutateRelationships: async (_seed: string, update: any) => {
@@ -181,6 +182,14 @@ function fixture() {
 await runCase("encounter-places/evidence", async () => {
   const f = fixture();
   assert.ok(readEncounter(f.raw(), f.state().socialOutbox![0], await f.snapshot()));
+  assert.throws(
+    () => readEncounter(f.raw(), { ...f.entry, relationshipSnapshot: undefined }, f.state()),
+    /captured encounter relationship context is unavailable/,
+  );
+  assert.throws(
+    () => readEncounter(f.raw(), { ...f.entry, admitted: undefined }, f.state()),
+    /captured encounter authority is unavailable/,
+  );
   const source = structuredClone(f.raw());
   source.placeUpdate.consent = [];
   assert.throws(() => readEncounter(source, f.state().socialOutbox![0], f.state()), /consent/);
@@ -265,22 +274,11 @@ await runCase("encounter-places/conflict", async () => {
 
 await runCase("encounter-places/catchup", async () => {
   const f = fixture(),
-    world = await f.snapshot(),
-    source = structuredClone(f.entry);
+    world = await f.snapshot();
+  let source = structuredClone(f.entry);
+  world.backgroundPace = "balanced";
   const capture = captureReturnContext(world, new Date(at));
-  const projected = structuredClone({ ...world, ...capture.world });
-  planRoutineDays(projected, new ZonedDate(at, world.timeZone));
-  source.catchupBatchId = "physical-return";
-  source.relationshipSnapshot = socialContextState(projected.relationshipContext, source.opportunity.actorIds, "");
-  source.admitted = {
-    villagers: projected.villagers,
-    venues: projected.venues,
-    residences: projected.residences,
-    projects: projected.projects,
-    timeZone: projected.timeZone,
-    opening: projected.opening,
-  };
-  world.socialOutbox = [source];
+  world.socialOutbox = [];
   world.returnCatchup = {
     capture,
     batch: {
@@ -289,11 +287,32 @@ await runCase("encounter-places/catchup", async () => {
       from: at,
       until: at,
       opportunities: [source.opportunity],
-      records: [
-        { opportunityId: "occasion", status: "settling", outcome: { social: structuredClone(source.proposal) } },
-      ],
+      records: [{ opportunityId: "occasion", status: "queued" }],
     },
   } as any;
+  let work: any;
+  const planning = createResidentPlanning({
+    relationshipIdentity: fixtureRelationshipIdentity,
+    wishIdentity: fixtureWishIdentity,
+    readVillageState: async () => world,
+    readEffectiveVillagerCard,
+    queueBackgroundJob: async (value) => {
+      work = value;
+    },
+    backgroundJobSnapshot: async () => null,
+    villagesLanguageModels: () => {
+      throw new Error("This test must not purchase model work.");
+    },
+    villagesConnectionIdFor: async () => "fixture",
+    completeWithRoom: async () => {
+      throw new Error("This test must not purchase model work.");
+    },
+  });
+  await planning.queueReturnOpportunity("physical-return", source.opportunity, capture);
+  assert.equal(planning.handler.valid(world, work.input), true);
+  planning.handler.apply(world, work.input, { social: source.proposal, housingRequests: [] }, { retrying: false });
+  source = world.socialOutbox![0];
+  assert.equal(source.catchupBatchId, "physical-return", "Settlement consumes the actual planning producer's capture.");
   const relationships = world.relationshipContext;
   delete world.relationshipContext;
   const rows = new Map<string, any>([
@@ -368,6 +387,9 @@ await runCase("encounter-places/catchup", async () => {
     const native = createLiveMemory({ now: () => new Date(), mutateVillageState: mutate } as any);
     let fail = true;
     const social = createRelationshipSocial({
+      withVillageSceneAcceptance: async (work: any) => work(await snapshot()),
+      readSocialEntry: fixtureCapturedAdmissions.readSocialEntry,
+      socialIdentity: fixtureCapturedAdmissions.socialIdentity,
       readVillageSnapshot: snapshot,
       mutateVillageState: mutate,
       mutateRelationships: async (_seed: string, update: any) => {
@@ -391,7 +413,9 @@ await runCase("encounter-places/catchup", async () => {
       },
     } as any);
     const settlement = createReturnCatchupSettlement({
+      socialIdentity: fixtureCapturedAdmissions.socialIdentity,
       relationshipIdentity: fixtureRelationshipIdentity,
+      wishIdentity: fixtureWishIdentity,
       gate,
       readSnapshot: snapshot,
       mutate,

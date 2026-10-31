@@ -4,11 +4,12 @@ import type { Job, Step } from "../../domain/models/background-model.js";
 import { immutableMemoryValue, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { isRepairSimulation } from "./repair-gate.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import { capturedJobOwners } from "./captured-admissions.js";
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const prefix = "background:";
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
-type NativeJob = Omit<Job, "steps"> & { responseStorage: 2; steps: Omit<Step, "response">[] };
+type NativeJob = Omit<Job, "steps"> & { responseStorage: 3; steps: Omit<Step, "response">[] };
 function identity(job: Job, index: number, attempt: number) {
   const step = job.steps[index];
   return { seed: job.seed, jobId: job.id, attempt, index, key: step.key ?? null, fingerprint: step.fingerprint };
@@ -22,7 +23,7 @@ export function backgroundResponseClaim(job: Job, index: number, attempt = job.a
 export function backgroundResponseOwners(raw: unknown) {
   memoryObject(raw);
   memoryRequire(
-    raw.responseStorage === 2 && Array.isArray(raw.steps),
+    raw.responseStorage === 3 && Array.isArray(raw.steps),
     "unsupported background format; start a fresh Village",
   );
   const job = raw as NativeJob;
@@ -65,7 +66,7 @@ export function backgroundResponseOwners(raw: unknown) {
 export function nativeBackgroundJob(job: Job): NativeJob {
   const native = {
     ...job,
-    responseStorage: 2 as const,
+    responseStorage: 3 as const,
     steps: job.steps.map(({ response: _response, ...step }) => step),
   };
   backgroundResponseOwners(native);
@@ -108,6 +109,7 @@ export function validateBackgroundJobRecord(row: Pick<Row, "id" | "kind" | "data
     "background job record identity changed",
   );
   backgroundResponseOwners(row.data);
+  capturedJobOwners(row.data);
   const job = row.data as Job;
   memoryRequire(
     typeof job.kind === "string" &&

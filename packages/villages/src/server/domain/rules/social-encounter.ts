@@ -30,7 +30,8 @@ export function readEncounter(
     raw.lines.length > 8
   )
     return null;
-  const liveVillage = village;
+  if (!entry.admitted) throw new Error("The captured encounter authority is unavailable.");
+  if (!entry.relationshipSnapshot) throw new Error("The captured encounter relationship context is unavailable.");
   village = { ...village, ...entry.admitted };
   const venue = village.venues.find((place) => place.id === entry.opportunity.venueId),
     zoneId = entry.opportunity.zoneId ?? "exterior";
@@ -89,7 +90,6 @@ export function readEncounter(
   if (new Set(lines.filter((line) => line.kind === "dialogue").map((line) => line.speakerId)).size < 2) return null;
   if (lines.some((line) => line.kind === "narration") && raw.physicalConsistent !== true)
     throw new Error("The encounter's narrated outcomes need independent System validation.");
-  if (raw.placeUpdate && !entry.admitted) throw new Error("Physical encounter admission is missing.");
   if (raw.placeUpdate && raw.semanticVersion !== 2) throw new Error("Physical encounter meaning is unverified.");
   const placeUpdate = readVenueSceneChange(raw.placeUpdate, venueInZone(venue, zoneId), entry.at);
   const physicalContext = placeUpdate
@@ -118,7 +118,7 @@ export function readEncounter(
     proposed,
     entry.id,
     lines,
-    { ...village, relationshipContext: entry.relationshipSnapshot ?? liveVillage.relationshipContext },
+    { ...village, relationshipContext: entry.relationshipSnapshot },
     (row, kind) => {
       if (kind === "disclosures") throw new Error("Offscreen encounters cannot disclose information to the player.");
       if (kind === "changes" && (!actors.includes(String(row.fromId)) || !actors.includes(String(row.toId))))

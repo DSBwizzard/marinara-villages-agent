@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import type { RelationshipState } from "../../domain/models/relationship-types.js";
+import type { RelationshipHead, RelationshipState } from "../../domain/models/relationship-types.js";
+export type { RelationshipHead } from "../../domain/models/relationship-types.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { coerceRelationshipState, immutableRelationshipState } from "../../domain/rules/relationship-rules.js";
@@ -17,7 +18,6 @@ import {
 export const RELATIONSHIP_PAYLOAD_KIND = "relationship-payload";
 export const RELATIONSHIP_INTENT_KIND = "relationship-payload-intent";
 export type RelationshipScope = Pick<VillageState, "seed" | "setupAt">;
-export type RelationshipHead = { id: string; digest: string };
 export type RelationshipRoot = RelationshipScope & { format: 4; head: RelationshipHead };
 export type RelationshipHistoryOwner = { scope: RelationshipScope; head: RelationshipHead };
 const PREFIX = "villages-relationship-history-";

@@ -94,6 +94,10 @@ export function readWishHistoryHead(raw: unknown, scope: WishHistoryScope): Wish
   memoryRequire(tail.root && tail.count > 0, "empty Wish history must have no head");
   return immutableMemoryValue({ format: 1, world, count: tail.count, root: tail.root });
 }
+export function wishHistoryFingerprint(raw: unknown, scope: WishHistoryScope): string {
+  const head = readWishHistoryHead(raw, scope);
+  return "wishes:" + wishHistoryWorld(scope) + ":" + createHash("sha256").update(JSON.stringify(head)).digest("hex");
+}
 function header(raw: unknown, id: string, world: string): Header {
   memoryObject(raw, ["fields", "conditions", "history"]);
   memoryObject(raw.fields);
@@ -120,6 +124,28 @@ function align(tree: HistoryPageTree, rows: { id: string }[]): HistoryPageTree {
       entries: group.entries.map(([id]) => [id, values.get(id)!] as [string, unknown]),
     })),
   };
+}
+
+export function wishResidentOwners(value: unknown, scope: WishWorldScope) {
+  memoryRequire(Array.isArray(value), "invalid Wish resident directory");
+  const ids = new Set<string>();
+  return value.map((row) => {
+    memoryObject(row);
+    memoryObject(row.cardSnapshot);
+    memoryRequire(
+      typeof row.characterId === "string" &&
+        row.characterId.length > 0 &&
+        row.characterId === row.characterId.trim() &&
+        !ids.has(row.characterId) &&
+        typeof row.cardSnapshot.name === "string" &&
+        row.cardSnapshot.name.trim().length > 0 &&
+        !Object.hasOwn(row, "wishes"),
+      "invalid native Wish owner",
+    );
+    ids.add(row.characterId);
+    const owner = { ...scope, actorId: row.characterId };
+    return { scope: owner, head: readWishHistoryHead(row.wishHead, owner), name: row.cardSnapshot.name };
+  });
 }
 
 /** Each Wish's append-only events have their own tree, independent of its changing current fields. */
@@ -315,6 +341,13 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
     remember(encoded);
     return { head: encoded.head, rows: encoded.rows };
   }
+  function fingerprint(input: SocialWish[], scope: WishHistoryScope): string {
+    const world = wishHistoryWorld(scope),
+      original = usable() ? associations.get(socialWishCollectionSource(input)) : undefined;
+    const encoded = encodeWishHistory(input, scope, original?.head?.world === world ? original : undefined);
+    // Comparison only: no publication, ownership or persisted-head cache entry.
+    return wishHistoryFingerprint(encoded.head, scope);
+  }
   async function publish(pages: Map<string, MemoryPageData>) {
     for (const [id, data] of pages) {
       const existing = await documents.getById("villages", id);
@@ -386,6 +419,7 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
   return {
     read,
     prepare,
+    fingerprint,
     appendArchive,
     retain: (owners: Owner[]) => retain(owners, false),
     retainScene: (owners: Owner[], scope?: WishWorldScope & { sceneId: string }) => {
