@@ -3,7 +3,7 @@ import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
 
 export function PreparationScreen({ controller }: { controller: PreparationScreenController }) {
-  const { preparationProblem, retryPreparation, screen, setScreen, snapshot } = controller;
+  const { preparationProblem, retryPreparation, screen, snapshot } = controller;
   if (screen === "preparing") {
     const preparation = snapshot?.foundingPreparation;
     const residents = (snapshot?.villagers ?? []).filter(
@@ -65,12 +65,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
           <div className={`${ELEMENT_TAG}-preparing-house`} aria-hidden="true">
             🏡
           </div>
-          <h1>Founding extras</h1>
-          {preparation?.canPlay ? (
-            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setScreen("home")}>
-              Enter Village
-            </button>
-          ) : null}
+          <h1>Preparing Village</h1>
           <p>{`${done} of ${total} residents complete`}</p>
           <progress aria-label="Residents complete" max={Math.max(1, total)} value={done} />
           {preparation?.privateSpacesTotal !== undefined ? (

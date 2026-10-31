@@ -61,6 +61,8 @@ export type MenuScreenController = {
   readonly openMenu: ReturnType<typeof useScenesOpenMenu>;
   readonly openPlace: ReturnType<typeof useOpenPlace>;
   readonly personalizeHomes: FoundingState["personalizeHomes"];
+  readonly preparationProblem: FoundingState["preparationProblem"];
+  readonly retryPreparation: ReturnType<typeof import("../features/founding/actions.js").useRetryPreparation>;
   readonly progressDebug: import("../../shared/contracts/village").ProgressDebugView;
   readonly requestEdits: SettingsState["requestEdits"];
   readonly resetArmed: boolean;

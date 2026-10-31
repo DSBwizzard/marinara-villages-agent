@@ -18,6 +18,20 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
     snapshot.village.name = "Station Fields";
+    snapshot.backgroundWork = [
+      {
+        id: "fixture-work",
+        instanceId: "fixture-instance",
+        kind: "wish",
+        label: "Initial Wish",
+        status: "running",
+        attempt: 1,
+        updatedAt: new Date().toISOString(),
+        completedSteps: 0,
+        requests: 1,
+        tokens: null,
+      },
+    ];
     snapshot.villagers = [
       { characterId: "aqua", name: "Aqua" },
       { characterId: "feddy", name: "Feddy Fastbayer" },
@@ -56,6 +70,7 @@ try {
     };
     let retries = 0;
     let retryBody;
+    const backgroundReads = [];
     await page.route("http://villages.test/", (route) =>
       fulfill(route, {
         contentType: "text/html",
@@ -64,6 +79,24 @@ try {
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.replace(/\/$/, "") === "/api/villages") backgroundReads.push(snapshot.foundingPreparation.status);
+      if (path.endsWith("/repair"))
+        return fulfill(route, {
+          json: {
+            seed: "fixture",
+            identity: "fixture",
+            records: [],
+            history: [],
+            historyOffset: 0,
+            historyTotal: 0,
+            checkpoints: [],
+            checkpointOffset: 0,
+            checkpointTotal: 0,
+            sceneOpen: false,
+            people: [],
+          },
+        });
+      if (path.endsWith("/repair/records")) return fulfill(route, { json: { records: [], total: 0, next: null } });
       if (path.endsWith("/setup/preparation/retry")) {
         retries++;
         retryBody = route.request().postDataJSON();
@@ -94,7 +127,7 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const root = page.locator(".villages-forging-preparing");
-    await expect(root.getByRole("heading", { name: "Founding extras" })).toBeVisible();
+    await expect(root.getByRole("heading", { name: "Preparing Village" })).toBeVisible();
     await expect(root.getByRole("button", { name: "Enter Village" })).toHaveCount(0);
     const details = root.getByRole("region", { name: "Preparation details" });
     await expect(details).toBeVisible();
@@ -147,7 +180,7 @@ try {
       ...snapshot.foundingPreparation,
       status: "failed",
       tasksVersion: 1,
-      canPlay: true,
+      canPlay: false,
       tasks: {
         aqua: {
           routine: { contract: 1, revision: "r", jobId: "j", status: "completed", attempt: 1, error: "", receipt: "r" },
@@ -155,26 +188,41 @@ try {
         },
       },
     };
-    await expect(root.getByRole("button", { name: "Retry Wish", exact: true })).toBeVisible();
-    await expect(root.getByRole("button", { name: "Retry routine", exact: true })).toHaveCount(0);
     snapshot.villagers.push({ characterId: "newcomer", name: "New arrival" });
-    await expect(root.getByText("New arrival", { exact: true })).toHaveCount(0);
-    assert.ok((await root.getByRole("button", { name: "Enter Village", exact: true }).boundingBox()).height >= 44);
-    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `optional-founding-${width}.png`) });
-    await root.getByRole("button", { name: "Enter Village", exact: true }).click();
+    await expect(root.getByRole("button", { name: "Retry failed", exact: true })).toBeVisible();
+    snapshot.foundingPreparation.canPlay = true;
     await expect(root).toHaveCount(0);
-    assert.equal(retries, 1, "Entering after an optional failure makes no generation request");
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+    assert.equal(retries, 1, "A usable Village opens automatically without retrying optional work");
+    snapshot.foundingPreparation.status = "ready";
+    snapshot.backgroundWork = [];
+    await expect.poll(() => backgroundReads.includes("ready"), { timeout: 10000 }).toBe(true);
+    assert.equal(retries, 1, "Background completion refreshes without another preparation request");
+    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `optional-founding-${width}.png`) });
+
+    snapshot.foundingPreparation.status = "failed";
+    snapshot.foundingPreparation.error = "Resident preparation incomplete.";
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+    await expect(root).toHaveCount(0);
+    assert.equal(retries, 1, "Reloading an optional failure does not retry it");
     await page.getByRole("button", { name: "More", exact: true }).click();
-    await page.getByRole("button", { name: "Founding extras", exact: true }).click();
-    await expect(root.getByRole("button", { name: "Retry Wish", exact: true })).toBeVisible();
-    await root.getByRole("button", { name: "Retry Wish", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Founding extras", exact: true })).toHaveCount(0);
+    if (width <= 700) await page.getByRole("combobox", { name: "Section", exact: true }).selectOption("repair");
+    else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+    const repair = page.locator(".villages-repair");
+    await repair.getByRole("button", { name: /^Progress\b/ }).click();
+    const recovery = repair.getByRole("region", { name: "Initial preparation" });
+    await expect(recovery).toContainText("Resident preparation incomplete");
+    const retry = recovery.getByRole("button", { name: "Retry unfinished work", exact: true });
+    assert.ok((await retry.boundingBox()).height >= 44);
+    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `preparation-recovery-${width}.png`) });
+    await retry.click();
     await expect.poll(() => retries).toBe(2);
-    assert.equal(retryBody.characterId, "aqua");
-    assert.equal(retryBody.task, "wish");
-    assert.equal(retryBody.expectedAttempt, 2);
     assert.match(retryBody.actionId, /^[a-zA-Z0-9-]+$/);
     assert.ok(
-      await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      await repair.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       "no horizontal overflow",
     );
     assert.deepEqual(errors, []);
