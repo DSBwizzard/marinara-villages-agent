@@ -10,7 +10,11 @@ import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { backgroundRevision } from "../../domain/rules/background-revision.js";
-import { cloneVillageContext, sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
+import {
+  captureResidentActivity,
+  cloneVillageContext,
+  sameRelationshipContext,
+} from "../../domain/rules/world-context-copy.js";
 import { immutableRelationshipState } from "../../domain/rules/relationship-rules.js";
 import { returnCaptureRevision, type RelationshipIdentity } from "../../domain/rules/return-capture-revision.js";
 
@@ -66,14 +70,7 @@ export function createReturnCatchupSettlement(ports: Ports) {
       );
       const projected = cloneVillageContext(historical);
       planRoutineDays(projected, at);
-      const admitted = {
-        villagers: projected.villagers,
-        venues: projected.venues,
-        residences: projected.residences,
-        projects: projected.projects,
-        timeZone: projected.timeZone,
-        opening: projected.opening,
-      };
+      const admitted = captureResidentActivity(projected, true);
       if (
         JSON.stringify(source.admitted) !== JSON.stringify(admitted) ||
         JSON.stringify(source.relationshipSnapshot) !==

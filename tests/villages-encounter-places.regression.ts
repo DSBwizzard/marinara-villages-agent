@@ -17,10 +17,9 @@ import { createRelationshipSocial } from "../packages/villages/src/server/featur
 import { createLiveMemory } from "../packages/villages/src/server/features/residents/live-memory-service.js";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { createReturnCatchupSettlement } from "../packages/villages/src/server/features/background/return-catchup-settlement.js";
+import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
-import { planRoutineDays } from "../packages/villages/src/server/domain/rules/resident-agenda.js";
-import { socialContextState } from "../packages/villages/src/server/domain/rules/social-context.js";
-import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
 import { venue } from "./fixtures/villages-projects.fixture.js";
 
 const at = "2026-10-28T12:00:00.000Z";
@@ -265,22 +264,11 @@ await runCase("encounter-places/conflict", async () => {
 
 await runCase("encounter-places/catchup", async () => {
   const f = fixture(),
-    world = await f.snapshot(),
-    source = structuredClone(f.entry);
+    world = await f.snapshot();
+  let source = structuredClone(f.entry);
+  world.backgroundPace = "balanced";
   const capture = captureReturnContext(world, new Date(at));
-  const projected = structuredClone({ ...world, ...capture.world });
-  planRoutineDays(projected, new ZonedDate(at, world.timeZone));
-  source.catchupBatchId = "physical-return";
-  source.relationshipSnapshot = socialContextState(projected.relationshipContext, source.opportunity.actorIds, "");
-  source.admitted = {
-    villagers: projected.villagers,
-    venues: projected.venues,
-    residences: projected.residences,
-    projects: projected.projects,
-    timeZone: projected.timeZone,
-    opening: projected.opening,
-  };
-  world.socialOutbox = [source];
+  world.socialOutbox = [];
   world.returnCatchup = {
     capture,
     batch: {
@@ -289,11 +277,31 @@ await runCase("encounter-places/catchup", async () => {
       from: at,
       until: at,
       opportunities: [source.opportunity],
-      records: [
-        { opportunityId: "occasion", status: "settling", outcome: { social: structuredClone(source.proposal) } },
-      ],
+      records: [{ opportunityId: "occasion", status: "queued" }],
     },
   } as any;
+  let work: any;
+  const planning = createResidentPlanning({
+    relationshipIdentity: fixtureRelationshipIdentity,
+    readVillageState: async () => world,
+    readEffectiveVillagerCard,
+    queueBackgroundJob: async (value) => {
+      work = value;
+    },
+    backgroundJobSnapshot: async () => null,
+    villagesLanguageModels: () => {
+      throw new Error("This test must not purchase model work.");
+    },
+    villagesConnectionIdFor: async () => "fixture",
+    completeWithRoom: async () => {
+      throw new Error("This test must not purchase model work.");
+    },
+  });
+  await planning.queueReturnOpportunity("physical-return", source.opportunity, capture);
+  assert.equal(planning.handler.valid(world, work.input), true);
+  planning.handler.apply(world, work.input, { social: source.proposal, housingRequests: [] }, { retrying: false });
+  source = world.socialOutbox![0];
+  assert.equal(source.catchupBatchId, "physical-return", "Settlement consumes the actual planning producer's capture.");
   const relationships = world.relationshipContext;
   delete world.relationshipContext;
   const rows = new Map<string, any>([

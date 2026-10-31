@@ -397,6 +397,13 @@ await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact 
 assert.equal(calls, 0, "Sending first saves exact pending text before dispatch");
 active = queued.at(-1).input;
 const beforeInvalidReply = calls;
+assert.equal(active.admitted.seed, village.seed);
+assert.equal(active.admitted.setupAt, village.setupAt);
+await assert.rejects(
+  () => service.handler.generate({ ...active, admitted: { ...active.admitted, relationshipContext: undefined } }),
+  /admitted correspondence relationship context is unavailable/,
+);
+assert.equal(calls, beforeInvalidReply, "Unavailable captured relationships stop before any model purchase.");
 narrationReply = "Hello. *Ada smiles and waves.*";
 await assert.rejects(() => service.handler.generate({ ...active, sourceText: "*waves* Hello" }), /roleplay action/);
 assert.equal(calls, beforeInvalidReply + 1, "Invalid reply stops before the System interpretation request");

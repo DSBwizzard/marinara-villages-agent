@@ -16,6 +16,7 @@ import { defaultRelationshipState } from "../packages/villages/src/server/domain
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { fixtureWish, wishTime } from "./helpers/social-wishes-fixture.js";
 import { withRepairWork } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
+import { socialContextState } from "../packages/villages/src/server/domain/rules/social-context.js";
 
 const scope = { seed: "captured-admissions", setupAt: wishTime() };
 const head = encodeWishHistory([fixtureWish({ wish: "Preserve exact café 東京 evidence" })], {
@@ -209,6 +210,38 @@ for (const change of [
       };
       return state;
     }
+    const projectionSource = social("projection"),
+      edgeId = JSON.stringify(["ada", "player"]);
+    projectionSource.edges[edgeId].experiences = Array.from(
+      { length: 25_000 },
+      (_, index) => "Historical private experience " + index,
+    );
+    projectionSource.edges[edgeId].records.history = {
+      ...projectionSource.edges[edgeId].records.boundary,
+      id: "history",
+      kind: "history",
+      text: "A remembered past event",
+    };
+    const clone = structuredClone;
+    let clonedBytes = 0;
+    const cloneSpy = mock.method(globalThis, "structuredClone", (value: any) => {
+      clonedBytes += Buffer.byteLength(JSON.stringify(value));
+      return clone(value);
+    });
+    let projected;
+    try {
+      projected = socialContextState(projectionSource, ["ada"])!;
+    } finally {
+      cloneSpy.mock.restore();
+    }
+    assert(clonedBytes < 4096, "A request projection does not clone discarded relationship history.");
+    assert.deepEqual(projected.edges[edgeId].experiences, []);
+    assert.equal(projected.edges[edgeId].records.history, undefined);
+    assert.deepEqual(projected.edges[edgeId].records.boundary, projectionSource.edges[edgeId].records.boundary);
+    projected.edges[edgeId].expectations.push("Temporary request detail");
+    assert.deepEqual(projectionSource.edges[edgeId].expectations, []);
+    assert.equal(projectionSource.edges[edgeId].experiences.length, 25_000);
+
     const input = {
       ...planning(),
       admitted: logicalFrame,

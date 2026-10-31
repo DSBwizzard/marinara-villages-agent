@@ -40,6 +40,7 @@ import {
 import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules/scene-memories.js";
 import { semanticHash } from "../../domain/rules/semantic-contract.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
+import { cloneWorldContext } from "../../domain/rules/world-context-copy.js";
 import {
   beginMailDelivery,
   completeMailDelivery,
@@ -125,6 +126,7 @@ function admission(village: VillageState, residentId: string): VillageState {
       socialContextState(village.relationshipContext, [residentId], "") ?? defaultRelationshipState(village.seed);
   Object.assign(state, {
     seed: village.seed,
+    setupAt: village.setupAt,
     foundedAt: village.foundedAt,
     timeZone: village.timeZone,
     setting: village.setting,
@@ -135,9 +137,9 @@ function admission(village: VillageState, residentId: string): VillageState {
     playerBackground: village.playerBackground,
   });
   state.villagers = village.villagers.map((row) => ({ ...row, agenda: undefined }));
-  state.venues = structuredClone(village.venues);
-  state.relationshipContext = structuredClone(social);
-  return state;
+  state.venues = village.venues;
+  state.relationshipContext = social;
+  return cloneWorldContext(state);
 }
 export function createSocialMail(ports: SocialMailPorts) {
   const running = new Map<string, Promise<void>>();
@@ -173,9 +175,11 @@ export function createSocialMail(ports: SocialMailPorts) {
     return parsed;
   }
   async function generate(input: SocialMailInput): Promise<SocialMailInterpretation> {
-    const state = structuredClone(input.admitted),
+    const state = cloneWorldContext(input.admitted),
       resident = state.villagers.find((row) => row.characterId === input.residentId);
     if (!resident) throw new Error("The recipient is unavailable.");
+    if (!state.relationshipContext) throw new Error("The admitted correspondence relationship context is unavailable.");
+    state.relationshipContext = coerceRelationshipState(state.seed, state.relationshipContext);
     const ownContext = relationshipWritingPrompt(state, input.residentId);
     const text =
       input.mode === "resident"
@@ -444,7 +448,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     await ports.mutateVillageState(
       (state) => {
         if (state.seed !== input.seed) throw conflict("Village identity changed.");
-        const captured = structuredClone(input.admitted.villagers);
+        const captured = cloneWorldContext({ villagers: input.admitted.villagers }).villagers;
         if (bundle === "reply")
           for (const original of captured) {
             for (const receipt of Object.values(state.exchangeReceipts)) {

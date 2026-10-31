@@ -54,6 +54,20 @@ export function cloneReturnCapture(capture: ReturnCatchupCapture): ReturnCatchup
   return { ...structuredClone({ ...capture, world: undefined }), world: cloneWorldContext(capture.world) };
 }
 
+export function captureResidentActivity(world: VillageState, catchup = false) {
+  return cloneWorldContext({
+    seed: world.seed,
+    setupAt: world.setupAt,
+    villagers: world.villagers,
+    venues: world.venues,
+    residences: world.residences,
+    projects: world.projects,
+    timeZone: world.timeZone,
+    narrative: world.narrative,
+    ...(catchup ? { opening: world.opening } : {}),
+  });
+}
+
 /** Historical projections must not duplicate either the live ledger or the departure ledger. */
 export function cloneVillageContext(value: VillageState): VillageState {
   const { returnCatchup, ...facts } = value;

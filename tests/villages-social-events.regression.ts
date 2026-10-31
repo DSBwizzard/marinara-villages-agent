@@ -1,3 +1,4 @@
+import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -300,14 +301,7 @@ batchSource.relationshipSnapshot = socialContextState(
 );
 const projectedBatch = structuredClone({ ...(await snapshot()), ...batchCapture.world });
 planRoutineDays(projectedBatch, new ZonedDate(at, village.timeZone));
-batchSource.admitted = {
-  villagers: projectedBatch.villagers,
-  venues: projectedBatch.venues,
-  residences: projectedBatch.residences,
-  projects: projectedBatch.projects,
-  timeZone: projectedBatch.timeZone,
-  opening: projectedBatch.opening,
-};
+batchSource.admitted = captureResidentActivity(projectedBatch, true);
 const batchEncounter = batchSource.proposal.encounter as any;
 batchEncounter.opportunityId = batchOpportunity.id;
 batchEncounter.relationshipReview = emptyRelationshipReview();
@@ -614,14 +608,7 @@ try {
     batchOpportunity.actorIds,
     batchOpportunity.facts.join(" "),
   );
-  routeSource.admitted = {
-    villagers: projected.villagers,
-    venues: projected.venues,
-    residences: projected.residences,
-    projects: projected.projects,
-    timeZone: projected.timeZone,
-    opening: projected.opening,
-  };
+  routeSource.admitted = captureResidentActivity(projected, true);
   const routeMemory = sceneMemoryContext(live, batchOpportunity.actorIds, batchOpportunity.facts.join(" "));
   const routeEncounter = routeSource.proposal.encounter as any;
   routeEncounter.memoryContexts = { [routeMemory.saved.protection.fingerprint]: routeMemory.saved };

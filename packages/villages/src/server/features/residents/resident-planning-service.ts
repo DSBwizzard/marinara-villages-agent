@@ -11,7 +11,11 @@ import type { VillageResidence } from "../../domain/models/world.js";
 import type { ResidentPlanningOpportunity, ReturnCatchupCapture, VillageState } from "../../domain/models/world.js";
 import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { cloneVillageContext, sameRelationshipContext } from "../../domain/rules/world-context-copy.js";
+import {
+  cloneVillageContext,
+  captureResidentActivity,
+  sameRelationshipContext,
+} from "../../domain/rules/world-context-copy.js";
 import { returnCaptureRevision, type RelationshipIdentity } from "../../domain/rules/return-capture-revision.js";
 import { activityDate, eventAttemptAvailable } from "../../domain/rules/event-attempts.js";
 import {
@@ -157,6 +161,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         const card = readEffectiveVillagerCard(resident);
         return {
           characterId: resident.characterId,
+          capturedAt: resident.cardSnapshot.capturedAt,
           name: card.name,
           profile: venueCardProfile(card, readPlayerIdentity(village).name),
           doing: agendaAt(resident.agenda, moment.minuteOfDay, now, resident.ingestSchedule !== false)?.activity ?? "",
@@ -200,14 +205,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         now: now.toISOString(),
         socialPlanId: activePlan?.id,
         socialPlan: activePlan,
-        admitted: structuredClone({
-          villagers: village.villagers,
-          venues: village.venues,
-          residences: village.residences,
-          projects: village.projects,
-          timeZone: village.timeZone,
-          narrative: village.narrative,
-        }),
+        admitted: captureResidentActivity(village),
         actorIncarnations: Object.fromEntries(
           opportunity.actorIds.map((id) => [
             id,
@@ -334,6 +332,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           const card = readEffectiveVillagerCard(resident);
           return {
             characterId: resident.characterId,
+            capturedAt: resident.cardSnapshot.capturedAt,
             name: card.name,
             profile: venueCardProfile(card, readPlayerIdentity(historical).name),
             doing:
@@ -399,15 +398,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
         captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity),
         returnUntil: current.returnCatchup.batch.until,
         relationshipRevision: ports.relationshipIdentity(capture.world),
-        admitted: structuredClone({
-          villagers: historical.villagers,
-          venues: historical.venues,
-          residences: historical.residences,
-          projects: historical.projects,
-          timeZone: historical.timeZone,
-          narrative: historical.narrative,
-          opening: historical.opening,
-        }),
+        admitted: captureResidentActivity(historical, true),
         actorIncarnations: Object.fromEntries(
           opportunity.actorIds.map((id) => [
             id,

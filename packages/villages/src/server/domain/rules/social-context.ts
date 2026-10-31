@@ -9,7 +9,7 @@ export function selectSocialRecords(
 ): SocialRecord[] {
   return records.filter((row) => row.kind !== "history" && !["fulfilled", "cancelled"].includes(row.status));
 }
-/** Bounded projection for an admitted model request; the complete saved ledger remains intact. */
+/** Admitted requests keep active terms; remembered history lives in native Memories. */
 export function socialContextState(
   state: RelationshipState | undefined,
   actors: string[],
@@ -25,14 +25,17 @@ export function socialContextState(
   );
   const selected = new Set(records.map((row) => row.id));
   packet.edges = Object.fromEntries(
-    owned.map((edge) => [
-      JSON.stringify([edge.fromId, edge.toId]),
-      {
-        ...structuredClone(edge),
-        experiences: [],
-        records: Object.fromEntries(Object.entries(edge.records).filter(([id]) => selected.has(id))),
-      },
-    ]),
+    owned.map((edge) => {
+      const { experiences: _experiences, records: _records, ...facts } = edge;
+      return [
+        JSON.stringify([edge.fromId, edge.toId]),
+        {
+          ...structuredClone(facts),
+          experiences: [],
+          records: Object.fromEntries(Object.entries(edge.records).filter(([id]) => selected.has(id))),
+        },
+      ];
+    }),
   );
   packet.sharedRecords = Object.fromEntries(
     Object.entries(state.sharedRecords).filter(

@@ -136,6 +136,9 @@ assert.equal(f.calls.length, 0, "Discovery queues work without dispatching a mod
 assert.equal(f.queued[0].kind, "resident-planning");
 assert.equal(f.queued[0].finite, false);
 const input = f.queued[0].input;
+assert.equal(input.admitted.seed, f.state.seed);
+assert.equal(input.admitted.setupAt, f.state.setupAt);
+assert.equal(input.context.residents[0].capturedAt, f.state.villagers[0].cardSnapshot.capturedAt);
 assert.equal(input.opportunity.kind, "routine", "A lone resident still gets routine and housing choices");
 const quiet: any = await f.service.handler.generate(input);
 assert.equal(f.calls.length, 1);
