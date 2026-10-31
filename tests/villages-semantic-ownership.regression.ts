@@ -1,5 +1,5 @@
 import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
-import { wishWorld } from "./helpers/social-wishes-fixture.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import assert from "node:assert/strict";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -244,6 +244,8 @@ async function main() {
   const rejected: any[] = [];
   let inputEstimate = 1000;
   let contextTrimmed = false;
+  let rejectSystemPreflight = false;
+  let lastFitted: any;
   let loreReads = 0;
   let accessRows: any[] = [];
   let actionReview: ((packet: any) => any) | undefined;
@@ -262,13 +264,18 @@ async function main() {
     name: "Fake",
     connectionId: "system",
     maxOutputTokens: 16384,
-    fitContext: (messages: unknown, options: { maxTokens: number }) => ({
-      messages,
-      maxTokens: options.maxTokens,
-      estimatedTokensBefore: inputEstimate,
-      estimatedTokensAfter: inputEstimate,
-      trimmed: contextTrimmed,
-    }),
+    fitContext: (messages: any, options: { maxTokens: number }) => {
+      lastFitted = messages;
+      return {
+        messages,
+        maxTokens: options.maxTokens,
+        estimatedTokensBefore: inputEstimate,
+        estimatedTokensAfter: inputEstimate,
+        trimmed:
+          contextTrimmed ||
+          (rejectSystemPreflight && messages[0]?.content.startsWith("You interpret Villages gameplay.")),
+      };
+    },
     chatComplete: () => assert.fail("No real provider dispatch is allowed"),
   };
   const ports = {
@@ -411,6 +418,53 @@ async function main() {
     },
   } as unknown as SemanticPorts;
   const service = createSemanticService(ports);
+  {
+    const original = state.villagers;
+    const authority = wishWorld();
+    const wish = fixtureWish({ wish: "A shared experience" });
+    wish.status = "withdrawn";
+    wish.conditions = [
+      {
+        id: "exact-condition",
+        quote: "Only with my present consent",
+        at: wish.addedAt,
+        sourceId: "condition-source",
+        lineIds: ["condition-line"],
+      },
+    ];
+    wish.history = [
+      {
+        id: "exact-refusal",
+        kind: "progress",
+        text: "They declined café 東京; stop the previous approach.",
+        at: wish.addedAt,
+        sourceId: "refusal-source",
+        lineIds: ["refusal-line"],
+      },
+    ];
+    authority.villagers[0].wishes = [wish];
+    state.villagers = authority.villagers;
+    const known = checkpoints.size,
+      paid = calls.length;
+    try {
+      await service.preflight(
+        { ...scene, activeIds: ["a"], participants: [{ characterId: "a", name: "Ada", doing: "Talking" }] } as any,
+        "An ordinary reply",
+      );
+      const packet = JSON.stringify(lastFitted);
+      assert(
+        packet.includes("Only with my present consent") &&
+          packet.includes("refusal-source") &&
+          packet.includes("stop the previous approach"),
+        "Known preflight retains exact complete conditions/history, including closed Wishes",
+      );
+      assert(!packet.includes('"_memoryWrite"'), "Server-private write guards are not model knowledge");
+      assert.equal(checkpoints.size, known, "Preflight is a read-only check, not another saved inference stage");
+      assert.equal(calls.length, paid);
+    } finally {
+      state.villagers = original;
+    }
+  }
   checkpoints.clear();
   calls.length = 0;
   outputRequests.length = 0;
@@ -636,6 +690,24 @@ async function main() {
     refreshZoneParticipants: async (current: unknown) => current,
     interpretRoomReply: () => assert.fail("The legacy room/Decisions call must be replaced"),
   } as unknown as SceneWritingPorts;
+  {
+    const paid = calls.length;
+    rejectSystemPreflight = true;
+    try {
+      await assert.rejects(
+        createSceneWriting(writerPorts).generate(scene, "Unfittable known System authority", "chat", "", null),
+        /Essential System evidence does not fit/,
+      );
+      assert.equal(
+        calls.length,
+        paid,
+        "A known System context failure precedes both legacy intent and Narration purchases",
+      );
+    } finally {
+      rejectSystemPreflight = false;
+      checkpoints.clear();
+    }
+  }
   const generated = await createSceneWriting(writerPorts).generate(scene, "Ordinary conversation", "chat", "", null);
   let replayLoreReads = 0;
   const capturedWriting = {
@@ -1019,6 +1091,50 @@ async function main() {
   assert.deepEqual(calls, ["narration", "exchange"], "Current writer checks input and reply with one System request");
   assert.equal(combined.semanticProvenance?.pipelineVersion, 3);
   assert.equal(combined.semanticProvenance?.authority?.physical, false);
+  for (const route of ["legacy", "contact", "combined"] as const) {
+    const input = {
+      writingContractVersion: 3,
+      writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+      ...(route === "combined" ? { semanticPipelineVersion: 3 } : {}),
+    };
+    const recoveryScene = { ...scene, operation: { input } } as typeof scene;
+    let saved = new Map<string, unknown>();
+    const recoveryPorts = {
+      ...writerPorts,
+      venueOperationInput: () => input,
+      venueSavedCheckpoint: (key: string) => saved.get(key),
+      venueCheckpoint: async (key: string, work: () => Promise<unknown>) => {
+        if (saved.has(key)) return structuredClone(saved.get(key));
+        const value = await work();
+        saved.set(key, structuredClone(value));
+        return value;
+      },
+    } as SceneWritingPorts;
+    const makeWriter = () =>
+      createSceneWriting({
+        ...recoveryPorts,
+        semantic: createSemanticService(recoveryPorts as unknown as SemanticPorts),
+      });
+    const generate = (writer: ReturnType<typeof makeWriter>) =>
+      route === "contact"
+        ? writer.generateContactResponse(recoveryScene, "Replay purchased work " + route, "")
+        : writer.generate(recoveryScene, "Replay purchased work " + route, "chat", "", null);
+    const accepted = await generate(makeWriter());
+    assert([...saved.keys()].some((key) => key.startsWith("writing-completion:")));
+    const paid = calls.length;
+    // Restart with only durable stages after the enclosing operation's acknowledgement was lost.
+    saved = new Map(structuredClone([...saved]));
+    rejectSystemPreflight = true;
+    model.maxOutputTokens = 512;
+    try {
+      const recovered = await generate(makeWriter());
+      assert.equal(recovered.lines[0].content, accepted.lines[0].content);
+      assert.equal(calls.length, paid, "A smaller current System connection cannot block local purchased-stage replay");
+    } finally {
+      rejectSystemPreflight = false;
+      model.maxOutputTokens = 16384;
+    }
+  }
   // Invalid Project metadata must retain the exact bounded rejection reason.
   {
     const projectWorld = structuredClone(state);
@@ -1090,6 +1206,7 @@ async function main() {
           },
         }),
         semantic: {
+          preflight: async () => {},
           exchange: async () => ({
             version: 2,
             sourceHash: "a".repeat(64),

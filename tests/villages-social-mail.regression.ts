@@ -51,6 +51,15 @@ let calls = 0,
   truncateMeaning = false,
   sourceOnlyReply = false;
 let narrationReply = "I'd like to stay friends.";
+let rejectKnownContext = false;
+let optionalTokenEstimate = 13000;
+let writingReplay:
+  | {
+      settings: Map<string, unknown>;
+      response?: { messages: string; value: unknown };
+      hits: number;
+    }
+  | undefined;
 let failFirstIncoming = false;
 let failNativeWrite = "";
 let afterSocialCommit: (() => Promise<void>) | undefined;
@@ -88,6 +97,11 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
 let active: SocialMailInput;
 const promptHistory: string[] = [];
 const coreService = createSocialMail({
+  backgroundSetting: async (key: string, create: () => unknown) => {
+    if (!writingReplay) return create();
+    if (!writingReplay.settings.has(key)) writingReplay.settings.set(key, await create());
+    return writingReplay.settings.get(key);
+  },
   readMailInput: (...args) => captures.readMailInput(...args),
   withWork: async (work: any) => work(),
   withVillageSceneAcceptance: async (work: any) => {
@@ -238,11 +252,29 @@ const coreService = createSocialMail({
       connectionId,
       model: "fixture",
       maxOutputTokens: 4096,
-      fitContext: (messages: any, options: any) => ({ messages, ...options, estimatedTokensBefore: 13000 }),
+      fitContext: (messages: any, options: any) => ({
+        messages,
+        ...options,
+        estimatedTokensBefore: optionalTokenEstimate,
+        trimmed:
+          rejectKnownContext &&
+          connectionId === "system" &&
+          JSON.stringify(messages).includes("mandatory-correction-sentinel"),
+      }),
       chatComplete: () => assert.fail("Real providers forbidden"),
     }),
   }),
   completeWithRoom: async (model: any, messages: any[], _maxTokens: number, options: any) => {
+    if (model.connectionId === "narration" && writingReplay?.response) {
+      assert.equal(
+        JSON.stringify(messages),
+        writingReplay.response.messages,
+        "Saved optional selection keeps the purchased fingerprint",
+      );
+      writingReplay.hits++;
+      return structuredClone(writingReplay.response.value);
+    }
+    await options.beforeBackgroundDispatch?.();
     promptHistory.push(JSON.stringify([model.connectionId, messages]));
     if (options.responseFormat?.type === "json_object")
       assert(
@@ -251,8 +283,11 @@ const coreService = createSocialMail({
       );
     calls++;
     if (model.connectionId === "system") assert.equal(options.reasoningEffort, "low");
-    if (model.connectionId === "narration")
-      return { content: JSON.stringify({ text: narrationReply }), finishReason: "stop" };
+    if (model.connectionId === "narration") {
+      const value = { content: JSON.stringify({ text: narrationReply }), finishReason: "stop" };
+      if (writingReplay) writingReplay.response = { messages: JSON.stringify(messages), value };
+      return value;
+    }
     if (failMeaning) throw Error("Meaning provider unavailable");
     if (truncateMeaning) return { content: "", finishReason: "length", usage: { completionReasoningTokens: 4096 } };
     const replyChange = change(active, 0, true);
@@ -401,6 +436,33 @@ await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact 
 assert.equal(calls, 0, "Sending first saves exact pending text before dispatch");
 active = queued.at(-1).input;
 const beforeInvalidReply = calls;
+{
+  const input = { ...active, admitted: structuredClone(active.admitted) };
+  const wish = fixtureWish({ wish: "A shared experience" });
+  wish.history = [
+    {
+      id: "exact-correction",
+      kind: "progress",
+      text: "mandatory-correction-sentinel: they declined café 東京; do not repeat it",
+      at: wish.addedAt,
+      sourceId: "exact-earlier-source",
+      lineIds: ["exact-earlier-line"],
+    },
+  ];
+  input.admitted.villagers[0].wishes = [wish];
+  rejectKnownContext = true;
+  try {
+    await assert.rejects(service.handler.generate(input), /context does not fit.*system/);
+    assert.equal(
+      calls,
+      beforeInvalidReply,
+      "Known complete System authority is fitted before buying Narration or System work",
+    );
+    assert.equal(input.admitted.villagers[0].wishes[0].history[0].sourceId, "exact-earlier-source");
+  } finally {
+    rejectKnownContext = false;
+  }
+}
 assert.equal(active.admitted.seed, village.seed);
 assert.equal(active.admitted.setupAt, village.setupAt);
 await assert.rejects(
@@ -435,6 +497,45 @@ assert.deepEqual(
   "A later retry must reuse identical admitted prompts so purchased responses remain replayable",
 );
 calls = initialCalls;
+{
+  const original = active;
+  const wish = fixtureWish({ wish: "A shared experience" });
+  wish.history = [
+    {
+      id: "correction",
+      kind: "progress",
+      text: "mandatory-correction-sentinel: retain the exact refusal",
+      at: wish.addedAt,
+      sourceId: "original-refusal",
+      lineIds: ["original-line"],
+    },
+  ];
+  active = { ...active, admitted: structuredClone(active.admitted) };
+  active.admitted.villagers[0].wishes = [wish];
+  writingReplay = { settings: new Map(), hits: 0 };
+  optionalTokenEstimate = 1;
+  try {
+    await service.handler.generate(active);
+    assert(writingReplay.response?.messages.includes("original-refusal"));
+    const paid = calls;
+    writingReplay.settings = new Map(structuredClone([...writingReplay.settings]));
+    optionalTokenEstimate = 13000;
+    rejectKnownContext = true;
+    await assert.rejects(service.handler.generate(active), /context does not fit.*system/);
+    assert.equal(
+      writingReplay.hits,
+      1,
+      "Cached Narration replays before the current System's existing final self-fit hold",
+    );
+    assert.equal(calls, paid, "A context hold reuses the paid reply and buys no replacement");
+  } finally {
+    active = original;
+    writingReplay = undefined;
+    rejectKnownContext = false;
+    optionalTokenEstimate = 13000;
+    calls = initialCalls;
+  }
+}
 assert.equal(social.mailThreads["personal:ada"]!.messages[0]!.text, "Hello\n  exact text");
 await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact text" });
 assert.equal(social.mailThreads["personal:ada"]!.messages.length, 1);

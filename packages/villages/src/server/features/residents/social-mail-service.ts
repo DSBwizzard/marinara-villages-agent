@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import type { MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
 import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
@@ -46,6 +47,7 @@ import { SCENE_MEMORY_INSTRUCTION, sceneMemoryContext } from "../../domain/rules
 import { semanticHash } from "../../domain/rules/semantic-contract.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { cloneWorldContext } from "../../domain/rules/world-context-copy.js";
+import { fitWishWritingContext } from "../../domain/rules/wish-writing-context.js";
 import {
   beginMailDelivery,
   completeMailDelivery,
@@ -64,10 +66,10 @@ import {
   SOCIAL_WISH_INSTRUCTION,
   WishInterpretationError,
   wishHistoryLoaded,
-  wishWritingContext,
 } from "../../domain/rules/social-wishes.js";
 
 export interface SocialMailPorts {
+  backgroundSetting: typeof import("../../adapters/operations/background-context.js").backgroundSetting;
   readMailInput: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["readMailInput"];
   withWork: typeof import("../../adapters/storage/repair-gate.js").withRepairWork;
   processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
@@ -149,25 +151,35 @@ function admission(village: VillageState, residentId: string): VillageState {
 }
 export function createSocialMail(ports: SocialMailPorts) {
   const running = new Map<string, Promise<void>>();
-  async function modelRequest(
-    role: "narration" | "system",
-    messages: { role: "system" | "user"; content: string }[],
-    key: string,
+  const resolveModel = async (role: "narration" | "system") =>
+    ports.villagesLanguageModels().resolveForRequest({ connectionId: await ports.villagesConnectionIdFor(role) });
+  function fitMailContext(
+    model: CapabilityResolvedLanguageModel,
+    messages: CapabilityLanguageModelMessage[],
     maxTokens: number,
+    role: "narration" | "system",
   ) {
-    const model = await ports
-      .villagesLanguageModels()
-      .resolveForRequest({ connectionId: await ports.villagesConnectionIdFor(role) });
     const output = Math.min(maxTokens, model.maxOutputTokens ?? maxTokens),
       fit = model.fitContext(messages, { maxTokens: output });
     if (fit.trimmed || JSON.stringify(fit.messages) !== JSON.stringify(messages))
       throw new Error("Personal mail context does not fit the configured " + role + " connection.");
-    const requestTokens = Math.min(output, fit.maxTokens ?? output);
+    return { messages, maxTokens: Math.min(output, fit.maxTokens ?? output) };
+  }
+  async function modelRequest(
+    role: "narration" | "system",
+    model: CapabilityResolvedLanguageModel,
+    messages: CapabilityLanguageModelMessage[],
+    key: string,
+    maxTokens: number,
+    beforeBackgroundDispatch?: () => Promise<void>,
+  ) {
+    const requestTokens = fitMailContext(model, messages, maxTokens, role).maxTokens;
     const result = await ports.completeWithRoom(model, messages, requestTokens, {
       responseFormat: { type: "json_object" },
       retryEmpty: false,
       debugMode: false,
       checkpointId: key,
+      beforeBackgroundDispatch,
       temperature: role === "narration" ? 0.7 : 0.1,
       ...(role === "system" ? { reasoningEffort: "low" as const } : {}),
       usagePurpose: role === "system" ? "checks" : "background",
@@ -187,6 +199,59 @@ export function createSocialMail(ports: SocialMailPorts) {
     if (!state.relationshipContext) throw new Error("The admitted correspondence relationship context is unavailable.");
     state.relationshipContext = coerceRelationshipState(state.seed, state.relationshipContext);
     const ownContext = relationshipWritingPrompt(state, input.residentId);
+    const sourceLine: RelationshipEvidenceLine = {
+      id: input.messageId,
+      speakerId: input.mode === "resident" ? input.residentId : "player",
+      role: input.mode === "resident" ? "assistant" : "user",
+      content: input.sourceText,
+      heardBy: ["player", input.residentId],
+      kind: "mail",
+      playerHeard: true,
+    };
+    const replyId = input.messageId + ":reply";
+    const replyLine: RelationshipEvidenceLine = {
+      id: replyId,
+      speakerId: input.residentId,
+      role: "assistant",
+      content: "",
+      heardBy: ["player", input.residentId],
+      kind: "mail",
+      playerHeard: true,
+    };
+    const meaningMessages = (): CapabilityLanguageModelMessage[] => [
+      {
+        role: "system",
+        content:
+          RELATIONSHIP_REVIEW_INSTRUCTION +
+          " " +
+          SOCIAL_WISH_INSTRUCTION +
+          " Return sourceWishChanges:[] and replyWishChanges:[] for incoming and reply respectively, using supplied exact message IDs as evidence. Source effects cite only incoming.id; reply effects require reply.id as new evidence. Source effects are empty when sourceDelivered is true. Letters prove written interactions, never actual meetings or physical deeds. " +
+          SCENE_MEMORY_INSTRUCTION +
+          " Additionally return sourceMemoryChanges:[] and replyMemoryChanges:[] under that native Memory schema, grounded in incoming and reply respectively. These arrays teach ONLY the corresponding resident, never player or another resident. All player learning uses disclosures when read. sourceMemoryChanges cites incoming.id only; replyMemoryChanges must include reply.id as new evidence. Reports name the actual speaker; claims establish no physical outcome. Use the supplied memory.administrative screening fingerprint. Empty arrays are valid for filler, repeated or unimportant correspondence. When sourceDelivered is true, sourceMemoryChanges must be empty. " +
+          " Interpret this correspondence as separate source and reply reviews. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview}. sourceReview cites only incoming.id; replyReview cites the resident reply as new evidence. In resident mode interpret only sourceReview. When sourceDelivered is true, sourceReview must be empty. Set permissions to an empty array and omit agreement and commitment records: letters never grant access, create obligations, or perform actions. Private stances remain private. Disclosures are saved for the player only when the delivered letter is read. Written claims are not verified physical deeds. Only supplied source IDs are evidence.",
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          memory: input.systemMemory?.envelope,
+          sourceDelivered: input.sourceDelivered,
+          mode: input.mode ?? "player",
+          incoming: sourceLine,
+          reply: replyLine,
+          social: state.relationshipContext,
+          actors: state.villagers.map((row) => ({
+            id: row.characterId,
+            name: row.cardSnapshot.name,
+            wishes: row.wishes,
+          })),
+          now: input.admittedAt ?? input.sourceAt,
+        }),
+      },
+    ];
+    let systemModel: CapabilityResolvedLanguageModel | undefined;
+    const system = async () => (systemModel ??= await resolveModel("system"));
+    const narrationModel =
+      input.mode !== "resident" && input.retainedReply == null ? await resolveModel("narration") : undefined;
     const text =
       input.mode === "resident"
         ? ""
@@ -195,6 +260,7 @@ export function createSocialMail(ports: SocialMailPorts) {
             (
               await modelRequest(
                 "narration",
+                narrationModel!,
                 [
                   {
                     role: "system",
@@ -212,7 +278,13 @@ export function createSocialMail(ports: SocialMailPorts) {
                       character: resident.cardSnapshot,
                       admission: resident.admission,
                       ownContext,
-                      wishes: wishWritingContext(resident.wishes, input.sourceText),
+                      wishContext: await ports.backgroundSetting(
+                        "personal-mail:writing-context:" + input.sourceHash,
+                        () =>
+                          fitWishWritingContext(narrationModel!, [
+                            { actorId: input.residentId, wishes: resident.wishes },
+                          ]),
+                      ),
                       memories: JSON.parse(input.narrationMemories ?? '{"memories":[]}'),
                       incoming: { text: input.sourceText, at: input.sourceAt },
                       now: input.admittedAt ?? input.sourceAt,
@@ -221,62 +293,19 @@ export function createSocialMail(ports: SocialMailPorts) {
                 ],
                 "personal-mail:writing:" + input.sourceHash,
                 2048,
+                async () => {
+                  fitMailContext(await system(), meaningMessages(), 16384, "system");
+                },
               )
             ).text ?? "",
           ));
     if (text.length > 2000) throw new Error("The personal reply exceeded its size limit.");
     if (input.mode !== "resident") assertPersonalLetter(text, resident.cardSnapshot.name);
-    const sourceLine: RelationshipEvidenceLine = {
-      id: input.messageId,
-      speakerId: input.mode === "resident" ? input.residentId : "player",
-      role: input.mode === "resident" ? "assistant" : "user",
-      content: input.sourceText,
-      heardBy: ["player", input.residentId],
-      kind: "mail",
-      playerHeard: true,
-    };
-    const replyId = input.messageId + ":reply";
-    const replyLine: RelationshipEvidenceLine = {
-      id: replyId,
-      speakerId: input.residentId,
-      role: "assistant",
-      content: text,
-      heardBy: ["player", input.residentId],
-      kind: "mail",
-      playerHeard: true,
-    };
+    replyLine.content = text;
     const raw = await modelRequest(
       "system",
-      [
-        {
-          role: "system",
-          content:
-            RELATIONSHIP_REVIEW_INSTRUCTION +
-            " " +
-            SOCIAL_WISH_INSTRUCTION +
-            " Return sourceWishChanges:[] and replyWishChanges:[] for incoming and reply respectively, using supplied exact message IDs as evidence. Source effects cite only incoming.id; reply effects require reply.id as new evidence. Source effects are empty when sourceDelivered is true. Letters prove written interactions, never actual meetings or physical deeds. " +
-            SCENE_MEMORY_INSTRUCTION +
-            " Additionally return sourceMemoryChanges:[] and replyMemoryChanges:[] under that native Memory schema, grounded in incoming and reply respectively. These arrays teach ONLY the corresponding resident, never player or another resident. All player learning uses disclosures when read. sourceMemoryChanges cites incoming.id only; replyMemoryChanges must include reply.id as new evidence. Reports name the actual speaker; claims establish no physical outcome. Use the supplied memory.administrative screening fingerprint. Empty arrays are valid for filler, repeated or unimportant correspondence. When sourceDelivered is true, sourceMemoryChanges must be empty. " +
-            " Interpret this correspondence as separate source and reply reviews. Return JSON {sourceReview:relationshipReview,replyReview:relationshipReview}. sourceReview cites only incoming.id; replyReview cites the resident reply as new evidence. In resident mode interpret only sourceReview. When sourceDelivered is true, sourceReview must be empty. Set permissions to an empty array and omit agreement and commitment records: letters never grant access, create obligations, or perform actions. Private stances remain private. Disclosures are saved for the player only when the delivered letter is read. Written claims are not verified physical deeds. Only supplied source IDs are evidence.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            memory: input.systemMemory?.envelope,
-            sourceDelivered: input.sourceDelivered,
-            mode: input.mode ?? "player",
-            incoming: sourceLine,
-            reply: replyLine,
-            social: state.relationshipContext,
-            actors: state.villagers.map((row) => ({
-              id: row.characterId,
-              name: row.cardSnapshot.name,
-              wishes: row.wishes,
-            })),
-            now: input.admittedAt ?? input.sourceAt,
-          }),
-        },
-      ],
+      await system(),
+      meaningMessages(),
       "personal-mail:meaning:" + input.sourceHash + ":" + semanticHash(state.relationshipContext),
       16384,
     );

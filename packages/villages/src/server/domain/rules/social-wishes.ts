@@ -551,11 +551,6 @@ export function knownSocialWishes(
   return [...known.values()];
 }
 
-/** Retained desires are available context; their presence never chooses the cast or conversation. */
-export function wishWritingContext(wishes: SocialWish[], _query: string): SocialWish[] {
-  return wishes.filter((w) => w.status === "open");
-}
-
 /** A quiet private choice uses the existing resident-planning allowance. It proves no interaction. */
 export function applyWishReflection(
   state: VillageState,

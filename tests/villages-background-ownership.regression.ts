@@ -225,6 +225,84 @@ function fixture(label: string) {
   };
 }
 
+async function dispatchPreflight() {
+  for (const outcome of ["reject", "stop", "replay"] as const) {
+    const f = fixture("preflight-" + outcome);
+    const entered = deferred(),
+      release = deferred();
+    let checks = 0,
+      loseEnclosingResult = outcome === "replay";
+    const update = f.documents.update;
+    f.documents.update = async (value) => {
+      if (loseEnclosingResult && (value.data as any)?.hasResult) {
+        loseEnclosingResult = false;
+        throw Error("Enclosing result publication interrupted");
+      }
+      return update(value);
+    };
+    f.gate.resolve();
+    f.service.registerBackgroundHandler("agenda", {
+      valid: () => true,
+      generate: async (value) => {
+        const response = await f.context.backgroundCalls.getStore()!(
+          f.model,
+          [{ role: "user", content: value.text }],
+          100,
+          {
+            temperature: 0,
+            checkpointId: "purchased-stage",
+            beforeBackgroundDispatch: async () => {
+              checks++;
+              if (checks > 1) throw Error("A completed stage must replay without current context preflight");
+              if (outcome === "reject") throw Error("Required System evidence does not fit");
+              if (outcome === "stop") {
+                entered.resolve();
+                await release.promise;
+              }
+            },
+          },
+        );
+        return response.content;
+      },
+      apply(state, _input, result) {
+        state.setting = result;
+      },
+    });
+    let stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob(input());
+      if (outcome === "stop") {
+        await entered.promise;
+        stop();
+        release.resolve();
+      }
+      await f.service.settleBackgroundWork();
+      const saved = [...f.records.values()].find((row) => row.kind === "background-work")!.data;
+      if (outcome !== "replay") {
+        assert.equal(f.calls.length, 0);
+        assert.equal(saved.requests, 0, "Failed/cancelled preflight must not count a purchased request");
+        assert.deepEqual(saved.steps, [], "Failed/cancelled preflight leaves no uncertain provider reservation");
+      } else {
+        assert.equal(saved.steps[0].status, "completed");
+        assert.equal(saved.hasResult, false);
+        stop();
+        loseEnclosingResult = false;
+        stop = f.service.startBackgroundWork();
+        const held = (await f.service.backgroundWorkSummaries())[0];
+        await f.service.retryBackgroundJob(held.id, held.attempt, "recover-enclosing-result");
+        await f.service.settleBackgroundWork();
+        assert.equal(checks, 1, "Restarted recovery bypasses a new-purchase guard for the saved response");
+        assert.equal(f.calls.length, 1);
+        assert.equal(f.world().setting, "preflight-replay:same");
+      }
+    } finally {
+      stop();
+      release.resolve();
+      await f.service.settleBackgroundWork();
+    }
+  }
+}
+
 async function independentQueues() {
   const a = fixture("A"),
     b = fixture("B");
@@ -467,6 +545,7 @@ async function scopedDispatch() {
   }
 }
 async function main() {
+  await dispatchPreflight();
   await independentQueues();
   await connectionAndPresenceIsolation();
   const admission = fixture("superseded-admission");

@@ -72,7 +72,13 @@ let paidCalls = 0;
 const model: any = {
   model: "fixture",
   maxOutputTokens: 4096,
-  fitContext: (messages: any, options: any) => ({ messages, ...options }),
+  fitContext: (messages: any, options: any) => ({
+    messages,
+    ...options,
+    estimatedTokensBefore: Math.ceil(JSON.stringify(messages).length / 4),
+    estimatedTokensAfter: Math.ceil(JSON.stringify(messages).length / 4),
+    trimmed: false,
+  }),
   chatComplete: () => {
     paidCalls++;
     throw Error("Not permitted in prompt test");
