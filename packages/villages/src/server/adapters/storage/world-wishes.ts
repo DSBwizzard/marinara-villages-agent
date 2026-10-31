@@ -4,7 +4,7 @@ import type { VillageState } from "../../domain/models/world.js";
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { blockWishHistory, copySocialWishes, wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import {
-  createWishHistoryStore,
+  wishHistoryStore,
   createWishHistoryTracer,
   readWishHistoryHead,
   readWishArchiveHead,
@@ -15,6 +15,27 @@ import {
 import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
 
 type Owner = { scope: WishHistoryScope; head: WishHistoryHead | null; name: string; departure: boolean };
+export function wishResidentOwners(value: unknown, scope: { seed: string; setupAt: string }) {
+  memoryRequire(Array.isArray(value), "invalid Wish resident directory");
+  const ids = new Set<string>();
+  return value.map((row) => {
+    memoryObject(row);
+    memoryObject(row.cardSnapshot);
+    memoryRequire(
+      typeof row.characterId === "string" &&
+        row.characterId.length > 0 &&
+        row.characterId === row.characterId.trim() &&
+        !ids.has(row.characterId) &&
+        typeof row.cardSnapshot.name === "string" &&
+        row.cardSnapshot.name.trim().length > 0 &&
+        !Object.hasOwn(row, "wishes"),
+      "invalid native Wish owner",
+    );
+    ids.add(row.characterId);
+    const owner = { ...scope, actorId: row.characterId };
+    return { scope: owner, head: readWishHistoryHead(row.wishHead, owner), name: row.cardSnapshot.name };
+  });
+}
 export function worldWishOwners(raw: unknown) {
   memoryObject(raw);
   memoryRequire(
@@ -29,27 +50,7 @@ export function worldWishOwners(raw: unknown) {
       value.seed === scope.seed && value.setupAt === scope.setupAt && Array.isArray(value.villagers),
       "invalid Village Wish ownership",
     );
-    const ids = new Set<string>();
-    for (const row of value.villagers) {
-      memoryObject(row);
-      memoryObject(row.cardSnapshot);
-      memoryRequire(
-        typeof row.characterId === "string" &&
-          row.characterId.length > 0 &&
-          !ids.has(row.characterId) &&
-          typeof row.cardSnapshot.name === "string" &&
-          !Object.hasOwn(row, "wishes"),
-        "invalid native Wish owner",
-      );
-      ids.add(row.characterId);
-      const owner = { ...scope, actorId: row.characterId };
-      owners.push({
-        scope: owner,
-        head: readWishHistoryHead(row.wishHead, owner),
-        name: row.cardSnapshot.name,
-        departure,
-      });
-    }
+    for (const owner of wishResidentOwners(value.villagers, scope)) owners.push({ ...owner, departure });
   }
   residents(raw, false);
   if (raw.returnCatchup !== undefined) {
@@ -62,11 +63,8 @@ export function worldWishOwners(raw: unknown) {
   return { scope, owners, archive: readWishArchiveHead(raw.wishArchiveHead, scope) };
 }
 const selected = (id: string, include: VillageMemoryRead["wishes"]) => include === true || !!include?.includes(id);
-const stores = new WeakMap<CapabilityDocumentStore, ReturnType<typeof createWishHistoryStore>>();
 export function createWorldWishes(documents: CapabilityDocumentStore) {
-  let stored = stores.get(documents);
-  if (!stored) stores.set(documents, (stored = createWishHistoryStore(documents)));
-  const payloads = stored;
+  const payloads = wishHistoryStore(documents);
   async function decode(raw: Record<string, any>, include: VillageMemoryRead["wishes"]) {
     const { owners } = worldWishOwners(raw);
     async function residents(rows: Record<string, any>[], departure: boolean) {

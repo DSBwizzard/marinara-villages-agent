@@ -86,7 +86,6 @@ function fixture(name: string) {
         },
       };
     },
-    readSession: unavailable,
     readVillageState: unavailable,
     mutateVillageState: unavailable,
     processSavedProgressSubmission: unavailable,

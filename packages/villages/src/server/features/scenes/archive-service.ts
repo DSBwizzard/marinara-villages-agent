@@ -1,6 +1,6 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
-import { ACTIVE_ID, SESSION_KIND } from "../../adapters/storage/scene-slots.js";
+import { ACTIVE_ID, SESSION_KIND, SESSION_PREFIX } from "../../adapters/storage/scene-slots.js";
 import { readSceneIndex, readSceneTranscriptIndex } from "../../adapters/storage/scene-history.js";
 import { withRepairWork } from "../../adapters/storage/repair-gate.js";
 import type { ActiveVenue, VenueScene } from "../../domain/models/scene-model.js";
@@ -9,10 +9,9 @@ import { conflict, notFound } from "../../domain/rules/errors.js";
 export interface SceneArchivePorts {
   villagesDocuments(): Pick<CapabilityDocumentStore, "list" | "getById" | "remove">;
   readActive(): Promise<ActiveVenue>;
-  readSession(id: string): Promise<VenueScene>;
 }
 /** Owns archive commands and their lazy connections. Construction performs no work. */
-export function createSceneArchive({ villagesDocuments, readActive, readSession }: SceneArchivePorts) {
+export function createSceneArchive({ villagesDocuments, readActive }: SceneArchivePorts) {
   async function listVenueVisits(filter: { placeId?: string; characterId?: string } = {}): Promise<VenueScene[]> {
     return withRepairWork(async () => {
       const documents = villagesDocuments();
@@ -33,9 +32,16 @@ export function createSceneArchive({ villagesDocuments, readActive, readSession 
   }
 
   async function readVenueVisit(id: string): Promise<VenueScene> {
-    const session = await readSession(id);
-    if (session.status !== "closed") throw notFound("That Scene is not closed.");
-    return session;
+    return withRepairWork(async () => {
+      const documents = villagesDocuments();
+      const row = await documents.getById(VILLAGES_PACKAGE_ID, SESSION_PREFIX + id);
+      if (!row || row.id !== SESSION_PREFIX + id || row.packageId !== VILLAGES_PACKAGE_ID || row.kind !== SESSION_KIND)
+        throw notFound("That Scene is unavailable.");
+      const index = readSceneIndex(row.data);
+      if (index.id !== id) throw notFound("That Scene is unavailable.");
+      if (index.status !== "closed") throw notFound("That Scene is not closed.");
+      return readSceneTranscriptIndex(documents, row.data);
+    });
   }
 
   /** A village reset also removes the previous village's private Scene archive. */

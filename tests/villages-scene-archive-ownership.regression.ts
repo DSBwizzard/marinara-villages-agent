@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -29,14 +29,17 @@ put("terminal", "scene-terminal");
 put("project-evidence", "project-scene-evidence");
 put("spinoff", "spinoff");
 let activeId = "active";
+const readIds: string[] = [];
 const service = createSceneArchive({
   villagesDocuments: () => ({
     list: async (_packageId, kind) => [...documents.values()].filter((row) => row.kind === kind),
-    getById: async (_packageId, id) => documents.get(id) ?? null,
+    getById: async (_packageId, id) => {
+      readIds.push(id);
+      return documents.get(id) ?? null;
+    },
     remove: async (_packageId, id, revision) => documents.get(id)?.revision === revision && documents.delete(id),
   }),
   readActive: async () => ({ sessionId: activeId, placeId: "" }),
-  readSession: async (id) => fixtureSceneState(documents.get(SESSION_PREFIX + id)?.data, documents),
 });
 assert.deepEqual(
   (await service.listVenueVisits()).map((scene) => scene.id),
@@ -44,6 +47,38 @@ assert.deepEqual(
 );
 assert.equal((await service.readVenueVisit("closed")).id, "closed");
 await assert.rejects(service.readVenueVisit("active"), /not closed/);
+const original = documents.get(SESSION_PREFIX + "closed")!.data;
+const otherPages = new Map<string, Document>();
+documents.get(SESSION_PREFIX + "closed")!.data = authorSceneFixture(
+  otherPages,
+  coerceSession({
+    version: 3,
+    id: "other",
+    status: "closed",
+    startedAt: stamp,
+    lines: [
+      {
+        id: "other-line",
+        role: "assistant",
+        kind: "narration",
+        content: "Other Scene sentinel",
+        at: stamp,
+        heardBy: ["player"],
+        playerHeard: true,
+      },
+    ],
+  }),
+);
+for (const [id, row] of otherPages) documents.set(id, row);
+readIds.length = 0;
+await assert.rejects(service.readVenueVisit("closed"), /unavailable/);
+assert.deepEqual(
+  readIds,
+  [SESSION_PREFIX + "closed"],
+  "A mismatched inner Scene ID is rejected before reading transcript or private bodies.",
+);
+documents.get(SESSION_PREFIX + "closed")!.data = original;
+for (const id of otherPages.keys()) documents.delete(id);
 await assert.rejects(service.resetVenueSessions(), /active Scene/);
 activeId = "";
 await service.resetVenueSessions();

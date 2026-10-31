@@ -864,7 +864,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     createSceneArchive({
       villagesDocuments,
       readActive,
-      readSession,
     }),
   );
   const releaseQueries = configureSceneQueries({

@@ -15,7 +15,7 @@ import { conflict } from "../../domain/rules/errors.js";
 import type { RepairDocument, RepairWrite } from "../../adapters/storage/repair-gate.js";
 import { createRepairSnapshots } from "../../adapters/storage/repair-snapshot-store.js";
 import { readRelationshipRoot, relationshipDocumentId } from "../../adapters/storage/relationship-payload-store.js";
-import { sceneHistoryOwners } from "../../adapters/storage/scene-history.js";
+import { sceneHistoryOwners, sceneWishOwners, validateSceneHistory } from "../../adapters/storage/scene-history.js";
 import {
   validateBackgroundJobRecord,
   validateBackgroundResponseOwners,
@@ -105,7 +105,7 @@ function validateSources(rows: RepairDocument[], owner: { seed: string; setupAt:
         row.id === "villages-venue-visit-" + row.data.id && row.data.villageSeed === owner.seed,
         "snapshot Scene ownership changed",
       );
-      for (const context of sceneHistoryOwners(row.data))
+      for (const context of [...sceneHistoryOwners(row.data), ...sceneWishOwners(row.data)])
         memoryRequire(
           context.scope.seed === owner.seed && context.scope.setupAt === owner.setupAt,
           "snapshot Scene belongs to another world",
@@ -165,6 +165,14 @@ export function createRepairStorage(documents: CapabilityDocumentStore, artifact
         .map((write) => write.after)
         .filter((row) => row?.kind === "village")
         .map((row) => row!.data),
+    );
+    await validateSceneHistory(
+      documents,
+      writes.filter((write) => write.before?.kind === "venue-visit").map((write) => write.before!.data),
+    );
+    await validateSceneHistory(
+      view,
+      writes.filter((write) => write.after?.kind === "venue-visit").map((write) => write.after!.data),
     );
     for (const row of writes.flatMap((write) => [write.before, write.after]))
       if (row && ["background-work", "background-history"].includes(row.kind)) {

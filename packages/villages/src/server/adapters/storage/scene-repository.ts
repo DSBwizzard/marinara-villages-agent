@@ -6,7 +6,8 @@ import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
 import { applySceneMutation } from "../../domain/rules/scene-mutation.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import { ACTIVE_ID, SESSION_PREFIX, activeSlot, sessionSlot } from "./scene-slots.js";
-import { createSceneHistory, readActiveSceneOwner } from "./scene-history.js";
+import { createSceneHistory, readActiveSceneOwner, sceneWishOwners } from "./scene-history.js";
+import { wishHistoryStore } from "./wish-history.js";
 import { withRepairWork } from "./repair-gate.js";
 import { memoryRequire } from "../../domain/rules/memory-integrity.js";
 export interface SceneRepositoryPorts {
@@ -16,7 +17,12 @@ export interface SceneRepositoryPorts {
 /** Scene storage commands resolve only their supplied connections; construction is inert. */
 export function createSceneRepository({ villagesDocuments, mutateDocument }: SceneRepositoryPorts) {
   async function readActive(): Promise<ActiveVenue> {
-    return withRepairWork(async () => coerceActive((await readActiveSceneOwner(villagesDocuments())).pointer?.data));
+    return withRepairWork(async () => {
+      const documents = villagesDocuments();
+      const active = await readActiveSceneOwner(documents);
+      wishHistoryStore(documents).retainScene(active.scene ? sceneWishOwners(active.scene.data) : []);
+      return coerceActive(active.pointer?.data);
+    });
   }
 
   async function readSession(id: string): Promise<VenueScene> {

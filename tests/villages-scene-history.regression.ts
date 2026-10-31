@@ -114,7 +114,7 @@ for (const count of [1000, 10_000, 25_000]) {
     const original = structuredClone(rows.get("villages-venue-visit-frozen").data),
       head = sceneHistoryOwners(original)[0].head;
     assert.equal(original.storageFormat, SCENE_STORAGE_FORMAT);
-    for (const storageFormat of [5, 6, 7, 8])
+    for (const storageFormat of [5, 6, 7, 8, 9])
       assert.throws(
         () => sceneHistoryOwners({ ...original, storageFormat }),
         /unsupported Scene storage format/,
