@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtemp, writeFile, mkdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { documentationOnly } from "../scripts/documentation-only.mjs";
 
 const fixture = await mkdtemp(join(tmpdir(), "villages-documentation-"));
 try {
   for (const scenario of [
     "instructions",
+    "mixed",
+    "deleted",
     "product",
     "configuration",
     "workflow",
@@ -44,7 +47,11 @@ try {
     if (scenario === "instructions") {
       await writeFile(join(root, "AGENTS.md"), "updated principles\n");
       await writeFile(join(root, "DEVELOPMENT.md"), "updated commands\n");
-    } else if (scenario === "rename") git("mv", "AGENTS.md", "OTHER.md");
+    } else if (scenario === "mixed") {
+      await writeFile(join(root, "AGENTS.md"), "updated principles\n");
+      await writeFile(join(root, "source.mjs"), "changed\n");
+    } else if (scenario === "deleted") git("rm", "AGENTS.md");
+    else if (scenario === "rename") git("mv", "AGENTS.md", "OTHER.md");
     else if (scenario === "mode") git("update-index", "--chmod=+x", "AGENTS.md");
     else if (scenario === "binary") await writeFile(join(root, "AGENTS.md"), Buffer.from([0, 1, 2]));
     else if (scenario === "invalid-utf8") await writeFile(join(root, "AGENTS.md"), Buffer.from([0xff, 0xfe]));
@@ -66,6 +73,14 @@ try {
     git("merge", "--quiet", "--no-ff", "change", "-m", "candidate");
     const input = { root, event: "pull_request", base };
     assert.equal(documentationOnly(input), scenario === "instructions", scenario);
+    const output = join(root, "qualification-output");
+    execFileSync(process.execPath, [fileURLToPath(new URL("../scripts/documentation-only.mjs", import.meta.url))], {
+      cwd: root,
+      env: { ...process.env, GITHUB_EVENT_NAME: "pull_request", BASE_REVISION: base, GITHUB_OUTPUT: output },
+      windowsHide: true,
+      stdio: "pipe",
+    });
+    assert.equal(await readFile(output, "utf8"), `only=${scenario === "instructions"}\n`);
     assert.equal(documentationOnly({ ...input, event: "workflow_dispatch" }), false);
     assert.equal(documentationOnly({ ...input, base: "f".repeat(40) }), false);
     if (scenario === "instructions") {
