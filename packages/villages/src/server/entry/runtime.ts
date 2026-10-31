@@ -26,6 +26,8 @@ import {
   villageEngineJson,
 } from "../adapters/engine/engine-transport.js";
 import { createGlobalGallery } from "../adapters/engine/global-gallery-service.js";
+import { createSpriteFiles } from "../adapters/storage/sprite-files.js";
+import { createSpriteFileRemoval } from "../adapters/engine/sprite-file-removal.js";
 import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/engine/global-gallery.js";
 import { decodeVillageImageDataUrl, inspectVillageImage } from "../adapters/engine/image-files.js";
 import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
@@ -995,8 +997,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     decodeSpriteImage: createSpriteImageDecoder(inspectVillageImage),
     villageEngineJson,
     readSpriteFile: (url) => fetch(villageEngineBaseUrl() + url),
-    deleteVillageSpriteFile,
-    villagesLogger,
+    saveSpriteFile: createSpriteFiles(villagesDocuments()),
     writes: backendWork.spriteWrites,
   });
   const releaseSprites = configureSpriteManager(spriteManagerService);
@@ -1192,8 +1193,14 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       continueSaved: continueSceneChange,
     }),
   );
-  const retainedCleanup = createRetainedStorageCleanup(repairGate(), (error) =>
-    runtimeDebug("retained storage cleanup deferred", { error: String(error) }),
+  const retainedCleanup = createRetainedStorageCleanup(
+    repairGate(),
+    (error) => runtimeDebug("retained storage cleanup deferred", { error: String(error) }),
+    createSpriteFileRemoval({
+      list: villageEngineJson,
+      read: (url) => fetch(villageEngineBaseUrl() + url),
+      remove: deleteVillageSpriteFile,
+    }),
   );
   const releaseRetainedCleanup = configureRetainedStorageCleanup(retainedCleanup);
   const releaseBackground = configureBackgroundWork(

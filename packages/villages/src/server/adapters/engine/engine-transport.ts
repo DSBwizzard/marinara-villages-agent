@@ -114,6 +114,7 @@ async function villageEngineFetch(path: string, init: RequestInit): Promise<Resp
     throw new VillagesRequestError(
       502,
       `Could not reach the Engine at ${url}${error instanceof Error && error.message ? `: ${error.message}` : "."}`,
+      "engine_unavailable",
     );
   }
   if (!response.ok) {

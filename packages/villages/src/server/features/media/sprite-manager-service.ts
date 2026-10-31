@@ -21,8 +21,7 @@ export interface SpriteManagerPorts {
   decodeSpriteImage(image: string): Promise<SpritePixels>;
   villageEngineJson<T>(path: string, init?: { method?: string; body?: unknown; signal?: AbortSignal }): Promise<T>;
   readSpriteFile(url: string): Promise<Response>;
-  deleteVillageSpriteFile(assetId: string, expression: string): Promise<void>;
-  villagesLogger(): { warn(message: string): void };
+  saveSpriteFile<T>(assetId: string, expression: string, image: string, upload: () => Promise<T>): Promise<T>;
   writes: SpriteWrites;
 }
 
@@ -34,8 +33,7 @@ export function createSpriteManager({
   decodeSpriteImage,
   villageEngineJson,
   readSpriteFile,
-  deleteVillageSpriteFile,
-  villagesLogger,
+  saveSpriteFile,
   writes,
 }: SpriteManagerPorts) {
   const serialize = writes.serialize;
@@ -60,11 +58,13 @@ export function createSpriteManager({
     return { manager: await readSpriteManager(id), snapshot: await buildVillageSnapshot() };
   }
   async function saveImage(assetId: string, expression: string, image: string) {
-    const saved = asRecord(await villageEngineJson(`/api/sprites/${assetId}`, { body: { expression, image } }));
-    const filename = asString(saved.filename);
-    if (!/^[a-z0-9_-]{1,40}\.(png|jpeg|jpg|webp)$/.test(filename))
-      throw badRequest("Engine could not save a usable sprite file.");
-    return { filename, url: `/api/sprites/${assetId}/file/${filename}` };
+    return saveSpriteFile(assetId, expression, image, async () => {
+      const saved = asRecord(await villageEngineJson(`/api/sprites/${assetId}`, { body: { expression, image } }));
+      const filename = asString(saved.filename);
+      if (filename !== expression + "." + image.slice(11, image.indexOf(";")))
+        throw badRequest("Engine could not save a usable sprite file.");
+      return { filename, url: `/api/sprites/${assetId}/file/${filename}` };
+    });
   }
   async function readImage(url: string) {
     const response = await readSpriteFile(url);
@@ -328,14 +328,6 @@ export function createSpriteManager({
         manager.assignments = manager.assignments.filter((item) => item.artworkId !== art.id);
         pruneSpriteExpressions(manager);
       });
-      // Delete only the original and derivative owned by this manager entry.
-      for (const filename of [art.source.filename, art.rendered.filename]) {
-        try {
-          await deleteVillageSpriteFile(art.assetId, filename.replace(/\.[^.]+$/, ""));
-        } catch {
-          villagesLogger().warn("A removed Sprite Manager file could not be deleted; its assignment is removed.");
-        }
-      }
       return result(id);
     });
   }

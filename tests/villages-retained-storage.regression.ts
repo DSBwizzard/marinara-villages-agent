@@ -1,5 +1,6 @@
-// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication
+// Test cases: retained-storage/checkpoint-owners, retained-storage/virtual-review, retained-storage/partial-preparation, retained-storage/shared-pages, retained-storage/foreign-owner, retained-storage/allocation-budget, retained-storage/frozen-scene, retained-storage/repeated-head, retained-storage/checkpoint-integrity, retained-storage/growth, retained-storage/payload-identity, retained-storage/relationship-owners, retained-storage/relationship-publication, retained-storage/sprite-owners, retained-storage/sprite-upload-holds, retained-storage/sprite-startup-retry
 import assert from "node:assert/strict";
+import { VillagesRequestError } from "../packages/villages/src/server/domain/rules/errors.js";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { randomUUID } from "node:crypto";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -37,6 +38,12 @@ import {
 } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { venue } from "./fixtures/villages-projects.fixture.js";
 import { projectMemories } from "../packages/villages/src/server/domain/rules/memory-views.js";
+import {
+  createSpriteFiles,
+  spriteFileId,
+  spriteFileProcess,
+} from "../packages/villages/src/server/adapters/storage/sprite-files.js";
+import { emptySpriteManager } from "../packages/villages/src/server/domain/rules/sprite-manager-model.js";
 
 async function fixture() {
   const rows = new Map<string, any>(),
@@ -103,6 +110,230 @@ async function fixture() {
     });
   return { rows, lists, gate, repo, api, store, insert, head: () => rows.get("villages-village").data.memoryHead };
 }
+await runCase("retained-storage/sprite-owners", async () => {
+  const f = await fixture(),
+    files = new Map<string, string>(),
+    removed: string[] = [];
+  const assetId = "villages-" + randomUUID(),
+    render = "r-" + randomUUID().replaceAll("-", "");
+  const image = "data:image/png;base64," + Buffer.from("exact original pixels").toString("base64");
+  const save = createSpriteFiles(f.gate.documents);
+  const allocate = (name: string) =>
+    save(assetId, name, image, async () => {
+      files.set(name, image);
+      return { filename: name + ".png", url: `/api/sprites/${assetId}/file/${name}.png` };
+    });
+  const remove = async (batch: readonly { expression: string }[]) => {
+    for (const file of batch) {
+      removed.push(file.expression);
+      files.delete(file.expression);
+    }
+  };
+  await f.gate.work(async () => {
+    const source = await allocate("original"),
+      rendered = await allocate(render);
+    const manager = emptySpriteManager();
+    manager.artwork.push({
+      id: "a-" + randomUUID(),
+      name: "Original",
+      assetId,
+      origin: "upload",
+      source: { ...source, width: 1, height: 1, sha256: memoryDigest("exact original pixels") },
+      rendered,
+      frame: { x: 0, y: 0, width: 1, height: 1, scale: 1, offsetX: 0, offsetY: 0 },
+      warnings: [],
+    });
+    await f.repo.mutateAuthority((world) => {
+      world.villagers = [
+        {
+          characterId: "mara",
+          addedAt: memoryTime(),
+          cardSnapshot: { id: "mara", name: "Mara", capturedAt: memoryTime(), revision: 1, sourceStatus: "available" },
+          wishes: [],
+          spriteManager: manager,
+        } as any,
+      ];
+    });
+  });
+  const cp = await f.api.createCheckpoint("Original artwork", "sprite-original");
+  const retained = structuredClone((await f.repo.readAuthority()).villagers[0].spriteManager);
+  await f.repo.mutateAuthority((world) => {
+    world.villagers[0].spriteManager!.artwork = [];
+  });
+  await collectRetainedStorage(f.gate, remove);
+  assert.deepEqual(removed, [], "A manual checkpoint retains both files after artwork removal");
+  const restore = await f.api.restore(cp.id, "restore-sprite-original");
+  await f.api.apply(restore.id, restore.token);
+  assert.deepEqual((await f.repo.readAuthority()).villagers[0].spriteManager, retained);
+  assert.equal(files.get("original"), image);
+  assert.equal(files.get(render), image, "Restoring JSON also restores readable exact derivative bytes");
+  await f.api.deleteCheckpoint(cp.id, cp.token);
+  await f.repo.mutateAuthority((world) => {
+    world.villagers[0].spriteManager!.artwork = [];
+  });
+  const draft = await f.insert("villages-sprite-setup-held", "sprite-setup", { revision: 1, manager: retained });
+  await collectRetainedStorage(f.gate, remove);
+  assert.deepEqual(removed, [], "An unused setup draft protects artwork independent of assignments");
+  await f.store.remove("villages", draft.id, draft.revision);
+  // The successful restore's available Undo retains its previous World; it contains no artwork.
+  await collectRetainedStorage(f.gate, remove);
+  assert.deepEqual(new Set(removed), new Set(["original", render]));
+  assert.equal(files.size, 0);
+});
+await runCase("retained-storage/sprite-upload-holds", async () => {
+  const f = await fixture(),
+    assetId = "villages-" + randomUUID();
+  const name = "r-" + randomUUID().replaceAll("-", ""),
+    image = "data:image/png;base64,UE5H";
+  let deleted = 0;
+  await assert.rejects(
+    f.gate.work(() =>
+      createSpriteFiles(f.gate.documents)(assetId, name, image, async () => {
+        throw Error("lost upload acknowledgement");
+      }),
+    ),
+    /lost upload/,
+  );
+  const id = spriteFileId(assetId, name);
+  assert.equal(f.rows.get(id).data.process, spriteFileProcess);
+  await collectRetainedStorage(f.gate, async () => {
+    deleted++;
+  });
+  assert.equal(deleted, 0, "A drained or replaced activation cannot release an uncertain same-process upload");
+  assert(f.rows.has(id));
+  f.rows.get(id).data.process = randomUUID(); // Simulate a claim from an exited Engine process.
+  const restarted = createRepairGate(f.store);
+  await assert.rejects(
+    collectRetainedStorage(restarted, async () => {
+      throw Error("lost delete acknowledgement");
+    }),
+    /lost delete/,
+  );
+  assert(f.rows.has(id), "Failed deletion retains the allocation for reconciliation");
+  await collectRetainedStorage(restarted, async () => {
+    deleted++;
+  });
+  assert.equal(deleted, 1, "An exited producer's unowned partial upload can be reclaimed");
+  assert(!f.rows.has(id));
+  const orphan = "r-" + randomUUID().replaceAll("-", "");
+  await f.gate.work(() => createSpriteFiles(f.gate.documents)(assetId, orphan, image, async () => {}));
+  const corrupt = await f.insert("villages-sprite-setup-corrupt", "sprite-setup", {
+    manager: { version: 1, artwork: [{ assetId: "foreign" }] },
+  });
+  await assert.rejects(
+    collectRetainedStorage(f.gate, async () => {
+      deleted++;
+    }),
+    /retained sprite asset/,
+  );
+  assert.equal(deleted, 1, "A malformed owner prevents every physical deletion");
+  assert(f.rows.has(spriteFileId(assetId, orphan)));
+  await f.store.remove("villages", corrupt.id, corrupt.revision);
+  let release!: () => void;
+  let enter!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const done = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const writing = f.gate.work(async () => {
+    enter();
+    await done;
+  });
+  await entered;
+  await assert.rejects(collectRetainedStorage(f.gate), /work is active/);
+  release();
+  await writing;
+});
+await runCase("retained-storage/sprite-startup-retry", async () => {
+  for (const integrityFailure of [false, true]) {
+    const f = await fixture(),
+      failures: unknown[] = [];
+    const assetId = "villages-" + randomUUID(),
+      expression = "r-" + randomUUID().replaceAll("-", "");
+    await f.gate.work(() =>
+      createSpriteFiles(f.gate.documents)(assetId, expression, "data:image/png;base64,UE5H", async () => {}),
+    );
+    if (integrityFailure) await f.insert("villages-sprite-setup-invalid", "sprite-setup", { manager: {} });
+    let calls = 0;
+    const cleanup = createRetainedStorageCleanup(
+      f.gate,
+      (error) => failures.push(error),
+      async () => {
+        if (++calls === 1) throw new VillagesRequestError(502, "Engine is not listening yet", "engine_unavailable");
+      },
+    );
+    const stop = cleanup.start();
+    try {
+      await cleanup.request();
+      assert.equal(failures.length, 1);
+      assert(f.rows.has(spriteFileId(assetId, expression)), "A failed sweep keeps its allocation");
+      const passes = f.lists.filter((kind) => kind === "repair-snapshot").length;
+      for (let i = 0; i < 5; i++) {
+        await f.gate.work(async () => {});
+        await cleanup.request();
+      }
+      if (integrityFailure) {
+        assert.equal(calls, 0);
+        assert.equal(
+          f.lists.filter((kind) => kind === "repair-snapshot").length,
+          passes,
+          "Integrity failures retain allocation backoff instead of rescanning on every ordinary read",
+        );
+      } else {
+        assert.equal(calls, 2, "The next admitted idle retries temporary Engine unavailability without new allocation");
+        assert(!f.rows.has(spriteFileId(assetId, expression)));
+        assert.equal(
+          f.lists.filter((kind) => kind === "repair-snapshot").length,
+          passes + 1,
+          "Successful retry restores normal allocation-based scheduling",
+        );
+      }
+    } finally {
+      stop();
+      cleanup.dispose();
+    }
+  }
+  const f = await fixture(),
+    failures: unknown[] = [];
+  await f.insert("villages-sprite-setup-racing-invalid", "sprite-setup", { manager: {} });
+  let enter!: () => void, release!: () => void, held: Promise<void> | undefined;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const unsubscribe = f.gate.whenIdle(() => {
+    held ??= f.gate.work(async () => {
+      enter();
+      await hold;
+    });
+  });
+  const cleanup = createRetainedStorageCleanup(f.gate, (error) => failures.push(error));
+  const stop = cleanup.start();
+  try {
+    await cleanup.request();
+    await entered;
+    assert.equal(failures.length, 1, "A newly admitted reader cannot hide the preceding integrity failure");
+    const passes = f.lists.filter((kind) => kind === "repair-snapshot").length;
+    release();
+    await held;
+    await cleanup.request();
+    assert.equal(
+      f.lists.filter((kind) => kind === "repair-snapshot").length,
+      passes,
+      "Integrity backoff remains established when another reader entered during exclusion release",
+    );
+  } finally {
+    release();
+    await held;
+    unsubscribe();
+    stop();
+    cleanup.dispose();
+  }
+});
 function relationshipStore(gate: ReturnType<typeof createRepairGate>) {
   return createRelationshipStore({
     VILLAGES_PACKAGE_ID: "villages",
