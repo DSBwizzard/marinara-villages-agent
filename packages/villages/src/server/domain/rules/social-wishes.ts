@@ -193,6 +193,8 @@ function sharedSocialWish(source: SocialWish) {
 }
 export function immutableSocialWishes(value: SocialWish[]): SocialWish[] {
   if (frozenWishCollections.has(value)) return value;
+  const source = collectionSources.get(value);
+  if (source && value.length === source.length && value.every((wish, index) => wish === source[index])) return source;
   const result = value.map((source) => {
     if (frozenWishes.has(source)) return source;
     const wish = sharedSocialWish(source);

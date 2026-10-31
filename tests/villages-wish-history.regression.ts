@@ -3,6 +3,20 @@ import { mock } from "node:test";
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { fixtureWish, wishTime, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { createRepairService } from "../packages/villages/src/server/features/repair/repair-service.js";
+import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
+import { sessionSlot } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import {
+  createSceneHistory,
+  sceneWishOwners,
+  validateSceneHistory,
+  readSceneIndex,
+} from "../packages/villages/src/server/adapters/storage/scene-history.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  captureSceneContinuity,
+  sceneContinuityView,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { collectRetainedStorage } from "../packages/villages/src/server/features/repair/retained-storage-cleanup.js";
 import { validateWorldWishHistory } from "../packages/villages/src/server/adapters/storage/world-wishes.js";
 import { captureReturnContext } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
@@ -143,6 +157,89 @@ for (const workload of ["many-wishes", "one-long-history"] as const) {
       f.metrics().readBytes < 64_000 && f.metrics().writtenBytes < 64_000,
       "Metadata operations never load private Wish bodies",
     );
+    const frozenWorld = await repository.readAuthority({ memories: true, wishes: true });
+    const scene = coerceSession({
+      version: 3,
+      id: "wish-frozen",
+      villageSeed: world.seed,
+      startedAt: wishTime(),
+      status: "active",
+      lines: [],
+      submissions: [],
+    });
+    scene.continuity = captureSceneContinuity(frozenWorld, scene, Date.parse(wishTime()));
+    const beforeCapturePages = [...f.rows.values()].filter((row) => row.kind === "memory-page").length;
+    await f.mutateDocument("villages-venue-visit-wish-frozen", sessionSlot(f.gate.documents), (value) =>
+      Object.assign(value, scene),
+    );
+    const nativeScene = structuredClone(f.rows.get("villages-venue-visit-wish-frozen").data);
+    assert.deepEqual(nativeScene.continuity.facts.villagers[0].wishHead, root.villagers[0].wishHead);
+    assert.equal(Object.hasOwn(nativeScene.continuity.facts.villagers[0], "wishes"), false);
+    assert.equal(
+      [...f.rows.values()].filter((row) => row.kind === "memory-page").length,
+      beforeCapturePages,
+      "A Scene capture shares the already published library.",
+    );
+    assert.throws(() => readSceneIndex(nativeScene).continuity, /not loaded/);
+    await f.documents.create({
+      id: "villages-active-venue",
+      packageId: "villages",
+      kind: "venue-active",
+      name: "Active Scene",
+      description: "",
+      data: { sessionId: scene.id },
+      createdAt: wishTime(),
+      updatedAt: wishTime(),
+    });
+    const assertSceneOperationCosts = async (expectedWorld: typeof frozenWorld) => {
+      await f.repository.readSession(scene.id);
+      const stringify = JSON.stringify;
+      let sceneSerialized = 0;
+      let serializedHistory = false;
+      const historySentinel = workload === "many-wishes" ? "Retained exact desire 24999" : event(24_999).text;
+      const spy = mock.method(JSON, "stringify", (...args: unknown[]) => {
+        const text = Reflect.apply(stringify, JSON, args);
+        if (typeof text === "string") {
+          sceneSerialized += Buffer.byteLength(text);
+          serializedHistory ||= text.includes(historySentinel);
+        }
+        return text;
+      });
+      f.reset();
+      try {
+        for (let index = 0; index < 12; index++) {
+          await repository.readAuthority();
+          await f.repository.changeSession(scene.id, (value) => {
+            value.recap = "Ordinary Scene change " + index;
+          });
+          const current = await f.repository.readSession(scene.id);
+          const view = sceneContinuityView(expectedWorld, current, false);
+          assert.equal(view.villagers[0].wishes.length, expectedWorld.villagers[0].wishes.length);
+          assert.equal(view.villagers[0].wishes[0].history.length, expectedWorld.villagers[0].wishes[0].history.length);
+          if (current.operation?.snapshot) {
+            const admitted = await createSceneHistory(f.gate.documents).decode(current.operation.snapshot);
+            assert.equal(
+              admitted.continuity!.facts.villagers[0].wishes[0].history.length,
+              frozenWorld.villagers[0].wishes[0].history.length,
+            );
+          }
+          assert.throws(() => {
+            current.continuity!.facts.villagers[0].wishes[0].wish = "Caller mutation";
+          }, TypeError);
+        }
+      } finally {
+        spy.mock.restore();
+      }
+      assert.ok(
+        f.metrics().readBytes < 2_000_000 && f.metrics().writtenBytes < 1_000_000,
+        "Scene metadata changes keep Wish body I/O bounded: " + JSON.stringify(f.metrics()),
+      );
+      assert.ok(
+        sceneSerialized < 4_000_000,
+        "Scene mutation detection and presentation share immutable Wish bodies: " + sceneSerialized,
+      );
+      assert.equal(serializedHistory, false, "Ordinary Scene operations never serialize retained private history.");
+    };
     for (let index = 0; index < 12; index++) {
       f.reset();
       await repository.mutateAuthority(
@@ -160,6 +257,133 @@ for (const workload of ["many-wishes", "one-long-history"] as const) {
         "Separate production authority operations retain the live working layout",
       );
     }
+    await assertSceneOperationCosts(frozenWorld);
+    const sceneWorld = await repository.readAuthority({ memories: true, wishes: true });
+    await f.repository.changeSession(scene.id, (value) => {
+      value.continuity = captureSceneContinuity(sceneWorld, value, Date.parse(wishTime()));
+      value.operation = {
+        id: "wish-held",
+        kind: "chat",
+        input: {},
+        token: "held",
+        attemptId: "held-attempt",
+        status: "interrupted",
+        stage: "saved",
+        startedAt: wishTime(),
+        sceneRevision: value.sceneRevision,
+        snapshot: nativeScene,
+        checkpoints: {},
+        attempts: {},
+        error: "Held",
+      };
+    });
+    await repository.mutateAuthority(
+      (state) => {
+        const row = state.villagers[0];
+        row.wishes[0] = mutableSocialWish(row.wishes[0]);
+        row.wishes[0].revision++;
+      },
+      { wishes: ["a"] },
+    );
+    const distinctOwners = sceneWishOwners(f.rows.get("villages-venue-visit-wish-frozen").data).filter(
+      (owner) => owner.head,
+    );
+    assert.equal(distinctOwners.length, 2);
+    assert.notDeepEqual(
+      distinctOwners[0].head,
+      distinctOwners[1].head,
+      "Current Scene and admitted request own distinct retained versions.",
+    );
+    await assertSceneOperationCosts(sceneWorld);
+    const frozenHead = nativeScene.continuity.facts.villagers[0].wishHead;
+    const restartedScene = await createSceneHistory(f.gate.documents).decode(nativeScene);
+    assert.deepEqual(
+      restartedScene.continuity!.facts.villagers[0].wishes,
+      frozenWorld.villagers[0].wishes,
+      "World changes cannot rewrite frozen Wishes.",
+    );
+    await f.repository.changeSession(scene.id, (value) => {
+      value.continuity = undefined;
+      value.operation = {
+        id: "wish-held",
+        kind: "chat",
+        input: {},
+        token: "held",
+        attemptId: "held-attempt",
+        status: "interrupted",
+        stage: "saved",
+        startedAt: wishTime(),
+        sceneRevision: value.sceneRevision,
+        snapshot: nativeScene,
+        checkpoints: {},
+        attempts: {},
+        error: "Held",
+      };
+    });
+    const held = f.rows.get("villages-venue-visit-wish-frozen").data;
+    assert.equal(
+      sceneWishOwners(held).filter((owner) => owner.head).length,
+      1,
+      "An admitted snapshot independently owns its frozen library.",
+    );
+    await collectRetainedStorage(f.gate);
+    assert.ok(f.rows.has(frozenHead.root.id));
+    const missing = f.rows.get(frozenHead.root.id);
+    f.rows.delete(frozenHead.root.id);
+    const beforeFailure = structuredClone(f.rows);
+    const repair = createRepairService({
+      gate: f.gate,
+      repository,
+      resumeProject: async () => {},
+      cancelProject: async () => {},
+      replaySaved: async () => {},
+      continueSaved: async () => {},
+    });
+    await assert.rejects(validateSceneHistory(f.gate.documents, [held]), /missing/);
+    await assert.rejects(collectRetainedStorage(f.gate), /missing/);
+    await assert.rejects(repair.createCheckpoint("Missing frozen Wishes", "missing-frozen-wishes"), /missing/);
+    assert.deepEqual(f.rows, beforeFailure, "Missing admitted Wish ownership holds every cleanup deletion.");
+    f.rows.set(frozenHead.root.id, missing);
+    const foreign = structuredClone(nativeScene);
+    foreign.continuity.facts.villagers[0].characterId = "foreign";
+    assert.throws(() => sceneWishOwners(foreign), /another owner/);
+    const padded = structuredClone(nativeScene);
+    padded.continuity.facts.villagers[0].characterId = " a ";
+    padded.continuity.facts.villagers[0].wishHead = encodeWishHistory([fixtureWish({ wish: "Padded actor" })], {
+      ...scope,
+      seed: world.seed,
+      setupAt: world.setupAt,
+      actorId: " a ",
+    }).head;
+    assert.throws(() => sceneWishOwners(padded), /native Wish owner/);
+    await assert.rejects(createSceneHistory(f.gate.documents).decode(padded), /native Wish owner/);
+    await assert.rejects(validateSceneHistory(f.gate.documents, [padded]), /native Wish owner/);
+    await f.repository.changeSession(scene.id, (value) => {
+      value.operation = undefined;
+      value.status = "closed";
+      value.continuity = restartedScene.continuity;
+    });
+    const activePointer = f.rows.get("villages-active-venue");
+    await f.gate.documents.remove("villages", activePointer.id, activePointer.revision);
+    await f.repository.readActive();
+    const archive = createSceneArchive({
+      villagesDocuments: () => f.gate.documents,
+      readActive: f.repository.readActive,
+    });
+    f.reset();
+    const archived = await archive.readVenueVisit(scene.id);
+    assert.equal(archived.status, "closed");
+    assert.equal(archived.continuity, undefined, "Closed transcript results omit private frozen history.");
+    assert.ok(f.metrics().readBytes < 64_000, "A closed transcript does not hydrate private frozen Wish bodies.");
+    const checkpoint = await repair.createCheckpoint("Frozen exact Wishes", "frozen-wish-checkpoint");
+    const sceneRecord = f.rows.get("villages-venue-visit-wish-frozen");
+    await f.gate.documents.remove("villages", sceneRecord.id, sceneRecord.revision);
+    await collectRetainedStorage(f.gate);
+    assert.ok(f.rows.has(frozenHead.root.id), "A checkpoint independently owns the deleted Scene's Wishes.");
+    const review = await repair.restore(checkpoint.id, "restore-frozen-wishes");
+    await repair.apply(review.id, review.token);
+    const restoredScene = await f.repository.readSession(scene.id);
+    assert.deepEqual(restoredScene.continuity!.facts.villagers[0].wishes, frozenWorld.villagers[0].wishes);
     let capturedValues = "";
     await repository.mutateAuthority(
       (state) => {

@@ -1,6 +1,6 @@
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
-import { replaySceneRelationships, immutableRelationshipState, coerceRelationshipState } from "./relationship-rules.js";
+import { replaySceneRelationships, coerceRelationshipState } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
 import { extendSceneNarrative } from "./scene-narrative-effects.js";
 import { sceneLayoutVenue } from "./scene-layout.js";
@@ -8,6 +8,8 @@ import { contactNeighbors, contactPosition } from "./venue-contact.js";
 import { physicalVenueEvents } from "./venue-scene-state.js";
 import { legacyZoneId, resolveVenueZone, venueZones } from "./venue-zones.js";
 import { reserveMemoryScene, sceneMemories } from "./village-memories.js";
+import { cloneWorldContext } from "./world-context-copy.js";
+import { immutableSocialWishes } from "./social-wishes.js";
 
 /** Current writer context, never evidence or a public attendance/room disclosure. */
 export function sceneLocationContext(scene: VenueScene, venue: VillageVenue, actorIds: readonly string[]) {
@@ -80,11 +82,10 @@ export type SceneContinuity = {
 };
 /** Captured relationship history is immutable; copying other facts must not duplicate it. */
 export function cloneSceneFacts(facts: SceneContinuity["facts"]): SceneContinuity["facts"] {
-  const { relationshipContext, ...rest } = facts;
-  return {
-    ...structuredClone(rest),
-    relationshipContext: relationshipContext ? immutableRelationshipState(facts.seed, relationshipContext) : undefined,
-  };
+  const copied = cloneWorldContext(facts);
+  for (const [index, row] of copied.villagers.entries())
+    row.wishes = immutableSocialWishes(facts.villagers[index].wishes);
+  return copied;
 }
 
 /** Exact after-values retained atomically with an accepted effect. Server-only. */

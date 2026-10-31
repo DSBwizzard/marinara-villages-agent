@@ -619,7 +619,6 @@ await roundtrip.repository.clearActivePointer("source");
 const archive = createSceneArchive({
   villagesDocuments: () => roundtrip.ports.persistence().documents,
   readActive: roundtrip.repository.readActive,
-  readSession: roundtrip.repository.readSession,
   readVillageState: roundtrip.ports.readVillageState,
   mutateVillageState: roundtrip.ports.mutateVillageState,
   processSavedProgressSubmission: async () => {},

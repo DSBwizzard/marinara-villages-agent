@@ -240,6 +240,8 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
   const cached = new Map<string, { layout: Layout; bytes: number }>();
   const live = new Map<string, Layout>();
   let liveHeads = new Set<string>();
+  let worldHeads = new Set<string>();
+  let sceneHeads = new Set<string>();
   let cachedBytes = 0;
   const usable = () => !isRepairSimulation(documents);
   const key = (head: WishHistoryHead) => JSON.stringify(head);
@@ -342,9 +344,13 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
     await publish(writer.pages);
     return { count: entries.size, root: saved.root };
   }
-  function retain(owners: { head: WishHistoryHead | null; rows?: SocialWish[] }[]) {
+  type Owner = { head: WishHistoryHead | null; rows?: SocialWish[] };
+  function retain(owners: Owner[], scene: boolean) {
     if (!usable()) return;
-    liveHeads = new Set(owners.flatMap(({ head }) => (head ? [key(head)] : [])));
+    const heads = new Set(owners.flatMap(({ head }) => (head ? [key(head)] : [])));
+    if (scene) sceneHeads = heads;
+    else worldHeads = heads;
+    liveHeads = new Set([...worldHeads, ...sceneHeads]);
     for (const id of live.keys()) if (!liveHeads.has(id)) live.delete(id);
     for (const { head, rows } of owners) {
       if (!head) continue;
@@ -354,7 +360,20 @@ export function createWishHistoryStore(documents: CapabilityDocumentStore) {
       if (layout) live.set(id, layout);
     }
   }
-  return { read, prepare, appendArchive, retain };
+  return {
+    read,
+    prepare,
+    appendArchive,
+    retain: (owners: Owner[]) => retain(owners, false),
+    retainScene: (owners: Owner[]) => retain(owners, true),
+  };
+}
+
+const stores = new WeakMap<CapabilityDocumentStore, ReturnType<typeof createWishHistoryStore>>();
+export function wishHistoryStore(documents: CapabilityDocumentStore) {
+  let store = stores.get(documents);
+  if (!store) stores.set(documents, (store = createWishHistoryStore(documents)));
+  return store;
 }
 
 /** Page summaries are shared across retained heads, so checkpoint tracing never replays whole libraries. */

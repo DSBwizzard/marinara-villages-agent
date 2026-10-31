@@ -13,10 +13,20 @@ function mutationSnapshot(session: VenueScene) {
   const bodies: object[] = [];
   function context(value: unknown) {
     const raw = asRecord(value),
-      facts = asRecord(raw.facts);
-    if (!isImmutableRelationshipState(facts.relationshipContext)) return value;
-    bodies.push(facts.relationshipContext);
-    return { ...raw, facts: { ...facts, relationshipContext: undefined } };
+      facts = asRecord(raw.facts),
+      before = bodies.length;
+    const fields = { ...facts };
+    if (isImmutableRelationshipState(facts.relationshipContext)) {
+      bodies.push(facts.relationshipContext);
+      fields.relationshipContext = undefined;
+    }
+    if (Array.isArray(facts.villagers))
+      fields.villagers = facts.villagers.map((row) => {
+        if (!isImmutableMemoryValue(row.wishes)) return row;
+        bodies.push(row.wishes);
+        return { ...row, wishes: undefined };
+      });
+    return bodies.length === before ? value : { ...raw, facts: fields };
   }
   function evidence(value: unknown) {
     if (!isImmutableMemoryValue(value)) return value;

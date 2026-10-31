@@ -19,6 +19,8 @@ import {
   type SceneTranscriptHead,
 } from "./scene-transcript-pages.js";
 import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
+import { wishHistoryStore, createWishHistoryTracer } from "./wish-history.js";
+import { wishResidentOwners, worldWishOwners } from "./world-wishes.js";
 import {
   sceneSubmissionStore,
   readSceneSubmissionHead,
@@ -37,7 +39,7 @@ import {
   type RelationshipScope,
 } from "./relationship-payload-store.js";
 
-export const SCENE_STORAGE_FORMAT = 9;
+export const SCENE_STORAGE_FORMAT = 10;
 export type SceneHistoryOwner = { sceneId: string; scope: RelationshipScope; head: RelationshipHead };
 const associations = new WeakMap<RelationshipState, { scope: RelationshipScope; head: RelationshipHead }>();
 const identity = (head: RelationshipHead) => head.id + ":" + head.digest;
@@ -89,7 +91,8 @@ function storedContinuity(raw: unknown, scene: Record<string, any>) {
   const scope = { seed: raw.seed as string, setupAt: raw.setupAt as string };
   const head = raw.relationshipHead === null ? null : readRelationshipHead(raw.relationshipHead);
   if (head) assertRelationshipWorld(head, scope);
-  return { raw, scope, head };
+  const wishes = wishResidentOwners(raw.facts.villagers, scope);
+  return { raw, scope, head, wishes };
 }
 /** Enumerate only the two explicitly owned Scene contexts, never arbitrary prose or model output. */
 export function sceneHistoryOwners(value: unknown): SceneHistoryOwner[] {
@@ -134,6 +137,13 @@ export function sceneHistoryOwners(value: unknown): SceneHistoryOwner[] {
   }
   scene(value);
   return owners;
+}
+export function sceneWishOwners(value: unknown) {
+  sceneHistoryOwners(value);
+  const raw = value as Record<string, any>;
+  return [raw, raw.operation?.snapshot].flatMap((scene) =>
+    scene ? (storedContinuity(scene.continuity, scene)?.wishes ?? []) : [],
+  );
 }
 export function sceneTranscriptOwners(
   value: unknown,
@@ -247,6 +257,15 @@ export async function readSceneWorkIndex(documents: Pick<CapabilityDocumentStore
 /** Checkpoint publication validates every referenced page once without decoding ordinary historical prose. */
 export async function validateSceneHistory(documents: Pick<CapabilityDocumentStore, "getById">, scenes: unknown[]) {
   await validateRelationshipHistory(documents, scenes.flatMap(sceneHistoryOwners));
+  const wishes = createWishHistoryTracer(async (id) => {
+    const row = await documents.getById("villages", id);
+    memoryRequire(
+      row?.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+      "owned frozen Wish history is missing or changed",
+    );
+    return row.data as MemoryPageData;
+  });
+  for (const owner of scenes.flatMap(sceneWishOwners)) await wishes.trace(owner.head, owner.scope);
   const tracer = createSceneTranscriptTracer(async (id) => {
     const row = await documents.getById("villages", id);
     memoryRequire(
@@ -299,24 +318,38 @@ export async function validateOperationEvidenceOwners(
 /** Logical Scenes stay host-free. Only this adapter binds an exact verified immutable body to a native reference. */
 export function createSceneHistory(documents: CapabilityDocumentStore) {
   const payloads = relationshipPayloadStore(documents);
+  const wishes = wishHistoryStore(documents);
   const transcripts = sceneTranscriptStore(documents);
   const submissions = sceneSubmissionStore(documents);
   const evidence = operationEvidenceStore(documents);
   async function decode(value: unknown): Promise<VenueScene> {
     sceneHistoryOwners(value);
+    const active = await readActiveSceneOwner(documents);
+    wishes.retainScene(active.scene ? sceneWishOwners(active.scene.data) : []);
     const raw = value as Record<string, any>,
       { storageFormat: _format, transcript, submissionHistory, ...logical } = raw;
     logical.operation = await evidence.decode(raw.operation, raw as VenueScene);
     const captured = storedContinuity(raw.continuity, raw);
     let body: RelationshipState | undefined;
     logical.continuity = undefined;
+    const wishBodies = new Map<string, Awaited<ReturnType<typeof wishes.read>>>();
     if (captured) {
       if (captured.head) {
         body = await payloads.readSnapshot(captured.head, captured.scope);
         associations.set(body, { scope: captured.scope, head: captured.head });
       }
       const { relationshipHead: _head, ...continuity } = captured.raw;
-      logical.continuity = { ...continuity, facts: { ...continuity.facts, relationshipContext: body } };
+      const villagers = await Promise.all(
+        captured.raw.facts.villagers.map(async (row: Record<string, any>, index: number) => {
+          const owner = captured.wishes[index];
+          const value = await wishes.read(owner.head, owner.scope);
+          wishBodies.set(owner.scope.actorId, value);
+          return Object.fromEntries(
+            Object.entries(row).map(([key, field]) => (key === "wishHead" ? ["wishes", value] : [key, field])),
+          );
+        }),
+      );
+      logical.continuity = { ...continuity, facts: { ...continuity.facts, villagers, relationshipContext: body } };
     }
     const header = coerceSession({ ...logical, continuity: undefined, lines: [] });
     logical.lines = (await transcripts.read(readSceneTranscriptHead(transcript, header), header)).lines;
@@ -325,7 +358,16 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
     ).submissions;
     // The coordinator retains its native admitted snapshot. Its sole consumer hydrates it explicitly.
     const scene = coerceSession(logical);
+    memoryRequire(
+      !captured ||
+        (scene.continuity?.facts.villagers.length === captured.wishes.length &&
+          scene.continuity.facts.villagers.every(
+            (row, index) => row.characterId === captured.wishes[index].scope.actorId,
+          )),
+      "frozen Wish resident directory changed during decoding",
+    );
     if (scene.continuity && body) scene.continuity.facts.relationshipContext = body;
+    for (const row of scene.continuity?.facts.villagers ?? []) row.wishes = wishBodies.get(row.characterId)!;
     return scene;
   }
   async function encode(scene: VenueScene, previous?: unknown) {
@@ -365,7 +407,36 @@ export function createSceneHistory(documents: CapabilityDocumentStore) {
         continuity.facts.relationshipContext = body;
       }
       const { relationshipContext: _body, ...facts } = continuity.facts;
-      stored = { ...continuity, facts, relationshipHead: head };
+      const before = previous
+        ? storedContinuity((previous as Record<string, any>).continuity, previous as Record<string, any>)
+        : undefined;
+      let live: ReturnType<typeof worldWishOwners> | undefined;
+      const villagers = [];
+      for (const row of facts.villagers) {
+        const owner = { ...scope, actorId: row.characterId };
+        let prior = before?.wishes.find((entry) => entry.scope.actorId === owner.actorId)?.head ?? null;
+        if (!prior && row.wishes.length) {
+          if (!live) {
+            const root = await documents.getById("villages", "villages-village");
+            memoryRequire(
+              !root || (root.id === "villages-village" && root.packageId === "villages" && root.kind === "village"),
+              "invalid live Wish owner identity",
+            );
+            if (root) live = worldWishOwners(root.data);
+          }
+          if (live?.scope.seed === scope.seed && live.scope.setupAt === scope.setupAt)
+            prior =
+              live.owners.find((entry) => !entry.departure && entry.scope.actorId === owner.actorId)?.head ?? null;
+        }
+        const prepared = await wishes.prepare(row.wishes, owner, prior);
+        row.wishes = prepared.rows;
+        villagers.push(
+          Object.fromEntries(
+            Object.entries(row).map(([key, field]) => (key === "wishes" ? ["wishHead", prepared.head] : [key, field])),
+          ),
+        );
+      }
+      stored = { ...continuity, facts: { ...facts, villagers }, relationshipHead: head };
     }
     const prior = previous ? readSceneTranscriptHead((previous as Record<string, any>).transcript, scene) : undefined;
     const transcript = await transcripts.prepare(scene, prior);

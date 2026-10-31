@@ -25,6 +25,7 @@ import {
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import {
   sceneHistoryOwners,
+  sceneWishOwners,
   sceneTranscriptOwners,
   sceneSubmissionOwners,
   readActiveSceneOwner,
@@ -340,6 +341,7 @@ export async function collectRetainedStorage(gate: RepairGate) {
           "invalid Scene owner identity",
         );
         for (const owner of sceneHistoryOwners(row.data)) await relationshipHistory(owner.head, owner.scope, view);
+        for (const owner of sceneWishOwners(row.data)) await view.wishes.trace(owner.head, owner.scope);
         for (const owner of sceneTranscriptOwners(row.data))
           await view.transcripts.trace(owner.head, owner.participants);
         for (const owner of sceneSubmissionOwners(row.data))

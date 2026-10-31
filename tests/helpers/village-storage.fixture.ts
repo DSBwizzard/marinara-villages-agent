@@ -109,6 +109,9 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       (data as any)?.operation?.snapshot?.submissionHistory?.submissions,
       (data as any)?.continuity?.relationshipHead,
       (data as any)?.operation?.snapshot?.continuity?.relationshipHead,
+      ...((data as any)?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ?? []),
+      ...((data as any)?.operation?.snapshot?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ??
+        []),
       ...operationEvidenceReferences((data as any)?.operation, data as any),
       ...((data as any)?.responseStorage === 1 ? (data as any).steps.map((step: any) => step.responseRef) : []),
     ];
@@ -269,7 +272,8 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
       scope = { seed: context.seed, setupAt: context.setupAt ?? world?.setupAt ?? "" },
       { relationshipContext, ...facts } = context.facts,
       head = relationshipContext ? authorRelationshipFixture(rows, relationshipContext, scope).head : null;
-    scene.continuity = { ...context, ...scope, facts, relationshipHead: head };
+    const villagers = authorWorldWishFixture(rows, { version: 11, ...facts, ...scope }).villagers;
+    scene.continuity = { ...context, ...scope, facts: { ...facts, villagers }, relationshipHead: head };
   }
   if (scene.operation?.snapshot)
     scene.operation = { ...scene.operation, snapshot: authorSceneFixture(rows, scene.operation.snapshot, world) };
@@ -410,7 +414,17 @@ export function fixtureSceneState(raw: any, rows: Map<string, any>) {
     const relationships = root
       ? decodeRelationshipPagesSync(JSON.parse(root.payload), root.world, (id) => rows.get(id)?.data ?? null).value
       : undefined;
-    scene.continuity = { ...context, facts: { ...context.facts, relationshipContext: relationships } };
+    const villagers = context.facts.villagers.map((row: any) => {
+      const wishes = decodeWishHistorySync(
+        row.wishHead,
+        { ...context, actorId: row.characterId },
+        (id) => rows.get(id)?.data ?? null,
+      ).rows;
+      return Object.fromEntries(
+        Object.entries(row).map(([key, value]) => (key === "wishHead" ? ["wishes", wishes] : [key, value])),
+      );
+    });
+    scene.continuity = { ...context, facts: { ...context.facts, villagers, relationshipContext: relationships } };
   }
   return coerceSession(scene);
 }
