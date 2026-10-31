@@ -855,6 +855,13 @@ async function main() {
       [],
       "Cancelled undispatched work cannot leave a running-step restore hold.",
     );
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "cancel-before-dispatch",
+      ),
+      false,
+      "An explicitly undispatched cancellation needs no recovery history.",
+    );
     await reset();
     await mutateVillageState((state) => {
       state.backgroundPace = "quiet";
@@ -871,6 +878,12 @@ async function main() {
     assert.equal(hidden.status, "paused", "No request began, so hiding is a pause rather than an interruption.");
     assert.equal(hidden.requests, 0);
     assert.deepEqual(rows.get(hidden.id).data.steps, []);
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "hidden-before-dispatch",
+      ),
+      false,
+    );
     await villageBackgroundPresence("hide-before-admission", true);
     await settleBackgroundWork();
     assert.ok(
@@ -893,6 +906,12 @@ async function main() {
     assert.equal(countPaused.status, "paused");
     assert.equal(countPaused.requests, 0, "A pre-dispatch hide does not count a provider request.");
     assert.equal(calls.includes("hidden-during-count"), false);
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "hidden-during-count",
+      ),
+      false,
+    );
     await villageBackgroundPresence("hide-during-count", true);
     await settleBackgroundWork();
     assert.ok(calls.includes("hidden-during-count"), "The unstarted request resumes after visibility returns.");

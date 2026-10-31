@@ -300,16 +300,24 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               !next.optionalAttempts?.[key] ||
               (value.result !== undefined && next.optionalAttempts[key].result === undefined),
           ) ||
-          (before.failure?.cause === "unknown_request" && next.failure?.cause !== "unknown_request");
+          (before.failure?.cause === "unknown_request" &&
+            before.steps.length === 0 &&
+            next.failure?.cause !== "unknown_request");
         if (released) {
-          const recovery = backgroundRecoveryState({ ...before, status: "obsolete" });
-          let acknowledged = false;
-          if (recovery === "recoverable" && next.status === "completed" && next.id === before.id) {
+          const recovery = backgroundRecoveryState({
+            ...before,
+            status: "obsolete",
+            steps: before.steps.filter((_step, index) => index !== undispatchedStep),
+          });
+          if (recovery === "uncertain" || recovery === "recoverable") {
             const state = await (ports.readVillageAuthority ?? readVillageState)();
-            acknowledged = state.seed === before.seed && state.backgroundReceipts[id] === before.id;
+            const acknowledged =
+              recovery !== "uncertain" &&
+              next.status === "completed" &&
+              next.id === before.id &&
+              state.backgroundReceipts[id] === before.id;
+            if (state.seed === before.seed && !acknowledged) await retainBackgroundJob(documents, record.data);
           }
-          if (recovery === "uncertain" || (recovery === "recoverable" && !acknowledged))
-            await retainBackgroundJob(documents, record.data);
         }
       }
       const stamp = new Date().toISOString();
@@ -1208,7 +1216,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
               : {}),
           };
         },
-        paused && !dispatched && catchupBatchId(job) && lastIndex >= 0 ? lastIndex : undefined,
+        (paused || obsolete) && !dispatched && catchupBatchId(job) && lastIndex >= 0 ? lastIndex : undefined,
       );
       await handlers
         .get(job.kind)

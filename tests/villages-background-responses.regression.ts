@@ -92,6 +92,11 @@ for (const failure of ["before", "after"] as const) {
       readVillageState: async () => structuredClone(world),
       mutateVillageState: async (update) => {
         update(world);
+        if (failure === "after") {
+          const row = [...db.rows.values()].find((row) => row.kind === "background-work");
+          row.data.optionalAttempts = { review: { status: "unknown", elapsedMs: 10 } };
+          row.revision++;
+        }
         return world;
       },
       withUsagePurpose: (_purpose, work) => work(),
@@ -157,6 +162,12 @@ for (const failure of ["before", "after"] as const) {
   await background.settleBackgroundWork();
   assert.equal(applied, 1);
   assert.equal(calls, 1, "both lost job acknowledgements reuse the purchased reply");
+  const retained = [...db.rows.values()].filter((row) => row.kind === "background-history");
+  assert.equal(retained.length, failure === "after" ? 1 : 0, "settled successful work needs no extra attempt copy");
+  if (failure === "after") {
+    assert.equal(retained[0].data.optionalAttempts.review.status, "unknown");
+    assert.deepEqual(retained[0].data.result, { done: true }, "optional uncertainty survives a valid World receipt");
+  }
   assert.equal((await background.backgroundWorkSummaries())[0].tokens, 17, "receipt adoption counts known usage once");
   const bodies = [...db.rows.values()].filter((row) => row.kind === "generation-response");
   assert.equal(bodies.length, 1, "normal and recovered replies share one immutable body");
@@ -472,7 +483,15 @@ corruptGate.dispose();
   gate.dispose();
 }
 // Replacing a slot cannot erase an uncertain attempt before its late reply arrives.
-{
+for (const failure of [
+  "none",
+  "history-before",
+  "history-after",
+  "job-before",
+  "job-after",
+  "cas-conflict",
+  "reset",
+] as const) {
   const db = storage(),
     gate = createRepairGate(db.documents),
     context = createBackgroundContext(),
@@ -532,11 +551,84 @@ corruptGate.dispose();
   const old = (await background.backgroundJobSnapshot(work.kind, work.subjectId))!;
   assert.equal(calls, 1);
   assert.equal(old.steps[0].status, "running");
-  await background.queueBackgroundJob({ ...work, revision: "second", finite: false, input: { exact: "New input" } });
+  const create = db.documents.create,
+    update = db.documents.update;
+  let historyStarted!: () => void, releaseHistory!: () => void;
+  const started = new Promise<void>((resolve) => {
+      historyStarted = resolve;
+    }),
+    released = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+  let inject = true;
+  db.documents.create = async (input) => {
+    if (inject && input.kind === "background-history" && failure === "none") {
+      inject = false;
+      const row = await create(input);
+      historyStarted();
+      await released;
+      return row;
+    }
+    if (inject && input.kind === "background-history" && failure.startsWith("history-")) {
+      inject = false;
+      if (failure === "history-after") await create(input);
+      throw new Error("Retained attempt acknowledgement lost");
+    }
+    return create(input);
+  };
+  db.documents.update = async (input) => {
+    if (inject && input.data?.revision === "second" && ["job-before", "job-after", "cas-conflict"].includes(failure)) {
+      inject = false;
+      if (failure === "cas-conflict") {
+        const current = db.rows.get(input.id);
+        current.data.optionalAttempts = {
+          review: { status: "complete", elapsedMs: 10, result: "Exact optional result" },
+        };
+        current.revision++;
+        return null;
+      }
+      if (failure === "job-after") await update(input);
+      throw new Error("Current job acknowledgement lost");
+    }
+    return update(input);
+  };
+  if (failure === "reset") world.seed = "replacement-after-reset";
+  const replace = () =>
+    background.queueBackgroundJob({
+      ...work,
+      seed: world.seed,
+      revision: "second",
+      finite: false,
+      input: { exact: "New input" },
+    });
+  if (["history-before", "job-before", "job-after"].includes(failure)) {
+    await assert.rejects(replace(), /acknowledgement lost/);
+    const current = [...db.rows.values()].find((row) => row.kind === "background-work");
+    assert.equal(current.data.id === old.id, failure !== "job-after", "the current slot changes only after protection");
+  }
+  if (failure === "none") {
+    const admission = replace();
+    await started;
+    await assert.rejects(collectRetainedStorage(gate), /Other Village work is active/);
+    releaseHistory();
+    await admission;
+  } else await replace();
   await background.settleBackgroundWork();
   assert.equal(calls, 1, "replacement automatic work remains paused without presence");
   const histories = [...db.rows.values()].filter((row) => row.kind === "background-history");
-  assert.equal(histories.length, 1, "the released physical claim keeps its exact attempt owner");
+  if (failure === "reset") {
+    assert.equal(histories.length, 0, "explicit Reset does not establish a new owner for prior-world private work");
+    stop();
+    gate.dispose();
+    continue;
+  }
+  assert.equal(
+    histories.length,
+    failure === "cas-conflict" ? 2 : 1,
+    "each exact before-image keeps an immutable owner",
+  );
+  if (failure === "cas-conflict")
+    assert.ok(histories.some((row) => row.data.optionalAttempts?.review.result === "Exact optional result"));
   assert.deepEqual(histories[0].data.input, work.input);
   assert.equal(histories[0].data.steps[0].responseClaim.id, old.steps[0].responseClaim!.id);
   const late = await createBackgroundResponses(gate.documents).publish(old, 0, {
@@ -547,6 +639,14 @@ corruptGate.dispose();
   const cold = createBackgroundResponses(gate.documents);
   assert.equal((await cold.pending(histories[0].data, 0))!.response.content, "Purchased late café 東京 reply");
   assert.ok(db.rows.has(late.ref.id));
+  if (failure === "none") {
+    const original = histories[0],
+      ids = [...db.rows.keys()];
+    db.rows.set(original.id, { ...original, data: { ...original.data, input: { exact: "Changed evidence" } } });
+    await assert.rejects(collectRetainedStorage(gate), /background job record identity changed/);
+    assert.deepEqual([...db.rows.keys()], ids, "invalid retained ownership holds cleanup before deletion");
+    db.rows.set(original.id, original);
+  }
   stop();
   gate.dispose();
 }
