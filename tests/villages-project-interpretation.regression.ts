@@ -10,6 +10,8 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { projectSceneEvidence } from "../packages/villages/src/server/domain/rules/project-scene-evidence.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { notFound } from "../packages/villages/src/server/domain/rules/errors.js";
+import { createSceneArchive } from "../packages/villages/src/server/features/scenes/archive-service.js";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 const f = fixture(),
   id = await renovation(f);
 const line = {
@@ -192,6 +194,77 @@ await retiredEvidence.recordProjectSpokenEvidence(retiredId, {
 });
 assert.equal(retiredWorld.get(retiredId).lifecycle!.candidates[0].residentId, "a");
 assert.equal(retiredWorld.get(retiredId).lifecycle!.spokenProofs[0].quote, line.content);
+
+// Candidate discovery loads only the recent current Village's transcripts, never the whole archive.
+const archiveRows = new Map<string, any>(),
+  pageOwners = new Map<string, string>(),
+  loadedOwners = new Set<string>();
+function archiveScene(id: string, at: string, villageSeed = retiredWorld.state().seed) {
+  return coerceSession({
+    ...retiredScene,
+    id,
+    villageSeed,
+    startedAt: at,
+    lines: [{ ...line, content: id + " exact agreement — café", at }],
+    submissions: [{ ...retiredScene.submissions[0], at }],
+  });
+}
+function saveArchivedScene(scene: ReturnType<typeof archiveScene>) {
+  const before = new Set(archiveRows.keys());
+  const data = authorSceneFixture(archiveRows, scene);
+  for (const id of archiveRows.keys()) if (!before.has(id)) pageOwners.set(id, scene.id);
+  archiveRows.set("villages-venue-visit-" + scene.id, {
+    id: "villages-venue-visit-" + scene.id,
+    packageId: "villages",
+    kind: "venue-visit",
+    data,
+    revision: 1,
+  });
+}
+const currentScenes = Array.from({ length: 100 }, (_, index) =>
+  archiveScene("current-" + String(index).padStart(3, "0"), "2026-10-30T12:00:00.000Z"),
+);
+for (const scene of [...currentScenes].reverse()) saveArchivedScene(scene);
+saveArchivedScene(archiveScene("foreign-newer", "2099-10-31T12:00:00.000Z", "another-world"));
+saveArchivedScene({ ...archiveScene("still-active", "2099-10-31T12:00:00.000Z"), status: "active" });
+const archiveBefore = structuredClone(archiveRows);
+const boundedArchive = createSceneArchive({
+  villagesDocuments: () =>
+    ({
+      list: async (_packageId: string, kind: string) => [...archiveRows.values()].filter((row) => row.kind === kind),
+      getById: async (_packageId: string, id: string) => {
+        const owner = pageOwners.get(id);
+        if (owner) loadedOwners.add(owner);
+        return archiveRows.get(id) ?? null;
+      },
+    }) as any,
+  readActive: async () => ({ sessionId: null, placeId: "" }),
+});
+const compactRecent = archiveScene("retired-recent", "2026-10-31T12:00:00.000Z");
+const boundedEvidence = createProjectEvidence({
+  readVillageState: async () => retiredWorld.state(),
+  mutateVillageState: retiredWorld.mutate,
+  sceneQueries: () => ({
+    ...queries,
+    listVenueVisits: boundedArchive.listVenueVisits,
+    activeVenueSession: async () => archiveScene("live", "2026-10-31T13:00:00.000Z"),
+    listRetiredProjectScenes: async () => [
+      compactRecent,
+      { ...currentScenes[0], lines: [{ ...line, content: "Superseded compact duplicate" }] },
+    ],
+  }),
+});
+const boundedCandidates = await boundedEvidence.listProjectEvidenceCandidates(retiredId);
+assert.deepEqual(
+  boundedCandidates.map((candidate) => candidate.sessionId),
+  ["live", "retired-recent", ...currentScenes.slice(0, 19).map((scene) => scene.id)],
+);
+assert.deepEqual(
+  [...loadedOwners].sort(),
+  currentScenes.slice(0, 20).map((scene) => scene.id),
+);
+assert.equal(boundedCandidates[2].quote, "current-000 exact agreement — café");
+assert.deepEqual(archiveRows, archiveBefore, "candidate discovery does not rewrite saved evidence");
 
 // Recovering a withdrawal spoken before Start cannot manufacture extra work time.
 const delayed = fixture(),
