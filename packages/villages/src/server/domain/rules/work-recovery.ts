@@ -1,4 +1,5 @@
 import type { BackgroundInput, Job } from "../models/background-model.js";
+import { isBackgroundInstance } from "./background-revision.js";
 
 export type WorkRecoveryState = "pending" | "recoverable" | "uncertain" | "completed" | "failed" | "abandoned";
 
@@ -53,6 +54,7 @@ export function isBackgroundRecoveryRecord(value: unknown): value is Job {
   )
     return false;
   if (!["id", "seed", "kind", "subjectId"].every((key) => typeof value[key] === "string")) return false;
+  if (!isBackgroundInstance(value.instanceId)) return false;
   if (!isBackgroundKind(value.kind)) return false;
   if (!Number.isSafeInteger(value.requests) || Number(value.requests) < 0 || typeof value.hasResult !== "boolean")
     return false;
@@ -114,7 +116,7 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
       !!job.partialResult ||
       job.result !== undefined ||
       steps.some((step) => step.response != null || step.responseRef != null) ||
-      optional.some((attempt) => attempt.result !== undefined),
+      optional.some((attempt) => attempt.status === "complete"),
     completed: job.status === "completed",
     // Obsolete is a scheduling label, not proof that every external callback/effect was reconciled.
     abandonmentFenced: false,

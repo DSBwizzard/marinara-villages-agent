@@ -1730,7 +1730,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     personaDraft,
     personalizeHomes,
     residentContextProblem,
-    savedTownMapView,
     sceneryStyle,
     sceneryStyleProfileId,
     selectedResidentAdmissions,
@@ -1746,7 +1745,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupFoundingVillagerIds,
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
-    setupMapSource,
     setupMapSrc,
     setupName,
     setupTimeZone,
@@ -1754,7 +1752,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupWorldName,
     setupSetting,
     setupVenues,
-    setupWorldFacts,
     snapshot,
     visualLoreDefault,
   });

@@ -9,11 +9,7 @@ import type { VillageSnapshot, VillageState, VillageVenue } from "../../domain/m
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
-import {
-  assertFoundingScenarioLocked,
-  parsePlaces,
-  validateFoundingRoster,
-} from "../../domain/rules/founding-record.js";
+import { parsePlaces, validateFoundingRoster } from "../../domain/rules/founding-record.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
 import {
   DEFAULT_LORE_TOKEN_BUDGET,
@@ -30,7 +26,7 @@ import { initialIdentityDescription } from "../../domain/rules/resident-descript
 import { readScenarioImprint, readWorldFacts } from "../../domain/rules/scenario-rules.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
-import { validVenueClasses, venueResidentIds, venueSpaces } from "../../domain/rules/venue-model.js";
+import { validVenueClasses, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { readBool } from "../../domain/rules/village-projections.js";
 import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
@@ -40,6 +36,7 @@ import type { readLinkedPersona } from "../settings/personas.js";
 import type { draftVillageVenueDescriptions, proposePublicVenueNames, proposeVillage } from "./village-bootstrap.js";
 
 export interface FoundingSetupPorts {
+  peekVillageAuthority(): Promise<VillageState>;
   preparedSpriteManager?(
     id: string,
     revision?: number,
@@ -53,7 +50,6 @@ export interface FoundingSetupPorts {
   readLinkedPersona: typeof readLinkedPersona;
   listVillagerCards(): Promise<VillagerCard[]>;
   prepareFoundedVillage(): Promise<void>;
-  queueVillagerAgenda(characterId: string): Promise<void>;
   queueStartingTies?(): Promise<void>;
   queueMicrotask(work: () => void): void;
   readVillageLore: typeof readVillageLore;
@@ -64,6 +60,7 @@ export interface FoundingSetupPorts {
 
 /** Setup keeps its specific validation, library, generation and preparation connections. Construction is inert. */
 export function createFoundingSetup({
+  peekVillageAuthority,
   preparedSpriteManager,
   readVillageState,
   mutateVillageState,
@@ -74,7 +71,6 @@ export function createFoundingSetup({
   readLinkedPersona,
   listVillagerCards,
   prepareFoundedVillage,
-  queueVillagerAgenda,
   queueStartingTies,
   queueMicrotask,
   readVillageLore,
@@ -108,6 +104,8 @@ export function createFoundingSetup({
     townMapView?: unknown;
     homeBuildingNames?: unknown;
   }): Promise<VillageSnapshot> {
+    if (isVillageFounded(await peekVillageAuthority()))
+      throw conflict("This Village is already founded. Use World Configuration.");
     const name = readVillageName(input.name);
     if (input.timeZone !== undefined && !validTimeZone(input.timeZone))
       throw badRequest("Choose a valid village timezone.");
@@ -137,29 +135,16 @@ export function createFoundingSetup({
       throw badRequest("No preset does not use a separate narrative direction.");
     }
     const village = await readVillageState();
-    const founding = !isVillageFounded(village);
-    if (!founding && input.timeZone !== undefined && input.timeZone !== village.timeZone)
-      throw badRequest("The village timezone is fixed after founding.");
-    const playerBackground = playerBackgroundForSetup(village.playerBackground, input.playerBackground, founding);
-    if (!founding)
-      assertFoundingScenarioLocked(village, {
-        foundingReason,
-        foundingDetails,
-        foundingGuidance,
-        scenarioImprint: input.scenarioImprint,
-      });
-    const scenarioImprint = founding
-      ? input.scenarioImprint == null
-        ? null
-        : readScenarioImprint(input.scenarioImprint)
-      : village.scenarioImprint;
-    const worldFacts = founding
-      ? (scenarioImprint?.worldFacts ?? [])
-      : readWorldFacts(input.worldFacts ?? village.worldFacts);
-    if (founding && !input.townMapImage) throw badRequest("Generate or upload map artwork before founding.");
-    const townMap = founding
-      ? await prepareVillageMap({ id: randomUUID(), name, image: input.townMapImage, view: input.townMapView })
-      : village.maps[0];
+    const playerBackground = playerBackgroundForSetup(village.playerBackground, input.playerBackground, true);
+    const scenarioImprint = input.scenarioImprint == null ? null : readScenarioImprint(input.scenarioImprint);
+    const worldFacts = scenarioImprint?.worldFacts ?? [];
+    if (!input.townMapImage) throw badRequest("Generate or upload map artwork before founding.");
+    const townMap = await prepareVillageMap({
+      id: randomUUID(),
+      name,
+      image: input.townMapImage,
+      view: input.townMapView,
+    });
     const connections = await readVillageConnectionSettings();
     await validateVillageSetupConnections(connections);
     // Resolved before anything is written, so a village is never founded holding a
@@ -169,29 +154,17 @@ export function createFoundingSetup({
     if (!Array.isArray(input.venues)) throw badRequest("The setup needs the places you put on the map.");
     const cards = await listVillagerCards();
     const cardNames = new Map(cards.map((card) => [card.id, card.name]));
-    // Residents are checked against the library rather than against the village,
-    // because the villagers are moved in by the write below.
-    //
-    // A village that is not founded yet is founded with exactly the homes the
-    // wizard asked the player to place, so "the setup finished" means "there are
-    // four houses on the map". Coming back through the wizard over a village that
-    // already exists accepts the map as it now stands, so a player who has since
-    // added a fifth house is not made to tear it down to save their own village.
-    const places = parsePlaces(input.venues, new Set(cardNames.keys()), founding);
+    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true);
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
     );
     const assignedResidents = new Set(
       places.flatMap((place) => (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : [])),
     );
-    const admissions = founding
-      ? readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents])
-      : {};
-    if (!founding && input.foundingResidentAdmissions !== undefined)
-      throw badRequest("Starting situations are fixed after founding.");
-    if (founding && input.foundingCharacterIds !== undefined)
+    const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
+    if (input.foundingCharacterIds !== undefined)
       validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
-    if (founding && privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
+    if (privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
       throw badRequest("Choose founding villagers as room controllers.");
     const initialResidentIds = [
       ...new Set(places.flatMap((place) => [place.occupancy.residentCharacterId]).filter(Boolean)),
@@ -212,38 +185,15 @@ export function createFoundingSetup({
           ),
       ),
     );
-    // Founding posts the houses placed in the wizard. Later setup runs keep the
-    // other venues and require every saved pin to stay put; World Configuration owns
-    // map replacement and its placement pass.
-    //
-    // A stored place the posted map does name is not stored twice: the posted copy
-    // is the newer one. The picture, though, is the place's rather than the
-    // posting's — the wizard posts ids it read off the snapshot and has no way to
-    // send an image back — so a place that keeps its id keeps its picture, and one
-    // the wizard minted a moment ago simply has none to find.
-    const postedIds = new Set<string>(places.map((place) => place.id));
-    const storedImages = new Map(village.venues.map((place) => [place.id, place.presentation.image]));
-    const postedPlaces: VillageVenue[] = places.map((place) => {
+    const venues: VillageVenue[] = places.map((place) => {
       const prior = village.venues.find((entry) => entry.id === place.id);
       return {
         ...prior,
         ...place,
         layoutVersion: prior?.layoutVersion ?? place.layoutVersion,
-        zoneLayout: founding ? place.zoneLayout : (prior?.zoneLayout ?? place.zoneLayout),
+        zoneLayout: place.zoneLayout,
         classes: prior?.classes ?? place.classes,
-        spaces:
-          prior && !founding
-            ? venueSpaces(prior).map((space) =>
-                space.venueClass === "residence"
-                  ? {
-                      ...space,
-                      description:
-                        place.spaces?.find((entry) => entry.venueClass === "residence")?.description ??
-                        space.description,
-                    }
-                  : space,
-              )
-            : place.spaces,
+        spaces: place.spaces,
         residenceCapacity: prior?.residenceCapacity ?? place.residenceCapacity,
         residentIds: prior ? venueResidentIds(prior) : place.residentIds,
         playerInvitations: prior?.playerInvitations ?? [],
@@ -259,22 +209,10 @@ export function createFoundingSetup({
         state: prior?.state ?? place.state,
         presentation: {
           ...place.presentation,
-          image: founding ? place.presentation.image : (storedImages.get(place.id) ?? null),
+          image: place.presentation.image,
         },
       };
     });
-    const keptPlaces = founding
-      ? []
-      : village.venues.filter((place) => !isHousePlace(place) && !postedIds.has(place.id));
-    const venues: VillageVenue[] = [...postedPlaces, ...keptPlaces];
-    if (
-      !founding &&
-      village.venues.some((old) => {
-        const next = venues.find((venue) => venue.id === old.id);
-        return !next || next.presentation.x !== old.presentation.x || next.presentation.y !== old.presentation.y;
-      })
-    )
-      throw conflict("Move Venue photographs while replacing the map in World Configuration.");
     for (const old of village.venues) {
       if (!old.occupancy.residentCharacterId) continue;
       const next = venues.find((venue) => venue.id === old.id);
@@ -290,28 +228,11 @@ export function createFoundingSetup({
 
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
-      if (isVillageFounded(state) === founding)
-        throw conflict("The village changed during setup. Reload it before saving.");
-      if (
-        !founding &&
-        (JSON.stringify(state.maps) !== JSON.stringify(village.maps) ||
-          state.venues.length !== village.venues.length ||
-          state.venues.some((venue) => {
-            const prior = village.venues.find((entry) => entry.id === venue.id);
-            return (
-              !prior || venue.presentation.x !== prior.presentation.x || venue.presentation.y !== prior.presentation.y
-            );
-          }))
-      )
-        throw conflict("The village map changed during setup. Reload it before saving.");
-      if (!founding)
-        assertFoundingScenarioLocked(state, { foundingReason, foundingDetails, foundingGuidance, scenarioImprint });
+      if (isVillageFounded(state)) throw conflict("The village changed during setup. Reload it before saving.");
       state.playerBackground = playerBackground;
       state.name = name;
       state.setting = setting;
-      if (!founding && input.timeZone !== undefined && input.timeZone !== state.timeZone)
-        throw badRequest("The village timezone is fixed after founding.");
-      if (founding && typeof input.timeZone === "string") state.timeZone = input.timeZone;
+      if (typeof input.timeZone === "string") state.timeZone = input.timeZone;
       state.foundingReason = foundingReason;
       state.foundingDetails = foundingDetails;
       if (input.worldName !== undefined) state.worldName = readWorldName(input.worldName)!;
@@ -320,17 +241,8 @@ export function createFoundingSetup({
       state.worldFacts = worldFacts;
       state.selectedLorebookIds = selectedLorebookIds;
       state.loreTokenBudget = loreTokenBudget;
-      if (founding) {
-        state.maps = [townMap];
-        for (const venue of venues) venue.presentation.mapId = townMap.id;
-      }
-      // Written on every setup, like the name and the setting: the wizard is the
-      // only editor of the village's identity, and it opens holding what is
-      // stored, so re-running it to redraw the map cannot quietly unlink the
-      // Persona the player chose when they founded the place. Re-reading the copy
-      // here costs one read the wizard was making anyway, and means a Persona
-      // edited between two runs of the wizard arrives up to date rather than
-      // stale until the next time settings open.
+      state.maps = [townMap];
+      for (const venue of venues) venue.presentation.mapId = townMap.id;
       state.playerPersonaId = persona.id;
       state.playerPersonaName = persona.name;
       state.playerPersonaIdentity = persona.identity;
@@ -340,38 +252,30 @@ export function createFoundingSetup({
       if (input.sceneryStyleProfileId !== undefined)
         state.sceneryStyleProfileId = readSceneryStyleProfileId(input.sceneryStyleProfileId);
       if (input.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(input.sceneryArtStyle);
-      else if (founding) state.sceneryArtStyle = DEFAULT_SCENERY_STYLE;
+      else state.sceneryArtStyle = DEFAULT_SCENERY_STYLE;
       if (input.personalizeVenueImagesByDefault !== undefined)
         state.personalizeVenueImagesByDefault = readBool(input.personalizeVenueImagesByDefault);
       if (input.useVisualLoreByDefault !== undefined)
         state.useVisualLoreByDefault = readBool(input.useVisualLoreByDefault);
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
-      // This closes the first founding and anchors saved work to this Village.
-      // Configuration edits must not invalidate checkpoints or rekey immutable history.
       state.setupAt ||= villageNow().toISOString();
-      if (founding) {
-        state.progressEngineVersion = 1;
-        state.opening = initialOpening(
-          [...assignedResidents],
-          venues.find((venue) => venue.category === "public-center")!.id,
-          randomUUID(),
-          3,
-        );
-      }
-      if (founding)
-        state.foundingPreparation = {
-          status: "pending",
-          completedIds: [],
-          venueDetailsSeeded: false,
-          currentId: "",
-          error: "",
-          phase: "venues",
-          stage: "lore",
-          stageStartedAt: villageNow().toISOString(),
-        };
-      // Only a village with nowhere to send anybody needs places invented; a
-      // second run must not throw away places the player has since renamed or
-      // added by hand. The houses do not count — see `remapVenues`.
+      state.progressEngineVersion = 1;
+      state.opening = initialOpening(
+        [...assignedResidents],
+        venues.find((venue) => venue.category === "public-center")!.id,
+        randomUUID(),
+        3,
+      );
+      state.foundingPreparation = {
+        status: "pending",
+        completedIds: [],
+        venueDetailsSeeded: false,
+        currentId: "",
+        error: "",
+        phase: "venues",
+        stage: "lore",
+        stageStartedAt: villageNow().toISOString(),
+      };
       for (const card of initialResidents) {
         if (state.villagers.some((villager) => villager.characterId === card.id)) continue;
         state.villagers.push({
@@ -412,11 +316,9 @@ export function createFoundingSetup({
     // forged village asks everyone to plan a day with only the houses available.
     // The complete provisional day written above remains usable if either model
     // call fails, and the next tick can still retry the authored agenda.
-    if (founding)
-      queueMicrotask(() => {
-        void prepareFoundedVillage();
-      });
-    else for (const card of addedResidents) await queueVillagerAgenda(card.id);
+    queueMicrotask(() => {
+      void prepareFoundedVillage();
+    });
     if (addedResidents.length) await queueStartingTies?.();
     return buildVillageSnapshot();
   }

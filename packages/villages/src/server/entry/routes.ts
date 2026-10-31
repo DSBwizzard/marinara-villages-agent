@@ -7,6 +7,7 @@ import { villageNow } from "../adapters/time/clock-gate.js";
 import { readActive, readSession } from "../adapters/storage/scene-store.js";
 import { spinoffLocksScene } from "../domain/models/spinoff-model.js";
 import { asRecord } from "../domain/rules/coerce.js";
+import { isVillageFounded } from "../domain/rules/world-snapshot.js";
 import { registerBackgroundRoutes } from "../features/background/routes.js";
 import { prepareReturnCatchup } from "../features/background/return-catchup.js";
 import { hasVillagePresence } from "../jobs/background-work.js";
@@ -59,6 +60,8 @@ export async function villagesRoutes(engine: FastifyInstance) {
     )
       return null;
     let state = await peekVillageAuthority();
+    if (path === "/setup" && isVillageFounded(state))
+      return "This Village is already founded. Use World Configuration.";
     if (!hasVillagePresence() && state.returnCatchup?.capture) {
       await prepareReturnCatchup(villageNow(), randomUUID());
       state = await peekVillageAuthority();
@@ -84,6 +87,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     return null;
   };
   const surface = publicSceneRoutes(engine, projectSceneResponse, guard, [
+    "post /setup",
     "get /memories",
     "get /rooms/:id/history",
     "get /rooms/:id/playback",
@@ -120,7 +124,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   // These routes inspect raw saved authority. Do not observe clocks or process outboxes.
   const repairSurface = Object.create(engine) as FastifyInstance;
   const owner = activationScope();
-  for (const method of ["get", "post"] as const) {
+  for (const method of ["get", "post", "delete"] as const) {
     repairSurface[method] = ((path: string, handler: (request: never, reply: never) => unknown) => {
       const run = async (request: import("fastify").FastifyRequest, reply: import("fastify").FastifyReply) => {
         const blocked = await guard(method, path, request.body);

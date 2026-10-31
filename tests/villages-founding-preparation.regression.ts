@@ -440,7 +440,12 @@ async function main() {
         await mutateVillageState((current) => {
           current.seed = "replacement-village";
         });
-        await retryBackgroundJob(checkpoint.id, checkpoint.data.attempt, "stale-routine-retry");
+        await retryBackgroundJob(
+          checkpoint.id,
+          checkpoint.data.attempt,
+          "stale-routine-retry",
+          checkpoint.data.instanceId,
+        );
         await settleBackgroundWork();
         assert.equal(rows.get(checkpoint.id).data.status, "obsolete");
         assert.equal(calls.length, 0);

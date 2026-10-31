@@ -1,9 +1,9 @@
 import { readPlaceDescription } from "./zone-continuity.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
-import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueImage } from "../models/world.js";
+import type { VillageVenue, VillageVenueClass, VillageVenueImage } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
-import { badRequest, conflict } from "./errors.js";
+import { badRequest } from "./errors.js";
 import { validateStartingVenue } from "./founding-template.js";
 import {
   boundText,
@@ -364,20 +364,6 @@ export function parsePlaces(value: unknown, residents: ReadonlySet<string>, foun
       throw badRequest("Founding needs exactly one public venue.");
   }
   return places;
-}
-/** Reject an edit to a previously locked founding Scenario. */
-export function assertFoundingScenarioLocked(
-  village: Pick<VillageState, "foundingReason" | "foundingDetails" | "foundingGuidance" | "scenarioImprint">,
-  submitted: { foundingReason: string; foundingDetails: string; foundingGuidance: string; scenarioImprint?: unknown },
-): void {
-  if (
-    submitted.foundingReason !== village.foundingReason ||
-    submitted.foundingDetails !== village.foundingDetails ||
-    submitted.foundingGuidance !== village.foundingGuidance ||
-    (submitted.scenarioImprint !== undefined &&
-      JSON.stringify(submitted.scenarioImprint) !== JSON.stringify(village.scenarioImprint))
-  )
-    throw conflict("The founding Scenario is locked. Start a new village to choose another one.");
 }
 /** Bind a new wizard's selected roster to its assigned homes before generation or writes. */
 export function validateFoundingRoster(

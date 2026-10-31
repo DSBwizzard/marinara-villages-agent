@@ -92,6 +92,7 @@ const snapshot = {
 snapshot.backgroundWork = [
   {
     id: "villages-background-" + "a".repeat(64),
+    instanceId: "10000000-0000-4000-8000-000000000000",
     kind: "agenda",
     subjectId: "mara",
     label: "Mara's agenda",
@@ -108,6 +109,7 @@ snapshot.backgroundWork[0].failedAt = "2026-09-28T12:00:00.000Z";
 snapshot.backgroundWork[0].failure = { cause: "provider_exception", stage: "dispatch" };
 snapshot.backgroundWork.push({
   id: "villages-background-" + "b".repeat(64),
+  instanceId: "20000000-0000-4000-8000-000000000000",
   kind: "wish-check",
   subjectId: "finished",
   label: "Finished Wish check",
@@ -136,6 +138,7 @@ try {
     }
     if (path.endsWith("/background/retry")) {
       const action = route.request().postDataJSON();
+      assert.equal(action.expectedInstanceId, snapshot.backgroundWork[0].instanceId);
       retries.push(action);
       if (retries.length === 1) {
         acceptedRetries++;
