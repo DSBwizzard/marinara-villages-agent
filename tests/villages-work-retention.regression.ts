@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import type { Job } from "../packages/villages/src/server/domain/models/background-model.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
@@ -13,6 +14,7 @@ import { backgroundRevision } from "../packages/villages/src/server/domain/rules
 function job(patch: Partial<Job> = {}): Job {
   return {
     id: "saved-job",
+    instanceId: randomUUID(),
     kind: "agenda",
     subjectId: "removed-resident",
     seed: "retention",
@@ -72,6 +74,7 @@ for (const patch of [
   { partialResult: true },
   { steps: [savedReply] },
   { optionalAttempts: { review: { status: "complete" as const, elapsedMs: 2, result: "saved" } } },
+  { optionalAttempts: { review: { status: "complete" as const, elapsedMs: 2 } } },
 ])
   for (const status of ["failed", "interrupted", "obsolete", "completed"] as const)
     assert.equal(backgroundRecoveryState(job({ ...patch, status })), "recoverable");
@@ -149,6 +152,7 @@ save("completed-without-usage", { usageComplete: false });
 for (let i = 0; i < 8; i++) save("settled-" + i);
 let reads = 0;
 const background = createBackgroundWork({
+  withCurrentJobWrite: (work) => work(),
   villagesDocuments: () =>
     ({
       list: async (_pkg: string, kind: string) =>

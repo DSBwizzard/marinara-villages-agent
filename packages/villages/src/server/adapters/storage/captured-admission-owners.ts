@@ -53,8 +53,11 @@ export async function capturedPublicationOwners(
       "captured source job is missing or changed",
     );
     validateBackgroundJobRecord(row);
-    const raw = row.data as { id: string; attempt: number };
-    memoryRequire(raw.id === hint.id && raw.attempt === hint.attempt, "captured source job changed");
+    const raw = row.data as { id: string; instanceId: string; attempt: number };
+    memoryRequire(
+      raw.id === hint.id && raw.instanceId === hint.instanceId && raw.attempt === hint.attempt,
+      "captured source job changed",
+    );
     add(capturedJobOwners(row.data));
   }
   return into;

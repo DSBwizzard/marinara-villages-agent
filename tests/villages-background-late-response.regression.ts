@@ -101,7 +101,7 @@ try {
   await recoverBackgroundWork();
   const saved = [...records.values()].find((row) => row.kind === "background-work");
   assert.equal(saved.data.steps[0].status, "completed", "Restart adopts immutable late evidence locally");
-  await retryBackgroundJob(saved.id, saved.data.attempt, "explicit-local-recovery");
+  await retryBackgroundJob(saved.id, saved.data.attempt, "explicit-local-recovery", saved.data.instanceId);
   await settleBackgroundWork();
   assert.equal(calls, 1, "Saved response survives service recreation without replacement spending");
   assert.equal(applied, 1);
@@ -129,7 +129,7 @@ try {
   await new Promise((resolve) => setImmediate(resolve));
   await recoverBackgroundWork();
   const invalid = [...records.values()].find((row) => row.kind === "background-work" && row.data.subjectId === "other");
-  await retryBackgroundJob(invalid.id, invalid.data.attempt, "parse-late");
+  await retryBackgroundJob(invalid.id, invalid.data.attempt, "parse-late", invalid.data.instanceId);
   await settleBackgroundWork();
   assert.equal(calls, 2, "First deliberate recovery only parses purchased late work");
   assert.equal(records.get(invalid.id).data.failedStep, 0, "Invalid late replay becomes replaceable");
@@ -139,7 +139,12 @@ try {
     thirdStarted = resolve;
   });
   began = thirdStarted;
-  await retryBackgroundJob(invalid.id, records.get(invalid.id).data.attempt, "replace-invalid");
+  await retryBackgroundJob(
+    invalid.id,
+    records.get(invalid.id).data.attempt,
+    "replace-invalid",
+    invalid.data.instanceId,
+  );
   await third;
   mock.timers.tick(120_000);
   await settleBackgroundWork();
@@ -147,7 +152,12 @@ try {
   await new Promise((resolve) => setImmediate(resolve));
   await recoverBackgroundWork();
   assert.equal(records.get(invalid.id).data.steps[0].status, "completed", "Second attempt gets its own late receipt");
-  await retryBackgroundJob(invalid.id, records.get(invalid.id).data.attempt, "use-second-late");
+  await retryBackgroundJob(
+    invalid.id,
+    records.get(invalid.id).data.attempt,
+    "use-second-late",
+    invalid.data.instanceId,
+  );
   await settleBackgroundWork();
   assert.equal(calls, 3);
   assert.equal(applied, 2);
@@ -208,14 +218,14 @@ try {
   assert.equal(history.data.steps[0].status, "completed");
   assert.equal(calls, 4);
   registerBackgroundHandler("starting-ties", starting.handler);
-  await retryBackgroundJob(history.id, history.data.attempt, "recover-purchased-history");
+  await retryBackgroundJob(history.id, history.data.attempt, "recover-purchased-history", history.data.instanceId);
   await settleBackgroundWork();
   assert.equal(records.get(history.id).data.status, "completed");
   assert.equal(calls, 4, "A newer history validator reuses the purchased response without another request");
   const prepared = await readVillageState();
   assert.deepEqual(prepared.relationshipContext?.reviewedActorIds, ["a", "b"]);
   assert.equal(Object.values(prepared.relationshipContext!.edges)[0].connection, connection);
-  await retryBackgroundJob(history.id, history.data.attempt, "recover-purchased-history");
+  await retryBackgroundJob(history.id, history.data.attempt, "recover-purchased-history", history.data.instanceId);
   assert.equal(calls, 4, "Duplicate retry is idempotent");
   console.log(
     "Background late response: durable evidence, restart, saved response reuse and exactly-once effect passed.",

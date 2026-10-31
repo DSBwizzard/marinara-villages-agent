@@ -1206,6 +1206,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const releaseBackground = configureBackgroundWork(
     createBackgroundWork({
       withRepairWork,
+      withCurrentJobWrite: (work) => villageRepository.withAuthorityLock(work),
       activityChanged: requestVillageRefresh,
       readVillageAuthority,
       mutateVillageAuthority: (update, options) => villageRepository.mutateAuthority(update, options),

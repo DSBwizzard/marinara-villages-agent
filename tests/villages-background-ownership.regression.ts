@@ -1,5 +1,7 @@
 import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { retainBackgroundJob } from "../packages/villages/src/server/adapters/storage/background-responses.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -166,6 +168,7 @@ function fixture(label: string) {
   }
   const suppliedHandlers = new Map<"agenda", Handler>([["agenda", handler()]]);
   const service = createBackgroundWork({
+    withCurrentJobWrite: (work) => work(),
     villagesDocuments: () => documents,
     villagesLogger: () => logger,
     async readVillageState() {
@@ -308,7 +311,7 @@ async function dispatchPreflight() {
         loseEnclosingResult = false;
         stop = f.service.startBackgroundWork();
         const held = (await f.service.backgroundWorkSummaries())[0];
-        await f.service.retryBackgroundJob(held.id, held.attempt, "recover-enclosing-result");
+        await f.service.retryBackgroundJob(held.id, held.attempt, "recover-enclosing-result", held.instanceId);
         await f.service.settleBackgroundWork();
         assert.equal(checks, 1, "Restarted recovery bypasses a new-purchase guard for the saved response");
         assert.equal(f.calls.length, 1);
@@ -563,7 +566,127 @@ async function scopedDispatch() {
     ownerB.dispose();
   }
 }
+async function replacedInstanceCallbacks() {
+  for (const stage of ["provider", "setting", "optional", "result", "owner"] as const) {
+    const f = fixture("recreated-" + stage),
+      entered = deferred(),
+      release = deferred();
+    let optionalCalls = 0,
+      parsed = 0;
+    if (stage !== "provider")
+      f.service.registerBackgroundHandler("agenda", {
+        valid: () => true,
+        async generate() {
+          const complete = f.context.backgroundCalls.getStore()!;
+          const delayed = async () => {
+            entered.resolve();
+            await release.promise;
+            return "old purchased value";
+          };
+          if (stage === "setting") return complete.setting!("delayed-setting", delayed);
+          if (stage === "optional")
+            return complete.optionalCompletion!("delayed-optional", async () => {
+              optionalCalls++;
+              return delayed();
+            });
+          return delayed();
+        },
+        recoverSavedResult() {
+          parsed++;
+          return "must not parse";
+        },
+        apply(state, _input, result) {
+          state.setting = result;
+        },
+      });
+    const stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob(input());
+      if (stage === "provider") await until(() => f.calls.length === 1);
+      else await entered.promise;
+      const old = [...f.records.values()].find((row) => row.kind === "background-work")!;
+      await retainBackgroundJob(f.documents, old.data);
+      const replacement = structuredClone(old);
+      if (stage === "owner") replacement.data.owner = randomUUID();
+      else replacement.data.instanceId = randomUUID();
+      replacement.revision++;
+      Object.assign(replacement.data, {
+        status: "interrupted",
+        steps: [],
+        optionalAttempts: {},
+        settings: {},
+        requests: 0,
+        tokens: null,
+        hasResult: false,
+        result: undefined,
+      });
+      f.records.set(old.id, replacement);
+      const expected = structuredClone(replacement);
+      release.resolve();
+      f.gate.resolve();
+      await f.service.settleBackgroundWork();
+      assert.deepEqual(
+        f.records.get(old.id),
+        expected,
+        stage + " cannot alter a replacement with the same logical ID and counter",
+      );
+      assert.equal(f.world().setting, "", "Old results cannot commit a World effect");
+      if (stage === "provider") {
+        const body = [...f.records.values()].find((row) => row.kind === "generation-response");
+        assert.equal(
+          body.data.instanceId,
+          old.data.instanceId,
+          "Late purchased evidence remains owned by its original instance",
+        );
+      }
+      if (stage === "optional") {
+        assert.equal(optionalCalls, 1);
+        assert(
+          [...f.records.values()].some(
+            (row) =>
+              row.kind === "background-history" &&
+              row.data.instanceId === old.data.instanceId &&
+              row.data.optionalAttempts?.["delayed-optional"]?.result === "old purchased value",
+          ),
+        );
+      }
+      if (stage !== "owner") {
+        await assert.rejects(
+          f.service.retryBackgroundJob(old.id, old.data.attempt, "stale-instance", old.data.instanceId),
+          /changed/,
+        );
+        assert.equal(parsed, 0, "Stale Retry fails before parsing or dispatching work");
+      }
+    } finally {
+      stop();
+      release.resolve();
+      f.gate.resolve();
+      await f.service.settleBackgroundWork();
+    }
+  }
+}
 async function main() {
+  await replacedInstanceCallbacks();
+  const admittedRetry = fixture("explicit-admission-replay");
+  admittedRetry.fail(true);
+  admittedRetry.gate.resolve();
+  const stopAdmittedRetry = admittedRetry.service.startBackgroundWork();
+  try {
+    await admittedRetry.service.queueBackgroundJob({ ...input(), retryActionId: "founding-admission-action" });
+    await admittedRetry.service.settleBackgroundWork();
+    const held = (await admittedRetry.service.backgroundWorkSummaries())[0];
+    await admittedRetry.service.retryBackgroundJob(held.id, held.attempt, "founding-admission-action", held.instanceId);
+    await admittedRetry.service.settleBackgroundWork();
+    assert.equal(
+      admittedRetry.calls.length,
+      1,
+      "Replaying the explicit action which created this job never purchases another request",
+    );
+    assert.equal((await admittedRetry.service.backgroundWorkSummaries())[0].attempt, held.attempt);
+  } finally {
+    stopAdmittedRetry();
+    await admittedRetry.service.settleBackgroundWork();
+  }
   await dispatchPreflight();
   await independentQueues();
   await connectionAndPresenceIsolation();
@@ -644,9 +767,24 @@ async function main() {
     );
     const held = (await replaced.service.backgroundWorkSummaries())[0];
     assert.equal(held.status, "interrupted");
-    await replaced.service.retryBackgroundJob(held.id, held.attempt, "retry-held-replacement");
+    await replaced.service.retryBackgroundJob(held.id, held.attempt, "retry-held-replacement", held.instanceId);
     await replaced.service.settleBackgroundWork();
     assert.equal(replaced.calls.length, 2, "Explicit Retry authorizes the separately admitted replacement.");
+    const replacement = (await replaced.service.backgroundWorkSummaries())[0];
+    assert.notEqual(replacement.instanceId, held.instanceId);
+    await replaced.service.retryBackgroundJob(held.id, held.attempt, "retry-held-replacement", held.instanceId);
+    await replaced.service.retryBackgroundJob(
+      replacement.id,
+      replacement.attempt,
+      "retry-held-replacement",
+      replacement.instanceId,
+    );
+    await replaced.service.settleBackgroundWork();
+    assert.equal(
+      replaced.calls.length,
+      2,
+      "Lost replacement acknowledgements and its original admission action replay without another purchase",
+    );
     assert.equal(
       [...replaced.records.values()].filter((row) => row.kind === "background-connection").length,
       1,

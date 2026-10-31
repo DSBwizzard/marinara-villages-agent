@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
 import {
@@ -111,6 +112,7 @@ for (const failure of ["before", "after"] as const) {
     applied = 0;
   const service = () =>
     createBackgroundWork({
+      withCurrentJobWrite: (work) => work(),
       villagesDocuments: () => db.documents,
       villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
       readVillageState: async () => structuredClone(world),
@@ -182,7 +184,7 @@ for (const failure of ["before", "after"] as const) {
   await background.recoverBackgroundWork();
   const saved = (await background.backgroundWorkSummaries())[0];
   assert.equal(calls, 1, "restart never dispatches a replacement request");
-  await background.retryBackgroundJob(saved.id, saved.attempt, "deliberate-recovery");
+  await background.retryBackgroundJob(saved.id, saved.attempt, "deliberate-recovery", saved.instanceId);
   await background.settleBackgroundWork();
   assert.equal(applied, 1);
   assert.equal(calls, 1, "both lost job acknowledgements reuse the purchased reply");
@@ -202,9 +204,58 @@ for (const failure of ["before", "after"] as const) {
   stop();
 }
 
+// Recreated slots and borrowed purchased replies retain separate physical identities.
+{
+  const db = storage(),
+    store = createBackgroundResponses(db.documents);
+  const original = {
+    instanceId: randomUUID(),
+    id: "same-logical-job",
+    seed: "same-world",
+    kind: "agenda",
+    subjectId: "same-resident",
+    attempt: 9,
+    steps: [{ key: "answer", fingerprint: "same-input", status: "running" }],
+  } as Job;
+  original.steps[0].responseClaim = backgroundResponseClaim(original, 0);
+  const current = { ...structuredClone(original), instanceId: randomUUID() };
+  current.steps[0].responseClaim = backgroundResponseClaim(current, 0);
+  assert.notEqual(current.steps[0].responseClaim.id, original.steps[0].responseClaim.id);
+  await saveClaim(db.documents, original);
+  await retainBackgroundJob(db.documents, nativeBackgroundJob(original));
+  const slot = backgroundSlotId(current);
+  await db.documents.update({
+    id: slot,
+    packageId: "villages",
+    expectedRevision: 1,
+    data: nativeBackgroundJob(current),
+    updatedAt: "",
+  });
+  const oldReply = await store.publish(original, 0, { content: "Original paid reply", finishReason: "stop" });
+  const newReply = await store.publish(current, 0, { content: "Replacement paid reply", finishReason: "stop" });
+  assert.notEqual(oldReply.ref.id, newReply.ref.id);
+  const borrowed = nativeBackgroundJob({
+    ...current,
+    attempt: 1,
+    steps: [{ ...original.steps[0], status: "completed", responseRef: oldReply.ref }],
+  });
+  assert.equal(
+    (await createBackgroundResponses(db.documents).decode(borrowed)).steps[0].response!.content,
+    "Original paid reply",
+  );
+  const foreignPending = structuredClone(borrowed);
+  foreignPending.steps[0].status = "running";
+  delete foreignPending.steps[0].responseRef;
+  assert.throws(() => backgroundResponseOwners(foreignPending), /claim changed/);
+  const malformedBody = structuredClone(db.rows.get(oldReply.ref.id));
+  malformedBody.data.instanceId = current.instanceId;
+  assert.throws(() => validateBackgroundResponse(malformedBody));
+}
+
 const db = storage(),
   store = createBackgroundResponses(db.documents);
 const job = {
+  instanceId: randomUUID(),
   id: "logical-job",
   seed: "world",
   kind: "agenda",
@@ -291,6 +342,7 @@ corruptGate.dispose();
     input: {},
   };
   const logical = {
+    instanceId: randomUUID(),
     ...work,
     finite: false,
     id: backgroundRevision([work.seed, work.kind, work.subjectId, work.revision]),
@@ -341,6 +393,7 @@ corruptGate.dispose();
   const context = createBackgroundContext(),
     world = defaultVillageState();
   const background = createBackgroundWork({
+    withCurrentJobWrite: (work) => work(),
     villagesDocuments: () => selected,
     villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
     readVillageState: async () => world,
@@ -450,6 +503,7 @@ corruptGate.dispose();
     gate = createRepairGate(db.documents);
   const responses = createBackgroundResponses(gate.documents);
   const job = {
+    instanceId: randomUUID(),
     id: "undo-job",
     seed: "undo-world",
     kind: "agenda",
@@ -526,6 +580,7 @@ for (const failure of [
   world.seed = "replacement-evidence";
   let calls = 0;
   const background = createBackgroundWork({
+    withCurrentJobWrite: (work) => work(),
     villagesDocuments: () => gate.documents,
     withRepairWork: (callback) => gate.work(callback),
     villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
@@ -681,6 +736,7 @@ for (const failure of [
 {
   const db = storage();
   const job = {
+    instanceId: randomUUID(),
     id: "fenced-job",
     seed: "fenced-world",
     kind: "agenda",
@@ -790,6 +846,7 @@ for (const failure of [
     for (let attempt = 1; attempt <= 4; attempt++) {
       await gate.work(async () => {
         const job = {
+          instanceId: randomUUID(),
           id: "allocation-job-" + attempt,
           seed: "allocation-world",
           kind: "agenda",
@@ -827,6 +884,7 @@ for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
   const repo = createVillageRepository(() => gate.documents),
     at = "2026-10-31T00:00:00.000Z";
   const job = {
+    instanceId: randomUUID(),
     id: "closed-logical-job",
     seed: "closure-retirement-" + mode,
     kind: "agenda",
@@ -948,6 +1006,7 @@ for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
       let generated = 0,
         applied = 0;
       const bg = createBackgroundWork({
+        withCurrentJobWrite: (work) => work(),
         villagesDocuments: () => gate.documents,
         villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
         readVillageState: () => repo.readAuthority(),
@@ -977,7 +1036,7 @@ for (const mode of ["closed-before", "closed-after", "uncertain", "undo"]) {
       });
       const stop = bg.startBackgroundWork();
       try {
-        await bg.retryBackgroundJob(slot, job.attempt, "closure-replay-test");
+        await bg.retryBackgroundJob(slot, job.attempt, "closure-replay-test", job.instanceId);
         await bg.settleBackgroundWork();
         assert.equal(generated, 0, "archived acknowledgement prevents another provider purchase");
         assert.equal(applied, 0, "archived acknowledgement rejects duplicate effects after the World slot advances");

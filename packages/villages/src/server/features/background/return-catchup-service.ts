@@ -261,7 +261,7 @@ export function createReturnCatchup(ports: Ports) {
           const job = await ports.job("social-recovery", source.id);
           if (job && ["queued", "running"].includes(job.status)) return;
           if (job && ["failed", "interrupted", "paused"].includes(job.status))
-            await ports.retryJob(job.id, job.attempt, actionId);
+            await ports.retryJob(job.id, job.attempt, actionId, job.instanceId);
           else await ports.reinterpret(batch.id, record.opportunityId, actionId);
           return;
         }
@@ -282,7 +282,7 @@ export function createReturnCatchup(ports: Ports) {
       });
       try {
         if (job && ["failed", "interrupted", "paused"].includes(job.status))
-          await ports.retryJob(job.id, job.attempt, actionId);
+          await ports.retryJob(job.id, job.attempt, actionId, job.instanceId);
         // With no saved job, the next poll will admit the original opportunity.
       } catch (error) {
         await update(batch.id, (world) => {
