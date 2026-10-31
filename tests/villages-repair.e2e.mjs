@@ -388,7 +388,8 @@ try {
         .click();
       await page.getByRole("button", { name: "Village setting Setting", exact: true }).click();
       await expect(page.getByText("Current", { exact: true })).toHaveCount(0);
-      await expect(page.getByText("Old setting", { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("textbox", { name: "Place description", exact: true })).toHaveValue("Old setting");
+      await expect(page.locator(".repair-source").getByText("Old setting", { exact: true })).toHaveCount(0);
       await expect(page.getByText("Retained source note", { exact: true })).toHaveCount(1);
       await expect(page.getByLabel("Enabled", { exact: true })).toBeChecked();
       await expect(page.getByLabel("Limit", { exact: true })).toHaveValue("3");

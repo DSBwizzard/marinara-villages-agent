@@ -115,14 +115,25 @@ try {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    const readUntil = async (text) => {
+      await expect
+        .poll(async () => {
+          if (text.test(await page.getByRole("region", { name: "Current paragraph" }).innerText())) return true;
+          await page.getByRole("button", { name: "Next paragraph", exact: true }).evaluate((button) => {
+            if (!button.disabled) button.click();
+          });
+          return false;
+        })
+        .toBe(true);
+    };
     const sendEmpty = page.getByRole("button", { name: "Send", exact: true });
     await expect(sendEmpty).toBeDisabled();
     await composer.fill("I look around.");
     await expect(sendEmpty).toBeEnabled();
     await sendEmpty.click();
     await expect.poll(() => submissions.length).toBe(1);
-    const readNext = page.getByRole("button", { name: "Next paragraph", exact: true });
-    while (await readNext.isEnabled()) await readNext.click();
+    await expect(composer).toHaveValue("");
+    await readUntil(/quiet exterior/);
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet exterior");
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
     await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toHaveCount(0);
@@ -130,14 +141,14 @@ try {
     await composer.fill("I call through the entrance: Is anyone there?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect.poll(() => submissions.length).toBe(2);
+    await expect(composer).toHaveValue("");
     assert.equal(submitted.mode, "chat");
     assert.equal(submitted.targetId, "");
     assert.equal(submitted.contact, undefined);
     assert.match(submitted.message, /call through the entrance/);
     assert.equal(entered, undefined, "an invitation never automatically moves the player");
     await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toHaveCount(0);
-    const next = page.getByRole("button", { name: "Next paragraph", exact: true });
-    if ((await next.isVisible()) && (await next.isEnabled())) await next.click();
+    await readUntil(/Come into our Common Space/);
     await expect(
       page.getByText(remoteDelivery === "loud" ? /calling from inside/i : /through the doorway/i).first(),
     ).toBeVisible();
@@ -150,7 +161,7 @@ try {
     assert.equal(submitted.mode, "chat");
     assert.equal(submitted.targetId, "");
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
-    while (await next.isEnabled()) await next.click();
+    await readUntil(/still listening through the doorway/);
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
     await expect(page.getByLabel("Move to Zone").getByRole("option", { name: /invited/ })).toHaveText(
