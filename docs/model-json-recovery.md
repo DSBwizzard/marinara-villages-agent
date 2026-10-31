@@ -16,6 +16,5 @@ The original completion stays unchanged in provider checkpoints. Repair candidat
 | System intent, exchange, schedule influence and starting ties                 | Bounded object recovery; source hashes, evidence, actor IDs, explicit outcomes and authority remain required                                   |
 | Wish lifecycle                                                                | Bounded object recovery; existing eligibility, affected-person and evidence checks                                                             |
 | Scene narration, speech recovery, effect retry and consequential verification | Bounded recovery before existing schema/identity/privacy checks; existing narrow recovery of untouched Scene core fields remains separate      |
-| Spinoff memory review                                                         | Bounded model-object recovery followed by transcript and memory validation                                                                     |
 
 Saved settings, persisted JSON, image-service protocol payloads, authored data and typed Decisions responses do not acquire model-text repair. The existing narrowly scoped Scene partial-core recovery is preserved, not broadened into invented effects or completed updates. No repair changes request fingerprints, provider budgets, retry authorization or timeout policy.

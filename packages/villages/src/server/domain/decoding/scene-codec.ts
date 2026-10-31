@@ -85,14 +85,7 @@ export function coerceSession(value: unknown): VenueScene {
   )
     throw conflict("Stored Scene history requires explicit hydration.");
   if (raw.version !== 3) throw conflict("Unsupported Scene format. Its saved data is preserved.");
-  if (
-    raw.spinoff &&
-    (typeof raw.spinoff !== "object" ||
-      !["prepared", "running", "returned", "resolved"].includes(String(asRecord(raw.spinoff).status)) ||
-      !asRecord(raw.spinoff).id ||
-      !asRecord(raw.spinoff).sessionId)
-  )
-    throw conflict("The saved spinoff is malformed. Its ownership must be recovered before continuing.");
+  if (raw.spinoff !== undefined) throw conflict("This Scene uses a retired feature. Its saved data is preserved.");
   if (raw.memoryMode && raw.memoryMode !== "live" && raw.status !== "closed")
     throw conflict("This Scene uses a retired memory format and cannot continue.");
   const participants = Array.isArray(raw.participants)
@@ -177,7 +170,6 @@ export function coerceSession(value: unknown): VenueScene {
     : [];
   return {
     version: 3,
-    ...(raw.spinoff ? { spinoff: structuredClone(raw.spinoff) as VenueScene["spinoff"] } : {}),
     changeSequence: Math.max(0, Math.floor(Number(raw.changeSequence) || 0)),
     ...(raw.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
     ...(raw.processingVersion === 1 ? { processingVersion: 1 as const } : {}),

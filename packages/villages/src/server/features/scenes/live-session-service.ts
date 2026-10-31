@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import { spinoffLocksScene } from "../../domain/models/spinoff-model.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
 import { accessExits, captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
@@ -38,7 +37,6 @@ export function createLiveScenes({
   mutateVillageState,
 }: LiveScenePorts) {
   async function alignSceneClock(session: VenueScene): Promise<VenueScene> {
-    if (spinoffLocksScene(session.spinoff)) return session;
     const total = villageClockShiftMs();
     if (session.status === "closed" || (session.clockShiftMs ?? 0) === total) return session;
     return changeSession(session.id, (current) => {
@@ -73,7 +71,6 @@ export function createLiveScenes({
     const active = await readActive();
     if (!active.sessionId) return null;
     let session = await readSession(active.sessionId);
-    if (spinoffLocksScene(session.spinoff)) return session;
     if ((await observeVillageClock())?.paused) return session;
     session = await alignSceneClock(session);
     if (session.status === "closed") {
@@ -87,8 +84,6 @@ export function createLiveScenes({
 
   async function requireLiveVenueSession(id: string): Promise<VenueScene> {
     const session = await alignSceneClock(await readSession(id));
-    if (spinoffLocksScene(session.spinoff))
-      throw conflict("Finish or discard your spinoff before continuing in Villages.");
     if (session.status === "closed") throw conflict("That Scene has already ended.");
     if ((await readActive()).sessionId !== id) throw conflict("That Scene is not active.");
     return refreshZoneParticipants(session);

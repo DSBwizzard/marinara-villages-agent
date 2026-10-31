@@ -217,22 +217,6 @@
       "path": "/rooms/zone"
     },
     {
-      "method": "get",
-      "path": "/spinoffs/active"
-    },
-    {
-      "method": "post",
-      "path": "/spinoffs/begin"
-    },
-    {
-      "method": "post",
-      "path": "/spinoffs/prepare"
-    },
-    {
-      "method": "post",
-      "path": "/spinoffs/resolve"
-    },
-    {
       "method": "put",
       "path": "/venues/:venueId/layout"
     },

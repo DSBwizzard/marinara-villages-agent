@@ -27,7 +27,7 @@
 // `renderVillagesTurnBeats`, which joins the beats' own text, so a stored line
 // reads exactly as it did before tags existed and the SIX other readers of a
 // transcript — the memory writer, the agenda writer, the SCENE
-// lane, storyboard and the spin-off — are reading prose. The register travels
+// lane and storyboard — are reading prose. The register travels
 // beside the text in `VillagesTurnBeat[]`, and only the tab that draws it knows
 // it is there.
 //

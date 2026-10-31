@@ -219,7 +219,6 @@ export function RoomPanel({
   spriteCardFlipEnabled,
   onViewVenue,
   onEnd,
-  onStartSpinoff,
   onRetryGreeting,
   onContinueWithoutGreeting,
   notices,
@@ -278,7 +277,6 @@ export function RoomPanel({
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
   onEnd: () => void;
-  onStartSpinoff?: () => void;
   onRetryGreeting: () => void;
   onContinueWithoutGreeting: () => void;
   notices: RoomRecordEvent[];
@@ -441,7 +439,7 @@ export function RoomPanel({
   const errorItems: SceneErrorItem[] = sceneErrors.map((item) => ({
     ...item,
     fields:
-      item.id === "sprite-setting" || item.id === "decisions" || item.id === "diagnostics" || item.id === "spinoff"
+      item.id === "sprite-setting" || item.id === "decisions" || item.id === "diagnostics"
         ? [{ label: "Scene", value: room.placeName }, ...(item.fields ?? [])]
         : [...requestFields, ...(item.fields ?? [])],
     actions: item.actions ?? (["room", "greeting", "operation"].includes(item.id) ? openingActions : undefined),
@@ -866,19 +864,6 @@ export function RoomPanel({
                   }}
                 >
                   View Mailbox
-                </button>
-              ) : null}
-              {onStartSpinoff ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  disabled={busy || ended}
-                  onClick={() => {
-                    setActionsOpen(false);
-                    onStartSpinoff();
-                  }}
-                >
-                  Start a spinoff
                 </button>
               ) : null}
               {onMap ? (

@@ -63,14 +63,13 @@ try {
       fulfill(route, {
         status: 200,
         contentType: "text/html",
-        body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:calc(100% - 180px)}</style><header style="height:180px"></header><marinara-capability-villages></marinara-capability-villages><script>document.querySelector('marinara-capability-villages').capabilityProps={startScene:async()=>null}</script>`,
+        body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:calc(100% - 180px)}</style><header style="height:180px"></header><marinara-capability-villages></marinara-capability-villages><script>document.querySelector('marinara-capability-villages').capabilityProps={}</script>`,
       }),
     );
     await context.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = snapshot;
-      if (path.endsWith("/spinoffs/active")) value = { spinoff: null };
-      else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
+      if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
       else if (path.endsWith("/rooms/zone")) {
         const body = route.request().postDataJSON();
         if (staleMove || body.expectedSceneRevision !== scene.sceneRevision) {
@@ -139,14 +138,16 @@ try {
     const composerBefore = await composer.boundingBox();
     assert.ok(composerBefore && composerBefore.y + composerBefore.height <= 844, "text entry fits the host panel");
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Start a spinoff", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Spinoff", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Spinoff", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Start a spinoff", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await expect(composer).toHaveValue("Keep this draft");
-    assert.deepEqual(await composer.boundingBox(), composerBefore, "opening and cancelling preserves Scene geometry");
+    assert.deepEqual(
+      await composer.boundingBox(),
+      composerBefore,
+      "opening and closing Scene actions preserves geometry",
+    );
     if (process.env.VILLAGES_VISUAL_OUTPUT)
-      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "spinoff-cancel-" + width + ".png") });
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
     assert.deepEqual(
       await page.getByRole("menu", { name: "Scene mode" }).getByRole("menuitemradio").allTextContents(),

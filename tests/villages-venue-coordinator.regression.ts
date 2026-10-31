@@ -1197,14 +1197,14 @@ async function main() {
     row("validation").data.lastActivityAt = new Date(Date.now() - 31 * 60_000).toISOString();
     await coordinateVenue("validation", "after-absence", "turn", {}, 0, undefined, () => paid());
     assert.equal(row("validation").data.operation.id, "after-absence", "age does not refuse a valid new turn");
-    seed("spinoff-owned");
-    row("spinoff-owned").data.spinoff = { status: "running" };
+    seed("retired-feature");
+    row("retired-feature").data.spinoff = { status: "running" };
     await assert.rejects(
       () =>
-        coordinateVenue("spinoff-owned", "blocked", "turn", {}, 0, undefined, async () =>
-          assert.fail("a Village turn must not run while Engine owns its spinoff"),
+        coordinateVenue("retired-feature", "blocked", "turn", {}, 0, undefined, async () =>
+          assert.fail("a retired Scene must reject before running a Village turn"),
         ),
-      /spinoff/,
+      /retired feature/,
     );
     seed("timed");
     await coordinateVenue("timed", "timed-turn", "turn", {}, 0, undefined, async () => {

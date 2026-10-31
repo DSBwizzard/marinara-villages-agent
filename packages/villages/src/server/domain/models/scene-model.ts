@@ -162,7 +162,6 @@ export type VenueScene = {
   openingIntroductionResidentId?: string;
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
-  spinoff?: import("./spinoff-model.js").VillageSpinoff;
   version: 3;
   processingVersion?: 1;
   changeSequence?: number;
