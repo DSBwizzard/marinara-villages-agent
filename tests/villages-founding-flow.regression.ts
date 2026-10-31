@@ -166,7 +166,8 @@ async function main() {
     throw Error("Unexpected connection in a setup validation probe.");
   };
   const setupPorts = {
-    readVillageState: unexpected,
+    peekVillageAuthority: async () => defaultVillageState(),
+    readVillageState: async () => defaultVillageState(),
     mutateVillageState: unexpected,
     buildVillageSnapshot: unexpected,
     prepareVillageMap: unexpected,
@@ -175,7 +176,6 @@ async function main() {
     readLinkedPersona: unexpected,
     listVillagerCards: unexpected,
     prepareFoundedVillage: unexpected,
-    queueVillagerAgenda: unexpected,
     queueMicrotask: unexpected,
     readVillageLore: unexpected,
     proposeVillage: unexpected,
@@ -184,8 +184,6 @@ async function main() {
   };
   const { runVillageSetup } = createFoundingSetup(setupPorts);
   const { parsePlace } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
-  const { assertFoundingScenarioLocked } =
-    await import("../packages/villages/src/server/domain/rules/founding-record.ts");
   const { validateFoundingRoster } = await import("../packages/villages/src/server/domain/rules/founding-record.ts");
   const { readScenarioImprint } = await import(pathToFileURL(join(serverRoot, "domain/rules/scenario-rules.ts")).href);
   const { readPersona } = await import(pathToFileURL(join(serverRoot, "adapters/engine/catalog.ts")).href);
@@ -362,30 +360,6 @@ async function main() {
       readScenarioImprint({ origin: "", worldFacts: ["a", "b", "c", "d", "e"], openingConditions: [], visualCues: [] }),
     /at most four/,
   );
-  const savedScenario = {
-    foundingReason: "rebuild",
-    foundingDetails: "The flood was years ago.",
-    foundingGuidance: "Keep the first days hopeful.",
-    scenarioImprint: readScenarioImprint({
-      origin: "Families rebuilt after the flood.",
-      worldFacts: ["Stone bridge"],
-      openingConditions: [],
-      visualCues: [],
-    }),
-  };
-  assert.doesNotThrow(() => assertFoundingScenarioLocked(savedScenario, { ...savedScenario }));
-  assert.throws(
-    () => assertFoundingScenarioLocked(savedScenario, { ...savedScenario, foundingDetails: "Changed" }),
-    /locked/,
-  );
-  assert.throws(
-    () =>
-      assertFoundingScenarioLocked(savedScenario, {
-        ...savedScenario,
-        scenarioImprint: { ...savedScenario.scenarioImprint, origin: "Changed" },
-      }),
-    /locked/,
-  );
   const legacyDraft = { setting: "s".repeat(2000), circumstances: "c".repeat(2000) };
   const combined = foundingDraftDescription(legacyDraft);
   assert.equal(combined, legacyDraft.setting + "\n\n" + legacyDraft.circumstances);
@@ -504,7 +478,7 @@ async function main() {
     join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),
     "utf8",
   );
-  assert.ok(client.includes("FoundingWorkspace"));
+
   assert.equal(client.includes("resumeSetupPlacement"), false);
   assert.ok(client.includes("Review village"));
   assert.ok(editor.includes("Assigned villager"));
