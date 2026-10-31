@@ -95,6 +95,11 @@ function socialEntry(raw: unknown, seed: string, into: CapturedAdmissionOwners):
   relationship(raw, "relationshipHead", scope, into);
   return scope;
 }
+export function capturedSocialOwners(raw: unknown, seed: string): CapturedAdmissionOwners {
+  const into = emptyOwners();
+  socialEntry(raw, seed, into);
+  return into;
+}
 
 function input(kind: BackgroundKind, raw: unknown, seed: string, into: CapturedAdmissionOwners) {
   if (!["resident-planning", "personal-mail", "social-recovery"].includes(kind)) return;

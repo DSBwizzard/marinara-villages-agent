@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { AsyncResource } from "node:async_hooks";
 import { mock } from "node:test";
 import { createCapturedAdmissions } from "../packages/villages/src/server/adapters/storage/captured-admission-store.js";
 import {
@@ -17,6 +18,14 @@ import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { fixtureWish, wishTime } from "./helpers/social-wishes-fixture.js";
 import { withRepairWork } from "../packages/villages/src/server/adapters/storage/repair-gate.js";
 import { socialContextState } from "../packages/villages/src/server/domain/rules/social-context.js";
+import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { createVillageStateService } from "../packages/villages/src/server/features/world/village-state-service.js";
+import {
+  captureResidentActivity,
+  copySocialOutboxEntry,
+} from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 
 const scope = { seed: "captured-admissions", setupAt: wishTime() };
 const head = encodeWishHistory([fixtureWish({ wish: "Preserve exact café 東京 evidence" })], {
@@ -69,6 +78,130 @@ assert.deepEqual(
   [original, review],
   "frozen and review projections remain distinct",
 );
+// A foreign authority writer waits for selected settlement, including through the real repair simulation.
+{
+  const f = sceneHistoryFixture(),
+    repository = createVillageRepository(() => f.gate.documents),
+    store = createCapturedAdmissions(f.gate.documents),
+    foreign = new AsyncResource("foreign-capture-reset");
+  try {
+    const source = (world: ReturnType<typeof defaultVillageState>) => ({
+      id: "protected-source",
+      seed: world.seed,
+      at: wishTime(),
+      candidates: [],
+      proposal: {},
+      opportunity: {
+        id: "routine",
+        kind: "routine" as const,
+        actorIds: ["ada"],
+        venueId: "",
+        startsAt: wishTime(),
+        endsAt: wishTime(),
+        facts: [],
+      },
+      admitted: captureResidentActivity(world),
+      relationshipSnapshot: defaultRelationshipState(world.seed),
+    });
+    await repository.mutateAuthority((state) => {
+      Object.assign(state, scope);
+      state.villagers = [
+        {
+          characterId: "ada",
+          cardSnapshot: { id: "ada", revision: 1, sourceStatus: "available", name: "Ada", capturedAt: wishTime() },
+          wishes: [],
+        },
+      ] as any;
+      state.socialOutbox = [source(state)];
+    });
+    const village = createVillageStateService(repository, () => ({
+      readRelationshipState: async (seed) => defaultRelationshipState(seed),
+      reconcileRelationships() {},
+      persistRelationshipAuthority: async () => {},
+      processSocialOutbox: async () => false,
+      projectSocialActivities() {},
+      reconcileSocialPlans() {},
+    }));
+    let resume!: () => void,
+      started!: () => void,
+      paused = true;
+    const held = new Promise<void>((resolve) => {
+        resume = resolve;
+      }),
+      waiting = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+    const selected: string[] = [];
+    const service = createRelationshipSocial({
+      withVillageSceneAcceptance: (work, options) =>
+        f.gate.work(() => village.withVillageSceneAcceptance(work, options)),
+      readSocialEntry: async (value, seed) => {
+        selected.push(value.id);
+        if (paused) {
+          started();
+          await held;
+          throw new Error("Missing selected history");
+        }
+        return store.readSocialEntry(value, seed);
+      },
+      socialIdentity: store.socialIdentity,
+      mutateVillageState: village.mutateVillageState,
+      mutateRelationships: async (seed, update) => {
+        const social = defaultRelationshipState(seed);
+        await update(social);
+        return social;
+      },
+    });
+    const pending = service.processSocialOutbox(await village.readVillageSnapshot());
+    await waiting;
+    let resetApplied = false;
+    const resetting = foreign.runInAsyncScope(() =>
+      repository.mutateAuthority(
+        (state) => {
+          resetApplied = true;
+          state.seed = "reset-world";
+          state.setupAt = wishTime(1);
+          state.socialOutbox = [source(state)];
+        },
+        { memories: true, wishes: true },
+      ),
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const wasBlocked = !resetApplied;
+    resume();
+    await Promise.all([pending, resetting]);
+    assert(wasBlocked, "A foreign authority writer waits for selected settlement to release its actual lock.");
+    const current = await village.readVillageSnapshot();
+    assert.equal(current.seed, "reset-world");
+    assert.equal(current.socialOutbox![0].error, undefined, "The reset's new source never receives the old failure.");
+    paused = false;
+    const staleHint = { ...current, socialOutbox: [{ ...source(current), id: "old-never-saved" }] };
+    const staged = await f.gate.simulate(() => service.processSocialOutbox(staleHint));
+    assert.equal(staged.value, true);
+    assert.deepEqual(
+      selected,
+      ["protected-source", "protected-source"],
+      "Settlement selects fresh authority rather than the caller's stale outbox array.",
+    );
+    assert.equal(
+      (await repository.readAuthority()).socialOutbox!.length,
+      1,
+      "Simulation does not publish the staged settlement.",
+    );
+    await f.gate.commit("captured-settlement", staged.transaction);
+    assert.equal((await repository.readAuthority()).socialOutbox?.[0]?.error, undefined);
+    assert.equal(
+      (await repository.readAuthority()).socialOutbox!.length,
+      0,
+      "The admitted staged owner publishes on commit.",
+    );
+  } finally {
+    foreign.emitDestroy();
+    f.release();
+    f.gate.dispose();
+  }
+}
+
 const world = {
   version: 13,
   ...scope,
@@ -291,6 +424,20 @@ for (const change of [
     );
 
     const stringify = JSON.stringify;
+    const socialMetadata = {
+      id: "captured-source",
+      seed: scope.seed,
+      at: wishTime(),
+      opportunity: { actorIds: ["ada"] },
+      candidates: [],
+      proposal: {},
+    };
+    const comparison = {
+        ...socialMetadata,
+        admitted: restored.admitted,
+        relationshipSnapshot: restored.context.social.state,
+      },
+      nativeComparison = { ...socialMetadata, admitted: native.admitted, relationshipHead: native.context.social.head };
     let serialized = 0,
       interior = false,
       maxSerialized = 0,
@@ -309,6 +456,10 @@ for (const change of [
         f.reset();
         serialized = 0;
         await withRepairWork(async () => {
+          assert.equal(
+            restarted.socialIdentity(comparison as any, scope),
+            restarted.socialIdentity(nativeComparison as any, scope),
+          );
           const owner = await f.gate.documents.getById("villages", "captured-job");
           const prepared = await restarted.prepareInput(
             "resident-planning",
@@ -366,6 +517,32 @@ for (const change of [
     const socialRead = await store.readInput("social-recovery", encodedSocial, scope.seed);
     assert.deepEqual(socialRead.entry.relationshipSnapshot, socialInput.entry.relationshipSnapshot);
     assert.deepEqual(socialRead.social, socialInput.social);
+    assert.equal(store.socialIdentity(socialRead.entry, scope), store.socialIdentity(encodedSocial.entry, scope));
+    const unknownSource = {
+      ...socialInput.entry,
+      admitted: { ...logicalFrame, villagers: logicalFrame.villagers.map((row) => ({ ...row, wishes: [] })) },
+      relationshipSnapshot: undefined,
+    };
+    const unknownWorld = await withRepairWork(() =>
+      store.prepareWorld({ version: 13, ...scope, socialOutbox: [unknownSource] }, none),
+    );
+    const unknownEntry = await store.readSocialEntry(unknownWorld.socialOutbox[0], scope.seed);
+    assert.equal(unknownEntry.relationshipSnapshot, undefined);
+    const republishedUnknown = await withRepairWork(() =>
+      store.prepareWorld(
+        {
+          version: 13,
+          ...scope,
+          socialOutbox: [copySocialOutboxEntry(unknownEntry)],
+        },
+        capturedWorldOwners({ version: 13, ...scope, ...unknownWorld }),
+      ),
+    );
+    assert.equal(
+      republishedUnknown.socialOutbox[0].relationshipHead,
+      null,
+      "Copying and publishing unknown context cannot manufacture a known-empty baseline.",
+    );
     const mailInput = {
       seed: scope.seed,
       residentId: "ada",
@@ -470,6 +647,265 @@ for (const change of [
       before,
       "Warm decoded data cannot republish a native reference with a missing dependency.",
     );
+  } finally {
+    f.release();
+    f.gate.dispose();
+  }
+}
+
+// The real settlement service loads only its selected eight entries, including native input failure handling.
+{
+  const f = sceneHistoryFixture(),
+    store = createCapturedAdmissions(f.gate.documents);
+  try {
+    const world = defaultVillageState();
+    Object.assign(world, scope);
+    const person = { characterId: "ada", cardSnapshot: { name: "Ada", capturedAt: "first-incarnation" }, wishes: [] };
+    world.villagers = [person] as any;
+    const social = defaultRelationshipState(scope.seed);
+    const source = {
+      id: "selected:0",
+      seed: scope.seed,
+      at: wishTime(),
+      candidates: [],
+      proposal: {},
+      opportunity: {
+        id: "routine",
+        kind: "routine",
+        actorIds: ["ada"],
+        venueId: "",
+        startsAt: wishTime(),
+        endsAt: wishTime(),
+        facts: [],
+      },
+      admitted: { ...scope, villagers: [person] },
+      relationshipSnapshot: social,
+    };
+    const outboxes = await withRepairWork(() =>
+      store.prepareWorld({ version: 13, ...scope, socialOutbox: [source] }, { wishes: [], relationships: [] }),
+    );
+    world.socialOutbox = Array.from({ length: 9 }, (_, index) => ({
+      ...structuredClone(outboxes.socialOutbox[0]),
+      id: "selected:" + index,
+    }));
+    const last = world.socialOutbox[8] as any;
+    last.admitted.villagers[0].wishHead = encodeWishHistory([fixtureWish({ wish: "Missing unselected history" })], {
+      ...scope,
+      actorId: "ada",
+    }).head;
+    const loaded: string[] = [];
+    let authorityReads = 0;
+    const service = createRelationshipSocial({
+      withVillageSceneAcceptance: async (work) => {
+        authorityReads++;
+        return work(world);
+      },
+      readSocialEntry: (value, seed) => {
+        loaded.push(value.id);
+        return store.readSocialEntry(value, seed);
+      },
+      socialIdentity: store.socialIdentity,
+      mutateVillageState: async (update) => {
+        await update(world);
+        return world;
+      },
+      mutateRelationships: async (_seed, update) => {
+        await update(social);
+        return social;
+      },
+    });
+    assert.equal(await service.processSocialOutbox(world), true);
+    assert.deepEqual(
+      loaded,
+      Array.from({ length: 8 }, (_, index) => "selected:" + index),
+    );
+    assert.equal(world.socialOutbox.length, 1);
+    assert.equal(world.socialOutbox[0].id, "selected:8");
+    assert.equal(world.socialOutbox[0].error, undefined, "An unselected body is not read or replaced.");
+    await service.processSocialOutbox(world);
+    assert.equal(world.socialOutbox.length, 1, "A missing selected history remains held for recovery.");
+    assert.match(world.socialOutbox[0].error!, /history page is missing/);
+    assert.deepEqual(
+      loaded,
+      Array.from({ length: 9 }, (_, index) => "selected:" + index),
+    );
+    assert.equal(social.socialEncounters.length, 0);
+    const beforeIdle = authorityReads;
+    assert.equal(await service.processSocialOutbox(world), false);
+    assert.equal(authorityReads, beforeIdle, "Held work does not add an ordinary authority read.");
+    world.socialOutbox = [];
+    assert.equal(await service.processSocialOutbox(world), false);
+    assert.equal(authorityReads, beforeIdle, "An empty outbox does not add an ordinary authority read.");
+    for (const change of [
+      (value: any) => {
+        delete value.relationshipHead;
+      },
+      (value: any) => {
+        delete value.admitted.admissionFormat;
+      },
+      (value: any) => {
+        value.admitted.villagers[0].wishes = [];
+      },
+    ]) {
+      const invalid = structuredClone(outboxes.socialOutbox[0]);
+      change(invalid);
+      await assert.rejects(store.readSocialEntry(invalid, scope.seed));
+      assert.throws(() => store.socialIdentity(invalid, scope));
+      world.socialOutbox = [invalid];
+      await service.processSocialOutbox(world);
+      assert.equal(world.socialOutbox.length, 1, "Malformed captured roles cannot fall through to live authority.");
+      assert.equal(world.socialOutbox[0].processed, undefined);
+      assert.equal(social.socialEncounters.length, 0);
+    }
+    const mail = await withRepairWork(() =>
+      store.prepareInput(
+        "personal-mail",
+        {
+          seed: scope.seed,
+          residentId: "ada",
+          incarnation: "first-incarnation",
+          admitted: { ...defaultVillageState(), ...scope, villagers: [person], relationshipContext: social },
+        },
+        scope.seed,
+        { wishes: [], relationships: [] },
+      ),
+    );
+    for (const change of [
+      (value: any) => {
+        delete value.admitted.admissionFormat;
+      },
+      (value: any) => {
+        delete value.admitted.relationshipHead;
+      },
+      (value: any) => {
+        delete value.admitted.admissionFormat;
+        delete value.admitted.relationshipHead;
+        delete value.admitted.villagers[0].wishHead;
+      },
+    ]) {
+      const invalid = structuredClone(mail);
+      change(invalid);
+      await assert.rejects(store.readMailInput(invalid, scope.seed));
+    }
+    for (const reset of [false, true]) {
+      const old = structuredClone(outboxes.socialOutbox[0]);
+      world.seed = scope.seed;
+      world.setupAt = scope.setupAt;
+      world.socialOutbox = [old];
+      let resume!: () => void, started!: () => void;
+      const held = new Promise<void>((resolve) => {
+          resume = resolve;
+        }),
+        waiting = new Promise<void>((resolve) => {
+          started = resolve;
+        });
+      const racing = createRelationshipSocial({
+        withVillageSceneAcceptance: async (work) => work(world),
+        readSocialEntry: async () => {
+          started();
+          await held;
+          throw new Error("Missing selected history");
+        },
+        socialIdentity: store.socialIdentity,
+        mutateVillageState: async (update) => {
+          await update(world);
+          return world;
+        },
+        mutateRelationships: async () => {
+          throw new Error("An obsolete source must not apply relationships.");
+        },
+      });
+      const pending = racing.processSocialOutbox(world);
+      await waiting;
+      const replacement = structuredClone(old);
+      replacement.proposal = { encounter: { lines: ["New source"] } };
+      if (reset) {
+        world.seed = replacement.seed = replacement.admitted.seed = "new-world";
+        world.setupAt = replacement.admitted.setupAt = wishTime(1);
+        replacement.relationshipHead = null;
+      }
+      world.socialOutbox = [replacement];
+      resume();
+      await pending;
+      assert.equal(replacement.error, undefined, "An old hydration failure cannot mark a newer source as failed.");
+      assert.equal(replacement.reinterpretRequired, undefined);
+    }
+    world.seed = scope.seed;
+    world.setupAt = scope.setupAt;
+    world.relationshipContext = social;
+    const older = structuredClone(outboxes.socialOutbox[0]);
+    older.error = "Saved interpretation needs review";
+    older.reinterpretRequired = true;
+    older.proposal = { encounter: { lines: [{ speakerId: "ada", text: "Exact old source" }] } };
+    world.socialOutbox = [older];
+    let resumeRetry!: () => void,
+      retryStarted!: () => void,
+      interpretations = 0;
+    const heldRetry = new Promise<void>((resolve) => {
+        resumeRetry = resolve;
+      }),
+      retryWaiting = new Promise<void>((resolve) => {
+        retryStarted = resolve;
+      });
+    const retry = createRelationshipSocial({
+      withVillageSceneAcceptance: async (work) => work(world),
+      readVillageSnapshot: async () => structuredClone(world),
+      readSocialEntry: async (value, seed) => {
+        retryStarted();
+        await heldRetry;
+        return store.readSocialEntry(value, seed);
+      },
+      socialIdentity: store.socialIdentity,
+      mutateVillageState: async (update) => {
+        await update(world);
+        return world;
+      },
+      mutateRelationships: async () => social,
+      interpretSocialSource: async () => {
+        interpretations++;
+        return {};
+      },
+      queueBackgroundJob: async (work) => {
+        if (!retry.handler.valid(world, work.input)) return;
+        const result = await retry.handler.generate(work.input);
+        retry.handler.apply(world, work.input, result, { retrying: false });
+      },
+    });
+    const recovering = retry.recover(older.id, { requestId: "stale-normal-recovery", reinterpret: true });
+    await retryWaiting;
+    const newer = structuredClone(older);
+    newer.admitted.villagers[0].cardSnapshot.name = "Newly captured Ada";
+    newer.proposal = { encounter: { lines: [{ speakerId: "ada", text: "Exact newer source" }] } };
+    world.socialOutbox = [newer];
+    resumeRetry();
+    await recovering;
+    assert.equal(interpretations, 0, "A delayed normal Retry cannot purchase interpretation of a replaced source.");
+    assert.equal(world.socialOutbox[0].admitted!.villagers[0].cardSnapshot.name, "Newly captured Ada");
+
+    let calls = 0;
+    const generation = createRelationshipSocial({
+      withVillageSceneAcceptance: async (work) => work(world),
+      readSocialEntry: store.readSocialEntry,
+      socialIdentity: store.socialIdentity,
+      mutateVillageState: async () => world,
+      mutateRelationships: async () => social,
+      interpretSocialSource: async () => {
+        calls++;
+        throw new Error("Unexpected model work");
+      },
+    });
+    await assert.rejects(
+      () =>
+        generation.handler.generate({
+          entry: source,
+          social: undefined,
+          seed: scope.seed,
+          admittedAt: wishTime(),
+          memory: undefined,
+        }),
+      /captured relationship review context is unavailable/,
+    );
+    assert.equal(calls, 0);
   } finally {
     f.release();
     f.gate.dispose();

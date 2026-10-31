@@ -19,6 +19,7 @@ import {
   sceneContinuityView,
 } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { readEncounter } from "../packages/villages/src/server/domain/rules/social-encounter.js";
+import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
 import { createResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
 import { createVillageSnapshot } from "../packages/villages/src/server/features/world/snapshot-service.js";
@@ -221,7 +222,14 @@ for (const duration of [90 * 60_000, day, 7 * day, 30 * day]) {
     const positions = villagePresence(state, 600, now);
     assert.equal(positions.get("b")?.zoneId, "common", "An advanced opening-hour check uses Village civil time.");
     const opportunity = { id: "meeting", kind: "encounter", actorIds: ["a", "b"], venueId: cafe.id, zoneId: "common" };
-    const entry = { id: "meeting-entry", at: now.toISOString(), opportunity } as any;
+    const entry = {
+      id: "meeting-entry",
+      seed: state.seed,
+      at: now.toISOString(),
+      opportunity,
+      admitted: captureResidentActivity(state),
+      relationshipSnapshot: structuredClone(state.relationshipContext ?? defaultRelationshipState(state.seed)),
+    } as any;
     const reply = {
       opportunityId: opportunity.id,
       lines: [

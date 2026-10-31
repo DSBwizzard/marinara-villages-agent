@@ -1,4 +1,5 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+import { createCapturedAdmissions } from "../../packages/villages/src/server/adapters/storage/captured-admission-store.js";
 import type { Job } from "../../packages/villages/src/server/domain/models/background-model.js";
 import {
   backgroundResponseClaim,
@@ -53,6 +54,11 @@ import {
 const wrappers = new WeakMap<CapabilityDocumentStore, CapabilityDocumentStore>();
 const wrapped = new WeakSet<CapabilityDocumentStore>();
 const identities = createRelationshipPayloadStore({} as CapabilityDocumentStore);
+export const fixtureCapturedAdmissions = createCapturedAdmissions({
+  getById: async () => {
+    throw new Error("This fixture authors logical captures, not native history references.");
+  },
+} as unknown as CapabilityDocumentStore);
 export function authorBackgroundFixture(rows: Map<string, any>, raw: unknown) {
   const job = structuredClone(raw) as Job & { responseStorage?: number };
   if (

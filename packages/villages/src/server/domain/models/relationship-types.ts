@@ -1,5 +1,6 @@
 /** Old social contracts are never silently converted. */
 export const SOCIAL_CONTRACT_VERSION = 2;
+export type RelationshipHead = { id: string; digest: string };
 export type SocialEvidence = {
   id: string;
   sourceId: string;

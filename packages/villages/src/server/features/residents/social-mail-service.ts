@@ -4,7 +4,12 @@ import { coerceSession } from "../../domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../../domain/decoding/village-codec.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { RelationshipEvidenceLine, RelationshipReview } from "../../domain/models/relationship-types.js";
-import type { SocialMailInput, SocialMailInterpretation, SocialMailOutbox } from "../../domain/models/social-mail.js";
+import type {
+  SocialMailInput,
+  SocialMailInterpretation,
+  SocialMailOutbox,
+  WorldSocialMailOutbox,
+} from "../../domain/models/social-mail.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
@@ -63,6 +68,7 @@ import {
 } from "../../domain/rules/social-wishes.js";
 
 export interface SocialMailPorts {
+  readMailInput: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["readMailInput"];
   withWork: typeof import("../../adapters/storage/repair-gate.js").withRepairWork;
   processLiveMemories?: typeof import("./live-memory.js").processLiveMemories;
   readVillageSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
@@ -515,8 +521,9 @@ export function createSocialMail(ports: SocialMailPorts) {
     });
     await publishReadWishMail(input.seed, input.threadId);
   }
-  async function applyEntry(entry: SocialMailOutbox) {
-    const { input, result } = entry;
+  async function applyEntry(entry: WorldSocialMailOutbox) {
+    const input = await ports.readMailInput(entry.input, entry.input.seed),
+      result = entry.result;
     const village = await ports.readVillageSnapshot({ memories: true });
     if (village.seed !== input.seed) throw conflict("Village identity changed.");
     let current = await ports.readRelationshipState(input.seed);
@@ -767,7 +774,7 @@ export function createSocialMail(ports: SocialMailPorts) {
     }
     return true;
   }
-  async function retireChangedCorrespondent(entry: SocialMailOutbox, invalidLetter = false): Promise<boolean> {
+  async function retireChangedCorrespondent(entry: WorldSocialMailOutbox, invalidLetter = false): Promise<boolean> {
     const input = entry.input;
     let retired = false;
     await ports.withVillageSceneAcceptance(async (current) => {
@@ -1103,14 +1110,15 @@ export function createSocialMail(ports: SocialMailPorts) {
       entry.input.mode !== "resident" &&
       !social.mailDeliveries[messageId + ":reply"] &&
       hasPersonalLetterAction(entry.result.replyText, name);
-    const fingerprint = (row: SocialMailOutbox) =>
+    const fingerprint = (row: WorldSocialMailOutbox) =>
       semanticHash([row.id, row.input.sourceHash, row.input.admittedAt, row.result, row.error]);
     const rewriteAction = replaceInvalidReply && entry ? "mail-rewrite-" + fingerprint(entry).slice(0, 32) : "";
     // An older saved reply may have failed after source delivery but before its Memory settled.
     // Preserve that local work before a replacement generation can overwrite the saved result.
     if (replaceInvalidReply && entry && social.mailDeliveries[messageId]) {
-      await settleWishMail(entry.input, entry.result, "source");
-      await rememberResidentMail(entry.input, entry.result, "source");
+      const input = await ports.readMailInput(entry.input, village.seed);
+      await settleWishMail(input, entry.result, "source");
+      await rememberResidentMail(input, entry.result, "source");
     }
     if (entry?.error && !entry.reinterpretRequired && !replaceInvalidReply) {
       await ports.mutateVillageState((state) => {

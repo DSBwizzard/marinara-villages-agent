@@ -1,4 +1,5 @@
-import { fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { fixtureCapturedAdmissions, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
+import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 // Test cases: encounter-places/evidence, encounter-places/settlement, encounter-places/recovery, encounter-places/conflict, encounter-places/catchup
 import assert from "node:assert/strict";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -77,13 +78,7 @@ function fixture() {
       endsAt: at,
       facts: [],
     },
-    admitted: structuredClone({
-      villagers: state.villagers,
-      venues: state.venues,
-      residences: state.residences,
-      projects: state.projects,
-      timeZone: state.timeZone,
-    }),
+    admitted: captureResidentActivity(state),
     relationshipSnapshot: structuredClone(social),
     proposal: {
       encounter: {
@@ -141,6 +136,9 @@ function fixture() {
   };
   const native = createLiveMemory({ now: () => new Date(), mutateVillageState: mutate } as any);
   const api = createRelationshipSocial({
+    withVillageSceneAcceptance: async (work: any) => work(await snapshot()),
+    readSocialEntry: fixtureCapturedAdmissions.readSocialEntry,
+    socialIdentity: fixtureCapturedAdmissions.socialIdentity,
     readVillageSnapshot: snapshot,
     mutateVillageState: mutate,
     mutateRelationships: async (_seed: string, update: any) => {
@@ -180,6 +178,14 @@ function fixture() {
 await runCase("encounter-places/evidence", async () => {
   const f = fixture();
   assert.ok(readEncounter(f.raw(), f.state().socialOutbox![0], await f.snapshot()));
+  assert.throws(
+    () => readEncounter(f.raw(), { ...f.entry, relationshipSnapshot: undefined }, f.state()),
+    /captured encounter relationship context is unavailable/,
+  );
+  assert.throws(
+    () => readEncounter(f.raw(), { ...f.entry, admitted: undefined }, f.state()),
+    /captured encounter authority is unavailable/,
+  );
   const source = structuredClone(f.raw());
   source.placeUpdate.consent = [];
   assert.throws(() => readEncounter(source, f.state().socialOutbox![0], f.state()), /consent/);
@@ -376,6 +382,9 @@ await runCase("encounter-places/catchup", async () => {
     const native = createLiveMemory({ now: () => new Date(), mutateVillageState: mutate } as any);
     let fail = true;
     const social = createRelationshipSocial({
+      withVillageSceneAcceptance: async (work: any) => work(await snapshot()),
+      readSocialEntry: fixtureCapturedAdmissions.readSocialEntry,
+      socialIdentity: fixtureCapturedAdmissions.socialIdentity,
       readVillageSnapshot: snapshot,
       mutateVillageState: mutate,
       mutateRelationships: async (_seed: string, update: any) => {
@@ -399,6 +408,7 @@ await runCase("encounter-places/catchup", async () => {
       },
     } as any);
     const settlement = createReturnCatchupSettlement({
+      socialIdentity: fixtureCapturedAdmissions.socialIdentity,
       relationshipIdentity: fixtureRelationshipIdentity,
       gate,
       readSnapshot: snapshot,

@@ -1,3 +1,5 @@
+import { fixtureCapturedAdmissions } from "./helpers/village-storage.fixture.js";
+import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
@@ -293,6 +295,8 @@ state.socialOutbox = [
     at,
     opportunity: { id: "opportunity", actorIds: ["a", "b"], kind: "encounter", venueId: "none" } as any,
     candidates: [],
+    admitted: captureResidentActivity(state),
+    relationshipSnapshot: structuredClone(relationships),
     proposal: {},
   },
 ];
@@ -311,6 +315,9 @@ const memory = createLiveMemory({
 let privateScene: any;
 let failedMemory = true;
 const social = createRelationshipSocial({
+  withVillageSceneAcceptance: async (work: any) => work(state),
+  readSocialEntry: fixtureCapturedAdmissions.readSocialEntry,
+  socialIdentity: fixtureCapturedAdmissions.socialIdentity,
   mutateVillageState: async (update: any) => {
     await update(state);
     return state;

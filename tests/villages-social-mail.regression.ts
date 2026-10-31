@@ -1,3 +1,4 @@
+import { fixtureCapturedAdmissions } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
@@ -85,6 +86,7 @@ const change = (input: SocialMailInput, revision: number, reply: boolean) => ({
 let active: SocialMailInput;
 const promptHistory: string[] = [];
 const coreService = createSocialMail({
+  readMailInput: fixtureCapturedAdmissions.readMailInput,
   withWork: async (work: any) => work(),
   withVillageSceneAcceptance: async (work: any) => {
     if (testActor.getStore() === "contender") beforeContenderAuthority?.();

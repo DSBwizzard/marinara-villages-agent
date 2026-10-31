@@ -92,6 +92,7 @@ import {
 } from "../adapters/storage/scene-store.js";
 import { createVillageRepository } from "../adapters/storage/village-repository.js";
 import { relationshipPayloadStore } from "../adapters/storage/relationship-payload-store.js";
+import { createCapturedAdmissions } from "../adapters/storage/captured-admission-store.js";
 import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
@@ -614,6 +615,9 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const relationshipSocial = createRelationshipSocial({
+    withVillageSceneAcceptance: (work, options) => withRepairWork(() => withVillageSceneAcceptance(work, options)),
+    readSocialEntry: (value, seed) => createCapturedAdmissions(villagesDocuments()).readSocialEntry(value, seed),
+    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
     mutateVillageState,
     mutateRelationships,
     processLiveMemories,
@@ -636,6 +640,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     completeWithRoom,
   });
   const personalMail = createSocialMail({
+    readMailInput: (value, seed) => createCapturedAdmissions(villagesDocuments()).readMailInput(value, seed),
     withWork: withRepairWork,
     processLiveMemories,
     withVillageSceneAcceptance,
@@ -1210,6 +1215,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const returnSettlement = createReturnCatchupSettlement({
+    socialIdentity: (value, scope) => createCapturedAdmissions(villagesDocuments()).socialIdentity(value, scope),
     relationshipIdentity,
     gate: repairGate(),
     readSnapshot: readVillageSnapshot,

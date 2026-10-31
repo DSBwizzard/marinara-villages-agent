@@ -1,15 +1,26 @@
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import type { BackgroundKind } from "../../domain/models/background-model.js";
-import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
+import type { SocialMailInput, CapturedSocialMailInput } from "../../domain/models/social-mail.js";
+import type {
+  CapturedSocialOutboxEntry,
+  SocialOutboxEntry,
+  WorldSocialOutboxEntry,
+} from "../../domain/models/social-outbox-model.js";
+import { cloneWorldContext, copySocialOutboxEntry } from "../../domain/rules/world-context-copy.js";
+import { memoryHash, memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import { copySocialWishes } from "../../domain/rules/social-wishes.js";
 import {
   capturedInputOwners,
+  capturedSocialOwners,
   capturedWorldOwners,
   validateCapturedOwners,
   type CapturedAdmissionOwners,
 } from "./captured-admissions.js";
 import {
   relationshipPayloadStore,
+  relationshipWorldKey,
+  readRelationshipHead,
+  assertRelationshipWorld,
   type RelationshipHead,
   type RelationshipScope,
 } from "./relationship-payload-store.js";
@@ -18,6 +29,21 @@ import { withRepairWork } from "./repair-gate.js";
 
 const owns = (value: object, key: string) => Object.hasOwn(value, key);
 const emptyOwners = (): CapturedAdmissionOwners => ({ wishes: [], relationships: [] });
+const nativeAdmission = (raw: any) =>
+  raw &&
+  (owns(raw, "admissionFormat") ||
+    owns(raw, "relationshipHead") ||
+    (Array.isArray(raw.villagers) && raw.villagers.some((row: any) => row && owns(row, "wishHead"))));
+const nativeSocial = (raw: WorldSocialOutboxEntry): raw is CapturedSocialOutboxEntry =>
+  owns(raw, "relationshipHead") || nativeAdmission(raw.admitted);
+const nativeMail = (raw: SocialMailInput | CapturedSocialMailInput): raw is CapturedSocialMailInput =>
+  nativeAdmission(raw.admitted);
+function requireLogicalAdmission(raw: any) {
+  memoryRequire(
+    raw && Array.isArray(raw.villagers) && raw.villagers.every((row: any) => Array.isArray(row.wishes)),
+    "captured Wish context is unavailable",
+  );
+}
 const sameScope = (a: RelationshipScope, b: RelationshipScope) => a.seed === b.seed && a.setupAt === b.setupAt;
 const sameWish = (a: CapturedAdmissionOwners["wishes"][number], b: CapturedAdmissionOwners["wishes"][number]) =>
   sameScope(a.scope, b.scope) &&
@@ -29,6 +55,51 @@ const sameWish = (a: CapturedAdmissionOwners["wishes"][number], b: CapturedAdmis
 export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
   const wishes = wishHistoryStore(documents),
     relationships = relationshipPayloadStore(documents);
+  function relationshipIdentity(raw: any, key: string, body: string, scope: RelationshipScope) {
+    if (owns(raw, key)) {
+      if (raw[key] === null) return "relationships-unavailable:" + relationshipWorldKey(scope);
+      const head = readRelationshipHead(raw[key]);
+      assertRelationshipWorld(head, scope);
+      return head.id;
+    }
+    return relationships.fingerprint(raw[body], scope);
+  }
+  function admissionIdentity(raw: any, scope: RelationshipScope): string {
+    if (!raw) return memoryHash(null);
+    memoryRequire(
+      raw.seed === scope.seed && raw.setupAt === scope.setupAt,
+      "captured admission belongs to another World",
+    );
+    const {
+      admissionFormat: _format,
+      villagers,
+      relationshipContext: _relationships,
+      relationshipHead: _head,
+      ...facts
+    } = raw;
+    return memoryHash({
+      ...facts,
+      villagers: villagers.map((row: any) => {
+        const { wishes: rows, wishHead: head, ...facts } = row,
+          owner = { ...scope, actorId: row.characterId };
+        return {
+          ...facts,
+          wishes: owns(row, "wishHead") ? wishHistoryFingerprint(head, owner) : wishes.fingerprint(rows, owner),
+        };
+      }),
+      relationships: relationshipIdentity(raw, "relationshipHead", "relationshipContext", scope),
+    });
+  }
+  function socialIdentity(raw: WorldSocialOutboxEntry, scope: RelationshipScope): string {
+    memoryRequire(raw.seed === scope.seed, "captured social source belongs to another World");
+    if (nativeSocial(raw)) capturedSocialOwners(raw, scope.seed);
+    const { admitted, relationshipHead: _head, relationshipSnapshot: _body, ...facts } = raw;
+    return memoryHash({
+      ...facts,
+      admitted: admissionIdentity(admitted, scope),
+      relationships: relationshipIdentity(raw, "relationshipHead", "relationshipSnapshot", scope),
+    });
+  }
 
   async function prepare(
     work: (state: {
@@ -180,17 +251,25 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
     }, protectedOwners);
   }
 
-  async function prepareEntry(raw: any, seed: string, encode: Parameters<Parameters<typeof prepare>[0]>[0]) {
+  async function prepareEntry(
+    raw: WorldSocialOutboxEntry,
+    seed: string,
+    encode: Parameters<Parameters<typeof prepare>[0]>[0],
+  ): Promise<CapturedSocialOutboxEntry> {
     memoryObject(raw);
+    if (nativeSocial(raw)) {
+      capturedSocialOwners(raw, seed);
+      return raw;
+    }
     const admitted = await encode.admission(raw.admitted, seed),
-      { relationshipSnapshot, ...facts } = raw;
-    return {
+      { relationshipSnapshot, relationshipHead: _head, ...facts } = raw;
+    const head: RelationshipHead | null = await encode.relationship(relationshipSnapshot, admitted);
+    const value: CapturedSocialOutboxEntry = {
       ...facts,
       admitted,
-      relationshipHead: owns(raw, "relationshipSnapshot")
-        ? await encode.relationship(relationshipSnapshot, admitted)
-        : raw.relationshipHead,
+      relationshipHead: head,
     };
+    return value;
   }
   async function prepareWorld(raw: any, protectedOwners: CapturedAdmissionOwners) {
     return prepare(async (encode) => {
@@ -241,7 +320,7 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
         : {}),
     };
   }
-  async function readEntry(raw: any) {
+  async function decodeEntry(raw: any) {
     const { relationshipHead, ...facts } = raw;
     return {
       ...structuredClone(facts),
@@ -260,7 +339,7 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
         const { socialHead, ...facts } = raw;
         return {
           ...structuredClone(facts),
-          entry: await readEntry(raw.entry),
+          entry: await decodeEntry(raw.entry),
           social: socialHead ? await relationships.readSnapshot(socialHead, raw.entry.admitted) : undefined,
         };
       }
@@ -286,5 +365,26 @@ export function createCapturedAdmissions(documents: CapabilityDocumentStore) {
       };
     });
   }
-  return { prepareInput, prepareWorld, readInput };
+  async function readSocialEntry(raw: WorldSocialOutboxEntry, seed: string): Promise<SocialOutboxEntry> {
+    memoryRequire(raw.seed === seed, "captured social source belongs to another World");
+    if (!nativeSocial(raw)) {
+      requireLogicalAdmission(raw.admitted);
+      return copySocialOutboxEntry(raw);
+    }
+    const snapshot = structuredClone(raw);
+    return withRepairWork(async () => {
+      capturedSocialOwners(snapshot, seed);
+      return decodeEntry(snapshot);
+    });
+  }
+  async function readMailInput(raw: SocialMailInput | CapturedSocialMailInput, seed: string): Promise<SocialMailInput> {
+    memoryRequire(raw.seed === seed, "captured mail source belongs to another World");
+    if (!nativeMail(raw)) {
+      requireLogicalAdmission(raw.admitted);
+      return { ...structuredClone({ ...raw, admitted: undefined }), admitted: cloneWorldContext(raw.admitted) };
+    }
+    return readInput("personal-mail", raw, seed);
+  }
+  return { prepareInput, prepareWorld, readInput, readSocialEntry, readMailInput, socialIdentity };
 }
+export type CapturedAdmissionStore = ReturnType<typeof createCapturedAdmissions>;

@@ -1,4 +1,5 @@
 import type { RelationshipState } from "../models/relationship-types.js";
+import type { SocialOutboxEntry } from "../models/social-outbox-model.js";
 import type { ReturnCatchupCapture, VillageState, VillageVillager } from "../models/world.js";
 import { coerceRelationshipState, immutableRelationshipState } from "./relationship-rules.js";
 import { blockWishHistory, copySocialWishes, immutableSocialWishes, wishHistoryLoaded } from "./social-wishes.js";
@@ -66,6 +67,16 @@ export function captureResidentActivity(world: VillageState, catchup = false) {
     narrative: world.narrative,
     ...(catchup ? { opening: world.opening } : {}),
   });
+}
+export function copySocialOutboxEntry(entry: SocialOutboxEntry): SocialOutboxEntry {
+  const { admitted, relationshipSnapshot, ...facts } = entry;
+  return {
+    ...structuredClone(facts),
+    ...(admitted ? { admitted: cloneWorldContext(admitted) } : {}),
+    ...(relationshipSnapshot
+      ? { relationshipSnapshot: immutableRelationshipState(entry.seed, relationshipSnapshot) }
+      : {}),
+  };
 }
 
 /** Historical projections must not duplicate either the live ledger or the departure ledger. */

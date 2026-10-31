@@ -1,4 +1,5 @@
-import type { RelationshipDisclosure, RelationshipReview } from "./relationship-types.js";
+import type { RelationshipDisclosure, RelationshipHead, RelationshipReview } from "./relationship-types.js";
+import type { CapturedAdmission } from "./captured-admission-model.js";
 export type SocialMailMessage = {
   id: string;
   requestId: string;
@@ -58,4 +59,10 @@ export type SocialMailOutbox = {
   reinterpretRequired?: boolean;
   retryClaim?: string;
   retryAdmitted?: string;
+};
+export type CapturedSocialMailInput = Omit<SocialMailInput, "admitted"> & {
+  admitted: CapturedAdmission<SocialMailInput["admitted"]> & { relationshipHead: RelationshipHead | null };
+};
+export type WorldSocialMailOutbox = Omit<SocialMailOutbox, "input"> & {
+  input: SocialMailInput | CapturedSocialMailInput;
 };

@@ -9,7 +9,7 @@ import type {
 import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import type { BackgroundSummary } from "../models/background-model.js";
 import type { RelationshipState } from "../models/relationship-types.js";
-import type { SocialMailMessage, SocialMailThread, SocialMailOutbox } from "../models/social-mail.js";
+import type { SocialMailMessage, SocialMailThread, WorldSocialMailOutbox } from "../models/social-mail.js";
 import type { VillageState } from "../models/world.js";
 import { badRequest, conflict } from "./errors.js";
 import { villageWorldScope } from "./village-identity.js";
@@ -36,7 +36,7 @@ export function mailboxLetterIdentity(
     message.wishDisclosures ?? [],
   ]);
 }
-export function mailboxRecoveryIdentity(village: VillageState, entry: SocialMailOutbox) {
+export function mailboxRecoveryIdentity(village: VillageState, entry: WorldSocialMailOutbox) {
   return semanticHash([
     villageWorldScope(village),
     entry.id,

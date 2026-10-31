@@ -9,7 +9,6 @@ import { departureMemoriesAvailable } from "../../domain/rules/return-catchup-ca
 import { planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { socialContextState } from "../../domain/rules/social-context.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import {
   captureResidentActivity,
   cloneVillageContext,
@@ -19,6 +18,7 @@ import { immutableRelationshipState } from "../../domain/rules/relationship-rule
 import { returnCaptureRevision, type RelationshipIdentity } from "../../domain/rules/return-capture-revision.js";
 
 type Ports = {
+  socialIdentity: import("../../adapters/storage/captured-admission-store.js").CapturedAdmissionStore["socialIdentity"];
   relationshipIdentity: RelationshipIdentity;
   gate: Pick<RepairGate, "simulate" | "commit">;
   readSnapshot: typeof import("../world/village-store.js").readVillageSnapshot;
@@ -71,13 +71,17 @@ export function createReturnCatchupSettlement(ports: Ports) {
       const projected = cloneVillageContext(historical);
       planRoutineDays(projected, at);
       const admitted = captureResidentActivity(projected, true);
-      if (
-        JSON.stringify(source.admitted) !== JSON.stringify(admitted) ||
-        JSON.stringify(source.relationshipSnapshot) !==
-          JSON.stringify(
-            socialContextState(projected.relationshipContext, opportunity.actorIds, opportunity.facts.join(" ")),
-          )
-      )
+      const { admitted: _admitted, relationshipHead: _head, relationshipSnapshot: _snapshot, ...facts } = source;
+      const expected = {
+        ...facts,
+        admitted,
+        relationshipSnapshot: socialContextState(
+          projected.relationshipContext,
+          opportunity.actorIds,
+          opportunity.facts.join(" "),
+        ),
+      };
+      if (ports.socialIdentity(source, before) !== ports.socialIdentity(expected, before))
         throw conflict("The saved catch-up source does not match its captured authority.");
       if (
         opportunity.actorIds.some((id) => {
@@ -107,7 +111,7 @@ export function createReturnCatchupSettlement(ports: Ports) {
           error: pending.error || "The saved encounter needs recovery.",
           reinterpretRequired: !!pending.reinterpretRequired,
           captureRevision: returnCaptureRevision(capture, ports.relationshipIdentity),
-          sourceRevision: backgroundRevision(source),
+          sourceRevision: ports.socialIdentity(source, before),
         };
       await ports.mutate(
         (state) => {
@@ -166,7 +170,7 @@ export function createReturnCatchupSettlement(ports: Ports) {
           !record ||
           !source ||
           returnCaptureRevision(active.capture, ports.relationshipIdentity) !== failure.captureRevision ||
-          backgroundRevision(source) !== failure.sourceRevision ||
+          ports.socialIdentity(source, state) !== failure.sourceRevision ||
           !departureMemoriesAvailable(active.capture, state) ||
           !sameRelationshipContext(state.relationshipContext, active.capture.world.relationshipContext)
         )
