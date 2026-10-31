@@ -13,7 +13,8 @@ import {
 } from "../packages/villages/src/server/domain/rules/resident-movement.js";
 import { applyAttentionWitnesses } from "../packages/villages/src/server/domain/rules/attention-witnesses.js";
 import { readAttentionPlan } from "../packages/villages/src/server/domain/rules/scene-attention.js";
-import { replayStaging, stagingTranscriptEvents } from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { stagingTranscriptEvents } from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { replayStaging } from "./helpers/scene-staging.fixture.js";
 import type { VenueReplyLine } from "../packages/villages/src/server/domain/models/scene-model.js";
 
 const state = defaultVillageState();

@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import {
   initialStaging,
+  currentStaging,
   lineStagingCues,
   readStagingCues,
-  replayStaging,
   stagingLayout,
   stagingTranscriptEvents,
   type StagingCue,
   type StagingLine,
 } from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { replayStaging } from "./helpers/scene-staging.fixture.js";
 
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { validateSpriteExpression } from "../packages/villages/src/server/domain/rules/sprite-expressions.js";
@@ -217,6 +218,28 @@ const final = replayStaging(["mara", "eli"], transcriptEvents).at(-1)!;
 assert.equal(final.state.mara.expression, "e-thinking");
 assert.deepEqual(final.activeIds, ["mara"]);
 assert.deepEqual(replayStaging(["mara", "eli"], transcriptEvents).at(-1), final, "repeated playback is idempotent");
+assert.deepEqual(currentStaging(["mara", "eli"], transcriptEvents), final.state);
+assert.deepEqual(currentStaging(ids, []), initialStaging(ids));
+for (let end = 0; end <= events.length; end++) {
+  const prefix = events.slice(0, end);
+  assert.deepEqual(currentStaging(ids, prefix), replayStaging(ids, prefix).at(-1)?.state ?? initialStaging(ids));
+}
+for (const count of [1000, 10000, 25000]) {
+  const history = Array.from({ length: count }, (_, index) => ({
+    cues: [{ characterId: "mara", expression: "e-" + index }],
+  }));
+  const frames = replayStaging(ids, history),
+    current = currentStaging(ids, history);
+  assert.deepEqual(current, frames.at(-1)!.state);
+  assert.equal(current.mara.expression, "e-" + (count - 1));
+  assert(frames[0].state.mara.expression === "e-0", "later folding cannot change an earlier playback frame");
+  const frameBytes = Buffer.byteLength(JSON.stringify(frames)),
+    currentBytes = Buffer.byteLength(JSON.stringify(current));
+  assert(currentBytes < 1024);
+  console.log(
+    JSON.stringify({ stagingEvents: count, retainedFrameBytes: frameBytes, currentStateBytes: currentBytes }),
+  );
+}
 
 const art = [
   { view: "front" as const, expressionId: "e-thinking", label: "thinking", url: "/thinking" },
