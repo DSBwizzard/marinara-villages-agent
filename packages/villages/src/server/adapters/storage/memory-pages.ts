@@ -198,8 +198,22 @@ export function validateMemoryPageData(data: unknown, id: string): asserts data 
     for (const child of node.children) memoryRequire(readRef(child, data.world), "invalid history child");
   }
 }
+export function historyPageHeight(count: number, items = ITEMS) {
+  memoryRequire(
+    Number.isSafeInteger(count) && count >= 0 && Number.isInteger(items) && items >= 1 && items <= ITEMS,
+    "invalid packed history size",
+  );
+  let height = 0,
+    capacity = items;
+  while (capacity < count) {
+    capacity *= FANOUT;
+    height++;
+  }
+  return height;
+}
 export function createHistoryPageReader(world: string) {
   const seen = new Map<string, Page>();
+  const blocks = new Map<string, Group>();
   function* load(ref: Ref): Generator<string, Page, MemoryPageData | null> {
     if (seen.has(ref.id)) return seen.get(ref.id)!;
     const data = yield ref.id;
@@ -234,47 +248,136 @@ export function createHistoryPageReader(world: string) {
     levels.push([ref]);
     return { refs: parts.flatMap((part) => part.refs), levels };
   }
-  function* tree(value: unknown): Generator<string, Tree, MemoryPageData | null> {
+  function* block(ref: Ref, keys: Set<string>): Generator<string, Group, MemoryPageData | null> {
+    memoryRequire(ref.height === 0, "invalid history block depth");
+    const known = blocks.get(ref.id);
+    if (known) {
+      for (const [id] of known.entries) {
+        memoryRequire(!keys.has(id), "duplicate history entry identity");
+        keys.add(id);
+      }
+      return known;
+    }
+    const node = yield* load(ref);
+    memoryRequire(node.type === "block", "invalid history block");
+    const content = readRef(node.content, world);
+    memoryRequire(content && ref.height === 0, "invalid history block content");
+    const texts = yield* leaves(content, "text");
+    const parts: string[] = [];
+    for (const textRef of texts.refs) {
+      const text = yield* load(textRef);
+      memoryRequire(
+        text.type === "text" &&
+          textRef.height === 0 &&
+          typeof text.text === "string" &&
+          text.text.startsWith(TEXT_PREFIX) &&
+          text.text.length <= CHARS + TEXT_PREFIX.length,
+        "invalid history text page",
+      );
+      parts.push(text.text.slice(TEXT_PREFIX.length));
+    }
+    const rows = JSON.parse(parts.join(""));
+    memoryRequire(Array.isArray(rows) && rows.length > 0 && rows.length <= ITEMS, "invalid history block entries");
+    for (const row of rows) {
+      memoryRequire(
+        Array.isArray(row) && row.length === 2 && typeof row[0] === "string" && !keys.has(row[0]),
+        "invalid history entry identity",
+      );
+      keys.add(row[0]);
+    }
+    const group = { ref, entries: immutableMemoryValue(rows) };
+    blocks.set(ref.id, group);
+    return group;
+  }
+  function* tree(
+    value: unknown,
+    packed?: { count: number; items: number },
+  ): Generator<string, Tree, MemoryPageData | null> {
     const root = readRef(value, world);
-    if (!root) return { root, groups: [], levels: [[]] };
+    if (!root) {
+      memoryRequire(!packed || packed.count === 0, "packed history count changed");
+      return { root, groups: [], levels: [[]] };
+    }
     const list = yield* leaves(root, "block");
-    const groups: Group[] = [];
-    const keys = new Set<string>();
-    for (const ref of list.refs) {
-      const node = yield* load(ref);
-      memoryRequire(node.type === "block", "invalid history block");
-      const content = readRef(node.content, world);
-      memoryRequire(content && ref.height === 0, "invalid history block content");
-      const texts = yield* leaves(content, "text");
-      const parts: string[] = [];
-      for (const textRef of texts.refs) {
-        const text = yield* load(textRef);
+    const groups: Group[] = [],
+      keys = new Set<string>();
+    for (const ref of list.refs) groups.push(yield* block(ref, keys));
+    if (packed) {
+      memoryRequire(
+        root.height === historyPageHeight(packed.count, packed.items) && packed.count > 0,
+        "invalid packed history depth",
+      );
+      memoryRequire(groups.length === Math.ceil(packed.count / packed.items), "packed history count changed");
+      for (let index = 0; index < groups.length; index++)
         memoryRequire(
-          text.type === "text" &&
-            textRef.height === 0 &&
-            typeof text.text === "string" &&
-            text.text.startsWith(TEXT_PREFIX) &&
-            text.text.length <= CHARS + TEXT_PREFIX.length,
-          "invalid history text page",
+          groups[index].entries.length === Math.min(packed.items, packed.count - index * packed.items),
+          "invalid packed history block",
         );
-        parts.push(text.text.slice(TEXT_PREFIX.length));
+      for (let level = 1; level < list.levels.length; level++) {
+        const children = list.levels[level - 1],
+          parents = list.levels[level];
+        memoryRequire(parents.length === Math.ceil(children.length / FANOUT), "invalid packed history width");
+        for (let index = 0; index < parents.length; index++) {
+          const node = seen.get(parents[index].id)!;
+          memoryRequire(
+            node.type === "branch" && equalRefs(node.children, children.slice(index * FANOUT, (index + 1) * FANOUT)),
+            "invalid packed history branch",
+          );
+        }
       }
-      const rows = JSON.parse(parts.join(""));
-      memoryRequire(Array.isArray(rows) && rows.length > 0 && rows.length <= ITEMS, "invalid history block entries");
-      for (const row of rows) {
-        memoryRequire(
-          Array.isArray(row) && row.length === 2 && typeof row[0] === "string" && !keys.has(row[0]),
-          "invalid history entry identity",
-        );
-        keys.add(row[0]);
-      }
-      groups.push({ ref, entries: immutableMemoryValue(rows) });
     }
     return { root, groups, levels: list.levels };
+  }
+  /** Read a dense positional interval without loading unrelated history blocks. */
+  function* range(
+    value: unknown,
+    count: number,
+    start: number,
+    end: number,
+    items = ITEMS,
+  ): Generator<string, Entry[], MemoryPageData | null> {
+    const height = historyPageHeight(count, items),
+      root = readRef(value, world);
+    memoryRequire(
+      Number.isSafeInteger(start) && Number.isSafeInteger(end) && start >= 0 && start <= end && end <= count,
+      "invalid history interval",
+    );
+    memoryRequire(root ? count > 0 && root.height === height : count === 0, "invalid packed history depth");
+    if (!root || start === end) return [];
+    const result: Entry[] = [],
+      keys = new Set<string>();
+    function* visit(ref: Ref, offset: number, length: number): Generator<string, void, MemoryPageData | null> {
+      const node = yield* load(ref);
+      if (ref.height === 0) {
+        const group = yield* block(ref, keys);
+        memoryRequire(group.entries.length === length, "invalid packed history block");
+        result.push(...group.entries.slice(Math.max(0, start - offset), Math.min(length, end - offset)));
+        return;
+      }
+      const capacity = items * FANOUT ** (ref.height - 1);
+      memoryRequire(
+        node.type === "branch" && node.children.length === Math.ceil(length / capacity),
+        "invalid packed history branch",
+      );
+      const children = node.children.map((child) => readRef(child, world)!);
+      memoryRequire(
+        children.every((child) => child && child.height === ref.height - 1),
+        "invalid packed history depth",
+      );
+      for (let index = 0; index < children.length; index++) {
+        const first = offset + index * capacity,
+          size = Math.min(capacity, length - index * capacity);
+        if (first < end && first + size > start) yield* visit(children[index], first, size);
+      }
+    }
+    yield* visit(root, 0, count);
+    memoryRequire(result.length === end - start, "history interval count changed");
+    return result;
   }
   const rows = (value: Tree) => value.groups.flatMap((group) => group.entries);
   return {
     tree,
+    range,
     rows,
     get pageIds() {
       return [...seen.keys()];

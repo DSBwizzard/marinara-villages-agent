@@ -91,6 +91,8 @@ try {
       const path = new URL(route.request().url()).pathname;
       let value = fixture;
       if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+      else if (path.endsWith(`/rooms/${session.id}/history`))
+        value = { scope: fixture.worldScope, sceneId: session.id, version: "a".repeat(64), lines: session.lines };
       else if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
       else if (path.endsWith("/changes"))
         value = {

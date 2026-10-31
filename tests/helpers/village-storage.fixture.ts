@@ -28,6 +28,7 @@ import type {
 } from "../../packages/villages/src/server/domain/rules/return-capture-revision.js";
 import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { SCENE_STORAGE_FORMAT } from "../../packages/villages/src/server/adapters/storage/scene-history.js";
+import { encodeScenePublicHistory } from "../../packages/villages/src/server/adapters/storage/scene-public-history.js";
 import {
   encodeOperationEvidence,
   decodeOperationEvidenceSync,
@@ -171,6 +172,8 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       (data as any)?.operation?.snapshot?.transcript?.lines,
       (data as any)?.submissionHistory?.submissions,
       (data as any)?.operation?.snapshot?.submissionHistory?.submissions,
+      (data as any)?.publicHistory?.positions,
+      (data as any)?.operation?.snapshot?.publicHistory?.positions,
       (data as any)?.continuity?.relationshipHead,
       (data as any)?.operation?.snapshot?.continuity?.relationshipHead,
       ...((data as any)?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ?? []),
@@ -329,11 +332,18 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
     villageSeed: Object.hasOwn(raw, "villageSeed") ? raw.villageSeed : world?.seed || undefined,
     storageFormat: SCENE_STORAGE_FORMAT,
   };
-  const normalized = coerceSession({ ...raw, continuity: undefined, operation: undefined });
+  const normalized = coerceSession({
+    ...raw,
+    villageSeed: scene.villageSeed,
+    continuity: undefined,
+    operation: undefined,
+  });
+  if (!Object.hasOwn(scene, "participants")) scene.participants = normalized.participants;
   const encoded = encodeSceneTranscript(normalized.lines, scene);
   normalized.submissions = normalized.submissions.map((row) => authorCapturedWishes(rows, row, scene));
   const submissions = encodeSceneSubmissions(normalized.submissions, scene);
-  for (const [id, data] of [...encoded.pages, ...submissions.pages])
+  const publicHistory = encodeScenePublicHistory(normalized, encoded.head, submissions.head);
+  for (const [id, data] of [...encoded.pages, ...submissions.pages, ...publicHistory.pages])
     rows.set(id, {
       id,
       packageId: "villages",
@@ -347,6 +357,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
     });
   scene.transcript = encoded.head;
   scene.submissionHistory = submissions.head;
+  scene.publicHistory = publicHistory.head;
   delete scene.submissions;
   delete scene.lines;
   delete scene.heardHistory;
@@ -535,7 +546,7 @@ export function authorWorldWishFixture(rows: Map<string, any>, raw: any): any {
 }
 export function fixtureSceneState(raw: any, rows: Map<string, any>) {
   if (!raw?.storageFormat) return coerceSession(raw);
-  const { storageFormat: _format, transcript, submissionHistory, ...scene } = raw;
+  const { storageFormat: _format, transcript, submissionHistory, publicHistory: _publicHistory, ...scene } = raw;
   scene.submissions = decodeSceneSubmissionsSync(
     readSceneSubmissionHead(submissionHistory, raw),
     (id) => rows.get(id)?.data ?? null,

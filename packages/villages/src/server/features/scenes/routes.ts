@@ -30,10 +30,18 @@ import {
 import { continueSceneChange, dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
 import { readVenueVisit } from "./archive.js";
+import { readHistoryPage } from "./services.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerSceneEntryRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get<{ Params: { id: string }; Querystring: unknown }>("/rooms/:id/history", async (request, reply) => {
+    try {
+      return await readHistoryPage(readChatId(request.params.id), request.query);
+    } catch (error) {
+      return fail(reply, error, "reading Scene history");
+    }
+  });
   app.get("/rooms/active", async (_request, reply) => {
     try {
       const session = await activeVenueSession();

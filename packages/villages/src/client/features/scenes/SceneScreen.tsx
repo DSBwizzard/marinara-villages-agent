@@ -141,6 +141,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       {room ? (
         <RoomPanel
           room={room}
+          worldScope={snapshot?.worldScope ?? ""}
           sceneErrors={[
             ...[
               {

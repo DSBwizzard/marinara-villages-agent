@@ -12,6 +12,7 @@ import { assertSceneSubmissionCast, freezeSceneSubmissions } from "../../domain/
 import {
   createHistoryPageWriter,
   createHistoryPageReader,
+  historyPageHeight,
   createMemoryPageTracer,
   readHistoryPageRef,
   validateMemoryPageData,
@@ -63,7 +64,7 @@ export function encodeSceneRecords(rows: Row[], owner: Owner, kind: Kind, previo
 }
 function* decoder(head: SceneRecordHead, kind: Kind) {
   const reader = createHistoryPageReader(head.world),
-    layout = yield* reader.tree(head.root);
+    layout = yield* reader.tree(head.root, { count: head.count, items: kind === "submissions" ? 1 : 64 });
   memoryRequire(
     kind !== "submissions" || layout.groups.every((group) => group.entries.length === 1),
     "invalid Scene submission block",
@@ -113,21 +114,46 @@ function dependencies(row: Row, kind: Kind): string[] {
   const ids = (row as VenueSubmission).activeIdsAfterTurn;
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
 }
+async function readRecordPage(documents: Pick<CapabilityDocumentStore, "getById">, kind: Kind, id: string) {
+  const row = await documents.getById("villages", id);
+  memoryRequire(
+    row && row.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+    "owned " + label(kind) + " page is missing or changed",
+  );
+  validateMemoryPageData(row.data, id);
+  return row.data as MemoryPageData;
+}
+export async function readSceneRecordPositions(
+  documents: Pick<CapabilityDocumentStore, "getById">,
+  head: SceneRecordHead,
+  scene: VenueScene,
+  kind: Kind,
+  positions: readonly number[],
+): Promise<Row[]> {
+  memoryRequire(head.world === sceneRecordWorld(scene, kind), "invalid " + label(kind) + " owner identity");
+  const reader = createHistoryPageReader(head.world),
+    rows: Row[] = [];
+  for (const position of positions) {
+    const read = reader.range(head.root, head.count, position, position + 1, kind === "submissions" ? 1 : 64);
+    let next = read.next();
+    while (next.done === false) next = read.next(await readRecordPage(documents, kind, next.value));
+    for (const [id, row] of next.value) {
+      memoryRequire(row && typeof row === "object" && (row as Row).id === id, label(kind) + " identity changed");
+      rows.push(row as Row);
+    }
+  }
+  memoryRequire(new Set(rows.map((row) => row.id)).size === rows.length, "duplicate " + label(kind) + " identity");
+  const decoded = normalize(scene, rows, kind);
+  memoryRequire(JSON.stringify(decoded[kind]) === JSON.stringify(rows), "invalid canonical " + label(kind));
+  return freeze(decoded, kind);
+}
 /** Page creation remains inside the caller's full work admission through the native owner CAS. */
 export function createSceneRecordStore(documents: Pick<CapabilityDocumentStore, "getById" | "create">, kind: Kind) {
   type Entry = { rows: Row[]; layout: HistoryPageTree };
   const cached = new Map<string, Entry>(),
     identity = (head: SceneRecordHead) => JSON.stringify(head);
   const usable = () => !isRepairSimulation(documents as CapabilityDocumentStore);
-  async function page(id: string) {
-    const row = await documents.getById("villages", id);
-    memoryRequire(
-      row && row.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
-      "owned " + label(kind) + " page is missing or changed",
-    );
-    validateMemoryPageData(row.data, id);
-    return row.data as MemoryPageData;
-  }
+  const page = (id: string) => readRecordPage(documents, kind, id);
   function remember(head: SceneRecordHead, entry: Entry) {
     if (!usable()) return;
     const key = identity(head);
@@ -204,7 +230,12 @@ export function createSceneRecordStore(documents: Pick<CapabilityDocumentStore, 
     remember(encoded.head, { rows, layout: encoded.layout });
     return encoded.head;
   }
-  return { read, prepare };
+  return {
+    read,
+    readPositions: (head: SceneRecordHead, scene: VenueScene, positions: readonly number[]) =>
+      readSceneRecordPositions(documents, head, scene, kind, positions),
+    prepare,
+  };
 }
 const stores = new WeakMap<object, Partial<Record<Kind, ReturnType<typeof createSceneRecordStore>>>>();
 export function sceneRecordStore(documents: CapabilityDocumentStore, kind: Kind) {
@@ -246,8 +277,13 @@ export function createSceneRecordTracer(
       children: HistoryPageRef[] | undefined;
     if (node.type === "branch") {
       children = node.children.map((child) => readHistoryPageRef(child, world)!);
-      for (const child of children) {
+      const capacity = (kind === "submissions" ? 1 : 64) * 32 ** (ref.height - 1);
+      for (const [index, child] of children.entries()) {
         const summary = await inspect(child, world);
+        memoryRequire(
+          summary.count <= capacity && (index === children.length - 1 || summary.count === capacity),
+          "invalid packed " + label(kind) + " branch",
+        );
         count += summary.count;
         for (const id of summary.cast) cast.add(id);
         for (const [id, value] of summary.captures) captures.set(id, value);
@@ -290,6 +326,11 @@ export function createSceneRecordTracer(
   }
   return {
     async trace(head: SceneRecordHead, participants: VenueScene["participants"]) {
+      const height = historyPageHeight(head.count, kind === "submissions" ? 1 : 64);
+      memoryRequire(
+        head.root ? head.count > 0 && head.root.height === height : head.count === 0,
+        "invalid packed " + label(kind) + " depth",
+      );
       const summary = head.root
         ? await inspect(head.root, head.world)
         : { count: 0, cast: new Set<string>(), captures: new Map() };

@@ -43,6 +43,7 @@ const place = (id, x, y) => ({
   state: { revision: 0, recent: null, updatedAt: now },
 });
 const snapshot = {
+  worldScope: "a".repeat(64),
   status: "ready",
   isFounded: true,
   village: {
@@ -208,6 +209,13 @@ try {
           rating: "sfw",
         };
       else if (path.endsWith("/rooms/activity")) value = { session };
+      else if (path.endsWith(`/rooms/${session.id}/history`))
+        value = {
+          scope: fixtureSnapshot.worldScope,
+          sceneId: session.id,
+          version: "a".repeat(64),
+          lines: session.lines,
+        };
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
         lastEntry = route.request().postDataJSON();
         const visited = snapshot.settings.venues.find((venue) => venue.id === lastEntry.venueId);
