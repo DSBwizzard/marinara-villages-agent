@@ -2,6 +2,9 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneView, authorSceneResponse } = await scenePlaybackFixtures();
+const scope = "b".repeat(64);
 const bundle = await build({
   stdin: {
     contents: `
@@ -63,15 +66,18 @@ try {
           return fulfill(r, { status: 404, json: { error: "Scene unavailable" } });
         return fulfill(r, {
           status: 200,
-          json: path.includes("/operations/")
-            ? { operation: scene.operation }
-            : path.includes("/archive/")
-              ? { visit: scene }
-              : { session: mode.startsWith("retired") ? null : scene },
+          json: authorSceneResponse(
+            path.includes("/operations/")
+              ? { operation: scene.operation }
+              : path.includes("/archive/")
+                ? { visit: scene }
+                : { session: mode.startsWith("retired") ? null : scene },
+            scope,
+          ),
         });
       });
       await page.goto("http://recovery.test/");
-      await page.evaluate((value) => (window.initial = value), initial);
+      await page.evaluate((value) => (window.initial = value), authorSceneView(initial, scope));
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect(page.locator("#state")).toContainText('"pending":false');
       if (mode === "unknown" || mode === "hidden-return") await page.clock.install();
