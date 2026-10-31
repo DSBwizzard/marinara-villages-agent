@@ -130,6 +130,48 @@ async function main() {
     );
   }
 
+  // Long Wish evidence reaches System exactly once, with its private source details intact.
+  {
+    const state = wishWorld();
+    const wish = fixtureWish({ wish: "Share a quiet conversation" }, "quiet-conversation");
+    wish.conditions = [
+      {
+        id: "quiet",
+        quote: "Only when I choose to talk.",
+        at: wish.addedAt,
+        sourceId: "condition-source",
+        lineIds: ["condition-line"],
+      },
+    ];
+    wish.history = Array.from({ length: 200 }, (_, index) => ({
+      id: "event-" + index,
+      at: wish.addedAt,
+      kind: "approach",
+      text: "Exact refusal marker " + index + ": café 東京 " + "Please leave this approach alone. ".repeat(8),
+      sourceId: "source-" + index,
+      lineIds: ["line-" + index],
+    }));
+    state.villagers[0].wishes = [wish];
+    const scene = {
+      id: "wish-evidence",
+      activeIds: ["a"],
+      lines: [],
+      placeId: "missing",
+      zoneId: "common:base",
+      sceneRevision: 1,
+    } as any;
+    const before = JSON.stringify(state);
+    const packet = semanticContext(scene, state, "Would you like to talk?", true);
+    assert.deepEqual(packet.actors[0].wishes, [wish], "Whole conditions, refusals and source IDs remain available");
+    const serialized = JSON.stringify(packet);
+    assert.equal(
+      serialized.split(wish.history[199].text).length - 1,
+      1,
+      "Long exact evidence must not be charged twice in the model input",
+    );
+    assert.equal(JSON.stringify(state), before, "Prompt construction preserves the saved ledger");
+  }
+
   // Enforce JSON-mode compatibility using actual resident planning and offscreen review prompts.
   const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const eventMoment = deriveVillageMoment({
