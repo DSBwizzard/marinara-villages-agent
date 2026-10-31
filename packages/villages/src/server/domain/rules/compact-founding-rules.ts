@@ -25,6 +25,8 @@ import type { NativeWeekSchedule } from "./schedule-rules.js";
 import { semanticHash } from "./semantic-contract.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
+export class RoutineResponseError extends Error {}
+
 type PaletteEntry = {
   flexible: boolean;
   activity: string;
@@ -110,21 +112,23 @@ const validIndex = (value: unknown, length: number): value is number =>
 
 function checkedPalette(value: unknown, venues: readonly VillageVenue[]): PaletteEntry[] {
   if (!Array.isArray(value) || value.length < 6 || value.length > 16)
-    throw new Error("The model did not provide 6–16 village activities.");
+    throw new RoutineResponseError("The model did not provide 6–16 village activities.");
   return value.map((raw, index) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw))
-      throw new Error(`Village activity ${index + 1} is invalid.`);
+      throw new RoutineResponseError(`Village activity ${index + 1} is invalid.`);
     const row = raw as Record<string, unknown>;
     const activity = typeof row.activity === "string" ? row.activity.trim() : "";
     if (row.venue !== undefined && row.venueNumber !== undefined && row.venue !== row.venueNumber)
-      throw new Error(`Village activity ${index + 1} has conflicting venue fields.`);
+      throw new RoutineResponseError(`Village activity ${index + 1} has conflicting venue fields.`);
     // Older prompts said "venue number", and some saved replies use that spelling.
     // Preserve exact numeric indexes and reject ambiguous or invented destinations.
     const venue = row.venue ?? row.venueNumber;
     if (!activity || activity.length > ROUTINE_CONTRACT.maxActivityCharacters)
-      throw new Error(`Village activity ${index + 1} needs activity text of 1–160 characters.`);
+      throw new RoutineResponseError(`Village activity ${index + 1} needs activity text of 1–160 characters.`);
     if (!Number.isInteger(venue) || (venue as number) < 0 || (venue as number) > venues.length)
-      throw new Error(`Village activity ${index + 1} needs a numeric venue index from 0 to ${venues.length}.`);
+      throw new RoutineResponseError(
+        `Village activity ${index + 1} needs a numeric venue index from 0 to ${venues.length}.`,
+      );
     return {
       activity,
       ...(Array.isArray(row.weekdays) ? { weekdays: row.weekdays as number[] } : {}),
@@ -156,7 +160,7 @@ export function compileRoutineDays(palette: readonly PaletteEntry[], residentId:
           ? [index]
           : [],
       );
-      if (!candidates.length) throw new Error("Routine activities must cover every daypart.");
+      if (!candidates.length) throw new RoutineResponseError("Routine activities must cover every daypart.");
       return candidates[(seed + day * 2 + slot) % candidates.length]!;
     }),
   );
@@ -177,7 +181,7 @@ export function parseCompactFounding(
           row.duration < ROUTINE_CONTRACT.minMinutes ||
           row.duration > ROUTINE_CONTRACT.maxMinutes)
       )
-        throw new Error(
+        throw new RoutineResponseError(
           `Routine activity ${index + 1} duration ${typeof row.duration === "number" && Number.isFinite(row.duration) ? row.duration : "non-numeric"}; expected ${ROUTINE_CONTRACT.minMinutes}–${ROUTINE_CONTRACT.maxMinutes} minutes.`,
         );
       if (
@@ -193,14 +197,14 @@ export function parseCompactFounding(
         !row.parts.length ||
         row.parts.some((part) => !Number.isInteger(part) || part < 0 || part > 3)
       )
-        throw new Error("Routine activity fields are incomplete or invalid.");
+        throw new RoutineResponseError("Routine activity fields are incomplete or invalid.");
       if (
         row.weekdays !== undefined &&
         (!Array.isArray(row.weekdays) ||
           !row.weekdays.length ||
           row.weekdays.some((day) => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 6))
       )
-        throw new Error("Routine weekday preferences must use Monday–Sunday indexes 0–6.");
+        throw new RoutineResponseError("Routine weekday preferences must use Monday–Sunday indexes 0–6.");
       if (
         row.zoneId !== undefined &&
         (typeof row.zoneId !== "string" ||
@@ -208,14 +212,14 @@ export function parseCompactFounding(
             (zone) => zone.id === row.zoneId && ["exterior", "public"].includes(zone.kind),
           ))
       )
-        throw new Error("Routine activity has an unavailable Zone identifier.");
+        throw new RoutineResponseError("Routine activity has an unavailable Zone identifier.");
     }
   const palette = checkedPalette(payload.palette, context.venues);
   if (
     context.contractVersion &&
     (!Array.isArray(payload.palette) || payload.palette.length > ROUTINE_CONTRACT.maxActivities)
   )
-    throw new Error("Routine requires 6–8 activities.");
+    throw new RoutineResponseError("Routine requires 6–8 activities.");
   const days = context.contractVersion === 2 ? compileRoutineDays(palette, context.card.id) : payload.days;
   if (
     !Array.isArray(days) ||
@@ -224,21 +228,22 @@ export function parseCompactFounding(
       (day) => !Array.isArray(day) || ![4, 8].includes(day.length) || day.some((id) => !validIndex(id, palette.length)),
     )
   )
-    throw new Error("The model did not provide a complete seven-day activity pattern.");
+    throw new RoutineResponseError("The model did not provide a complete seven-day activity pattern.");
   if (typeof payload.routine !== "string" || !payload.routine.trim())
-    throw new Error("The model did not describe the villager's routine.");
+    throw new RoutineResponseError("The model did not describe the villager's routine.");
   const at = new Date().toISOString();
   if (!Array.isArray(payload.rhythm))
-    throw new Error("The routine must explicitly describe rest windows, or use an empty list.");
+    throw new RoutineResponseError("The routine must explicitly describe rest windows, or use an empty list.");
   const rhythm = payload.rhythm.map((value) => {
-    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid resident rest pattern.");
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new RoutineResponseError("Invalid resident rest pattern.");
     const row = value as Record<string, unknown>;
     if (
       row.activity !== undefined &&
       row.activityPaletteIndex !== undefined &&
       row.activity !== row.activityPaletteIndex
     )
-      throw new Error("Resident rest pattern has conflicting activity fields.");
+      throw new RoutineResponseError("Resident rest pattern has conflicting activity fields.");
     const activity = row.activity ?? row.activityPaletteIndex;
     if (
       !Number.isInteger(row.startMinute) ||
@@ -250,10 +255,10 @@ export function parseCompactFounding(
       row.startMinute === row.endMinute ||
       !validIndex(activity, palette.length)
     )
-      throw new Error("Invalid resident rest pattern.");
+      throw new RoutineResponseError("Invalid resident rest pattern.");
     return { startMinute: row.startMinute as number, endMinute: row.endMinute as number, activity: activity as number };
   });
-  if (!validRoutineRhythm(rhythm)) throw new Error("Resident rest windows overlap.");
+  if (!validRoutineRhythm(rhythm)) throw new RoutineResponseError("Resident rest windows overlap.");
   const profile: RoutineProfile = {
     version: 1,
     ...(context.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
@@ -269,7 +274,7 @@ export function parseCompactFounding(
     context.influenceSettings?.enabled &&
     (!influence || typeof influence !== "object" || Array.isArray(influence))
   )
-    throw new Error("System schedule interpretation is missing.");
+    throw new RoutineResponseError("System schedule interpretation is missing.");
   if (influence && typeof influence === "object" && !Array.isArray(influence)) {
     const row = influence as Record<string, unknown>;
     profile.influence = {
@@ -318,7 +323,7 @@ export function parseCompactFounding(
             !Array.isArray(row[key]) || (row[key] as unknown[]).length !== (profile.influence as any)[key].length,
         ))
     )
-      throw new Error("System schedule interpretation has invalid fields.");
+      throw new RoutineResponseError("System schedule interpretation has invalid fields.");
     profile.influenceSource = scheduleSemanticSource(
       context.schedule,
       context.influenceSettings ?? influenceSettings(undefined),
@@ -355,7 +360,7 @@ export function parseCompactFoundingCompletion(
 ): CompactFoundingResult {
   const payload = extractModelJsonObject(completion);
   if (completion.finishReason === "length")
-    throw new Error("Routine output was truncated. Retry deliberately with enough output room.");
-  if (!payload) throw new Error("The System model returned empty or invalid JSON for founding.");
+    throw new RoutineResponseError("Routine output was truncated. Retry deliberately with enough output room.");
+  if (!payload) throw new RoutineResponseError("The System model returned empty or invalid JSON for founding.");
   return parseCompactFounding(payload, context);
 }

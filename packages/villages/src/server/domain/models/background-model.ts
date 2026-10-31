@@ -99,6 +99,7 @@ export type Job = BackgroundInput & {
   error: string;
   failedStep: number | null;
   retryActions: string[];
+  automaticRetryUsed?: true;
   retrying: boolean;
   connectionId: string;
   highWaterDate: string;

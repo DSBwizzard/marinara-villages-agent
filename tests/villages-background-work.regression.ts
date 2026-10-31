@@ -31,6 +31,7 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { addMemory } from "./helpers/memories-fixture.js";
 import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
 import { backgroundCalls } from "../packages/villages/src/server/adapters/operations/background-context.js";
+import { completionFailure, WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 
 const rows = new Map<string, any>();
 let writesFail = false;
@@ -114,6 +115,8 @@ let translationFail = false;
 let translationCalls = 0;
 let providerGate: (() => void) | null = null;
 let blockStep = "";
+const responsePlans = new Map<string, { content: string; finishReason: string; hold?: boolean }[]>();
+const failedEffects: string[] = [];
 const model = {
   connectionId: "fixture",
   model: "fixture",
@@ -139,11 +142,17 @@ const model = {
     active++;
     maximum = Math.max(maximum, active);
     try {
-      if (text === blockStep)
+      if (text === blockStep || responsePlans.get(text)?.[0]?.hold)
         await new Promise<void>((resolve) => {
           providerGate = resolve;
         });
       if (text === failStep) throw new Error(failure);
+      const plan = responsePlans.get(text);
+      if (plan) {
+        const response = plan.shift();
+        assert.ok(response, "No unplanned provider request is allowed.");
+        return { ...response, usage: { totalTokens: 11 } };
+      }
       await new Promise<void>((resolve) => setImmediate(resolve));
       return { content: text, finishReason: "stop", usage: { totalTokens: 11 } };
     } finally {
@@ -185,6 +194,10 @@ registerBackgroundHandler("agenda", {
         temperature: 0,
         debugMode: false,
       });
+      const incomplete = completionFailure(reply, "fixture", 100);
+      if (incomplete) throw new WorkFailureError(incomplete);
+      if (input.failure && reply.content === "bad")
+        throw new WorkFailureError({ cause: input.failure, stage: "fixture", message: "Fixture response rejected." });
       if (reply.content === "invalid") throw new Error("invalid response");
       result.push(reply.content!);
     }
@@ -194,6 +207,9 @@ registerBackgroundHandler("agenda", {
   apply(state, input, result) {
     effects.push(input.subject);
     state.setting = result.join("|");
+  },
+  async afterFailure(input) {
+    failedEffects.push(input.subject);
   },
 });
 registerBackgroundHandler("translation", {
@@ -279,6 +295,8 @@ async function reset() {
   await settleBackgroundWork();
   rows.clear();
   calls = [];
+  responsePlans.clear();
+  failedEffects.length = 0;
   effects.length = 0;
   maximum = 0;
   writesFail = false;
@@ -355,6 +373,99 @@ async function main() {
   ])
     assert.equal(connectionFailureKind(new Error(message), true), "request", message);
   try {
+    await reset();
+    responsePlans.set("automatic", [
+      { content: "", finishReason: "stop" },
+      { content: "ready", finishReason: "stop", hold: true },
+    ]);
+    await queueBackgroundJob(work("a", ["automatic"]));
+    let settled = false;
+    const waiting = settleBackgroundWork().then(() => (settled = true));
+    await until(() => !!providerGate);
+    assert.equal(settled, false, "Settlement includes the replacement attempt.");
+    assert.deepEqual(failedEffects, [], "The first failure is not published as terminal.");
+    const retrying = await summary("a");
+    assert.equal(retrying.attempt, 2);
+    await assert.rejects(retryBackgroundJob(retrying.id, 1, "racing-manual", retrying.instanceId), /changed|finishing/);
+    providerGate!();
+    await waiting;
+    assert.equal((await summary("a")).status, "completed");
+    assert.deepEqual(calls, ["automatic", "automatic"]);
+    assert.deepEqual(effects, ["a"]);
+    assert.deepEqual(failedEffects, []);
+    const completedAuto = [...rows.values()].find((row) => row.kind === "background-work")!;
+    assert.equal(completedAuto.data.automaticRetryUsed, true);
+
+    for (const cause of ["invalid_json", "missing_result", "duplicate_result"] as const) {
+      await reset();
+      responsePlans.set("typed", [
+        { content: "bad", finishReason: "stop" },
+        { content: "ready", finishReason: "stop" },
+      ]);
+      const request = work("a", ["typed"]);
+      (request.input as any).failure = cause;
+      await queueBackgroundJob(request);
+      await settleBackgroundWork();
+      assert.equal((await summary("a")).status, "completed", cause);
+      assert.deepEqual(calls, ["typed", "typed"]);
+    }
+
+    await reset();
+    responsePlans.set("first", [
+      { content: "", finishReason: "stop" },
+      { content: "first ready", finishReason: "stop" },
+    ]);
+    responsePlans.set("second", [
+      { content: "", finishReason: "stop" },
+      { content: "", finishReason: "stop" },
+      { content: "second ready", finishReason: "stop" },
+    ]);
+    await queueBackgroundJob(work("a", ["first", "second"]));
+    await settleBackgroundWork();
+    assert.equal((await summary("a")).status, "failed");
+    assert.deepEqual(calls, ["first", "first", "second"], "One extra attempt belongs to the whole job.");
+    assert.deepEqual(failedEffects, ["a"]);
+    stop();
+    stop = startBackgroundWork({ now: () => now });
+    await recoverBackgroundWork();
+    await settleBackgroundWork();
+    assert.equal(calls.length, 3, "Restart does not grant another attempt or purchase historical failures.");
+    const exhausted = [...rows.values()].find((row) => row.kind === "background-work")!;
+    exhausted.data.retryActions = Array.from({ length: 32 }, (_, index) => "old-action-" + index);
+    exhausted.revision++;
+    const terminal = await summary("a");
+    await retryBackgroundJob(terminal.id, terminal.attempt, "manual-after-automatic", terminal.instanceId);
+    await settleBackgroundWork();
+    assert.equal((await summary("a")).status, "failed");
+    assert.deepEqual(
+      calls,
+      ["first", "first", "second", "second"],
+      "Manual retries retain the used allowance and valid earlier steps.",
+    );
+    const failedAgain = await summary("a");
+    await retryBackgroundJob(failedAgain.id, failedAgain.attempt, "manual-repair", failedAgain.instanceId);
+    await settleBackgroundWork();
+    assert.equal((await summary("a")).status, "completed");
+    assert.deepEqual(calls, ["first", "first", "second", "second", "second"]);
+
+    for (const cause of [
+      "output_limit",
+      "insufficient_budget",
+      "invalid_citation",
+      "unsupported_outcome",
+      "storage_application",
+      "unknown_request",
+      "provider_exception",
+    ] as const) {
+      await reset();
+      responsePlans.set("held", [{ content: "bad", finishReason: "stop" }]);
+      const request = work("a", ["held"]);
+      (request.input as any).failure = cause;
+      await queueBackgroundJob(request);
+      await settleBackgroundWork();
+      assert.equal((await summary("a")).status, "failed", cause);
+      assert.deepEqual(calls, ["held"], cause);
+    }
     await reset();
     const frozenStory = {
       village: "Willowbrook",

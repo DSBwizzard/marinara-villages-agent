@@ -48,6 +48,7 @@ export function isBackgroundInput(value: unknown): value is BackgroundInput {
 /** Minimum evidence/identity shape required for retention and summary projection, not a legacy decoder. */
 export function isBackgroundRecoveryRecord(value: unknown): value is Job {
   if (!record(value)) return false;
+  if (value.automaticRetryUsed !== undefined && value.automaticRetryUsed !== true) return false;
   if (
     typeof value.status !== "string" ||
     !["queued", "running", "paused", "failed", "interrupted", "completed", "obsolete"].includes(value.status)
@@ -121,4 +122,21 @@ export function backgroundRecoveryState(value: unknown): WorkRecoveryState {
     // Obsolete is a scheduling label, not proof that every external callback/effect was reconciled.
     abandonmentFenced: false,
   });
+}
+
+export function canAutomaticallyRetryBackgroundJob(job: Job): boolean {
+  const failed = job.failedStep === null ? undefined : job.steps[job.failedStep];
+  return (
+    job.status === "failed" &&
+    !job.automaticRetryUsed &&
+    !job.connectionPaused &&
+    !job.replacement &&
+    !job.hasResult &&
+    !job.partialResult &&
+    ["empty_output", "invalid_json", "missing_result", "duplicate_result"].includes(job.failure?.cause ?? "") &&
+    backgroundRecoveryState(job) !== "uncertain" &&
+    failed?.status === "completed" &&
+    failed.timing?.outcome === "complete" &&
+    !!(failed.response || failed.responseRef)
+  );
 }
