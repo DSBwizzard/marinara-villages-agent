@@ -6,7 +6,7 @@ import {
   nativeBackgroundJob,
   prepareBackgroundResponse,
 } from "../../packages/villages/src/server/adapters/storage/background-responses.js";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { emptyMemoryPayload } from "../../packages/villages/src/server/adapters/storage/memory-payload-store.js";
 import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
@@ -124,6 +124,7 @@ export function authorBackgroundFixture(rows: Map<string, any>, raw: unknown) {
   )
     return raw;
   job.attempt ??= 1;
+  job.instanceId ??= randomUUID();
   for (const [index, step] of job.steps.entries()) {
     if (!step || typeof step.fingerprint !== "string" || (step.status === "completed" && !step.response)) return raw;
     step.responseClaim = backgroundResponseClaim(job, index);
@@ -180,7 +181,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       ...((data as any)?.operation?.snapshot?.continuity?.facts?.villagers?.map((row: any) => row.wishHead?.root) ??
         []),
       ...operationEvidenceReferences((data as any)?.operation, data as any),
-      ...((data as any)?.responseStorage === 3 ? (data as any).steps.map((step: any) => step.responseRef) : []),
+      ...((data as any)?.responseStorage === 4 ? (data as any).steps.map((step: any) => step.responseRef) : []),
     ];
     if (!heads.some((head) => head && virtual.has(head.id))) return;
     // All virtual page documents are committed before a real root may reference them.
@@ -292,7 +293,7 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       if (
         input.id === "villages-village" ||
         (input.data as any)?.format === 4 ||
-        (input.data as any)?.responseStorage === 3 ||
+        (input.data as any)?.responseStorage === 4 ||
         (input.data as any)?.storageFormat === SCENE_STORAGE_FORMAT
       )
         await ensure(input.data);

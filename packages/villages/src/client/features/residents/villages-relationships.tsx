@@ -139,7 +139,7 @@ export function VillagesRelationships({
                           type="button"
                           disabled={saving}
                           onClick={async () => {
-                            const key = work.id + ":" + work.attempt;
+                            const key = work.instanceId + ":" + work.attempt;
                             recoveryIdentity.current[key] ??= createVillagesClientId();
                             setSaving(true);
                             setError("");
@@ -149,6 +149,7 @@ export function VillagesRelationships({
                                 body: JSON.stringify({
                                   id: work.id,
                                   expectedAttempt: work.attempt,
+                                  expectedInstanceId: work.instanceId,
                                   actionId: recoveryIdentity.current[key],
                                 }),
                               });

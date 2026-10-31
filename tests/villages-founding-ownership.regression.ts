@@ -78,6 +78,7 @@ function fixture(name: string) {
       slot = foundingSlot(kind, id);
     jobs.set(slot, {
       id: slot,
+      instanceId: jobs.get(slot)?.instanceId ?? "40000000-0000-4000-8000-000000000000",
       kind: kind === "routine" ? "agenda" : "wish",
       subjectId: id,
       attempt,
@@ -144,9 +145,10 @@ function fixture(name: string) {
     },
     settleBackgroundWork: async () => {},
     backgroundWorkSummaries: async () => structuredClone([...jobs.values()]),
-    retryBackgroundJob: async (id, attempt, requestId) => {
+    retryBackgroundJob: async (id, attempt, requestId, instanceId) => {
       const job = jobs.get(id);
       assert.equal(attempt, job.attempt);
+      assert.equal(instanceId, job.instanceId);
       assert.ok(requestId);
       retries.push(id);
       finish(job.kind === "agenda" ? "routine" : "wish", job.subjectId, job.attempt + 1);

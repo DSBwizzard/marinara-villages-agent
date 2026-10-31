@@ -166,7 +166,7 @@ export function capturedInputOwners(kind: BackgroundKind, raw: unknown, seed: st
 export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
   memoryObject(raw);
   memoryRequire(
-    raw.responseStorage === 3 && typeof raw.seed === "string" && isBackgroundKind(raw.kind),
+    raw.responseStorage === 4 && typeof raw.seed === "string" && isBackgroundKind(raw.kind),
     "unsupported captured background format",
   );
   const into = emptyOwners();

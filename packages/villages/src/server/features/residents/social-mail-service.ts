@@ -1169,7 +1169,7 @@ export function createSocialMail(ports: SocialMailPorts) {
       ["failed", "interrupted"].includes(job.status) &&
       (!replaceInvalidReply || entry?.retryAdmitted === rewriteAction)
     ) {
-      await ports.retryBackgroundJob(job.id, job.attempt, requestId);
+      await ports.retryBackgroundJob(job.id, job.attempt, requestId, job.instanceId);
     } else if (entry?.error) {
       // An explicit retry replaces an invalid unseen reply; otherwise it retains the saved text.
       const action = (replaceInvalidReply ? "mail-rewrite-" : "mail-reinterpret-") + fingerprint(entry).slice(0, 32);

@@ -154,6 +154,7 @@ const model: any = {
   },
 };
 const service = createBackgroundWork({
+  withCurrentJobWrite: (work) => work(),
   villagesDocuments: () =>
     ({
       getById: async (_pkg: string, id: string) => structuredClone(rows.get(id) ?? null),
