@@ -2,9 +2,15 @@ import assert from "node:assert/strict";
 import {
   capturedJobOwners,
   capturedWorldOwners,
+  validateCapturedOwners,
 } from "../packages/villages/src/server/adapters/storage/captured-admissions.js";
 import { encodeWishHistory } from "../packages/villages/src/server/adapters/storage/wish-history.js";
-import { relationshipWorldKey } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import {
+  relationshipWorldKey,
+  relationshipPayloadStore,
+} from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { fixtureWish, wishTime } from "./helpers/social-wishes-fixture.js";
 
 const scope = { seed: "captured-admissions", setupAt: wishTime() };
@@ -224,3 +230,41 @@ for (const patch of [
   { optionalAttempts: { review: { status: "unknown" } } },
 ])
   assert.throws(() => capturedJobOwners({ ...closed, ...patch }));
+
+// Declared owners alone cannot establish that an immutable dependency still exists.
+{
+  const f = sceneHistoryFixture();
+  try {
+    const encoded = encodeWishHistory([fixtureWish({ wish: "Exact retained café 東京 value" })], {
+      ...scope,
+      actorId: "ada",
+    });
+    for (const [id, data] of encoded.pages)
+      await f.gate.documents.create({
+        id,
+        packageId: "villages",
+        kind: "memory-page",
+        name: "History",
+        description: "",
+        data,
+        createdAt: wishTime(),
+        updatedAt: wishTime(),
+      });
+    const state = defaultRelationshipState(scope.seed);
+    const head = await relationshipPayloadStore(f.gate.documents).prepare(state, scope);
+    const native = planning();
+    native.admitted.villagers[0].wishHead = encoded.head;
+    native.context.social.head = head;
+    const owners = capturedJobOwners({ ...job, input: native, replacement: undefined });
+    const retained = await validateCapturedOwners(f.gate.documents, owners);
+    assert(retained.has(encoded.head!.root.id));
+    assert(retained.has(head.id));
+    const child = [...encoded.pages.keys()].find((id) => id !== encoded.head!.root.id)!;
+    assert(child);
+    f.rows.delete(child);
+    await assert.rejects(validateCapturedOwners(f.gate.documents, owners));
+  } finally {
+    f.release();
+    f.gate.dispose();
+  }
+}

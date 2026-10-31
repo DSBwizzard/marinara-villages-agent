@@ -1,10 +1,17 @@
 import { memoryObject, memoryRequire } from "../../domain/rules/memory-integrity.js";
 import type { BackgroundKind } from "../../domain/models/background-model.js";
 import { isBackgroundKind } from "../../domain/rules/work-recovery.js";
-import { wishResidentOwners, type WishHistoryHead, type WishHistoryScope } from "./wish-history.js";
+import {
+  createWishHistoryTracer,
+  wishResidentOwners,
+  type WishHistoryHead,
+  type WishHistoryScope,
+} from "./wish-history.js";
+import { MEMORY_PAGE_KIND, type MemoryPageData } from "./memory-pages.js";
 import {
   assertRelationshipWorld,
   readRelationshipHead,
+  validateRelationshipHistory,
   type RelationshipHistoryOwner,
   type RelationshipScope,
 } from "./relationship-payload-store.js";
@@ -204,4 +211,29 @@ export function capturedWorldOwners(raw: unknown): CapturedAdmissionOwners {
     }
   }
   return into;
+}
+import type { CapabilityDocumentStore } from "@marinara-engine/shared";
+
+/** Validate the complete declared graph before adopting references or releasing unowned storage. */
+export async function validateCapturedOwners(
+  documents: Pick<CapabilityDocumentStore, "getById">,
+  owners: CapturedAdmissionOwners,
+): Promise<Set<string>> {
+  const retained = new Set<string>();
+  const get: CapabilityDocumentStore["getById"] = async (packageId, id) => {
+    const row = await documents.getById(packageId, id);
+    if (row) retained.add(row.id);
+    return row;
+  };
+  const wishes = createWishHistoryTracer(async (id) => {
+    const row = await get("villages", id);
+    memoryRequire(
+      row?.id === id && row.packageId === "villages" && row.kind === MEMORY_PAGE_KIND && row.revision === 1,
+      "captured Wish history is missing or changed",
+    );
+    return row.data as MemoryPageData;
+  });
+  for (const owner of owners.wishes) await wishes.trace(owner.head, owner.scope);
+  await validateRelationshipHistory({ getById: get }, owners.relationships);
+  return retained;
 }
