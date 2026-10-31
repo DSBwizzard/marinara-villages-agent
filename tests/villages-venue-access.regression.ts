@@ -694,6 +694,7 @@ async function main() {
         agenda: null,
         wishes: [],
       })) as any;
+    records.delete("villages-active-venue");
     records.set("villages-village", { id: "villages-village", kind: "village", data: managementWorld, revision: 100 });
     await mutateVillageState((current) => {
       const jim = current.villagers.find((resident) => resident.characterId === "jim")!;
@@ -966,6 +967,7 @@ async function main() {
       known,
     );
     friendWorld.venues[0].zones!.find((zone) => zone.id === "living")!.access!.visitorHours = "always";
+    records.delete("villages-active-venue");
     records.set("villages-village", { id: "villages-village", kind: "village", data: friendWorld, revision: 140 });
     await mutateRelationships(friendWorld.seed, (ties) => {
       ties.edges[relationshipKey("jim", "visitor")] = {
@@ -1373,6 +1375,7 @@ async function main() {
         },
       },
     ];
+    records.delete("villages-active-venue");
     records.set("villages-village", { id: "villages-village", kind: "village", data: socialWorld, revision: 180 });
     failAccessWrite = true;
     await processSocialOutbox(socialWorld);
@@ -1395,6 +1398,7 @@ async function main() {
     rejectedWorld.socialOutbox = [
       { ...socialWorld.socialOutbox[0], id: "rejected-continuation", requiredPlanId: "missing-plan" },
     ];
+    records.delete("villages-active-venue");
     records.set("villages-village", { id: "villages-village", kind: "village", data: rejectedWorld, revision: 190 });
     await processSocialOutbox(rejectedWorld);
     assert.ok(
@@ -1433,6 +1437,7 @@ async function main() {
         completesAt: stamp,
       },
     ] as any;
+    records.delete("villages-active-venue");
     records.set("villages-village", { id: "villages-village", kind: "village", data: moveWorld, revision: 200 });
     await completeVillageResidence("jim", true, new Date(), false);
     const moved = await readVillageState({ memories: true }),

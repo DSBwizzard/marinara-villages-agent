@@ -378,6 +378,22 @@ const editFixtureScene = (edit: (saved: any) => void) => {
   edit(saved);
   records.get("villages-venue-visit-" + scene.id).data = authorSceneFixture(records, saved);
 };
+async function publicHistory(scope: string) {
+  const lines: unknown[] = [],
+    seen = new Set<string>();
+  let cursor = "";
+  do {
+    assert(!seen.has(cursor), "public history pagination advances");
+    seen.add(cursor);
+    const query = new URLSearchParams({ scope, ...(cursor ? { cursor } : {}) });
+    const response = await app.inject({ method: "GET", url: `/api/villages/rooms/${scene.id}/history?${query}` });
+    assert.equal(response.statusCode, 200, response.body);
+    const page = response.json();
+    lines.unshift(...page.lines);
+    cursor = page.olderCursor ?? "";
+  } while (cursor);
+  return JSON.stringify(lines);
+}
 async function turn(
   id: string,
   message: string,
@@ -498,9 +514,10 @@ try {
     { kind: "dialogue", speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", loud: true },
     { kind: "narration", text: "You pause by the railing." },
   ]);
-  assert.match(JSON.stringify(shouted), /indistinct/);
+  const shoutedHistory = await publicHistory(shouted.session.playback.scope);
+  assert.match(shoutedHistory, /indistinct/);
   assert.doesNotMatch(
-    JSON.stringify(shouted),
+    JSON.stringify(shouted) + shoutedHistory,
     /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/,
   );
   assert.deepEqual(state().lines.find((line: any) => line.content === "PRIVATE WORDS NEVER DELIVERED").heardBy, [
@@ -1209,11 +1226,15 @@ try {
   await start();
   const restored = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
   assert.equal(restored.statusCode, 200, restored.body);
-  assert.match(restored.body, /indistinct/);
-  assert.doesNotMatch(restored.body, /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/);
+  const restoredHistory = await publicHistory(restored.json().session.playback.scope);
+  assert.match(restoredHistory, /indistinct/);
+  assert.doesNotMatch(
+    restored.body + restoredHistory,
+    /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/,
+  );
   assert.equal(modelCalls, beforeRestart, "restart and read-only restoration request no model work");
-  assert(restored.body.includes(naturalProse));
-  assert(!restored.body.includes(audibleCue));
+  assert(restoredHistory.includes(naturalProse));
+  assert(!(restored.body + restoredHistory).includes(audibleCue));
   assert.equal(
     heardLines(fixtureSceneState(state(), records), "neighbor").find((line) => line.id === narratedLine.id)?.content,
     audibleCue,
