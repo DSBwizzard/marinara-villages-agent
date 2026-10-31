@@ -41,7 +41,7 @@ async function checkMapPlacement(width, activeScene = false) {
       }
     : null;
   if (session) {
-    snapshot.foundingPreparation = { status: "ready" };
+    snapshot.foundingPreparation = { status: "ready", canPlay: true };
     snapshot.sceneVenue = { sceneId: session.id, venue: structuredClone(snapshot.settings.venues[0]) };
     snapshot.sceneVenue.venue.zones[1].name = "Captured workshop";
     snapshot.opening = {

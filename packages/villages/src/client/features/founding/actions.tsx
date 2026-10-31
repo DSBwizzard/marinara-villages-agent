@@ -609,7 +609,7 @@ export function useFoundVillage(ports: {
       setDraftReady(false);
       await draftSaveQueue.current;
       await removeDeviceDraft(API_PATH).catch(() => undefined);
-      setScreen("preparing");
+      setScreen(founded.foundingPreparation?.canPlay ? "home" : "preparing");
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "The village could not be founded."));
     } finally {

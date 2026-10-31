@@ -913,7 +913,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   useVillagePresence({ visible, presenceSession, beginSnapshotRead, snapshot });
 
   const backgroundPending =
-    snapshot?.backgroundWork?.some((job) => ["queued", "running"].includes(job.status)) ?? false;
+    snapshot?.foundingPreparation?.status === "pending" ||
+    (snapshot?.backgroundWork?.some((job) => ["queued", "running"].includes(job.status)) ?? false);
 
   usePendingWorkPolling({ visible, backgroundPending, loadSnapshot });
 
@@ -1786,6 +1787,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useFoundingPreparationPolling({
     visible,
+    canPlay: snapshot?.foundingPreparation?.canPlay,
     status: snapshot?.foundingPreparation?.status,
     screen,
     setPreparationProblem,

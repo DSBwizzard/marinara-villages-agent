@@ -602,6 +602,7 @@ export function useFoundingSetupBlocker(ports: {
 
 export function useFoundingPreparationPolling(ports: {
   visible: boolean;
+  canPlay: boolean | undefined;
   status: VillageSnapshot["foundingPreparation"]["status"] | undefined;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setPreparationProblem: React.Dispatch<React.SetStateAction<string>>;
@@ -613,7 +614,12 @@ export function useFoundingPreparationPolling(ports: {
   const { screen, setPreparationProblem, setScreen, setSnapshot } = ports;
   const status = ports.status;
   useEffect(() => {
-    if (screen !== "preparing" || !ports.visible || status === "failed") return;
+    if (screen !== "preparing" || !ports.visible) return;
+    if (ports.canPlay) {
+      setScreen("home");
+      return;
+    }
+    if (status === "failed") return;
     let cancelled = false;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -623,7 +629,7 @@ export function useFoundingPreparationPolling(ports: {
         if (cancelled) return;
         setSnapshot(next);
         setPreparationProblem("");
-        if (!next.foundingPreparation || next.foundingPreparation.status === "ready") setScreen("home");
+        if (!next.foundingPreparation || next.foundingPreparation.canPlay) setScreen("home");
         else if (next.foundingPreparation.status === "pending") timer = setTimeout(() => void poll(), 2500);
       } catch (cause) {
         if (!cancelled) {
@@ -638,5 +644,5 @@ export function useFoundingPreparationPolling(ports: {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [screen, setPreparationProblem, setScreen, setSnapshot, ports.visible, status]);
+  }, [screen, setPreparationProblem, setScreen, setSnapshot, ports.visible, ports.canPlay, status]);
 }

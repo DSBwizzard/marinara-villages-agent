@@ -158,7 +158,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     };
     return context;
   }
-  async function queueVillagerAgenda(characterId: string, finite = true): Promise<void> {
+  async function queueVillagerAgenda(characterId: string, finite = true, origin?: "founding"): Promise<void> {
     let village = await readVillageState();
     const villager = village.villagers.find((row) => row.characterId === characterId);
     if (!villager) return;
@@ -167,7 +167,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     village = await readVillageState();
     if (context.sourceRevision !== foundingTaskRevision(village, characterId, "routine"))
       throw new Error("Resident context changed. Retry routine.");
-    const founding = village.foundingPreparation?.tasksVersion === 1 && village.foundingPreparation.status !== "ready";
+    const founding = origin === "founding";
     const revision = founding
       ? foundingTaskRevision(village, characterId, "routine")
       : agendaRevision(village, characterId);
@@ -177,6 +177,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         if (
           state.seed !== village.seed ||
           !marker ||
+          marker.tasksVersion !== 1 ||
           marker.status !== "pending" ||
           context.sourceRevision !== foundingTaskRevision(state, characterId, "routine")
         )

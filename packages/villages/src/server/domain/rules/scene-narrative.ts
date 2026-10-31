@@ -1,3 +1,4 @@
+import { foundingReadyForPlay } from "./founding-tasks.js";
 import type { NarrativeAdmission } from "../models/narrative-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -30,7 +31,7 @@ export function offerSceneNarrative(
     !eventAttemptAvailable(state, activityDate(state, now), now.getTime()) ||
     preferredActivityLane(state) !== "world" ||
     arrangementActivityAt(state, now) !== null ||
-    (state.foundingPreparation && state.foundingPreparation.status !== "ready")
+    !foundingReadyForPlay(state)
   )
     return null;
   const selected = admitNarrative(state, now.toISOString(), sourceId);
