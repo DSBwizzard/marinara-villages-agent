@@ -25,7 +25,9 @@ import {
   scenePublicHistoryStore,
   createScenePublicHistoryTracer,
   type ScenePublicHistoryHead,
+  rebindScenePublicHistory,
 } from "./scene-public-history.js";
+import { publicSceneHistoryHearing } from "../../domain/rules/scene-public.js";
 import { wishHistoryStore, createWishHistoryTracer, wishResidentOwners } from "./wish-history.js";
 import { worldWishOwners } from "./world-wishes.js";
 import {
@@ -239,6 +241,43 @@ export async function readSceneTranscriptIndex(documents: Pick<CapabilityDocumen
     scene,
   );
   return { ...scene, lines };
+}
+/** Coordinator saves only operation metadata and submission timing, never transcript or semantic readiness. */
+export async function publishSceneOperationHistory(
+  documents: CapabilityDocumentStore,
+  before: Record<string, unknown>,
+  next: Record<string, unknown>,
+) {
+  const old = publicHistoryHead(before);
+  memoryRequire(
+    JSON.stringify([before.id, before.villageSeed, before.transcript, before.participants]) ===
+      JSON.stringify([next.id, next.villageSeed, next.transcript, next.participants]),
+    "Scene operation cannot change transcript or cast",
+  );
+  const scene = coerceSession({
+    version: 3,
+    id: next.id,
+    villageSeed: next.villageSeed,
+    participants: next.participants,
+  });
+  scene.operation = next.operation as VenueScene["operation"];
+  scene.contactGeneration = next.contactGeneration as VenueScene["contactGeneration"];
+  const transcript = readSceneTranscriptHead(next.transcript, scene),
+    submissions = readSceneSubmissionHead(next.submissionHistory, scene);
+  if (publicSceneHistoryHearing({ ...before, submissions: [] }) !== publicSceneHistoryHearing(scene)) {
+    scene.submissions = (
+      await sceneSubmissionStore(documents).read(submissions, {
+        ...scene,
+        continuity: next.continuity as VenueScene["continuity"],
+      })
+    ).submissions;
+    if (publicSceneHistoryHearing(scene) !== old.privateHearing) {
+      scene.lines = (await sceneTranscriptStore(documents).read(transcript, scene)).lines;
+      next.publicHistory = await scenePublicHistoryStore(documents).prepare(scene, transcript, submissions, old);
+      return;
+    }
+  }
+  next.publicHistory = rebindScenePublicHistory(old, scene, transcript, submissions);
 }
 /** Backlog and recovery enumeration need mechanics, not transcript or frozen relationship hydration. */
 export function readSceneIndex(value: unknown): Omit<VenueScene, "continuity"> {

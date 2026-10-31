@@ -19,8 +19,23 @@ export function publicSceneHistoryProjection(scene: VenueScene) {
     positions: scene.lines.flatMap((line, position) =>
       !hidden.has(line.id) && (line.contactHidden !== true || line.soundOnly?.player === true) ? [position] : [],
     ),
-    privateHearing: privateSceneHearing({ ...scene, submissions: scene.submissions.filter(publishedTurn) }),
+    privateHearing: publicSceneHistoryHearing(scene),
   };
+}
+export function publicSceneHistoryHearing(value: unknown) {
+  const scene = asRecord(value);
+  return privateSceneHearing({
+    ...scene,
+    submissions: Array.isArray(scene.submissions) ? scene.submissions.filter(publishedTurn) : [],
+  });
+}
+export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
+  const policy = (turn: unknown) => [
+    publishedTurn(turn),
+    publicSceneHistoryHearing({ submissions: [turn] }),
+    [...unpublishedLines([turn])],
+  ];
+  return JSON.stringify(policy(before)) === JSON.stringify(policy(after));
 }
 function privateSceneHearing(value: unknown): boolean {
   const row = asRecord(value);

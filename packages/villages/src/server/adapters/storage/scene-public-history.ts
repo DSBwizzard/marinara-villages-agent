@@ -63,6 +63,11 @@ export function readScenePublicHistoryHead(
     "privateHearing",
   ]);
   memoryRequire(
+    Array.isArray(scene.participants) &&
+      scene.participants.every((person) => person && typeof person.characterId === "string" && person.characterId),
+    "invalid public Scene history source ownership",
+  );
+  memoryRequire(
     value.format === 1 &&
       value.world === worldOf(scene) &&
       Number.isSafeInteger(value.count) &&
@@ -100,6 +105,20 @@ function readPosition(value: unknown, id: string, lineCount: number): PublicScen
     "invalid public Scene history position",
   );
   return value as PublicScenePosition;
+}
+/** Only private timing changed; the caller preserves selection, prose, cast and hearing policy. */
+export function rebindScenePublicHistory(
+  head: ScenePublicHistoryHead,
+  scene: Owner,
+  transcript: SceneTranscriptHead,
+  submissions: SceneSubmissionHead,
+) {
+  return readScenePublicHistoryHead(
+    { ...head, source: sourceOf(scene, transcript, submissions, head.privateHearing) },
+    scene,
+    transcript,
+    submissions,
+  );
 }
 function projectLine(line: VenueLine, cast: Set<string>, privateHearing: boolean): VenueLine {
   const result = publicSceneResponse([line], cast, privateHearing);
@@ -196,6 +215,46 @@ export async function readScenePublicHistoryRange(
   );
   return rows;
 }
+export function encodeScenePublicHistory(
+  scene: VenueScene,
+  transcript: SceneTranscriptHead,
+  submissions: SceneSubmissionHead,
+  old?: { rows: PublicScenePosition[]; layout: HistoryPageTree },
+  versions = new WeakMap<HistoryPageRef, string>(),
+) {
+  readSceneTranscriptHead(transcript, scene);
+  readSceneSubmissionHead(submissions, scene);
+  memoryRequire(
+    transcript.count === scene.lines.length && submissions.count === scene.submissions.length,
+    "public Scene history publication source changed",
+  );
+  const projection = publicSceneHistoryProjection(scene),
+    cast = new Set(scene.participants.map((person) => person.characterId));
+  const rows = projection.positions.map((position, index) => {
+    const line = scene.lines[position],
+      publicDigest = lineDigest(line, cast, projection.privateHearing),
+      before = old?.rows[index];
+    return before && before.id === line.id && before.position === position && before.publicDigest === publicDigest
+      ? before
+      : { id: line.id, position, publicDigest };
+  });
+  const writer = createHistoryPageWriter(worldOf(scene)),
+    layout = writer.tree(
+      rows.map((row) => [row.id, row]),
+      old?.layout,
+    );
+  const head: ScenePublicHistoryHead = {
+    format: 1,
+    world: worldOf(scene),
+    count: rows.length,
+    lineCount: transcript.count,
+    positions: layout.root ? Object.freeze({ ...layout.root }) : null,
+    source: sourceOf(scene, transcript, submissions, projection.privateHearing),
+    publicVersion: publicVersion(layout, versions),
+    privateHearing: projection.privateHearing,
+  };
+  return { head, rows, layout, pages: writer.pages };
+}
 export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore, "getById" | "create">) {
   type Entry = { rows: PublicScenePosition[]; layout: HistoryPageTree };
   const cached = new Map<string, Entry>(),
@@ -242,32 +301,11 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
     submissions: SceneSubmissionHead,
     previous?: ScenePublicHistoryHead,
   ) {
-    readSceneTranscriptHead(transcript, scene);
-    readSceneSubmissionHead(submissions, scene);
-    memoryRequire(
-      transcript.count === scene.lines.length &&
-        submissions.count === scene.submissions.length &&
-        (!previous || previous.world === worldOf(scene)),
-      "public Scene history publication source changed",
-    );
+    memoryRequire(!previous || previous.world === worldOf(scene), "public Scene history publication source changed");
     const old = previous ? await read(previous, previous.lineCount) : undefined;
-    const projection = publicSceneHistoryProjection(scene),
-      cast = new Set(scene.participants.map((person) => person.characterId));
-    const rows = projection.positions.map((position, index) => {
-      const line = scene.lines[position],
-        publicDigest = lineDigest(line, cast, projection.privateHearing),
-        before = old?.rows[index];
-      return before && before.id === line.id && before.position === position && before.publicDigest === publicDigest
-        ? before
-        : { id: line.id, position, publicDigest };
-    });
-    const writer = createHistoryPageWriter(worldOf(scene)),
-      layout = writer.tree(
-        rows.map((row) => [row.id, row]),
-        old?.layout,
-      );
+    const { head, rows, layout, pages } = encodeScenePublicHistory(scene, transcript, submissions, old, versions);
     const stamp = new Date().toISOString();
-    for (const [id, data] of writer.pages) {
+    for (const [id, data] of pages) {
       const existing = await documents.getById("villages", id);
       if (existing)
         memoryRequire(
@@ -295,16 +333,6 @@ export function createScenePublicHistory(documents: Pick<CapabilityDocumentStore
         }
       }
     }
-    const head: ScenePublicHistoryHead = {
-      format: 1,
-      world: worldOf(scene),
-      count: rows.length,
-      lineCount: transcript.count,
-      positions: layout.root ? Object.freeze({ ...layout.root }) : null,
-      source: sourceOf(scene, transcript, submissions, projection.privateHearing),
-      publicVersion: publicVersion(layout, versions),
-      privateHearing: projection.privateHearing,
-    };
     remember(head, { rows, layout });
     return head;
   }

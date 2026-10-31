@@ -4,9 +4,18 @@ import type { FastifyInstance } from "fastify";
 import {
   publicSceneResponse,
   publicSceneHistoryProjection,
+  sameSceneHistoryTurnPolicy,
 } from "../packages/villages/src/server/domain/rules/scene-public.js";
 
 async function main() {
+  {
+    const held = { semanticProvenance: { version: 2 }, processing: { lineIds: ["held-line"] } };
+    assert(sameSceneHistoryTurnPolicy(held, { ...held, timing: { elapsedMs: 4 } }));
+    assert(!sameSceneHistoryTurnPolicy(held, { ...held, semanticReady: true }));
+    assert(!sameSceneHistoryTurnPolicy(held, { ...held, processing: { lineIds: ["different-line"] } }));
+    assert(!sameSceneHistoryTurnPolicy({}, { zoneEventsVersion: 1 }));
+    assert(!sameSceneHistoryTurnPolicy({}, { attention: { validation: { version: 3 } } }));
+  }
   {
     const scene = {
       participants: [{ characterId: "visible" }],
