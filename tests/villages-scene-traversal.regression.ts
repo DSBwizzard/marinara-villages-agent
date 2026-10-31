@@ -6,6 +6,7 @@ import { defaultRelationshipState } from "../packages/villages/src/server/domain
 import {
   captureSceneContinuity,
   sceneContinuityView,
+  visibleSceneContinuity,
 } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 
 const at = "2026-10-31T00:00:00.000Z";
@@ -85,4 +86,61 @@ for (const count of [1000, 10_000, 25_000]) {
   console.log(
     `Scene intention replay ${count}: one ledger scan, ${replayVisits} receipt-field reads; exact order, scope and baseline preserved.`,
   );
+  let narrationVisits = 0;
+  scene.lines = Array.from({ length: count }, (_, index) => ({
+    id: "narration:" + index,
+    role: "assistant" as const,
+    speakerId: "__venue_scene__",
+    name: "Narration",
+    get kind() {
+      narrationVisits++;
+      return "narration" as const;
+    },
+    get content() {
+      assert(index >= count - 8, "Optional continuity never reads old prose outside its retained suffix");
+      return "Exact café narration " + index;
+    },
+    at,
+    heardBy: [],
+  }));
+  const continuity = visibleSceneContinuity(scene);
+  assert.equal(narrationVisits, 8);
+  assert(
+    continuity.includes(
+      JSON.stringify(Array.from({ length: 8 }, (_, index) => "Exact café narration " + (count - 8 + index))),
+    ),
+  );
+}
+{
+  const scene = coerceSession({
+    version: 3,
+    id: "narration-boundaries",
+    lines: [
+      { id: "old", kind: "narration", role: "assistant", speakerId: "__venue_scene__", content: "Earlier." },
+      {
+        id: "hidden",
+        kind: "narration",
+        role: "assistant",
+        speakerId: "__venue_scene__",
+        content: "Private cause",
+        contactHidden: true,
+      },
+      {
+        id: "report",
+        kind: "narration",
+        role: "assistant",
+        speakerId: "__venue_scene__",
+        content: "Private report",
+        contactReport: true,
+      },
+      { id: "speech", role: "assistant", speakerId: "ada", content: "Spoken words" },
+      { id: "latest", kind: "narration", role: "assistant", speakerId: "__venue_scene__", content: "Latest." },
+    ],
+  });
+  assert(visibleSceneContinuity(scene).includes(JSON.stringify(["Earlier.", "Latest."])));
+  scene.lines.at(-1)!.content = "x".repeat(6001);
+  assert.equal(visibleSceneContinuity(scene), "", "An oversized newest narration never falls back to older context");
+  scene.lines.at(-1)!.content = "x".repeat(6000);
+  const exact = visibleSceneContinuity(scene);
+  assert(exact.includes(JSON.stringify(["x".repeat(6000)])) && !exact.includes("Earlier."));
 }
