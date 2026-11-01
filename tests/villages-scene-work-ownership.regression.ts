@@ -42,11 +42,7 @@ import { mutableSocialWish } from "../packages/villages/src/server/domain/rules/
 import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function commandFixture(
   label: string,

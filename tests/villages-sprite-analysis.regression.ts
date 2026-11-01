@@ -15,12 +15,7 @@ import { createSpriteWrites } from "../packages/villages/src/server/features/med
 import type { SpriteSetupDraft } from "../packages/villages/src/shared/contracts/sprites.js";
 
 function deferred<T>() {
-  let resolve!: (value: T) => void, reject!: (error: Error) => void;
-  const promise = new Promise<T>((yes, no) => {
-    resolve = yes;
-    reject = no;
-  });
-  return { promise, resolve, reject };
+  return Promise.withResolvers<T>();
 }
 async function until(check: () => boolean | Promise<boolean>) {
   const deadline = Date.now() + 10_000;

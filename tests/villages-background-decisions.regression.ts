@@ -6,11 +6,7 @@ import { createBackgroundWork } from "../packages/villages/src/server/jobs/backg
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(
   mode: "success" | "error" | "shutdown" | "storage",

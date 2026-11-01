@@ -16,11 +16,7 @@ import { createRuntimeDebug } from "../packages/villages/src/server/adapters/obs
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string, verbose: boolean, meter: boolean, enabled: boolean) {
   let record: any = { id: "villages-debug", revision: 1, data: { verbose, showUsageMeter: meter } };
