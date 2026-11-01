@@ -120,6 +120,7 @@ export function useSceneChangesPolling(ports: {
 }
 
 export function useSceneSelectionReset(ports: {
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   observedRoomIdRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
@@ -199,7 +200,10 @@ export function useSceneSelectionReset(ports: {
           if (reason) interrupted(reason);
         });
     };
-    const onFocus = () => validate();
+    const onFocus = () => {
+      if (!document.hidden) validate();
+    };
+    if (room.liveSceneVersion === 1 && !document.hidden) validate();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
     return () => {
@@ -210,6 +214,8 @@ export function useSceneSelectionReset(ports: {
   }, [
     room?.id,
     room?.status,
+    ports.snapshot?.village.instant,
+    room?.liveSceneVersion,
     screen,
     loadSnapshot,
     observedRoomIdRef,

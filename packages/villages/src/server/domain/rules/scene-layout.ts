@@ -13,6 +13,14 @@ import { extendSceneNarrative } from "./scene-narrative-effects.js";
 /** Only captured access inputs; persistent effects still validate against the current world. */
 export function sceneAccessState(state: VillageState, scene: VenueScene): VillageState {
   const facts = scene.continuity?.facts;
+  if (facts && scene.liveSceneVersion === 1 && scene.villageSeed === state.seed)
+    return {
+      ...state,
+      venues: facts.venues,
+      projects: facts.projects,
+      narrative: facts.narrative,
+      relationshipContext: facts.relationshipContext,
+    };
   const narrative = structuredClone(facts?.narrative);
   if (facts && narrative)
     for (const turn of scene.submissions) {

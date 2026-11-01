@@ -1131,6 +1131,7 @@ export function createSceneCommands({
       pendingAccessClaim: initialPermissionId,
       version: 3,
       sceneRevision: 0,
+      liveSceneVersion: 1,
       processingVersion: 1,
       semanticVersion: 2,
       villageSeed: village.seed,
@@ -2782,7 +2783,10 @@ export function createSceneCommands({
               ),
             }),
             true,
-            sceneContinuityView(state, currentScene).relationshipContext,
+            currentScene.liveSceneVersion === 1
+              ? state.relationshipContext
+              : sceneContinuityView(state, currentScene).relationshipContext,
+            currentScene.liveSceneVersion === 1,
           );
           // Settlement already checked private revisions; only its witnessed disclosures publish here.
           publishRelationshipDisclosures(

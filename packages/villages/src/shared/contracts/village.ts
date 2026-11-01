@@ -784,6 +784,8 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  liveSceneVersion?: 1;
+  currentTime?: string;
   capturedContext?: true;
   playerName?: string;
   /** An existing handoff needs return/recovery controls; private context stays server-side. */

@@ -92,7 +92,7 @@ A Scene is an ongoing interaction within one Venue. It can continue as you move 
 | **Say / Do** | Speak or attempt an action in your current Zone.                         |
 | **Move**     | Travel to a permitted Zone without requesting a generated arrival reply. |
 | **Contact**  | Knock, call, or speak toward an adjacent Zone.                           |
-| **Conclude** | End the Scene and return to the Village's current day.                   |
+| **Conclude** | End the Scene.                                                          |
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
@@ -102,13 +102,17 @@ Each Zone has room for four villagers; your Persona does not use a villager slot
 
 If you see **HALT**, the proposed turn has not entered the story. Read the notice and rewrite your draft. Ordinary refusals can still happen within the story; HALT holds the entire turn for a boundary the game cannot safely resolve. If the generated reply introduces an unsupported outcome, Villages tries one replacement and checks it again. If that fails, your input stays saved for Retry. Character abilities remain part of their identity; their enacted consequences must fit what Villages can support.
 
-### Take breaks without losing the moment
+### Take breaks without losing your progress
 
 You can leave the page or refresh and return to your unfinished Scene, draft, and reading position. Scenes have no inactivity deadline.
 
 Once a Scene and its saved effects are settled, its transcript is removed. Relevant Project evidence and saved recovery work remain available where needed.
 
-A Scene keeps the time, attendance, and situation it began with. A morning conversation stays that morning conversation even if you return days later. Meanwhile, the wider Village follows real time. **Conclude** rejoins the current day without inventing activities for your Persona during the gap. A Scene cannot jump the Village into the future or complete days of work just because you waited between replies.
+New Scenes follow the Village's current time. Residents can leave for commitments and others can arrive while you stay in the Venue. Each exchange keeps the time, participants and witnesses admitted for that request; a scheduled departure waits for that exchange to settle. Accepted changes count as you play, before **Conclude**.
+
+On returning, earlier replies remain saved and your draft stays unsent. The Scene shows who is here now without inventing anything your Persona did during the gap. New arrivals do not learn earlier conversations automatically. If the situation changes before Send, your message stays a draft while the Scene updates; review it before sending again. Time passing never purchases a generated greeting.
+
+Scenes already open in an older build keep their original captured moment until you conclude them. New Scenes use the live behavior. Saved and interrupted requests keep their original evidence and recovery controls.
 
 ## Get to know the residents
 

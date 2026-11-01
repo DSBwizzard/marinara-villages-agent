@@ -70,6 +70,7 @@ await withBrowser(browser, async () => {
     let active = true;
     let holdReview = null;
     let failure = null;
+    let liveStale = false;
     let loseSuccessResponse = false;
     let hideReads = false;
     let loseOperationRead = false;
@@ -157,6 +158,29 @@ await withBrowser(browser, async () => {
       } else if (path.endsWith("/rooms/turn") || path.endsWith("/rooms/leave")) {
         const input = request.postDataJSON();
         turns.push(input);
+        if (liveStale) {
+          liveStale = false;
+          session.activeIds = ["eli"];
+          session.participants.push({ characterId: "eli", name: "Eli", doing: "Reading" });
+          session.currentTime = "Monday, 2 November · 11:57";
+          session.sceneRevision++;
+          session.lines.push({
+            id: "current-presence",
+            role: "assistant",
+            kind: "narration",
+            speakerId: "__venue_scene__",
+            content: "Mara is no longer here. Eli is here.",
+            at: now,
+            physicalIdsAfter: ["eli"],
+          });
+          return fulfill(route, {
+            status: 409,
+            json: {
+              error: "The situation changed. Your message has not been sent. Review who is here and send again.",
+              code: "SCENE_STALE",
+            },
+          });
+        }
         if (occupancyUnavailable) {
           session.operation = {
             id: input.submissionId,
@@ -726,6 +750,31 @@ await withBrowser(browser, async () => {
     await expect(send).toBeEnabled();
     await expect(composer).toHaveValue("Keep this draft during recovery");
     assert.equal(continuations, 1, "Continue is an explicit local request, never an automatic model retry");
+    session.operation = null;
+    session.liveSceneVersion = 1;
+    session.currentTime = "Monday, 2 November · 09:57";
+    await load();
+    await expect(page.locator(`.${tag}-room-time`)).toHaveText(session.currentTime);
+    const liveNext = page.getByRole("button", { name: "Next paragraph", exact: true });
+    while (await liveNext.isEnabled()) await liveNext.click();
+    await page.screenshot({ path: `.build-tmp/scene-status/live-initial-${mobile ? "mobile" : "desktop"}.png` });
+    await composer.fill("Mara, dinner tomorrow sounds good.");
+    const beforeLiveSend = turns.length;
+    const acceptedBefore = session.submissions.length;
+    liveStale = true;
+    await send.click();
+    await expect(page.locator(`.${tag}-room-time`)).toHaveText("Monday, 2 November · 11:57");
+    while (await liveNext.isEnabled()) await liveNext.click();
+    await expect(composer).toHaveValue("Mara, dinner tomorrow sounds good.");
+    await expect(send).toBeEnabled();
+    await expect(page.locator(`.${tag}-room-time`)).toHaveText("Monday, 2 November · 11:57");
+    assert.equal(turns.length, beforeLiveSend + 1, "an audience change never automatically resends");
+    assert.equal(session.submissions.length, acceptedBefore, "the stale input never becomes accepted dialogue");
+    await page.screenshot({ path: `.build-tmp/scene-status/live-stale-${mobile ? "mobile" : "desktop"}.png` });
+    await composer.fill("Hello Eli.");
+    await send.click();
+    await expect(composer).toHaveValue("");
+    assert.equal(turns.at(-1).expectedSceneRevision, session.sceneRevision - 1);
     assert.deepEqual(errors, []);
     await page.close();
   }

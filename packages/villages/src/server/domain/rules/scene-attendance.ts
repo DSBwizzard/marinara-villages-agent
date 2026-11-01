@@ -1,7 +1,7 @@
 import { openingPresence } from "./opening-presence.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
-import type { VillageState, VillageVenue } from "../models/world.js";
+import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
 import { agendaAt } from "./agenda-plan.js";
 import { evaluateZoneAccess } from "./venue-access.js";
 import { contactCanEnter, contactPath, sceneAccessContext } from "./venue-contact.js";
@@ -13,7 +13,12 @@ import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagePresence } from "./village-projections.js";
 
-export function captureSceneAttendance(village: VillageState, placeId: string, now: Date): SceneAttendance {
+export function captureSceneAttendance(
+  village: VillageState,
+  placeId: string,
+  now: Date,
+  positions?: ReadonlyMap<string, VillagePlaceView>,
+): SceneAttendance {
   const venue = village.venues.find((entry) => entry.id === placeId)!;
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
@@ -22,7 +27,7 @@ export function captureSceneAttendance(village: VillageState, placeId: string, n
     timeZone: village.timeZone || undefined,
     now,
   });
-  const presence = villagePresence(village, moment.minuteOfDay, now);
+  const presence = villagePresence(village, moment.minuteOfDay, now, positions);
   return {
     layout: captureSceneLayout(venue),
     capturedAt: now.toISOString(),

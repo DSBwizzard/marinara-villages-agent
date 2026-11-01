@@ -419,6 +419,7 @@ export function applyRelationshipReview(
     if (!residents.has(entry.actorId) || entry.items.length > 3) throw new Error("Invalid social intentions.");
     const receipt = sourceId + ":intentions:" + entry.actorId;
     if (state.applied[receipt]) continue;
+    const sceneBeforeRevision = sceneState?.intentionRevisions[entry.actorId] ?? 0;
     state.intentions[entry.actorId] = structuredClone(entry.items);
     state.intentionRevisions[entry.actorId] = entry.expectedRevision + 1;
     state.intentionReceipts[receipt] = {
@@ -427,7 +428,7 @@ export function applyRelationshipReview(
       at,
       sceneAfter: structuredClone(entry.sceneItems),
       liveAfter: structuredClone(entry.items),
-      sceneRevision: (sceneState?.intentionRevisions[entry.actorId] ?? 0) + 1,
+      sceneRevision: sceneBeforeRevision + 1,
       liveRevision: entry.expectedRevision + 1,
       evidence: entry.evidence,
     };

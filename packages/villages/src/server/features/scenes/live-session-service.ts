@@ -6,6 +6,9 @@ import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js
 import { accessExits, captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
+import { agendaAt } from "../../domain/rules/agenda-plan.js";
+import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
+import { semanticBlocker } from "../../domain/rules/semantic-continuity.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
 import { claimVisitPermission, evaluateZoneAccess } from "../../domain/rules/venue-access.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
@@ -103,6 +106,13 @@ export function createLiveScenes({
   async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
     if ((await observeVillageClock())?.paused) return session;
     if (!completing && hasVenueOperation(session.id)) return session;
+    if (session.liveSceneVersion === 1) {
+      // Durable failed work owns its admitted context even after the in-memory operation has gone.
+      if (session.operation && (session.operation.status !== "complete" || session.operation.error)) return session;
+      if (semanticBlocker(session)) return session;
+      session = await refreshLiveScene(session);
+      if (hasVenueOperation(session.id)) return session;
+    }
     const village = sceneContinuityView(await readVillageState(), session),
       venue = village.venues.find((entry) => entry.id === session.placeId);
     if (!venue || session.status === "closed") return session;
@@ -324,6 +334,130 @@ export function createLiveScenes({
       }
       if (activeIds.some((id) => !state.activeIds.includes(id))) state.recap = "";
       state.activeIds = activeIds;
+    });
+  }
+  async function refreshLiveScene(session: VenueScene): Promise<VenueScene> {
+    if (session.status === "closed") return session;
+    const village = await readVillageState({ wishes: true });
+    if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
+    const venue = village.venues.find((row) => row.id === session.placeId);
+    if (!venue) return session;
+    const now = villageNow();
+    const moment = (at: Date) =>
+      deriveVillageMoment({
+        foundedAt: village.foundedAt,
+        seed: village.seed,
+        environment: village.narrative,
+        timeZone: village.timeZone || undefined,
+        now: at,
+      });
+    const currentMoment = moment(now);
+    const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
+    const previousMoment = moment(new Date(previousAt));
+    const sameRoutine = (id: string) => {
+      const resident = village.villagers.find((row) => row.characterId === id);
+      return (
+        !!resident &&
+        currentMoment.dayIndex === previousMoment.dayIndex &&
+        JSON.stringify(
+          agendaAt(
+            resident.agenda,
+            previousMoment.minuteOfDay,
+            new Date(previousAt),
+            resident.ingestSchedule !== false,
+          ),
+        ) ===
+          JSON.stringify(agendaAt(resident.agenda, currentMoment.minuteOfDay, now, resident.ingestSchedule !== false))
+      );
+    };
+    const accompanying = (session.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
+    const positions = new Map(
+      accompanying.flatMap((row) => {
+        const zone = resolveVenueZone(venue, row.zoneId);
+        return zone
+          ? [
+              [
+                row.characterId,
+                {
+                  id: venue.id,
+                  name: venue.name,
+                  kind: "venue" as const,
+                  zoneId: zone.id,
+                  zoneName: zone.name,
+                  image: zone.image,
+                },
+              ] as const,
+            ]
+          : [];
+      }),
+    );
+    const attendance = captureSceneAttendance(village, venue.id, now, positions);
+    const departedIds = (session.departedIds ?? []).filter(sameRoutine);
+    const continuity = captureSceneContinuity(village, session, now.getTime());
+    if (
+      session.continuity &&
+      Math.floor(Date.parse(session.continuity.capturedAt) / 60_000) === Math.floor(now.getTime() / 60_000) &&
+      JSON.stringify(session.continuity.facts) === JSON.stringify(continuity.facts) &&
+      JSON.stringify(session.sceneAttendance?.occupants) === JSON.stringify(attendance.occupants)
+    )
+      return session;
+    return changeSession(session.id, (state) => {
+      if (
+        state.sceneRevision !== session.sceneRevision ||
+        hasVenueOperation(state.id) ||
+        (state.operation && (state.operation.status !== "complete" || state.operation.error)) ||
+        semanticBlocker(state)
+      )
+        return;
+      state.sceneAttendance = attendance;
+      state.continuity = continuity;
+      state.accompanying = accompanying;
+      state.departedIds = departedIds;
+      state.departureDestinations = Object.fromEntries(
+        Object.entries(state.departureDestinations ?? {}).filter(([id]) => departedIds.includes(id)),
+      );
+      state.doorwayContacts = (state.doorwayContacts ?? []).filter((row) => sameRoutine(row.characterId));
+      state.entryOffers = (state.entryOffers ?? []).filter((row) => sameRoutine(row.controllerId));
+      const people = sceneZoneOccupants(state, village, venue, state.zoneId ?? "exterior");
+      if (people.length > 4) throw conflict("This Zone is full. Move to another Zone.");
+      const activeIds = people.map((row) => row.characterId);
+      const departed = state.activeIds.filter((id) => !activeIds.includes(id));
+      const arrived = people.filter((row) => !state.activeIds.includes(row.characterId));
+      for (const person of people) {
+        const existing = state.participants.findIndex((row) => row.characterId === person.characterId);
+        const participant = { characterId: person.characterId, name: person.name, doing: person.doing };
+        if (existing < 0) state.participants.push(participant);
+        else state.participants[existing] = participant;
+      }
+      state.activeIds = activeIds;
+      if (state.status === "opening" && activeIds.length === 0) state.status = "active";
+      if (departed.length || arrived.length || currentMoment.dayIndex !== previousMoment.dayIndex) {
+        // Report current presence, never fabricate witnessed departures or player activity during an absence.
+        appendLine(state, {
+          id: randomUUID(),
+          role: "assistant",
+          kind: "narration",
+          speakerId: "__venue_scene__",
+          name: "Narration",
+          at: now.toISOString(),
+          heardBy: [],
+          physicalIdsAfter: activeIds,
+          content: [
+            currentMoment.dayIndex !== previousMoment.dayIndex
+              ? `${currentMoment.weekday}, ${currentMoment.dateLabel}, ${currentMoment.localTime}.`
+              : "",
+            ...departed.map(
+              (id) =>
+                `${state.participants.find((row) => row.characterId === id)?.name ?? "A resident"} is no longer here.`,
+            ),
+            ...arrived.map((person) => `${person.name} is here.`),
+          ]
+            .filter(Boolean)
+            .join(" "),
+        });
+        state.recap = "";
+        state.pendingAttention = undefined;
+      }
     });
   }
   return { activeVenueSession, requireLiveVenueSession, touchVenueSession, refreshZoneParticipants };

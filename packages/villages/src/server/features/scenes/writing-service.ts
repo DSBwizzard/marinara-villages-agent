@@ -304,7 +304,7 @@ export function createSceneWriting({
         [
           `${card.name} (${person.characterId})`,
           relationshipWritingPrompt(village, person.characterId),
-          `Activity captured at Scene start: ${sceneOccupant?.doing || person.doing || "unspecified"}.`,
+          `Activity at this exchange: ${sceneOccupant?.doing || person.doing || "unspecified"}.`,
           `Current Residence: ${
             village.venues
               .filter((venue) => venueResidentIds(venue).includes(person.characterId))
@@ -469,7 +469,7 @@ export function createSceneWriting({
         village.narrative
           ? `Captured effective weather: ${moment.weather}. Locally perceivable environmental circumstances: ${JSON.stringify(environmentObservations(village.narrative, moment.instant, session.placeId, session.zoneId ?? "exterior"))}. These are outward circumstances, never proof everyone previously knew them. Ordinary-use restrictions permit only legally authorized inspection/corrective work and safe egress; do not invent consent, supplies, completed repairs or reopen on a promise. Actual supported physical repairs may clear matching conditions; all other restrictions remain.`
           : "",
-        `Authoritative encounter calendar: ${JSON.stringify(capturedSceneCalendar(session, village.timeZone || moment.timeZone))}. Calendar answers and relative dates use this captured date, weekday and local time. Earlier dialogue can contain mistakes and cannot override it. Real time between replies is not fictional waiting.`,
+        `Authoritative encounter calendar: ${JSON.stringify(capturedSceneCalendar(session, village.timeZone || moment.timeZone))}. Calendar answers and relative dates use this captured date, weekday and local time. Earlier dialogue cannot override it. ${session.liveSceneVersion === 1 ? "Time passes between exchanges, without inventing player activity or consent." : "Real time between replies is not fictional waiting."}`,
         `The player is ${player.name}. ${player.description}`,
         renderPlayerBackgroundWritingContext(
           village,
@@ -509,10 +509,12 @@ export function createSceneWriting({
           ? `Only selected residents ${JSON.stringify(audience)} may speak, act or receive invented reactions. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
           : "",
         venueFoundingBackground(village),
-        `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed.`,
-        session.continuity
-          ? "Continue the captured Scene moment. Real time between replies does not pass in this roleplay: do not explain an absence, age a conversation, wait for the player, or import later Scene changes. Only events established within this Scene advance its action. Ending returns the player to the current Village without inventing what they did during the gap. Never advance the Village into the future."
-          : "",
+        `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} ${session.liveSceneVersion === 1 ? "Attendance, activities and time are admitted for this exchange only. Schedules can change them between exchanges. Never reintroduce an absent speaker or give new arrivals knowledge of earlier dialogue. Current physical facts supersede old narration." : "Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed."}`,
+        session.liveSceneVersion === 1
+          ? "Continue in the admitted current situation. Earlier dialogue belongs to its recorded time and witnesses. After a break, do not invent what the player said, did, felt or agreed to during the gap. No automatic greeting or conversation occurred merely because another resident arrived. Do not advance the Village into the future."
+          : session.continuity
+            ? "Continue the captured Scene moment. Real time between replies does not pass in this roleplay: do not explain an absence, age a conversation, wait for the player, or import later Scene changes. Only events established within this Scene advance its action. Ending returns the player to the current Village without inventing what they did during the gap. Never advance the Village into the future."
+            : "",
         session.contactGeneration?.zoneEvents
           ? "Write only player-observable narration and reachable speech/sounds. Offstage residents remain offstage. Use their captured positions and individual witnessed histories; do not reveal silent occupants or causes of silence."
           : session.area === "outside"

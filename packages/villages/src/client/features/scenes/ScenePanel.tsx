@@ -829,7 +829,10 @@ export function RoomPanel({
       </div>
 
       <div className={`${ELEMENT_TAG}-chat-head`}>
-        <span className={`${ELEMENT_TAG}-room-place`}>{room.placeName}</span>
+        <span className={`${ELEMENT_TAG}-room-place`}>
+          {room.placeName}
+          {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
+        </span>
         <span ref={actionsRef} className={`${ELEMENT_TAG}-chat-actions`}>
           <button
             type="button"

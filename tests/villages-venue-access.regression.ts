@@ -624,8 +624,8 @@ async function main() {
       );
     });
     const exited = await activeVenueSession();
-    assert.equal(exited!.zoneId, "bedroom", "A background revocation cannot rewrite captured Scene permission.");
-    assert(!exited!.lines.some((line) => /access has ended/.test(line.content)));
+    assert.equal(exited!.zoneId, "office", "A live Scene applies current permission and preserves a permitted exit.");
+    assert(exited!.lines.some((line) => /access has ended/.test(line.content)));
     const lineCount = exited!.lines.length;
     assert.equal(
       (await activeVenueSession())!.lines.length,

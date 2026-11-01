@@ -5,6 +5,7 @@ export const VILLAGES_SCENE_STYLES = `
 [data-component="HomeBrowserHub"]:has(${tag}[data-scene-play]) [data-component="HomeBrowserHub.Content"] { overflow: hidden; }
 ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !important; }
 .${tag}-root.${tag}-room-screen { position: relative; }
+.${tag}-room-time { display: block; overflow: hidden; text-overflow: ellipsis; font-size: .6875rem; opacity: .8; }
 .${tag}-room-screen > .${tag}-room-error { position: absolute; z-index: 20; top: 3rem; left: .75rem; right: .75rem; max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 9rem)); overflow-y: auto; }
 .${tag}-room-screen > .${tag}-chat { position: relative; flex: 1 0 100%; height: 100%; min-height: 0; }
 .${tag}-room-screen .${tag}-chat-stage {

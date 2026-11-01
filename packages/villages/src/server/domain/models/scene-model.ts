@@ -167,6 +167,8 @@ export type VenueScene = {
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
+  /** Absent on saved encounters that retain their original frozen moment. */
+  liveSceneVersion?: 1;
   operation?: VenueOperation;
   /** Idempotent free navigation, separate from conversational turns. */
   navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];

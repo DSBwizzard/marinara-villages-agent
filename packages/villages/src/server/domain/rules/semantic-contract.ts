@@ -53,7 +53,10 @@ export function semanticSocialContext(
     live: socialContextState(authority.relationshipContext, actors, query),
     liveAt: new Date().toISOString(),
     intentions: Object.fromEntries(actors.map((id) => [id, presentation.relationshipContext?.intentions[id] ?? []])),
-    rule: "Each changed pair must cite its exact current live revision. sceneAfter and liveAfter are separate interpretations of this same event; never import later live facts into Scene continuity.",
+    rule:
+      scene.liveSceneVersion === 1
+        ? "Each changed pair must cite its exact current live revision. This is one living timeline: sceneAfter and liveAfter describe the same change; sceneItems and items describe the same intentions. Preserve intervening history and never overwrite a changed live revision."
+        : "Each changed pair must cite its exact current live revision. sceneAfter and liveAfter are separate interpretations of this same event; never import later live facts into Scene continuity.",
   };
 }
 
@@ -103,7 +106,10 @@ export function semanticContext(
       ? {
           time: {
             capturedAt: scene.continuity.capturedAt,
-            rule: "Real time between replies does not elapse in this Scene. Interpret the captured moment and its witnessed developments. Live authority and revisions still govern writes.",
+            rule:
+              scene.liveSceneVersion === 1
+                ? "This exchange uses its admitted time and attendance. Time and resident schedules continue between exchanges. Current physical facts supersede earlier narration; no invented player actions or retroactive witnesses. Live authority and revisions govern writes."
+                : "Real time between replies does not elapse in this Scene. Interpret the captured moment and its witnessed developments. Live authority and revisions still govern writes.",
           },
         }
       : {}),
