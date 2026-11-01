@@ -66,10 +66,9 @@ assert.equal(
 assert.equal(selectSpriteImage(customImages, "unknown", "front")?.image.url, "/delighted");
 const directionalImages = [
   { view: "front" as const, label: "neutral", expressionId: "e-neutral", isDefault: true, url: "/front-default" },
-  { view: "side" as const, direction: "right" as const, label: "smile", expressionId: "e-smile", url: "/side-smile" },
+  { view: "side" as const, label: "smile", expressionId: "e-smile", url: "/side-smile" },
   {
     view: "side" as const,
-    direction: "left" as const,
     label: "neutral",
     expressionId: "e-neutral",
     url: "/side-default",
@@ -86,7 +85,7 @@ assert.deepEqual(selectSpriteImage(directionalImages, "e-smile", "left"), {
 });
 assert.deepEqual(
   selectSpriteImage(directionalImages, "missing", "right"),
-  { image: directionalImages[2], mirrored: true },
+  { image: directionalImages[2], mirrored: false },
   "left-facing originals mirror toward a resident on the right",
 );
 assert.equal(selectSpriteImage([], "e-smile", "front"), null);
@@ -100,12 +99,11 @@ const semanticSprite = {
       expressionId: "e-running",
       name: "Running",
       assetId: "villages-123e4567-e89b-42d3-a456-426614174000",
-      useWhen: "Already moving quickly.",
     },
   ],
   framing: { mode: "full" as const, cropPercent: 58 },
 };
-assert.match(describeSpriteExpressions(semanticSprite), /Already moving quickly/);
+assert.doesNotMatch(describeSpriteExpressions(semanticSprite), /Already moving quickly/);
 assert.match(describeSpriteExpressions(semanticSprite), /e-running/);
 const catalog = describeSpriteExpressions({
   ...semanticSprite,

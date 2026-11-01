@@ -80,7 +80,6 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
       source: structuredClone(art.source),
       rendered: structuredClone(art.rendered),
       frame: structuredClone(art.frame),
-      direction: art.direction === "left" || art.direction === "right" ? art.direction : "front",
       ...(art.origin === "engine"
         ? {
             origin: "engine" as const,
@@ -98,15 +97,13 @@ export function coerceSpriteManager(value: unknown): SpriteManagerState | null {
         seenExpressions.has(entry.id) ||
         typeof entry.name !== "string" ||
         !entry.name.trim() ||
-        entry.name.length > 100 ||
-        typeof entry.useWhen !== "string" ||
-        entry.useWhen.length > 1000
+        entry.name.length > 100
       )
         return false;
       seenExpressions.add(entry.id);
       return true;
     })
-    .map((entry) => ({ id: entry.id, name: entry.name, useWhen: entry.useWhen }));
+    .map((entry) => ({ id: entry.id, name: entry.name }));
   const seenAssignments = new Set<string>();
   const assignments = state.assignments
     .filter((entry) => {
@@ -145,12 +142,10 @@ export function managerResidentSprite(state: SpriteManagerState | null | undefin
     return [
       {
         view: assignment.view,
-        direction: art.direction,
         label: expression.id,
         expressionId: expression.id,
         name: expression.name,
         spriteName: (art.engineSource?.filename ?? art.name).replace(/\.(png|jpe?g|webp)$/i, "").replace(/^full_/i, ""),
-        useWhen: expression.useWhen,
         filename: art.rendered.filename,
         assetId: art.assetId,
       },

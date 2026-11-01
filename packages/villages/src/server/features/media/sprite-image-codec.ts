@@ -41,15 +41,3 @@ export function spritePng(image: SpritePixels) {
       .toString("base64")
   );
 }
-
-/** Only the temporary vision input is resized; saved originals and Scene framing stay intact. */
-export async function spriteAnalysisImage(image: string): Promise<string> {
-  const decoded = decodeVillageImageDataUrl(image, { label: "sprite", maxBase64Length: 16_000_000 });
-  const { default: sharp } = await import("sharp");
-  const bytes = await sharp(Buffer.from(decoded.bytes), { limitInputPixels: 16_000_000 })
-    .rotate()
-    .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
-    .png()
-    .toBuffer();
-  return "data:image/png;base64," + bytes.toString("base64");
-}

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpriteFrame, SpriteSetupAssignment, SpriteSetupState } from "../../../shared/contracts/sprites.js";
-import { request, requestHost, messageFrom, VillageApiError } from "../../shared/api.js";
-import { createVillagesClientId } from "../../shared/request-id.js";
-import type { EngineConnectionRow, VillageConnectionOption, Portrait } from "../../shared/types.js";
-import { connectionOptionsFrom } from "../../shared/presentation.js";
+import { request, messageFrom, VillageApiError } from "../../shared/api.js";
+import type { Portrait } from "../../shared/types.js";
 
 type Props = {
   characterId: string;
@@ -14,36 +12,16 @@ type Props = {
   existing?: boolean;
   preserveSelection?: boolean;
 };
-const analysisConnectionKey = "villages-sprite-analysis-connection";
-const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim() && item.direction);
-const needsAnalysis = (item: SpriteSetupAssignment, data: SpriteSetupState) =>
-  item.included &&
-  !complete(item) &&
-  !item.name.trim() &&
-  !item.useWhen.trim() &&
-  !item.direction &&
-  !data.suggestions.some((suggestion) => suggestion.artworkId === item.artworkId);
+const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim());
 export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing, preserveSelection }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
-  const abort = useRef<AbortController | null>(null);
   const importAbort = useRef<AbortController | null>(null);
   const working = useRef(false);
   const [data, setData] = useState<SpriteSetupState | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
-  const [analyzing, setAnalyzing] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [connections, setConnections] = useState<VillageConnectionOption[]>([]);
-  const [connectionId, setConnectionId] = useState(() => {
-    try {
-      return window.localStorage.getItem(analysisConnectionKey) ?? "";
-    } catch {
-      return "";
-    }
-  });
-  const [connectionError, setConnectionError] = useState("");
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [activeArtwork, setActiveArtwork] = useState("");
   const reviewDialog = useRef<HTMLDialogElement>(null);
   const activeButton = useRef<HTMLButtonElement | null>(null);
@@ -84,15 +62,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     const controller = new AbortController();
     importAbort.current = controller;
     dialog.current?.showModal();
-    void requestHost<EngineConnectionRow[]>("/api/connections", { signal: controller.signal })
-      .then((rows) =>
-        setConnections(
-          connectionOptionsFrom(rows).filter((item) => item.category === "language" && item.id !== "random"),
-        ),
-      )
-      .catch((cause) => {
-        if (!controller.signal.aborted) setConnectionError(messageFrom(cause, "Could not load analysis connections."));
-      });
     void request<SpriteSetupState>(base + "/settled", { signal: controller.signal })
       .then(async (value) => {
         if (controller.signal.aborted) return;
@@ -112,7 +81,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     return () => {
       controller.abort();
       importAbort.current?.abort();
-      abort.current?.abort();
     };
   }, [base, importArtwork]);
   async function perform(action: () => Promise<void>) {
@@ -142,7 +110,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     const saved = await request<SpriteSetupState>(base + "/settled");
     setData(saved);
     setReloadRequired(false);
-    setProgress(null);
     closeEditor();
   }
   const recovery = reloadRequired ? (
@@ -158,19 +125,18 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
           assignments: prior.assignments.map((item) =>
             item.artworkId === artworkId
               ? {
-                  ...(prior.suggestions.find((suggestion) => suggestion.artworkId === artworkId) ?? item),
+                  ...item,
                   ...patch,
                   approved: false,
                 }
               : item,
           ),
-          suggestions: prior.suggestions.filter((item) => item.artworkId !== artworkId),
         },
     );
   }
   async function save(useSprites: boolean, validateForUse = false) {
     if (!data) return null;
-    // Only the final action accepts suggestions. Back, framing and analysis save drafts.
+    // Only the final action approves the set; closing or framing saves the draft.
     const acceptReview = useSprites && validateForUse;
     const saved = await request<SpriteSetupState>(base + "/save", {
       method: "POST",
@@ -182,7 +148,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         defaultArtworkId: acceptReview ? (defaultItem?.artworkId ?? "") : data.defaultArtworkId,
         useSprites,
         validateForUse,
-        pendingSuggestionIds: acceptReview ? [] : data.suggestions.map((item) => item.artworkId),
       }),
     });
     setData(saved);
@@ -219,110 +184,18 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     const saved = data.revision ? await save(data.useSprites) : data;
     onClose(saved?.revision);
   }
-  async function analyze(artworkId?: string) {
-    if (!connections.some((item) => item.id === connectionId)) {
-      setError("Choose a vision-capable sprite analysis connection.");
-      return;
-    }
-    const saved = await save(data.useSprites);
-    if (!saved) return;
-    const ids = artworkId
-      ? [artworkId]
-      : saved.assignments
-          .filter((item) => needsAnalysis(item, saved))
-          .map((item) => item.artworkId)
-          .slice(0, 40);
-    if (!ids.length) {
-      setError("No sprites need analysis.");
-      return;
-    }
-    const controller = new AbortController();
-    abort.current = controller;
-    setAnalyzing(true);
-    setProgress({ done: 0, total: ids.length });
-    try {
-      let latest = saved;
-      let done = 0;
-      for (let index = 0; index < ids.length; index += 2) {
-        controller.signal.throwIfAborted();
-        const artworkIds = ids.slice(index, index + 2);
-        latest = await request<SpriteSetupState>(base + "/analyze", {
-          method: "POST",
-          signal: controller.signal,
-          body: JSON.stringify({
-            revision: latest.revision,
-            requestId: createVillagesClientId(),
-            artworkIds,
-            finalize: index + artworkIds.length === ids.length,
-            connectionId,
-          }),
-        });
-        setData(latest);
-        done += artworkIds.filter(
-          (id) => !latest.errors[id] && latest.suggestions.some((item) => item.artworkId === id),
-        ).length;
-        setProgress({ done, total: ids.length });
-        const failed = artworkIds.find((id) => latest.errors[id]);
-        if (failed) {
-          setError(latest.errors[failed]);
-          break;
-        }
-      }
-    } catch (cause) {
-      setData(await request<SpriteSetupState>(base + "/settled"));
-      if (!controller.signal.aborted) throw cause;
-    } finally {
-      abort.current = null;
-      setAnalyzing(false);
-    }
-  }
-  const candidates =
-    data?.assignments.map(
-      (item) => data.suggestions.find((suggestion) => suggestion.artworkId === item.artworkId) ?? item,
-    ) ?? [];
+  const candidates = data?.assignments ?? [];
   const included = candidates.filter((item) => item.included);
   const completeCount = included.filter(complete).length;
-  const analysisCount = data?.assignments.filter((item) => needsAnalysis(item, data)).length ?? 0;
   const excludedCount = candidates.length - included.length;
-  const defaultItem = candidates.find(
-    (item) => complete(item) && item.artworkId === (data?.defaultArtworkId || data?.suggestedDefaultArtworkId),
-  );
+  const defaultItem = candidates.find((item) => complete(item) && item.artworkId === data?.defaultArtworkId);
   const canFinish = Boolean(defaultItem && completeCount === included.length);
-  const showAnalysis = analysisCount > 0 || analyzing;
   function closeEditor() {
     reviewDialog.current?.close();
     setActiveArtwork("");
     setFraming("");
     activeButton.current?.focus({ preventScroll: true });
   }
-  const connectionChooser = (
-    <label>
-      Sprite analysis connection
-      <select
-        aria-label="Sprite analysis connection"
-        value={connectionId}
-        disabled={busy}
-        onChange={(event) => {
-          setConnectionId(event.target.value);
-          try {
-            window.localStorage.setItem(analysisConnectionKey, event.target.value);
-          } catch {
-            // The current choice still works when browser storage is unavailable.
-          }
-        }}
-      >
-        <option value="">Choose a vision-capable connection</option>
-        {connectionId && !connections.some((item) => item.id === connectionId) ? (
-          <option value={connectionId}>Unavailable connection</option>
-        ) : null}
-        {connections.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
   return (
     <dialog
       className="villages-sprite-setup"
@@ -348,7 +221,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       .villages-sprite-setup .sprite-inline input{flex:0 0 18px;width:18px;height:18px;min-width:18px;min-height:18px;padding:0;margin:0}
       .villages-sprite-setup small{overflow-wrap:anywhere;color:#b9c6da}.villages-sprite-setup [role=alert]{color:#ffbeb5}
       .villages-sprite-setup .sprite-counts{margin:0 0 14px;color:#b9c6da}.villages-sprite-setup .sprite-counts span{display:inline-block}
-      .villages-sprite-setup .sprite-analysis{display:grid;gap:2px}
       .villages-sprite-setup .sprite-gallery{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
       .villages-sprite-setup .sprite-choice{min-width:0;display:grid;gap:6px;align-content:start}
       .villages-sprite-setup .sprite-thumb{position:relative;width:100%;display:grid;gap:6px;justify-items:center;align-content:start;min-width:0}
@@ -360,7 +232,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       .villages-sprite-setup .villages-sprite-review{position:fixed;inset:0;margin:auto;padding:0;width:min(720px,calc(100vw - 24px));max-height:90dvh;height:fit-content;overflow:hidden;background:#111d31;color:#f2f4fb;border:1px solid #66758f;border-radius:14px;box-sizing:border-box}
       .villages-sprite-setup .villages-sprite-review[open]{display:flex;flex-direction:column}
       .villages-sprite-setup .villages-sprite-review::backdrop{background:#080e19bd}
-      .villages-sprite-setup .sprite-analysis-options summary{cursor:pointer;padding:8px 0}
       .villages-sprite-setup .sprite-tile{display:grid;grid-template-columns:minmax(120px,1fr) minmax(0,2fr);gap:16px;padding:16px;background:#1a2b44;border-radius:8px}
       .villages-sprite-setup .sprite-inspector-image{min-width:0;display:grid;gap:6px;align-content:start}
       .villages-sprite-setup .sprite-inspector-image img{width:100%;height:240px;object-fit:contain;background:#233048;border-radius:8px}
@@ -393,9 +264,8 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
             <>
               <p role="status" className="sprite-counts">
                 {candidates.length} sprites · {completeCount} ready
-                {analysisCount ? <span> · {analysisCount} need analysis</span> : null}
-                {included.length - completeCount - analysisCount > 0 ? (
-                  <span> · {included.length - completeCount - analysisCount} incomplete</span>
+                {included.length - completeCount > 0 ? (
+                  <span> · {included.length - completeCount} incomplete</span>
                 ) : null}
                 {excludedCount ? <span> · {excludedCount} excluded</span> : null}
                 {defaultItem ? <span> · Default: {defaultItem.name}</span> : null}
@@ -405,17 +275,10 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                   <small>Choose a default sprite.</small>
                 </p>
               ) : null}
-              {showAnalysis && !activeArtwork ? <div className="sprite-analysis">{connectionChooser}</div> : null}
+              <p>
+                <small>Use front views or side views facing right.</small>
+              </p>
               <div className="sprite-actions">
-                {showAnalysis && !activeArtwork ? (
-                  <button
-                    disabled={busy || !connections.some((item) => item.id === connectionId) || !analysisCount}
-                    onClick={() => void perform(analyze)}
-                  >
-                    {progress ? "Analyze remaining" : "Analyze sprites"}
-                  </button>
-                ) : null}
-
                 <button
                   disabled={busy}
                   onClick={() =>
@@ -427,17 +290,8 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                 >
                   Refresh sprites
                 </button>
-                {analyzing ? <button onClick={() => abort.current?.abort()}>Cancel analysis</button> : null}
               </div>
-              {connectionError && showAnalysis && !activeArtwork ? <p role="alert">{connectionError}</p> : null}
               {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
-              {progress && (analyzing || progress.done < progress.total) ? (
-                <p role="status" className="sprite-progress">
-                  {analyzing
-                    ? `Analyzing ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
-                    : `Analysis stopped · ${progress.done} of ${progress.total} completed this run`}
-                </p>
-              ) : null}
               {!importing && !candidates.length ? <p>No character sprites available.</p> : null}
               <>
                 <div className="sprite-gallery" aria-label="Sprites">
@@ -468,11 +322,11 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                             {data.errors[art.id] ? "Retry · " : ""}
                             {!item.included
                               ? "Excluded"
-                              : needsAnalysis(item, data)
-                                ? "Needs analysis"
-                                : !complete(item)
-                                  ? "Incomplete"
-                                  : { front: "Front", left: "Left", right: "Right" }[item.direction]}
+                              : !complete(item)
+                                ? "Incomplete"
+                                : item.view === "front"
+                                  ? "Front"
+                                  : "Side"}
                             {defaultItem?.artworkId === art.id ? " · Default" : ""}
                           </small>
                         </button>
@@ -528,8 +382,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
             {data.manager.artwork
               .filter((art) => art.id === activeArtwork)
               .map((art) => {
-                const suggestion = data.suggestions.find((item) => item.artworkId === art.id);
-                const item = suggestion ?? data.assignments.find((item) => item.artworkId === art.id)!;
+                const item = data.assignments.find((item) => item.artworkId === art.id)!;
                 return (
                   <section className="sprite-tile" key={art.id} aria-label={art.name}>
                     <div className="sprite-inspector-image">
@@ -549,31 +402,15 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                         />
                       </label>
                       <label>
-                        Use when
-                        <textarea
-                          autoComplete="off"
-                          aria-label="Use when"
-                          disabled={busy}
-                          value={item.useWhen}
-                          maxLength={1000}
-                          rows={2}
-                          onChange={(event) => edit(art.id, { useWhen: event.target.value })}
-                        />
-                      </label>
-                      <label>
                         Facing
                         <select
                           aria-label="Facing"
                           disabled={busy}
-                          value={item.direction}
-                          onChange={(event) =>
-                            edit(art.id, { direction: event.target.value as SpriteSetupAssignment["direction"] })
-                          }
+                          value={item.view}
+                          onChange={(event) => edit(art.id, { view: event.target.value as "front" | "side" })}
                         >
-                          <option value="">Unassigned</option>
                           <option value="front">Front</option>
-                          <option value="left">Left</option>
-                          <option value="right">Right</option>
+                          <option value="side">Side</option>
                         </select>
                       </label>
                       <label className="sprite-inline">
@@ -646,20 +483,6 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                           </button>
                         </>
                       ) : null}
-                      <details className="sprite-analysis-options">
-                        <summary>Analysis</summary>
-                        {connectionChooser}
-                        {connectionError ? <p role="alert">{connectionError}</p> : null}
-                        <div className="sprite-actions">
-                          <button
-                            disabled={busy || !connections.some((entry) => entry.id === connectionId)}
-                            onClick={() => void perform(() => analyze(art.id))}
-                          >
-                            Analyze sprite
-                          </button>
-                          {analyzing ? <button onClick={() => abort.current?.abort()}>Cancel analysis</button> : null}
-                        </div>
-                      </details>
                       {art.warnings.map((warning) => (
                         <small key={warning}>{warning}</small>
                       ))}

@@ -599,7 +599,8 @@ async function main() {
     const before = JSON.stringify(state);
     checkpoints.clear();
     try {
-      systemByteLimit = 30_000;
+      await service.preflight(compactScene, "Hello there");
+      systemByteLimit = Buffer.byteLength(JSON.stringify(lastFitted), "utf8") + 256;
       await service.preflight(compactScene, "Hello there");
       await assert.rejects(service.preflight(compactScene, closed.id), /Essential System evidence does not fit/);
       assert.equal(calls.length, paid, "Known oversized targets stop before a writing purchase");

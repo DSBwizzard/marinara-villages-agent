@@ -207,7 +207,6 @@ async function run() {
         expectedUrl: artwork.rendered.url,
         expressionId,
         name,
-        useWhen: "Listening with controlled authority.",
         view,
         frame,
       });
@@ -217,7 +216,7 @@ async function run() {
     assert.equal(saved.snapshot.villagers[0]!.sprite!.images.length, 1);
     assert.match(
       describeSpriteExpressions((await readVillageState({ memories: true })).villagers[0]!.sprite),
-      /Listening with controlled authority/,
+      /Composed/,
     );
     assert.equal(
       validateSpriteExpression((await readVillageState({ memories: true })).villagers[0]!.sprite, expression.id),

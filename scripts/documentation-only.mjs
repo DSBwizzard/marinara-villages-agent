@@ -3,9 +3,9 @@ import { appendFileSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const instructions = new Set(["AGENTS.md", "DEVELOPMENT.md"]);
+const documentation = new Set(["AGENTS.md", "DEVELOPMENT.md", "README.md", "packages/villages/README.md"]);
 
-// Only regular-file edits to these two non-package inputs qualify. Missing Git
+// These prose paths are not runtime or package inputs. Missing Git
 // history, a different merge base, mode changes and every other path run full CI.
 export function documentationOnly({
   root = process.cwd(),
@@ -26,9 +26,13 @@ export function documentationOnly({
     const fields = git("diff", "--raw", "--no-abbrev", "--no-renames", "-z", base, "HEAD", "--").split("\0");
     if (fields.pop() !== "" || !fields.length || fields.length % 2) return false;
     for (let index = 0; index < fields.length; index += 2) {
-      if (!/^:100644 100644 [a-f0-9]{40} [a-f0-9]{40} M$/.test(fields[index]) || !instructions.has(fields[index + 1]))
+      const path = fields[index + 1];
+      if (
+        !/^:100644 100644 [a-f0-9]{40} [a-f0-9]{40} M$/.test(fields[index]) ||
+        (!documentation.has(path) && !/^docs\/[^/]+\.md$/.test(path))
+      )
         return false;
-      const bytes = readFileSync(join(root, fields[index + 1]));
+      const bytes = readFileSync(join(root, path));
       if (bytes.includes(0)) return false;
       new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     }
@@ -42,7 +46,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const only = documentationOnly();
   console.log(
     only
-      ? "Instruction-only change: source qualification passed; no product build or tests required."
+      ? "Documentation-only change: source qualification passed; no product build or tests required."
       : "Full CI qualification required.",
   );
   if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `only=${only}\n`);
