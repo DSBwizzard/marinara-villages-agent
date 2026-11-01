@@ -13,9 +13,7 @@ export const settingsJobId = "villages-background-" + backgroundRevision(["agend
 
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function unused<T extends object>(seed: Partial<T> = {}): T {
   return new Proxy(seed, {

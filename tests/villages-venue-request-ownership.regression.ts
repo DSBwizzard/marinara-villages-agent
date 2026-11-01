@@ -21,11 +21,7 @@ import {
 const stamp = "2026-10-06T12:00:00.000Z";
 const core = { name: "Glasshouse", classes: ["community"] as ["community"] };
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const state = coerceVillageState({

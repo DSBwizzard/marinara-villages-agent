@@ -15,11 +15,7 @@ import {
 import type { InterpretationTrace } from "../packages/villages/src/server/domain/models/interpretation-model.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const trace: InterpretationTrace = {
   id: "access-speech:same-check",

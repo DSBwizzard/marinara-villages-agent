@@ -22,11 +22,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import { registerVillageSettingsRoutes } from "../packages/villages/src/server/features/settings/routes.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const hall = () => venueDraft({ name: "Hall", description: "A public meeting place", classes: ["community"] }, null);
 function fixture(name: string) {
