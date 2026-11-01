@@ -830,6 +830,204 @@ try {
     semanticIntentAnswer = oldIntent;
     semanticExchangeAnswer = oldExchange;
   }
+  // Failed optional social metadata cannot block accepted dialogue or lose later disclosure recovery.
+  {
+    const retained = clone(records),
+      oldIntent = semanticIntentAnswer,
+      oldExchange = semanticExchangeAnswer;
+    const quote = "I enjoy gardening.",
+      learned = "Aqua enjoys gardening.";
+    semanticIntentAnswer = {
+      status: "resolved",
+      timeline: [{ kind: "action", text: "*waits*" }],
+      instructions: "",
+      action: null,
+      movement: null,
+    };
+    semanticExchangeAnswer = {
+      ...oldExchange,
+      memoryChanges: [
+        {
+          action: "create",
+          kind: "information",
+          subjects: ["aqua"],
+          text: "Aqua keeps a blue notebook.",
+          learners: {
+            aqua: {
+              basis: "report",
+              attributedTo: "aqua",
+              support: [{ lineId: 1, excerpt: "I keep a blue notebook." }],
+            },
+          },
+        },
+      ],
+      relationshipChanges: { changes: "malformed optional metadata", permissions: [], disclosures: [] },
+    };
+    const id = "optional-social-metadata";
+    await turn(id, "*waits*", [
+      { speakerId: "aqua", text: quote },
+      { speakerId: "aqua", text: "I keep a blue notebook." },
+    ]);
+    const held = () => state().submissions.find((row: any) => row.id === id);
+    assert.equal(held().processing.domains.relationships.status, "failed");
+    assert.equal(held().semanticReady, true);
+    const raw = JSON.stringify({
+      proposals: held().liveProposals.relationshipChanges,
+      receipt: held().residentActionReceipt,
+    });
+    assert(raw.includes("malformed optional metadata"), "Exact rejected System response stays retained");
+    const native = () => fixtureVillageState(records.get("villages-village").data, records);
+    const memoryIds = clone(held().processing.domains.memories.receiptIds);
+    assert(memoryIds.length > 0);
+    const memoryReceipts = memoryIds.map((id: string) => clone(native().memoryReceipts[id]));
+    const checkMemory = () => {
+      assert.equal(
+        native().memories.records.filter((row: any) => row.text === "Aqua keeps a blue notebook.").length,
+        1,
+        "Independent Memory remains single while social publication waits",
+      );
+      assert.deepEqual(
+        memoryIds.map((id: string) => native().memoryReceipts[id]),
+        memoryReceipts,
+      );
+    };
+    checkMemory();
+    assert(!records.get("villages-village").data.socialPublications?.[scene.id + ":" + id]);
+    semanticExchangeAnswer = {
+      ...semanticExchangeAnswer,
+      memoryChanges: [],
+      relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+    };
+    await turn("after-optional-social", "*waits*", [{ text: "The conversation continues." }]);
+    assert.equal(
+      JSON.stringify({ proposals: held().liveProposals.relationshipChanges, receipt: held().residentActionReceipt }),
+      raw,
+    );
+    checkMemory();
+    assert.equal(held().processing.domains.relationships.status, "failed");
+    const paid = modelCalls;
+    await stop?.();
+    await app.close();
+    app = Fastify();
+    await start();
+    const active = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(active.statusCode, 200, active.body);
+    const replay = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: scene.id,
+        submissionId: id,
+        message: "*waits*",
+        mode: "chat",
+        targetId: "",
+        expectedSceneRevision: state().sceneRevision,
+      },
+    });
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(modelCalls, paid, "Read/restart/replay never purchases optional repair");
+    assert.equal(
+      JSON.stringify({ proposals: held().liveProposals.relationshipChanges, receipt: held().residentActionReceipt }),
+      raw,
+    );
+    checkMemory();
+    const lines = clone(state().lines),
+      narration = narrationCalls;
+    domainRecoveryAnswer = {
+      relationshipChanges: {
+        changes: [],
+        permissions: [],
+        disclosures: [
+          { fromId: "aqua", toId: "aqua", kind: "preference", text: learned, lineIds: [held().replyLineIds[0]] },
+        ],
+      },
+    };
+    const repair = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/" + scene.id + "/changes/" + id + "/interpret",
+      payload: { domain: "relationships" },
+    });
+    assert.equal(repair.statusCode, 200, repair.body);
+    assert.equal(narrationCalls, narration, "Explicit social repair reuses paid Narration");
+    assert.equal(modelCalls, paid + 1, "Only the deliberate interpretation is purchased");
+    assert.deepEqual(state().lines, lines);
+    assert.equal(held().processing.domains.relationships.status, "applied");
+    assert.equal(records.get("villages-village").data.socialPublications[scene.id + ":" + id], true);
+    const learnedRows = () =>
+      fixtureVillageState(records.get("villages-village").data, records).memories.records.filter((row: any) =>
+        row.text.includes(learned),
+      );
+    assert.equal(learnedRows().length, 1, "The repaired witnessed disclosure reaches native Memories");
+    await app.inject({ method: "POST", url: "/api/villages/rooms/" + scene.id + "/changes/replay" });
+    assert.equal(learnedRows().length, 1);
+    assert.equal(modelCalls, paid + 1, "Effect replay never repeats the repair request");
+
+    checkMemory();
+    const continuedId = "optional-social-discard",
+      discardedText = "Aqua prefers red notebooks.";
+    semanticExchangeAnswer = {
+      ...semanticExchangeAnswer,
+      memoryChanges: [],
+      relationshipChanges: {
+        changes: "discarded malformed metadata",
+        permissions: [],
+        disclosures: [{ fromId: "aqua", toId: "aqua", kind: "preference", text: discardedText, lineIds: [0] }],
+      },
+    };
+    await turn(continuedId, "*waits*", [{ speakerId: "aqua", text: "I prefer red notebooks." }]);
+    const discarded = () => state().submissions.find((row: any) => row.id === continuedId);
+    const discardedEvidence = JSON.stringify({
+      proposals: discarded().liveProposals.relationshipChanges,
+      receipt: discarded().residentActionReceipt,
+    });
+    assert(discardedEvidence.includes("discarded malformed metadata"));
+    const beforeContinue = modelCalls;
+    const continued = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/" + scene.id + "/changes/" + continuedId + "/continue",
+      payload: { domain: "relationships" },
+    });
+    assert.equal(continued.statusCode, 200, continued.body);
+    assert.equal(discarded().processing.domains.relationships.status, "rejected");
+    assert(discarded().semanticContinuedDomains.includes("relationships"));
+    assert.equal(records.get("villages-village").data.socialPublications[scene.id + ":" + continuedId], true);
+    await stop?.();
+    await app.close();
+    app = Fastify();
+    await start();
+    const continuedRead = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.equal(continuedRead.statusCode, 200, continuedRead.body);
+    const discardedReplay = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: {
+        sessionId: scene.id,
+        submissionId: continuedId,
+        message: "*waits*",
+        mode: "chat",
+        targetId: "",
+        expectedSceneRevision: state().sceneRevision,
+      },
+    });
+    assert.equal(discardedReplay.statusCode, 200, discardedReplay.body);
+    assert.equal(modelCalls, beforeContinue, "Continue/restart/replay never buys repair");
+    assert.equal(
+      JSON.stringify({
+        proposals: discarded().liveProposals.relationshipChanges,
+        receipt: discarded().residentActionReceipt,
+      }),
+      discardedEvidence,
+    );
+    assert(
+      !native().memories.records.some((row: any) => row.text.includes(discardedText)),
+      "Discarded metadata never publishes a disclosure",
+    );
+    checkMemory();
+    records.clear();
+    for (const [key, row] of retained) records.set(key, row);
+    semanticIntentAnswer = oldIntent;
+    semanticExchangeAnswer = oldExchange;
+  }
   delete semanticExchangeAnswer.memoryChanges;
   semanticIntentAnswer.timeline = [{ kind: "action", text: "*waits*" }];
   await turn("semantic-missing-domain", "*waits*", [{ text: "The conversation pauses." }]);
