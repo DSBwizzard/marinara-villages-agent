@@ -15,7 +15,7 @@ jobs:
     name: validate
     runs-on: ubuntu-24.04
     outputs:
-      instruction_only: ${{ steps.documentation.outputs.only }}
+      documentation_only: ${{ steps.documentation.outputs.only }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -24,7 +24,7 @@ jobs:
         with:
           node-version: 24.21.0
           cache: npm
-      - name: Identify instruction-only changes
+      - name: Identify documentation-only changes
         id: documentation
         run: node scripts/documentation-only.mjs
         env:
@@ -58,7 +58,7 @@ jobs:
     name: validate-windows
     runs-on: windows-2025
     outputs:
-      instruction_only: ${{ steps.documentation.outputs.only }}
+      documentation_only: ${{ steps.documentation.outputs.only }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -67,7 +67,7 @@ jobs:
         with:
           node-version: 24.21.0
           cache: npm
-      - name: Identify instruction-only changes
+      - name: Identify documentation-only changes
         id: documentation
         run: node scripts/documentation-only.mjs
         env:
@@ -119,7 +119,7 @@ jobs:
         with:
           node-version: 24.21.0
           cache: npm
-      - name: Identify instruction-only changes
+      - name: Identify documentation-only changes
         id: documentation
         run: node scripts/documentation-only.mjs
         env:
@@ -154,7 +154,7 @@ jobs:
         with:
           node-version: 24.21.0
           cache: npm
-      - name: Identify instruction-only changes
+      - name: Identify documentation-only changes
         id: documentation
         run: node scripts/documentation-only.mjs
         env:
@@ -193,18 +193,18 @@ jobs:
         env:
           VALIDATION_JOBS: ${{ toJSON(needs) }}
         run: |
-          node -e 'const needs = JSON.parse(process.env.VALIDATION_JOBS); if (Object.values(needs).some(job => job.result !== "success") || needs.validate.outputs.instruction_only !== needs["validate-windows"].outputs.instruction_only) process.exit(1);'
+          node -e 'const needs = JSON.parse(process.env.VALIDATION_JOBS); if (Object.values(needs).some(job => job.result !== "success") || needs.validate.outputs.documentation_only !== needs["validate-windows"].outputs.documentation_only) process.exit(1);'
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        if: needs.validate.outputs.instruction_only != 'true'
+        if: needs.validate.outputs.documentation_only != 'true'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
-        if: needs.validate.outputs.instruction_only != 'true'
+        if: needs.validate.outputs.documentation_only != 'true'
         with:
           node-version: 24.21.0
-      - if: needs.validate.outputs.instruction_only != 'true'
+      - if: needs.validate.outputs.documentation_only != 'true'
         run: npm ci
-      - if: needs.validate.outputs.instruction_only != 'true'
+      - if: needs.validate.outputs.documentation_only != 'true'
         run: node scripts/download-ci-packages.mjs
         env:
           GH_TOKEN: ${{ github.token }}
-      - if: needs.validate.outputs.instruction_only != 'true'
+      - if: needs.validate.outputs.documentation_only != 'true'
         run: node scripts/package-parity.mjs .build-tmp/platforms/villages-linux .build-tmp/platforms/villages-windows

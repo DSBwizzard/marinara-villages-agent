@@ -10,7 +10,12 @@ const fixture = await mkdtemp(join(tmpdir(), "villages-documentation-"));
 try {
   for (const scenario of [
     "instructions",
+    "readmes",
+    "guide",
     "mixed",
+    "mixed-guide",
+    "added-guide",
+    "markdown-source",
     "deleted",
     "product",
     "configuration",
@@ -38,7 +43,19 @@ try {
     git("config", "core.autocrlf", "false");
     // Mode cases use the index explicitly on every host, including Windows.
     git("config", "core.filemode", "false");
-    for (const path of ["AGENTS.md", "DEVELOPMENT.md", "source.mjs", "package.json"])
+    await mkdir(join(root, "docs"));
+    await mkdir(join(root, "packages/villages"), { recursive: true });
+    for (const path of [
+      "AGENTS.md",
+      "DEVELOPMENT.md",
+      "README.md",
+      "UNVERIFIED.md",
+      "packages/villages/README.md",
+      "packages/villages/prompt.md",
+      "docs/wishes.md",
+      "source.mjs",
+      "package.json",
+    ])
       await writeFile(join(root, path), "baseline\n");
     git("add", ".");
     git("commit", "--quiet", "-m", "base");
@@ -47,6 +64,12 @@ try {
     if (scenario === "instructions") {
       await writeFile(join(root, "AGENTS.md"), "updated principles\n");
       await writeFile(join(root, "DEVELOPMENT.md"), "updated commands\n");
+    } else if (scenario === "readmes") {
+      await writeFile(join(root, "README.md"), "updated overview\n");
+      await writeFile(join(root, "packages/villages/README.md"), "updated player guide\n");
+    } else if (scenario === "guide" || scenario === "mixed-guide") {
+      await writeFile(join(root, "docs/wishes.md"), "updated guide\n");
+      if (scenario === "mixed-guide") await writeFile(join(root, "source.mjs"), "changed\n");
     } else if (scenario === "mixed") {
       await writeFile(join(root, "AGENTS.md"), "updated principles\n");
       await writeFile(join(root, "source.mjs"), "changed\n");
@@ -60,7 +83,9 @@ try {
         product: "source.mjs",
         configuration: "package.json",
         workflow: ".github/workflows/ci.yml",
-        unknown: "README.md",
+        unknown: "UNVERIFIED.md",
+        "added-guide": "docs/new.md",
+        "markdown-source": "packages/villages/prompt.md",
       }[scenario];
       if (scenario === "workflow") await mkdir(join(root, ".github/workflows"), { recursive: true });
       await writeFile(join(root, path), "changed\n");
@@ -72,7 +97,8 @@ try {
     git("checkout", "--quiet", "-b", "candidate", base);
     git("merge", "--quiet", "--no-ff", "change", "-m", "candidate");
     const input = { root, event: "pull_request", base };
-    assert.equal(documentationOnly(input), scenario === "instructions", scenario);
+    const qualifies = ["instructions", "readmes", "guide"].includes(scenario);
+    assert.equal(documentationOnly(input), qualifies, scenario);
     const output = join(root, "qualification-output");
     execFileSync(process.execPath, [fileURLToPath(new URL("../scripts/documentation-only.mjs", import.meta.url))], {
       cwd: root,
@@ -80,7 +106,7 @@ try {
       windowsHide: true,
       stdio: "pipe",
     });
-    assert.equal(await readFile(output, "utf8"), `only=${scenario === "instructions"}\n`);
+    assert.equal(await readFile(output, "utf8"), `only=${qualifies}\n`);
     assert.equal(documentationOnly({ ...input, event: "workflow_dispatch" }), false);
     assert.equal(documentationOnly({ ...input, base: "f".repeat(40) }), false);
     if (scenario === "instructions") {
@@ -95,5 +121,5 @@ try {
   await rm(fixture, { recursive: true, force: true });
 }
 console.log(
-  "Documentation qualification: exact merge parent and regular UTF-8 instruction edits only; all meaningful or ambiguous changes require full CI.",
+  "Documentation qualification: exact merge parent and regular UTF-8 edits to verified prose paths; mixed and ambiguous changes require full CI.",
 );
