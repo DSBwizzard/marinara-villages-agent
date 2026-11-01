@@ -3,7 +3,7 @@ import { runCase } from "../scripts/test-cases.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 // Test cases: village-clock-recovery, founding-timezone
@@ -11,7 +11,7 @@ const browser = await chromium.launch({
   headless: true,
 });
 await mkdir(".build-tmp/clock-visual", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390]) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, timezoneId: "Asia/Tokyo" });
     await mockEngineLookups(context);
@@ -107,6 +107,4 @@ try {
     await context.close();
   }
   console.log("Desktop/mobile nonblocking server clock and fixed founding timezone defaults passed.");
-} finally {
-  await browser.close();
-}
+});

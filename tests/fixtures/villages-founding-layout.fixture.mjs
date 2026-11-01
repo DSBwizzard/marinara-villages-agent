@@ -4,7 +4,7 @@ const foundingBundle = await foundingFixture();
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium } from "./browser-diagnostics.mjs";
+import { chromium, withBrowser } from "./browser-diagnostics.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { build } from "../../scripts/esbuild.mjs";
 import { wantsCase, runCase } from "../../scripts/test-cases.mjs";
@@ -155,7 +155,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
   );
 }
 export async function verifyFoundingLayout(group) {
-  try {
+  await withBrowser(browser, async () => {
     for (const { width, height, fontSize, homeCount, chromeHeight = 44 } of [
       { width: 1366, height: 768, fontSize: 16, homeCount: 3 },
       { width: 1440, height: 650, fontSize: 16, homeCount: 1, chromeHeight: 200 },
@@ -1655,7 +1655,5 @@ export async function verifyFoundingLayout(group) {
       });
     }
     if (group === "desktop") await runCase("founding/reopening", verifyFoundingReopening);
-  } finally {
-    await browser.close();
-  }
+  });
 }

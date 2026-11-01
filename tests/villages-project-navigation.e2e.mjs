@@ -8,7 +8,7 @@ const { readBaseVenueLayout, validateLayoutZones } = await tsImport(
 );
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect, mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, mockEngineLookups, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { openProjectPage, currentProject, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 const output = process.env.VILLAGES_VISUAL_OUTPUT;
@@ -173,7 +173,7 @@ async function checkMapPlacement(width, activeScene = false) {
   assert.deepEqual(snapshot.sceneVenue, originalVenue);
   await page.close();
 }
-try {
+await withBrowser(browser, async () => {
   for (const width of [1280, 390]) {
     await checkMapPlacement(width);
     await checkMapPlacement(width, true);
@@ -476,6 +476,4 @@ try {
   console.log(
     "Blueprint Projects on desktop/phone: tabs, keyboard access, retained edits, explicit Start, deadline, cancellation, two Classes, six Zones and private specifications passed.",
   );
-} finally {
-  await browser.close();
-}
+});

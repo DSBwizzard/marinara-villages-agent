@@ -4,7 +4,7 @@ import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostic
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -205,7 +205,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
   };
 }
 
-try {
+await withBrowser(browser, async () => {
   for (const restored of [false, true]) {
     const f = await fixture({ restored });
     await expectSceneError(f.page, "The connection was interrupted. Check the saved reply before sending again.");
@@ -322,6 +322,4 @@ try {
   await switched.page.close();
   assert.deepEqual(errors, []);
   console.log("villages-greeting-recovery browser: ok");
-} finally {
-  await browser.close();
-}
+});

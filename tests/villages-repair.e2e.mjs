@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const bundle = await build({
@@ -29,7 +29,7 @@ createRoot(document.getElementById('root')).render(<ConfirmationProvider><Harnes
 });
 const browser = await chromium.launch({ headless: true });
 await mkdir(".build-tmp/repair-ui", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const [name, width] of [
     ["desktop", 1440],
     ["phone", 390],
@@ -477,6 +477,4 @@ try {
       await page.close();
     }
   });
-} finally {
-  await browser.close();
-}
+});

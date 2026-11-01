@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { openProjectPage, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const [width, height] of [
     [1280, 900],
     [390, 740],
@@ -167,6 +167,4 @@ try {
     await focusPage.close();
   }
   console.log("Project workspace and detail controls fit desktop and phone viewports.");
-} finally {
-  await browser.close();
-}
+});

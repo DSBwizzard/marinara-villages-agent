@@ -1,6 +1,6 @@
 // Test cases: lore/inspection
 import assert from "node:assert/strict";
-import { chromium, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
@@ -32,7 +32,7 @@ const report = {
   ],
 };
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1366, 390])
     await runCase(`lore/inspection/${width}`, async () => {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -106,6 +106,4 @@ try {
       );
       await page.close();
     });
-} finally {
-  await browser.close();
-}
+});

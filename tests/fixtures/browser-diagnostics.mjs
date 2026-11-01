@@ -70,6 +70,28 @@ export const chromium = {
   },
 };
 
+/** Preserve the test failure as well as diagnostics collected during cleanup. */
+export async function withBrowser(browser, work) {
+  let value, failure, cleanupFailure;
+  try {
+    value = await work();
+  } catch (error) {
+    failure = { error };
+  }
+  try {
+    await browser.close();
+  } catch (error) {
+    cleanupFailure = { error };
+  }
+  if (failure && cleanupFailure)
+    throw new AggregateError([failure.error, cleanupFailure.error], "Browser test and cleanup failed", {
+      cause: failure.error,
+    });
+  if (failure) throw failure.error;
+  if (cleanupFailure) throw cleanupFailure.error;
+  return value;
+}
+
 /** Synthetic Engine lists used by package fixtures; specific test routes take precedence. */
 export async function mockEngineLookups(target) {
   await target.route("**/api/characters/personas/*", (route) => route.fulfill({ json: { avatarPath: "" } }));

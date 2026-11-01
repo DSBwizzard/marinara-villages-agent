@@ -4,7 +4,7 @@ const sceneBundle = await sceneFixture();
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -15,7 +15,7 @@ import { now, residents, longGreeting, mapImage, snapshot } from "./fixtures/vil
 const spriteImage = (color) =>
   `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><g transform="scale(2)"><circle cx="256" cy="100" r="70" fill="${color}"/><path d="M175 180h162l65 360H110zM175 530h60v238h-70zM277 530h60l35 238h-70z" fill="${color}"/></g></svg>`).toString("base64")}`;
 
-try {
+await withBrowser(browser, async () => {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
@@ -693,6 +693,4 @@ try {
   console.log(
     "Villages staging browser checks: one through four residents, four viewports, framing, movement, card flips, shared settings, failures, loading, cancellation, replay, refresh, departures, legacy visits, and reduced motion passed",
   );
-} finally {
-  await browser.close();
-}
+});

@@ -4,13 +4,13 @@ import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostic
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   mkdirSync(".build-tmp/attention-preview", { recursive: true });
   for (const width of [1366, 390, 320]) {
     const snapshot = structuredClone(fixture);
@@ -177,6 +177,4 @@ try {
   console.log(
     "Natural attention browser: desktop and two phones, saved choices, draft edits, reload, lost response and fresh continuation identity passed",
   );
-} finally {
-  await browser.close();
-}
+});

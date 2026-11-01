@@ -2,7 +2,7 @@ import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostic
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase, wantsCase } from "../scripts/test-cases.mjs";
 // Test cases: founding/quick-start/desktop, founding/quick-start/phone
@@ -61,7 +61,7 @@ syncVillagesStyles();
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   for (const viewport of [
     { width: 1366, height: 900 },
     { width: 390, height: 844 },
@@ -565,9 +565,7 @@ try {
       await context.close();
     });
   }
-} finally {
-  await browser.close();
-}
+});
 console.log(
   "Quick Start mobile/desktop: inline space review, generation/retry fences, confirmation, full overwrite, modes and IndexedDB resume pass (mocked APIs).",
 );

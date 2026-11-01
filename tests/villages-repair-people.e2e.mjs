@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 const code = await build({
   stdin: {
     loader: "tsx",
@@ -250,7 +250,7 @@ const chooseEllis = async (page) => {
   await page.getByRole("button", { name: "Ellis", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Ellis", exact: true })).toBeVisible();
 };
-try {
+await withBrowser(browser, async () => {
   await mkdir(".build-tmp/repair-people", { recursive: true });
   await runCase("repair-people/navigation", async () => {
     for (const width of [1440, 390]) {
@@ -442,6 +442,4 @@ try {
     );
     await f.close();
   });
-} finally {
-  await browser.close();
-}
+});

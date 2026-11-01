@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 const expect = fastExpect({ timeout: 15000 });
@@ -25,7 +25,7 @@ function pngImage(opaque = false, multiple = false) {
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   for (const viewport of [
     { width: 1917, height: 1000 },
     { width: 1440, height: 900 },
@@ -583,6 +583,4 @@ try {
   console.log(
     "Sprite Manager browser: desktop, portrait phones, uploads, framing, expressions, failures, exports, adoption and reload passed.",
   );
-} finally {
-  await browser.close();
-}
+});

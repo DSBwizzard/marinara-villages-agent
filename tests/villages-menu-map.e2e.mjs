@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const P = "marinara-capability-villages";
@@ -12,7 +12,7 @@ const browser = await chromium.launch({ headless: true });
 const generated = "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1440, height: 900 })).toString("base64");
 const html =
   "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>";
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 600 });
     await mockEngineLookups(page);
@@ -304,7 +304,5 @@ try {
     assert.ok((await page.locator("." + P + "-maps-overview").boundingBox()).width <= width);
     await page.close();
   }
-} finally {
-  await browser.close();
-}
+});
 console.log("Multiple maps: selection, scope, creation, recovery and active Scene browsing pass on desktop and phone.");
