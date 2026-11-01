@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const built = await build({
   stdin: {
@@ -31,7 +31,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   jsx: "automatic",
 });
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const strict of [false, true]) {
     const page = await browser.newPage();
     await page.setContent('<div id="root"></div>');
@@ -131,6 +131,4 @@ try {
       `Scene History: bounded pages, refresh, stale Scene/world/aborted responses and unmount; StrictMode=${strict}.`,
     );
   }
-} finally {
-  await browser.close();
-}
+});

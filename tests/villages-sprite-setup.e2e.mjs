@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { mkdir } from "node:fs/promises";
 import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
@@ -169,7 +169,7 @@ async function verifyStableLoading(viewport, spriteCount, loseImportResponse = f
     await page.close();
   }
 }
-try {
+await withBrowser(browser, async () => {
   for (const viewport of [
     { width: 390, height: 844 },
     { width: 320, height: 568 },
@@ -673,6 +673,4 @@ try {
   console.log(
     "Sprite setup browser: modal sprite review, prepared markers, draft persistence, final approval, retry/cancellation and portrait fallback passed on desktop/phone.",
   );
-} finally {
-  await browser.close();
-}
+});

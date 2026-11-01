@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { openProjectPage, projectSnapshot, currentProject } from "./fixtures/villages-project-browser.fixture.mjs";
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const [width, height] of [
     [1280, 900],
     [390, 740],
@@ -95,6 +95,4 @@ try {
   console.log(
     "Optional opening on desktop/phone: ordinary Projects available, first heard proposal accepted immediately, no automatic Start.",
   );
-} finally {
-  await browser.close();
-}
+});
