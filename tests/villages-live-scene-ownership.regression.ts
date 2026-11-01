@@ -22,9 +22,7 @@ import {
   touchVenueSession,
 } from "../packages/villages/src/server/features/scenes/live-session.js";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const stamp = new Date().toISOString(),

@@ -1444,11 +1444,7 @@ async function mediaConnectionOwnership() {
     ["store", "read", "disposed"],
   ];
   const deferred = () => {
-    let resolve!: () => void;
-    const promise = new Promise<void>((done) => {
-      resolve = done;
-    });
-    return { promise, resolve };
+    return Promise.withResolvers<void>();
   };
   for (const [operation, stage, variant = "ordinary"] of scenarios) {
     const controlledError = new Error(`controlled ${operation}/${stage}`);

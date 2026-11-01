@@ -512,11 +512,7 @@ async function foundingConnectionOwnership() {
     }) as T;
   }
   const deferred = () => {
-    let resolve!: () => void;
-    const promise = new Promise<void>((done) => {
-      resolve = done;
-    });
-    return { promise, resolve };
+    return Promise.withResolvers<void>();
   };
   type Operation =
     "progress" | "compact" | "seed" | "suggest" | "image" | "upload" | "places" | "names" | "descriptions";

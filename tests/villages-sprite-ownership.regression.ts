@@ -27,11 +27,7 @@ import { createSpriteWrites } from "../packages/villages/src/server/features/med
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const source = new PNG({ width: 16, height: 24 });
 for (let y = 4; y < 20; y++) for (let x = 4; x < 12; x++) source.data.set([120, 50, 90, 255], (y * 16 + x) * 4);

@@ -25,11 +25,7 @@ import { repairStorageId } from "../packages/villages/src/server/features/repair
 
 // Actual dispatch/assembly and Fastify handlers; synthetic document stores, no Engine or providers.
 function deferred<T = void>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 function fixture(name: string, decisionsEnabled: boolean) {
   const reads: string[] = [];
