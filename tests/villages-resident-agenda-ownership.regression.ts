@@ -25,11 +25,7 @@ import {
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const state = defaultVillageState();

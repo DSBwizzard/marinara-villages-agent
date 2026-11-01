@@ -7,11 +7,7 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  proposeRemap,
-  remapBlockKeys,
-  remapBlocks,
-} from "../packages/villages/src/server/domain/rules/native-remap.js";
+import { proposeRemap, remapBlocks } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import { readUsageMeter, saveUsageRate } from "../packages/villages/src/server/features/settings/usage-meter.js";
@@ -159,9 +155,9 @@ async function main() {
     const signature = "unused-retired-translation";
     state.villagers[0].remap = {
       signature,
-      moves: remapBlockKeys(remapBlocks(schedule)).map((key) => ({
-        day: key.split("|")[0],
-        time: key.split("|")[1],
+      moves: remapBlocks(schedule).map((block) => ({
+        day: block.day,
+        time: block.time,
         here: "Studying",
         venueId: "",
       })),

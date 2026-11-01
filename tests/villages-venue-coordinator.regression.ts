@@ -91,11 +91,7 @@ function seed(id: string) {
   });
 }
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 const refused = (code: string) => (error: any) => error.code === code;
 let calls = 0;

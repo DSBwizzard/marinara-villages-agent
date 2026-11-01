@@ -28,11 +28,7 @@ import { addMemory, memoryRepair } from "./helpers/memories-fixture.js";
 
 const stamp = "2026-10-06T12:00:00.000Z";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const state = defaultVillageState();

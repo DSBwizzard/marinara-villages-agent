@@ -23,11 +23,7 @@ import { registerPersonaRoutes } from "../packages/villages/src/server/features/
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const state = defaultVillageState();

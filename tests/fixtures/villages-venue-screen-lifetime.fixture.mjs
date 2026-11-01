@@ -41,12 +41,11 @@ removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
 const editorZone=place?.zones.find(z=>z.id===venueZoneKey)??place?.zones[0];
-return <><pre id='state'>{JSON.stringify(window.h.read())}</pre><VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
+return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{window.accessPanel ? <VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /> : <VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
 homeBuildings:[],room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
-venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>
-{place && editorZone && venuePage==='view' ? <details><summary>Access options</summary><VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /></details> : null}
+venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}
 </>;
 }
 window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};
@@ -164,6 +163,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       zoneBody,
       strict,
       page: options.page ?? "edit",
+      accessPanel: options.accessPanel ?? false,
       initialZone: options.zone ?? "zone / same",
       occupied: options.occupied ?? false,
       confirmAnswer: true,
@@ -255,8 +255,6 @@ export async function verifyVenueScreenLifetimes(browser) {
     return outcome;
   }
   async function openAccess(f) {
-    const options = f.page.getByText("Access options", { exact: true });
-    if (!(await options.locator("..").evaluate((el) => el.open))) await options.click();
     await f.page.getByText("Manage access", { exact: true }).click();
     await f.page.getByText("Zone policy", { exact: true }).click();
   }
@@ -456,7 +454,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       }
       for (const retirement of ["venue", "revision"])
         for (const fail of [false, true]) {
-          const f = await mount(strict, width, { page: "view" });
+          const f = await mount(strict, width, { page: "view", accessPanel: true });
           await openAccess(f);
           await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
           await expect.poll(() => f.requests.length).toBe(1);
@@ -483,7 +481,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           await f.finish();
         }
       {
-        const f = await mount(strict, width, { page: "view" });
+        const f = await mount(strict, width, { page: "view", accessPanel: true });
         await openAccess(f);
         await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(1);
@@ -495,7 +493,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       }
       for (const child of ["access"])
         for (const fail of [false, true]) {
-          const f = await mount(strict, width, { page: child === "access" ? "view" : "edit" });
+          const f = await mount(strict, width, { page: "view", accessPanel: true });
           if (child === "access") await openAccess(f);
           const name = child === "access" ? "Save Zone policy" : "Save zone details";
           await f.page.getByRole("button", { name, exact: true }).click();
@@ -522,7 +520,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           await f.finish();
         }
       {
-        const f = await mount(strict, width, { page: "view" });
+        const f = await mount(strict, width, { page: "view", accessPanel: true });
         await openAccess(f);
         await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(1);

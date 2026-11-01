@@ -30,11 +30,7 @@ import {
 import { measureModel } from "../packages/villages/src/server/adapters/observability/pipeline-metrics.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(provider: string, inputRate: number) {
   let row: any;

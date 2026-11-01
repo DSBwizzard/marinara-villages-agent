@@ -2,7 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { villagesDebugAgentsEnabled } from "../../adapters/engine/runtime-host.js";
 import { fail, readVenueId } from "../../adapters/http/route-support.js";
 import { notFound } from "../../domain/rules/errors.js";
-import { progressBacklog } from "../scenes/services.js";
+import { sceneQueries } from "../scenes/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
 import { listProjectEvidenceCandidates, recordProjectSpokenEvidence } from "./project-evidence.js";
@@ -79,7 +79,7 @@ export function registerProjectRoutes(engine: FastifyInstance) {
         speechProofs: village.projects.flatMap((project) =>
           (project.lifecycle?.spokenProofs ?? []).map((proof) => ({ projectId: project.id, ...proof })),
         ),
-        backlog: await progressBacklog(),
+        backlog: await sceneQueries().progressBacklog(),
       };
     } catch (error) {
       return fail(reply, error, "reading Progress Engine diagnostics");

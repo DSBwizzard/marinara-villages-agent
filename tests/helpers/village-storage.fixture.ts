@@ -155,7 +155,12 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
   if (wrapped.has(store)) return store;
   const existing = wrappers.get(store);
   if (existing) return existing;
-  const virtual = new Map<string, any>();
+  const result = createFixtureDocuments(store, new Map());
+  wrappers.set(store, result);
+  wrapped.add(result);
+  return result;
+}
+function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Map<string, any>): CapabilityDocumentStore {
   const digest = (v: string) => createHash("sha256").update(v).digest("hex");
   const strip = (raw: Record<string, any>) =>
     Object.fromEntries(
@@ -304,9 +309,30 @@ export function villageFixtureDocuments(store: CapabilityDocumentStore): Capabil
       return store.remove(pkg, id, revision);
     },
   };
-  wrappers.set(store, result);
-  wrapped.add(result);
   return result;
+}
+/** Commit authored fixtures before protocol tests run against the raw store. */
+export async function seedVillageFixtureDocuments(store: CapabilityDocumentStore): Promise<void> {
+  const pages = new Map<string, any>();
+  const authored = createFixtureDocuments(store, pages);
+  const root = await authored.getById("villages", "villages-village");
+  const rows = [
+    ...(root ? [root] : []),
+    ...(await authored.list("villages", "relationships")),
+    ...(await authored.list("villages", "venue-visit")),
+    ...(await authored.list("villages", "background-work")),
+    ...(await authored.list("villages", "background-history")),
+  ];
+  for (const row of pages.values()) await store.create(row);
+  for (const row of rows) {
+    const saved = await store.update({
+      id: row.id,
+      packageId: "villages",
+      expectedRevision: row.revision,
+      data: row.data,
+    });
+    if (!saved) throw new Error(`Fixture seed revision conflict: ${row.id}`);
+  }
 }
 function authorCapturedWishes(rows: Map<string, any>, value: any, scene: any) {
   if (!value || !Array.isArray(value.wishContexts) || !value.wishContexts.length) return value;

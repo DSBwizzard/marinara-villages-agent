@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
-import { projectProposals } from "../packages/villages/src/server/domain/rules/project-check-rules.js";
 import {
   bindProjectSpeech,
   validateProjectSpeech,
@@ -10,34 +9,24 @@ import {
 const f = fixture(),
   id = await renovation(f);
 const draft = [{ speakerId: "a", kind: "dialogue", content: "I approve Renovate and will lead it.", heardBy: ["a"] }];
-const selected = ["approval", "builder", "withdrawal"].map((kind) => ({
-  id: kind,
-  facts: {
-    kind,
-    actorId: "a",
+const context = projectSpeechContexts(f.state(), ["a"], "");
+const proposals = bindProjectSpeech(
+  ["approval", "builder"].map((kind) => ({
     projectId: id,
-    revision: f.get(id).lifecycle!.revision,
-    phase: f.get(id).lifecycle!.phase,
-  },
-  evidence: [{ ...draft[0], id: "draft:0", current: true }],
-}));
-const batch: any = {
-  checks: selected,
-  results: selected.map((check) => ({
-    outcome: check.facts.kind === "approval" ? "approve" : check.facts.kind === "builder" ? "commit" : "none",
-    source: "system",
-    evidenceIds: ["draft:0"],
-    reason: "Witnessed speech",
+    kind,
+    speakerId: "a",
+    citations: [{ segment: 0, quote: draft[0].content }],
   })),
-  traces: selected.map((check, index) => ({ id: "trace:" + index, applied: "Not yet applied", ...check })),
-};
-const proposals = projectProposals(batch);
+  context,
+  [{ ...draft[0], id: "0" }] as any,
+);
 assert.equal(proposals.length, 2);
 for (const proposal of proposals) assert.equal(validateProjectSpeech(proposal, [{ ...draft[0], id: "0" }]), "");
 assert.equal(coerceProjectSpeech(proposals).length, 2);
-batch.results[0].source = "decisions";
-assert.equal(projectProposals(batch).length, 1, "unbound Decision scores establish no agreement");
-const context = projectSpeechContexts(f.state(), ["a"], "");
+assert.deepEqual(
+  bindProjectSpeech([{ projectId: "unknown", kind: "approval", speakerId: "a", citations: [] }], context, []),
+  [],
+);
 assert.equal(context[0].revision, f.get(id).lifecycle!.revision);
 const bound = bindProjectSpeech(
   [{ projectId: id, kind: "builder", speakerId: "a", citations: [{ segment: 0, quote: draft[0].content }] }],

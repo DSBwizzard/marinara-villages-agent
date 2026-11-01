@@ -35,9 +35,7 @@ const line = (index: number) => ({
   ...(index % 5 === 0 ? { contactHidden: true } : {}),
 });
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 for (const count of [1000, 10_000, 25_000]) {
   const f = sceneHistoryFixture();
