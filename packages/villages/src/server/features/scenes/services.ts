@@ -20,19 +20,6 @@ export function sceneQueries(): SceneQueries {
   return queriesBinding.get();
 }
 
-/** Full server-only Scene evidence; never a client projection. */
-export async function readProjectTurnEvidence(...args: Parameters<SceneQueries["readProjectTurnEvidence"]>) {
-  return queriesBinding.get().readProjectTurnEvidence(...args);
-}
-export async function progressBacklog(...args: Parameters<SceneQueries["progressBacklog"]>) {
-  return queriesBinding.get().progressBacklog(...args);
-}
-export async function readHistoryPage(...args: Parameters<SceneQueries["readHistoryPage"]>) {
-  return queriesBinding.get().readHistoryPage(...args);
-}
-export async function readPlaybackPage(...args: Parameters<SceneQueries["readPlaybackPage"]>) {
-  return queriesBinding.get().readPlaybackPage(...args);
-}
 export async function projectSceneResponse(...args: Parameters<SceneQueries["projectSceneResponse"]>) {
   return queriesBinding.get().projectSceneResponse(...args);
 }
