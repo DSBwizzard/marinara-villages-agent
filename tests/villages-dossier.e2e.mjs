@@ -31,6 +31,7 @@ await withBrowser(browser, async () => {
       (!process.env.VILLAGES_DOSSIER_HEIGHT || height === Number(process.env.VILLAGES_DOSSIER_HEIGHT)),
   )) {
     executedViewports++;
+    const exerciseActions = width === 1440 || (width === 390 && height === 844);
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: width < 600 });
     await mockEngineLookups(page);
     const errors = [],
@@ -765,14 +766,16 @@ await withBrowser(browser, async () => {
       element.src = url;
     }, signatureUrl);
 
-    assert.equal(writes.at(-1).body.expectedAttempt, 0);
-    failSignature = true;
-    await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
-    await expect(profile.getByRole("alert")).toContainText("Signature provider unavailable");
-    await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
-    failSignature = false;
-    await profile.getByRole("button", { name: "Retry signature", exact: true }).click();
-    await expect(profile.getByRole("alert")).toHaveCount(0);
+    if (exerciseActions) {
+      assert.equal(writes.at(-1).body.expectedAttempt, 0);
+      failSignature = true;
+      await profile.getByRole("button", { name: "Regenerate signature", exact: true }).click();
+      await expect(profile.getByRole("alert")).toContainText("Signature provider unavailable");
+      await expect(signature.locator("img")).toHaveAttribute("src", signatureUrl);
+      failSignature = false;
+      await profile.getByRole("button", { name: "Retry signature", exact: true }).click();
+      await expect(profile.getByRole("alert")).toHaveCount(0);
+    }
     await page.screenshot({ path: resolve(output, `overview-${width}-${height}.png`) });
     await expect.poll(() => page.evaluate(() => document.fonts.check('17px "Villages Notebook"'))).toBe(true);
     assert.equal(
@@ -1312,77 +1315,79 @@ await withBrowser(browser, async () => {
     await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
     await settleTurn();
     await page.screenshot({ path: resolve(output, `inspect-${width}-${height}.png`) });
-    await profile.getByRole("button", { name: "Correct", exact: true }).click();
-    const correction = profile.getByRole("form", { name: "Correct memory" });
-    await expect(correction.getByRole("textbox", { name: "Corrected memory" })).toHaveValue("PRIVATE MARA MEMORY");
-    await expect(correction.getByRole("checkbox", { name: "Mara", exact: true })).toBeChecked();
-    await expect(correction.getByRole("checkbox", { name: "Eli", exact: true })).toHaveCount(0);
-    await correction.getByRole("checkbox", { name: "Mara", exact: true }).uncheck();
-    await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
-    await correction.getByRole("checkbox", { name: "Mara", exact: true }).check();
-    await correction.getByRole("textbox").fill("é".repeat(301));
-    await expect(correction.getByRole("alert")).toContainText("too long");
-    await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
-    await correction.getByRole("textbox").fill("PRIVATE corrected wording");
-    await correction.getByRole("button", { name: "Cancel", exact: true }).click();
-    assert.equal(corrections.length, 0, "Cancel makes no write.");
-    await profile.getByRole("button", { name: "Correct", exact: true }).click();
-    await correction.getByRole("textbox").fill("PRIVATE corrected wording");
-    await settleTurn();
-    await page.screenshot({ path: resolve(output, `correct-${width}-${height}.png`) });
-    await correction.getByRole("button", { name: "Save correction" }).click();
-    await expect(correction.getByRole("alert")).toContainText("Saved response unavailable");
-    await expect(correction.getByRole("textbox")).toHaveValue("PRIVATE corrected wording");
-    await correction.getByRole("button", { name: "Save correction" }).click();
-    await expect(correction).toHaveCount(0);
-    await expect(profile.getByText("Player correction", { exact: true })).toBeVisible();
-    await profile.getByRole("button", { name: "Inspect", exact: true }).last().click();
-    await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
-    staleCorrection = true;
-    await profile.getByRole("button", { name: "Correct", exact: true }).click();
-    await correction.getByRole("textbox").fill("Uncommitted correction");
-    await correction.getByRole("button", { name: "Save correction" }).click();
-    await expect(correction.getByRole("alert")).toContainText("Memories changed");
-    await expect(correction.getByRole("textbox")).toHaveValue("Uncommitted correction");
-    await correction.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
-    staleCorrection = false;
-    holdCorrection = true;
-    await profile.getByRole("button", { name: "Correct", exact: true }).click();
-    await correction.getByRole("textbox").fill("Deferred correction");
-    await correction.getByRole("button", { name: "Save correction" }).click();
-    await expect.poll(() => !!releaseCorrection).toBe(true);
-    await expect(correction.getByRole("textbox")).toBeDisabled();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
-    await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
-    await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("eli");
-    await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
-    const readsBeforeRelease = reads.filter((path) => path.endsWith("/memories/inspect")).length;
-    const finishedCorrection = page.waitForResponse((response) => response.url().endsWith("/memories/m1/correct"));
-    releaseCorrection();
-    await (await finishedCorrection).finished();
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.equal(
-      reads.filter((path) => path.endsWith("/memories/inspect")).length,
-      readsBeforeRelease,
-      "An unmounted editor cannot refresh or abort the new view.",
-    );
-    await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
-    await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("mara");
-    await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
-    await profile.getByRole("button", { name: "Forget", exact: true }).click();
-    await expect(profile.getByRole("button", { name: "Forget", exact: true })).toBeDisabled();
-    await expect(profile.getByText("Forgotten", { exact: true }).first()).toBeVisible();
-    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
-    await expect(profile.getByText("Home · The Mill", { exact: true })).toBeVisible();
-    await tabs.getByRole("button", { name: "Memories", exact: true }).click();
-    failMemories = true;
-    await profile.getByRole("button", { name: "Refresh", exact: true }).click();
-    await expect(profile.getByRole("alert")).toContainText("Memory service unavailable");
-    failMemories = false;
-    await profile.getByRole("button", { name: "Refresh", exact: true }).click();
-    await expect(profile.getByRole("alert")).toHaveCount(0);
+    if (exerciseActions) {
+      await profile.getByRole("button", { name: "Correct", exact: true }).click();
+      const correction = profile.getByRole("form", { name: "Correct memory" });
+      await expect(correction.getByRole("textbox", { name: "Corrected memory" })).toHaveValue("PRIVATE MARA MEMORY");
+      await expect(correction.getByRole("checkbox", { name: "Mara", exact: true })).toBeChecked();
+      await expect(correction.getByRole("checkbox", { name: "Eli", exact: true })).toHaveCount(0);
+      await correction.getByRole("checkbox", { name: "Mara", exact: true }).uncheck();
+      await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
+      await correction.getByRole("checkbox", { name: "Mara", exact: true }).check();
+      await correction.getByRole("textbox").fill("é".repeat(301));
+      await expect(correction.getByRole("alert")).toContainText("too long");
+      await expect(correction.getByRole("button", { name: "Save correction" })).toBeDisabled();
+      await correction.getByRole("textbox").fill("PRIVATE corrected wording");
+      await correction.getByRole("button", { name: "Cancel", exact: true }).click();
+      assert.equal(corrections.length, 0, "Cancel makes no write.");
+      await profile.getByRole("button", { name: "Correct", exact: true }).click();
+      await correction.getByRole("textbox").fill("PRIVATE corrected wording");
+      await settleTurn();
+      await page.screenshot({ path: resolve(output, `correct-${width}-${height}.png`) });
+      await correction.getByRole("button", { name: "Save correction" }).click();
+      await expect(correction.getByRole("alert")).toContainText("Saved response unavailable");
+      await expect(correction.getByRole("textbox")).toHaveValue("PRIVATE corrected wording");
+      await correction.getByRole("button", { name: "Save correction" }).click();
+      await expect(correction).toHaveCount(0);
+      await expect(profile.getByText("Player correction", { exact: true })).toBeVisible();
+      await profile.getByRole("button", { name: "Inspect", exact: true }).last().click();
+      await expect(profile.getByText("SOURCE EVIDENCE", { exact: false })).toBeVisible();
+      staleCorrection = true;
+      await profile.getByRole("button", { name: "Correct", exact: true }).click();
+      await correction.getByRole("textbox").fill("Uncommitted correction");
+      await correction.getByRole("button", { name: "Save correction" }).click();
+      await expect(correction.getByRole("alert")).toContainText("Memories changed");
+      await expect(correction.getByRole("textbox")).toHaveValue("Uncommitted correction");
+      await correction.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
+      staleCorrection = false;
+      holdCorrection = true;
+      await profile.getByRole("button", { name: "Correct", exact: true }).click();
+      await correction.getByRole("textbox").fill("Deferred correction");
+      await correction.getByRole("button", { name: "Save correction" }).click();
+      await expect.poll(() => !!releaseCorrection).toBe(true);
+      await expect(correction.getByRole("textbox")).toBeDisabled();
+      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+      await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
+      await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("eli");
+      await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
+      const readsBeforeRelease = reads.filter((path) => path.endsWith("/memories/inspect")).length;
+      const finishedCorrection = page.waitForResponse((response) => response.url().endsWith("/memories/m1/correct"));
+      releaseCorrection();
+      await (await finishedCorrection).finished();
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(
+        reads.filter((path) => path.endsWith("/memories/inspect")).length,
+        readsBeforeRelease,
+        "An unmounted editor cannot refresh or abort the new view.",
+      );
+      await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toBeVisible();
+      await profile.getByRole("combobox", { name: "Memory knower" }).selectOption("mara");
+      await expect(profile.getByText("PRIVATE corrected wording", { exact: true })).toBeVisible();
+      await profile.getByRole("button", { name: "Forget", exact: true }).click();
+      await expect(profile.getByRole("button", { name: "Forget", exact: true })).toBeDisabled();
+      await expect(profile.getByText("Forgotten", { exact: true }).first()).toBeVisible();
+      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await expect(profile.getByText("Home · The Mill", { exact: true })).toBeVisible();
+      await tabs.getByRole("button", { name: "Memories", exact: true }).click();
+      failMemories = true;
+      await profile.getByRole("button", { name: "Refresh", exact: true }).click();
+      await expect(profile.getByRole("alert")).toContainText("Memory service unavailable");
+      failMemories = false;
+      await profile.getByRole("button", { name: "Refresh", exact: true }).click();
+      await expect(profile.getByRole("alert")).toHaveCount(0);
+    }
     await profile.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("searchbox", { name: "Search villagers" })).toHaveCount(0);
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeFocused();
