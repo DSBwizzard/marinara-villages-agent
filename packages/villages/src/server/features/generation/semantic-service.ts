@@ -1,6 +1,10 @@
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
-import { SCENE_DEVELOPMENT_REVIEW, SCENE_DEVELOPMENT_SCHEMA } from "../../domain/rules/narrative-prompts.js";
+import {
+  SCENE_DEVELOPMENT_OUTPUT,
+  SCENE_DEVELOPMENT_REVIEW,
+  SCENE_DEVELOPMENT_SCHEMA,
+} from "../../domain/rules/narrative-prompts.js";
 import { readSceneNarrativeReview } from "../../domain/rules/scene-narrative-effects.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
@@ -171,6 +175,7 @@ function exchangeInstruction(
       ? "Also return immediateResidentMoves:[], required even when empty. Independently identify EVERY immediate request in the original player input for residents to cross into a recorded Zone, regardless of the draft response or their willingness. residentRequestLocalIds lists ALL residents physically with the player before this reply, including passive residents absent from context.actors. context.actors is the selected reply cast, never the complete set of possible addressees. Resolve group references from the original input, these local IDs and established context before considering the draft. For example, when four residents are here and two others are already in the Studio, 'Can the four of you join those two in the Studio now?' requests the four local residents, not the selected four-person reply cast. Polite Can/Could/Would questions asking for movement now are immediate requests, not hypothetical merely because of modal wording. Rows are {characterIds:[exact resident IDs for the COMPLETE requested group],zoneId,source:zero-based intent.timeline index}. Keep every requested resident even if some refuse, stay, or only a smaller group crosses in the draft. Include requests within mixed speech/actions. Do not nominate future appointments, conditional/hypothetical travel, quoted examples or private thoughts. For these recorded-Zone requests, unresolved actor or destination identity remains unresolved intent; never invent a Zone or silently choose a smaller group. Ordinary movement toward fictional spaces does not itself require a recorded Zone nomination. These are request nominations, never completed moves or authority. "
       : "") +
     "Independently examine EVERY current evidence item. Narrator proposals are not required. Return {sourceHash," +
+    (narrativeGrant !== undefined ? SCENE_DEVELOPMENT_OUTPUT + "," : "") +
     (scene.operation?.input.developmentVersion === 1 ? "developmentChanges:[]," : "") +
     (movementReview ? "immediateResidentMoves:[{characterIds:[residentIds],zoneId,source}]," : "") +
     (combined
@@ -336,6 +341,7 @@ export function createSemanticService(ports: SemanticPorts) {
           instruction,
           currentEvidenceOnly,
           systemPrompt: SYSTEM_BASE + (currentEvidenceOnly ? SYSTEM_CURRENT_SCENE : SYSTEM_RETRIEVAL) + instruction,
+          ...(identity.narrativeGrant !== undefined ? { narrativeReviewOutputVersion: 1 } : {}),
           reasoningEffort: identity.pipelineVersion === 3 ? ("none" as const) : ("low" as const),
         };
       });
@@ -359,7 +365,7 @@ export function createSemanticService(ports: SemanticPorts) {
             ).output
           : snapshot.output);
       if (output < 1024) throw badGateway("System interpretation needs more context allowance; no request was made.");
-      const packet = await ports.venueCheckpoint(key + ":prompt", async () => {
+      const originalPacket = await ports.venueCheckpoint(key + ":prompt", async () => {
         const context = asRecord(asRecord(snapshot.input).context);
         const originalLore = Array.isArray(context.lore) ? context.lore : [];
         let lore = [...originalLore];
@@ -405,6 +411,35 @@ export function createSemanticService(ports: SemanticPorts) {
           lore = lore.slice(0, -1);
         }
       });
+      const correctionKey = key + ":narrative-review-output-v1";
+      let packet = ports.venueSavedCheckpoint?.<typeof originalPacket>(correctionKey) ?? originalPacket;
+      if (
+        packet === originalPacket &&
+        asRecord(originalPacket.input).narrativeGrant !== undefined &&
+        snapshot.narrativeReviewOutputVersion !== 1 &&
+        ports.venueExplicitRetry?.()
+      ) {
+        // Old requests keep their evidence and purchased writing; only explicit Retry can correct this output contract.
+        packet = await ports.venueCheckpoint(correctionKey, async () => {
+          const [system, ...rest] = originalPacket.messages;
+          if (system?.role !== "system" || typeof system.content !== "string")
+            throw conflict("The saved System prompt cannot be corrected. Its draft is preserved.");
+          return {
+            ...originalPacket,
+            messages: [
+              {
+                ...system,
+                content:
+                  system.content +
+                  "\nRequired root JSON field: " +
+                  SCENE_DEVELOPMENT_OUTPUT +
+                  ". Include this independently reviewed field alongside every other required field. All existing evidence and validation rules still apply.",
+              },
+              ...rest,
+            ],
+          };
+        });
+      }
       const { input: effectiveInput, sourceHash: effectiveHash, messages } = packet;
       const fitted = model.fitContext(messages, { maxTokens: output });
       if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(messages))
