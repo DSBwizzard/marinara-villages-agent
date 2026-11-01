@@ -3423,14 +3423,23 @@ Keep dialogue attributed to the target. The server conveys it through the messen
       });
     };
     const publish = async () => {
+      const currentScene = await readSession(scene.id);
+      const current = currentScene.submissions.find((row) => row.id === turn.id);
+      if (!current || current.semanticProvenance?.sourceHash !== turn.semanticProvenance?.sourceHash)
+        throw conflict("The saved social source changed before publication.");
+      const socialStatus = current.processing?.domains.relationships.status;
+      const optionalSocialPending =
+        current.semanticProvenance?.pipelineVersion === 3 &&
+        !semanticAuthorityDomain(current, "relationships") &&
+        ["pending", "failed", "rejected"].includes(socialStatus ?? "");
       let memoryResult: Partial<import("../../domain/models/exchange-model.js").DomainProcessing> | undefined;
       await mutateVillageState((state) => {
         if (state.seed !== scene.villageSeed) throw conflict("Village identity changed during source publication.");
-        const saved = turn.liveProposals;
+        const saved = current.liveProposals;
         if (Array.isArray(saved?.memoryChanges) && saved.memoryChanges.length)
-          memoryResult = applyLiveMemories(state, scene, turn.id, villageNow());
-        if (saved) {
-          const lines = createLiveEvidenceContext(scene, saved).lines;
+          memoryResult = applyLiveMemories(state, currentScene, turn.id, villageNow());
+        if (saved && !optionalSocialPending) {
+          const lines = createLiveEvidenceContext(currentScene, saved).lines;
           const parsed = parseRelationshipProposals(
             saved.relationshipChanges,
             scene.id + ":" + turn.id,
@@ -3443,7 +3452,7 @@ Keep dialogue attributed to the target. The server conveys it through the messen
               ),
             }),
             true,
-            sceneContinuityView(state, scene).relationshipContext,
+            sceneContinuityView(state, currentScene).relationshipContext,
           );
           // Settlement already checked private revisions; only its witnessed disclosures publish here.
           publishRelationshipDisclosures(
@@ -3461,7 +3470,9 @@ Keep dialogue attributed to the target. The server conveys it through the messen
             villageNow().toISOString(),
           );
         }
-        (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
+        // Pending optional metadata stays recoverable without blocking independent source publication.
+        if (!optionalSocialPending || socialStatus === "rejected")
+          (state.socialPublications ??= {})[scene.id + ":" + turn.id] = true;
       });
       if (memoryResult)
         await changeSession(scene.id, (current) => {
