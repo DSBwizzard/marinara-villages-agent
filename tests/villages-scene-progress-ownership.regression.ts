@@ -21,9 +21,7 @@ import {
   startProgressRecovery,
 } from "../packages/villages/src/server/features/scenes/progress.js";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 async function bounded(promise: Promise<void>) {

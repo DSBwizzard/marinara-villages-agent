@@ -22,11 +22,7 @@ import { registerResidentRoutes } from "../packages/villages/src/server/features
 import { registerSnapshotCatalogRoutes } from "../packages/villages/src/server/features/world/routes.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const card = readVillagerCard({

@@ -18,11 +18,7 @@ import {
 } from "../packages/villages/src/server/features/generation/interpretation-evidence.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 
 async function savedContextOwnership() {

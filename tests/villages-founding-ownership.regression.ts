@@ -28,11 +28,7 @@ import {
 } from "../packages/villages/src/server/features/founding/preparation.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function until(ready: () => boolean) {
