@@ -106,7 +106,7 @@ export function createLiveScenes({
   async function refreshZoneParticipants(session: VenueScene, completing = false): Promise<VenueScene> {
     if ((await observeVillageClock())?.paused) return session;
     if (!completing && hasVenueOperation(session.id)) return session;
-    if (session.liveSceneVersion === 1) {
+    if (session.liveSceneVersion === 1 && !completing) {
       // Durable failed work owns its admitted context even after the in-memory operation has gone.
       if (session.operation && (session.operation.status !== "complete" || session.operation.error)) return session;
       if (semanticBlocker(session)) return session;
@@ -264,7 +264,7 @@ export function createLiveScenes({
           (id) => !invalidGrants.some((grant) => grant.zoneId === id),
         );
       });
-      return refreshZoneParticipants(refreshed);
+      return refreshZoneParticipants(refreshed, completing);
     }
     if (!session.zoneId) {
       const migrated = await changeSession(session.id, (state) => {

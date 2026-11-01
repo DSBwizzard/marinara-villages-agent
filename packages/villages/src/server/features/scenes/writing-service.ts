@@ -304,7 +304,7 @@ export function createSceneWriting({
         [
           `${card.name} (${person.characterId})`,
           relationshipWritingPrompt(village, person.characterId),
-          `Activity at this exchange: ${sceneOccupant?.doing || person.doing || "unspecified"}.`,
+          `${session.liveSceneVersion === 1 ? "Activity at this exchange" : "Activity captured at Scene start"}: ${sceneOccupant?.doing || person.doing || "unspecified"}.`,
           `Current Residence: ${
             village.venues
               .filter((venue) => venueResidentIds(venue).includes(person.characterId))

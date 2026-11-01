@@ -195,6 +195,21 @@ try {
   assert.equal(JSON.stringify(interrupted.scene), saved, "restart cannot strand admitted work by advancing its Scene");
 
   now = new Date("2026-11-02T09:50:00Z");
+  const completing = fixture();
+  completing.scene.operation = { id: "accepted-move", kind: "turn", status: "running", error: "" } as any;
+  completing.scene.accompanying = [{ characterId: "maya", zoneId: "exterior" }];
+  completing.scene.zoneGrants = [{ zoneId: "removed", controllerId: "maya" }];
+  completing.setBusy(true);
+  now = new Date("2026-11-02T11:57:00Z");
+  await completing.service.refreshZoneParticipants(completing.scene, true);
+  assert.deepEqual(completing.scene.activeIds, [], "completion publishes evidenced resident movement immediately");
+  assert.equal(
+    completing.scene.sceneAttendance!.capturedAt,
+    "2026-11-02T09:50:00.000Z",
+    "completion does not resynchronize the admitted request with later schedules",
+  );
+
+  now = new Date("2026-11-02T09:50:00Z");
   const legacy = fixture(false);
   now = new Date("2026-11-02T11:57:00Z");
   await legacy.service.activeVenueSession();
