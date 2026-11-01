@@ -1,3 +1,4 @@
+import type { AreaDraftCache } from "./villages-founding-editor.js";
 import { residentAdmissionProblems } from "../../../shared/helpers/resident-admission.js";
 import { placeSpot } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin } from "../../shared/types.js";
@@ -16,10 +17,6 @@ export function calculateResidentContextProblem(ports: {
     )
     ? "Check starting notes in People."
     : "";
-}
-export function calculateSetupHomeCount(ports: { setupFoundingVillagerIds: string[] }) {
-  const { setupFoundingVillagerIds } = ports;
-  return setupFoundingVillagerIds.length;
 }
 export function calculateSetupBeginningSourceKey(ports: {
   personaDraft: string;
@@ -184,84 +181,9 @@ export function calculateDraftPins(ports: {
   setupAuthoredFields: Record<string, string[]>;
   setupEditorAuthoredOriginal: React.RefObject<string[]>;
   setupEditorOriginal: React.RefObject<import("../../../shared/contracts/village").VillageVenue>;
-  setupEditorZoneOriginal: React.RefObject<{
-    common?: {
-      id: string;
-      name?: string;
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-      controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "community" | "other";
-      description: string;
-      image: import("../../../shared/contracts/village").VillageVenueImage;
-      state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-    };
-    personal?: {
-      id: string;
-      name?: string;
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-      controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "community" | "other";
-      description: string;
-      image: import("../../../shared/contracts/village").VillageVenueImage;
-      state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-    } & {
-      ownerId: string;
-      name?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-      controllerIds?: string[];
-      initialImageAttemptedAt?: string;
-    };
-  }>;
+  setupEditorZoneOriginal: React.RefObject<AreaDraftCache["current"] | undefined>;
   setupVenues: import("../../../shared/contracts/village").VillageVenue[];
-  setupZoneDrafts: React.RefObject<
-    Record<
-      string,
-      {
-        common?: {
-          id: string;
-          name?: string;
-          ownerId?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-          controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "community" | "other";
-          description: string;
-          image: import("../../../shared/contracts/village").VillageVenueImage;
-          state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-        };
-        personal?: {
-          id: string;
-          name?: string;
-          ownerId?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-          controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "community" | "other";
-          description: string;
-          image: import("../../../shared/contracts/village").VillageVenueImage;
-          state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-        } & {
-          ownerId: string;
-          name?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-          controllerIds?: string[];
-          initialImageAttemptedAt?: string;
-        };
-      }
-    >
-  >;
+  setupZoneDrafts: React.RefObject<Record<string, AreaDraftCache["current"]>>;
 }): MapPin[] {
   const {
     selectedSetupVenueId,
