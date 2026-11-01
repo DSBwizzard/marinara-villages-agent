@@ -451,42 +451,33 @@ async function main() {
       }
       const packet = JSON.parse(messages[1].content);
       lastPacket = packet;
-      const intent = messages[0].content.includes("Interpret current player intent");
-      calls.push(intent ? "intent" : "exchange");
+      calls.push("exchange");
       if (behavior === "needs-context")
         return {
           finishReason: "stop",
           content: JSON.stringify({ sourceHash: packet.sourceHash, needsContext: ["needed-memory"] }),
         };
-      const result = intent
-        ? {
-            status: "resolved",
-            timeline: [{ kind: "speech", text: packet.input.message }],
-            instructions: "Current ordinary speech; no physical effects.",
-            action: null,
-            movement: null,
-          }
-        : {
-            openingSignal,
-            gatheringContributions,
-            consistent: true,
-            authority: {
-              physical: false,
-              access: accessRows.some((row) => row.outcome !== "unresolved"),
-              projects: false,
-              standing: false,
-              social: false,
-            },
-            action: null,
-            memoryChanges: [],
-            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-            wishChanges: systemWishChanges,
-            projectSpeech: [],
-            access: accessRows,
-            events: openingEvents,
-          };
-      if (behavior === "project-authority" && !intent) Object.assign(result, { projectSpeech: [{}] });
-      if (!intent && packet.input.pipelineVersion === 3)
+      const result = {
+        openingSignal,
+        gatheringContributions,
+        consistent: true,
+        authority: {
+          physical: false,
+          access: accessRows.some((row) => row.outcome !== "unresolved"),
+          projects: false,
+          standing: false,
+          social: false,
+        },
+        action: null,
+        memoryChanges: [],
+        relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+        wishChanges: systemWishChanges,
+        projectSpeech: [],
+        access: accessRows,
+        events: openingEvents,
+      };
+      if (behavior === "project-authority") Object.assign(result, { projectSpeech: [{}] });
+      if (packet.input.pipelineVersion === 3)
         Object.assign(result, {
           intent: {
             status: "resolved",
@@ -496,7 +487,10 @@ async function main() {
             timeline: packet.input.message ? [{ kind: "speech", text: packet.input.message }] : [],
           },
         });
-      if (packet.input.residentActions && (actionReview || packet.input.residentActionsOmitted)) {
+      if (
+        packet.input.residentActions &&
+        (actionReview || packet.input.residentActionsOmitted || packet.input.pipelineVersion === 3)
+      ) {
         const review = actionReview
             ? actionReview(packet)
             : {
@@ -638,21 +632,35 @@ async function main() {
   calls.length = 0;
   outputRequests.length = 0;
   loreReads = 0;
-  const intent = await service.intent(scene, "We can discuss it.");
+  const currentExchange = (message: string) =>
+    service.exchange(
+      {
+        ...scene,
+        operation: {
+          ...scene.operation,
+          input: { ...scene.operation?.input, semanticPipelineVersion: 3, residentActionsVersion: 2 },
+        },
+      } as VenueScene,
+      message,
+      [],
+      null,
+      [],
+    );
+  const currentIntent = async (message: string) => (await currentExchange(message)).intent!;
+  const result = await currentExchange("We can discuss it.");
+  const intent = result.intent!;
   assert.equal(intent.status, "resolved");
-  const result = await service.exchange(scene, "We can discuss it.", [], intent);
   assert.deepEqual(result.effects.memoryChanges, []);
-  assert.deepEqual(calls, ["intent", "exchange"]);
-  assert.deepEqual(outputRequests, [4096, 8192], "Intent and exchange have distinct bounded allowances");
-  await service.intent(scene, "We can discuss it.");
-  await service.exchange(scene, "We can discuss it.", [], intent);
-  assert.equal(calls.length, 2, "saved identical stage results replay without dispatch");
-  assert.equal(loreReads, 2, "Each principal packet freezes selected lore once; replay fetches no new lore");
+  assert.deepEqual(calls, ["exchange"]);
+  assert.deepEqual(outputRequests, [4096], "The combined exchange uses one bounded allowance");
+  await currentExchange("We can discuss it.");
+  assert.equal(calls.length, 1, "Saved identical results replay without dispatch");
+  assert.equal(loreReads, 1, "The packet freezes selected lore once; replay fetches no new lore");
   assert(lastPacket.input.context.lore.includes("Selected lore establishes the setting's supported capabilities."));
-  const intentKey = [...checkpoints.keys()].find((key) => /^semantic-v2:intent:[a-f0-9]{64}$/.test(key))!;
+  const intentKey = result.checkpointKey;
   checkpoints.delete(intentKey);
   state.seed = "Changed after the request was saved";
-  const resumed = await service.intent(scene, "We can discuss it.");
+  const resumed = await currentIntent("We can discuss it.");
   assert.equal(
     resumed.sourceHash,
     intent.sourceHash,
@@ -665,12 +673,12 @@ async function main() {
   delete legacy.outputPolicy;
   const frozenEvidence = structuredClone(legacy);
   checkpoints.delete(intentKey);
-  await service.intent(scene, "We can discuss it.");
+  await currentExchange("We can discuss it.");
   assert.equal(outputRequests.at(-1), 2400, "Non-explicit recovery keeps its saved allowance");
   checkpoints.delete(intentKey);
   explicitRetry = true;
   attemptIdentity = "budget-retry-1";
-  await service.intent(scene, "We can discuss it.");
+  await currentExchange("We can discuss it.");
   assert.equal(outputRequests.at(-1), 4096, "Explicit retry refreshes the legacy allowance");
   assert.deepEqual(
     checkpoints.get(legacyKey),
@@ -679,56 +687,52 @@ async function main() {
   );
   const replayCalls = calls.length;
   attemptIdentity = "completed-retry";
-  await service.intent(scene, "We can discuss it.");
+  await currentExchange("We can discuss it.");
   assert.equal(calls.length, replayCalls, "Completed interpretation stays cached on explicit retry");
   checkpoints.delete(intentKey);
   model.maxOutputTokens = 3072;
   attemptIdentity = "budget-retry-2";
-  await service.intent(scene, "We can discuss it.");
+  await currentExchange("We can discuss it.");
   assert.equal(outputRequests.at(-1), 3072, "Connection cap remains authoritative");
   assert.deepEqual(checkpoints.get(legacyKey), frozenEvidence);
   model.maxOutputTokens = 16384;
-  const legacyExchange = checkpoints.get(result.checkpointKey + ":input") as any;
-  legacyExchange.output = 2400;
-  delete legacyExchange.outputPolicy;
-  const originalExchange = structuredClone(legacyExchange);
   checkpoints.delete(result.checkpointKey);
   attemptIdentity = "exchange-budget-retry";
-  await service.exchange(scene, "We can discuss it.", [], intent);
-  assert.equal(outputRequests.at(-1), 8192, "Failed legacy exchange receives its task allowance on explicit retry");
-  assert.deepEqual(checkpoints.get(result.checkpointKey + ":input"), originalExchange);
+  await currentExchange("We can discuss it.");
+  assert.equal(outputRequests.at(-1), 4096, "Explicit retry restores the task allowance within the current cap");
+  assert.deepEqual(checkpoints.get(legacyKey), frozenEvidence);
   explicitRetry = false;
   checkpoints.delete(result.checkpointKey);
-  await service.exchange(scene, "We can discuss it.", [], intent);
+  await currentExchange("We can discuss it.");
   assert.equal(
     outputRequests.at(-1),
-    8192,
+    4096,
     "Restart recovery reuses the admitted retry allowance, preserving the completion fingerprint",
   );
-  assert.deepEqual(checkpoints.get(result.checkpointKey + ":input"), originalExchange);
+  assert.deepEqual(checkpoints.get(legacyKey), frozenEvidence);
 
   inputEstimate = 12001;
   const beforeBudget = calls.length;
-  await service.intent(scene, "A request that fits the configured model");
+  await currentIntent("A request that fits the configured model");
   assert.equal(
     calls.length,
     beforeBudget + 1,
     "The model's context allowance admits complete evidence above 12,000 tokens",
   );
   contextTrimmed = true;
-  await assert.rejects(service.intent(scene, "A request exceeding the model context"), /does not fit/);
+  await assert.rejects(currentIntent("A request exceeding the model context"), /does not fit/);
   assert.equal(calls.length, beforeBudget + 1, "Required evidence cannot be trimmed to dispatch a request");
   contextTrimmed = false;
   inputEstimate = 1000;
   behavior = "wrong-hash";
-  await assert.rejects(service.intent(scene, "Another input"), /different source/);
+  await assert.rejects(currentIntent("Another input"), /different source/);
   assert.equal(rejected.at(-1).options.preserveWriting, true);
   assert(
-    rejected.at(-1).options.stages[0].startsWith("semantic-v2:intent:"),
+    rejected.at(-1).options.stages[0].startsWith("semantic-v2:exchange:"),
     "Only the failed semantic stage is replaceable",
   );
   behavior = "length";
-  await assert.rejects(service.intent(scene, "Truncated input"), /truncated/);
+  await assert.rejects(currentIntent("Truncated input"), /truncated/);
   behavior = "missing-domain";
   const partial = await service.exchange(scene, "Partial", [], null);
   assert.equal(partial.effects.memoryChanges, undefined, "missing is not an empty successful domain");
@@ -812,11 +816,11 @@ async function main() {
   state.memories = addMemory(state.memories, { text: "The exact condition is only after supper.", audience: ["host"] });
   behavior = "needs-context";
   const beforeContext = calls.length;
-  await assert.rejects(service.intent(scene, "Need historical context supper condition"), /no expansion call/);
+  await assert.rejects(currentIntent("Need historical context supper condition"), /no expansion call/);
   assert.equal(calls.length, beforeContext + 1, "Context requests never automatically dispatch a second inference");
   behavior = "valid";
   explicitRetry = true;
-  await service.intent(scene, "Need historical context supper condition");
+  await currentIntent("Need historical context supper condition");
   explicitRetry = false;
   assert.equal(calls.length, beforeContext + 2);
   assert.equal(lastPacket.input.context.expandedContext, undefined);
@@ -1710,15 +1714,13 @@ async function main() {
       ...extra,
     });
     const before = structuredClone({ topologyScene, timelineState });
-    for (const combined of [false, true]) {
+    {
       const run = async (message: string, raw: any) => {
         responseIntent = raw;
         const responseBefore = structuredClone(raw);
         const callsBefore = dispatches;
         try {
-          return combined
-            ? (await timelineService.exchange(topologyAdmission, message, [], null)).intent!
-            : await timelineService.intent(topologyScene, message);
+          return (await timelineService.exchange(topologyAdmission, message, [], null)).intent!;
         } finally {
           assert.deepEqual(raw, responseBefore, "Validation never changes the retained System response");
           assert.equal(dispatches, callsBefore + 1, "Validation never makes a repair or expansion request");
@@ -1741,9 +1743,7 @@ async function main() {
           } else {
             await assert.rejects(
               run("I wave.", raw),
-              kind === "movement" && zoneId === "unseen" && combined
-                ? /Use Move to change Zones/
-                : /invalid Zone metadata/,
+              kind === "movement" && zoneId === "unseen" ? /Use Move to change Zones/ : /invalid Zone metadata/,
             );
             assert.equal(failures.at(-1).options.preserveWriting, true);
             assert.equal(failures.at(-1).options.stages.length, 1);
@@ -1875,18 +1875,10 @@ async function main() {
         ),
         /Use Move to change Zones/,
       );
-      const unresolved = await run(
-        "An uncertain action",
-        rawIntent([], { status: "unresolved", reason: "Needs clarification" }),
-      ).then(
-        (value) => value,
-        (error) => {
-          assert(combined);
-          assert.match(error.message, /Needs clarification/);
-          return null;
-        },
+      await assert.rejects(
+        run("An uncertain action", rawIntent([], { status: "unresolved", reason: "Needs clarification" })),
+        /Needs clarification/,
       );
-      if (unresolved) assert.equal(unresolved.status, "unresolved");
     }
     const frozenCheckpoints = new Map<string, unknown>();
     const frozenService = createSemanticService({

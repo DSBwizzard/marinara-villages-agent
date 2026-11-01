@@ -25,7 +25,7 @@ async function run() {
     await measurePipeline("fixture", {}, async () => {
       pipelineStorage("reads");
       pipelineStorage("writes");
-      pipelineSignal("projectRelevanceSkips", 2);
+      pipelineSignal("replayDomainsSkipped", 2);
       await measureModel(async () => ({ usage: { promptTokens: 12, completionTokens: 3 } }));
       await measureModel(async () => ({ usage: undefined }));
     });
@@ -37,7 +37,7 @@ async function run() {
     assert.equal(metrics.reportedOutputTokens, 3);
     assert.equal(metrics.unknownUsageRequests, 1);
     assert.equal(metrics.providerUsage, "unknown");
-    assert.equal(metrics.signals.projectRelevanceSkips, 2);
+    assert.equal(metrics.signals.replayDomainsSkipped, 2);
     await Promise.all([
       measurePipeline("one", {}, async () => {
         await Promise.resolve();

@@ -267,7 +267,7 @@ export function createSemanticService(ports: SemanticPorts) {
     _scene?: VenueScene,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
-    const taskOutput = stage === "intent" ? 4096 : asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
+    const taskOutput = asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
     const identity = asRecord(input);
     const key = semanticCheckpointKey(stage, identity);
     return ports.venueCheckpoint(key, async () => {
@@ -551,27 +551,6 @@ export function createSemanticService(ports: SemanticPorts) {
           ? { zoneId: movement.zoneId, quote: message }
           : null,
     };
-  }
-
-  async function intent(scene: VenueScene, message: string): Promise<SemanticIntent> {
-    const state = await readSceneAuthority(scene);
-    return ask(
-      "intent",
-      {
-        message,
-        turnPolicyVersion: 1,
-        context: semanticContext(scene, state, message, false, false, sceneContinuityView(state, scene)),
-      },
-      'Interpret current player intent and plausible supported action outcomes. Return {sourceHash,status:"resolved|unresolved",reason,instructions,action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:exact input span,targetId?,delivery?:"ordinary|whisper|shout"}]}. Timeline spans follow source order and cover meaningful input; code binds offsets. Never turn quoted/hypothetical words or private thoughts into actual speech. ' +
-        INTENT_TIMELINE_RULE +
-        PLACE_UPDATE_INSTRUCTION.replace("placeUpdate:", "action:") +
-        "Only existing supported effects and current reachable targets. Do not create resources without established source/capability. Required resident consent absent from evidence means requires-response in instructions and no completed action. " +
-        "Only the explicit Move action changes the player Zone. Movement within context.zoneId, including walking toward furniture or people, is kind:action without a Zone change. For an actual player attempt to cross Zones in this input, identify it as kind:movement with its exact destination zoneId so code can block the turn; never complete it in the draft. Quoted, hypothetical and requested travel is not a completed crossing. Multiple persistent physical steps needing intermediate receipts or unsupported effects remain unresolved. " +
-        "Instructions identify actual speech/delivery, addressees, thoughts, plans, action order and prepared outcomes for Narration; they are not character speech. No action means action:null. Conversational input is resolved. Unknown necessary meaning is unresolved.",
-      (raw, hash, savedInput) => readIntent(raw, hash, savedInput, state, scene),
-      false,
-      scene,
-    );
   }
 
   async function exchange(
@@ -999,6 +978,6 @@ export function createSemanticService(ports: SemanticPorts) {
   async function rejectExchange(result: SemanticExchange) {
     await ports.rejectVenueCompletion(undefined, { preserveWriting: true, stages: [result.checkpointKey] });
   }
-  return { preflight, intent, exchange, rejectExchange };
+  return { preflight, exchange, rejectExchange };
 }
 export type SemanticService = ReturnType<typeof createSemanticService>;
