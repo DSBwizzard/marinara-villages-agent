@@ -348,8 +348,8 @@ async function main() {
       });
       assert.equal(
         (await activeVenueSession()).zoneId,
-        "staff",
-        "background worker removal preserves the captured invitation",
+        "exterior",
+        "live access follows current worker authority while preserving safe egress",
       );
       await assertVenueImageAccess("bank", undefined, "", "staff");
       assert.equal(

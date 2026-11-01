@@ -6,6 +6,7 @@ import type { DomainProcessing } from "../../domain/models/exchange-model.js";
 import type { LiveEvidenceContext, LiveExchangeProposals } from "../../domain/models/memory-model.js";
 
 import type { VenueScene } from "../../domain/models/scene-model.js";
+import type { VillageState } from "../../domain/models/world.js";
 
 import { asRecord } from "../../domain/rules/coerce.js";
 
@@ -113,6 +114,9 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
     submissionId: string,
     context?: LiveEvidenceContext,
   ): Promise<Partial<DomainProcessing>> {
+    // A live exchange has one social timeline, protected by the saved proposal's live revision checks.
+    const socialSource = (state: VillageState) =>
+      scene.liveSceneVersion === 1 ? state.relationshipContext : sceneContinuityView(state, scene).relationshipContext;
     const turn = scene.submissions.find((turn) => turn.id === submissionId)!;
     const proposals = turn.liveProposals;
     if (
@@ -158,7 +162,8 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         lineIds: refs(row.lineIds, proposals),
       }),
       turn.semanticProvenance?.version === 2,
-      sceneContinuityView(village, scene).relationshipContext,
+      socialSource(village),
+      scene.liveSceneVersion === 1,
     );
     if (rejections.length)
       throw new Error("Social interpretation needs correction: " + rejections.map((row) => row.reason).join("; "));
@@ -182,7 +187,8 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           lineIds: refs(row.lineIds, proposals),
         }),
         turn.semanticProvenance?.version === 2,
-        sceneContinuityView(authority, scene).relationshipContext,
+        socialSource(authority),
+        scene.liveSceneVersion === 1,
       );
       if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       for (const permission of fresh.review.permissions) {
@@ -224,7 +230,8 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
           lineIds: refs(row.lineIds, proposals),
         }),
         turn.semanticProvenance?.version === 2,
-        sceneContinuityView(authority, scene).relationshipContext,
+        socialSource(authority),
+        scene.liveSceneVersion === 1,
       );
       if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       rejections.splice(0, rejections.length, ...fresh.rejections);
@@ -240,7 +247,7 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
         scene.id + ":" + turn.id,
         turn.at,
         villageNow().getTime(),
-        sceneContinuityView({ ...authority, relationshipContext: state }, scene).relationshipContext,
+        socialSource({ ...authority, relationshipContext: state }),
       );
       for (const id of receiptIds) {
         const receipt = state.receipts[id];

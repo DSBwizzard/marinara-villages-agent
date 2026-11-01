@@ -266,6 +266,7 @@ async function main() {
     fitContext: (messages: unknown, options: any) => ({ messages, ...options, trimmed: false }),
   };
   const planning = createResidentPlanning({
+    activeVenueSession: async () => null,
     relationshipIdentity: fixtureRelationshipIdentity,
     wishIdentity: fixtureWishIdentity,
     readVillageState: async () => defaultVillageState(),

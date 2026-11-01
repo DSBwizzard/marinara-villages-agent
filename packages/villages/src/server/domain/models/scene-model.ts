@@ -27,6 +27,8 @@ export type VenueLine = {
   viaDoorway?: boolean;
   /** Server-projected local cast after a validated movement in this line. */
   physicalIdsAfter?: string[];
+  /** Server-authored attendance notice, retained for staging but outside the dialogue walk. */
+  presenceChange?: true;
   remoteDelivery?: "loud";
   contactHidden?: boolean;
   attentionEvidence?: boolean;
@@ -167,6 +169,8 @@ export type VenueScene = {
   changeSequence?: number;
   villageSeed?: string;
   sceneRevision: number;
+  /** Absent on saved encounters that retain their original frozen moment. */
+  liveSceneVersion?: 1;
   operation?: VenueOperation;
   /** Idempotent free navigation, separate from conversational turns. */
   navigationReceipts?: { id: string; originZoneId: string; destinationZoneId: string; at: string }[];

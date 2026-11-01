@@ -61,8 +61,10 @@ import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/ve
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
 import { completionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
+import { liveSceneEncounterConflicts } from "../../domain/rules/scene-attendance.js";
 
 export type ResidentPlanningPorts = {
+  activeVenueSession: () => Promise<import("../../domain/models/scene-model.js").VenueScene | null>;
   relationshipIdentity: RelationshipIdentity;
   wishIdentity: WishIdentity;
   afterCatchup?: (input: unknown) => Promise<void>;
@@ -109,12 +111,14 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       now,
     });
     const used = village.eventAttempts?.attempts.filter((r) => r.date === dateKey).length ?? 0;
+    const encounterConflicts = liveSceneEncounterConflicts(village, await ports.activeVenueSession(), now);
     const activePlan =
       used < allowance
         ? village.relationshipContext?.socialPlans.find(
             (plan) =>
               plan.status === "planned" &&
               plan.kind === "meeting" &&
+              !plan.actorIds.some((id) => encounterConflicts.has(id)) &&
               plan.dateKey === dateKey &&
               plan.startMinute <= moment.minuteOfDay &&
               plan.endMinute > moment.minuteOfDay,
@@ -139,7 +143,7 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           zoneId: activePlan.zoneId,
           facts: [activePlan.activity, "An accepted free-time plan is happening now."],
         }
-      : residentPlanningOpportunity(village, moment, village.simulatedThrough);
+      : residentPlanningOpportunity(village, moment, village.simulatedThrough, encounterConflicts);
     if (!opportunity || village.processedActionIds.includes(opportunity.id)) return;
     const context: ResidentPlanningContext = {
       version: 1,

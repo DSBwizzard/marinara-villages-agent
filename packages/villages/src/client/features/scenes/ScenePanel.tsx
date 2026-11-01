@@ -58,8 +58,23 @@ function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
   }[kind];
 }
 
-function roomNoticeIcon(kind: RoomRecordEvent["kind"]): string {
-  return kind === "relationship-up" ? "♥" : kind === "relationship-down" ? "♡" : "★";
+function roomNoticeIcon(notice: RoomRecordEvent): ReactNode {
+  // Pictogrammers exit-run (Apache-2.0); see icon-licenses.txt.
+  if (notice.id.startsWith("presence:"))
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width="20"
+        height="20"
+        fill="currentColor"
+        aria-hidden="true"
+        data-icon="presence"
+        style={{ display: "inline-block", verticalAlign: "middle", stroke: "none" }}
+      >
+        <path d="M13.34,8.17C12.41,8.17 11.65,7.4 11.65,6.47A1.69,1.69 0 0,1 13.34,4.78C14.28,4.78 15.04,5.54 15.04,6.47C15.04,7.4 14.28,8.17 13.34,8.17M10.3,19.93L4.37,18.75L4.71,17.05L8.86,17.9L10.21,11.04L8.69,11.64V14.5H7V10.54L11.4,8.67L12.07,8.59C12.67,8.59 13.17,8.93 13.5,9.44L14.36,10.79C15.04,12 16.39,12.82 18,12.82V14.5C16.14,14.5 14.44,13.67 13.34,12.4L12.84,14.94L14.61,16.63V23H12.92V17.9L11.14,16.21L10.3,19.93M21,23H19V3H6V16.11L4,15.69V1H21V23M6,23H4V19.78L6,20.2V23Z" />
+      </svg>
+    );
+  return notice.kind === "relationship-up" ? "♥" : notice.kind === "relationship-down" ? "♡" : "★";
 }
 
 export function currentRoom(session: SceneView): SceneView {
@@ -325,6 +340,7 @@ export function RoomPanel({
   const [dialogueHidden, setDialogueHidden] = useState(false);
   const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
+  const presenceNotice = notices.find((notice) => notice.id.startsWith("presence:"));
 
   useEffect(() => {
     if (settingsOpen) settingsRef.current?.focus();
@@ -646,7 +662,12 @@ export function RoomPanel({
     () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
     [room.activeIds],
   );
-  const stagingFrame = playback.restoring ? emptyFrame : (step?.presentation ?? emptyFrame);
+  const tailMoment = playback.window.moments.at(-1);
+  const stagingFrame = playback.restoring
+    ? emptyFrame
+    : (playback.atLatest && at === steps.length - 1) || !step
+      ? (tailMoment?.end ?? step?.presentation ?? emptyFrame)
+      : step.presentation;
   const stagingState = stagingFrame.state;
   const previousStageReading = useRef<{ roomId: string; key?: string; at: number; restoring: boolean } | null>(null);
   const animateStaging = useMemo(
@@ -829,7 +850,10 @@ export function RoomPanel({
       </div>
 
       <div className={`${ELEMENT_TAG}-chat-head`}>
-        <span className={`${ELEMENT_TAG}-room-place`}>{room.placeName}</span>
+        <span className={`${ELEMENT_TAG}-room-place`}>
+          {room.placeName}
+          {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
+        </span>
         <span ref={actionsRef} className={`${ELEMENT_TAG}-chat-actions`}>
           <button
             type="button"
@@ -1049,13 +1073,13 @@ export function RoomPanel({
               aria-expanded={noticesOpen}
               aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
             >
-              ✦ {notices.length}
+              <span aria-hidden="true">{presenceNotice ? roomNoticeIcon(presenceNotice) : "✦"}</span> {notices.length}
             </button>
             {noticesOpen ? (
               <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
                 {notices.map((notice) => (
                   <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
-                    <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>
+                    <span aria-hidden="true">{roomNoticeIcon(notice)}</span>
                     {(notice.kind === "memory" ||
                       notice.kind === "wish" ||
                       notice.kind === "relationship-up" ||
@@ -1450,11 +1474,13 @@ export function RoomPanel({
             </div>
           </div>
           <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
-              {mobile
-                ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
-                : `${readingOrdinal + 1} / ${readingTotal}`}
-            </span>
+            {step ? (
+              <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
+                {mobile
+                  ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
+                  : `${readingOrdinal + 1} / ${readingTotal}`}
+              </span>
+            ) : null}
             <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
               <button
                 type="button"

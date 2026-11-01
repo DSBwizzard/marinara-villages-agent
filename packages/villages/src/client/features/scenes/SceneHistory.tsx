@@ -91,30 +91,36 @@ export function SceneHistory({
         {busy ? <span role="status">Loading…</span> : null}
       </nav>
       {error ? <p role="alert">{error}</p> : null}
-      {current?.lines.map((line, index) => (
-        <p key={line.id ?? index} className={ELEMENT_TAG + "-chat-vn-text"}>
-          <strong
-            style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
-          >
-            {line.role === "user"
-              ? playerName
-              : line.kind === "narration" || line.speakerId === "__venue_scene__"
-                ? "Narration"
-                : line.name || "Resident"}
-            {isSceneAside(line) ? " · aside" : ""}
-            {speechDelivery(line) === "whisper"
-              ? " · whisper"
-              : speechDelivery(line) === "shout"
-                ? " · shout"
-                : ""}: {line.viaDoorway ? "Through the doorway · " : ""}
-          </strong>
-          <span
-            style={line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined}
-          >
-            {renderVillagesMarkdown(line.content, `history-${line.id ?? index}-`)}
-          </span>
-        </p>
-      ))}
+      {current?.lines.map((line, index) =>
+        line.presenceChange ? (
+          <p key={line.id ?? index} className={ELEMENT_TAG + "-room-star"}>
+            {line.content}
+          </p>
+        ) : (
+          <p key={line.id ?? index} className={ELEMENT_TAG + "-chat-vn-text"}>
+            <strong
+              style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
+            >
+              {line.role === "user"
+                ? playerName
+                : line.kind === "narration" || line.speakerId === "__venue_scene__"
+                  ? "Narration"
+                  : line.name || "Resident"}
+              {isSceneAside(line) ? " · aside" : ""}
+              {speechDelivery(line) === "whisper"
+                ? " · whisper"
+                : speechDelivery(line) === "shout"
+                  ? " · shout"
+                  : ""}: {line.viaDoorway ? "Through the doorway · " : ""}
+            </strong>
+            <span
+              style={line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined}
+            >
+              {renderVillagesMarkdown(line.content, `history-${line.id ?? index}-`)}
+            </span>
+          </p>
+        ),
+      )}
       {!busy && !error && current?.lines.length === 0 ? <p>No history.</p> : null}
     </div>
   );

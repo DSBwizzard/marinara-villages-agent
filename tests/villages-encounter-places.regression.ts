@@ -292,6 +292,7 @@ await runCase("encounter-places/catchup", async () => {
   } as any;
   let work: any;
   const planning = createResidentPlanning({
+    activeVenueSession: async () => null,
     relationshipIdentity: fixtureRelationshipIdentity,
     wishIdentity: fixtureWishIdentity,
     readVillageState: async () => world,

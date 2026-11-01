@@ -60,6 +60,7 @@ export function parseRelationshipReview(
   village: VillageState,
   _semantic = false,
   sceneState?: RelationshipState,
+  liveTimeline = false,
 ): RelationshipReview {
   const raw = asRecord(value),
     result = emptyRelationshipReview();
@@ -88,6 +89,7 @@ export function parseRelationshipReview(
     const evidence = evidenceFor(row, fromId),
       lineIds = evidence.map((line) => line.id).sort();
     const id = socialReceiptId(sourceId, ["perspective", fromId, toId, lineIds]);
+    if (liveTimeline && village.relationshipContext?.applied[id]) continue;
     const projection = (value: unknown, baseline = village.relationshipContext): RelationshipUpdate => {
       const parsed = updateSchema.parse(value);
       return {
@@ -142,7 +144,7 @@ export function parseRelationshipReview(
       fromId,
       toId,
       expectedRevision: Number(row.expectedRevision),
-      sceneAfter: projection(row.sceneAfter, sceneState),
+      sceneAfter: projection(liveTimeline ? row.liveAfter : row.sceneAfter, sceneState),
       liveAfter: projection(row.liveAfter),
       reason: text(400).parse(row.reason),
       lineIds,
@@ -221,6 +223,7 @@ export function parseRelationshipReview(
       evidence = evidenceFor(row, actorId);
     if (!Number.isInteger(row.expectedRevision) || Number(row.expectedRevision) < 0)
       throw new Error("Missing intention revision.");
+    if (liveTimeline && village.relationshipContext?.applied[sourceId + ":intentions:" + actorId]) continue;
     const items = z
       .array(
         z.object({
@@ -256,8 +259,9 @@ export function parseRelationshipReview(
           }) as SocialIntention,
       ),
     });
-    if (!Array.isArray(row.sceneItems)) throw new Error("Missing captured Scene intention projection.");
-    const sceneRaw = row.sceneItems;
+    if (!liveTimeline && !Array.isArray(row.sceneItems))
+      throw new Error("Missing captured Scene intention projection.");
+    const sceneRaw = liveTimeline ? row.items : row.sceneItems;
     const liveItems = result.intentions!.at(-1)!.items;
     if (JSON.stringify(sceneRaw) === JSON.stringify(row.items))
       result.intentions!.at(-1)!.sceneItems = structuredClone(liveItems);
@@ -290,6 +294,7 @@ export function parseRelationshipProposals(
   ) => row,
   semantic = false,
   sceneState?: RelationshipState,
+  liveTimeline = false,
 ) {
   const raw = asRecord(value),
     review = emptyRelationshipReview(),
@@ -312,7 +317,10 @@ export function parseRelationshipProposals(
           village,
           semantic,
           sceneState,
+          liveTimeline,
         );
+        if ((kind === "changes" && !parsed.changes.length) || (kind === "intentions" && !parsed.intentions?.length))
+          return;
         const key =
           kind === "intentions"
             ? parsed.intentions![0]!.actorId

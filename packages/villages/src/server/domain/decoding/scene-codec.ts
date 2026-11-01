@@ -78,6 +78,8 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
 
 export function coerceSession(value: unknown): VenueScene {
   const raw = savedVenueClassRecord(value);
+  if (raw.liveSceneVersion !== undefined && raw.liveSceneVersion !== 1)
+    throw conflict("Unsupported live Scene format. Its saved data is preserved.");
   if (
     Object.hasOwn(raw, "storageFormat") ||
     Object.hasOwn(raw, "transcript") ||
@@ -131,6 +133,7 @@ export function coerceSession(value: unknown): VenueScene {
               ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
               : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
+            ...(row.presenceChange === true ? { presenceChange: true as const } : {}),
             ...(row.attentionEvidence === true ? { attentionEvidence: true } : {}),
             ...(asRecord(row.speechSource).version === 3 && Array.isArray(asRecord(row.speechSource).spans)
               ? { speechSource: structuredClone(row.speechSource) as VenueLine["speechSource"] }
@@ -300,6 +303,7 @@ export function coerceSession(value: unknown): VenueScene {
     privateOwnerId: asTrimmedString(raw.privateOwnerId),
     privateAccessOwnerId: asTrimmedString(raw.privateAccessOwnerId),
     startedAt: asString(raw.startedAt),
+    ...(raw.liveSceneVersion === 1 ? { liveSceneVersion: 1 as const } : {}),
     ...(raw.continuity !== undefined ? { continuity: readSceneContinuity(raw.continuity) } : {}),
     endedAt: asString(raw.endedAt),
     lastActivityAt: asString(raw.lastActivityAt) || asString(raw.startedAt),

@@ -21,7 +21,7 @@
 - Keep preview worlds independent. Never overwrite their progress implicitly. Checkpoint before consequential saved-data changes and retain rollback. New previews use a verified saved checkpoint without stopping the source environment. Machine-specific runtime commands, credentials, and private data stay outside product Git.
 - Product UI defaults to short labels, controls, values, and necessary results/errors. Remove redundant explanatory copy in touched areas; do not move it into help controls. Preserve user-authored content. Verify real layout on desktop and phone.
 
-A Venue is the place; Zones are spaces within it. A Scene continues across Zone movement. Capture attendance, positions, activity, and time at its start; background changes cannot rewrite that active snapshot or expose unseen attendance.
+A Venue is the place; Zones are spaces within it. A Scene continues across Zone movement. New Scenes follow current Village time, attendance and circumstances between exchanges; residents can leave for commitments while the player remains. Each admitted request preserves its exact source, positions and witnesses through recovery. Later arrivals cannot hear earlier dialogue, and unseen attendance stays private. Older saved Scenes retain their original frozen contract until concluded.
 
 Commands and release steps: DEVELOPMENT.md. Product behavior: packages/villages/README.md. Optional memories, archived procedures, and prior AI recommendations are context, not additional standing requirements. Model and thinking settings are managed by the user.
 

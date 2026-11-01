@@ -1,5 +1,6 @@
-import type { VenueScene } from "../models/scene-model.js";
+import type { VenueRecordEvent, VenueScene } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { deriveVillageMoment } from "./village-clock.js";
 export function sceneTurnPublished(value: unknown) {
   const turn = asRecord(value);
   return asRecord(turn.semanticProvenance).version !== 2 || turn.semanticReady === true;
@@ -21,6 +22,14 @@ export function publicSceneHistoryProjection(scene: VenueScene) {
     ),
     privateHearing: publicSceneHistoryHearing(scene),
   };
+}
+export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
+  return publicSceneHistoryProjection(scene).positions.flatMap((position) => {
+    const line = scene.lines[position];
+    return line.presenceChange && !line.contactHidden
+      ? [{ id: `presence:${scene.id}:${line.id}`, kind: "venue" as const, text: line.content }]
+      : [];
+  });
 }
 export function publicSceneHistoryHearing(value: unknown) {
   const scene = asRecord(value);
@@ -87,6 +96,7 @@ export function publicSceneAuthority(scene: VenueScene) {
     "openingReader",
     "openingIntroductionResidentId",
     "semanticVersion",
+    "liveSceneVersion",
   ] as const;
   const selected = Object.fromEntries(fields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]]));
   const projected = publicSceneResponse({
@@ -101,6 +111,20 @@ export function publicSceneAuthority(scene: VenueScene) {
   const { lines: _lines, submissions: _submissions, ...authority } = projected;
   return {
     ...authority,
+    ...(scene.liveSceneVersion === 1 && scene.continuity
+      ? {
+          currentTime: (() => {
+            const facts = scene.continuity!.facts;
+            const moment = deriveVillageMoment({
+              foundedAt: facts.foundedAt,
+              seed: facts.seed,
+              timeZone: facts.timeZone || undefined,
+              now: new Date(scene.continuity!.capturedAt),
+            });
+            return `${moment.weekday}, ${moment.dateLabel} · ${moment.localTime}`;
+          })(),
+        }
+      : {}),
     version: 1 as const,
     processingSummary: sceneProcessingSummary(scene),
     ...(last ? { latestTurn: { id: last.id, at: last.at, published: sceneTurnPublished(last) } } : {}),

@@ -33,6 +33,7 @@ export function buildResidentPlanningMessages(input: any) {
 }
 export function proposeResidentChoices(input: any) {
   return createResidentPlanning({
+    activeVenueSession: async () => null,
     relationshipIdentity: fixtureRelationshipIdentity,
     wishIdentity: fixtureWishIdentity,
     readVillageState,

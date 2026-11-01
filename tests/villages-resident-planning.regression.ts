@@ -26,6 +26,7 @@ import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-a
 import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 
 const now = new Date(),
   at = now.toISOString(),
@@ -85,6 +86,7 @@ function fixture() {
   const queued: any[] = [],
     calls: any[] = [];
   let payload: any = { social: null, routineIdea: null, housingRequests: [] },
+    activeScene: any = null,
     memoryChanges: any[] = [],
     legacy: any = null;
   const model: any = {
@@ -95,6 +97,7 @@ function fixture() {
     fitContext: (messages: any, options: any) => ({ messages, ...options }),
   };
   const service = createResidentPlanning({
+    activeVenueSession: async () => activeScene,
     relationshipIdentity: fixtureRelationshipIdentity,
     wishIdentity: fixtureWishIdentity,
     readVillageState: async () => state,
@@ -126,6 +129,7 @@ function fixture() {
     service,
     queued,
     calls,
+    scene: (value: any) => (activeScene = value),
     payload: (value: any) => (payload = value),
     memoryChanges: (value: any[]) => (memoryChanges = value),
     legacy: (value: any) => (legacy = value),
@@ -729,6 +733,46 @@ assert.equal(
   "Reset still removes another world's private job records",
 );
 stop();
+{
+  const spatial = fixture();
+  spatial.scene(
+    coerceSession({
+      version: 3,
+      liveSceneVersion: 1,
+      id: "moved",
+      villageSeed: spatial.state.seed,
+      placeId: "home",
+      zoneId: "exterior",
+      startedAt: at,
+      status: "active",
+      accompanying: [{ characterId: "a", zoneId: "exterior" }],
+      sceneAttendance: { capturedAt: at, occupants: [] },
+    }),
+  );
+  spatial.state.relationshipContext!.socialPlans.push({
+    id: "due",
+    kind: "meeting",
+    status: "planned",
+    dateKey,
+    startMinute: 0,
+    endMinute: 1440,
+    actorIds: ["a"],
+    venueId: "square",
+    zoneId: "community",
+    activity: "A meeting",
+    reason: "Agreed",
+    revisions: {},
+  });
+  assert.equal(
+    await spatial.service.reconcile(now, true),
+    false,
+    "a due plan cannot manufacture presence in the old Zone",
+  );
+  assert.equal(spatial.queued.length, 0);
+  await spatial.service.reconcile(now);
+  assert.equal(spatial.queued[0].input.context.opportunity.kind, "routine");
+  assert.equal(spatial.calls.length, 0, "spatial filtering never purchases a model response");
+}
 console.log(
   "Resident planning preserves quiet outcomes, routine/housing proposals, independent social checks, pacing, legacy spending floors and private recovery boundaries.",
 );

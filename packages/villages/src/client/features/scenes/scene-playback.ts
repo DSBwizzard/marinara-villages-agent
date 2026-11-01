@@ -19,6 +19,7 @@ export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: stri
     },
   ) => {
     if (!line.id) throw Error("The reading position is missing. Reopen the Scene.");
+    if (line.presenceChange) return;
     const asides: RoomStep["asides"] = asideLines.map((line) => ({
       register: speechDelivery(line) === "ordinary" ? "side" : (speechDelivery(line) as "whisper" | "shout"),
       text: line.content,

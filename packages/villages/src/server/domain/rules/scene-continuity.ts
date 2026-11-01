@@ -151,8 +151,10 @@ export function visibleSceneContinuity(scene: VenueScene): string {
 }
 
 export function captureSceneContinuity(state: VillageState, scene: VenueScene, now: number): SceneContinuity {
-  const capturedAt = new Date(scene.sceneAttendance?.capturedAt || scene.startedAt || now).toISOString();
-  reserveMemoryScene(state, scene.id, capturedAt);
+  const capturedAt = new Date(
+    scene.liveSceneVersion === 1 ? now : scene.sceneAttendance?.capturedAt || scene.startedAt || now,
+  ).toISOString();
+  if (scene.liveSceneVersion !== 1) reserveMemoryScene(state, scene.id, capturedAt);
   const facts = cloneSceneFacts(
     Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])) as SceneContinuity["facts"],
   );
@@ -179,7 +181,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
       ? coerceRelationshipState(context.seed, context.facts.relationshipContext)
       : undefined,
     narrative: structuredClone(context.facts.narrative),
-    ...(includeMemories
+    ...(includeMemories && scene.liveSceneVersion !== 1
       ? {
           memories: current.memoryScenes[scene.id]
             ? sceneMemories(current, scene.id)
@@ -189,6 +191,8 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
         }
       : {}),
   };
+  // Live encounters freeze facts per admission; model packets retain their exact Memory evidence.
+  if (scene.liveSceneVersion === 1) return view;
   // Artwork is a presentation setting, not a later fictional event.
   for (const resident of view.villagers) {
     const live = current.villagers.find((row) => row.characterId === resident.characterId);

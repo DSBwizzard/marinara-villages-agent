@@ -607,7 +607,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useInitialVillageLoad({ visible: visible && !snapshot?.isFounded, loadSnapshot });
 
-  useSceneSelectionReset({ ...scenes, loadSnapshot, room, screen, setRoom, setScreen });
+  useSceneSelectionReset({ ...scenes, loadSnapshot, snapshot, room, screen, setRoom, setScreen });
 
   // Opening failures belong only to the visit that is still opening. A later
   // authoritative read can recover it even when the original fetch and its

@@ -11,6 +11,20 @@ export function sceneFingerprint(session: VenueScene) {
       session.activeIds,
       session.participants,
       session.recap,
+      ...(session.liveSceneVersion === 1
+        ? [
+            session.continuity?.facts.venues
+              .find((venue) => venue.id === session.placeId)
+              ?.zones?.filter((zone) => zone.id === session.zoneId || zone.seen)
+              .map((zone) => [
+                zone.id,
+                zone.name,
+                zone.kind,
+                zone.connectedTo,
+                zone.id === session.zoneId ? [zone.description, zone.state] : undefined,
+              ]),
+          ]
+        : []),
     ]),
     session.lines.map((line) => line.id),
   ] as const;

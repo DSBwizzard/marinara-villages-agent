@@ -122,11 +122,20 @@ function preferredVillagerPlace(
 }
 
 /** Resolve the entire roster together, after every agenda overlay. Never hide overflow. */
-export function villagePresence(village: VillageState, minuteOfDay: number, at: Date) {
+export function villagePresence(
+  village: VillageState,
+  minuteOfDay: number,
+  at: Date,
+  positions?: ReadonlyMap<string, VillagePlaceView>,
+) {
   const result = new Map<string, VillagePlaceView>();
   const counts = new Map<string, number>();
   const key = (venueId: string, zoneId: string) => JSON.stringify([venueId, zoneId]);
-  const residents = [...village.villagers].sort((a, b) => a.characterId.localeCompare(b.characterId));
+  const residents = [...village.villagers].sort(
+    (a, b) =>
+      Number(positions?.has(b.characterId)) - Number(positions?.has(a.characterId)) ||
+      a.characterId.localeCompare(b.characterId),
+  );
   const pending: typeof residents = [];
   const place = (resident: VillageVillager, view: VillagePlaceView) => {
     const id = key(view.id, view.zoneId ?? "exterior");
@@ -136,11 +145,13 @@ export function villagePresence(village: VillageState, minuteOfDay: number, at: 
     return true;
   };
   for (const resident of residents) {
-    const preferred = preferredVillagerPlace(village, resident, null, minuteOfDay, at);
+    const preferred =
+      positions?.get(resident.characterId) ?? preferredVillagerPlace(village, resident, null, minuteOfDay, at);
     if (preferred && !place(resident, preferred)) pending.push(resident);
   }
   for (const resident of pending) {
-    const preferred = preferredVillagerPlace(village, resident, null, minuteOfDay, at)!;
+    const preferred =
+      positions?.get(resident.characterId) ?? preferredVillagerPlace(village, resident, null, minuteOfDay, at)!;
     const origin = village.venues.find((venue) => venue.id === preferred.id)!;
     const home = village.venues.find((venue) => venueResidentIds(venue).includes(resident.characterId));
     const destinations = [...new Set([origin, home, ...village.venues].filter((venue) => !!venue))];

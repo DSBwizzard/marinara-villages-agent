@@ -22,6 +22,7 @@ import {
 import {
   emptyRelationshipReview,
   parseRelationshipReview,
+  parseRelationshipProposals,
 } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   applyRelationshipReview,
@@ -505,4 +506,64 @@ await assert.rejects(
 assert.equal(workers, 0);
 assert.equal(recovery, 0);
 assert.equal(cleanups, 1);
+{
+  const current = defaultRelationshipState(village.seed);
+  const liveWorld = { ...village, relationshipContext: current };
+  const parseLive = (raw: unknown, source: string) =>
+    parseRelationshipProposals(raw, source, lines, liveWorld, (row) => row, true, current, true);
+  const row = proposal("Friends");
+  row.liveAfter = after("Friends", [terms]);
+  row.sceneAfter = after("Unrelated older wording");
+  const original = structuredClone(row);
+  const first = parseLive({ ...emptyRelationshipReview(), changes: [row] }, "live-first");
+  assert.deepEqual(first.rejections, []);
+  assert.deepEqual(first.review.changes[0]!.sceneAfter, first.review.changes[0]!.liveAfter);
+  assert.deepEqual(row, original, "the raw System proposal stays available for audit");
+  applyRelationshipReview(current, first.review, liveWorld, "live-first", village.foundedAt, Date.now(), current);
+  const record = Object.values(current.sharedRecords)[0]!;
+  const update = proposal("Friends", 1);
+  update.liveAfter = after("Friends", [
+    { ...terms, id: record.id, expectedRevision: record.revision, status: "fulfilled" },
+  ]);
+  const source = { ...emptyRelationshipReview(), changes: [update] };
+  const next = parseLive(source, "live-next");
+  assert.deepEqual(next.rejections, []);
+  applyRelationshipReview(current, next.review, liveWorld, "live-next", village.foundedAt, Date.now(), current);
+  const replay = parseLive(source, "live-next");
+  assert.deepEqual(replay.rejections, [], "already applied shared-record updates replay without stale revalidation");
+  assert.equal(replay.review.changes.length, 0);
+  assert.equal(relationshipFor(current, "ada", "player").revision, 2);
+
+  const intention = {
+    actorId: "ada",
+    expectedRevision: 0,
+    lineIds: ["a"],
+    sceneItems: [],
+    items: [{ id: "", targetIds: ["player"], text: "Send a dinner note", reason: "A shared plan", status: "active" }],
+  };
+  const intentions = parseLive({ ...emptyRelationshipReview(), intentions: [intention] }, "live-intentions");
+  assert.deepEqual(intentions.rejections, []);
+  applyRelationshipReview(
+    current,
+    intentions.review,
+    liveWorld,
+    "live-intentions",
+    village.foundedAt,
+    Date.now(),
+    current,
+  );
+  const receipt = current.intentionReceipts["live-intentions:intentions:ada"]!;
+  assert.equal(receipt.sceneRevision, 1, "aliased live authority does not double-advance the intention revision");
+  assert.equal(receipt.liveRevision, 1);
+  assert.deepEqual(receipt.sceneAfter, receipt.liveAfter);
+  assert.deepEqual(
+    parseLive({ ...emptyRelationshipReview(), intentions: [intention] }, "live-intentions").rejections,
+    [],
+  );
+  const stale = parseLive({ ...emptyRelationshipReview(), changes: [proposal("Friends")] }, "another-source");
+  assert.throws(
+    () => applyRelationshipReview(current, stale.review, liveWorld, "another-source", village.foundedAt),
+    /revision|changed/i,
+  );
+}
 console.log("villages-relationships: ok");

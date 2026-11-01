@@ -6,6 +6,7 @@ import type { VenueScene } from "../../domain/models/scene-model.js";
 import type { SceneTerminal } from "../../domain/models/scene-terminal-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { isSceneTurnOutcome } from "../../../shared/contracts/scene-turn-outcome.js";
+import { scenePresenceNotices } from "../../domain/rules/scene-public.js";
 
 export const SCENE_TERMINAL_KIND = "scene-terminal";
 export const SCENE_TERMINAL_PREFIX = "villages-scene-terminal-";
@@ -181,7 +182,7 @@ export function terminalForScene(scene: VenueScene, sourceRevision: number): Sce
     navigationReceipts: structuredClone(scene.navigationReceipts ?? []),
     rejectedSubmissions: structuredClone(scene.rejectedSubmissions ?? []),
     generationReceipts: structuredClone(scene.generationReceipts ?? []),
-    recordEvents: scene.submissions.flatMap((turn) => turn.recordEvents ?? []),
+    recordEvents: [...scenePresenceNotices(scene), ...scene.submissions.flatMap((turn) => turn.recordEvents ?? [])],
     ...(Object.keys(optionalAttempts).length
       ? { optionalAttempts: optionalAttempts as NonNullable<SceneTerminal["optionalAttempts"]> }
       : {}),

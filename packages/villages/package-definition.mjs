@@ -27,6 +27,7 @@ export const villagesDefinition = {
   assetPaths: [
     ...letterFontAssets,
     "villages-icon.png",
+    "icon-licenses.txt",
     "menu-desk.jpg",
     "founding-rebuild.jpg",
     "founding-pioneer.jpg",

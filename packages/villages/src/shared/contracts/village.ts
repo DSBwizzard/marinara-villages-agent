@@ -729,6 +729,7 @@ export type RoomLine = {
   viaDoorway?: boolean;
   /** Local cast after this line's completed movement; never unseen Zone attendance. */
   physicalIdsAfter?: string[];
+  presenceChange?: true;
   remoteDelivery?: "loud";
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
   beats?: ChatBeat[];
@@ -784,6 +785,8 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  liveSceneVersion?: 1;
+  currentTime?: string;
   capturedContext?: true;
   playerName?: string;
   /** An existing handoff needs return/recovery controls; private context stays server-side. */

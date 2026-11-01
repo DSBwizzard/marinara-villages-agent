@@ -518,7 +518,7 @@ export function encodeScenePresentations(
     }
     const project = (line: typeof source.line) => publicSceneResponse([line], visible, privateHearing)[0];
     const main = project(source.line);
-    const paragraphs = villagesWalk(main.content, null).paragraphs.length,
+    const paragraphs = main.presenceChange ? 0 : villagesWalk(main.content, null).paragraphs.length,
       offset = paragraphStart;
     paragraphStart += paragraphs;
     advanceStaging(cursor, { beforeIds: source.beforeIds, cues: lineStagingCues(main) });

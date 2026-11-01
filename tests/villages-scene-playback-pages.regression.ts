@@ -60,7 +60,7 @@ try {
         staging: [{ characterId: "a", expression: "start", look: { target: "villager", characterId: "b" } }],
       },
       { ...line("aside", "b"), kind: "side", asideFor: "main", staging: [{ characterId: "a", expression: "aside" }] },
-      { ...line("move", "__venue_scene__"), kind: "narration", physicalIdsAfter: ["b"] },
+      { ...line("move", "__venue_scene__"), kind: "narration", physicalIdsAfter: ["b"], presenceChange: true },
     );
     saved.submissions.push({
       id: "turn:first",
@@ -81,6 +81,9 @@ try {
   for (const [id, row] of f.rows) if (row.kind === "memory-page") historicalPages.set(id, structuredClone(row));
   const moments = await readSceneMomentRange(f.documents, head, native.transcript.count, 0, head.count);
   assert.equal(moments.length, 2);
+  assert.equal(head.paragraphs, 2, "attendance does not create a dialogue paragraph");
+  assert.equal(moments[1].paragraphs, 0);
+  assert.equal((await f.repository.readSession("playback")).lines.at(-1)!.presenceChange, true);
   assert.deepEqual(
     moments[0].lines.map((line) => line.id),
     ["main", "aside"],

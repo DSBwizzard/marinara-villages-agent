@@ -1,5 +1,5 @@
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
-const { authorSceneResponse } = await scenePlaybackFixtures();
+const { authorSceneResponse, fixturePlaybackPage } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
@@ -51,6 +51,7 @@ await withBrowser(browser, async () => {
       memoryMode: "live",
       sceneRevision: 0,
       activeIds: ["mara"],
+      initialActiveIds: ["mara"],
       participants: residents.slice(0, 1).map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
       lines: [
         {
@@ -70,6 +71,7 @@ await withBrowser(browser, async () => {
     let active = true;
     let holdReview = null;
     let failure = null;
+    let liveStale = false;
     let loseSuccessResponse = false;
     let hideReads = false;
     let loseOperationRead = false;
@@ -100,6 +102,14 @@ await withBrowser(browser, async () => {
           hasMore: false,
           nextCursor: "0:0",
         };
+      } else if (path.endsWith("/playback")) {
+        const query = new URL(request.url()).searchParams;
+        value = fixturePlaybackPage(
+          session,
+          snapshot.worldScope,
+          query.get("cursor") || undefined,
+          query.get("first") === "1",
+        );
       } else if (path.endsWith("/connections"))
         value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
       else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
@@ -157,6 +167,29 @@ await withBrowser(browser, async () => {
       } else if (path.endsWith("/rooms/turn") || path.endsWith("/rooms/leave")) {
         const input = request.postDataJSON();
         turns.push(input);
+        if (liveStale) {
+          liveStale = false;
+          session.activeIds = ["eli"];
+          session.participants.push({ characterId: "eli", name: "Eli", doing: "Reading" });
+          session.currentTime = "Monday, 2 November · 11:57";
+          session.sceneRevision++;
+          session.lines.push({
+            id: "current-presence",
+            role: "assistant",
+            kind: "narration",
+            speakerId: "__venue_scene__",
+            content: "Mara is no longer here. Eli is here.",
+            at: now,
+            physicalIdsAfter: ["eli"],
+          });
+          return fulfill(route, {
+            status: 409,
+            json: {
+              error: "The situation changed. Your message has not been sent. Review who is here and send again.",
+              code: "SCENE_STALE",
+            },
+          });
+        }
         if (occupancyUnavailable) {
           session.operation = {
             id: input.submissionId,
@@ -726,6 +759,31 @@ await withBrowser(browser, async () => {
     await expect(send).toBeEnabled();
     await expect(composer).toHaveValue("Keep this draft during recovery");
     assert.equal(continuations, 1, "Continue is an explicit local request, never an automatic model retry");
+    session.operation = null;
+    session.liveSceneVersion = 1;
+    session.currentTime = "Monday, 2 November · 09:57";
+    await load();
+    await expect(page.locator(`.${tag}-room-time`)).toHaveText(session.currentTime);
+    const liveNext = page.getByRole("button", { name: "Next paragraph", exact: true });
+    while (await liveNext.isEnabled()) await liveNext.click();
+    await page.screenshot({ path: `.build-tmp/scene-status/live-initial-${mobile ? "mobile" : "desktop"}.png` });
+    await composer.fill("Mara, dinner tomorrow sounds good.");
+    const beforeLiveSend = turns.length;
+    const acceptedBefore = session.submissions.length;
+    liveStale = true;
+    await send.click();
+    await expect(page.locator(`.${tag}-room-time`)).toHaveText("Monday, 2 November · 11:57");
+    while (await liveNext.isEnabled()) await liveNext.click();
+    await expect(composer).toHaveValue("Mara, dinner tomorrow sounds good.");
+    await expect(send).toBeEnabled();
+    await expect(page.locator(`.${tag}-room-time`)).toHaveText("Monday, 2 November · 11:57");
+    assert.equal(turns.length, beforeLiveSend + 1, "an audience change never automatically resends");
+    assert.equal(session.submissions.length, acceptedBefore, "the stale input never becomes accepted dialogue");
+    await page.screenshot({ path: `.build-tmp/scene-status/live-stale-${mobile ? "mobile" : "desktop"}.png` });
+    await composer.fill("Hello Eli.");
+    await send.click();
+    await expect(composer).toHaveValue("");
+    assert.equal(turns.at(-1).expectedSceneRevision, session.sceneRevision - 1);
     assert.deepEqual(errors, []);
     await page.close();
   }

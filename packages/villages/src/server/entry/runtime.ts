@@ -1072,6 +1072,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   const wishIdentity: import("../domain/rules/return-capture-revision.js").WishIdentity = (rows, scope) =>
     wishHistoryStore(villagesDocuments()).fingerprint(rows, scope);
   const residentPlanning = createResidentPlanning({
+    activeVenueSession,
     relationshipIdentity,
     wishIdentity,
     afterCatchup: advanceReturnCatchup,
