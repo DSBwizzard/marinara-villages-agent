@@ -16,6 +16,7 @@ import { captureSceneLayout } from "../packages/villages/src/server/domain/rules
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import {
@@ -199,6 +200,8 @@ const narrationPrompts: string[] = [];
 let semanticIntentAnswer: Record<string, unknown> | undefined;
 let semanticExchangeAnswer: Record<string, unknown> | undefined;
 let beforeSemanticResponse: (() => void) | undefined;
+let narrationGate: (() => Promise<void>) | undefined;
+let debugEnabled = false;
 const semanticStages: string[] = [];
 let lastSemanticInput: any;
 const model = {
@@ -324,6 +327,9 @@ const model = {
       const { memoryChanges, ...core } = answer;
       content = JSON.stringify(core) + ',"memoryChanges":' + JSON.stringify(memoryChanges) + "}";
     }
+    const gate = narrationGate;
+    narrationGate = undefined;
+    await gate?.();
     return { content, finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
   },
 };
@@ -345,7 +351,7 @@ const runtime = {
     debug() {},
     debugOverride() {},
   },
-  isDebugAgentsEnabled: () => false,
+  isDebugAgentsEnabled: () => debugEnabled,
   getAgentConfig: async () => ({ settings: {} }),
 };
 const originalFetch = globalThis.fetch;
@@ -589,7 +595,7 @@ try {
           expectedSceneRevision: state().sceneRevision,
         },
       });
-      assert.equal(response.statusCode, domain === "relationships" ? 500 : 200, response.body);
+      assert.equal(response.statusCode, 200, response.body);
       assert.equal(modelCalls, beforeTurn + 2);
       const saved = state().submissions.find((row: any) => row.id === id);
       assert.equal(saved.processing.domains[domain].status, "failed");
@@ -667,6 +673,60 @@ try {
       );
       semanticIntentAnswer = previousIntent;
     }
+    {
+      const active = clone(records);
+      semanticExchangeAnswer.consistent = false;
+      editFixtureScene((saved) => {
+        saved.lines = [];
+        saved.submissions = [];
+        saved.operation = undefined;
+        saved.sceneRevision = 0;
+      });
+      answer = {
+        playerSpeechCapture: { status: "silent", utterances: [] },
+        segments: [{ text: "An uncommitted paid draft." }],
+      };
+      const failed = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: {
+          sessionId: scene.id,
+          submissionId: "current-failed-end",
+          message: "*waits*",
+          mode: "chat",
+          targetId: "",
+          expectedSceneRevision: state().sceneRevision,
+        },
+      });
+      assert.equal(failed.statusCode, 502, failed.body);
+      const operation = JSON.parse(JSON.stringify(state().operation));
+      assert(Object.keys(operation.checkpoints).some((key) => key.startsWith("writing-completion:")));
+      const beforeEnd = modelCalls;
+      const payload = {
+        sessionId: scene.id,
+        expectedSceneRevision: state().sceneRevision,
+        abandonOperationId: operation.id,
+        retryOfAttemptId: operation.attemptId,
+      };
+      const stale = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/end",
+        payload: { ...payload, retryOfAttemptId: "stale" },
+      });
+      assert.equal(stale.statusCode, 409, stale.body);
+      const ended = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload });
+      assert.equal(ended.statusCode, 200, ended.body);
+      assert.equal(state().status, "closed");
+      assert.deepEqual(state().lines, []);
+      assert.deepEqual(state().operation.checkpoints["abandoned-request"], { ...operation, snapshot: null });
+      assert.doesNotMatch(ended.body, /abandoned-request|writing-completion|snapshot/);
+      const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload });
+      assert.equal(replay.statusCode, 200, replay.body);
+      assert.equal(modelCalls, beforeEnd, "End preserves paid precommit work without generation");
+      records.clear();
+      for (const [id, row] of active) records.set(id, row);
+      semanticExchangeAnswer = quietSystem();
+    }
     for (const fault of ["before", "after"] as const) {
       failedSaveId = "save-fault-" + fault;
       saveFault = fault;
@@ -698,6 +758,62 @@ try {
       assert.equal(state().submissions.filter((turn: any) => turn.id === failedSaveId).length, 1);
     }
 
+    {
+      const active = clone(records);
+      const beforeNavigation = modelCalls;
+      const moved = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/zone",
+        payload: {
+          sessionId: scene.id,
+          zoneId: "kitchen",
+          expectedSceneRevision: state().sceneRevision,
+          operationId: "current-discover-kitchen",
+        },
+      });
+      assert.equal(moved.statusCode, 200, moved.body);
+      assert.equal(state().zoneId, "kitchen");
+      assert(records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "kitchen").seen);
+      const denied = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/zone",
+        payload: {
+          sessionId: scene.id,
+          zoneId: "bedroom",
+          expectedSceneRevision: state().sceneRevision,
+          operationId: "current-denied-bedroom",
+        },
+      });
+      assert.equal(denied.statusCode, 409, denied.body);
+      assert(!records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "bedroom").seen);
+      await stop?.();
+      await app.close();
+      app = Fastify();
+      await start();
+      await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+      assert(records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "kitchen").seen);
+      assert.equal(modelCalls, beforeNavigation, "Navigation and restart add no model request");
+      records.clear();
+      for (const [id, row] of active) records.set(id, row);
+    }
+    {
+      const active = clone(records),
+        memory = clone(fixtureVillageState(records.get("villages-village").data, records).memories);
+      const beforeDiscard = modelCalls;
+      debugEnabled = true;
+      const discarded = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/debug/discard",
+        payload: { sessionId: scene.id },
+      });
+      debugEnabled = false;
+      assert.equal(discarded.statusCode, 200, discarded.body);
+      assert(!records.has("villages-venue-visit-" + scene.id));
+      assert.deepEqual(fixtureVillageState(records.get("villages-village").data, records).memories, memory);
+      assert.equal(modelCalls, beforeDiscard, "Debug discard retains committed Memories without review requests");
+      records.clear();
+      for (const [id, row] of active) records.set(id, row);
+    }
     const beforeRestart = modelCalls;
     await stop?.();
     await app.close();
@@ -964,6 +1080,174 @@ try {
   const canonicalVenue = records.get("villages-village").data.venues[0];
   initializeVenueAccess(canonicalVenue);
   canonicalVenue.access.managerIds = ["aqua"];
+  {
+    const retained = clone(records),
+      oldIntent = semanticIntentAnswer,
+      oldExchange = semanticExchangeAnswer;
+    const quiet = {
+      consistent: true,
+      authority: { physical: false, access: false, projects: false, standing: false, social: false },
+      action: null,
+      access: [],
+      events: { moves: [], departures: [], contactEnd: [] },
+      memoryChanges: [],
+      relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+      wishChanges: [],
+      projectSpeech: [],
+    };
+    editFixtureScene((saved) => {
+      saved.status = "opening";
+      saved.lines = [];
+      saved.submissions = [];
+      saved.operation = undefined;
+      saved.sceneRevision = 0;
+    });
+    semanticIntentAnswer = { status: "resolved", timeline: [], instructions: "", action: null, movement: null };
+    semanticExchangeAnswer = quiet;
+    answer = {
+      playerSpeechCapture: { status: "silent", utterances: [] },
+      segments: [{ text: "The held opening sways in the breeze." }],
+    };
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>((done) => (entered = done)),
+      wait = new Promise<void>((done) => (release = done));
+    narrationGate = async () => {
+      entered();
+      await wait;
+    };
+    const pending = app
+      .inject({ method: "POST", url: "/api/villages/rooms/greet", payload: { sessionId: scene.id } })
+      .then((response) => response);
+    await started;
+    const beforeContinue = modelCalls;
+    const continued = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/continue",
+      payload: { sessionId: scene.id },
+    });
+    assert.equal(continued.statusCode, 200, continued.body);
+    assert.equal(modelCalls, beforeContinue, "Continuing without an opening starts no model work");
+    assert.equal((await pending).statusCode, 409);
+    assert.equal(state().status, "active");
+    assert.deepEqual(state().lines, []);
+    release();
+    await new Promise<void>((done) => setImmediate(done));
+    semanticIntentAnswer = {
+      status: "resolved",
+      timeline: [{ kind: "action", text: "*waits*" }],
+      instructions: "",
+      action: null,
+      movement: null,
+    };
+    await turn("after-held-opening", "*waits*", [{ text: "The conversation is ready." }]);
+    assert(
+      !state().lines.some((line: any) => line.content.includes("held opening")),
+      "A late cancelled greeting cannot append",
+    );
+    records.clear();
+    for (const [id, row] of retained) records.set(id, row);
+    semanticIntentAnswer = oldIntent;
+    semanticExchangeAnswer = oldExchange;
+  }
+  {
+    const retained = clone(records);
+    for (const source of ["decisions", "system"] as const)
+      for (const timing of ["now", "later"] as const) {
+        records.clear();
+        for (const [id, row] of clone(retained)) records.set(id, row);
+        const quote = timing === "now" ? "Come into the kitchen." : "Visit the kitchen tomorrow.";
+        const check = {
+          id: "retained-invitation",
+          domain: "room",
+          question: "Did Aqua invite the player?",
+          facts: { actorId: "aqua", venueId: "harbour", zoneId: "kitchen" },
+          outcomes: [{ id: "invite-" + timing, statement: "Permission granted" }],
+          evidence: [{ id: "draft:0", speakerId: "aqua", content: quote, current: true }],
+        };
+        const result = { source, outcome: "invite-" + timing, evidenceIds: ["draft:0"], reason: "" };
+        const reply = {
+          ...parseVenueReply({ segments: [{ kind: "dialogue", speakerId: "aqua", text: quote }], heardPlayerBy: [] }, [
+            "aqua",
+            "feddy",
+          ]),
+          wishChanges: [],
+          wishContexts: [],
+          memoryChanges: [],
+          earlierLineIds: [],
+          memoryVersions: {},
+          relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+          projectSpeech: [],
+          projectContexts: [],
+          departures: [],
+          recollections: [],
+          contactEndIds: [],
+          contactMoves: [],
+          invitationSignal: {
+            residentId: "aqua",
+            venueId: "harbour",
+            zoneId: "kitchen",
+            zoneLabel: "Kitchen",
+            scope: "shared",
+            area: "public",
+            spaceClass: "community",
+            timing,
+            ownerId: "",
+            quote,
+            evidenceKind: "speech",
+          },
+          roomInterpretation: { checks: [check], results: [result], settings: { decisionsEnabled: true }, traces: [] },
+        };
+        editFixtureScene((saved) => {
+          saved.status = "opening";
+          saved.lines = [];
+          saved.submissions = [];
+          saved.entryOffers = [];
+          saved.zoneGrants = [];
+          saved.sceneRevision = 0;
+          delete saved.semanticVersion;
+          const snapshot = { ...clone(saved), operation: undefined };
+          saved.operation = {
+            id: "greeting",
+            kind: "greet",
+            input: {},
+            token: "retained-owner",
+            attemptId: "retained-" + source + timing,
+            status: "interrupted",
+            stage: "greeting-reply",
+            startedAt: now,
+            sceneRevision: 0,
+            snapshot,
+            checkpoints: { "greeting-reply": reply },
+            attempts: {},
+            error: "Application interrupted",
+          };
+        });
+        const beforeReplay = modelCalls;
+        const replay = await app.inject({
+          method: "POST",
+          url: "/api/villages/rooms/greet",
+          payload: { sessionId: scene.id, recovery: true },
+        });
+        assert.equal(replay.statusCode, 200, replay.body);
+        assert.equal(modelCalls, beforeReplay, "Retained complete greeting applies without dispatch");
+        assert.equal(
+          state().entryOffers?.some((offer: any) => offer.zoneId === "kitchen") ?? false,
+          source === "system" && timing === "now",
+        );
+        assert.equal(
+          state().zoneGrants?.some((grant: any) => grant.zoneId === "kitchen") ?? false,
+          source === "system" && timing === "now",
+        );
+        assert.equal(
+          records
+            .get("villages-village")
+            .data.venues[0].playerInvitations?.some((invite: any) => invite.quote === quote) ?? false,
+          source === "system" && timing === "later",
+        );
+      }
+    records.clear();
+    for (const [id, row] of retained) records.set(id, row);
+  }
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
     version: 3,
     ...clone(scene),
