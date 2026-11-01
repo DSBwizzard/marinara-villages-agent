@@ -21,8 +21,7 @@ import type {
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import {
   configureSceneQueries,
-  progressBacklog,
-  readProjectTurnEvidence,
+  sceneQueries,
   type SceneQueries,
 } from "../packages/villages/src/server/features/scenes/services.js";
 type Document = Awaited<ReturnType<CapabilityDocumentStore["list"]>>[number];
@@ -338,11 +337,11 @@ async function main() {
   const releaseA = a.run(() => configureSceneQueries(first.queries)),
     clearA = installDefaultActivation(a, () => {});
   first.pause();
-  const inFlight = progressBacklog();
+  const inFlight = sceneQueries().progressBacklog();
   await first.entered.promise;
   const releaseB = b.run(() => configureSceneQueries(second.queries)),
     clearB = installDefaultActivation(b, () => {});
-  const bEvidence = await readProjectTurnEvidence("same", "proof");
+  const bEvidence = await sceneQueries().readProjectTurnEvidence("same", "proof");
   assert.equal(bEvidence.venueId, "venue-B");
   assert.equal(bEvidence.zoneId, "zone-B");
   assert.equal(bEvidence.message, "B message");
@@ -357,31 +356,31 @@ async function main() {
   a.run(releaseA);
   a.dispose();
   clearA();
-  assert.deepEqual(await progressBacklog(), [
+  assert.deepEqual(await sceneQueries().progressBacklog(), [
     { sessionId: "same", submissionId: "proof", at: stamp, error: "B pending" },
   ]);
   assert(second.calls.includes("list"), "older cleanup retains B dispatch");
   await assert.rejects(
-    a.run(() => progressBacklog()),
+    a.run(async () => sceneQueries().progressBacklog()),
     /not configured/,
   );
   const missing = createActivationScope();
   await assert.rejects(
-    missing.run(() => readProjectTurnEvidence("same", "proof")),
+    missing.run(async () => sceneQueries().readProjectTurnEvidence("same", "proof")),
     /not configured/,
   );
   missing.dispose();
   b.run(releaseB);
   b.dispose();
   clearB();
-  await assert.rejects(progressBacklog(), /not configured/);
+  assert.throws(() => sceneQueries(), /not configured/);
   const retired = createActivationScope(),
     old = fixture("retired");
   old.add(scene());
   retired.run(() => configureSceneQueries(old.queries));
   const clearRetired = installDefaultActivation(retired, () => {});
   old.pause();
-  const abandoned = progressBacklog();
+  const abandoned = sceneQueries().progressBacklog();
   await old.entered.promise;
   retired.dispose();
   old.gate.resolve();
@@ -398,11 +397,11 @@ async function main() {
   const releaseC = c.run(() => configureSceneQueries(older.queries)),
     clearC = installDefaultActivation(c, () => {});
   older.pause();
-  const heldEvidence = readProjectTurnEvidence("same", "proof");
+  const heldEvidence = sceneQueries().readProjectTurnEvidence("same", "proof");
   await older.entered.promise;
   const releaseD = d.run(() => configureSceneQueries(newer.queries)),
     clearD = installDefaultActivation(d, () => {});
-  assert.equal((await readProjectTurnEvidence("same", "proof")).message, "D message");
+  assert.equal((await sceneQueries().readProjectTurnEvidence("same", "proof")).message, "D message");
   older.gate.resolve();
   const cEvidence = await heldEvidence;
   assert.equal(cEvidence.venueId, "venue-C");

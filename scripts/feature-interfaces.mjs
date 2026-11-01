@@ -90,7 +90,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "pruneVenueVisits",
     "resetVenueSessions",
   ],
-  "scenes/services.ts": ["SceneQueries", "sceneQueries", "readProjectTurnEvidence", "progressBacklog"],
+  "scenes/services.ts": ["SceneQueries", "sceneQueries"],
   "scenes/scene-terminal.ts": ["readSceneTerminal"],
   "settings/connections.ts": [
     "readVillageConnectionSettings",
