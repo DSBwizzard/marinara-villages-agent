@@ -1,14 +1,95 @@
-import type { StagingLine, StagingState } from "../../../shared/helpers/scene-staging.js";
+import {
+  currentStaging,
+  readStagingCues,
+  stagingTranscriptEvents,
+  type StagingCue,
+  type StagingLine,
+  type StagingState,
+} from "../../../shared/helpers/scene-staging.js";
+import type { VenueScene } from "../models/scene-model.js";
+import type { VillageState } from "../models/world.js";
 import type { VillageResidentSprite } from "../models/world.js";
 
 type SpriteEntry = VillageResidentSprite["expressions"][number];
+type SpriteCatalog = {
+  defaultExpressionId?: string;
+  expressions: Pick<SpriteEntry, "expressionId" | "name" | "spriteName" | "view">[];
+};
+export type SpriteSelectionContext = {
+  state: StagingState;
+  variants: boolean;
+  sprites: Record<string, SpriteCatalog>;
+};
+export type SceneSpritePresentation = { segment: number; staging: StagingCue[] }[];
+
+/** Freeze selection inputs with the existing System request, without artwork or descriptive notes. */
+export function sceneSpriteSelection(scene: VenueScene, village: VillageState): SpriteSelectionContext {
+  const ids = scene.activeIds;
+  return {
+    state: currentStaging(
+      ids,
+      stagingTranscriptEvents(
+        (scene.lines ?? []).filter((line) => !scene.zoneId || !line.zoneId || line.zoneId === scene.zoneId),
+        scene.submissions ?? [],
+      ),
+    ),
+    variants: village.spriteVariantsEnabled !== false,
+    sprites: Object.fromEntries(
+      ids.flatMap((id) => {
+        const sprite = village.villagers.find((person) => person.characterId === id)?.sprite;
+        return sprite
+          ? [
+              [
+                id,
+                {
+                  defaultExpressionId: sprite.defaultExpressionId,
+                  expressions: sprite.expressions.map(({ expressionId, name, spriteName, view }) => ({
+                    expressionId,
+                    name,
+                    spriteName,
+                    view,
+                  })),
+                },
+              ],
+            ]
+          : [];
+      }),
+    ),
+  };
+}
+
+/** Presentation is optional; malformed cues never invalidate purchased Scene prose. */
+export function readSceneSpritePresentation(
+  value: unknown,
+  context: SpriteSelectionContext,
+  segments: number,
+): SceneSpritePresentation {
+  if (!Array.isArray(value)) return [];
+  const rows = new Map<number, StagingCue[]>();
+  for (const row of value.slice(0, 24)) {
+    if (!row || !Number.isSafeInteger(row.segment) || row.segment < 0 || row.segment >= segments) continue;
+    const cues = readStagingCues(row.staging, Object.keys(context.state), (id, requested) =>
+      validateSpriteExpression(context.sprites[id], requested, context.variants),
+    ).flatMap(({ position: _position, ...cue }) => (cue.expression || cue.look ? [cue] : []));
+    rows.set(row.segment, readStagingCues([...(rows.get(row.segment) ?? []), ...cues], Object.keys(context.state)));
+  }
+  const ordered = [...rows].sort(([a], [b]) => a - b).map(([segment, staging]) => ({ segment, staging }));
+  resolveSceneSpriteExpressions(
+    ordered.map((row) => ({ speakerId: "", staging: row.staging })),
+    structuredClone(context.state),
+    (id) => context.sprites[id],
+    context.variants,
+    Math.random,
+  );
+  return ordered.filter((row) => row.staging.length);
+}
 
 /** Engine convention: two or more suffixed names share the prefix before the first underscore.
  * Names have already had the structural full_ prefix and file extension removed by the media owner.
  * Mirrors Engine sprite.service / expression-agent-utils; no private Engine imports. */
-function expressionChoices(sprite: VillageResidentSprite | null | undefined, variants: boolean) {
+function expressionChoices(sprite: SpriteCatalog | null | undefined, variants: boolean) {
   const entries = [...new Map((sprite?.expressions ?? []).map((entry) => [entry.expressionId, entry])).values()];
-  const name = (entry: SpriteEntry) => (entry.spriteName ?? entry.name).trim().toLowerCase();
+  const name = (entry: SpriteCatalog["expressions"][number]) => (entry.spriteName ?? entry.name).trim().toLowerCase();
   const prefixes = new Map<string, number>();
   for (const entry of entries) {
     const key = name(entry).split("_")[0];
@@ -28,7 +109,7 @@ function expressionChoices(sprite: VillageResidentSprite | null | undefined, var
   });
 }
 
-export function describeSpriteExpressions(sprite: VillageResidentSprite | null | undefined, variants = false): string {
+export function describeSpriteExpressions(sprite: SpriteCatalog | null | undefined, variants = false): string {
   const seen = new Set<string>();
   const defaultEntry = sprite?.expressions[0];
   const defaultId = sprite?.defaultExpressionId ?? defaultEntry?.expressionId;
@@ -40,7 +121,6 @@ export function describeSpriteExpressions(sprite: VillageResidentSprite | null |
         JSON.stringify({
           id,
           name,
-          useWhen: [...new Set(members.map((entry) => entry.useWhen).filter(Boolean))].join("; "),
           views: [
             ...new Set(
               (sprite?.expressions ?? [])
@@ -57,7 +137,7 @@ export function describeSpriteExpressions(sprite: VillageResidentSprite | null |
 
 /** Resolve a model-visible group once to a concrete saved ID. Existing concrete IDs never reroll. */
 export function resolveSpriteExpression(
-  sprite: VillageResidentSprite | null | undefined,
+  sprite: SpriteCatalog | null | undefined,
   requested: string,
   variants: boolean,
   view: "front" | "side" | undefined,
@@ -76,7 +156,7 @@ export function resolveSpriteExpression(
 
 /** Replies may select only this resident's assigned expression IDs. */
 export function validateSpriteExpression(
-  sprite: VillageResidentSprite | null | undefined,
+  sprite: SpriteCatalog | null | undefined,
   requested: string,
   variants = false,
 ): string {
@@ -90,7 +170,7 @@ export function validateSpriteExpression(
 export function resolveSceneSpriteExpressions(
   lines: StagingLine[],
   currentStage: StagingState,
-  spriteFor: (characterId: string) => VillageResidentSprite | null | undefined,
+  spriteFor: (characterId: string) => SpriteCatalog | null | undefined,
   variants: boolean,
   random: () => number,
 ) {

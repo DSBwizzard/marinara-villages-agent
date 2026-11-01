@@ -20,11 +20,7 @@ import {
 } from "../packages/villages/src/server/features/founding/founding-setup.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function input(name: string) {
   return {

@@ -49,7 +49,7 @@ export function registerSpriteManagerRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading sprite setup");
     }
   });
-  for (const action of ["prepare", "save", "analyze", "frame", "apply"] as const) {
+  for (const action of ["prepare", "save", "frame", "apply"] as const) {
     app.post<{ Params: CharacterParams; Body: unknown }>(
       "/characters/:characterId/sprites/setup/" + action,
       async (request, reply) => {
@@ -64,8 +64,7 @@ export function registerSpriteManagerRoutes(engine: FastifyInstance) {
           if (action === "prepare") return await service.prepare(id, controller.signal);
           if (action === "save") return await service.save(id, request.body);
           if (action === "frame") return await service.frame(id, request.body);
-          if (action === "apply") return await service.applyResident(id, request.body);
-          return await service.analyze(id, request.body, controller.signal);
+          return await service.applyResident(id, request.body);
         } catch (error) {
           return fail(reply, error, "preparing sprites");
         } finally {

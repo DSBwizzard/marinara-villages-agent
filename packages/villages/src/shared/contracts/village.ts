@@ -41,7 +41,6 @@ export type ResidentSprite = {
   assetId: string;
   expressions: Array<{ view: "front" | "side"; label: string; filename: string }>;
   images: Array<{
-    direction?: import("./sprites.js").SpriteDirection;
     view: "front" | "side";
     label: string;
     url: string;

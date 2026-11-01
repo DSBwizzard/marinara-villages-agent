@@ -30,9 +30,7 @@ const known = "Your recollection of the telescope.",
   privateText = "Nora's private recollection.",
   secretText = "Nora's private compass.";
 const deferred = () => {
-  let resolve;
-  const promise = new Promise((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers();
 };
 async function fixture(width) {
   const page = await browser.newPage({ viewport: { width, height: 950 } });

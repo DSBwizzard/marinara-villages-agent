@@ -216,11 +216,7 @@ function fixture() {
   };
 }
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 async function pages(f: ReturnType<typeof fixture>, count = 64, world = "a".repeat(32)) {
   const writer = createHistoryPageWriter(world);

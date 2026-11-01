@@ -5,6 +5,7 @@ import { badGateway, VillagesRequestError } from "./errors.js";
 import { contactNeighbors, contactPosition, type ContactMove } from "./venue-contact.js";
 import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
+import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 
 /** Fresh v6 admissions opt in; paid unmarked work retains its original reach. */
 export function zoneSoundRange(scene: VenueScene, venue: VillageVenue, origin: string): string[] {
@@ -393,7 +394,10 @@ export function routeZoneEvents(
         };
     }
     // Visual staging cannot disclose offstage residents, even on an audible line.
-    line.staging = line.staging?.filter((cue) => position(cue.characterId, index) === playerZone);
+    line.staging = readStagingCues(
+      line.staging,
+      ids.filter((id) => position(id, index) === playerZone),
+    );
   });
   // Hidden player speech and inaudible events must never own visible bubbles.
   const visible = parsed.lines

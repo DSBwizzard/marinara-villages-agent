@@ -36,9 +36,7 @@ import {
 type Document = Awaited<ReturnType<CapabilityDocumentStore["list"]>>[number];
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function submission(id: string, sequence: number): VenueSubmission {
   return {

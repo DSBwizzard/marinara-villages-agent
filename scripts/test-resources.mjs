@@ -3,6 +3,9 @@
  * Unclassified tests remain exclusive until their fixtures have been inspected.
  */
 export const isolatedTests = new Set([
+  "tests/villages-activity-policy.regression.ts",
+  "tests/villages-decision-owner.regression.ts",
+  "tests/villages-decision-routing.regression.ts",
   "tests/villages-work-retention.regression.ts",
   "tests/villages-agenda-focus.regression.ts",
   "tests/villages-zone-layout.regression.ts",
@@ -92,7 +95,6 @@ export const isolatedTests = new Set([
   "tests/villages-library-gallery-ownership.regression.ts",
   "tests/villages-linkapi-pricing.regression.ts",
   "tests/villages-live-exchange.regression.ts",
-  "tests/villages-live-memory.regression.ts",
   "tests/villages-live-scene-ownership.regression.ts",
   "tests/villages-scene-time.regression.ts",
   "tests/villages-lorebooks.regression.ts",
@@ -133,7 +135,6 @@ export const isolatedTests = new Set([
   "tests/villages-residence-ownership.regression.ts",
   "tests/villages-resident-agenda-ownership.regression.ts",
   "tests/villages-resident-card-ownership.regression.ts",
-  "tests/villages-resident-continuity.regression.ts",
   "tests/villages-resident-roster-ownership.regression.ts",
   "tests/villages-resident-sprites.regression.ts",
   "tests/villages-response-format.regression.ts",
@@ -198,7 +199,6 @@ export const isolatedTests = new Set([
   "tests/villages-venue-service.regression.ts",
   "tests/villages-venue-session.regression.ts",
   "tests/villages-wish-journal.e2e.mjs",
-  "tests/villages-wish-journal.regression.ts",
   "tests/villages-world-coordination-ownership.regression.ts",
   "tests/villages-world-mutation.regression.ts",
   "tests/villages-zones.regression.ts",

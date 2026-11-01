@@ -17,11 +17,7 @@ import {
 } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(label: string, decisionsEnabled: boolean) {

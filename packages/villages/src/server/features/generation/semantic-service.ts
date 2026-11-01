@@ -56,6 +56,12 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../../domain/rules/wish-progress-rules.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import {
+  describeSpriteExpressions,
+  sceneSpriteSelection,
+  readSceneSpritePresentation,
+  type SpriteSelectionContext,
+} from "../../domain/rules/sprite-expressions.js";
 
 export interface SemanticPorts {
   runtimeDebug?: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
@@ -97,9 +103,31 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
 
 function systemMessages(input: unknown, systemPrompt: string, sourceHash: string) {
   const { _memoryWrite: _privateMemoryWrite, ...context } = asRecord(asRecord(input).context);
+  const { _presentation, ...publicInput } = asRecord(input);
+  const selection = _presentation as SpriteSelectionContext | undefined;
   return [
     { role: "system" as const, content: systemPrompt },
-    { role: "user" as const, content: JSON.stringify({ sourceHash, input: { ...asRecord(input), context } }) },
+    {
+      role: "user" as const,
+      content: JSON.stringify({
+        sourceHash,
+        input: {
+          ...publicInput,
+          context,
+          ...(selection
+            ? {
+                presentation: {
+                  current: selection.state,
+                  sprites: Object.entries(selection.sprites).map(([characterId, sprite]) => ({
+                    characterId,
+                    expressions: describeSpriteExpressions(sprite, selection.variants),
+                  })),
+                },
+              }
+            : {}),
+        },
+      }),
+    },
   ];
 }
 
@@ -149,9 +177,10 @@ function exchangeInstruction(
       ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
       : "") +
     (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
-    "consistent:true,reason,playerAgencyViolation:null,authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
+    "consistent:true,reason,playerAgencyViolation:null,presentation:[],authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
     (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
     "}. Return exactly one JSON object. " +
+    'Use input.presentation to interpret visible acting in the completed draft, in this same response: presentation:[{segment:zero-based draft index,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}]. Choose only listed expression IDs matching the visible emotion; preserve prior expression when unchanged or use the listed default when uncertain. Interpret attention from the actual addressee or narrated look; screen placement is handled by code. Omit uncertain cues. Artwork labels select images only and establish no story events, action, knowledge, attendance, consent or effects. An action pose such as eating or waving fits only when already occurring in the draft. Cues are visual only: never alter speech targets, hearing or physical positions. ' +
     (actionContractV2
       ? 'residentActionReview is required even when residentActions is empty: independently review every player-heard non-player segment. Populate coverage for each such segment; no access action means status:"none" with actionIds:[], not an omitted review or empty coverage. '
       : "") +
@@ -228,6 +257,7 @@ export function createSemanticService(ports: SemanticPorts) {
     };
     const input = {
       message,
+      _presentation: sceneSpriteSelection(scene, sceneContinuityView(state, scene)),
       turnPolicyVersion: 1,
       ...(movementReview
         ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
@@ -581,6 +611,7 @@ export function createSemanticService(ports: SemanticPorts) {
       "exchange",
       {
         message,
+        _presentation: sceneSpriteSelection(scene, sceneState),
         turnPolicyVersion: 1,
         ...(movementReview
           ? { residentMovementReviewVersion: 1, residentRequestLocalIds: residentLocalIdsAt(scene, [], 0) }
@@ -968,6 +999,11 @@ export function createSemanticService(ports: SemanticPorts) {
           sourceHash: hash,
           authority,
           effects,
+          presentation: readSceneSpritePresentation(
+            raw.presentation,
+            savedInput._presentation,
+            savedInput.evidence.length,
+          ),
           access: access.checks.length ? access : null,
         };
       },

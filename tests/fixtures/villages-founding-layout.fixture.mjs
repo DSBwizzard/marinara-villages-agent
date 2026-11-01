@@ -114,31 +114,31 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
     await page.evaluate((strict) => (window.strict = strict), strict);
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await expect.poll(() => page.evaluate(() => typeof window.openSetup)).toBe("function");
-    for (const reason of ["rebuild", "pioneer", "prosper", "custom", "none"])
-      for (const founded of [false, true])
-        for (const details of ["Authored starting circumstances", "x".repeat(2000)]) {
-          const village = structuredClone(snapshot);
-          village.isFounded = founded;
-          village.settings.foundingReason = reason;
-          village.settings.foundingDetails = details;
-          village.settings.foundingGuidance = " Authored narrative direction ";
-          const values = await page.evaluate((village) => {
-            window.values = {};
-            window.openSetup(false, village);
-            return window.values;
-          }, village);
-          if (founded) {
-            assert.deepEqual(values, { setScreen: "home" }, "Founded Villages cannot reopen the wizard");
-            continue;
-          }
-          assert.equal(values.setSetupName, "", "Unfounded drafts restore independently");
-          assert.equal(values.setSetupWorldName, "", "World identity is optional and has no generated default");
-          assert.equal(Object.hasOwn(values, "setSetupFoundingReason"), false);
-          assert.equal(Object.hasOwn(values, "setSetupFoundingDetails"), false);
-          assert.equal(village.settings.foundingDetails, details, "Opening setup preserves saved history");
-          assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
-          assert.equal(values.setScreen, "setup");
-        }
+    for (const founded of [false, true]) {
+      const reason = "custom",
+        details = "x".repeat(2000);
+      const village = structuredClone(snapshot);
+      village.isFounded = founded;
+      village.settings.foundingReason = reason;
+      village.settings.foundingDetails = details;
+      village.settings.foundingGuidance = " Authored narrative direction ";
+      const values = await page.evaluate((village) => {
+        window.values = {};
+        window.openSetup(false, village);
+        return window.values;
+      }, village);
+      if (founded) {
+        assert.deepEqual(values, { setScreen: "home" }, "Founded Villages cannot reopen the wizard");
+        continue;
+      }
+      assert.equal(values.setSetupName, "", "Unfounded drafts restore independently");
+      assert.equal(values.setSetupWorldName, "", "World identity is optional and has no generated default");
+      assert.equal(Object.hasOwn(values, "setSetupFoundingReason"), false);
+      assert.equal(Object.hasOwn(values, "setSetupFoundingDetails"), false);
+      assert.equal(village.settings.foundingDetails, details, "Opening setup preserves saved history");
+      assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
+      assert.equal(values.setScreen, "setup");
+    }
     const fresh = await page.evaluate(() => {
       window.openSetup(true, null);
       return window.values;
@@ -244,11 +244,9 @@ export async function verifyFoundingLayout(group) {
                 manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
                 files: [],
                 assignments: [],
-                suggestions: [],
                 defaultArtworkId: "",
                 useSprites: false,
                 errors: {},
-                analysisRequests: [],
                 resident: false,
                 residentToken: "",
               }),

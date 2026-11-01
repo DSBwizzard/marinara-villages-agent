@@ -24,11 +24,7 @@ import type { ResidentSignatureView } from "../packages/villages/src/shared/help
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred<T = void>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 const stamp = "2026-10-07T00:00:00.000Z";
 function documents(name: string) {

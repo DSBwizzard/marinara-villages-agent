@@ -5,11 +5,7 @@ import type { VillageState } from "../packages/villages/src/server/domain/models
 import { createPersonaCache } from "../packages/villages/src/server/features/settings/persona-cache-service.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(missing = false) {
   const state = defaultVillageState();
