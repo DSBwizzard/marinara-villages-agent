@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneView, authorSceneResponse } = await scenePlaybackFixtures();
 const scope = "b".repeat(64);
@@ -31,7 +31,7 @@ function Harness(){
 });
 const browser = await chromium.launch({ headless: true });
 const initial = { id: "A", sceneRevision: 1, status: "active", lines: [], submissions: [] };
-try {
+await withBrowser(browser, async () => {
   // Hook state is viewport-independent; packaged layout suites retain desktop/phone coverage.
   for (const width of [1366]) {
     for (const mode of [
@@ -177,6 +177,4 @@ try {
   console.log(
     "Turn recovery: failed reads, terminal failures, clarification, timeout/manual check, newer drafts and selection fences passed at desktop/mobile widths.",
   );
-} finally {
-  await browser.close();
-}
+});

@@ -1,6 +1,6 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { build } from "../scripts/esbuild.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
@@ -37,7 +37,7 @@ const bundle = await build({
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1366, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 844 } });
     await mockEngineLookups(page);
@@ -141,9 +141,7 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-} finally {
-  await browser.close();
-}
+});
 console.log(
   "Mocked reset browser coverage passed at 1366/390/320px: confirmation, actionable alerts, failed/malformed response retains draft, successful reset clears draft and opens founding.",
 );

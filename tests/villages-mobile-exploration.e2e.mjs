@@ -3,7 +3,7 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -132,7 +132,7 @@ const snapshot = {
 
 // Start with a crowded centre, plus unpositioned and edge destinations.
 const P = "marinara-capability-villages";
-try {
+await withBrowser(browser, async () => {
   for (const { width, height, shell } of [
     { width: 320, height: 568, shell: 120 },
     { width: 390, height: 844, shell: 144 },
@@ -528,6 +528,4 @@ try {
   console.log(
     "Location Navigator: seven viewports, saved geometry, search, responsive rail/drawer, camera gestures, worksite actions and explicit Scene entry passed",
   );
-} finally {
-  await browser.close();
-}
+});

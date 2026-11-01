@@ -4,14 +4,14 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
@@ -461,6 +461,4 @@ try {
   console.log(
     "Scene controls passed: icons, narration, history drafts, modes, utilities, shell restoration, and stable sprites across keyboard viewport changes.",
   );
-} finally {
-  await browser.close();
-}
+});

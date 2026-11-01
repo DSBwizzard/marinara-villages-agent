@@ -5,7 +5,7 @@ import { checkReadingSessionLifecycle } from "./fixtures/villages-reading-sessio
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
@@ -19,7 +19,7 @@ const sentences = Array.from(
 const prose = `**${sentences.join(" ")}**`;
 const expected = sentences.join(" ");
 mkdirSync("artifacts", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   await checkReadingSessionLifecycle(browser);
   for (const { width, height } of [
     { width: 320, height: 568 },
@@ -336,6 +336,4 @@ try {
   console.log(
     "villages-reading-pages: mobile paging, formatting, sprites, keyboard, notices, hide/restore, reflow and ended docking passed",
   );
-} finally {
-  await browser.close();
-}
+});

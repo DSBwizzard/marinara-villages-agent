@@ -4,7 +4,7 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
@@ -13,7 +13,7 @@ const browser = await chromium.launch({
 });
 const output = resolve("artifacts/scene-asides");
 mkdirSync(output, { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
@@ -244,6 +244,4 @@ try {
   console.log(
     "Scene asides: four speaker bubbles, full dock preservation, keyboard bounds, smaller text, paging, history, hide/restore and long-text scrolling passed.",
   );
-} finally {
-  await browser.close();
-}
+});

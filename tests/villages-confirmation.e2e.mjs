@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const bundle = await build({
   stdin: {
@@ -26,7 +26,7 @@ for(const id of ['A','B']){const root=createRoot(document.getElementById(id));wi
   jsx: "automatic",
 });
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   const page = await browser.newPage();
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -86,6 +86,4 @@ try {
   assert.deepEqual(await page.evaluate(() => window.results[3]), ["A", false]);
   assert.deepEqual(errors, []);
   console.log("Villages confirmations: cancel, focus, caller lifetime, semantic subject and root isolation passed.");
-} finally {
-  await browser.close();
-}
+});

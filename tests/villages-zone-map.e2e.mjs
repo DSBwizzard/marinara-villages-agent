@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium, expect, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { createVenueScreenHarness } from "./fixtures/villages-venue-screen-lifetime.fixture.mjs";
 
 const styles = await build({
@@ -32,7 +32,7 @@ async function assertNoOverlap(map) {
       );
     }
 }
-try {
+await withBrowser(browser, async () => {
   await runCase("zones/map/editor", async () => {
     const mount = await createVenueScreenHarness(browser);
     const f = await mount(false, 1366, {
@@ -96,6 +96,4 @@ try {
     }
     await f.finish();
   });
-} finally {
-  await browser.close();
-}
+});

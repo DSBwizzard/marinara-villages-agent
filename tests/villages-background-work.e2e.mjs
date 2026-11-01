@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -127,7 +127,7 @@ const errors = [],
   heartbeats = [],
   retries = [];
 let acceptedRetries = 0;
-try {
+await withBrowser(browser, async () => {
   await page.clock.install();
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/api/villages**", async (route) => {
@@ -213,6 +213,4 @@ try {
   console.log(
     "Villages background UI: contextual recovery, lost response IDs, HTTP LAN, heartbeat and visibility passed",
   );
-} finally {
-  await browser.close();
-}
+});

@@ -1,7 +1,7 @@
 import { fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 // Opt-in integration QA: the Engine serves its existing shell, but this browser
@@ -14,7 +14,7 @@ const browser = await chromium.launch({
   headless: true,
 });
 const manifest = JSON.parse(readFileSync("packages/villages/manifest.json", "utf8"));
-try {
+await withBrowser(browser, async () => {
   for (const viewport of [
     { width: 1917, height: 872 },
     { width: 390, height: 844 },
@@ -98,6 +98,4 @@ try {
   console.log(
     "Warm exploration rendered inside the unchanged running Engine shell at desktop and mobile sizes; all Village requests mocked and all Engine writes blocked.",
   );
-} finally {
-  await browser.close();
-}
+});
