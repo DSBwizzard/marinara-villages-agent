@@ -136,7 +136,7 @@ const api = async (route) => {
   });
 };
 const html =
-  "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>";
+  '<html data-marinara-accent-animation><style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}svg{display:block}[data-marinara-accent-animation] :where(.mari-rgb-icon-scope) svg:not(.mari-rgb-static-icon){color:#d946a8;stroke:currentColor}marinara-capability-villages{display:block;width:100%;height:100%}</style><body class="mari-rgb-icon-scope"><marinara-capability-villages></marinara-capability-villages></body></html>';
 async function refresh(tab = page) {
   await tab.evaluate(() => window.dispatchEvent(new Event("focus")));
 }
@@ -244,6 +244,16 @@ await withBrowser(browser, async () => {
   await expect(stack).toContainText(arrival.content);
   await expect(tray.locator('[data-icon="presence"]')).toHaveCount(1);
   await expect(stack.locator('[data-icon="presence"]')).toHaveCount(1);
+  await expect(tray.locator('[data-icon="presence"] path')).toHaveCSS("stroke", "none");
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCSS("color", "rgb(217, 70, 168)");
+  const countAlignment = await tray.evaluate((button) => {
+    const icon = button.querySelector("svg").getBoundingClientRect();
+    const count = document.createRange();
+    count.selectNode(button.lastChild);
+    const text = count.getBoundingClientRect();
+    return Math.abs((icon.top + icon.bottom) / 2 - (text.top + text.bottom) / 2);
+  });
+  assert(countAlignment < 4, "The icon and count remain on the same row under host SVG styles");
   await stack
     .locator(".marinara-capability-villages-room-star")
     .filter({ hasText: arrival.content })
