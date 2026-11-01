@@ -843,6 +843,14 @@ async function main() {
   behavior = "valid";
   checkpoints.clear();
   calls.length = 0;
+  const currentAdmission = {
+    writingContractVersion: 3,
+    semanticPipelineVersion: 3,
+    residentActionsVersion: 2,
+    interactionScopeVersion: 6,
+    writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+  };
+  const writingScene = { ...scene, operation: { input: currentAdmission } } as typeof scene;
   const writerPorts = {
     ...ports,
     semantic: service,
@@ -853,7 +861,7 @@ async function main() {
     measurePipeline: async (_label: string, _metadata: unknown, work: () => Promise<unknown>) => work(),
     runtimeDebug() {},
     venueOperationId: () => "operation",
-    venueOperationInput: () => ({ interactionScopeVersion: 1 }),
+    venueOperationInput: () => currentAdmission,
     rejectVenueCompletion: () => assert.fail("A consistent synthetic turn should not be rejected"),
     wishFingerprint: () => "",
     refreshZoneParticipants: async (current: unknown) => current,
@@ -864,20 +872,22 @@ async function main() {
     rejectSystemPreflight = true;
     try {
       await assert.rejects(
-        createSceneWriting(writerPorts).generate(scene, "Unfittable known System authority", "chat", "", null),
+        createSceneWriting(writerPorts).generate(writingScene, "Unfittable known System authority", "chat", "", null),
         /Essential System evidence does not fit/,
       );
-      assert.equal(
-        calls.length,
-        paid,
-        "A known System context failure precedes both legacy intent and Narration purchases",
-      );
+      assert.equal(calls.length, paid, "A known System context failure precedes Narration purchases");
     } finally {
       rejectSystemPreflight = false;
       checkpoints.clear();
     }
   }
-  const generated = await createSceneWriting(writerPorts).generate(scene, "Ordinary conversation", "chat", "", null);
+  const generated = await createSceneWriting(writerPorts).generate(
+    writingScene,
+    "Ordinary conversation",
+    "chat",
+    "",
+    null,
+  );
   let replayLoreReads = 0;
   const capturedWriting = {
     wishContexts: [],
@@ -890,6 +900,7 @@ async function main() {
   const replayWriting = createSceneWriting({
     ...writerPorts,
     venueOperationInput: () => ({
+      ...currentAdmission,
       writingContractVersion: 3,
       writingCapabilities: {
         management: false,
@@ -904,36 +915,38 @@ async function main() {
       throw new Error("Engine lore is offline");
     },
   });
-  const capturedPrompt = await replayWriting.prepareVenueTurnMessages(scene, "Retained message", "chat", "", null);
+  const capturedPrompt = await replayWriting.prepareVenueTurnMessages(
+    writingScene,
+    "Retained message",
+    "chat",
+    "",
+    null,
+  );
   assert.deepEqual(capturedPrompt.fitted, capturedWriting.fitted);
   assert.equal(replayLoreReads, 0, "Captured writing reuses its exact prompt before any fresh lore I/O");
   await assert.rejects(
     createSceneWriting({
       ...writerPorts,
-      venueOperationInput: () => ({ writingContractVersion: 3 }),
+      venueOperationInput: () => ({ ...currentAdmission, writingContractVersion: 3 }),
       venueSavedCheckpoint: () => ({ ...capturedWriting, wishContexts: undefined }) as any,
-    }).prepareVenueTurnMessages(scene, "Lost retained context", "chat", "", null),
+    }).prepareVenueTurnMessages(writingScene, "Lost retained context", "chat", "", null),
     /saved Wish writing context is unavailable/,
   );
   const beforeOutage = calls.length;
   await assert.rejects(
     createSceneWriting({
       ...writerPorts,
-      venueOperationInput: () => ({ semanticPipelineVersion: 3 }),
+      venueOperationInput: () => ({ ...currentAdmission, semanticPipelineVersion: 3 }),
       readVillageLore: async () => {
         throw new Error("Selected lorebooks are unavailable. Restore them and retry.");
       },
-    }).generate(scene, "New message during an outage", "chat", "", null),
+    }).generate(writingScene, "New message during an outage", "chat", "", null),
     /Selected lorebooks are unavailable/,
   );
   assert.equal(calls.length, beforeOutage, "A fresh lore failure stops Narration before any completion");
   assert.equal(generated.lines[0].content, "The room is quiet.");
   assert.equal(generated.semanticProvenance?.version, 2);
-  assert.deepEqual(
-    calls,
-    ["intent", "narration", "exchange"],
-    "actual Scene writer uses exactly the new three-stage call graph",
-  );
+  assert.deepEqual(calls, ["narration", "exchange"], "actual Scene writer uses the current two-request pipeline");
   // Narration cannot advance the opening; only frozen, cited System evidence can.
   state.opening = initialOpening(["host"], "none", "system-opening");
   state.opening.stage = "conversations";
@@ -1251,10 +1264,10 @@ async function main() {
   spoofOpening = false;
   checkpoints.clear();
   calls.length = 0;
-  const combinedScene = { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as typeof scene;
+  const combinedScene = { ...scene, operation: { input: currentAdmission } } as typeof scene;
   const combinedWriter = createSceneWriting({
     ...writerPorts,
-    venueOperationInput: () => ({ semanticPipelineVersion: 3 }),
+    venueOperationInput: () => ({ ...currentAdmission, semanticPipelineVersion: 3 }),
   });
   const combined = await combinedWriter.generate(combinedScene, "Two request conversation", "chat", "", null);
   assert.deepEqual(calls, ["narration", "exchange"], "Current writer checks input and reply with one System request");
@@ -1275,11 +1288,11 @@ async function main() {
       systemWishChanges = [];
     }
   }
-  for (const route of ["legacy", "contact", "combined"] as const) {
+  for (const route of ["greeting", "turn", "contact"] as const) {
     const input = {
       writingContractVersion: 3,
       writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
-      ...(route === "combined" ? { semanticPipelineVersion: 3 } : {}),
+      ...currentAdmission,
     };
     const recoveryScene = { ...scene, operation: { input } } as typeof scene;
     let saved = new Map<string, unknown>();
@@ -1300,9 +1313,13 @@ async function main() {
         semantic: createSemanticService(recoveryPorts as unknown as SemanticPorts),
       });
     const generate = (writer: ReturnType<typeof makeWriter>) =>
-      route === "contact"
-        ? writer.generateContactResponse(recoveryScene, "Replay purchased work " + route, "")
-        : writer.generate(recoveryScene, "Replay purchased work " + route, "chat", "", null);
+      writer.generate(
+        recoveryScene,
+        route === "greeting" ? "" : "Replay purchased work " + route,
+        route === "greeting" ? "greet" : "chat",
+        "",
+        null,
+      );
     const accepted = await generate(makeWriter());
     assert([...saved.keys()].some((key) => key.startsWith("writing-completion:")));
     const paid = calls.length;
@@ -1380,6 +1397,7 @@ async function main() {
 
         readEffectiveVillagerCard: () => ({ ...host.cardSnapshot, description: "Builder" }),
         venueOperationInput: () => ({
+          ...currentAdmission,
           semanticPipelineVersion: 3,
           writingContractVersion: 3,
           writingCapabilities: {
@@ -1428,7 +1446,12 @@ async function main() {
     lineIds: ["l"],
     actionReceiptIds: [],
   });
-  const turn = { id: "t", semanticProvenance: generated.semanticProvenance, semanticReady: false, processing } as any;
+  const turn = {
+    id: "t",
+    semanticProvenance: { ...generated.semanticProvenance, pipelineVersion: undefined },
+    semanticReady: false,
+    processing,
+  } as any;
   const pendingScene = { ...scene, submissions: [turn] };
   assert.match(semanticBlocker(pendingScene)!, /recovery/);
   turn.semanticReady = true;
@@ -1612,7 +1635,7 @@ async function main() {
   } as any);
   const topologyAdmission = {
     ...topologyScene,
-    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 2 } },
+    operation: { input: currentAdmission },
   } as typeof scene;
   const topologyBefore = structuredClone(topologyScene);
   await assert.rejects(
@@ -2193,11 +2216,12 @@ async function main() {
   actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
   const actionScene = {
     ...combinedScene,
-    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 2 } },
+    operation: { input: currentAdmission },
   } as typeof scene;
   const actionWriter = createSceneWriting({
     ...writerPorts,
     venueOperationInput: () => ({
+      ...currentAdmission,
       semanticPipelineVersion: 3,
       residentActionsVersion: 2,
       writingContractVersion: 3,
@@ -2296,16 +2320,18 @@ async function main() {
   assert.equal(omittedResult.residentActionReceipt?.review !== undefined, true);
   checkpoints.clear();
   const markerlessScene = { ...actionScene, operation: { input: { semanticPipelineVersion: 3 } } } as typeof scene;
-  const markerless = await createSceneWriting({
-    ...writerPorts,
-    venueOperationInput: () => ({ semanticPipelineVersion: 3 }),
-  }).generate(markerlessScene, "An older retained draft", "chat", "", null);
-  assert.equal(
-    markerless.residentActionReceipt?.proposalsOmitted,
-    true,
-    "Markerless interrupted drafts still require review",
+  const beforeRetired = calls.length;
+  await assert.rejects(
+    createSceneWriting({ ...writerPorts, venueOperationInput: () => markerlessScene.operation!.input }).generate(
+      markerlessScene,
+      "An older retained draft",
+      "chat",
+      "",
+      null,
+    ),
+    /retired generation contract/,
   );
-  assert.equal(lastPacket.input.residentActionsOmitted, true);
+  assert.equal(calls.length, beforeRetired, "Retired admissions retain their response instead of purchasing work");
   narrativeActions = null as any;
   checkpoints.clear();
   const beforeMalformed = calls.length;
@@ -2336,6 +2362,7 @@ async function main() {
     ...writerPorts,
     semantic: createSemanticService(ports),
     venueOperationInput: () => ({
+      ...currentAdmission,
       semanticPipelineVersion: 3,
       residentActionsVersion: 2,
       writingContractVersion: 3,

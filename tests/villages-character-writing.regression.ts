@@ -1,3 +1,4 @@
+import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import assert from "node:assert/strict";
 import {
   readEffectiveVillagerCard,
@@ -115,7 +116,8 @@ const release = configureVillagesRuntime({
 async function run() {
   try {
     const session: any = {
-      version: 2,
+      version: 3,
+      semanticVersion: 2,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",
@@ -190,10 +192,7 @@ async function run() {
         /Shared historical background, separate from the current activity and individual ambitions/,
       );
       assert.ok(outsidePrompt.includes("FOUNDING PREMISE"), "history is retained in ordinary conversation");
-      assert.ok(outsidePrompt.includes("Every knower must directly witness EVERY cited line"));
-      assert.ok(outsidePrompt.includes("Dialogue, side and whisper text contain only that speaker's audible words"));
-      assert.ok(outsidePrompt.includes("unconditional standing invitations are distinct"));
-      assert.ok(outsidePrompt.includes("No invented supplies, remote deeds or object/quantity accounting."));
+
       for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
         assert.ok(outsidePrompt.includes(fragment), fragment);
       const greeting = await prepareVenueTurnMessages(exterior, "", "greet", "", null);
@@ -296,4 +295,20 @@ async function run() {
   }
   console.log("Complete cards, live prompts, refresh, legacy snapshots, wish privacy and context protection passed.");
 }
-void run();
+void context.run(
+  {
+    controller: new AbortController(),
+    operation: {
+      id: "prompt",
+      input: {
+        writingContractVersion: 3,
+        semanticPipelineVersion: 3,
+        residentActionsVersion: 2,
+        interactionScopeVersion: 6,
+        writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+      },
+      checkpoints: {},
+    },
+  } as any,
+  run,
+);

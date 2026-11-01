@@ -101,7 +101,6 @@ import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding
 import { boundInterpretationEvidence } from "../domain/rules/interpretation-evidence-rules.js";
 import { routeInterpretationChecks } from "../domain/rules/interpretation-routing.js";
 import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
-import { projectProposals } from "../domain/rules/project-check-rules.js";
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
 import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
@@ -177,11 +176,7 @@ import { configureTownMapImage, generateVillageTownMap } from "../features/media
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview, prepareVillageMap } from "../features/media/town-map-review.js";
 import { createProjectChecks } from "../features/projects/project-check-service.js";
-import {
-  configureProjectChecks,
-  finalizeProjectDiagnostics,
-  interpretProjectDraft,
-} from "../features/projects/project-checks.js";
+import { configureProjectChecks } from "../features/projects/project-checks.js";
 import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
 import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
@@ -263,7 +258,6 @@ import {
 } from "../features/scenes/live-session.js";
 import { createSceneProgress } from "../features/scenes/progress-service.js";
 import { configureSceneProgress, processSavedExchange } from "../features/scenes/progress.js";
-import { interpretRoomReply } from "../features/scenes/room-interpretation.js";
 import { createSceneQueryService } from "../features/scenes/scene-query-service.js";
 import { createSceneTerminalStore } from "../features/scenes/scene-terminal.js";
 import { createProjectEvidenceIndex } from "../features/scenes/project-evidence-index.js";
@@ -275,14 +269,7 @@ import { configureSceneQueries, sceneQueries } from "../features/scenes/services
 import { configureSceneCommands, finishSemanticScene, sceneReplayEffects } from "../features/scenes/venue-session.js";
 import { createSceneWriting } from "../features/scenes/writing-service.js";
 import { createSceneNarrative } from "../features/scenes/scene-narrative-service.js";
-import {
-  configureSceneWriting,
-  explicitSceneActions,
-  generate,
-  generateContactResponse,
-  interpretRoomDraft,
-  VENUE_REPLY_MAX_TOKENS,
-} from "../features/scenes/writing.js";
+import { configureSceneWriting, generate, VENUE_REPLY_MAX_TOKENS } from "../features/scenes/writing.js";
 import { createConnectionSettings } from "../features/settings/connection-service.js";
 import {
   configureConnectionSettings,
@@ -749,12 +736,10 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       runtimeDebug,
       venueOperationId,
       venueOperationInput,
-      venueOperationSignal,
       rejectVenueCompletion,
       completeWithRoom,
       villagesConnectionIdFor,
       readVillageState: readVillageMemoryState,
-      interpretRoomReply,
     }),
   );
   const releaseSceneCommands = configureSceneCommands(
@@ -764,11 +749,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       sceneNarrative,
       applySavedStartingTies: startingTies.applySaved,
       withVillageSceneAcceptance,
-      semantic,
-      interpretRoomDraft,
       generate,
-      generateContactResponse,
-      explicitSceneActions,
       VENUE_REPLY_MAX_TOKENS,
       loadPrivateSpaceImages: () => import("../features/media/location-image.js"),
       readSceneChanges,
@@ -808,9 +789,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       writeInterpretationDiagnostics,
       saveInterpretationContext,
       completeWithRoom,
-      finalizeProjectDiagnostics,
-      interpretProjectDraft,
-      projectProposals,
       rollActiveAgendas,
       bindWishProposals,
       WISH_PROPOSAL_INSTRUCTION,
