@@ -4,14 +4,14 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
   headless: true,
 });
 mkdirSync(".build-tmp/wish-journal", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const [width, height] of [
     [390, 844],
     [1280, 844],
@@ -436,6 +436,4 @@ try {
   console.log(
     "Wish journal browser: mobile/desktop profiles, timestamped statements, following, deliberate inspection, privacy, and Wish notice navigation passed without generation requests.",
   );
-} finally {
-  await browser.close();
-}
+});

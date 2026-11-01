@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { join, resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -109,7 +109,7 @@ const pages = [
   ["Debug", "progress"],
 ];
 
-try {
+await withBrowser(browser, async () => {
   for (const { width, height, foreground, surface } of [
     { width: 1366, height: 768, foreground: "#f4f0e8", surface: "#171b25" },
     { width: 1366, height: 500, foreground: "#f4f0e8", surface: "#171b25" },
@@ -389,6 +389,4 @@ try {
     await page.close();
   }
   console.log("Villages Menu: all pages visible across desktop and phone layouts.");
-} finally {
-  await browser.close();
-}
+});

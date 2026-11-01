@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 
 const bundle = await build({
@@ -94,7 +94,7 @@ async function mount({ strict = false, width = 1280, presence = false, wanted = 
     },
   };
 }
-try {
+await withBrowser(browser, async () => {
   for (const strict of [false, true]) {
     for (const boundary of ["newer-read", "save", "reset", "stale-error", "dispose"]) {
       const f = await mount({ strict });
@@ -242,9 +242,7 @@ try {
       assert.equal(f.requests.length, count, "Completed portraits and confirmed absence remain cached");
       await f.finish();
     }
-} finally {
-  await browser.close();
-}
+});
 console.log(
   "Client loads: snapshot read/save/reset/disposal ordering, retired presence, and portrait cancellation/cache passed (mounted hooks, synthetic HTTP, desktop/phone and StrictMode).",
 );

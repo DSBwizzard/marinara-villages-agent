@@ -1,12 +1,12 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
@@ -89,6 +89,4 @@ try {
     await page.close();
   }
   console.log("Verbose logging toggle, persistence, failed saves and layout passed on desktop and phones.");
-} finally {
-  await browser.close();
-}
+});

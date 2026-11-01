@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const bundle = await build({
   stdin: {
@@ -37,7 +37,7 @@ function Harness(){
   jsx: "automatic",
 });
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   const page = await browser.newPage();
   await mockEngineLookups(page);
   await page.clock.install();
@@ -174,7 +174,5 @@ try {
   await page.clock.runFor(30_000);
   assert.equal(reads.signature, beforeSignature + 2, "signature completion stops its status checks");
   await page.close();
-} finally {
-  await browser.close();
-}
+});
 console.log("idle polling and Scene completion browser checks passed");

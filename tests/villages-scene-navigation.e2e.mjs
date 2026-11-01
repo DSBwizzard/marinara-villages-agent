@@ -4,13 +4,13 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import { build } from "../scripts/esbuild.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   for (const width of [390, 1440])
     for (const restore of [false, true]) {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
@@ -237,6 +237,4 @@ import {ConfirmationProvider} from './packages/villages/src/client/shared/confir
   console.log(
     "Scene startup navigation: delayed check, failed check, retry with and without active Scene on desktop and phone passed",
   );
-} finally {
-  await browser.close();
-}
+});

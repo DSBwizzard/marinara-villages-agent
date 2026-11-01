@@ -2,7 +2,7 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -10,7 +10,7 @@ const browser = await chromium.launch({
 });
 const screenshotDir = process.env.VILLAGES_SCREENSHOT_DIR;
 if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1366, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
@@ -236,6 +236,4 @@ try {
   console.log(
     "Founding preparation browser: venue/private/resident progress, legacy fallback, retry and private-content boundaries passed at desktop, 390px and 320px.",
   );
-} finally {
-  await browser.close();
-}
+});

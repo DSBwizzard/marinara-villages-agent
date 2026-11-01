@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 const bundle = await build({
   stdin: {
     loader: "tsx",
@@ -21,7 +21,7 @@ return <><style>{VILLAGES_FORGING_STYLES+'textarea{box-sizing:border-box;width:1
   jsx: "automatic",
 });
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1366, 390, 320]) {
     const context = await browser.newContext({ viewport: { width, height: 844 } }),
       page = await context.newPage();
@@ -103,7 +103,5 @@ try {
     await page.screenshot({ path: ".build-tmp/player-background-" + width + ".png" });
     await context.close();
   }
-} finally {
-  await browser.close();
-}
+});
 console.log("Starting situations: player help, manual notes, reload and desktop/phone layout passed.");

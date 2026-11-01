@@ -5,14 +5,14 @@ import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
 const browser = await chromium.launch({
   headless: true,
 });
-try {
+await withBrowser(browser, async () => {
   await mkdir(".build-tmp/scene-status", { recursive: true });
   for (const mobile of [false, true]) {
     const page = await browser.newPage({
@@ -732,6 +732,4 @@ try {
   console.log(
     "Scene send recovery: detailed failures, editable drafts, explicit resends, reloads, lost responses and Enter settings passed on desktop and mobile.",
   );
-} finally {
-  await browser.close();
-}
+});

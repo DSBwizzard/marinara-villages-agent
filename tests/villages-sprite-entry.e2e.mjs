@@ -1,7 +1,7 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
@@ -9,7 +9,7 @@ import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mj
 // behavior suite, so unrelated settings edits need only this short journey.
 const expect = fastExpect({ timeout: 15000 });
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1917, 390]) {
     const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
     await mockEngineLookups(page);
@@ -58,7 +58,5 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-} finally {
-  await browser.close();
-}
+});
 console.log("Full application sprite entry, keyboard focus and desktop/phone activation passed.");

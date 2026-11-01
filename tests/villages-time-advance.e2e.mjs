@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
@@ -129,6 +129,4 @@ try {
     await page.close();
   }
   console.log("Custom time advances, stale conflicts, saved-request retry and desktop/phone layouts passed.");
-} finally {
-  await browser.close();
-}
+});
