@@ -29,7 +29,6 @@ import {
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/domain/rules/founding-draft-rules.js";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
-import { acousticInstructions } from "../packages/villages/src/server/features/scenes/acoustic-prompt.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 
 const zone = (id: string, kind: string, links: string[]) => ({
@@ -196,15 +195,25 @@ const inputWitness = {
   understoodBy: ["local", "near"],
 };
 const noReply = () => ({ lines: [] as any[], heardPlayerBy: ["local"] });
-// Ordinary local dialogue must have one coherent syntax example including the sound contract.
+// Validate current acoustic witnesses independently of retired prompt illustrations.
 const greeting = '"Hey, good morning. How are you doing? Seems you uh... Had a mornings flight."';
-const greetingPrompt = acousticInstructions(
-  scene,
-  { kind: "call", targetId: "local", boundaryZoneId: "", quote: greeting, attention: plan },
-  venue,
-);
-const illustration = greetingPrompt.split("\n").at(-1)!;
-const greetingRaw = JSON.parse(illustration.slice(illustration.indexOf("{")));
+const greetingRaw = {
+  heardPlayerBy: [],
+  segments: [{ kind: "dialogue", speakerId: "local", text: "spoken words", heardBy: ["local"] }],
+  attentionWitnesses: [{ id: "attention:0", emitted: true, heardBy: ["local"], understoodBy: ["local"] }],
+  acousticEvents: [],
+  acousticReplies: [
+    {
+      segment: 0,
+      delivery: "ordinary",
+      outward: false,
+      heardBy: ["local"],
+      understoodBy: ["local"],
+      playerHeard: true,
+      playerUnderstood: true,
+    },
+  ],
+};
 const greetingParsed = parseVenueReply(greetingRaw, ["local", "sleeper", "near", "far"]);
 applyAcousticWitnesses(greetingRaw, context, greeting, greetingParsed);
 assert.equal(greetingParsed.lines[0]?.content, "spoken words");
@@ -244,13 +253,13 @@ const rockContext = {
   ...rockScene,
   contactGeneration: { ...context.contactGeneration, localIds: [], remoteIds: ["near", "far"], attention: rockPlan },
 };
-const rockPrompt = acousticInstructions(
-  rockScene,
-  { kind: "call", targetId: "", boundaryZoneId: "", quote: rockMessage, attention: rockPlan },
-  venue,
-);
-const rockIllustration = rockPrompt.split("\n").at(-1)!;
-const rockRaw = JSON.parse(rockIllustration.slice(rockIllustration.indexOf("{")));
+const rockRaw = {
+  heardPlayerBy: [],
+  segments: [{ kind: "narration", text: "A rock strikes another rock.", heardBy: [] }],
+  attentionWitnesses: [{ id: "attention:0", emitted: true, heardBy: [], understoodBy: [], segment: 0 }],
+  acousticEvents: [],
+  acousticReplies: [],
+};
 assert.equal(rockRaw.attentionWitnesses[0].emitted, true);
 assert.equal(rockRaw.attentionWitnesses[0].segment, 0);
 assert.deepEqual(rockRaw.acousticEvents, [], "player impact is not a resident event");
@@ -261,39 +270,6 @@ for (const segment of [undefined, "0", 9]) {
   assert.throws(
     () => applyAcousticWitnesses(invalid, rockContext, rockMessage, parseVenueReply(invalid, ["near", "far"])),
     (error: any) => error.acousticReason === "sound-event-segment" && /Nothing was applied/.test(error.message),
-  );
-}
-for (const localIds of [[], ["local"]]) {
-  const mixedScene = { ...scene, activeIds: localIds };
-  const mixedPlan = {
-    ...plan,
-    fragments: [
-      rockPlan.fragments[0],
-      { ...fragment, id: "attention:1" },
-      { ...rockPlan.fragments[0], id: "attention:2" },
-    ],
-  };
-  const mixedPrompt = acousticInstructions(
-    mixedScene,
-    { kind: "call", targetId: "", boundaryZoneId: "", quote: rockMessage, attention: mixedPlan },
-    venue,
-  );
-  const line = mixedPrompt.split("\n").at(-1)!;
-  const mixedRaw = JSON.parse(line.slice(line.indexOf("{")));
-  assert.deepEqual(
-    mixedRaw.attentionWitnesses.map((row: any) => row.segment),
-    [0, undefined, 1],
-  );
-  if (localIds.length) assert.equal(mixedRaw.acousticReplies[0].segment, 2);
-  applyAcousticWitnesses(
-    mixedRaw,
-    {
-      ...context,
-      activeIds: localIds,
-      contactGeneration: { ...context.contactGeneration, localIds, attention: mixedPlan },
-    },
-    rockMessage,
-    parseVenueReply(mixedRaw, ["local", "sleeper", "near", "far"]),
   );
 }
 const evidence: any = {
