@@ -80,10 +80,6 @@
     },
     {
       "method": "post",
-      "path": "/characters/:characterId/sprites/setup/analyze"
-    },
-    {
-      "method": "post",
       "path": "/characters/:characterId/sprites/setup/frame"
     },
     {

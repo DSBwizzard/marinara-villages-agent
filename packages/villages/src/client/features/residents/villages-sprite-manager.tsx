@@ -31,9 +31,7 @@ type Draft = {
   frame: SpriteFrame;
   expressionId: string;
   name: string;
-  useWhen: string;
   view: SpriteView;
-  direction: "front" | "left" | "right";
 };
 function savedDraft(
   art: SpriteArtwork,
@@ -53,9 +51,7 @@ function savedDraft(
     frame: art.frame,
     expressionId: expression?.id ?? "",
     name: expression?.name ?? "",
-    useWhen: expression?.useWhen ?? "",
     view: assignment?.view ?? "front",
-    direction: art.direction ?? (assignment?.view === "side" ? "right" : "front"),
   };
 }
 const differs = (a: Draft, b: Draft) => JSON.stringify(a) !== JSON.stringify(b);
@@ -131,9 +127,8 @@ export function SpriteManager({
         if (!value || row.signature !== JSON.stringify([artwork.source.sha256, artwork.rendered.url, artwork.frame]))
           continue;
         if (
-          ![value.expressionId, value.name, value.useWhen].every((item) => typeof item === "string") ||
+          ![value.expressionId, value.name].every((item) => typeof item === "string") ||
           !["front", "side"].includes(value.view) ||
-          !["front", "left", "right"].includes(value.direction) ||
           !value.frame ||
           !["x", "y", "width", "height", "scale", "offsetX", "offsetY"].every((key) =>
             Number.isFinite(value.frame[key]),
@@ -698,7 +693,6 @@ export function SpriteManager({
                         edit({
                           expressionId: id,
                           name: expression?.name ?? "",
-                          useWhen: expression?.useWhen ?? "",
                         });
                       }}
                     >
@@ -729,27 +723,14 @@ export function SpriteManager({
                           key={view}
                           disabled={busy}
                           aria-pressed={draft.view === view}
-                          onClick={() => edit({ view, direction: view === "front" ? "front" : "right" })}
+                          onClick={() => edit({ view })}
                         >
                           {view === "front" ? "Front" : "Side"}
                         </button>
                       ))}
                     </div>
                   </div>
-                  {draft.view === "side" ? (
-                    <label>
-                      Original direction
-                      <select
-                        aria-label="Original direction"
-                        disabled={busy}
-                        value={draft.direction}
-                        onChange={(event) => edit({ direction: event.target.value as "left" | "right" })}
-                      >
-                        <option value="left">Left</option>
-                        <option value="right">Right</option>
-                      </select>
-                    </label>
-                  ) : null}
+                  {draft.view === "side" ? <p className="vsm-hint">Side views must face right.</p> : null}
                   {manager.assignments.some((item) => item.artworkId === selected.id) ? (
                     <div className="vsm-assignments" role="group" aria-label="Saved assignments">
                       <p className="vsm-hint">Assignments</p>
@@ -798,22 +779,6 @@ export function SpriteManager({
                       </p>
                     </div>
                   ) : null}
-                  <label>
-                    Use when…
-                    <textarea
-                      autoComplete="off"
-                      aria-label="Use when…"
-                      value={draft.useWhen}
-                      maxLength={1000}
-                      disabled={busy}
-                      placeholder="For example: listening calmly or speaking with reassurance."
-                      onChange={(event) => edit({ useWhen: event.target.value })}
-                    />
-                  </label>
-                  <p className="vsm-hint">
-                    Guides the narration AI’s expression choice.
-                    {draft.expressionId ? " Name and description apply to every facing of this expression." : ""}
-                  </p>
                 </section>
                 <section aria-label="Framing">
                   <h3>Framing</h3>

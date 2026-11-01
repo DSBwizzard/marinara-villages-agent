@@ -10,7 +10,6 @@ export async function testInventory(root = new URL("../", import.meta.url)) {
       path: `tests/${name}`,
       group: [
         "villages-decision-transport.regression.ts",
-        "villages-sprite-vision-transport.regression.mjs",
         "villages-engine-shell.e2e.mjs",
         "villages-image-engine-contract.regression.ts",
       ].includes(name)
@@ -26,9 +25,7 @@ export async function testInventory(root = new URL("../", import.meta.url)) {
             : name.endsWith(".e2e.mjs")
               ? "mocked-browser"
               : "provider-free",
-      ...(["villages-decision-transport.regression.ts", "villages-sprite-vision-transport.regression.mjs"].includes(
-        name,
-      )
+      ...(["villages-decision-transport.regression.ts"].includes(name)
         ? { requirements: "Existing compatible Engine runtime; synthetic local provider" }
         : {}),
       ...(name === "villages-image-engine-contract.regression.ts"
