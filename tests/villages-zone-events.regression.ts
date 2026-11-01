@@ -6,6 +6,7 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
@@ -670,4 +671,51 @@ const broadcast = routed(
 );
 assert.equal(broadcast.lines[0].soundOnly!.characterIds.length, 13, "a cast limit never limits sound delivery");
 
+// Perception records only the saved player projection; model fields never grant access.
+{
+  const speech: any = { role: "assistant", speakerId: "local", kind: "dialogue", heardBy: ["local"] };
+  assert.deepEqual(sceneEvidencePerception(speech), { playerPerception: "full" });
+  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "whisper", targetId: "player" }), {
+    playerPerception: "full",
+  });
+  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "whisper", targetId: "other", contactHidden: true }), {
+    playerPerception: "none",
+  });
+  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "whisper", targetId: "other" }), {
+    playerPerception: "none",
+  });
+  assert.deepEqual(
+    sceneEvidencePerception({
+      ...speech,
+      delivery: "shout",
+      contactHidden: true,
+      soundOnly: { player: true, characterIds: [], text: "An indistinct voice." },
+    }),
+    { playerPerception: "sound-only", playerSound: "An indistinct voice." },
+  );
+  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "narration" }), { playerPerception: "full" });
+  assert.deepEqual(sceneEvidencePerception({ ...speech, kind: "narration", contactHidden: true }), {
+    playerPerception: "none",
+  });
+  assert.deepEqual(
+    sceneEvidencePerception({ ...speech, role: "user", speakerId: "", attentionEvidence: true, contactHidden: true }),
+    { playerPerception: "full" },
+  );
+  assert.deepEqual(sceneEvidencePerception({ ...speech, role: "user", speakerId: "", contactHidden: true }), {
+    playerPerception: "none",
+  });
+  assert.deepEqual(sceneEvidencePerception({ ...speech, attentionEvidence: true, contactHidden: true }), {
+    playerPerception: "none",
+  });
+  assert.deepEqual(sceneEvidencePerception({ ...speech, contactHidden: true, playerPerception: "full" } as any), {
+    playerPerception: "none",
+  });
+  assert.deepEqual(sceneEvidencePerception({ ...speech, contactReport: true }), { playerPerception: "none" });
+  const earlier = { ...speech, zoneId: "old-zone" };
+  assert.deepEqual(
+    sceneEvidencePerception(earlier),
+    { playerPerception: "full" },
+    "saved perception does not depend on the player's new Zone",
+  );
+}
 console.log("Zone event routing, private witnesses and captured movement passed.");

@@ -761,6 +761,7 @@ try {
     {
       const active = clone(records);
       const beforeNavigation = modelCalls;
+      assert(!records.get("villages-village").data.venues[0].zones.find((row: any) => row.id === "kitchen").seen);
       const moved = await app.inject({
         method: "POST",
         url: "/api/villages/rooms/zone",
@@ -1353,6 +1354,13 @@ try {
       for (const timing of ["now", "later"] as const) {
         records.clear();
         for (const [id, row] of clone(retained)) records.set(id, row);
+        const legacyVenue = records.get("villages-village").data.venues[0];
+        delete legacyVenue.access;
+        legacyVenue.classes = ["residence"];
+        legacyVenue.residentIds = ["aqua"];
+        const legacyRoom = legacyVenue.zones.find((zone: any) => zone.id === "kitchen");
+        legacyRoom.kind = "shared-residence";
+        legacyRoom.venueClass = "residence";
         const quote = timing === "now" ? "Come into the kitchen." : "Visit the kitchen tomorrow.";
         const check = {
           id: "retained-invitation",
@@ -1386,14 +1394,31 @@ try {
             zoneId: "kitchen",
             zoneLabel: "Kitchen",
             scope: "shared",
-            area: "public",
-            spaceClass: "community",
+            area: "shared",
+            spaceClass: "residence",
             timing,
             ownerId: "",
             quote,
             evidenceKind: "speech",
           },
-          roomInterpretation: { checks: [check], results: [result], settings: { decisionsEnabled: true }, traces: [] },
+          roomInterpretation: {
+            checks: [check],
+            results: [result],
+            settings: { decisionsEnabled: true },
+            traces: [
+              {
+                id: check.id,
+                domain: "room",
+                question: check.question,
+                evidence: check.evidence,
+                decisions: { status: source === "decisions" ? "answered" : "off" },
+                system: { status: "not-requested" },
+                result,
+                applied: "",
+                startedAt: now,
+              },
+            ],
+          },
         };
         editFixtureScene((saved) => {
           saved.status = "opening";
@@ -1403,6 +1428,7 @@ try {
           saved.zoneGrants = [];
           saved.sceneRevision = 0;
           delete saved.semanticVersion;
+          delete saved.continuity;
           const snapshot = { ...clone(saved), operation: undefined };
           saved.operation = {
             id: "greeting",
@@ -1889,6 +1915,7 @@ try {
     const retained = clone(records),
       oldIntent = clone(semanticIntentAnswer),
       oldExchange = clone(semanticExchangeAnswer);
+    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen = true;
     const blocked = coerceSession({
       version: 3,
       ...clone(scene),
