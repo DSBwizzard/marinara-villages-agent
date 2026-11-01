@@ -3,6 +3,7 @@ import { mkdir, writeFile, readFile, open, unlink, appendFile } from "node:fs/pr
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { testInventory } from "./test-inventory.mjs";
 import { availableParallelism, totalmem, freemem } from "node:os";
 import { browserWorkerLimit, scheduleTests } from "./test-scheduler.mjs";
@@ -132,6 +133,9 @@ try {
           const child = spawn(process.execPath, ["--import", "tsx", test.path], {
             env: {
               ...process.env,
+              ...(test.group === "engine"
+                ? { TSX_TSCONFIG_PATH: fileURLToPath(new URL("../tsconfig.engine-tests.json", import.meta.url)) }
+                : {}),
               VILLAGES_TEST_CASES: JSON.stringify(testCases),
               VILLAGES_TEST_CASE_REPORT: caseReport,
               ...(process.env.VILLAGES_SCREENSHOT_DIR

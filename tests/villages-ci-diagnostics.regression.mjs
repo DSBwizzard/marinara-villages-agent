@@ -12,6 +12,7 @@ const root = await mkdtemp(join(tmpdir(), "villages-ci-diagnostics-"));
 try {
   await mkdir(join(root, "scripts"));
   await mkdir(join(root, "tests"));
+  await copyFile(new URL("../tsconfig.engine-tests.json", import.meta.url), join(root, "tsconfig.engine-tests.json"));
   await writeFile(join(root, "package.json"), JSON.stringify({ type: "module" }));
   for (const name of ["checkout-operation", "test-inventory", "test-resources", "test-scheduler", "test-cases"])
     await copyFile(new URL("../scripts/" + name + ".mjs", import.meta.url), join(root, "scripts", name + ".mjs"));
@@ -89,6 +90,33 @@ try {
   const focused = await probe(valid, ["--case=first"]);
   assert.equal(focused.status, 0, focused.stdout + focused.stderr);
   assert.notEqual((await probe("// Test cases: first\n", ["--case=first"])).status, 0);
+
+  await mkdir(join(root, "node_modules/runtime-probe"), { recursive: true });
+  await writeFile(
+    join(root, "node_modules/runtime-probe/package.json"),
+    JSON.stringify({ type: "module", exports: "./index.js" }),
+  );
+  await writeFile(join(root, "node_modules/runtime-probe/index.js"), 'export const marker = "runtime";');
+  await writeFile(join(root, "declarations.ts"), 'export type Marker = "declaration";');
+  await writeFile(
+    join(root, "tsconfig.json"),
+    JSON.stringify({ compilerOptions: { baseUrl: ".", paths: { "runtime-probe": ["./declarations.ts"] } } }),
+  );
+  await writeFile(
+    join(root, "tests/villages-decision-transport.regression.ts"),
+    'import { marker } from "runtime-probe"; if (marker !== "runtime") throw Error("Runtime package was not loaded");',
+  );
+  const engine = spawnSync(process.execPath, ["scripts/run-tests.mjs", "engine"], {
+    cwd: root,
+    env,
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  assert.equal(engine.status, 0, engine.stdout + engine.stderr);
+  const declaration = await probe(
+    'import * as declaration from "runtime-probe"; if (Object.keys(declaration).length) throw Error("Product alias was lost");',
+  );
+  assert.equal(declaration.status, 0, declaration.stdout + declaration.stderr);
 
   await assert.rejects(
     build({ stdin: { contents: "console.log({a:1,a:2})", sourcefile: "warning.js" }, write: false }),
