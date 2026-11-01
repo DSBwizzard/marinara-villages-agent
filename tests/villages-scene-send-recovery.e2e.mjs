@@ -1,5 +1,5 @@
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
-const { authorSceneResponse } = await scenePlaybackFixtures();
+const { authorSceneResponse, fixturePlaybackPage } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors, expectSceneError } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
@@ -51,6 +51,7 @@ await withBrowser(browser, async () => {
       memoryMode: "live",
       sceneRevision: 0,
       activeIds: ["mara"],
+      initialActiveIds: ["mara"],
       participants: residents.slice(0, 1).map(({ characterId, name }) => ({ characterId, name, doing: "listening" })),
       lines: [
         {
@@ -101,6 +102,14 @@ await withBrowser(browser, async () => {
           hasMore: false,
           nextCursor: "0:0",
         };
+      } else if (path.endsWith("/playback")) {
+        const query = new URL(request.url()).searchParams;
+        value = fixturePlaybackPage(
+          session,
+          snapshot.worldScope,
+          query.get("cursor") || undefined,
+          query.get("first") === "1",
+        );
       } else if (path.endsWith("/connections"))
         value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
       else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) {
