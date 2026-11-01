@@ -1557,8 +1557,7 @@ export type VillageAgendaView = {
    * drawn for a translation with no moves at all. A week missing eleven hours read
    * as a finished translation in which eleven hours happened to be spent at home.
    *
-   * Counted over `remapBlockKeys`, which is the capped list the prompt actually
-   * asked about, so this can reach zero and mean it. Zero is the ordinary answer.
+   * Retained for saved translation compatibility. Current generation never retries translation.
    */
   missingMoves: number;
   /**

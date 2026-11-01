@@ -190,9 +190,6 @@ async function main() {
   const { parseFoundingVenueSuggestions } = await import(
     pathToFileURL(join(serverRoot, "domain/rules/founding-draft-rules.ts")).href
   );
-  const { evenlySpacedFoundingPins } = await import(
-    pathToFileURL(join(root, "packages/villages/src/client/features/founding/villages-founding-draft.ts")).href
-  );
   const suggestion = {
     id: "one",
     name: "Observatory room",
@@ -236,12 +233,7 @@ async function main() {
       [suggestions[1], ...suggestions.slice(1)],
     ])
       assert.throws(() => parseFoundingVenueSuggestions({ venues }, ids), /every starting Venue exactly once/);
-    const pins = evenlySpacedFoundingPins(count);
-    assert.equal(pins.length, count);
-    assert.equal(new Set(pins.map((pin) => `${pin.x}:${pin.y}`)).size, count);
-    assert.ok(pins.every((pin) => pin.x > 0 && pin.x < 1 && pin.y > 0 && pin.y < 1));
   }
-  assert.throws(() => evenlySpacedFoundingPins(6));
   const available = new Set(["a", "b", "c", "outsider"]);
   assert.doesNotThrow(() => validateFoundingRoster(["a", "b"], new Set(["a", "b"]), available));
   for (const ids of [[], ["a", "a"], ["gone"], ["a", "b", "c", "outsider"], [42], null])
@@ -474,16 +466,9 @@ async function main() {
   assert.ok(client.includes("Setting"));
   assert.equal(client.includes('title="Starting Scenario"'), false);
   assert.ok(client.includes("Search Lorebooks"));
-  const editor = await readFile(
-    join(root, "packages/villages/src/client/features/founding/villages-founding-editor.tsx"),
-    "utf8",
-  );
 
   assert.equal(client.includes("resumeSetupPlacement"), false);
   assert.ok(client.includes("Review village"));
-  assert.ok(editor.includes("Assigned villager"));
-  assert.ok(editor.includes("Physical Form"));
-  assert.ok(editor.includes("Private Space"));
   assert.ok(client.includes("generateSetupImage(venue, area, zoneId)"));
   assert.equal(client.includes("generateSetupText(setupVenues, true)"), false);
   assert.equal(client.includes('"/setup/scenario-imprint/draft"'), false, "founding does not ask for a hidden imprint");

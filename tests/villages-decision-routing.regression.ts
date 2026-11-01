@@ -8,7 +8,6 @@ import {
   validDecisionEvidence,
 } from "../packages/villages/src/server/domain/rules/decision-candidates.js";
 import { coerceInterpretationSettings } from "../packages/villages/src/server/domain/rules/interpretation-policy.js";
-import { projectProposals } from "../packages/villages/src/server/domain/rules/project-check-rules.js";
 import { createInterpretation } from "../packages/villages/src/server/features/generation/interpretation-service.js";
 
 const narrow: InterpretationCheck = {
@@ -123,10 +122,10 @@ const good = await run();
 assert.equal(good.results[0].source, "decisions");
 assert.equal(systemCalls, 0);
 assert.equal(good.traces[0].decisions.model, null);
-assert.equal(projectProposals(good).length, 1);
+assert(validDecisionEvidence(good.checks[0], good.results[0]));
 const legacy = structuredClone(good);
 delete legacy.results[0].details;
-assert.equal(projectProposals(legacy).length, 0);
+assert(!validDecisionEvidence(legacy.checks[0], legacy.results[0]));
 for (const malformed of [
   null,
   { ...answer!, threshold: 0 },
