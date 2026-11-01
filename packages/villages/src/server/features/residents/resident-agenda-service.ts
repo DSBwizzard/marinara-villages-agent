@@ -217,11 +217,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   const agendaBackgroundHandler: Handler = {
     recoverSavedResult: (input, steps) => {
-      const saved = steps.find(
-        (step) =>
-          ["owned-routine-profile", "founding-routine-v1", "founding-routine-v2"].includes(step.key ?? "") &&
-          step.status === "completed",
-      );
+      const key = input.context.contractVersion === 2 ? "founding-routine-v2" : "founding-routine-v1";
+      const saved = steps.find((step) => step.key === key && step.status === "completed");
       if (!saved?.response) return undefined;
       return parseCompactFoundingCompletion(saved.response, input.context);
     },
