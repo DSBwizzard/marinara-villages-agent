@@ -1,3 +1,4 @@
+import type { AreaDraftCache } from "./villages-founding-editor.js";
 import { SETUP_STEPS } from "./founding-steps.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../../../shared/helpers/resident-admission.js";
@@ -97,42 +98,7 @@ export function useFoundingSetupDraftData(ports: {
   setupEditorAuthoredOriginal: React.RefObject<string[]>;
   setupEditorOpen: boolean;
   setupEditorOriginal: React.RefObject<import("../../../shared/contracts/village.js").VillageVenue>;
-  setupEditorZoneOriginal: React.RefObject<{
-    common?: {
-      id: string;
-      name?: string;
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-      controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "community" | "other";
-      description: string;
-      image: import("../../../shared/contracts/village.js").VillageVenueImage;
-      state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-    };
-    personal?: {
-      id: string;
-      name?: string;
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-      controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "community" | "other";
-      description: string;
-      image: import("../../../shared/contracts/village.js").VillageVenueImage;
-      state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-    } & {
-      ownerId: string;
-      name?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-      controllerIds?: string[];
-      initialImageAttemptedAt?: string;
-    };
-  }>;
+  setupEditorZoneOriginal: React.RefObject<AreaDraftCache["current"] | undefined>;
 
   setupSpriteRevisions?: Record<string, number>;
   setupFoundingVillagerIds: string[];
@@ -164,47 +130,7 @@ export function useFoundingSetupDraftData(ports: {
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
   setupWorkspace: import("./villages-founding-workspace-state.js").FoundingWorkspaceState;
   setupWorldFacts: string[];
-  setupZoneDrafts: React.RefObject<
-    Record<
-      string,
-      {
-        common?: {
-          id: string;
-          name?: string;
-          ownerId?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-          controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "community" | "other";
-          description: string;
-          image: import("../../../shared/contracts/village.js").VillageVenueImage;
-          state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-        };
-        personal?: {
-          id: string;
-          name?: string;
-          ownerId?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-          controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "community" | "other";
-          description: string;
-          image: import("../../../shared/contracts/village.js").VillageVenueImage;
-          state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
-        } & {
-          ownerId: string;
-          name?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-          controllerIds?: string[];
-          initialImageAttemptedAt?: string;
-        };
-      }
-    >
-  >;
+  setupZoneDrafts: React.RefObject<Record<string, AreaDraftCache["current"]>>;
   visualLoreDefault: boolean;
 }) {
   const {

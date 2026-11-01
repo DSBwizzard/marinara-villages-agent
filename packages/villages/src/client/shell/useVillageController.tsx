@@ -35,7 +35,6 @@ import {
   calculatePlaceCount,
   calculateResidentContextProblem,
   calculateSetupBeginningSourceKey,
-  calculateSetupHomeCount,
   calculateSetupImageContextKey,
   calculateSetupMapGenerationKey,
   calculateSetupMapShape,
@@ -220,61 +219,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     portraitsAsked,
   } = useResidentsState();
 
-  const {
-    _endFailed,
-    setEndFailed,
-    mailboxOpen,
-    setMailboxOpen,
-    sceneReading,
-    roomOpen,
-    setRoomOpen,
-    roomDraft,
-    setRoomDraft,
-    roomMode,
-    setRoomMode,
-    legacyRecovery,
-    setLegacyRecovery,
-    roomContactBoundary,
-    setRoomContactBoundary,
-    setRoomContactKind,
-    roomTargetId,
-    setRoomTargetId,
-    roomMoveZoneId,
-    setRoomMoveZoneId,
-    roomMoveOperationIdRef,
-    roomRuling,
-    setRoomRuling,
-    roomNotices,
-    setRoomNotices,
-    seenRoomEventIdsRef,
-    dismissedRoomEventIdsRef,
-    roomChangeStatus,
-    setRoomChangeStatus,
-    roomUnresolvedChanges,
-    setRoomUnresolvedChanges,
-    debugDiscardEnabled,
-    setDebugDiscardEnabled,
-    observedRoomIdRef,
-    lastSceneEnding,
-    setLastSceneEnding,
-    roomBusy,
-    setRoomBusy,
-    leavingRoomPendingRef,
-    roomSubmissionIdRef,
-    roomLeaveSubmissionIdRef,
-    roomCompletionRef,
-    roomSendInFlightRef,
-    composerEditVersionRef,
-    restoredSceneDraftRef,
-    roomError,
-    setRoomError,
-    roomGreetingError,
-    setRoomGreetingError,
-    roomGreetingNotice,
-    setRoomGreetingNotice,
-    roomEnded,
-    setRoomEnded,
-  } = useScenesState(snapshot?.isFounded);
+  const scenes = useScenesState(snapshot?.isFounded);
 
   // The menu is its own screen. The homepage never carries the villager
   // controls, and the menu never draws the village itself; `menuPage` picks
@@ -440,187 +385,35 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     if (screen !== "menu" || menuPage !== "advanced") setResetArmed(false);
   }, [screen, menuPage, setResetArmed]);
 
-  const {
-    savedSetupDraft,
-    setSavedSetupDraft,
-    lorebooks,
-    setLorebooks,
-    lorebooksError,
-    setLorebooksError,
-    pendingDraftSaves,
-    setupLorebookDraft,
-    setSetupLorebookDraft,
-    setupLoreTokenBudgetDraft,
-    setSetupLoreTokenBudgetDraft,
-    setupStep,
-    setSetupStep,
-    setupName,
-    setSetupName,
-    setupTimeZone,
-    setSetupTimeZone,
-    setupWorldName,
-    setupSetting,
-    setSetupWorldName,
-    setSetupSetting,
+  const founding = useFoundingState();
 
-    setupPlayerBackground,
-    setSetupPlayerBackground,
-
-    setupWorldFacts,
-    setSetupWorldFacts,
-    setupVenues,
-    setSetupVenues,
-    setupSpriteRevisions,
-    setSetupSpriteRevisions,
-    setupFoundingVillagerIds,
-    setSetupFoundingVillagerIds,
-    setupResidentAdmissions,
-    setSetupResidentAdmissions,
-    setupKeyboardSpot,
-    setSetupKeyboardSpot,
-    setupEditorOpen,
-    setSetupEditorOpen,
-    setupEditorOriginal,
-    setupEditorAuthoredOriginal,
-    setupEditorZoneOriginal,
-    sceneryStyle,
-    sceneryStyleProfileId,
-    setSceneryStyle,
-    setSceneryStyleProfileId,
-    personalizeHomes,
-    setPersonalizeHomes,
-    visualLoreDefault,
-    setVisualLoreDefault,
-    mapVisualLore,
-    setMapVisualLore,
-    selectedSetupVenueId,
-    setSelectedSetupVenueId,
-    setupWorkspace,
-    setSetupWorkspace,
-    setupShowIssues,
-    setSetupShowIssues,
-    setupFocusIssue,
-    setSetupFocusIssue,
-    setupImageTarget,
-    setSetupImageTarget,
-    setupImageTargetRef,
-    setupImageClaim,
-    movingSetupVenueId,
-    setMovingSetupVenueId,
-    setupVenueBusy,
-    setSetupVenueBusy,
-    setupPlacementError,
-    setSetupPlacementError,
-    setupMapSource,
-    setSetupMapSource,
-    setupMapImage,
-    setSetupMapImage,
-    setupMapImageSource,
-    setSetupMapImageSource,
-    setupMapGeneratedKey,
-    setSetupMapGeneratedKey,
-    setupMapSize,
-    setSetupMapSize,
-    setupMapPrompt,
-    setSetupMapPrompt,
-    setupMapNegativePrompt,
-    setSetupMapNegativePrompt,
-    setupMapBusy,
-    setSetupMapBusy,
-    setupMapProblem,
-    setSetupMapProblem,
-    setupMapRequest,
-    setSetupMapRequest,
-    setupMapRequestRef,
-    preparationProblem,
-    setPreparationProblem,
-    connectionSetupProblem,
-    setConnectionSetupProblem,
-    setupProblem,
-    setSetupProblem,
-    setupMapReviewed,
-    setSetupMapReviewed,
-    setupAuthoredFields,
-    setSetupAuthoredFields,
-    setupSuggestionsKey,
-    setSetupSuggestionsKey,
-    setupSuggestionsBusy,
-    setSetupSuggestionsBusy,
-    setupSuggestionsClaim,
-    draftReady,
-    setDraftReady,
-    draftSaveError,
-    setDraftSaveError,
-    draftSaving,
-    setDraftSaving,
-    draftSavedAt,
-    setDraftSavedAt,
-    draftRevision,
-    draftSaveQueue,
-    draftBlocked,
-    setupZoneDrafts,
-    setupOfferedRef,
-  } = useFoundingState();
-
-  const selectedResidentAdmissions = useFoundingSelectedResidentContexts({
-    setupFoundingVillagerIds,
-    setupResidentAdmissions,
-  });
+  const selectedResidentAdmissions = useFoundingSelectedResidentContexts(founding);
 
   const residentContextProblem = calculateResidentContextProblem({ selectedResidentAdmissions, snapshot });
 
-  const setupHomeCount = calculateSetupHomeCount({ setupFoundingVillagerIds });
+  const setupHomeCount = founding.setupFoundingVillagerIds.length;
 
   const setupBeginningSourceKey = calculateSetupBeginningSourceKey({
-    setupName,
-    setupWorldFacts,
-
+    ...founding,
     personaDraft,
-    personalizeHomes,
-    sceneryStyle,
-    sceneryStyleProfileId,
     selectedResidentAdmissions,
-
-    setupLorebookDraft,
-    setupLoreTokenBudgetDraft,
-    setupWorldName,
-    setupSetting,
-    visualLoreDefault,
   });
 
-  const setupImageContextKey = calculateSetupImageContextKey({
-    personaDraft,
-    personalizeHomes,
-    setupBeginningSourceKey,
-
-    setupName,
-    setupWorldFacts,
-    visualLoreDefault,
-  });
+  const setupImageContextKey = calculateSetupImageContextKey({ ...founding, personaDraft, setupBeginningSourceKey });
 
   const { setupBeginningSourceKeyRef, setupImageContextKeyRef, setupVenuesRef, setupAuthoredFieldsRef } =
-    useFoundingDraftReferences({ setupBeginningSourceKey, setupImageContextKey, setupVenues, setupAuthoredFields });
+    useFoundingDraftReferences({ ...founding, setupBeginningSourceKey, setupImageContextKey });
 
   useFoundingImageContext({ setupImageContextKey, setupImageContextKeyRef });
 
-  useFoundingVenueReference({ setupVenues, setupVenuesRef });
+  useFoundingVenueReference({ ...founding, setupVenuesRef });
 
   useFoundingBeginningReference({ setupBeginningSourceKey, setupBeginningSourceKeyRef, snapshot });
 
-  const setupMapGenerationKey = calculateSetupMapGenerationKey({
-    mapVisualLore,
-    sceneryStyle,
-    sceneryStyleProfileId,
-    setupLorebookDraft,
-    setupLoreTokenBudgetDraft,
-    setupMapNegativePrompt,
-    setupMapPrompt,
-    setupSetting,
-    setupWorldFacts,
-    snapshot,
-  });
+  // Preserve existing generation inputs; adding World identity is a separate behavior change.
+  const setupMapGenerationKey = calculateSetupMapGenerationKey({ ...founding, setupWorldName: undefined, snapshot });
 
-  const updateSetupMapRequest = useUpdateSetupMapRequest({ setSetupMapRequest, setupMapRequestRef });
+  const updateSetupMapRequest = useUpdateSetupMapRequest(founding);
 
   /**
    * The framing the village has saved. The map is drawn with this everywhere
@@ -635,12 +428,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const savedTownMapShape: MapFrameShape | null = calculateSavedTownMapShape({ snapshot, selectedMap });
 
-  const setupMapShape: MapFrameShape | null = calculateSetupMapShape({
-    setupMapImageSource,
-    setupMapSize,
-    setupMapSource,
-    snapshot,
-  });
+  const setupMapShape: MapFrameShape | null = calculateSetupMapShape({ ...founding, snapshot });
 
   /** How far the picture may be magnified in the panel, and how far one press moves it. */
 
@@ -649,75 +437,20 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * village's own picture, or the one the package ships.
    */
 
-  const setupMapSrc = calculateSetupMapSrc({ setupMapImage, setupMapImageSource, setupMapSource, townMapImage });
+  const setupMapSrc = calculateSetupMapSrc({ ...founding, townMapImage });
 
-  useFoundingAuthoredReference({ setupAuthoredFields, setupAuthoredFieldsRef });
+  useFoundingAuthoredReference({ ...founding, setupAuthoredFieldsRef });
 
-  const setupDraftData = useFoundingSetupDraftData({
-    setupSpriteRevisions,
-    mapVisualLore,
-    movingSetupVenueId,
-    personaDraft,
-    personalizeHomes,
-    sceneryStyle,
-    sceneryStyleProfileId,
-    selectedSetupVenueId,
-    setupAuthoredFields,
-    setupEditorAuthoredOriginal,
-    setupEditorOpen,
-    setupEditorOriginal,
-    setupEditorZoneOriginal,
+  const setupDraftData = useFoundingSetupDraftData({ ...founding, personaDraft });
 
-    setupFoundingVillagerIds,
+  const persistSetupDraft = useFoundingPersistSetupDraft(founding);
 
-    setupKeyboardSpot,
-    setupLorebookDraft,
-    setupLoreTokenBudgetDraft,
-    setupMapBusy,
-    setupMapGeneratedKey,
-    setupMapImage,
-    setupMapImageSource,
-    setupMapNegativePrompt,
-    setupMapProblem,
-    setupMapPrompt,
-    setupMapRequest,
-    setupMapReviewed,
-    setupMapSize,
-    setupMapSource,
-    setupName,
-    setupTimeZone,
-    setupPlayerBackground,
-    setupResidentAdmissions,
-    setupWorldName,
-    setupSetting,
-    setupStep,
-    setupSuggestionsBusy,
-    setupSuggestionsKey,
-    setupVenueBusy,
-    setupVenues,
-    setupWorkspace,
-    setupWorldFacts,
-    setupZoneDrafts,
-    visualLoreDefault,
-  });
+  useFoundingDraftAutosave({ ...founding, persistSetupDraft, screen, setupDraftData, snapshot });
 
-  const persistSetupDraft = useFoundingPersistSetupDraft({
-    draftBlocked,
-    draftRevision,
-    draftSaveQueue,
-    pendingDraftSaves,
-    setDraftSavedAt,
-    setDraftSaveError,
-    setDraftSaving,
-    setSavedSetupDraft,
-  });
-
-  useFoundingDraftAutosave({ draftReady, persistSetupDraft, screen, setupDraftData, snapshot });
-
-  const flushSetupDraft = useFoundingFlushSetupDraft({ draftBlocked, draftReady, persistSetupDraft, setupDraftData });
+  const flushSetupDraft = useFoundingFlushSetupDraft({ ...founding, persistSetupDraft, setupDraftData });
 
   const restoreSetupDraft = createFoundingRestoreSetupDraft({
-    setSetupSpriteRevisions,
+    ...founding,
     get loadCatalog() {
       return loadCatalog;
     },
@@ -727,138 +460,53 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     get loadPersonas() {
       return loadPersonas;
     },
-    setDraftReady,
-    setDraftSaveError,
-    setMapVisualLore,
-    setMovingSetupVenueId,
     setPersonaDraft,
-    setPersonalizeHomes,
-    setSceneryStyle,
-    setSceneryStyleProfileId,
     setScreen,
-    setSelectedSetupVenueId,
-    setSetupAuthoredFields,
-    setSetupEditorOpen,
-
-    setSetupFoundingVillagerIds,
-
-    setSetupKeyboardSpot,
-    setSetupLorebookDraft,
-    setSetupLoreTokenBudgetDraft,
-    setSetupMapBusy,
-    setSetupMapGeneratedKey,
-    setSetupMapImage,
-    setSetupMapImageSource,
-    setSetupMapNegativePrompt,
-    setSetupMapProblem,
-    setSetupMapPrompt,
-    setSetupMapReviewed,
-    setSetupMapSize,
-    setSetupMapSource,
-    setSetupName,
-    setSetupTimeZone,
-    setSetupPlayerBackground,
-    setSetupProblem,
-    setSetupResidentAdmissions,
-    setSetupWorldName,
-    setSetupSetting,
-    setSetupStep,
-    setSetupSuggestionsKey,
-    setSetupVenues,
-    setSetupWorkspace,
-    setSetupWorldFacts,
-    setupEditorAuthoredOriginal,
-    setupEditorOriginal,
-    setupEditorZoneOriginal,
-    setupZoneDrafts,
-    setVisualLoreDefault,
     updateSetupMapRequest,
   });
 
-  const exitSetupDraft = createFoundingExitSetupDraft({
-    flushSetupDraft,
-    setScreen,
-    setSetupEditorOpen,
-    setSetupProblem,
-    setupImageClaim,
-    setupSuggestionsClaim,
-  });
+  const exitSetupDraft = createFoundingExitSetupDraft({ ...founding, flushSetupDraft, setScreen });
 
   const confirmVillages = useConfirmation(snapshot?.settings.maps?.[0]?.id);
   const newSetupDraft = createFoundingNewSetupDraft({
+    ...founding,
     confirmVillages,
-    draftBlocked,
-    draftRevision,
-    draftSaveQueue,
     get openSetup() {
       return openSetup;
     },
-    savedSetupDraft,
-    setDraftReady,
-    setDraftSaveError,
-    setSavedSetupDraft,
-    setSetupAuthoredFields,
-    setSetupMapProblem,
-    setSetupMapReviewed,
-    setSetupSuggestionsKey,
-    setupMapBusy,
-    setupSuggestionsBusy,
-    setupVenueBusy,
-    setupZoneDrafts,
     snapshot,
     updateSetupMapRequest,
   });
 
-  const retrySetupSaving = createFoundingRetrySetupSaving({
-    draftBlocked,
-    draftRevision,
-    persistSetupDraft,
-    setDraftReady,
-    setDraftSaveError,
-    setupDraftData,
-  });
+  const retrySetupSaving = createFoundingRetrySetupSaving({ ...founding, persistSetupDraft, setupDraftData });
 
   // Roster changes reconcile only the required graph; existing authored Venues survive.
-  useFoundingRosterReconciliation({ catalog, draftReady, screen, setSetupVenues, setupFoundingVillagerIds, snapshot });
+  useFoundingRosterReconciliation({ ...founding, catalog, screen, snapshot });
 
   const suggestionSignal = useActivitySignal(visible && screen === "setup");
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
+    ...founding,
+    setupWorldName: undefined,
     onQuickStartApplied: () => {
-      setSetupAuthoredFields({});
+      founding.setSetupAuthoredFields({});
       setupAuthoredFieldsRef.current = {};
-      setupZoneDrafts.current = {};
-      setupEditorOriginal.current = null;
-      setupEditorZoneOriginal.current = undefined;
-      setupEditorAuthoredOriginal.current = [];
-      setSetupEditorOpen(false);
-      setSelectedSetupVenueId(null);
-      setMovingSetupVenueId(null);
-      setSetupMapReviewed(false);
+      founding.setupZoneDrafts.current = {};
+      founding.setupEditorOriginal.current = null;
+      founding.setupEditorZoneOriginal.current = undefined;
+      founding.setupEditorAuthoredOriginal.current = [];
+      founding.setSetupEditorOpen(false);
+      founding.setSelectedSetupVenueId(null);
+      founding.setMovingSetupVenueId(null);
+      founding.setSetupMapReviewed(false);
     },
     signal: suggestionSignal,
-    setupWorkspace,
-    setSetupWorkspace,
     persistSetupDraft,
     setupDraftData,
-    setupName,
-    setupWorldFacts,
-
     personaDraft,
     selectedResidentAdmissions,
-    setSetupProblem,
-    setSetupSuggestionsBusy,
-    setSetupSuggestionsKey,
-    setSetupVenues,
     setupAuthoredFieldsRef,
     setupBeginningSourceKey,
     setupBeginningSourceKeyRef,
-
-    setupImageTargetRef,
-    setupLorebookDraft,
-    setupLoreTokenBudgetDraft,
-    setupSetting,
-    setupSuggestionsClaim,
-    setupVenues,
     setupVenuesRef,
   });
 
@@ -875,32 +523,19 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const [busy, setBusy] = useState(false);
 
   /** Accept each server receipt once, regardless of which visit-ending path returned it. */
-  const receiveRoomRecordEvents = useReceiveRoomRecordEvents({
-    dismissedRoomEventIdsRef,
-    seenRoomEventIdsRef,
-    setRoomNotices,
-  });
+  const receiveRoomRecordEvents = useReceiveRoomRecordEvents(scenes);
 
   useSceneChangesPolling({
+    ...scenes,
     visible,
     viewing: screen === "room",
-    busy: roomBusy,
+    busy: scenes.roomBusy,
     snapshot,
-    dismissedRoomEventIdsRef,
     receiveRoomRecordEvents,
     room,
-    setRoomChangeStatus,
-    setRoomNotices,
-    setRoomUnresolvedChanges,
   });
 
-  const dismissRoomNotice = useDismissRoomNotice({
-    dismissedRoomEventIdsRef,
-    room,
-    seenRoomEventIdsRef,
-    setRoomError,
-    setRoomNotices,
-  });
+  const dismissRoomNotice = useDismissRoomNotice({ ...scenes, room });
 
   const currentSnapshotRef = useRef(snapshot);
 
@@ -922,7 +557,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const loadPersonas = useLoadPersonas({ setError, setPersonaDraft, setPersonas });
 
-  const loadLorebooks = useLoadLorebooks({ setLorebooks, setLorebooksError });
+  const loadLorebooks = useLoadLorebooks(founding);
 
   const loadMemoryLibrary = useLoadMemoryLibrary({ setError, setMemoryLibrary });
 
@@ -972,57 +607,22 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   useInitialVillageLoad({ visible: visible && !snapshot?.isFounded, loadSnapshot });
 
-  useSceneSelectionReset({
-    loadSnapshot,
-    observedRoomIdRef,
-    room,
-    roomCompletionRef,
-    roomMoveOperationIdRef,
-    screen,
-    seenRoomEventIdsRef,
-    setLastSceneEnding,
-    setRoom,
-    setRoomContactBoundary,
-    setRoomMoveZoneId,
-    setRoomNotices,
-    setRoomOpen,
-    setRoomTargetId,
-    setScreen,
-  });
+  useSceneSelectionReset({ ...scenes, loadSnapshot, room, screen, setRoom, setScreen });
 
   // Opening failures belong only to the visit that is still opening. A later
   // authoritative read can recover it even when the original fetch and its
   // recovery read failed; a delayed failure must not revive the old warning.
-  useSceneOpeningWarning({ room, roomGreetingError, setRoomGreetingError });
+  useSceneOpeningWarning({ ...scenes, room });
 
-  useSceneInterruptedSubmission({
-    composerEditVersionRef,
-    restoredSceneDraftRef,
-    room,
-    setLegacyRecovery,
-    roomMoveOperationIdRef,
-    setRoomContactBoundary,
-    setRoomContactKind,
-    setRoomDraft,
-    setRoomMode,
-    setRoomMoveZoneId,
-    setRoomTargetId,
-  });
+  useSceneInterruptedSubmission({ ...scenes, room });
 
   // An app reload does not end a Scene. The server owns the one active
   // session; the client restores it instead of opening another conversation.
   const sceneRestoration = useActiveSceneRestoration({
+    ...scenes,
     isFounded: snapshot?.isFounded,
     room,
-    roomEnded,
-    roomCompletionRef,
-    roomSendInFlightRef,
-    setDebugDiscardEnabled,
     setRoom,
-    setRoomBusy,
-    setRoomGreetingError,
-    setRoomMode,
-    setRoomOpen,
     setScreen,
   });
 
@@ -1040,23 +640,20 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   // managed by Settings across navigation; reopening refreshes untouched fields
   // and preserves edits rather than discarding them for an incoming snapshot.
   const { openSettings, acceptSavedSettings } = useSettingsDraftSession({
+    ...founding,
     snapshot,
     setKnowledgeDraft,
     setLorebookDraft,
     setLoreTokenBudgetDraft,
     setPersonaDraft,
-    setPersonalizeHomes,
-    setSceneryStyle,
-    setSceneryStyleProfileId,
     setSettingDraft,
     setVenuesDraft,
-    setVisualLoreDefault,
   });
   const { progressDebug, loadProgressDebug } = useProgressDiagnostics({ setError });
   const openMenu = useScenesOpenMenu({
+    ...scenes,
     loadLorebooks,
     loadProgressDebug,
-    debugDiscardEnabled,
     menuPage,
     screen,
     setFocusedRequestId,
@@ -1079,71 +676,27 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   /** End an active Scene in place; a second press returns the completed scene to the map. */
   const closeRoom = useCloseRoom({
+    ...scenes,
     onUnknownSceneExit: sceneRestoration.retry,
     isFounded: snapshot?.isFounded,
-    leavingRoomPendingRef,
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    roomBusy,
-    roomCompletionRef,
-    roomEnded,
-    roomSendInFlightRef,
-    seenRoomEventIdsRef,
-    setEndFailed,
-    setLastSceneEnding,
     setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomGreetingNotice,
-    setRoomNotices,
-    setRoomOpen,
     setScreen,
   });
 
   const leaveRoom = useLeaveRoom({
-    composerEditVersionRef,
+    ...scenes,
     isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    legacyRecovery,
-    roomBusy,
-    roomCompletionRef,
-    roomDraft,
-    roomEnded,
-    roomLeaveSubmissionIdRef,
-    roomSendInFlightRef,
-    seenRoomEventIdsRef,
-    setEndFailed,
-    setLastSceneEnding,
     setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomRuling,
-    setRoomNotices,
-    setRoomOpen,
     setScreen,
   });
 
-  const discardRoomDebug = useDiscardRoomDebug({
-    debugDiscardEnabled,
-    loadSnapshot,
-    room,
-    roomBusy,
-    seenRoomEventIdsRef,
-    setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomError,
-    setRoomNotices,
-    setRoomOpen,
-    setScreen,
-  });
+  const discardRoomDebug = useDiscardRoomDebug({ ...scenes, loadSnapshot, room, setRoom, setScreen });
 
   /**
    * Submit one speech or action turn in the current Scene.
@@ -1157,52 +710,15 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * the calls came back in. The snapshot is re-read afterwards because a room can
    * move the hour's own record on — see the memory each of them files at the end.
    */
-  const moveRoom = useMoveRoom({
-    isFounded: snapshot?.isFounded,
-    loadSnapshot,
-    room,
-    legacyRecovery,
-    roomBusy,
-    roomCompletionRef,
-    roomEnded,
-    roomMoveOperationIdRef,
-    roomMoveZoneId,
-    roomSendInFlightRef,
-    setRoom,
-    setRoomBusy,
-    setRoomContactBoundary,
-    setRoomError,
-    setRoomMode,
-    setRoomMoveZoneId,
-  });
+  const moveRoom = useMoveRoom({ ...scenes, isFounded: snapshot?.isFounded, loadSnapshot, room, setRoom });
 
   const { sendRoom, turnRecovery, checkSavedReply, replyPending } = useSendRoom({
+    ...scenes,
     visible: visible && screen === "room",
-    composerEditVersionRef,
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    legacyRecovery,
-    setLegacyRecovery,
-    roomBusy,
-    roomCompletionRef,
-    roomDraft,
-    roomEnded,
-    roomMode,
-    roomSendInFlightRef,
-    roomSubmissionIdRef,
-    seenRoomEventIdsRef,
-    setLastSceneEnding,
     setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomGreetingNotice,
-    setRoomMode,
-    setRoomNotices,
-    setRoomOpen,
-    setRoomRuling,
     setScreen,
     snapshot,
   });
@@ -1217,14 +733,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * both questions and no place has to be asked twice.
    */
   useSceneOperationPolling({
+    ...scenes,
     visible,
     viewing: screen === "room",
     recoveryPending: replyPending,
     room,
-    roomBusy,
     setRoom,
-    setRoomEnded,
-    setRoomError,
   });
 
   const standingAt = useResidentsStandingAt({ snapshot });
@@ -1251,89 +765,34 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setVenueZoneKey,
   });
 
-  const greetRoom = useGreetRoom({
-    isFounded: snapshot?.isFounded,
-    room,
-    roomBusy,
-    roomEnded,
-    roomCompletionRef,
-    roomSendInFlightRef,
-    loadSnapshot,
-    setRoom,
-    setRoomBusy,
-    setRoomError,
-    setRoomGreetingError,
-    setRoomGreetingNotice,
-  });
+  const greetRoom = useGreetRoom({ ...scenes, isFounded: snapshot?.isFounded, room, loadSnapshot, setRoom });
 
   const retrySavedScene = useRetrySavedScene({
+    ...scenes,
     isFounded: snapshot?.isFounded,
     loadSnapshot,
     receiveRoomRecordEvents,
     room,
-    setLegacyRecovery,
-    roomBusy,
-    roomCompletionRef,
-    roomDraft,
-    roomEnded,
-    roomLeaveSubmissionIdRef,
-    roomMoveOperationIdRef,
-    roomSendInFlightRef,
-    roomSubmissionIdRef,
-    composerEditVersionRef,
     setRoom,
-    setRoomBusy,
-    setRoomContactBoundary,
-    setRoomContactKind,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomGreetingError,
-    setRoomRuling,
-    setRoomMode,
-    setRoomMoveZoneId,
-    setRoomTargetId,
   });
 
   const continueRoomWithoutGreeting = useContinueRoomWithoutGreeting({
+    ...scenes,
     isFounded: snapshot?.isFounded,
     room,
-    roomBusy,
-    roomCompletionRef,
-    roomEnded,
-    roomSendInFlightRef,
     setRoom,
-    setRoomBusy,
-    setRoomError,
-    setRoomGreetingNotice,
   });
 
   /** Visit starts one venue session with a fixed cast, including when the venue is empty. */
   const openRoom = useOpenRoom({
+    ...scenes,
     isFounded: snapshot?.isFounded,
-    roomBusy,
-    roomEnded,
-    roomSendInFlightRef,
     greetRoom,
-    leavingRoomPendingRef,
     loadSnapshot,
     room,
-    roomCompletionRef,
-    seenRoomEventIdsRef,
-    setLastSceneEnding,
     setOpenPlaceId,
     setPlaceProblem,
     setRoom,
-    setRoomBusy,
-    setRoomDraft,
-    setRoomEnded,
-    setRoomError,
-    setRoomGreetingNotice,
-    setRoomMode,
-    setRoomNotices,
-    setRoomOpen,
-    setRoomRuling,
-    setRoomTargetId,
     setScreen,
   });
 
@@ -1384,11 +843,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   });
 
   const saveSettings = useSaveSettings({
+    ...founding,
     snapshot,
     knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
-    visualLoreDefault,
     personaDraft,
     setBusy,
     setSettingsError,
@@ -1399,15 +858,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const spriteVisualSettings = useSpriteVisualSettings({ snapshot, setSnapshot, setBusy });
 
-  const saveScenerySettings = useSaveScenerySettings({
-    sceneryStyle,
-    sceneryStyleProfileId,
-    personalizeHomes,
-    snapshot,
-    setBusy,
-    setSettingsError,
-    setSnapshot,
-  });
+  const saveScenerySettings = useSaveScenerySettings({ ...founding, snapshot, setBusy, setSettingsError, setSnapshot });
 
   const saveBackgroundPace = useSaveBackgroundPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
@@ -1422,52 +873,19 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const suggestPlaces = useSuggestPlaces({ setBusy, setSettingsError, setVenuesDraft, snapshot });
 
   // ── Town map ───────────────────────────────────────────────────────────────
-  useFoundingMapReceipt({
-    visible,
-    screen,
-    setSetupMapBusy,
-    setSetupMapGeneratedKey,
-    setSetupMapImage,
-    setSetupMapImageSource,
-    setSetupMapProblem,
-    setSetupMapReviewed,
-    setSetupMapSize,
-    setupMapRequest,
-    updateSetupMapRequest,
-  });
+  useFoundingMapReceipt({ ...founding, visible, screen, updateSetupMapRequest });
 
   const generateSetupTownMap = useFoundingGenerateSetupTownMap({
-    mapVisualLore,
+    ...founding,
+    setupWorldName: undefined,
     persistSetupDraft,
-    sceneryStyle,
-    sceneryStyleProfileId,
-    setSetupMapBusy,
-    setSetupMapProblem,
-    setSetupProblem,
     setupDraftData,
-    setupLorebookDraft,
-    setupLoreTokenBudgetDraft,
     setupMapGenerationKey,
-    setupMapNegativePrompt,
-    setupMapPrompt,
-    setupMapRequestRef,
-    setupSetting,
-    setupWorldFacts,
     snapshot,
     updateSetupMapRequest,
   });
 
-  const pickSetupTownMap = usePickSetupTownMap({
-    setSetupMapBusy,
-    setSetupMapImage,
-    setSetupMapImageSource,
-    setSetupMapProblem,
-    setSetupMapReviewed,
-    setSetupMapSize,
-    setSetupMapSource,
-    snapshot,
-    updateSetupMapRequest,
-  });
+  const pickSetupTownMap = usePickSetupTownMap({ ...founding, snapshot, updateSetupMapRequest });
 
   // The picture is stored whole, exactly as it was picked. Re-encoding a big
   // one down to fit would be the same mistake as truncating an over-long prompt
@@ -1543,21 +961,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const placeCount = calculatePlaceCount({ snapshot, venuesDraft });
 
-  const placeSetupPin = usePlaceSetupPin({
-    movingSetupVenueId,
-    setMovingSetupVenueId,
-    setSetupMapReviewed,
-    setSetupPlacementError,
-    setSetupVenues,
-    setSetupWorkspace,
-    setupEditorOpen,
-    setupMapBusy,
-    setupMapSrc,
-    setupVenuesRef,
-    setupWorkspace,
-  });
+  const placeSetupPin = usePlaceSetupPin({ ...founding, setupMapSrc, setupVenuesRef });
 
-  const patchSetupVenue = usePatchSetupVenue({ setSetupAuthoredFields, setSetupVenues });
+  const patchSetupVenue = usePatchSetupVenue(founding);
 
   // ── Founding the village ───────────────────────────────────────────────────
   // The wizard collects place, the description, map, and residents before
@@ -1571,130 +977,59 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * again is a chance to redraw the map rather than a second chance to lose it.
    */
   const openSetup = useOpenSetup({
+    ...founding,
     loadCatalog,
     loadLorebooks,
     loadPersonas,
-    setMapVisualLore,
-    setMovingSetupVenueId,
     setPersonaDraft,
-    setPersonalizeHomes,
     setPickerOpen,
     setResetArmed,
-    setSceneryStyle,
-    setSceneryStyleProfileId,
     setScreen,
     setSearch,
-    setSelectedSetupVenueId,
     setSettingsError,
-    setSetupEditorOpen,
-    setSetupFocusIssue,
-
-    setSetupFoundingVillagerIds,
-
-    setSetupLorebookDraft,
-    setSetupLoreTokenBudgetDraft,
-    setSetupMapBusy,
-    setSetupMapGeneratedKey,
-    setSetupMapImage,
-    setSetupMapImageSource,
-    setSetupMapNegativePrompt,
-    setSetupMapProblem,
-    setSetupMapPrompt,
-    setSetupMapSize,
-    setSetupMapSource,
-    setSetupName,
-    setSetupPlacementError,
-    setSetupPlayerBackground,
-    setSetupProblem,
-    setSetupResidentAdmissions,
-    setSetupWorldName,
-    setSetupSetting,
-    setSetupShowIssues,
-    setSetupStep,
-    setSetupVenues,
-    setSetupWorkspace,
-    setSetupWorldFacts,
-    setVisualLoreDefault,
     updateSetupMapRequest,
   });
 
   const gotoSetupStep = createFoundingGotoSetupStep({
-    setupResidentAdmissions,
-    setSetupResidentAdmissions,
-    setupWorldName,
-    setSetupMapReviewed,
+    ...founding,
     catalog,
-    connectionSetupProblem,
     loadCatalog,
     loadLorebooks,
     loadPersonas,
     personaDraft,
     personas,
     residentContextProblem,
-    setMovingSetupVenueId,
-    setSetupEditorOpen,
-    setSetupProblem,
-    setSetupStep,
     get setupBlocker() {
       return setupBlocker;
     },
-
-    setupFoundingVillagerIds,
     setupHomeCount,
-    setupMapBusy,
     setupMapSrc,
-    setupName,
-    setupPlayerBackground,
-    setupSetting,
-    setupStep,
-    setupSuggestionsBusy,
-    setupVenueBusy,
     snapshot,
   });
 
   const setupDraftRow = createFoundingSetupDraftRow();
 
   const generateSetupImage = createFoundingGenerateSetupImage({
+    ...founding,
+    setupWorldName: undefined,
     element,
     personaDraft,
-    personalizeHomes,
-    sceneryStyle,
-    sceneryStyleProfileId,
     selectedResidentAdmissions,
-    setSelectedSetupVenueId,
-    setSetupImageTarget,
-    setSetupProblem,
-    setSetupVenueBusy,
-    setSetupVenues,
     setupDraftRow,
-
-    setupImageClaim,
     setupImageContextKey,
     setupImageContextKeyRef,
-    setupImageTargetRef,
-
-    setupLorebookDraft,
-    setupLoreTokenBudgetDraft,
-    setupName,
-    setupSetting,
     setupVenuesRef,
-    setupWorldFacts,
     snapshot,
-    visualLoreDefault,
     get withSetupImage() {
       return withSetupImage;
     },
   });
 
   const uploadSetupImage = createFoundingUploadSetupImage({
+    ...founding,
     patchSetupVenue,
-    setSetupImageTarget,
-    setSetupProblem,
-    setSetupVenueBusy,
     setupBeginningSourceKey,
     setupBeginningSourceKeyRef,
-    setupImageClaim,
-    setupImageTargetRef,
     setupVenuesRef,
     snapshot,
     get withSetupImage() {
@@ -1706,96 +1041,53 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   /** Why the wizard cannot finish yet, or "" when it can. Checked here as well as on the server so the player is told before a request is made. */
   const setupBlocker = useFoundingSetupBlocker({
+    ...founding,
     catalog,
     personaDraft,
-
-    setupFoundingVillagerIds,
     setupHomeCount,
-    setupMapBusy,
-    setupMapReviewed,
     setupMapSrc,
-    setupName,
-    setupPlayerBackground,
-    setupSetting,
-    setupVenues,
-    setupWorldFacts,
     snapshot,
   });
 
   const foundVillage = useFoundVillage({
-    setupSpriteRevisions,
-    draftSaveQueue,
+    ...founding,
     element,
     flushSetupDraft,
-    mapVisualLore,
     personaDraft,
-    personalizeHomes,
     residentContextProblem,
-    sceneryStyle,
-    sceneryStyleProfileId,
     selectedResidentAdmissions,
     setBusy,
-    setDraftReady,
     setScreen,
-    setSelectedSetupVenueId,
-    setSetupProblem,
-    setSetupStep,
     setSnapshot,
     setupBlocker,
-
-    setupFoundingVillagerIds,
-    setupLorebookDraft,
-    setupLoreTokenBudgetDraft,
     setupMapSrc,
-    setupName,
-    setupTimeZone,
-    setupPlayerBackground,
-    setupWorldName,
-    setupSetting,
-    setupVenues,
     snapshot,
-    visualLoreDefault,
   });
 
   /** The destructive half of the pair the General settings panel offers. */
   const startOver = useFoundingStartOver({
-    draftRevision,
-    draftSaveQueue,
+    ...founding,
     openSetup,
     setBusy,
     setCatalog,
-    setDraftReady,
     setResetArmed,
-    setSavedSetupDraft,
     setSettingsError,
     setSnapshot,
   });
 
-  useFoundingDraftOffer({
-    draftRevision,
-    loadCatalog,
-    loadPersonas,
-    openSetup,
-    setDraftReady,
-    setDraftSavedAt,
-    setDraftSaveError,
-    setSavedSetupDraft,
-    setScreen,
-    setupOfferedRef,
-    snapshot,
-  });
+  useFoundingDraftOffer({ ...founding, loadCatalog, loadPersonas, openSetup, setScreen, snapshot });
 
   useFoundingPreparationPolling({
+    ...founding,
     visible,
     canPlay: snapshot?.foundingPreparation?.canPlay,
     status: snapshot?.foundingPreparation?.status,
     screen,
-    setPreparationProblem,
     setScreen,
     setSnapshot,
   });
 
-  const retryPreparation = useRetryPreparation({ setPreparationProblem, setSnapshot });
+  const retryPreparation = useRetryPreparation({ ...founding, setSnapshot });
 
   // ── Venue editor ───────────────────────────────────────────────────────────
   // Rows are keyed by a client-side id; the server accepts or mints its own, so
@@ -1872,7 +1164,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * pictures for a list nobody is looking at is the one kind of work this could
    * do that the player would never see the result of.
    */
-  const portraitWanted = calculatePortraitWanted({ catalog, screen, setupStep, snapshot });
+  const portraitWanted = calculatePortraitWanted({ ...founding, catalog, screen, snapshot });
 
   /**
    * The faces behind everybody the tab can draw.
@@ -1950,19 +1242,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     snapshot,
   });
 
-  const draftPins: MapPin[] = calculateDraftPins({
-    selectedSetupVenueId,
-    setMovingSetupVenueId,
-    setSelectedSetupVenueId,
-    setSetupEditorOpen,
-    setSetupWorkspace,
-    setupAuthoredFields,
-    setupEditorAuthoredOriginal,
-    setupEditorOriginal,
-    setupEditorZoneOriginal,
-    setupVenues,
-    setupZoneDrafts,
-  });
+  const draftPins: MapPin[] = calculateDraftPins(founding);
   const repairController = useRepairController(screen === "menu" && menuPage === "repair", async (kind) => {
     setMemoryLibrary(null);
     setAgendas([]);
@@ -1973,17 +1253,19 @@ export function useVillageController({ element }: { element: HTMLElement }) {
       );
       if (session) {
         const kept =
-          room?.id !== session.id && roomDraft ? { title: room?.placeName ?? "Previous Scene", text: roomDraft } : null;
-        if (room?.id !== session.id) setRoomDraft("");
-        roomCompletionRef.current = null;
-        observedRoomIdRef.current = "";
+          room?.id !== session.id && scenes.roomDraft
+            ? { title: room?.placeName ?? "Previous Scene", text: scenes.roomDraft }
+            : null;
+        if (room?.id !== session.id) scenes.setRoomDraft("");
+        scenes.roomCompletionRef.current = null;
+        scenes.observedRoomIdRef.current = "";
         setRoom(session);
-        setRoomEnded(false);
-        setRoomOpen(true);
-        setRoomMode("chat");
+        scenes.setRoomEnded(false);
+        scenes.setRoomOpen(true);
+        scenes.setRoomMode("chat");
         return kept;
       }
-    } else if (roomOpen && room) {
+    } else if (scenes.roomOpen && room) {
       const { session } = await request<{ session: import("../../shared/contracts/village.js").SceneView | null }>(
         "/rooms/active",
       );
@@ -1998,8 +1280,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     showAllMaps,
     setShowAllMaps,
     returnToScene: () => setScreen("room"),
-    setupSpriteRevisions,
-    setSetupSpriteRevisions,
+    setupSpriteRevisions: founding.setupSpriteRevisions,
+    setSetupSpriteRevisions: founding.setSetupSpriteRevisions,
     sceneRestoration,
     ...venueScreenCommands,
     element,
@@ -2014,10 +1296,10 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
     closeExploration,
     closeRoom,
-    composerEditVersionRef,
-    connectionSetupProblem,
+    composerEditVersionRef: scenes.composerEditVersionRef,
+    connectionSetupProblem: founding.connectionSetupProblem,
     continueRoomWithoutGreeting,
-    debugDiscardEnabled,
+    debugDiscardEnabled: scenes.debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
     completeResidenceMove,
@@ -2025,9 +1307,9 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     discardRoomDebug,
     dismissRoomNotice,
     draftPins,
-    draftSaveError,
-    draftSavedAt,
-    draftSaving,
+    draftSaveError: founding.draftSaveError,
+    draftSavedAt: founding.draftSavedAt,
+    draftSaving: founding.draftSaving,
     drawPlaceImage,
     dropPlaceImage,
     error,
@@ -2048,17 +1330,17 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     homeBuildings,
     keepPlaceImage,
     knowledgeDraft,
-    lastSceneEnding,
+    lastSceneEnding: scenes.lastSceneEnding,
     leaveRoom,
     leaveVenue,
     loadMemoryLibrary,
     loadSnapshot,
     loreTokenBudgetDraft,
     lorebookDraft,
-    lorebooks,
-    lorebooksError,
-    mailboxOpen,
-    mapVisualLore,
+    lorebooks: founding.lorebooks,
+    lorebooksError: founding.lorebooksError,
+    mailboxOpen: scenes.mailboxOpen,
+    mapVisualLore: founding.mapVisualLore,
     memoryLibrary,
     menuPage,
     menuSection,
@@ -2067,7 +1349,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     movePrivateZoneId,
     moveRoom,
     moveTargetId,
-    movingSetupVenueId,
+    movingSetupVenueId: founding.movingSetupVenueId,
     nameOfCharacter,
     navigationView,
     newSetupDraft,
@@ -2082,7 +1364,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     personProfile,
     personaDraft,
     personaPortrait,
-    personalizeHomes,
+    personalizeHomes: founding.personalizeHomes,
     personas,
     pickSetupTownMap,
     pickerOpen,
@@ -2093,7 +1375,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     placingProjectId,
     playerMovePrivateZoneId,
     portraits,
-    preparationProblem,
+    preparationProblem: founding.preparationProblem,
     previewVillagerRefresh,
     profileOrigin,
     progressDebug,
@@ -2109,28 +1391,28 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     retryWork,
     rewriteAgenda,
     room,
-    roomBusy,
-    roomChangeStatus,
-    roomContactBoundary,
-    roomDraft,
-    roomEnded,
-    roomError,
-    roomGreetingError,
-    roomGreetingNotice,
-    roomLeaveSubmissionIdRef,
-    roomMode,
-    legacyRecovery,
-    setLegacyRecovery,
-    roomMoveOperationIdRef,
-    roomMoveZoneId,
-    roomNotices,
-    sceneReading,
-    roomOpen,
-    roomRuling,
-    setRoomRuling,
-    roomSubmissionIdRef,
-    roomTargetId,
-    roomUnresolvedChanges,
+    roomBusy: scenes.roomBusy,
+    roomChangeStatus: scenes.roomChangeStatus,
+    roomContactBoundary: scenes.roomContactBoundary,
+    roomDraft: scenes.roomDraft,
+    roomEnded: scenes.roomEnded,
+    roomError: scenes.roomError,
+    roomGreetingError: scenes.roomGreetingError,
+    roomGreetingNotice: scenes.roomGreetingNotice,
+    roomLeaveSubmissionIdRef: scenes.roomLeaveSubmissionIdRef,
+    roomMode: scenes.roomMode,
+    legacyRecovery: scenes.legacyRecovery,
+    setLegacyRecovery: scenes.setLegacyRecovery,
+    roomMoveOperationIdRef: scenes.roomMoveOperationIdRef,
+    roomMoveZoneId: scenes.roomMoveZoneId,
+    roomNotices: scenes.roomNotices,
+    sceneReading: scenes.sceneReading,
+    roomOpen: scenes.roomOpen,
+    roomRuling: scenes.roomRuling,
+    setRoomRuling: scenes.setRoomRuling,
+    roomSubmissionIdRef: scenes.roomSubmissionIdRef,
+    roomTargetId: scenes.roomTargetId,
+    roomUnresolvedChanges: scenes.roomUnresolvedChanges,
     saveScenerySettings,
     spriteVisualSettings,
     saveSendOnEnter,
@@ -2138,22 +1420,22 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     saveBackgroundPace,
     saveVenue,
     savedPins,
-    savedSetupDraft,
+    savedSetupDraft: founding.savedSetupDraft,
     savedTownMapShape,
     savedTownMapView,
-    sceneryStyle,
-    sceneryStyleProfileId,
+    sceneryStyle: founding.sceneryStyle,
+    sceneryStyleProfileId: founding.sceneryStyleProfileId,
     screen,
     search,
     selectedResidentAdmissions,
-    selectedSetupVenueId,
+    selectedSetupVenueId: founding.selectedSetupVenueId,
     sendRoom,
     turnRecovery,
     checkSavedReply,
     replyPending,
     setAgendaScheduleIngestion,
     setBusy,
-    setConnectionSetupProblem,
+    setConnectionSetupProblem: founding.setConnectionSetupProblem,
     setError,
     setExplorationSearch,
     setExploreSheet,
@@ -2162,18 +1444,18 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setKnowledgeDraft,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
-    setMailboxOpen,
-    setMapVisualLore,
+    setMailboxOpen: scenes.setMailboxOpen,
+    setMapVisualLore: founding.setMapVisualLore,
     setMemoryLibrary,
     setMenuPage,
     setMovePrivateZoneId,
     setMoveTargetId,
-    setMovingSetupVenueId,
+    setMovingSetupVenueId: founding.setMovingSetupVenueId,
     setNavigationView,
     setOpenPlaceId,
     setPersonProfile,
     setPersonaDraft,
-    setPersonalizeHomes,
+    setPersonalizeHomes: founding.setPersonalizeHomes,
     setPickerOpen,
     setPlaceProblem,
     setPlacingProjectId,
@@ -2183,47 +1465,47 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setRequestEdits,
     setResetArmed,
     setRoom,
-    setRoomBusy,
-    setRoomContactBoundary,
-    setRoomContactKind,
-    setRoomDraft,
-    setRoomError,
-    setRoomMode,
-    setRoomMoveZoneId,
-    setRoomTargetId,
-    setSceneryStyle,
-    setSceneryStyleProfileId,
+    setRoomBusy: scenes.setRoomBusy,
+    setRoomContactBoundary: scenes.setRoomContactBoundary,
+    setRoomContactKind: scenes.setRoomContactKind,
+    setRoomDraft: scenes.setRoomDraft,
+    setRoomError: scenes.setRoomError,
+    setRoomMode: scenes.setRoomMode,
+    setRoomMoveZoneId: scenes.setRoomMoveZoneId,
+    setRoomTargetId: scenes.setRoomTargetId,
+    setSceneryStyle: founding.setSceneryStyle,
+    setSceneryStyleProfileId: founding.setSceneryStyleProfileId,
     setScreen,
     setSearch,
-    setSelectedSetupVenueId,
+    setSelectedSetupVenueId: founding.setSelectedSetupVenueId,
     setSettingDraft,
     setSettingsError,
-    setSetupEditorOpen,
-    setSetupFocusIssue,
+    setSetupEditorOpen: founding.setSetupEditorOpen,
+    setSetupFocusIssue: founding.setSetupFocusIssue,
 
-    setSetupFoundingVillagerIds,
-    setSetupKeyboardSpot,
-    setSetupLoreTokenBudgetDraft,
-    setSetupLorebookDraft,
-    setSetupMapBusy,
-    setSetupMapGeneratedKey,
-    setSetupMapNegativePrompt,
-    setSetupMapProblem,
-    setSetupMapPrompt,
-    setSetupMapReviewed,
-    setSetupMapSource,
-    setSetupName,
-    setSetupPlacementError,
-    setSetupPlayerBackground,
-    setSetupProblem,
-    setSetupResidentAdmissions,
-    setSetupWorldName,
-    setSetupSetting,
-    setSetupShowIssues,
-    setSetupStep,
-    setSetupVenues,
-    setSetupWorkspace,
-    setSetupWorldFacts,
+    setSetupFoundingVillagerIds: founding.setSetupFoundingVillagerIds,
+    setSetupKeyboardSpot: founding.setSetupKeyboardSpot,
+    setSetupLoreTokenBudgetDraft: founding.setSetupLoreTokenBudgetDraft,
+    setSetupLorebookDraft: founding.setSetupLorebookDraft,
+    setSetupMapBusy: founding.setSetupMapBusy,
+    setSetupMapGeneratedKey: founding.setSetupMapGeneratedKey,
+    setSetupMapNegativePrompt: founding.setSetupMapNegativePrompt,
+    setSetupMapProblem: founding.setSetupMapProblem,
+    setSetupMapPrompt: founding.setSetupMapPrompt,
+    setSetupMapReviewed: founding.setSetupMapReviewed,
+    setSetupMapSource: founding.setSetupMapSource,
+    setSetupName: founding.setSetupName,
+    setSetupPlacementError: founding.setSetupPlacementError,
+    setSetupPlayerBackground: founding.setSetupPlayerBackground,
+    setSetupProblem: founding.setSetupProblem,
+    setSetupResidentAdmissions: founding.setSetupResidentAdmissions,
+    setSetupWorldName: founding.setSetupWorldName,
+    setSetupSetting: founding.setSetupSetting,
+    setSetupShowIssues: founding.setSetupShowIssues,
+    setSetupStep: founding.setSetupStep,
+    setSetupVenues: founding.setSetupVenues,
+    setSetupWorkspace: founding.setSetupWorkspace,
+    setSetupWorldFacts: founding.setSetupWorldFacts,
     setSiteProjectId,
     setSnapshot,
     setSpriteManagerId,
@@ -2236,50 +1518,50 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setVenueProposalDraft,
     setVenueSearch,
     setVenueZoneKey,
-    setVisualLoreDefault,
+    setVisualLoreDefault: founding.setVisualLoreDefault,
     settingDraft,
     settingsError,
     setupBeginningSourceKey,
-    setupEditorOpen,
-    setupFocusIssue,
+    setupEditorOpen: founding.setupEditorOpen,
+    setupFocusIssue: founding.setupFocusIssue,
 
-    setupFoundingVillagerIds,
-    setupImageClaim,
-    setupImageTarget,
-    setupKeyboardSpot,
-    setupLoreTokenBudgetDraft,
-    setupLorebookDraft,
-    setupMapBusy,
-    setupMapGeneratedKey,
+    setupFoundingVillagerIds: founding.setupFoundingVillagerIds,
+    setupImageClaim: founding.setupImageClaim,
+    setupImageTarget: founding.setupImageTarget,
+    setupKeyboardSpot: founding.setupKeyboardSpot,
+    setupLoreTokenBudgetDraft: founding.setupLoreTokenBudgetDraft,
+    setupLorebookDraft: founding.setupLorebookDraft,
+    setupMapBusy: founding.setupMapBusy,
+    setupMapGeneratedKey: founding.setupMapGeneratedKey,
     setupMapGenerationKey,
-    setupMapImageSource,
-    setupMapNegativePrompt,
-    setupMapProblem,
-    setupMapPrompt,
-    setupMapRequest,
-    setupMapReviewed,
+    setupMapImageSource: founding.setupMapImageSource,
+    setupMapNegativePrompt: founding.setupMapNegativePrompt,
+    setupMapProblem: founding.setupMapProblem,
+    setupMapPrompt: founding.setupMapPrompt,
+    setupMapRequest: founding.setupMapRequest,
+    setupMapReviewed: founding.setupMapReviewed,
     setupMapShape,
-    setupMapSize,
-    setupMapSource,
+    setupMapSize: founding.setupMapSize,
+    setupMapSource: founding.setupMapSource,
     setupMapSrc,
-    setupName,
-    setupTimeZone,
-    setSetupTimeZone,
-    setupPlacementError,
-    setupPlayerBackground,
-    setupProblem,
-    setupResidentAdmissions,
-    setupWorldName,
-    setupSetting,
-    setupShowIssues,
-    setupStep,
-    setupSuggestionsBusy,
-    setupSuggestionsClaim,
-    setupSuggestionsKey,
-    setupVenueBusy,
-    setupVenues,
-    setupWorkspace,
-    setupWorldFacts,
+    setupName: founding.setupName,
+    setupTimeZone: founding.setupTimeZone,
+    setSetupTimeZone: founding.setSetupTimeZone,
+    setupPlacementError: founding.setupPlacementError,
+    setupPlayerBackground: founding.setupPlayerBackground,
+    setupProblem: founding.setupProblem,
+    setupResidentAdmissions: founding.setupResidentAdmissions,
+    setupWorldName: founding.setupWorldName,
+    setupSetting: founding.setupSetting,
+    setupShowIssues: founding.setupShowIssues,
+    setupStep: founding.setupStep,
+    setupSuggestionsBusy: founding.setupSuggestionsBusy,
+    setupSuggestionsClaim: founding.setupSuggestionsClaim,
+    setupSuggestionsKey: founding.setupSuggestionsKey,
+    setupVenueBusy: founding.setupVenueBusy,
+    setupVenues: founding.setupVenues,
+    setupWorkspace: founding.setupWorkspace,
+    setupWorldFacts: founding.setupWorldFacts,
     siteProjectId,
     snapshot,
     spriteLeaveGuard,
@@ -2318,6 +1600,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venueSearch,
     venueZoneKey,
     venuesDraft,
-    visualLoreDefault,
+    visualLoreDefault: founding.visualLoreDefault,
   };
 }
