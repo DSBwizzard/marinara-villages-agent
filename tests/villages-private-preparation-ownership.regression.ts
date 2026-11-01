@@ -15,11 +15,7 @@ import {
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function waitForDispatch(entered: Promise<void>, work: Promise<void>) {
   return Promise.race([

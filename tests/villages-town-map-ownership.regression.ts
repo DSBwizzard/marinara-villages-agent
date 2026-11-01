@@ -17,11 +17,7 @@ import {
 } from "../packages/villages/src/server/jobs/town-map-service.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const attempt = (id = "shared-map-attempt") => ({ actionId: id, sourceKey: "fixture-inputs", targetId: "target-map" });

@@ -31,11 +31,7 @@ import {
 import { authorWorldWishFixture, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function until(predicate: () => boolean) {

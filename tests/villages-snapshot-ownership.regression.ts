@@ -27,9 +27,7 @@ import { privatePreparationRooms } from "../packages/villages/src/server/jobs/pr
 const stamp = "2026-10-07T12:00:00.000Z";
 const now = new Date(stamp);
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({

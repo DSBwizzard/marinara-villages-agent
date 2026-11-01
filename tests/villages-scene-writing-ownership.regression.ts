@@ -22,9 +22,7 @@ import {
 } from "../packages/villages/src/server/features/scenes/writing.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(label: string, checkpointed = false) {
   const world = defaultVillageState();
