@@ -27,6 +27,7 @@ import {
   type SceneWritingPorts,
 } from "../packages/villages/src/server/features/scenes/writing-service.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
+import { SCENE_DEVELOPMENT_OUTPUT } from "../packages/villages/src/server/domain/rules/narrative-prompts.js";
 
 const at = "2026-10-29T12:00:00.000Z",
   now = new Date(at);
@@ -255,17 +256,29 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
 }
 
 // Actual Narration + System calls, checkpoint-write gap and exact provider-free replay.
-for (const variant of ["normal", "gap", "race-boundary"] as const) {
+for (const variant of ["normal", "gap", "race-boundary", "quiet", "no-review", "legacy-review-retry"] as const) {
   const { state, scene } = fixture(),
     checkpoints = new Map<string, any>();
   let requests = 0,
     failReservationAck = variant === "gap",
     narrationCalls = 0,
-    systemCalls = 0;
+    systemCalls = 0,
+    explicitRetry = false;
   const raceBoundary = variant === "race-boundary";
+  const quiet = variant === "quiet" || variant === "no-review";
+  if (quiet) state.backgroundPace = "off";
+  if (variant === "no-review") delete scene.operation!.input.narrativeIntroductionVersion;
   const checkpoint = async <T>(key: string, work: () => Promise<T>): Promise<T> => {
     if (checkpoints.has(key)) return structuredClone(checkpoints.get(key));
     const result = await work();
+    if (variant === "legacy-review-retry" && key.startsWith("semantic-v2:exchange:") && key.endsWith(":input")) {
+      const legacy = result as any;
+      delete legacy.narrativeReviewOutputVersion;
+      legacy.systemPrompt = legacy.systemPrompt.replace(
+        "Return {sourceHash," + SCENE_DEVELOPMENT_OUTPUT + ",",
+        "Return {sourceHash,",
+      );
+    }
     if (key.startsWith("narrative-dispatch:") && failReservationAck) {
       failReservationAck = false;
       throw Error("Dispatch checkpoint write failed");
@@ -306,7 +319,7 @@ for (const variant of ["normal", "gap", "race-boundary"] as const) {
     requests++;
     if (!messages[0].content.startsWith("You interpret Villages gameplay.")) {
       narrationCalls++;
-      if (raceBoundary) assert.doesNotMatch(messages[0].content, /Immutable local admission/);
+      if (raceBoundary || quiet) assert.doesNotMatch(messages[0].content, /Immutable local admission/);
       else assert.match(messages[0].content, /Immutable local admission/);
       return {
         finishReason: "stop",
@@ -315,11 +328,13 @@ for (const variant of ["normal", "gap", "race-boundary"] as const) {
           segments: [
             {
               kind: "narration",
-              text: raceBoundary
-                ? narrationCalls === 1
-                  ? "Everyone dies."
-                  : "The room is quiet."
-                : "A gust loosens the hall sign.",
+              text: quiet
+                ? "The room is quiet."
+                : raceBoundary
+                  ? narrationCalls === 1
+                    ? "Everyone dies."
+                    : "The room is quiet."
+                  : "A gust loosens the hall sign.",
             },
           ],
           residentActions: [],
@@ -328,6 +343,17 @@ for (const variant of ["normal", "gap", "race-boundary"] as const) {
     }
     const packet = JSON.parse(messages[1].content);
     systemCalls++;
+    const declaration = messages[0].content.match(
+      /Return \{sourceHash,[\s\S]*?\}\. Return exactly one JSON object\./,
+    )?.[0];
+    assert.ok(declaration, "System receives an explicit root response contract");
+    assert.equal(
+      declaration.includes("narrativeIntroduction:"),
+      packet.input.narrativeGrant !== undefined && variant !== "legacy-review-retry",
+      "The declared response shape includes every required introduction review",
+    );
+    if (variant === "legacy-review-retry")
+      assert.equal(messages[0].content.includes("Required root JSON field: narrativeIntroduction:"), explicitRetry);
     return {
       finishReason: "stop",
       content: JSON.stringify({
@@ -348,14 +374,17 @@ for (const variant of ["normal", "gap", "race-boundary"] as const) {
         projectSpeech: [],
         access: [],
         events: { moves: [], departures: [], contactEnd: [] },
-        narrativeIntroduction: raceBoundary
-          ? { status: "quiet", development: null }
-          : {
-              status: "introduced",
-              segment: 0,
-              quote: "A gust loosens the hall sign.",
-              development: development(packet.input.narrativeGrant),
-            },
+        narrativeIntroduction:
+          variant === "no-review" || (variant === "legacy-review-retry" && systemCalls === 1)
+            ? undefined
+            : raceBoundary || quiet
+              ? { status: "quiet", development: null }
+              : {
+                  status: "introduced",
+                  segment: 0,
+                  quote: "A gust loosens the hall sign.",
+                  development: development(packet.input.narrativeGrant),
+                },
         residentActionReview: {
           version: 1,
           additionalActions: [],
@@ -372,6 +401,7 @@ for (const variant of ["normal", "gap", "race-boundary"] as const) {
     completeWithRoom: complete,
     venueCheckpoint: checkpoint,
     venueSavedCheckpoint: saved,
+    venueExplicitRetry: () => explicitRetry,
     venueOperationSignal: () => undefined,
     readVillageLore: async () => [],
     runtimeDebug() {},
@@ -395,7 +425,42 @@ for (const variant of ["normal", "gap", "race-boundary"] as const) {
     assert.equal(requests, 0);
     assert.equal(state.eventAttempts!.attempts.length, 1);
   }
+  let frozen: [string, unknown][] | undefined;
+  if (variant === "legacy-review-retry") {
+    await assert.rejects(writer.generate(scene, "", "greet", "", null), /introduction review is incomplete/);
+    assert.equal(narrationCalls, 1);
+    assert.equal(systemCalls, 1);
+    assert.ok(![...checkpoints.keys()].some((key) => key.endsWith(":narrative-review-output-v1")));
+    frozen = structuredClone(
+      [...checkpoints.entries()].filter(([key]) => key.endsWith(":input") || key.endsWith(":prompt")),
+    );
+    explicitRetry = true;
+  }
   const reply = await writer.generate(scene, "", "greet", "", null);
+  if (variant === "legacy-review-retry") {
+    assert.equal(narrationCalls, 1, "Explicit correction reuses purchased Narration");
+    assert.equal(systemCalls, 2, "Only the failed System check is retried");
+    for (const [key, value] of frozen!)
+      assert.deepEqual(checkpoints.get(key), value, "Original source and prompt stay exact");
+    const [, corrected] = [...checkpoints.entries()].find(([key]) => key.endsWith(":narrative-review-output-v1"))!;
+    const [, original] = [...checkpoints.entries()].find(
+      ([key]) => key.startsWith("semantic-v2:exchange:") && key.endsWith(":prompt"),
+    )!;
+    assert.deepEqual(corrected.input, original.input);
+    assert.equal(corrected.sourceHash, original.sourceHash);
+    assert.deepEqual(corrected.messages.slice(1), original.messages.slice(1));
+    explicitRetry = false;
+    await writer.generate(scene, "", "greet", "", null);
+    assert.equal(systemCalls, 2, "A completed corrected check replays without another request");
+    continue;
+  }
+  if (quiet) {
+    assert.equal(reply.narrativeSource, undefined);
+    assert.equal(requests, 2);
+    await writer.generate(scene, "", "greet", "", null);
+    assert.equal(requests, 2);
+    continue;
+  }
   if (raceBoundary) {
     assert.equal(reply.narrativeSource, undefined);
     assert.equal(requests, 4, "Only the existing HALT replacement pair is dispatched after the ordinary pair.");
