@@ -1,4 +1,4 @@
-import type { VenueScene } from "../models/scene-model.js";
+import type { VenueRecordEvent, VenueScene } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
 export function sceneTurnPublished(value: unknown) {
@@ -22,6 +22,14 @@ export function publicSceneHistoryProjection(scene: VenueScene) {
     ),
     privateHearing: publicSceneHistoryHearing(scene),
   };
+}
+export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
+  return publicSceneHistoryProjection(scene).positions.flatMap((position) => {
+    const line = scene.lines[position];
+    return line.presenceChange && !line.contactHidden
+      ? [{ id: `presence:${scene.id}:${line.id}`, kind: "venue" as const, text: line.content }]
+      : [];
+  });
 }
 export function publicSceneHistoryHearing(value: unknown) {
   const scene = asRecord(value);

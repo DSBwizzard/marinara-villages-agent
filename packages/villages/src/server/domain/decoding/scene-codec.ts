@@ -133,6 +133,7 @@ export function coerceSession(value: unknown): VenueScene {
               ? { remoteDelivery: row.remoteDelivery as VenueLine["remoteDelivery"] }
               : {}),
             ...(row.contactHidden === true ? { contactHidden: true } : {}),
+            ...(row.presenceChange === true ? { presenceChange: true as const } : {}),
             ...(row.attentionEvidence === true ? { attentionEvidence: true } : {}),
             ...(asRecord(row.speechSource).version === 3 && Array.isArray(asRecord(row.speechSource).spans)
               ? { speechSource: structuredClone(row.speechSource) as VenueLine["speechSource"] }

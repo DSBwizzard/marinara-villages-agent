@@ -221,6 +221,52 @@ await withBrowser(browser, async () => {
   await refresh(second);
   await expect(second.locator("[aria-label='World changes']")).not.toContainText(fulfilled.text);
   await second.close();
+  const arrival = {
+    id: "attendance",
+    role: "assistant",
+    speakerId: "__venue_scene__",
+    name: "Narration",
+    kind: "narration",
+    content: "11:57 AM · Bob is no longer here. Jimmy is here.",
+    at: now,
+    heardBy: [],
+    physicalIdsAfter: ["jimmy"],
+    presenceChange: true,
+  };
+  session.initialActiveIds = ["bob"];
+  session.participants.push({ characterId: "jimmy", name: "Jimmy", doing: "gardening" });
+  session.activeIds = ["jimmy"];
+  session.lines.push(arrival);
+  session.sceneRevision++;
+  const arrivalNotice = { id: "presence:live:attendance", kind: "venue", text: arrival.content };
+  notices.push(arrivalNotice);
+  await refresh();
+  await expect(stack).toContainText(arrival.content);
+  await expect(page.locator(".marinara-capability-villages-chat-vn-reading")).not.toContainText(arrival.content);
+  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText(/1\s*\/\s*1$/u);
+  await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
+  await expect(page.locator('[data-character-id="bob"]')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await page.screenshot({ path: "artifacts/attendance-chip-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
+  await page.screenshot({ path: "artifacts/attendance-chip-desktop.png" });
+  await page.getByRole("button", { name: "Dismiss " + arrival.content }).click();
+  await page.reload();
+  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await expect(stack).not.toContainText(arrival.content);
+  await expect(composer).toBeEnabled();
+  const history = session.lines;
+  session.lines = [arrival];
+  const empty = await browser.newPage({ viewport: { width: 375, height: 740 } });
+  await mockEngineLookups(empty);
+  await mount(empty);
+  await expect(empty.getByRole("textbox", { name: "Message at The Park" })).toBeEnabled();
+  await expect(empty.locator('[data-character-id="jimmy"]')).toBeVisible();
+  await expect(empty.locator(".marinara-capability-villages-chat-vn-counter")).toHaveCount(0);
+  await expect(empty.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
+  await empty.close();
+  session.lines = history;
   assert.equal(interpretations, 0, "Wish display, polling, refresh and dismissal add no interpretation requests");
   assert.equal(closingReviews, 0);
   mkdirSync("artifacts", { recursive: true });

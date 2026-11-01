@@ -110,7 +110,7 @@ Once a Scene and its saved effects are settled, its transcript is removed. Relev
 
 New Scenes follow the Village's current time. Residents can leave for commitments and others can arrive while you stay in the Venue. Each exchange keeps the time, participants and witnesses admitted for that request; a scheduled departure waits for that exchange to settle. Accepted changes count as you play, before **Conclude**.
 
-On returning, earlier replies remain saved and your draft stays unsent. The Scene shows who is here now without inventing anything your Persona did during the gap. New arrivals do not learn earlier conversations automatically. If the situation changes before Send, your message stays a draft while the Scene updates; review it before sending again. Time passing never purchases a generated greeting.
+On returning, earlier replies remain saved and your draft stays unsent. A small World changes popup shows arrivals and departures with the Village time, outside the dialogue box; you can dismiss it or reopen its chip. The Scene shows who is here now without inventing anything your Persona did during the gap. New arrivals do not learn earlier conversations automatically. If the situation changes before Send, your message stays a draft while the Scene updates; review it before sending again. Time passing never purchases a generated greeting.
 
 Scenes already open in an older build keep their original captured moment until you conclude them. New Scenes use the live behavior. Saved and interrupted requests keep their original evidence and recovery controls.
 

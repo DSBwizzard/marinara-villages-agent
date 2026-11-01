@@ -16,7 +16,7 @@ import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { coerceResponseDiagnostics } from "../../domain/rules/response-diagnostics.js";
-import { sceneProcessingSummary } from "../../domain/rules/scene-public.js";
+import { scenePresenceNotices, sceneProcessingSummary } from "../../domain/rules/scene-public.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 import { workFailureSummary } from "../../domain/rules/work-failure.js";
 export interface SceneChangesPorts {
@@ -190,7 +190,11 @@ export function createSceneChanges({
         },
       })),
       notices: filterRelationshipNotices(
-        [...page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])), ...relationshipNotices],
+        [
+          ...scenePresenceNotices(scene).filter((event) => !village.dismissedNoticeIds.includes(event.id)),
+          ...page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])),
+          ...relationshipNotices,
+        ],
         presentation.relationshipContext,
       ),
       dismissedNoticeIds: village.dismissedNoticeIds,
@@ -247,7 +251,8 @@ export function createSceneChanges({
     const known =
       ("recordEvents" in scene
         ? scene.recordEvents.some((event) => event.id === noticeId)
-        : scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId))) ||
+        : scenePresenceNotices(scene).some((event) => event.id === noticeId) ||
+          scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId))) ||
       !!village.exchangeReceipts[noticeId]?.notice ||
       !!(
         village.relationshipContext &&

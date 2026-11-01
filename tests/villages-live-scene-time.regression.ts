@@ -151,12 +151,14 @@ try {
   f.setBusy(false);
   await f.service.activeVenueSession();
   assert.deepEqual(f.scene.activeIds, [], "Maya leaves without requiring another player message");
+  assert.equal(f.scene.lines.at(-1)!.presenceChange, true);
   assert.equal(f.scene.zoneId, "community", "the player remains in the garden");
   assert(f.scene.sceneRevision > expected, "a stale send cannot use its old audience revision");
   assert.deepEqual(admitted.activeIds, ["maya"]);
   assert.equal(admitted.continuity!.capturedAt, "2026-11-02T09:57:00.000Z");
   now = new Date("2026-11-02T11:57:00Z");
   f.restart();
+  assert.equal(f.scene.lines.at(-1)!.presenceChange, true, "attendance notice survives saved-world decoding");
   await f.service.activeVenueSession();
   assert.deepEqual(f.scene.activeIds, ["jimmy"]);
   assert.deepEqual(f.scene.lines[0]!.heardBy, ["maya"], "Jimmy never becomes an earlier witness");

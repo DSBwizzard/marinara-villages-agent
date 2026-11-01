@@ -431,10 +431,11 @@ export function createLiveScenes({
           at: now.toISOString(),
           heardBy: [],
           physicalIdsAfter: activeIds,
+          presenceChange: true,
           content: [
             currentMoment.dayIndex !== previousMoment.dayIndex
               ? `${currentMoment.weekday}, ${currentMoment.dateLabel}, ${currentMoment.localTime}.`
-              : "",
+              : `${currentMoment.localTime} ·`,
             ...departed.map(
               (id) =>
                 `${state.participants.find((row) => row.characterId === id)?.name ?? "A resident"} is no longer here.`,

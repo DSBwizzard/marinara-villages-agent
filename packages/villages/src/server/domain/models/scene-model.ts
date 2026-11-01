@@ -27,6 +27,8 @@ export type VenueLine = {
   viaDoorway?: boolean;
   /** Server-projected local cast after a validated movement in this line. */
   physicalIdsAfter?: string[];
+  /** Server-authored attendance notice, retained for staging but outside the dialogue walk. */
+  presenceChange?: true;
   remoteDelivery?: "loud";
   contactHidden?: boolean;
   attentionEvidence?: boolean;

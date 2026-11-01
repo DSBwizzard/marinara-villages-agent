@@ -60,7 +60,7 @@ export function fixturePlaybackPage(
       cues: asides.flatMap(lineStagingCues),
     });
     const end = stagingPresentation(cursor),
-      paragraphs = villagesWalk(line.content, line.beats ?? null).paragraphs.length;
+      paragraphs = line.presenceChange ? 0 : villagesWalk(line.content, line.beats ?? null).paragraphs.length;
     const moment = {
       id: line.id,
       index,

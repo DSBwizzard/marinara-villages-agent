@@ -646,7 +646,12 @@ export function RoomPanel({
     () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
     [room.activeIds],
   );
-  const stagingFrame = playback.restoring ? emptyFrame : (step?.presentation ?? emptyFrame);
+  const tailMoment = playback.window.moments.at(-1);
+  const stagingFrame = playback.restoring
+    ? emptyFrame
+    : (playback.atLatest && at === steps.length - 1) || !step
+      ? (tailMoment?.end ?? step?.presentation ?? emptyFrame)
+      : step.presentation;
   const stagingState = stagingFrame.state;
   const previousStageReading = useRef<{ roomId: string; key?: string; at: number; restoring: boolean } | null>(null);
   const animateStaging = useMemo(
@@ -1453,11 +1458,13 @@ export function RoomPanel({
             </div>
           </div>
           <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
-              {mobile
-                ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
-                : `${readingOrdinal + 1} / ${readingTotal}`}
-            </span>
+            {step ? (
+              <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
+                {mobile
+                  ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
+                  : `${readingOrdinal + 1} / ${readingTotal}`}
+              </span>
+            ) : null}
             <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
               <button
                 type="button"

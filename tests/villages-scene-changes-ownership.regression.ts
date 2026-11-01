@@ -430,6 +430,39 @@ async function main() {
     "cached notices use the same captured visibility",
   );
 
+  const presence = fixture("presence");
+  const attendance = {
+    id: "attendance",
+    speakerId: "__venue_scene__",
+    name: "Narration",
+    role: "assistant" as const,
+    kind: "narration" as const,
+    content: "10:00 AM · Mara is no longer here.",
+    at: stamp,
+    heardBy: [],
+    physicalIdsAfter: [],
+    presenceChange: true as const,
+  };
+  presence.scene.lines.push(
+    attendance,
+    { ...attendance, id: "hidden", contactHidden: true, content: "Secret" },
+    {
+      ...attendance,
+      id: "audible",
+      contactHidden: true,
+      content: "Hidden words behind a door",
+      soundOnly: { player: true, characterIds: [], text: "A distant sound." },
+    },
+  );
+  const presenceId = "presence:same:attendance";
+  const arrivals = await presence.service.readSceneChanges("same", "50:50:50");
+  assert.deepEqual(arrivals.notices, [{ id: presenceId, kind: "venue", text: attendance.content }]);
+  await assert.rejects(presence.service.dismissSceneNotice("same", "presence:same:hidden"), /unavailable/);
+  await assert.rejects(presence.service.dismissSceneNotice("same", "presence:same:audible"), /unavailable/);
+  await presence.service.dismissSceneNotice("same", presenceId);
+  assert.deepEqual((await presence.service.readSceneChanges("same")).notices, []);
+  assert.deepEqual(presence.world.dismissedNoticeIds, [presenceId]);
+
   const dismiss = fixture("seed");
   await assert.rejects(dismiss.service.dismissSceneNotice("same", "missing"), /unavailable/);
   assert.deepEqual(dismiss.calls, ["scene:same", "world"]);
