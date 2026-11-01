@@ -59,27 +59,19 @@ function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
 }
 
 function roomNoticeIcon(notice: RoomRecordEvent): ReactNode {
+  // Pictogrammers exit-run (Apache-2.0); see icon-licenses.txt.
   if (notice.id.startsWith("presence:"))
     return (
       <svg
         viewBox="0 0 24 24"
-        width="1.2em"
-        height="1.2em"
+        width="20"
+        height="20"
         fill="currentColor"
         aria-hidden="true"
         data-icon="presence"
         style={{ verticalAlign: "middle" }}
       >
-        <path d="m18 5 4-2v18l-4-2z" />
-        <circle cx="9" cy="5.5" r="2" />
-        <path
-          d="M15 3h7v18h-7M4 12l3-3 4-.5 3 4h3m-7-3-3 6 4 3v3m-4-6H2l-1 4"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
+        <path d="M13.34,8.17C12.41,8.17 11.65,7.4 11.65,6.47A1.69,1.69 0 0,1 13.34,4.78C14.28,4.78 15.04,5.54 15.04,6.47C15.04,7.4 14.28,8.17 13.34,8.17M10.3,19.93L4.37,18.75L4.71,17.05L8.86,17.9L10.21,11.04L8.69,11.64V14.5H7V10.54L11.4,8.67L12.07,8.59C12.67,8.59 13.17,8.93 13.5,9.44L14.36,10.79C15.04,12 16.39,12.82 18,12.82V14.5C16.14,14.5 14.44,13.67 13.34,12.4L12.84,14.94L14.61,16.63V23H12.92V17.9L11.14,16.21L10.3,19.93M21,23H19V3H6V16.11L4,15.69V1H21V23M6,23H4V19.78L6,20.2V23Z" />
       </svg>
     );
   return notice.kind === "relationship-up" ? "♥" : notice.kind === "relationship-down" ? "♡" : "★";

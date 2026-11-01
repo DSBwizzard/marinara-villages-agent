@@ -27,6 +27,7 @@ export const villagesDefinition = {
   assetPaths: [
     ...letterFontAssets,
     "villages-icon.png",
+    "icon-licenses.txt",
     "menu-desk.jpg",
     "founding-rebuild.jpg",
     "founding-pioneer.jpg",
@@ -48,6 +49,7 @@ export const villagesDefinition = {
     },
     assets: {
       paths: [
+        "icon-licenses.txt",
         ...letterFontAssets.filter((path) => path.endsWith(".json")),
         "menu-desk.jpg",
         "founding-rebuild.jpg",

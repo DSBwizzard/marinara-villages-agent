@@ -244,6 +244,10 @@ await withBrowser(browser, async () => {
   await expect(stack).toContainText(arrival.content);
   await expect(tray.locator('[data-icon="presence"]')).toHaveCount(1);
   await expect(stack.locator('[data-icon="presence"]')).toHaveCount(1);
+  await stack
+    .locator(".marinara-capability-villages-room-star")
+    .filter({ hasText: arrival.content })
+    .screenshot({ path: "artifacts/attendance-notice-detail.png" });
   await expect(stack).toContainText("★");
   await expect(page.locator(".marinara-capability-villages-chat-vn-reading")).not.toContainText(arrival.content);
   await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText(/1\s*\/\s*1$/u);
