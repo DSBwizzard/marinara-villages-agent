@@ -34,7 +34,7 @@ Create or check your model connections in Engine before founding. Choose them on
 
 Choose a specific language connection for **both System and Narration** before continuing. You can use the same one for both. Later, change these choices in Villages' **General Settings**.
 
-An image connection is optional. You can start with a simple map or upload one if Images is disabled. Sprite analysis separately needs a vision-capable language connection, selected in its own editor.
+An image connection is optional. You can start with a simple map or upload one if Images is disabled. Sprite setup makes no model requests.
 
 **Requests may cost money.** Founding, Scene replies, artwork, and enabled resident activity use your configured providers. Model choice affects writing quality and reliability; a successful connection is not a guarantee that every response will be usable.
 
@@ -176,9 +176,9 @@ Scene navigation can open the map; **Return to Scene** restores your draft. Conc
 
 Scenery styles apply to future pictures. All Zone details and saved artwork are visible before a first visit; artwork does not create gameplay facts or grant entry. Automatic artwork follows accepted material changes to Long-term details, including completed renovations. Entry and settled actions can update pending artwork; browsing never requests pictures. Short-term details, rewording, personality and style settings do not trigger edits. One queue permits at most six automatic pictures per real hour with five minutes between automatic pictures of the same Zone; Undo/Restore preserves these limits. **Update** edits existing artwork using saved physical details; **Replace** generates it afresh. Manual controls work while automatic pictures are disabled or frozen. Failed or interrupted requests require deliberate **Retry**. Saved artwork changes update the active Scene background immediately; captured Scene facts, attendance and navigation stay unchanged. Closed Scenes retain their captured presentation.
 
-Sprite setup lets you choose expressions, facing, inclusion, defaults, and framing. **Add without sprites** remains available. Analysis uses the vision connection you choose and saves completed suggestions as it goes. Review the set and choose **Add villager with sprites** or **Use sprites** to accept it. Closing the editor or saving framing does not approve the set.
+Sprite setup lets you edit expression names, choose Front or Side, inclusion, a default, and framing. Names start from Engine labels or filenames. **Add without sprites** remains available. Review the set and choose **Add villager with sprites** or **Use sprites** to accept it. Closing the editor or saving framing does not approve the set.
 
-**Use when** describes when a sprite fits the Scene. Front-facing artwork addresses you; side-facing artwork addresses another resident. Existing artwork and descriptions remain available for editing.
+Side-facing artwork must look right; Villages mirrors it to look left. Front-facing artwork addresses you. The existing System interpretation selects expressions and attention from the written Scene; Narration receives no sprite catalog. Code handles placement, variants, mirroring and animation without another model request.
 
 **Generate signature** makes an image request. The original is retained alongside a transparent version; light and white areas are treated as paper. Failed regeneration keeps the previous signature.
 
@@ -211,7 +211,7 @@ Background work shows progress, failures, and provider-reported usage where avai
 | Saved output needs applying   | Use **Replay saved work** when offered. This applies saved output without buying another interpretation.          |
 | A turn is held with HALT      | Read the notice and rewrite the preserved input. That turn has not become story history.                          |
 
-Failures do not automatically purchase replacement responses. Explicit interpretation, replacement, or generation retries may make another model request. A timed-out or interrupted provider request may already have been billed, including an in-flight sprite analysis. Saved results reduce repeated work but cannot guarantee that every response survives a hard server crash.
+Failures do not automatically purchase replacement responses. Explicit interpretation, replacement, or generation retries may make another model request. A timed-out or interrupted provider request may already have been billed. Saved results reduce repeated work but cannot guarantee that every response survives a hard server crash.
 
 ## Sprite variants and visual settings
 

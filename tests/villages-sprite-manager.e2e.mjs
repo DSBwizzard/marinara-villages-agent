@@ -187,8 +187,8 @@ await withBrowser(browser, async () => {
             files.set(art.rendered.url, PNG.sync.write({ ...rendered.image, data: Buffer.from(rendered.image.data) }));
             const id = body.expressionId || "e-" + randomUUID(),
               expression = manager.expressions.find((item) => item.id === id);
-            if (expression) Object.assign(expression, { name: body.name, useWhen: body.useWhen });
-            else manager.expressions.push({ id, name: body.name, useWhen: body.useWhen });
+            if (expression) Object.assign(expression, { name: body.name });
+            else manager.expressions.push({ id, name: body.name });
             manager.assignments = manager.assignments.filter(
               (item) => item.expressionId !== id || item.view !== body.view,
             );
@@ -263,7 +263,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByLabel("Expression name")).toHaveValue("");
     await page.getByLabel("Expression name").fill("Composed");
     await expect(page.getByLabel("Expression name")).toHaveCSS("background-color", "rgb(55, 53, 43)");
-    await page.getByLabel("Use when…", { exact: true }).fill("Listening with controlled authority.");
+    await expect(page.getByLabel("Use when…", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Save and use in Scenes" })).toBeEnabled();
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
@@ -317,7 +317,7 @@ await withBrowser(browser, async () => {
     await page.getByLabel("Expression name", { exact: true }).fill("Calm draft");
     await expect(page.getByRole("button", { name: "Discard changes" })).toBeEnabled();
     await page.getByRole("button", { name: /Angry.png/ }).click();
-    await page.getByLabel("Use when…", { exact: true }).fill("Angry draft");
+    await page.getByLabel("Expression name", { exact: true }).fill("Angry draft");
     await page.getByRole("button", { name: /Composed.png/ }).click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     await page.setViewportSize({ width: viewport.width > 719 ? 390 : 1024, height: 844 });
@@ -364,7 +364,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Discard changes" }).click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     await page.getByRole("button", { name: /Angry.png/ }).click();
-    await expect(page.getByLabel("Use when…", { exact: true })).toHaveValue("Angry draft");
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Angry draft");
     await page.getByRole("button", { name: "Discard changes" }).click();
     await page.getByRole("button", { name: /Angry.png/ }).click();
     await expect(page.getByText(/This artwork has an opaque background/)).toBeVisible();

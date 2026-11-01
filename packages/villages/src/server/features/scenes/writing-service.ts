@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
-import { currentStaging, stagingLayout, stagingTranscriptEvents } from "../../../shared/helpers/scene-staging.js";
+import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { InterpretationBatch } from "../../domain/models/interpretation-model.js";
 import type { GreetingTrace, VenueReplyFailureKind, VenueScene } from "../../domain/models/scene-model.js";
@@ -84,11 +84,6 @@ import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/sema
 import { semanticPhysicalContext, semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
 import { immutableSocialWishes, wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import { fitWishWritingContext } from "../../domain/rules/wish-writing-context.js";
-import {
-  describeSpriteExpressions,
-  resolveSceneSpriteExpressions,
-  validateSpriteExpression,
-} from "../../domain/rules/sprite-expressions.js";
 import {
   contactNeighbors,
   contactPosition,
@@ -279,7 +274,6 @@ export function createSceneWriting({
     const residentContexts: string[] = [];
     const wishWritingActors: { actorId: string; wishes: import("../../../shared/contracts/wishes.js").SocialWish[] }[] =
       [];
-    const expressionContexts: string[] = [];
     const profiles = active.map((person) => {
       const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
       if (!resident) return `${person.name} (${person.characterId}): no longer resident.`;
@@ -304,7 +298,6 @@ export function createSceneWriting({
       const sceneOccupant = session.sceneAttendance?.occupants.find(
         (entry) => entry.characterId === person.characterId,
       );
-      const spriteLabels = describeSpriteExpressions(resident.sprite, village.spriteVariantsEnabled !== false);
       wishWritingActors.push({ actorId: person.characterId, wishes: resident.wishes });
 
       residentContexts.push(
@@ -322,23 +315,8 @@ export function createSceneWriting({
           .filter(Boolean)
           .join("\n"),
       );
-      if (spriteLabels)
-        expressionContexts.push(
-          `Filled expressions for ${card.name}: ${spriteLabels}. Select a listed expression id that fits the current visible emotion and offers the required view (front toward the player, side toward a resident or direction). Prefer the default over an unsupported or exaggerated emotion. useWhen guides image selection; it must not create story events or establish an occupation, personality or intent. Ordinary postures such as hands on hips or folded arms need no matching narration. Clearly depicted actions, physical states and props must fit what is already happening in the Scene. Never add an action merely to use a picture. In staged Scenes, omission preserves the previous expression; explicitly select the default id to reset it. Otherwise omit expression to use the default image.`,
-        );
       return venueCardProfile(card, player.name, false);
     });
-    const stageIds = session.participants
-      .filter((person) => session.activeIds.includes(person.characterId))
-      .map((person) => person.characterId);
-    const stageState = currentStaging(
-      stageIds,
-      stagingTranscriptEvents(
-        session.lines.filter((line) => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId),
-        session.submissions,
-      ),
-    );
-    const layout = stagingLayout(session.activeIds, stageState);
     const audience = active.map((person) => person.characterId);
     const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
     const place = storedPlace
@@ -437,13 +415,13 @@ export function createSceneWriting({
                 : undefined),
       }));
     const capabilities = readSceneWritingCapabilities(venueOperationInput()?.writingCapabilities);
-    const responseContract = (context: { presentation: string; expressions: string[] }) =>
+    const responseContract = () =>
       [
         "Return ONE complete JSON object containing " +
           ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
             ? "playerSpeechCapture, segments and residentActions (required even when [])."
             : "playerSpeechCapture then segments.") +
-          ' No outside prose. JSON-encode all text, escaping embedded quotation marks; actions belong in narration, never outside a text string. segments are {kind:"dialogue",speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {kind:"narration",text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Sound belongs only on narration, never on a speech segment. If speech accompanies a separate meaningful nonverbal noise, use a separate narration segment with sound; otherwise omit sound. Every segment needs nonempty text; include a perceptible noise in narration text as well as its routing cue. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
+          ' No outside prose. JSON-encode all text, escaping embedded quotation marks; actions belong in narration, never outside a text string. segments are {kind:"dialogue",speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?} for speech and {kind:"narration",text,sound?:{sourceId,text,loud?:true}} for visible narration. Sound belongs only on narration, never on a speech segment. If speech accompanies a separate meaningful nonverbal noise, use a separate narration segment with sound; otherwise omit sound. Every segment needs nonempty text; include a perceptible noise in narration text as well as its routing cue. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
         ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
           ? [
               'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"kind":"narration","text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
@@ -467,9 +445,6 @@ export function createSceneWriting({
             "No recap, contactIntent, contactRelay or player Zone travel. Local actions remain in this Zone.",
             "No recap, contactIntent, contactRelay or player Zone travel. Only the explicit Move action changes the player Zone. Walking within this Zone is an ordinary local action.",
           ),
-        context.presentation,
-        'Optional per-segment staging:[{characterId,position?:"left|center|right",expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]. Use listed active character/expression IDs; omission preserves the current pose. Visual cues establish no knowledge, consent or effects.',
-        ...context.expressions,
       ].filter(Boolean);
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
@@ -605,23 +580,7 @@ export function createSceneWriting({
             : "";
         }),
       ]),
-      metadata: blocksFor(
-        responseContract({
-          presentation:
-            session.stagingVersion === 1
-              ? "Current presentation state: " +
-                JSON.stringify(
-                  session.activeIds.map((characterId) => ({
-                    characterId,
-                    ...stageState[characterId],
-                    ...layout[characterId],
-                  })),
-                ) +
-                '\nUse look:{target:"villager",characterId} when addressing another resident and look:{target:"player"} when addressing the player. Update attention when the addressee changes. Screen position is not gaze: reserve absolute left/right looks for a motivated look away at the surroundings.'
-              : "",
-          expressions: expressionContexts,
-        }),
-      ),
+      metadata: blocksFor(responseContract()),
     });
     const input =
       mode === "greet"
@@ -1073,32 +1032,14 @@ export function createSceneWriting({
           asRecord(raw.segments[index]).fragments = spans.map((span) => span.text);
       }
       eventRaw = session.contactGeneration?.zoneEvents ? zoneEventReply(raw, message) : raw;
-      parsed = parseVenueReply(
-        eventRaw,
-        session.contactGeneration?.zoneEvents ? [...audience, "player"] : audience,
-        (characterId, requested) =>
-          validateSpriteExpression(
-            village.villagers.find((item) => item.characterId === characterId)?.sprite,
-            requested,
-            village.spriteVariantsEnabled !== false,
-          ),
-      );
+      parsed = parseVenueReply(eventRaw, session.contactGeneration?.zoneEvents ? [...audience, "player"] : audience);
+      // Only System supplies presentation, regardless of extra Narration fields.
+      for (const line of parsed.lines) {
+        delete line.expression;
+        delete line.gazeAt;
+        delete line.staging;
+      }
       for (const [index, spans] of captureSources ?? []) parsed.lines[index].speechSource = { version: 3, spans };
-      const stageIds = session.participants.map((person) => person.characterId);
-      const currentStage = currentStaging(
-        stageIds,
-        stagingTranscriptEvents(
-          session.lines.filter((line) => !session.zoneId || !line.zoneId || line.zoneId === session.zoneId),
-          session.submissions,
-        ),
-      );
-      resolveSceneSpriteExpressions(
-        parsed.lines,
-        currentStage,
-        (characterId) => village.villagers.find((item) => item.characterId === characterId)?.sprite,
-        village.spriteVariantsEnabled !== false,
-        Math.random,
-      );
     } catch (cause) {
       await rejectVenueCompletion({
         model: model.model,
@@ -1188,6 +1129,9 @@ export function createSceneWriting({
       throw new HaltedSceneTurn(semanticResult.turnOutcome);
     }
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
+    for (const row of semanticResult?.presentation ?? []) {
+      if (parsed.lines[row.segment]) parsed.lines[row.segment].staging = row.staging;
+    }
     const semanticAccess = semanticResult?.access;
     if (semanticResult) {
       // Ignore all narrator effect nominations, including omitted System sections.
@@ -1257,7 +1201,7 @@ export function createSceneWriting({
             if (context.delivery === "loud") line.remoteDelivery = context.delivery;
           }
           // Presentation never places an unseen remote listener in the player's Zone.
-          line.staging = line.staging?.filter((cue) => localIds.includes(cue.characterId));
+          line.staging = readStagingCues(line.staging, localIds);
           if (line.kind === "narration") line.heardBy = [...localIds];
         }
       }

@@ -404,7 +404,6 @@ export type VillageResidentSprite = {
   assetId: string;
   defaultExpressionId?: string;
   expressions: Array<{
-    direction?: import("../../../shared/contracts/sprites.js").SpriteDirection;
     view: "front" | "side";
     label: string;
     filename: string;
@@ -412,7 +411,6 @@ export type VillageResidentSprite = {
     expressionId: string;
     spriteName?: string;
     name: string;
-    useWhen: string;
   }>;
   framing: { mode: "full" | "half" };
 };
