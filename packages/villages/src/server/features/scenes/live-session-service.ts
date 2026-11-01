@@ -3,10 +3,14 @@ import { observeVillageClock, villageClockShiftMs, villageNow } from "../../adap
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import { conflict } from "../../domain/rules/errors.js";
 import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
-import { accessExits, captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
+import {
+  accessExits,
+  captureSceneAttendance,
+  sceneZoneOccupants,
+  sameSceneRoutine,
+} from "../../domain/rules/scene-attendance.js";
 import { captureSceneContinuity, sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../../domain/rules/scene-layout.js";
-import { agendaAt } from "../../domain/rules/agenda-plan.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { semanticBlocker } from "../../domain/rules/semantic-continuity.js";
 import { appendLine } from "../../domain/rules/scene-record.js";
@@ -354,22 +358,7 @@ export function createLiveScenes({
     const currentMoment = moment(now);
     const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
     const previousMoment = moment(new Date(previousAt));
-    const sameRoutine = (id: string) => {
-      const resident = village.villagers.find((row) => row.characterId === id);
-      return (
-        !!resident &&
-        currentMoment.dayIndex === previousMoment.dayIndex &&
-        JSON.stringify(
-          agendaAt(
-            resident.agenda,
-            previousMoment.minuteOfDay,
-            new Date(previousAt),
-            resident.ingestSchedule !== false,
-          ),
-        ) ===
-          JSON.stringify(agendaAt(resident.agenda, currentMoment.minuteOfDay, now, resident.ingestSchedule !== false))
-      );
-    };
+    const sameRoutine = (id: string) => sameSceneRoutine(village, session, id, now);
     const accompanying = (session.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
     const positions = new Map(
       accompanying.flatMap((row) => {

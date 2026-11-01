@@ -3,6 +3,8 @@ import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
 import { agendaAt } from "./agenda-plan.js";
+import { agendaDateKey } from "./agenda-week.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { evaluateZoneAccess } from "./venue-access.js";
 import { contactCanEnter, contactPath, sceneAccessContext } from "./venue-contact.js";
 import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
@@ -12,6 +14,45 @@ import { venueResidentIds } from "./venue-model.js";
 import { chooseAgendaZone, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagePresence } from "./village-projections.js";
+
+export function sameSceneRoutine(village: VillageState, scene: VenueScene, actorId: string, now: Date): boolean {
+  const resident = village.villagers.find((row) => row.characterId === actorId);
+  if (!resident) return false;
+  const previous = scene.continuity?.facts.villagers.find((row) => row.characterId === actorId) ?? resident;
+  const timeZone = village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const before = new ZonedDate(scene.sceneAttendance?.capturedAt ?? scene.startedAt, timeZone);
+  const after = new ZonedDate(now, timeZone);
+  const block = (person: typeof resident, at: Date) =>
+    agendaAt(person.agenda, at.getHours() * 60 + at.getMinutes(), at, person.ingestSchedule !== false);
+  return (
+    agendaDateKey(before) === agendaDateKey(after) &&
+    JSON.stringify(block(previous, before)) === JSON.stringify(block(resident, after))
+  );
+}
+
+/** Do not invent an NPC encounter in a resident's scheduled Zone while evidenced movement puts them elsewhere. */
+export function liveSceneEncounterConflicts(village: VillageState, scene: VenueScene | null, now: Date): Set<string> {
+  if (scene?.liveSceneVersion !== 1 || scene.status === "closed" || scene.villageSeed !== village.seed)
+    return new Set();
+  const at = new ZonedDate(now, village.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone);
+  const scheduled = villagePresence(village, at.getHours() * 60 + at.getMinutes(), at);
+  const positions = sceneAccessContext(scene, village).positions ?? {};
+  const moved = village.villagers
+    .filter(
+      (row) =>
+        Object.hasOwn(positions, row.characterId) ||
+        (scheduled.get(row.characterId)?.id === scene.placeId &&
+          scene.continuity?.facts.villagers.some((saved) => saved.characterId === row.characterId)),
+    )
+    .map((row) => row.characterId);
+  return new Set(
+    moved.filter(
+      (id) =>
+        sameSceneRoutine(village, scene, id, now) &&
+        (!positions[id] || scheduled.get(id)?.id !== scene.placeId || scheduled.get(id)?.zoneId !== positions[id]),
+    ),
+  );
+}
 
 export function captureSceneAttendance(
   village: VillageState,

@@ -384,6 +384,7 @@ assert.equal(departureMemoriesAvailable(village.returnCatchup!.capture!, await s
 assert.ok(projectMemories(village.memories, ["a"]).some((row) => row.text === "B agreed to a walk tomorrow."));
 const nextJobs: any[] = [];
 const nextPlanner = createResidentPlanning({
+  activeVenueSession: async () => null,
   relationshipIdentity: fixtureRelationshipIdentity,
   wishIdentity: fixtureWishIdentity,
   readVillageState: snapshot,
@@ -783,6 +784,7 @@ console.log(
 );
 let automaticCalls = 0;
 const writer = createResidentPlanning({
+  activeVenueSession: async () => null,
   relationshipIdentity: fixtureRelationshipIdentity,
   wishIdentity: fixtureWishIdentity,
   villagesLanguageModels: () => ({

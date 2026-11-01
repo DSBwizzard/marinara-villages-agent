@@ -39,6 +39,7 @@ export function residentPlanningOpportunity(
   village: VillageState,
   moment: VillageMoment,
   startsAt: string,
+  encounterConflicts: ReadonlySet<string> = new Set(),
 ): ResidentPlanningOpportunity | null {
   const residents = village.villagers.filter((r) => !openingPresence(village, r.characterId));
   if (!residents.length) return null;
@@ -55,7 +56,9 @@ export function residentPlanningOpportunity(
     const key = JSON.stringify([place.id, place.zoneId ?? "exterior"]);
     currentPlaces.set(key, [...(currentPlaces.get(key) ?? []), resident.characterId]);
   }
-  const overlap = [...currentPlaces].find(([, ids]) => ids.length >= 2);
+  const overlap = [...currentPlaces]
+    .map(([key, ids]) => [key, ids.filter((id) => !encounterConflicts.has(id))] as const)
+    .find(([, ids]) => ids.length >= 2);
   const rotation = (village.eventAttempts?.attempts.length ?? 0) % residents.length;
   const actorIds = overlap?.[1].slice(0, 4) ?? [residents[rotation]!.characterId];
   const destination = overlap?.[0] ?? [...currentPlaces].find(([, ids]) => ids.includes(actorIds[0]))?.[0];

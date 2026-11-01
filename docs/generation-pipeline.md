@@ -36,6 +36,8 @@ An unfinished Venue visit has no inactivity deadline. New Scenes (`liveSceneVers
 
 Existing Scenes without the marker retain their original captured moment and sparse Memory reservations until concluded. Their own accepted effects extend that captured context. Provider deadlines and usage bookkeeping use operational time; calendar allowances and saved world effects use Village time, including development advances. Older closed Scenes remain archived; this change never reopens them or buys replacement interpretation.
 
+New NPC encounter admissions exclude residents whose effective live Scene position contradicts their scheduled position, including capacity fallback. Solo reflection, mail and future choices remain eligible. Routine transitions release this restriction; already admitted background work retains its original source.
+
 Social Wish effects are applied from the existing saved Scene, encounter and mail interpretations. Captured owner revisions and immutable source evidence govern creation and changes. Wishes have no automatic expiry; source replay purchases no replacement interpretation. See [Social Wishes](wishes.md).
 
 ## Scene outcome boundaries

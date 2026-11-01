@@ -5,7 +5,12 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { captureSceneAttendance } from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import {
+  captureSceneAttendance,
+  liveSceneEncounterConflicts,
+} from "../packages/villages/src/server/domain/rules/scene-attendance.js";
+import { residentPlanningOpportunity } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   captureSceneContinuity,
   sceneContinuityView,
@@ -196,7 +201,16 @@ try {
 
   now = new Date("2026-11-02T09:50:00Z");
   const completing = fixture();
-  completing.scene.operation = { id: "accepted-move", kind: "turn", status: "running", error: "" } as any;
+  completing.scene.operation = {
+    id: "accepted-move",
+    kind: "turn",
+    status: "running",
+    error: "",
+    checkpoints: {},
+    attempts: {},
+    input: {},
+    snapshot: null,
+  } as any;
   completing.scene.accompanying = [{ characterId: "maya", zoneId: "exterior" }];
   completing.scene.zoneGrants = [{ zoneId: "removed", controllerId: "maya" }];
   completing.setBusy(true);
@@ -238,6 +252,44 @@ try {
   assert.equal(crowded.scene.sceneAttendance!.occupants.filter((person) => person.zoneId === "exterior").length, 4);
   await crowded.service.requireLiveVenueSession(crowded.scene.id);
   assert.equal(crowded.scene.activeIds.length, 4, "capacity resolution keeps refresh and navigation usable");
+  const displaced = crowded.scene.sceneAttendance!.occupants.find(
+    (person) => person.characterId.startsWith("guest-") && person.zoneId !== "exterior",
+  )!;
+  assert(displaced, "one scheduled arrival uses the existing fallback placement");
+  assert(
+    liveSceneEncounterConflicts(crowded.world, crowded.scene, now).has(displaced.characterId),
+    "capacity-displaced residents cannot encounter someone at their old scheduled position",
+  );
+
+  now = new Date("2026-11-02T09:50:00Z");
+  const spatial = fixture();
+  spatial.world.villagers[1]!.agenda!.day = [
+    { startMinute: 0, endMinute: 1440, venueId: "garden", zoneId: "community", activity: "Reading" },
+  ];
+  spatial.scene.accompanying = [{ characterId: "maya", zoneId: "exterior" }];
+  await spatial.service.activeVenueSession();
+  const conflicts = liveSceneEncounterConflicts(spatial.world, spatial.scene, now);
+  assert.deepEqual([...conflicts], ["maya"]);
+  const currentMoment = deriveVillageMoment({
+    foundedAt: spatial.world.foundedAt,
+    seed: spatial.world.seed,
+    timeZone: "UTC",
+    now,
+  });
+  assert.equal(residentPlanningOpportunity(spatial.world, currentMoment, now.toISOString())!.kind, "encounter");
+  const opportunity = residentPlanningOpportunity(spatial.world, currentMoment, now.toISOString(), conflicts)!;
+  assert.equal(opportunity.kind, "routine", "a moved resident cannot also encounter someone in the old scheduled Zone");
+  assert.deepEqual(opportunity.actorIds, ["maya"], "solo reflection and mail remain eligible");
+  assert.equal(
+    liveSceneEncounterConflicts(spatial.world, { ...spatial.scene, liveSceneVersion: undefined }, now).size,
+    0,
+    "existing saved Scenes keep their original background contract",
+  );
+  assert.equal(
+    liveSceneEncounterConflicts(spatial.world, spatial.scene, new Date("2026-11-02T10:01:00Z")).size,
+    0,
+    "routine transitions release the spatial restriction even while an old request awaits recovery",
+  );
 
   now = new Date("2026-11-02T09:50:00Z");
   const physical = fixture();
