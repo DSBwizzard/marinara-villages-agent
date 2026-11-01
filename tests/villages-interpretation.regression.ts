@@ -53,7 +53,6 @@ import {
 } from "../packages/villages/src/server/features/generation/interpretation-diagnostics.js";
 
 import { applyInterpretedRoomEvents } from "../packages/villages/src/server/domain/rules/scene-room-application.js";
-import { roomInterpretationChecks } from "../packages/villages/src/server/features/scenes/room-interpretation.js";
 import { dismissalDestination } from "../packages/villages/src/server/domain/rules/scene-room-events.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
@@ -526,6 +525,19 @@ async function operation(work: () => Promise<any>) {
   return coordinateVenue(id, id, "turn", {}, 0, undefined, work);
 }
 async function main() {
+  const budget = createSystemInterpretation({
+    villagesConnectionIdFor: async () => assert.fail("Over-budget recovery cannot resolve a model"),
+    villagesLanguageModels: () => assert.fail("Over-budget recovery cannot resolve a model"),
+    completeWithRoom: async () => assert.fail("Over-budget recovery cannot buy a response"),
+  } as any);
+  for (const checks of [
+    Array.from({ length: 5 }, (_, index) => ({ ...check, id: String(index) })),
+    [{ ...check, facts: { huge: "x".repeat(7000) } }],
+  ]) {
+    const results = await budget.systemInterpretations(checks);
+    assert.equal(results.length, checks.length);
+    assert(results.every((result) => result.outcome === "unresolved"));
+  }
   const fixture = {
     calls: 0,
     mode: "yes",
@@ -669,17 +681,6 @@ async function main() {
       grantedZoneIds: ["hall", "bedroom"],
       enteredFromZoneId: "hall",
     };
-    const checks = roomInterpretationChecks(
-      scene,
-      village,
-      "I ask",
-      [{ speakerId: "aqua", content: "Leave.", kind: "dialogue", heardBy: ["aqua"] }],
-      "key",
-      [],
-    );
-    assert.ok(checks.length);
-    assert.ok(!JSON.stringify(checks).includes("secret"));
-    assert.ok(!JSON.stringify(checks).includes("Secret description"));
     assert.equal(dismissalDestination(village, venue, scene), "hall");
     const dismiss = {
       ...enabled,

@@ -8,10 +8,6 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
-  translationBatchSize,
-  translationRequestCount,
-} from "../packages/villages/src/server/domain/rules/generation-budgets.js";
-import {
   proposeRemap,
   remapBlockKeys,
   remapBlocks,
@@ -242,12 +238,6 @@ async function main() {
     const unknown = await previewVillageBurst({ action: "images", count: 2, connectionId: "unpriced" });
     assert.equal(unknown.unknownCosts, 2);
     assert.equal(unknown.dollars, null);
-    for (const limit of [700, 1400, 5000])
-      for (const blocks of [0, 1, 12, 40])
-        assert.equal(
-          translationRequestCount(blocks, translationBatchSize(limit)),
-          Math.ceil(blocks / Math.min(10, Math.max(2, Math.floor(limit / 350)))),
-        );
     failCards = true;
     resetNativeScheduleCache();
     assert.equal(

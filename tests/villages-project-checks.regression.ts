@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
-import { createProjectChecks } from "../packages/villages/src/server/features/projects/project-check-service.js";
 import { projectProposals } from "../packages/villages/src/server/domain/rules/project-check-rules.js";
 import {
   bindProjectSpeech,
@@ -8,38 +7,20 @@ import {
   coerceProjectSpeech,
   projectSpeechContexts,
 } from "../packages/villages/src/server/domain/rules/project-interpretation.js";
-import { routeInterpretationChecks } from "../packages/villages/src/server/domain/rules/interpretation-routing.js";
 const f = fixture(),
   id = await renovation(f);
-let selected: any[] = [];
-const service = createProjectChecks({
-  readVillageState: async () => f.state(),
-  mutateVillageState: f.mutate,
-  sceneQueries: () => ({}),
-  pipelineSignal: () => {},
-  contextualChecks: async (_id: any, checks: any) => checks,
-  boundInterpretationEvidence: (check: any) => check,
-  routeInterpretationChecks,
-  recordInterpretationRouting: async () => {},
-  saveInterpretationContext: async () => {},
-  writeInterpretationDiagnostics: async () => {},
-  interpretChecks: async (checks: any) => {
-    selected = checks;
-    return null;
-  },
-} as any);
 const draft = [{ speakerId: "a", kind: "dialogue", content: "I approve Renovate and will lead it.", heardBy: ["a"] }];
-await service.interpretProjectDraft(
-  { id: "scene", activeIds: ["a"], lines: [], submissions: [] } as any,
-  f.state(),
-  "Will you approve and lead Renovate?",
-  draft as any,
-  ["a"],
-  "request",
-  undefined,
-  ["a"],
-);
-assert.deepEqual(selected.map((check) => check.facts.kind).sort(), ["approval", "builder", "withdrawal"]);
+const selected = ["approval", "builder", "withdrawal"].map((kind) => ({
+  id: kind,
+  facts: {
+    kind,
+    actorId: "a",
+    projectId: id,
+    revision: f.get(id).lifecycle!.revision,
+    phase: f.get(id).lifecycle!.phase,
+  },
+  evidence: [{ ...draft[0], id: "draft:0", current: true }],
+}));
 const batch: any = {
   checks: selected,
   results: selected.map((check) => ({

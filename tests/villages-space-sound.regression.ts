@@ -650,21 +650,6 @@ assert(!JSON.stringify(privateRecords).includes("heardBy"));
 assert(!JSON.stringify(privateRecords).includes("heardPlayerBy"));
 assert(!JSON.stringify(privateRecords).includes("heardHistory"));
 
-// An isolated space has no cross-space routing work and keeps its existing zero-check path.
-const { interpretAcoustics } =
-  await import("../packages/villages/src/server/features/scenes/acoustic-interpretation.js");
-const isolated = { ...venue, zones: [zone("exterior", "exterior", [])] };
-assert.equal(
-  (
-    await interpretAcoustics(
-      { ...scene, sceneAttendance: { ...scene.sceneAttendance!, layout: captureSceneLayout(isolated) } },
-      isolated,
-      "Hello",
-    )
-  ).status,
-  "local",
-);
-
 // A different resident moving in the same reply must not turn non-noticers into noise witnesses.
 const { applyResidentMovementTimeline } =
   await import("../packages/villages/src/server/domain/rules/resident-movement.js");

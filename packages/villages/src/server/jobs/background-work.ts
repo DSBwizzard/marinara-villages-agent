@@ -70,8 +70,8 @@ export function startBackgroundWork(options: { now?: () => number } = {}): () =>
 export async function settleBackgroundWork(): Promise<void> {
   return binding.get().settleBackgroundWork();
 }
-export async function previewBackgroundJobs(_defaultBatchSize?: number) {
-  return binding.get().previewBackgroundJobs(_defaultBatchSize);
+export async function previewBackgroundJobs() {
+  return binding.get().previewBackgroundJobs();
 }
 
 /** Private server-only frozen inputs and response receipts for deliberate migration. */

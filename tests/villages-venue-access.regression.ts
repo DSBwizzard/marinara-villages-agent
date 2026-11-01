@@ -15,7 +15,6 @@ import {
   neutralRelationship,
   relationshipKey,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { selectRoomEventChecks } from "../packages/villages/src/server/domain/rules/room-events.js";
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { savedAccessEvents } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { socialPlanValid } from "../packages/villages/src/server/domain/rules/social-rules.js";
@@ -44,7 +43,6 @@ import { mutateRelationships } from "../packages/villages/src/server/features/re
 import { readSceneChanges } from "../packages/villages/src/server/features/scenes/changes.js";
 import { activeVenueSession } from "../packages/villages/src/server/features/scenes/live-session.js";
 import { processSavedExchange } from "../packages/villages/src/server/features/scenes/progress.js";
-import { roomInterpretationChecks } from "../packages/villages/src/server/features/scenes/room-interpretation.js";
 import {
   endVenueSession,
   enterVenue,
@@ -1163,26 +1161,6 @@ async function main() {
         heardBy: ["jim", "player"],
       },
     ] as any;
-    const combinedManagerChecks = roomInterpretationChecks(
-      arrival as any,
-      await readVillageState({ memories: true }),
-      "",
-      savedDraft,
-      "combined-manager-ban",
-    );
-    const selectedVenueBan = selectRoomEventChecks(
-      combinedManagerChecks,
-      arrival as any,
-      [],
-      [{ kind: "ban-venue", actorId: "jim", venueId: "home", zoneId: null, evidence: [0] }],
-    );
-    assert.equal(
-      selectedVenueBan.selected.length,
-      1,
-      "A Venue ban remains unambiguous when its manager also controls multiple Zones.",
-    );
-    assert.equal(selectedVenueBan.selected[0].facts.zoneId, null);
-    assert.equal(selectedVenueBan.uncertain.length, 0);
     await mutateVillageState((current) => {
       for (const zone of current.venues[0].zones!.filter((zone) => zone.kind !== "exterior"))
         zone.access!.managerIds = ["mara"];
@@ -1195,13 +1173,14 @@ async function main() {
       lines: [{ ...savedDraft[0], id: "saved-ban-line" }],
       submissions: [],
     } as any;
-    const banChecks = roomInterpretationChecks(banScene, banWorld, "", savedDraft, "saved-ban");
-    assert.equal(
-      banChecks.filter((check) => check.outcomes.some((outcome) => outcome.id === "ban-venue")).length,
-      1,
-      "Venue-only managers can ban even without authority to invite into any Zone.",
-    );
-    const banCheck = banChecks.find((check) => check.outcomes.some((outcome) => outcome.id === "ban-venue"))!;
+    const banCheck = {
+      id: "saved-ban",
+      domain: "room",
+      question: "Did Jim ban the player from this Venue?",
+      facts: { actorId: "jim", venueId: "home", zoneId: null, accessRevision: banWorld.venues[0].access!.revision },
+      outcomes: [{ id: "ban-venue", statement: "Jim bans the player from the Venue." }],
+      evidence: [{ id: "draft:0", speakerId: "jim", name: "Jim", content: savedDraft[0].content, current: true }],
+    };
     const banBatch = {
       checks: [banCheck],
       results: [{ source: "system", outcome: "ban-venue", evidenceIds: ["draft:0"] }],

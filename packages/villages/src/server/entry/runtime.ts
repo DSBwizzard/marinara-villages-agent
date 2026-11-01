@@ -60,7 +60,7 @@ import {
   withUsagePurpose,
 } from "../adapters/models/usage-ledger.js";
 import { createMetricsContext } from "../adapters/observability/metrics-context-service.js";
-import { configureMetricsContext, pipelineSignal } from "../adapters/observability/metrics-context.js";
+import { configureMetricsContext } from "../adapters/observability/metrics-context.js";
 import { measurePipeline } from "../adapters/observability/pipeline-metrics.js";
 import { createRuntimeDebug } from "../adapters/observability/runtime-debug-service.js";
 import { configureRuntimeDebug, readRuntimeDebug, runtimeDebug } from "../adapters/observability/runtime-debug.js";
@@ -98,8 +98,6 @@ import { wishHistoryStore } from "../adapters/storage/wish-history.js";
 import { configureVillageClock, villageNow } from "../adapters/time/clock-gate.js";
 import { createVillageClock } from "../adapters/time/clock-service.js";
 import { parseCompactFoundingCompletion } from "../domain/rules/compact-founding-rules.js";
-import { boundInterpretationEvidence } from "../domain/rules/interpretation-evidence-rules.js";
-import { routeInterpretationChecks } from "../domain/rules/interpretation-routing.js";
 import { createLiveEvidenceContext } from "../domain/rules/live-exchange.js";
 import { reconcileProjectLifecycles } from "../domain/rules/project-lifecycle-rules.js";
 import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
@@ -143,15 +141,10 @@ import {
 import { createInterpretationEvidence } from "../features/generation/interpretation-evidence-service.js";
 import {
   configureInterpretationEvidence,
-  contextualChecks,
   saveInterpretationContext,
 } from "../features/generation/interpretation-evidence.js";
 import { createInterpretation } from "../features/generation/interpretation-service.js";
-import {
-  configureInterpretation,
-  interpretChecks,
-  recordInterpretationRouting,
-} from "../features/generation/interpretation.js";
+import { configureInterpretation } from "../features/generation/interpretation.js";
 import { completeWithRoom, configureModelCompletions } from "../features/generation/model-requests.js";
 import { createSemanticService } from "../features/generation/semantic-service.js";
 import { createSystemInterpretation } from "../features/generation/system-interpretation-service.js";
@@ -175,8 +168,6 @@ import { createTownMapImage } from "../features/media/town-map-image-service.js"
 import { configureTownMapImage, generateVillageTownMap } from "../features/media/town-map-image.js";
 import { createTownMapReview } from "../features/media/town-map-review-service.js";
 import { configureTownMapReview, prepareVillageMap } from "../features/media/town-map-review.js";
-import { createProjectChecks } from "../features/projects/project-check-service.js";
-import { configureProjectChecks } from "../features/projects/project-checks.js";
 import { createProjectEvidence } from "../features/projects/project-evidence-service.js";
 import { configureProjectEvidence, processProjectSpeechTurn } from "../features/projects/project-evidence.js";
 import { createProjectLifecycle } from "../features/projects/project-lifecycle-service.js";
@@ -855,21 +846,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     listRetiredProjectScenes: projectEvidenceIndex.read,
     processSavedExchange,
   });
-  const releaseProjectChecks = configureProjectChecks(
-    createProjectChecks({
-      readVillageState: readVillageMemoryState,
-      mutateVillageState: mutateVillageMemoryState,
-      sceneQueries,
-      pipelineSignal,
-      contextualChecks,
-      boundInterpretationEvidence,
-      routeInterpretationChecks,
-      recordInterpretationRouting,
-      interpretChecks,
-      saveInterpretationContext,
-      writeInterpretationDiagnostics,
-    }),
-  );
   const releaseProjectEvidence = configureProjectEvidence(
     createProjectEvidence({
       readVillageState: readVillageMemoryState,
@@ -1284,7 +1260,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     releaseSceneWriting();
     releaseSceneChanges();
     releaseSceneProgress();
-    releaseProjectChecks();
     releaseProjectEvidence();
     releaseVillageSnapshot();
     releaseResidentAgendas();

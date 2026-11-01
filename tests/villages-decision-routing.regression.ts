@@ -1,8 +1,6 @@
 import type { CapabilityDecisionResult } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
 import { createBackgroundContext } from "../packages/villages/src/server/adapters/operations/background-context-service.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { InterpretationCheck } from "../packages/villages/src/server/domain/models/interpretation-check-model.js";
 import {
   boundDecisionResult,
@@ -11,9 +9,7 @@ import {
 } from "../packages/villages/src/server/domain/rules/decision-candidates.js";
 import { coerceInterpretationSettings } from "../packages/villages/src/server/domain/rules/interpretation-policy.js";
 import { projectProposals } from "../packages/villages/src/server/domain/rules/project-check-rules.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { createInterpretation } from "../packages/villages/src/server/features/generation/interpretation-service.js";
-import { roomInterpretationChecks } from "../packages/villages/src/server/features/scenes/room-interpretation.js";
 
 const narrow: InterpretationCheck = {
   id: "project",
@@ -55,29 +51,14 @@ assert.equal(
 assert.equal(decisionCandidates({ ...narrow, essentialEvidenceIds: ["absent"] }), null);
 assert.deepEqual(coerceInterpretationSettings({ compareSystem: true }), { decisionsEnabled: false });
 
-const roomWorld = defaultVillageState();
-const home = venueDraft({ name: "Home", description: "A small home", classes: ["residence"] }, null);
-home.residentIds = ["ada"];
-roomWorld.venues = [home];
-roomWorld.playerPersonaName = "Pat";
-const roomScene = coerceSession({
-  version: 3,
+const roomCheck: InterpretationCheck = {
   id: "room",
-  placeId: home.id,
-  zoneId: "exterior",
-  activeIds: ["ada"],
-  participants: [{ characterId: "ada", name: "Ada", doing: "Talking" }],
-  lines: [],
-  submissions: [],
-});
-const roomChecks = roomInterpretationChecks(
-  roomScene,
-  roomWorld,
-  "",
-  [{ speakerId: "ada", content: "Come inside.", kind: "dialogue", heardBy: ["ada"] }],
-  "room",
-);
-const roomCheck = roomChecks.find((check) => check.outcomes.some((outcome) => outcome.id === "invite-now"))!;
+  domain: "room",
+  question: "Does Ada invite Pat into the room now?",
+  facts: { actorId: "ada", playerName: "Pat", venueName: "Home", zoneName: "Room" },
+  outcomes: [{ id: "invite-now", statement: "Ada permits Pat to enter now." }],
+  evidence: [{ id: "draft:0", speakerId: "ada", name: "Ada", content: "Come inside.", current: true }],
+};
 const roomCandidates = decisionCandidates(roomCheck);
 assert(roomCandidates, "a normal narrow room check fits the public API without truncation");
 assert(roomCandidates.every((candidate) => candidate.question.includes("Pat") && candidate.question.includes("Ada")));

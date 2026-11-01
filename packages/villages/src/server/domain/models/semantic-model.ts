@@ -9,7 +9,6 @@ export interface SemanticInterpreter {
     message: string,
     narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
   ): Promise<void>;
-  intent(scene: VenueScene, message: string): Promise<SemanticIntent>;
   exchange(
     scene: VenueScene,
     message: string,

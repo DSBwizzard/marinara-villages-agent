@@ -407,17 +407,29 @@ async function main() {
       return {
         content: JSON.stringify({
           sourceHash: packet.sourceHash,
-          status: "resolved",
-          reason: "",
-          instructions: "",
+          intent: {
+            status: "resolved",
+            reason: "",
+            instructions: "",
+            action: null,
+            movement: null,
+            timeline: [{ kind: "speech", text: "Hello" }],
+          },
+          consistent: true,
+          authority: { physical: false, access: false, projects: false, standing: false, social: false },
           action: null,
-          movement: null,
-          timeline: [{ kind: "speech", text: "Hello" }],
+          access: [],
+          residentActionReview: { version: 1, additionalActions: [], decisions: [], coverage: [] },
+          memoryChanges: [],
+          relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+          wishChanges: [],
+          projectSpeech: [],
+          events: { moves: [], departures: [], contactEnd: [], playerMoves: [] },
         }),
         finishReason: "stop",
       };
     },
-    rejectVenueCompletion: () => assert.fail("Valid intent must not be rejected"),
+    rejectVenueCompletion: () => assert.fail("Valid exchange must not be rejected"),
   } as any);
   const systemScene: any = {
     id: "system-lore-fit",
@@ -427,13 +439,16 @@ async function main() {
     placeId: "none",
     zoneId: "exterior",
     sceneRevision: 1,
+    semanticVersion: 2,
+    operation: { input: { semanticPipelineVersion: 3, residentActionsVersion: 2 } },
   };
-  await assert.rejects(system.intent(systemScene, "Hello"), /Held purchased request/);
+  const exchange = () => system.exchange(systemScene, "Hello", [], null, []);
+  await assert.rejects(exchange(), /Held purchased request/);
   assert.deepEqual(sent[0].input.context.lore, ["High: relevant fact"]);
   assert.equal(reports[0].entries.find((entry: any) => entry.id === "Low").status, "context-limit");
   unavailable = true;
   failSystem = false;
-  await system.intent(systemScene, "Hello");
+  await exchange();
   assert.equal(loreReads, 1, "System retry uses captured selection and final prompt during a lore outage");
   assert.deepEqual(sent[1], sent[0], "Optional lore fitting cannot vary the saved source hash on retry");
   const oldInputKey = [...checkpoints.keys()].find((key) => key.endsWith(":input"))!;
@@ -442,7 +457,7 @@ async function main() {
   checkpoints.clear();
   checkpoints.set(oldInputKey, structuredClone(oldInput));
   const beforeOldReplay = sent.length;
-  await assert.rejects(system.intent(systemScene, "Hello"), /Essential System evidence does not fit/);
+  await assert.rejects(exchange(), /Essential System evidence does not fit/);
   assert.equal(sent.length, beforeOldReplay, "Legacy evidence cannot authorize a newly fitted replacement request");
   assert.deepEqual(checkpoints.get(oldInputKey), oldInput, "Legacy input is retained byte-for-byte");
   assert.equal(loreReads, 1);

@@ -5,7 +5,7 @@ import { coerceVillageState, defaultVillageState } from "../../domain/decoding/v
 import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { agendaRequestCount, remainingRequests, translationBatchSize } from "../../domain/rules/generation-budgets.js";
+import { agendaRequestCount, remainingRequests } from "../../domain/rules/generation-budgets.js";
 import { remapVenues } from "../../domain/rules/prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 import type { previewBackgroundJobs } from "../../jobs/background-work.js";
@@ -82,8 +82,7 @@ export function createUsagePreview({
     } catch {
       /* Show counts with unknown prices. */
     }
-    const batchSize = translationBatchSize(system?.maxOutputTokens);
-    const jobs = await previewBackgroundJobs(batchSize);
+    const jobs = await previewBackgroundJobs();
     const residents: Resident[] = [];
     const target = typeof args.characterId === "string" ? args.characterId : "";
     let languageRequests = bootstrap ? 1 : 0,
