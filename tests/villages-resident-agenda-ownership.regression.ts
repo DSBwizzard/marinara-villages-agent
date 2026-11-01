@@ -59,6 +59,7 @@ function fixture(name: string) {
     failure: Error | undefined;
   let parsed = 0,
     generated = 0;
+  let parsedResponse: unknown, parsedContext: unknown;
   const note = (operation: string) => {
     calls.push(operation);
     owners.push(scopedActivation());
@@ -109,9 +110,11 @@ function fixture(name: string) {
       note("jobs");
       return [{ kind: "agenda", subjectId: "same", attempt: 3 }] as any;
     },
-    parseCompactFoundingCompletion() {
+    parseCompactFoundingCompletion(response, context) {
       note("parse");
       parsed++;
+      parsedResponse = response;
+      parsedContext = context;
       return { agenda: structuredClone(resident.agenda) } as any;
     },
     async proposeCompactFounding(_context, onModel) {
@@ -166,6 +169,12 @@ function fixture(name: string) {
     },
     get parsed() {
       return parsed;
+    },
+    get parsedResponse() {
+      return parsedResponse;
+    },
+    get parsedContext() {
+      return parsedContext;
     },
     get generated() {
       return generated;
@@ -247,10 +256,38 @@ handler.apply(departed, input, retained, { retrying: false });
 assert.deepEqual(departed.villagers, []);
 assert.equal(handler.recoverSavedResult!(input, []), undefined);
 assert.equal(a.parsed, 0);
-handler.recoverSavedResult!(input, [
-  { key: "owned-routine-profile", status: "completed", response: { content: "saved" } },
-] as any);
-assert.equal(a.parsed, 1);
+assert.equal(
+  handler.recoverSavedResult!(input, [
+    { key: "owned-routine-profile", status: "completed", response: { content: "retired profile" } },
+    { key: "founding-routine-v1", status: "completed", response: { content: "another contract" } },
+  ] as any),
+  undefined,
+);
+assert.equal(a.parsed, 0, "Unrelated saved responses cannot enter the admitted parser");
+for (const version of [undefined, 1, 2]) {
+  const context = { ...input.context, contractVersion: version };
+  if (version === undefined) delete context.contractVersion;
+  const admitted = { ...input, context };
+  const key = version === 2 ? "founding-routine-v2" : "founding-routine-v1";
+  const response = { content: "exact admitted response " + version };
+  const steps = [
+    { key: "owned-routine-profile", status: "completed", response: { content: "retired profile" } },
+    {
+      key: version === 2 ? "founding-routine-v1" : "founding-routine-v2",
+      status: "completed",
+      response: { content: "wrong contract" },
+    },
+    { key, status: "running", response: { content: "unfinished response" } },
+    { key, status: "completed", response },
+  ];
+  const before = JSON.stringify(steps),
+    parsed = a.parsed;
+  handler.recoverSavedResult!(admitted, steps as any);
+  assert.equal(a.parsed, parsed + 1);
+  assert.equal(a.parsedResponse, response);
+  assert.equal(a.parsedContext, context, "Recovery uses the frozen admitted context");
+  assert.equal(JSON.stringify(steps), before, "Historical paid evidence stays unchanged");
+}
 assert.equal(a.generated, 0, "Saved completion parsing dispatches no model.");
 const now = new Date(),
   today = agendaDateKey(now),
