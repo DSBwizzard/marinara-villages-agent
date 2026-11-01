@@ -1675,7 +1675,7 @@ ${ELEMENT_TAG} {
   .${ELEMENT_TAG}-zoom-button,
   .${ELEMENT_TAG}-chat-mode-button,
   .${ELEMENT_TAG}-chat-send { justify-content: center; }
-  
+
   .${ELEMENT_TAG}-pin-remove { min-width: 1.75rem; min-height: 1.75rem; }
   .${ELEMENT_TAG}-textarea { min-height: 4.5rem; }
 }
@@ -1710,7 +1710,7 @@ ${ELEMENT_TAG} {
 @container ${ELEMENT_TAG} (max-height: 30rem) {
   .${ELEMENT_TAG}-chat { gap: .5rem; padding: .625rem; }
   .${ELEMENT_TAG}-chat-stage { gap: .25rem; }
-  
+
   .${ELEMENT_TAG}-chat-figure { width: min(38cqw, calc(100cqh - .5rem)); }
   .${ELEMENT_TAG}-chat-scene-place { display: none; }
   .${ELEMENT_TAG}-chat-log { gap: .375rem; }
