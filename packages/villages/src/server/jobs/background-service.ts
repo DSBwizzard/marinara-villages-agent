@@ -1923,7 +1923,7 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
   async function settleBackgroundWork(): Promise<void> {
     while (reserving.size || running.size) await Promise.all([...reserving.values(), ...running.values()]);
   }
-  async function previewBackgroundJobs(_defaultBatchSize?: number) {
+  async function previewBackgroundJobs() {
     const documents = villagesDocuments(),
       responses = backgroundResponseStore(documents);
     const records = await documents.list(VILLAGES_PACKAGE_ID, KIND);
