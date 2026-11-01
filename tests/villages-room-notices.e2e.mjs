@@ -242,6 +242,9 @@ await withBrowser(browser, async () => {
   notices.push(arrivalNotice);
   await refresh();
   await expect(stack).toContainText(arrival.content);
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCount(1);
+  await expect(stack.locator('[data-icon="presence"]')).toHaveCount(1);
+  await expect(stack).toContainText("★");
   await expect(page.locator(".marinara-capability-villages-chat-vn-reading")).not.toContainText(arrival.content);
   await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText(/1\s*\/\s*1$/u);
   await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
@@ -255,6 +258,7 @@ await withBrowser(browser, async () => {
   await page.reload();
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect(stack).not.toContainText(arrival.content);
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCount(0);
   await expect(composer).toBeEnabled();
   const history = session.lines;
   session.lines = [arrival];

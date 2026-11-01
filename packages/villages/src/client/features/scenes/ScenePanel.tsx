@@ -58,8 +58,31 @@ function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
   }[kind];
 }
 
-function roomNoticeIcon(kind: RoomRecordEvent["kind"]): string {
-  return kind === "relationship-up" ? "♥" : kind === "relationship-down" ? "♡" : "★";
+function roomNoticeIcon(notice: RoomRecordEvent): ReactNode {
+  if (notice.id.startsWith("presence:"))
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width="1.2em"
+        height="1.2em"
+        fill="currentColor"
+        aria-hidden="true"
+        data-icon="presence"
+        style={{ verticalAlign: "middle" }}
+      >
+        <path d="m18 5 4-2v18l-4-2z" />
+        <circle cx="9" cy="5.5" r="2" />
+        <path
+          d="M15 3h7v18h-7M4 12l3-3 4-.5 3 4h3m-7-3-3 6 4 3v3m-4-6H2l-1 4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  return notice.kind === "relationship-up" ? "♥" : notice.kind === "relationship-down" ? "♡" : "★";
 }
 
 export function currentRoom(session: SceneView): SceneView {
@@ -325,6 +348,7 @@ export function RoomPanel({
   const [dialogueHidden, setDialogueHidden] = useState(false);
   const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
+  const presenceNotice = notices.find((notice) => notice.id.startsWith("presence:"));
 
   useEffect(() => {
     if (settingsOpen) settingsRef.current?.focus();
@@ -1057,13 +1081,13 @@ export function RoomPanel({
               aria-expanded={noticesOpen}
               aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
             >
-              ✦ {notices.length}
+              <span aria-hidden="true">{presenceNotice ? roomNoticeIcon(presenceNotice) : "✦"}</span> {notices.length}
             </button>
             {noticesOpen ? (
               <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
                 {notices.map((notice) => (
                   <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
-                    <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>
+                    <span aria-hidden="true">{roomNoticeIcon(notice)}</span>
                     {(notice.kind === "memory" ||
                       notice.kind === "wish" ||
                       notice.kind === "relationship-up" ||
