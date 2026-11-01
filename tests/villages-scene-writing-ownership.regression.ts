@@ -33,6 +33,7 @@ function fixture(label: string, checkpointed = false) {
   world.foundedAt = world.setupAt = stamp;
   const scene = coerceSession({
     version: 3,
+    semanticVersion: 2,
     id: "same-scene",
     placeId: "same-place",
     placeName: "Common room",
@@ -58,7 +59,8 @@ function fixture(label: string, checkpointed = false) {
     brokenReply = false;
   const owner = createActivationScope();
   const checkpoints = new Map<string, unknown>();
-  let roomInterpretation: Awaited<ReturnType<SceneWritingPorts["interpretRoomReply"]>> = null;
+  let roomInterpretation:
+    import("../packages/villages/src/server/domain/models/interpretation-model.js").InterpretationBatch | null = null;
   async function touch(stage: string) {
     calls.push(stage);
     owners.push(scopedActivation());
@@ -128,13 +130,11 @@ function fixture(label: string, checkpointed = false) {
     },
     venueOperationId: () => label + " operation",
     venueOperationInput: () => ({
-      interactionScopeVersion: 1,
-      ...(checkpointed
-        ? {
-            writingContractVersion: 3,
-            writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
-          }
-        : {}),
+      interactionScopeVersion: 6,
+      writingContractVersion: 3,
+      semanticPipelineVersion: 3,
+      residentActionsVersion: 2,
+      writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
     }),
     venueCheckpoint: async <T>(stage: string, work: () => Promise<T>): Promise<T> => {
       if (!checkpointed) return work();
@@ -145,7 +145,6 @@ function fixture(label: string, checkpointed = false) {
     },
     venueSavedCheckpoint: <T>(stage: string) =>
       checkpointed && checkpoints.has(stage) ? (structuredClone(checkpoints.get(stage)) as T) : undefined,
-    venueOperationSignal: () => undefined,
     rejectVenueCompletion: async () => {
       calls.push("reject");
     },
@@ -159,7 +158,8 @@ function fixture(label: string, checkpointed = false) {
         content: brokenReply
           ? "invalid"
           : JSON.stringify({
-              ...(checkpointed ? { playerSpeechCapture: { status: "silent", segments: [] } } : {}),
+              playerSpeechCapture: { status: "silent", utterances: [] },
+              residentActions: [],
               segments: [{ kind: "narration", text: label + " room remains quiet." }],
               heardPlayerBy: [],
               wishChanges: [],
@@ -174,12 +174,25 @@ function fixture(label: string, checkpointed = false) {
       await touch("refresh");
       return scene;
     },
-    interpretRoomReply: async (selected, current) => {
-      assert.equal(selected, scene);
-      if (checkpointed) assert.equal(current.seed, world.seed);
-      else assert.equal(current, world);
-      await touch("interpretation");
-      return roomInterpretation;
+    semantic: {
+      preflight: async () => {},
+      intent: async () => assert.fail("The current writer never buys a separate intent"),
+      exchange: async () => {
+        await touch("interpretation");
+        return {
+          version: 2,
+          checkpointKey: "exchange",
+          sourceHash: "current-system",
+          authority: { physical: false, access: true, projects: false, standing: false },
+          effects: {
+            memoryChanges: [],
+            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+            wishChanges: [],
+            projectSpeech: [],
+          },
+          access: roomInterpretation,
+        };
+      },
     },
   };
   const service = createSceneWriting(ports);
@@ -297,11 +310,10 @@ for (const source of ["decisions", "system"] as const) {
     results: [{ outcome: "invite-now", source, evidenceIds: ["spoken"], reason: "" }],
     traces: [],
   });
-  const result = await invitation.run();
-  assert.equal(
-    !!result.invitationSignal,
-    source === "system",
-    "unbound saved Decision invitations are inert; the same System evidence retains normal authority checks",
+  await assert.rejects(
+    invitation.run(),
+    /lacks current witnessed evidence/,
+    "Neither a Decision nor System can grant an invitation from an absent source line",
   );
 }
 for (const stage of ["world", "connection", "lore", "model", "completion", "refresh", "interpretation"]) {

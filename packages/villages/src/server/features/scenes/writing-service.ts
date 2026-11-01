@@ -62,18 +62,8 @@ import {
   type ResponseDiagnostics,
   sceneMissingFields,
 } from "../../domain/rules/response-diagnostics.js";
-import {
-  compactSceneContract,
-  readSceneWritingCapabilities,
-  reliableSceneContract,
-  sceneWritingCapabilities,
-} from "../../domain/rules/scene-compact-contract.js";
-import {
-  sceneContinuityView,
-  sceneWishEffectIds,
-  sceneLocationContext,
-  visibleSceneContinuity,
-} from "../../domain/rules/scene-continuity.js";
+import { readSceneWritingCapabilities } from "../../domain/rules/scene-compact-contract.js";
+import { sceneContinuityView, sceneWishEffectIds, sceneLocationContext } from "../../domain/rules/scene-continuity.js";
 import {
   capturedSceneCalendar,
   GeneratedSceneBoundary,
@@ -83,10 +73,11 @@ import {
 import { extractSceneReply } from "../../domain/rules/scene-reply-json.js";
 import { parseVenueReply, quietContactReply } from "../../domain/rules/scene-reply.js";
 import {
+  assertCurrentSceneGeneration,
   completeSceneObject,
   normalizeRecoverableSceneReply,
   normalizeSceneEffectReferences,
-  normalizeSparseSceneReply,
+  SCENE_WRITING_CONTRACT,
 } from "../../domain/rules/scene-writing-contract.js";
 import { sceneWritingHistory, sharedLoreHistory } from "../../domain/rules/scene-writing-history.js";
 import { semanticEvidence, semanticNarrationCore } from "../../domain/rules/semantic-contract.js";
@@ -107,16 +98,14 @@ import {
   readContactRelay,
 } from "../../domain/rules/venue-contact.js";
 import { hasVenueClass, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { type MovementIntent, readPlayerMovement } from "../../domain/rules/venue-movement.js";
+import type { MovementIntent } from "../../domain/rules/venue-movement.js";
 import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
-import { buildVenueResponseContract } from "../../domain/rules/venue-response-contract.js";
 import { venueFoundingBackground } from "../../domain/rules/venue-scene-context.js";
 import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { environmentObservations } from "../../domain/rules/narrative-environment.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../domain/rules/scene-narrative-effects.js";
 import { SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
-import { venueReplyIntegrity } from "../../domain/rules/venue-turn-integrity.js";
 import {
   buildVenueSceneBlocks,
   fitVenueWritingMessages,
@@ -128,10 +117,8 @@ import {
   legacyZoneId,
   resolveVenueZone,
   venueInZone,
-  venueZones,
   zoneArea,
   zoneClosed,
-  zoneControllerIds,
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
@@ -166,12 +153,10 @@ export interface SceneWritingPorts {
   runtimeDebug: typeof import("../../adapters/observability/runtime-debug.js").runtimeDebug;
   venueOperationId: typeof import("../../adapters/operations/operation-context.js").venueOperationId;
   venueOperationInput: typeof import("../../adapters/operations/operation-context.js").venueOperationInput;
-  venueOperationSignal: typeof import("../../adapters/operations/operation-context.js").venueOperationSignal;
   rejectVenueCompletion: typeof import("../../jobs/venue-coordinator.js").rejectVenueCompletion;
   completeWithRoom: typeof import("../generation/model-requests.js").completeWithRoom;
   villagesConnectionIdFor: typeof import("../settings/connections.js").villagesConnectionIdFor;
   readVillageState: typeof import("../world/village-store.js").readVillageState;
-  interpretRoomReply: typeof import("./room-interpretation.js").interpretRoomReply;
 }
 
 export const VENUE_REPLY_MAX_TOKENS = 4_096;
@@ -193,37 +178,14 @@ export function createSceneWriting({
   runtimeDebug,
   venueOperationId,
   venueOperationInput,
-  venueOperationSignal,
   rejectVenueCompletion,
   completeWithRoom,
   villagesConnectionIdFor,
   readVillageState,
-  interpretRoomReply,
   semantic,
 }: SceneWritingPorts) {
-  /** Older admitted requests retain their saved interaction contract during recovery. */
   function explicitSceneActions(): boolean {
-    const input = venueOperationInput();
-    if (
-      input &&
-      input.interactionScopeVersion !== undefined &&
-      input.interactionScopeVersion !== 1 &&
-      input.interactionScopeVersion !== 2 &&
-      input.interactionScopeVersion !== 3 &&
-      input.interactionScopeVersion !== 4 &&
-      input.interactionScopeVersion !== 5 &&
-      input.interactionScopeVersion !== 6
-    )
-      throw conflict("This saved request uses an unsupported interaction contract. Its history is preserved.");
-    return (
-      !input ||
-      input.interactionScopeVersion === 1 ||
-      input.interactionScopeVersion === 2 ||
-      input.interactionScopeVersion === 3 ||
-      input.interactionScopeVersion === 4 ||
-      input.interactionScopeVersion === 5 ||
-      input.interactionScopeVersion === 6
-    );
+    return venueOperationInput()?.interactionScopeVersion === 6;
   }
 
   /** Do not disclose occupants of unseen Zones, including inside operation snapshots/checkpoints. */
@@ -249,17 +211,15 @@ export function createSceneWriting({
     actionOutcome?: string,
     introduction?: NarrativeAdmission | null,
   ) {
-    const writingVersion = venueOperationInput()?.writingContractVersion;
+    assertCurrentSceneGeneration(session, venueOperationInput(), mode);
+    const writingVersion = SCENE_WRITING_CONTRACT;
     const requestKey = writingRequestKey(session, message, mode);
-    const captured =
-      writingVersion === 3
-        ? venueSavedCheckpoint?.<{
-            fitted: ReturnType<typeof fitVenueWritingMessages>;
-            ordinary?: ReturnType<typeof fitVenueWritingMessages>;
-            loreInspection?: LoreInspection;
-            wishContexts: NonNullable<VenueScene["submissions"][number]["wishContexts"]>;
-          }>("writing-request:" + requestKey)
-        : undefined;
+    const captured = venueSavedCheckpoint?.<{
+      fitted: ReturnType<typeof fitVenueWritingMessages>;
+      ordinary?: ReturnType<typeof fitVenueWritingMessages>;
+      loreInspection?: LoreInspection;
+      wishContexts: NonNullable<VenueScene["submissions"][number]["wishContexts"]>;
+    }>("writing-request:" + requestKey);
     if (captured && !captured.wishContexts)
       throw conflict("The saved Wish writing context is unavailable. Its source is retained.");
     const capturedWishes = captured
@@ -267,9 +227,6 @@ export function createSceneWriting({
         ? captured.wishContexts
         : await readCapturedWishContexts(captured.wishContexts, session)
       : undefined;
-    if (writingVersion !== undefined && writingVersion !== 1 && writingVersion !== 2 && writingVersion !== 3)
-      throw conflict("This saved request uses an unsupported writing contract. Its history is preserved.");
-    const sparse = writingVersion === 2 || writingVersion === 3;
     const preparationStarted = performance.now();
     const wishEffects = (state: VillageState) => sceneWishEffectIds(state, session);
     const [authority, connectionId] = await Promise.all([
@@ -315,14 +272,7 @@ export function createSceneWriting({
         (line.heardBy.some((id) => audibleIds.includes(id)) ||
           line.soundOnly?.characterIds.some((id) => audibleIds.includes(id))),
     );
-    const history = sparse
-      ? sceneWritingHistory(
-          session,
-          writingVersion === 3 ? eligibleEarlierEvidence : eligibleEarlierEvidence.slice(-18),
-          writingVersion === 3 ? message : undefined,
-          audibleIds,
-        )
-      : undefined;
+    const history = sceneWritingHistory(session, eligibleEarlierEvidence, message, audibleIds);
     const earlierEvidence = history?.evidence ?? eligibleEarlierEvidence.slice(-18);
     const memoryContext = "Memories: " + recalled.serialized;
     const optionalKnowledge: VenueWritingBlock[] = [{ text: memoryContext, optional: "memory" }];
@@ -476,7 +426,7 @@ export function createSceneWriting({
       parts.map((text) => ({
         text,
         optional:
-          (sparse && text === earlierContext ? "history" : undefined) ??
+          (text === earlierContext ? "history" : undefined) ??
           optionalKnowledge.find((block) => block.text === text)?.optional ??
           (/^(Recent scene history:|Earlier Scene recap:)/u.test(text)
             ? "history"
@@ -486,77 +436,41 @@ export function createSceneWriting({
                 ? "lore"
                 : undefined),
       }));
-    const capabilities = sparse
-      ? readSceneWritingCapabilities(venueOperationInput()?.writingCapabilities)
-      : sceneWritingCapabilities(village, session);
-    const responseContract = (context: Parameters<typeof buildVenueResponseContract>[0]) =>
-      session.semanticVersion === 2
-        ? [
-            "Return ONE complete JSON object containing " +
-              ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
-                ? "playerSpeechCapture, segments and residentActions (required even when [])."
-                : "playerSpeechCapture then segments.") +
-              ' No outside prose. JSON-encode all text, escaping embedded quotation marks; actions belong in narration, never outside a text string. segments are {kind:"dialogue",speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {kind:"narration",text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Sound belongs only on narration, never on a speech segment. If speech accompanies a separate meaningful nonverbal noise, use a separate narration segment with sound; otherwise omit sound. Every segment needs nonempty text; include a perceptible noise in narration text as well as its routing cue. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
-            ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
-              ? [
-                  'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"kind":"narration","text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
-                ]
-              : []),
-            PLAYER_CAPTURE_CONTRACT,
-            "Input source quotes (text IDs, never audibility): " +
-              JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
-            zoneEventContract(session)
-              .replace(
-                ZONE_PLAYER_SPEECH_CONTRACT,
-                [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
-                  ? 'Player speech uses playerSpeechCapture only. Never put speakerId:"player" in segments; code materializes the exact captured source spans. Exclude actions/thoughts, recalled, hypothetical, imagined, example and negated speech. No player words on arrival or silent input.'
-                  : ZONE_PLAYER_SPEECH_CONTRACT,
-              )
-              .replace(
-                "Physical changes still need validated placeUpdate: sound proves no repair, transfer, permission or lasting effect.",
-                "System must validate physical outcomes; sound proves no deed.",
-              )
-              .replace(
-                "No recap, contactIntent, contactRelay or player Zone travel. Local actions remain in this Zone.",
-                "No recap, contactIntent, contactRelay or player Zone travel. Only the explicit Move action changes the player Zone. Walking within this Zone is an ordinary local action.",
-              ),
-            context.presentation,
-            'Optional per-segment staging:[{characterId,position?:"left|center|right",expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]. Use listed active character/expression IDs; omission preserves the current pose. Visual cues establish no knowledge, consent or effects.',
-            ...context.expressions,
-          ].filter(Boolean)
-        : sparse && session.contactGeneration?.zoneEvents
+    const capabilities = readSceneWritingCapabilities(venueOperationInput()?.writingCapabilities);
+    const responseContract = (context: { presentation: string; expressions: string[] }) =>
+      [
+        "Return ONE complete JSON object containing " +
+          ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
+            ? "playerSpeechCapture, segments and residentActions (required even when [])."
+            : "playerSpeechCapture then segments.") +
+          ' No outside prose. JSON-encode all text, escaping embedded quotation marks; actions belong in narration, never outside a text string. segments are {kind:"dialogue",speakerId,text,delivery?:"ordinary|whisper|shout",presentation?:"main|aside",targetId?,staging?:[]} for speech and {kind:"narration",text,sound?:{sourceId,text,loud?:true},staging?:[]} for visible narration. Sound belongs only on narration, never on a speech segment. If speech accompanies a separate meaningful nonverbal noise, use a separate narration segment with sound; otherwise omit sound. Every segment needs nonempty text; include a perceptible noise in narration text as well as its routing cue. Max24 segments,2000 characters each. Omit unused optional fields. System independently validates consequences; residentActions are access proposals, never applied permission.',
+        ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
           ? [
-              ...(writingVersion === 3
-                ? reliableSceneContract(context, capabilities)
-                : compactSceneContract(context, capabilities)),
-              ...(writingVersion === 3
-                ? [
-                    PLAYER_CAPTURE_CONTRACT,
-                    'JSON syntax example for spoken input "Hello.": ' +
-                      JSON.stringify({
-                        playerSpeechCapture: { status: "captured", utterances: [{ quote: 0 }] },
-                        segments: [
-                          { text: "A visible response." },
-                          ...(context.exampleSpeakerId
-                            ? [
-                                {
-                                  speakerId: context.exampleSpeakerId,
-                                  text: "Hello.",
-                                  delivery: "ordinary",
-                                  presentation: "aside",
-                                },
-                              ]
-                            : []),
-                        ],
-                        memoryChanges: [],
-                      }) +
-                      '. Example is structure only,not Scene content; omit unused effects. Effects stay inside the final brace. Aside is presentation, never delivery:"side". Determine actual audibility from meaning.',
-                    "Input source quotes (IDs only identify text, not audibility): " +
-                      JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
-                  ]
-                : []),
+              'JSON structure for a silent input with no access action: {"playerSpeechCapture":{"status":"silent","utterances":[]},"segments":[{"kind":"narration","text":"A visible response."}],"residentActions":[]}. Example is structure only; write the actual Scene and attach every expressed access action.',
             ]
-          : buildVenueResponseContract(context);
+          : []),
+        PLAYER_CAPTURE_CONTRACT,
+        "Input source quotes (text IDs, never audibility): " +
+          JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
+        zoneEventContract(session)
+          .replace(
+            ZONE_PLAYER_SPEECH_CONTRACT,
+            [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
+              ? 'Player speech uses playerSpeechCapture only. Never put speakerId:"player" in segments; code materializes the exact captured source spans. Exclude actions/thoughts, recalled, hypothetical, imagined, example and negated speech. No player words on arrival or silent input.'
+              : ZONE_PLAYER_SPEECH_CONTRACT,
+          )
+          .replace(
+            "Physical changes still need validated placeUpdate: sound proves no repair, transfer, permission or lasting effect.",
+            "System must validate physical outcomes; sound proves no deed.",
+          )
+          .replace(
+            "No recap, contactIntent, contactRelay or player Zone travel. Local actions remain in this Zone.",
+            "No recap, contactIntent, contactRelay or player Zone travel. Only the explicit Move action changes the player Zone. Walking within this Zone is an ordinary local action.",
+          ),
+        context.presentation,
+        'Optional per-segment staging:[{characterId,position?:"left|center|right",expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]. Use listed active character/expression IDs; omission preserves the current pose. Visual cues establish no knowledge, consent or effects.',
+        ...context.expressions,
+      ].filter(Boolean);
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
         VENUE_SCENE_WRITING_FOUNDATION,
@@ -589,11 +503,11 @@ export function createSceneWriting({
         session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents
           ? ""
           : (session.contactGeneration?.instruction ?? ""),
-        sparse ? "" : visibleSceneContinuity(session),
+        "",
         session.contactGeneration?.zoneEvents
           ? `${zoneEventHearingContext(session, session.contactGeneration.venue!)}. ${session.contactGeneration.instruction}`
           : "",
-        storedPlace && (!sparse || capabilities.movement) && (mode === "chat" || mode === "ask")
+        storedPlace && capabilities.movement && (mode === "chat" || mode === "ask")
           ? residentMovementPrompt(
               village,
               storedPlace,
@@ -650,7 +564,7 @@ export function createSceneWriting({
         session.pendingRoomQuestions?.length
           ? `These room matters remain unresolved: ${session.pendingRoomQuestions.join("; ")}. Resolve them through natural contextual clarification before reacting as though permission or dismissal were established. Do not ask for formal permission wording.`
           : "",
-        !sparse || capabilities.residences
+        capabilities.residences
           ? `Available venues for a requested move: ${
               village.venues
                 .filter(
@@ -671,9 +585,7 @@ export function createSceneWriting({
               .join("; ")}.`
           : "",
         actionOutcome
-          ? session.semanticVersion === 2
-            ? `System prepared action constraints (not committed receipts): ${actionOutcome}. Write a consistent provisional Scene; resident consent must actually occur in their words.`
-            : `The action was checked separately. Its settled outcome is: ${actionOutcome}. React to this outcome; do not redo or contradict the action judgment.`
+          ? `System prepared action constraints (not committed receipts): ${actionOutcome}. Write a consistent provisional Scene; resident consent must actually occur in their words.`
           : "",
         `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
       ]),
@@ -695,46 +607,6 @@ export function createSceneWriting({
       ]),
       metadata: blocksFor(
         responseContract({
-          opening: mode === "greet",
-          conversational: mode === "chat" || mode === "ask",
-          liveMemory: true,
-          residentControlled:
-            session.area === "shared" ||
-            session.area === "private" ||
-            !!(
-              storedPlace && zoneControllerIds(storedPlace, resolveVenueZone(storedPlace, session.zoneId ?? "")!).length
-            ),
-          recapNeeded:
-            !session.contactGeneration?.acoustics &&
-            !session.contactGeneration?.zoneEvents &&
-            session.lines.length >= 12,
-          staging: session.stagingVersion === 1,
-          projects: projectContexts.length > 0,
-          wishes: active.some((person) =>
-            village.villagers.some(
-              (resident) => resident.characterId === person.characterId && !!resident.wishes.length,
-            ),
-          ),
-          exampleSpeakerId: stageIds[0],
-          exampleWitnessIds: stageIds,
-          explicitActions: explicitSceneActions(),
-          contactAction: !!session.contactGeneration,
-          naturalAttention: !!session.contactGeneration?.attention,
-          acousticContract: session.contactGeneration?.acoustics ? session.contactGeneration.instruction : undefined,
-          zoneEventContract: session.contactGeneration?.zoneEvents ? zoneEventContract(session) : undefined,
-          contactFacts:
-            !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask") && storedPlace
-              ? `Known villagers (not attendance): ${village.villagers.map((person) => `${person.characterId}: ${person.cardSnapshot.name}`).join("; ")}. Adjacent doorways (not attendance): ${contactNeighbors(storedPlace, session.zoneId ?? "exterior").join(", ")}. Open doorway speakers: ${(session.doorwayContacts ?? []).map((entry) => entry.characterId).join(", ")}.`
-              : "",
-          invitationZones: storedPlace
-            ? venueZones(storedPlace)
-                .filter((zone) => audience.some((id) => canInviteToZone(storedPlace, zone, id)))
-                .map(
-                  (zone) =>
-                    `${zone.id}: ${zone.name} (${zone.kind}; controllers ${audience.filter((id) => canInviteToZone(storedPlace, zone, id)).join(", ")})`,
-                )
-                .join("; ")
-            : "none",
           presentation:
             session.stagingVersion === 1
               ? "Current presentation state: " +
@@ -765,7 +637,7 @@ export function createSceneWriting({
     const requestedMaxTokens = VENUE_REPLY_MAX_TOKENS;
     const maxTokens = Math.min(model.maxOutputTokens ?? requestedMaxTokens, requestedMaxTokens);
     const fitStarted = performance.now();
-    if (session.semanticVersion === 2) {
+    {
       for (const block of blocks) {
         if (
           block.text.includes("Return memoryChanges:") ||
@@ -853,7 +725,7 @@ export function createSceneWriting({
       fitted,
       ordinary,
       loreInspection,
-      sparse: sparse && session.contactGeneration?.zoneEvents === true,
+      sparse: session.contactGeneration?.zoneEvents === true,
       writingVersion,
       writingCapabilities: capabilities,
       maxTokens,
@@ -886,8 +758,9 @@ export function createSceneWriting({
           : undefined;
       })(),
       projectContexts,
-      earlierEvidence:
-        !sparse || fitted.messages.some((message) => message.content.includes(earlierContext)) ? earlierEvidence : [],
+      earlierEvidence: fitted.messages.some((message) => message.content.includes(earlierContext))
+        ? earlierEvidence
+        : [],
       promptMemories: memoryIncluded ? promptMemories : [],
     };
   }
@@ -980,7 +853,7 @@ export function createSceneWriting({
     } = prepared;
     const requestKey = originalKey + (replacement ? "-boundary" : "");
     let ordinary = prepared.ordinary;
-    if (writingVersion === 3) {
+    {
       const saved = await venueCheckpoint("writing-request:" + originalKey, async () => ({
         fitted,
         ordinary,
@@ -1026,10 +899,10 @@ export function createSceneWriting({
       fitted = { ...corrected, loreEntries: fitted.loreEntries };
     }
     if (loreInspection) runtimeDebug("lore inspection", loreInspection);
-    if (session.semanticVersion === 2) {
+    {
       if (!semantic) throw conflict("System interpretation is not configured.");
       // A purchased draft must remain replayable even when the current connection can no longer fit it.
-      if (writingVersion !== 3 || venueSavedCheckpoint?.("writing-completion:" + requestKey) === undefined)
+      if (venueSavedCheckpoint?.("writing-completion:" + requestKey) === undefined)
         await semantic.preflight(session, message, narrativeVersion ? (narrativeGrant ?? null) : undefined);
       signal?.throwIfAborted();
     }
@@ -1054,19 +927,16 @@ export function createSceneWriting({
               )
           : undefined,
       });
-    const completion =
-      writingVersion === 3
-        ? await venueCheckpoint("writing-completion:" + requestKey, requestCompletion)
-        : await requestCompletion();
+    const completion = await venueCheckpoint("writing-completion:" + requestKey, requestCompletion);
     let captureSources: ReturnType<typeof playerSpeechCapture> | undefined;
     let recoveredRaw: Record<string, unknown> | undefined;
     let materializedRaw: Record<string, unknown> | undefined;
-    if (writingVersion === 3 && session.contactGeneration?.zoneEvents) {
+    if (session.contactGeneration?.zoneEvents) {
       const completeRaw = completeSceneObject(completion.content ?? "", completion.finishReason);
       const savedRaw =
         completeRaw &&
         normalizeSceneEffectReferences(
-          session.semanticVersion === 2 ? semanticNarrationCore(completeRaw) : completeRaw,
+          semanticNarrationCore(completeRaw),
           earlierEvidence.map((line) => line.id),
         );
       if (savedRaw) {
@@ -1151,7 +1021,7 @@ export function createSceneWriting({
     let completeRaw = sparse
       ? (recoveredRaw ?? materializedRaw ?? completeSceneObject(completion.content ?? "", completion.finishReason))
       : null;
-    if (session.semanticVersion === 2) {
+    {
       if (originalRaw) originalRaw = semanticNarrationCore(originalRaw);
       if (completeRaw) completeRaw = semanticNarrationCore(completeRaw);
     }
@@ -1172,10 +1042,7 @@ export function createSceneWriting({
       originalMissingFields: sceneMissingFields(originalRaw),
       inputCharacters: fitted.messages.reduce((sum, message) => sum + message.content.length, 0),
     });
-    const movementIntent: MovementIntent | null =
-      session.semanticVersion !== 2 && place && raw?.movementIntent
-        ? readPlayerMovement(message, place, raw.movementIntent)
-        : null;
+    const movementIntent: MovementIntent | null = null;
     if (movementIntent && movementIntent.zoneId !== session.zoneId) throw conflict("Use Move to change Zones.");
     const extractedContact =
       !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
@@ -1194,11 +1061,11 @@ export function createSceneWriting({
     try {
       if (sparse) {
         if (!completeRaw) throw new Error("The sparse Scene response is incomplete or ambiguous.");
-        if (writingVersion === 3) {
+        {
           const isolated = normalizeRecoverableSceneReply(completeRaw);
           raw = isolated.raw;
           effectFailures = isolated.failures;
-        } else raw = normalizeSparseSceneReply(completeRaw);
+        }
         diagnostics.missingFields = sceneMissingFields(raw);
       }
       if (captureSources && raw && Array.isArray(raw.segments)) {
@@ -1260,10 +1127,7 @@ export function createSceneWriting({
     }
     let residentActions: ReturnType<typeof readResidentActions> | undefined;
     const residentActionsOmitted = raw?.residentActions === undefined && session.semanticVersion === 2 && !!semantic;
-    if (
-      (session.semanticVersion === 2 && semantic) ||
-      [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
-    ) {
+    if (semantic || [1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))) {
       try {
         residentActions = readResidentActions(residentActionsOmitted ? [] : raw?.residentActions);
         if (residentActionsOmitted) runtimeDebug("resident action proposals omitted", { sceneId: session.id });
@@ -1287,38 +1151,35 @@ export function createSceneWriting({
       );
       throw new Error("The gathering is incomplete. Retry the opening to replace it.");
     }
-    const semanticResult =
-      session.semanticVersion === 2 && semantic
-        ? await semantic
-            .exchange(
-              session,
-              message,
-              parsed.lines,
-              session.semanticIntent ?? null,
-              residentActions,
-              residentActionsOmitted,
-              narrativeVersion ? (narrativeGrant ?? null) : undefined,
+    const semanticResult = semantic
+      ? await semantic
+          .exchange(
+            session,
+            message,
+            parsed.lines,
+            session.semanticIntent ?? null,
+            residentActions,
+            residentActionsOmitted,
+            narrativeVersion ? (narrativeGrant ?? null) : undefined,
+          )
+          .catch(async (error: unknown) => {
+            if (
+              error instanceof IncompleteOpeningPitch ||
+              error instanceof IncompleteOpeningGathering ||
+              error instanceof UnsupportedPlayerAgency
             )
-            .catch(async (error: unknown) => {
-              if (
-                error instanceof IncompleteOpeningPitch ||
-                error instanceof IncompleteOpeningGathering ||
-                error instanceof UnsupportedPlayerAgency
-              )
-                await rejectVenueCompletion(
-                  {
-                    model: model.model,
-                    connectionId: model.connectionId,
-                    reason:
-                      error instanceof UnsupportedPlayerAgency
-                        ? "unsupported-player-agency"
-                        : "incomplete-introduction",
-                  },
-                  { stages: ["writing-completion:" + requestKey] },
-                );
-              throw error;
-            })
-        : null;
+              await rejectVenueCompletion(
+                {
+                  model: model.model,
+                  connectionId: model.connectionId,
+                  reason:
+                    error instanceof UnsupportedPlayerAgency ? "unsupported-player-agency" : "incomplete-introduction",
+                },
+                { stages: ["writing-completion:" + requestKey] },
+              );
+            throw error;
+          })
+      : null;
     if (semanticResult?.draftBoundaryViolation)
       throw new GeneratedSceneBoundary(semanticResult.draftBoundaryViolation.outcome);
     if (semanticResult?.turnOutcome) {
@@ -1377,7 +1238,7 @@ export function createSceneWriting({
               session,
               audience,
               true,
-              writingVersion === 3 ? "redundant" : sparse,
+              "redundant",
               !!semanticResult,
             )
           : [];
@@ -1408,9 +1269,7 @@ export function createSceneWriting({
           if (cause instanceof InvalidNarratedSound)
             await rejectVenueCompletion(
               { model: model.model, connectionId: model.connectionId, reason: "invalid-narrated-sound" },
-              writingVersion === 3
-                ? { preserveWriting: true, stages: ["writing-completion:" + requestKey] }
-                : undefined,
+              { preserveWriting: true, stages: ["writing-completion:" + requestKey] },
             );
           throw cause;
         }
@@ -1603,11 +1462,7 @@ export function createSceneWriting({
       if (semanticResult)
         for (const proposal of projectSpeech)
           proposal.contextual = { version: 1, source: "system", checkId: semanticResult.sourceHash };
-      if (
-        writingVersion === 3 &&
-        Array.isArray(raw?.projectSpeech) &&
-        projectSpeech.length !== raw.projectSpeech.length
-      )
+      if (Array.isArray(raw?.projectSpeech) && projectSpeech.length !== raw.projectSpeech.length)
         effectFailures.projects = {
           kind: "metadata",
           message: "Project metadata cites an unavailable context.",
@@ -1639,10 +1494,9 @@ export function createSceneWriting({
         ...parsed,
         ...(narrativeSource ? { narrativeSource } : {}),
         effectFailures,
-        speechCapture:
-          writingVersion === 3 && captureSources
-            ? { version: 3 as const, status: captureSources.size ? ("captured" as const) : ("silent" as const) }
-            : undefined,
+        speechCapture: captureSources
+          ? { version: 3 as const, status: captureSources.size ? ("captured" as const) : ("silent" as const) }
+          : undefined,
         evidenceFingerprints: Object.fromEntries(
           earlierEvidence.map((line) => [
             line.id,
@@ -1805,37 +1659,9 @@ export function createSceneWriting({
   }
 
   /** Interpret an accepted scene without writing a partial transcript. */
-  async function interpretRoomDraft(
-    session: VenueScene,
-    currentVillage: VillageState,
-    message: string,
-    reply: SceneReply,
-    eligible = true,
-    evidenceLines = reply.lines.filter(
-      (line) =>
-        !(session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents) ||
-        !line.contactHidden ||
-        line.attentionEvidence,
-    ),
-  ) {
+  function bindRoomInvitation(session: VenueScene, currentVillage: VillageState, reply: SceneReply) {
     currentVillage = sceneContinuityView(currentVillage, session);
-    const roomInterpretation =
-      session.semanticVersion === 2
-        ? (reply.semanticAccess ?? null)
-        : eligible
-          ? await interpretRoomReply(
-              session,
-              sceneContinuityView(currentVillage, session),
-              message,
-              evidenceLines,
-              `${venueOperationId()}:${createHash("sha256").update(JSON.stringify(reply.lines)).digest("hex").slice(0, 12)}`,
-              reply.heardPlayerBy,
-              reply.invitationSignal ? undefined : reply.interpretationRouting,
-              reply.roomEvents,
-              reply.invitationSignal,
-            )
-          : null;
-    const proposedInvitation = reply.invitationSignal;
+    const roomInterpretation = reply.semanticAccess ?? null;
     reply.invitationSignal = null;
     if (roomInterpretation) {
       // Narrator metadata is a proposal, not permission. Contextual interpretation replaces its phrase gates.
@@ -1877,12 +1703,7 @@ export function createSceneWriting({
             privateSpaceId: ["private-residence", "staff", "restricted"].includes(zone.kind) ? zone.id : undefined,
             area: zoneArea(zone),
             spaceClass: zone.venueClass,
-            accompanies:
-              session.semanticVersion === 2
-                ? facts.accompanies === true
-                : proposedInvitation?.residentId === actor &&
-                  proposedInvitation?.zoneId === zone.id &&
-                  proposedInvitation.accompanies === true,
+            accompanies: facts.accompanies === true,
             timing: result.outcome === "invite-now" ? "now" : "later",
             ownerId: zone.ownerId ?? "",
             evidenceKind: supporting.kind === "narration" ? "action" : "speech",
@@ -1904,62 +1725,21 @@ export function createSceneWriting({
     signal?: AbortSignal,
     trace?: GreetingTrace,
     actionOutcome?: string,
-  ) {
+  ): Promise<SceneReply> {
     try {
-      if (session.semanticVersion === 2) {
-        if (!semantic) throw conflict("System interpretation is not configured.");
-        if (mode === "greet" && !session.contactGeneration?.zoneEvents) {
-          const state = await readVillageState();
-          const venue = state.venues.find((row) => row.id === session.placeId);
-          if (venue) session = zoneEventScene(session, venue);
-        }
-        if (
-          mode !== "greet" &&
-          venueOperationInput()?.semanticPipelineVersion !== 3 &&
-          !session.semanticIntent &&
-          (venueOperationInput()?.writingContractVersion !== 3 ||
-            venueSavedCheckpoint?.("writing-completion:" + writingRequestKey(session, message, mode)) === undefined)
-        )
-          await semantic.preflight(session, message);
-        const intent =
-          mode === "greet" || venueOperationInput()?.semanticPipelineVersion === 3
-            ? null
-            : (session.semanticIntent ?? (await semantic.intent(session, message)));
-        if (intent?.status === "unresolved") throw conflict(intent.reason || "The action needs clarification.");
-        session = { ...session, ...(intent ? { semanticIntent: intent } : {}) };
-        actionOutcome = intent ? JSON.stringify(intent) : undefined;
+      assertCurrentSceneGeneration(session, venueOperationInput(), mode);
+      if (!semantic) throw conflict("System interpretation is not configured.");
+      if (mode === "greet" && !session.contactGeneration?.zoneEvents) {
+        const state = await readVillageState();
+        const venue = state.venues.find((row) => row.id === session.placeId);
+        if (venue) session = zoneEventScene(session, venue);
       }
+      actionOutcome = undefined;
       const reply = await generateOnce(session, message, mode, targetId, settled, signal, trace, actionOutcome);
-      const integrity =
-        session.semanticVersion === 2
-          ? null
-          : venueReplyIntegrity(
-              message,
-              session.lines,
-              reply.lines.filter((line) => !line.attentionEvidence),
-            );
-      if (integrity) throw new VenueReplyFailure(integrity);
       const currentVillage = await readVillageState();
       const controlledVenue = currentVillage.venues.find((venue) => venue.id === session.placeId);
-      const controlledZone = controlledVenue && resolveVenueZone(controlledVenue, session.zoneId ?? "");
-      if (
-        ((session.area === "shared" && controlledVenue && venueResidentIds(controlledVenue).length > 0) ||
-          session.area === "private" ||
-          controlledZone?.kind === "staff" ||
-          controlledZone?.kind === "restricted") &&
-        reply.placeUpdate &&
-        session.semanticVersion !== 2
-      )
-        throw new VenueReplyFailure("residence-consent");
       if (reply.placeUpdate) {
         if (controlledVenue?.constructionStatus === "worksite") throw new VenueReplyFailure("construction-worksite");
-        if (
-          session.semanticVersion !== 2 &&
-          /^(?:i\s+)?(?:will|would|promise|plan|want|intend)\b|\b(?:yesterday|last week|earlier|elsewhere)\b/iu.test(
-            message.trim(),
-          )
-        )
-          throw new VenueReplyFailure("unsupported-physical-claim");
       }
       const currentSession = await refreshZoneParticipants(session, true);
       if (
@@ -1981,13 +1761,7 @@ export function createSceneWriting({
         )
           reply.invitationSignal = null;
       }
-      return interpretRoomDraft(
-        session,
-        currentVillage,
-        message,
-        reply,
-        mode !== "leave" && !reply.contactIntent && !reply.movementIntent,
-      );
+      return bindRoomInvitation(session, currentVillage, reply);
     } catch (cause) {
       if (!(cause instanceof VenueReplyFailure)) throw cause;
       await rejectVenueCompletion();
@@ -2007,40 +1781,7 @@ export function createSceneWriting({
     roomInterpretation?: InterpretationBatch | null;
     narrativeSource?: SceneNarrativeSource;
   };
-
-  async function generateContactResponse(scene: VenueScene, message: string, targetId: string): Promise<SceneReply> {
-    try {
-      if (scene.semanticVersion === 2) {
-        if (!semantic) throw conflict("System interpretation is not configured.");
-        if (
-          venueOperationInput()?.semanticPipelineVersion !== 3 &&
-          !scene.semanticIntent &&
-          (venueOperationInput()?.writingContractVersion !== 3 ||
-            venueSavedCheckpoint?.("writing-completion:" + writingRequestKey(scene, message, "chat")) === undefined)
-        )
-          await semantic.preflight(scene, message);
-        const intent =
-          venueOperationInput()?.semanticPipelineVersion === 3
-            ? null
-            : (scene.semanticIntent ?? (await semantic.intent(scene, message)));
-        if (intent && intent.status !== "resolved") throw conflict("The contact needs clarification.");
-        scene = { ...scene, ...(intent ? { semanticIntent: intent } : {}) };
-      }
-      const reply = await generateOnce(scene, message, "chat", targetId, null, venueOperationSignal());
-      const integrity = scene.semanticVersion === 2 ? null : venueReplyIntegrity(message, scene.lines, reply.lines);
-      if (integrity) throw new VenueReplyFailure(integrity);
-      return reply;
-    } catch (cause) {
-      if (!(cause instanceof VenueReplyFailure)) throw cause;
-      await rejectVenueCompletion();
-      runtimeDebug("contact draft rejection", { sceneId: scene.id, reason: cause.kind });
-      throw Object.assign(
-        badGateway("The contact reply could not be kept accurate. Your draft is preserved; retry."),
-        cause.failure ? { failure: cause.failure } : {},
-      );
-    }
-  }
-  return { prepareVenueTurnMessages, interpretRoomDraft, generate, generateContactResponse, explicitSceneActions };
+  return { prepareVenueTurnMessages, generate };
 }
 export type SceneWriting = ReturnType<typeof createSceneWriting>;
-export type SceneReply = Awaited<ReturnType<SceneWriting["generateContactResponse"]>>;
+export type SceneReply = Awaited<ReturnType<SceneWriting["generate"]>>;

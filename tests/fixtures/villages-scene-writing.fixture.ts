@@ -10,6 +10,7 @@ import type { VenueScene } from "../../packages/villages/src/server/domain/model
 import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
 import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
 import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
+import { sceneWritingCapabilities } from "../../packages/villages/src/server/domain/rules/scene-compact-contract.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
@@ -22,10 +23,7 @@ export async function currentScenePrompt(
   mode: "greet" | "chat" | "leave" = "chat",
   message = "What do you think?",
   overrides: Partial<VenueScene> = {},
-  operationInput: ReturnType<SceneWritingPorts["venueOperationInput"]> = {
-    interactionScopeVersion: 1,
-    playerAgencyVersion: 1,
-  },
+  operationInput: ReturnType<SceneWritingPorts["venueOperationInput"]> = {},
 ) {
   const snapshot = {
     ...snapshotFromCard(
@@ -58,6 +56,7 @@ export async function currentScenePrompt(
   );
   const session = coerceSession({
     version: 3,
+    semanticVersion: 2,
     id: "prompt-fixture",
     placeId: "common-room",
     placeName: "Common room",
@@ -74,6 +73,15 @@ export async function currentScenePrompt(
   });
   // Contact generation is request-local and intentionally absent from saved decoding.
   session.contactGeneration = overrides.contactGeneration;
+  const admission = {
+    writingContractVersion: 3,
+    semanticPipelineVersion: 3,
+    residentActionsVersion: 2,
+    interactionScopeVersion: 6,
+    playerAgencyVersion: 1,
+    writingCapabilities: sceneWritingCapabilities(world, session),
+    ...operationInput,
+  };
   const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");
   type Model = Awaited<ReturnType<ReturnType<SceneWritingPorts["villagesLanguageModels"]>["resolveForRequest"]>>;
   const model: Model = {
@@ -112,12 +120,10 @@ export async function currentScenePrompt(
     measurePipeline: forbidden,
     runtimeDebug() {},
     venueOperationId: () => "",
-    venueOperationInput: () => operationInput,
-    venueOperationSignal: () => undefined,
+    venueOperationInput: () => admission,
     rejectVenueCompletion: forbidden,
     completeWithRoom: forbidden,
     refreshZoneParticipants: forbidden,
-    interpretRoomReply: forbidden,
   };
   const result = await createSceneWriting(ports).prepareVenueTurnMessages(session, message, mode, "", null);
   const prompt = result.fitted.messages.map((entry) => entry.content).join("\n");

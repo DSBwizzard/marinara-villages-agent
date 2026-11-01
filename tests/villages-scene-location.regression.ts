@@ -220,3 +220,42 @@ for (const mode of ["greet", "chat", "leave"] as const) {
 console.log(
   "Scene writing locations match captured/current positions across doorway contact, movement and reload without revealing unseen rooms or occupants (provider-free).",
 );
+
+{
+  const history = {
+    ...scene,
+    activeIds: ["mari"],
+    lines: [
+      {
+        ...scene.lines[0],
+        id: "witnessed-preference",
+        role: "user" as const,
+        kind: "dialogue" as const,
+        content: "Moonflower tea tastes bitter to me.",
+        heardBy: ["mari"],
+      },
+      {
+        ...scene.lines[0],
+        id: "unwitnessed-preference",
+        role: "user" as const,
+        kind: "dialogue" as const,
+        content: "UNWITNESSED PRIVATE TEA PREFERENCE",
+        heardBy: [],
+      },
+      ...Array.from({ length: 40 }, (_, index) => ({
+        ...scene.lines[0],
+        id: "later-" + index,
+        content: "They discuss the weather by the booth.",
+        heardBy: ["mari"],
+      })),
+    ],
+  };
+  const before = JSON.stringify(history);
+  const prompt = await currentScenePrompt(world, card, "chat", "Which moonflower tea did I dislike?", history);
+  assert(
+    prompt.includes("Moonflower tea tastes bitter to me."),
+    "Current writing retrieves an older whole witnessed preference",
+  );
+  assert(!prompt.includes("UNWITNESSED PRIVATE TEA PREFERENCE"), "Raw history cannot invent a listener");
+  assert.equal(JSON.stringify(history), before, "Retrieval never rewrites saved evidence");
+}

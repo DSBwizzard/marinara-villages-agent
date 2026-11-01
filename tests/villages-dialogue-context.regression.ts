@@ -1,3 +1,4 @@
+import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import assert from "node:assert/strict";
 import { addMemory } from "./helpers/memories-fixture.js";
 import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
@@ -184,6 +185,7 @@ const release = configureVillagesRuntime({
 async function run() {
   try {
     const scene: any = {
+      semanticVersion: 2,
       version: 3,
       id: "fixture",
       placeId: "camp",
@@ -244,53 +246,28 @@ async function run() {
     assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
     assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
     assert.ok(!prompt.includes("Pending player requests to move:"));
-    for (const field of [
-      "contactIntent",
-      "placeUpdate",
-      "residenceRequest",
-      "residenceDecision",
-      "venueRequest",
-      "memoryChanges",
-      "relationshipChanges",
-      "wishChanges",
-      "departures",
-      "sceneEnded",
-    ])
-      assert.ok(prompt.includes(field), field);
-    assert.ok(prompt.includes("One-visit permission and unconditional standing invitations are distinct"));
-    assert.ok(prompt.includes("Conditional willingness is not an unconditional commitment or standing invitation"));
-    assert.ok(prompt.includes("contextual entry cautions remain meaningful"));
-    assert.ok(prompt.includes("Only an authorized controller"));
-    assert.ok(prompt.includes("Targeting is intent, not isolation"));
-    assert.ok(prompt.includes("narration cannot assert unsupported results"));
-    assert.ok(prompt.includes("Every knower must directly witness EVERY cited line"));
-    assert.ok(prompt.includes("sceneAfter"));
+    assert.match(prompt, /System interprets consequences/);
+
     assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes("liveAfter"));
-    assert.ok(prompt.includes("accepted"));
+
     const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
     assert.ok(prompt.includes(playerGuard));
     scene.memoryMode = "live";
     const opening = String((await prepareVenueTurnMessages(scene, "", "greet", "", null)).fitted.messages[0].content);
-    assert.ok(opening.includes("Opening heardPlayerBy is empty"));
-    assert.ok(opening.includes("memoryChanges:"));
+
     assert.ok(!opening.includes("recollections:["));
     assert.ok(!opening.includes("contactIntent:"));
     const currentTurn = String(
       (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages[0].content,
     );
     assert.ok(!currentTurn.includes("recollections:["));
-    assert.ok(currentTurn.includes("memoryChanges:"));
+
     scene.memoryMode = "live";
     scene.area = "private";
     const controlled = String(
       (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages[0].content,
     );
-    assert.ok(
-      controlled.includes("Lasting changes need explicit current-controller consent grounded in witnessed evidence."),
-    );
-    assert.ok(
-      controlled.includes("Valid access permits ordinary temporary use; enduring edits need controller authority"),
-    );
+    assert.match(controlled, /residentActions/);
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(
@@ -311,4 +288,20 @@ async function run() {
     "Dialogue context: temperament/history separation, full cards, section order, spontaneous effects, live evidence, and fitting passed without model requests.",
   );
 }
-void run();
+void context.run(
+  {
+    controller: new AbortController(),
+    operation: {
+      id: "prompt",
+      input: {
+        writingContractVersion: 3,
+        semanticPipelineVersion: 3,
+        residentActionsVersion: 2,
+        interactionScopeVersion: 6,
+        writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+      },
+      checkpoints: {},
+    },
+  } as any,
+  run,
+);

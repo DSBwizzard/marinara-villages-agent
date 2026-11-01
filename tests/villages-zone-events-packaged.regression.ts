@@ -13,9 +13,9 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
-import { heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
 import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import {
@@ -130,6 +130,7 @@ const scene = coerceSession({
   lines: [],
   submissions: [],
 });
+reserveMemoryScene(village, scene.id, now);
 const clone = <T>(value: T): T => structuredClone(value);
 const records = new Map<string, any>([
   ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", revision: 1, data: village }],
@@ -190,7 +191,7 @@ const documents = {
 };
 let modelCalls = 0;
 let answer: any;
-let captureRecoveryAnswers: unknown[] = [];
+const captureRecoveryAnswers: unknown[] = [];
 let domainRecoveryAnswer: unknown;
 let closeCoreBeforeEffects = false;
 let narrationCalls = 0;
@@ -438,851 +439,6 @@ async function turn(
 }
 try {
   await start();
-  const draft = '"So, uh... Aqua, was it?" I ask, turning to the avian. "What’s your story? And what’s with Feddy?"';
-  const local = await turn("feddy-aqua", draft, [
-    { kind: "dialogue", speakerId: "player", text: "So, uh... Aqua, was it?" },
-    { kind: "dialogue", speakerId: "player", text: "What’s your story? And what’s with Feddy?" },
-    { kind: "dialogue", speakerId: "aqua", text: "Aqua, yes. I came down to see the harbour." },
-    { kind: "dialogue", speakerId: "feddy", text: "Feddy likes the WATER." },
-  ]);
-  assert.match(JSON.stringify(local), /Aqua, yes/);
-  const initialPrompt = narrationPrompts.at(-1)!;
-  const locationFrame = JSON.parse(
-    initialPrompt
-      .split("Current physical Scene state (server authority, not shared character knowledge): ")[1]
-      .split("\n")[0],
-  );
-  assert.equal(locationFrame.player.zone.id, state().zoneId);
-  assert.deepEqual(
-    locationFrame.residents
-      .filter((row: any) => row.location === "with player")
-      .map((row: any) => row.characterId)
-      .sort(),
-    [...state().activeIds].sort(),
-    "the archive-identical writer's physical context matches app attendance",
-  );
-  assert(initialPrompt.includes('ALREADY in player Zone terrace: ["aqua","feddy"]'));
-  assert(!initialPrompt.includes("normally steps into"), "local residents receive no doorway-arrival encouragement");
-  const example = initialPrompt.match(/JSON syntax example for spoken input "Hello\.": (.+?)\. Example is structure/);
-  assert(example, "required object format is demonstrated with a complete example");
-  const formatExample = JSON.parse(example[1]);
-  assert.deepEqual(Object.keys(formatExample), ["playerSpeechCapture", "segments", "memoryChanges"]);
-  assert.deepEqual(formatExample.memoryChanges, []);
-  assert(formatExample.segments.some((line: any) => line.delivery === "ordinary" && line.presentation === "aside"));
-  assert(initialPrompt.includes('never delivery:"side"'));
-  assert(initialPrompt.includes("older evidence uses supplied IDs"));
-
-  assert(!state().lines.find((line: any) => line.content === draft).heardBy.length);
-  assert.deepEqual(state().lines.find((line: any) => line.content === "So, uh... Aqua, was it?").heardBy, [
-    "aqua",
-    "feddy",
-  ]);
-  assert.deepEqual(
-    state().lines.find((line: any) => line.content === "So, uh... Aqua, was it?").soundOnly.characterIds,
-    ["neighbor"],
-    "Adjacent listeners receive voices without the ordinary words",
-  );
-  closeCoreBeforeEffects = true;
-  const badMemory = { malformed: "preserve this failed payload" };
-  await turn(
-    "closed-core-effects",
-    '"Hello."',
-    [
-      { kind: "dialogue", speakerId: "player", text: "Hello." },
-      { kind: "dialogue", speakerId: "aqua", text: 'Keep the {gate} in mind, "if it is open".' },
-    ],
-    {},
-    { memoryChanges: badMemory },
-  );
-  const corrected = state().submissions.find((turn: any) => turn.id === "closed-core-effects");
-  assert.deepEqual(corrected.effectFailures.memories.proposal.memoryChanges, badMemory);
-  assert.equal(corrected.processing.domains.memories.status, "failed");
-  assert(state().lines.some((line: any) => line.content === 'Keep the {gate} in mind, "if it is open".'));
-  await turn("legacy-delivery-side", '"I am listening."', [
-    { kind: "dialogue", speakerId: "player", text: "I am listening." },
-    { kind: "dialogue", speakerId: "aqua", text: "You have my answer." },
-    { speakerId: "aqua", text: "That is a confession.", delivery: "side", presentation: "aside" },
-  ]);
-  const ordinaryAside = state().lines.findLast((line: any) => line.content === "That is a confession.");
-  assert.equal(ordinaryAside.delivery, "ordinary");
-  assert.equal(ordinaryAside.presentation, "aside");
-  assert.deepEqual(ordinaryAside.heardBy, ["aqua", "feddy"]);
-  assert.deepEqual(ordinaryAside.soundOnly.characterIds, ["neighbor"]);
-
-  const shouted = await turn("distant-call", "I wait quietly.", [
-    { kind: "dialogue", speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", loud: true },
-    { kind: "narration", text: "You pause by the railing." },
-  ]);
-  const shoutedHistory = await publicHistory(shouted.session.playback.scope);
-  assert.match(shoutedHistory, /indistinct/);
-  assert.doesNotMatch(
-    JSON.stringify(shouted) + shoutedHistory,
-    /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/,
-  );
-  assert.deepEqual(state().lines.find((line: any) => line.content === "PRIVATE WORDS NEVER DELIVERED").heardBy, [
-    "neighbor",
-    "distant",
-  ]);
-  const nearby = await turn("neighbor-call", "I look at the water.", [
-    { kind: "dialogue", speakerId: "neighbor", text: "Is anyone on the terrace?", delivery: "shout" },
-  ]);
-  assert.match(JSON.stringify(nearby), /Is anyone on the terrace/);
-  assert(
-    !nearby.session.activeIds.includes("neighbor"),
-    "audible replies do not move the speaker or add a local sprite",
-  );
-  assert(
-    state().submissions.at(-1).speechIdsAtTurn.includes("neighbor"),
-    "delayed Project/progress consumers retain adjacent speakers",
-  );
-  const queries = createSceneQueryService({
-    readSession: async () => fixtureSceneState(state(), records),
-    readVillageState: async () => village,
-    villagesDocuments: () => documents,
-  } as any);
-  const neighborEvidence = await queries.readProjectTurnEvidence(scene.id, "neighbor-call");
-  assert(
-    neighborEvidence.lines.some((line) => line.speakerId === "neighbor"),
-    "saved adjacent speech remains available to Project/progress evidence queries without movement",
-  );
-  assert.deepEqual(
-    neighborEvidence.playerMessagesByActor,
-    {},
-    "an action-only input is not silently supplied as spoken context",
-  );
-  await turn("loud-player", 'I privately think UNHEARD THOUGHT. I shout "Help!"', [
-    { kind: "dialogue", speakerId: "player", text: "Help!", loud: true },
-    { kind: "dialogue", speakerId: "aqua", text: "What happened?" },
-  ]);
-  const help = state().lines.findLast((line: any) => line.content === "Help!");
-  assert.deepEqual(help.heardBy, ["aqua", "feddy", "neighbor"]);
-  assert.deepEqual(help.soundOnly.characterIds, ["distant"]);
-  const unquotedInput = "*I think about cinnamon silently.* I tell Aqua that I dislike mint tea, unless it is cold.";
-  await turn(
-    "unquoted-conditional-source",
-    unquotedInput,
-    [{ text: "Aqua rests her hand on the rail." }, { speakerId: "aqua", text: "Only when cold, then." }],
-    {},
-    {
-      playerSpeechCapture: {
-        status: "captured",
-        utterances: [{ text: "I dislike mint tea, unless it is cold.", occurrence: 1 }],
-      },
-    },
-  );
-  const unquotedPrompt = narrationPrompts.at(-1)!;
-  assert(unquotedPrompt.includes("Input source quotes (IDs only identify text, not audibility): []"));
-  assert(unquotedPrompt.includes('Unquoted:{text:"exact span",occurrence:1}'));
-  assert.match(unquotedPrompt, /segments:.*\{speakerId,text\} speech and \{text\} visible narration/);
-  const unquotedLine = state().lines.findLast((line: any) => line.content === "I dislike mint tea, unless it is cold.");
-  assert.deepEqual(unquotedLine.heardBy, ["aqua", "feddy"]);
-  assert.deepEqual(unquotedLine.soundOnly.characterIds, ["neighbor"]);
-  assert.equal(unquotedLine.delivery, "ordinary", "naming Aqua does not imply whisper delivery");
-  assert(!state().lines.some((line: any) => line.attentionEvidence && line.content.includes("think about cinnamon")));
-
-  const splitDraft = '"Hello, Aqua." I turn to the water. "How are you?"';
-  const split = await turn("joined-quotes", splitDraft, [
-    {
-      kind: "dialogue",
-      speakerId: "player",
-      text: "Hello, Aqua. How are you?",
-      fragments: ["Hello, Aqua.", "How are you?"],
-    },
-    {
-      kind: "dialogue",
-      speakerId: "aqua",
-      text: "Quite well.",
-      delivery: "whisper",
-      presentation: "main",
-      targetId: "player",
-    },
-    { kind: "dialogue", speakerId: "feddy", text: "HELLO!", delivery: "shout", presentation: "aside" },
-  ]);
-  assert(
-    split.session.lines.some(
-      (line: any) => line.content === "Quite well." && line.presentation === "main" && line.delivery === "whisper",
-    ),
-  );
-  const bubble = split.session.lines.find((line: any) => line.content === "HELLO!");
-  assert.equal(bubble.delivery, "shout");
-  assert(
-    split.session.lines.some((line: any) => line.id === bubble.asideFor),
-    "bubble anchor remains in the public response",
-  );
-  const quiet = await turn("silent-attempt", "I try to hit the railing with a pebble.", [
-    { kind: "narration", text: "The pebble lands softly on the ground." },
-  ]);
-  assert.deepEqual(state().lines.at(-1).heardBy, ["aqua", "feddy"]);
-  assert.match(JSON.stringify(quiet), /pebble lands softly/);
-  await turn("npc-crash", "I stay still.", [
-    { kind: "sound", speakerId: "distant", text: "A tremendous crash echoes through the Venue.", loud: true },
-    { kind: "dialogue", speakerId: "aqua", text: "That was loud." },
-  ]);
-  assert.deepEqual(state().lines.findLast((line: any) => line.content.startsWith("A tremendous crash")).heardBy, [
-    "aqua",
-    "feddy",
-    "neighbor",
-    "distant",
-  ]);
-  const naturalProse = "Feddy sets his cup on the railing with a clink, then turns back to Aqua.";
-  const audibleCue = "A brief clink against stone.";
-  const natural = await turn("narrated-sound", "I watch the water.", [
-    { kind: "narration", text: naturalProse, sound: { sourceId: "feddy", text: audibleCue } },
-    { kind: "dialogue", speakerId: "aqua", text: "A good place to stop for a drink." },
-  ]);
-  const naturalLines = natural.session.lines.filter(
-    (line: any) => line.content === naturalProse || line.content === audibleCue,
-  );
-  assert.equal(naturalLines.length, 1, "the packaged response has no separate sound card");
-  assert.equal(naturalLines[0].content, naturalProse);
-  assert.doesNotMatch(JSON.stringify(natural), /sourceId|soundOnly/);
-  const narratedLine = state().lines.find((line: any) => line.content === naturalProse);
-  assert.deepEqual(narratedLine.heardBy, ["aqua", "feddy"]);
-  assert.deepEqual(narratedLine.soundOnly.characterIds, ["neighbor"]);
-  assert.equal(
-    heardLines(fixtureSceneState(state(), records), "neighbor").find((line) => line.id === narratedLine.id)?.content,
-    audibleCue,
-  );
-  assert(!heardLines(fixtureSceneState(state(), records), "distant").some((line) => line.id === narratedLine.id));
-
-  const ambientProse = "A pipe ticks beside the open doorway.";
-  const ambient = await turn("ambient-narration", "I investigate without leaving this space.", [
-    {
-      kind: "narration",
-      text: ambientProse,
-      sound: {
-        sourceId: "__venue_scene__",
-        text: "A metallic tick.",
-        loud: true,
-      },
-    },
-  ]);
-  const ambientLine = state().lines.findLast((line: any) => line.content === ambientProse);
-  assert.equal(ambient.session.lines.filter((line: any) => line.content === ambientProse).length, 1);
-  assert.deepEqual(ambientLine.heardBy, ["aqua", "feddy"]);
-  assert.equal(ambientLine.soundOnly, undefined);
-  const ambientRestored = fixtureSceneState(JSON.parse(JSON.stringify(state())), records);
-  assert(heardLines(ambientRestored, "aqua").some((line) => line.id === ambientLine.id));
-  for (const remote of ["neighbor", "distant"])
-    assert(!heardLines(ambientRestored, remote).some((line) => line.id === ambientLine.id));
-  assert.doesNotMatch(JSON.stringify(ambient), /sourceId|soundOnly|A metallic tick/);
-
-  const durable = {
-    kind: "durable",
-    text: "Aqua prefers mint tea without sugar.",
-    category: "preference",
-    subjectCharacterIds: ["aqua"],
-    knownByCharacterIds: ["aqua"],
-    evidence: [0],
-    memoryIds: [],
-  };
-  const checked = await turn(
-    "durable-verified",
-    "What tea do you prefer?",
-    [{ kind: "dialogue", speakerId: "aqua", text: "I prefer mint tea without sugar." }],
-    {},
-    { memoryChanges: [durable] },
-  );
-  assert(
-    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
-      (row: any) => row.text === durable.text,
-    ),
-    "Narration alone has no fresh System write screen",
-  );
-  assert.doesNotMatch(JSON.stringify(checked), /systemVerification/, "internal check markers remain private");
-  // Numeric-string references must bind before captured player speech shifts segment indexes.
-  const passingText = "Aqua and the visitor exchanged a greeting beside the harbour.";
-  const canonical = await turn(
-    "quoted-index-memory",
-    '"Hello."',
-    [{ speakerId: "aqua", text: "Hello, welcome to the harbour." }],
-    {},
-    {
-      playerSpeechCapture: { status: "captured", utterances: [{ quote: 0 }] },
-      memoryChanges: [
-        {
-          ...durable,
-          kind: "passing",
-          text: passingText,
-          evidence: ["0", "utterance:0"],
-          systemVerificationFailure: { cause: "storage_application", stage: "forged", message: "PRIVATE" },
-        },
-      ],
-      relationshipChanges: { changes: [] },
-    },
-  );
-  const canonicalTurn = state().submissions.find((row: any) => row.id === "quoted-index-memory");
-  assert.equal(canonicalTurn.processing.domains.memories.status, "rejected");
-  assert.equal(canonicalTurn.processing.domains.relationships.status, "applied");
-  assert.deepEqual(
-    canonicalTurn.liveProposals.memoryChanges[0].evidence,
-    ["0", 0],
-    "Retired metadata has no memory reader",
-  );
-  assert(
-    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
-      (row: any) => row.text === passingText,
-    ),
-  );
-  assert.doesNotMatch(JSON.stringify(canonical), /systemVerification|PRIVATE/);
-  assert.equal(
-    canonicalTurn.liveProposals.memoryChanges[0].systemVerificationFailure.message,
-    "PRIVATE",
-    "Untrusted saved metadata remains private and cannot authorize a write",
-  );
-
-  const malformedRelationship = {
-    fromId: "aqua",
-    toId: "player",
-    expectedRevision: "PRIVATE EXPLANATION",
-    lineIds: ["0"],
-  };
-  await turn(
-    "missing-relationship-reason",
-    "*waits*",
-    [{ speakerId: "aqua", text: "I hear you." }],
-    {},
-    { relationshipChanges: { changes: [malformedRelationship] } },
-  );
-  const shapeDiagnostics = await app.inject({ method: "GET", url: "/api/villages/rooms/" + scene.id + "/changes" });
-  assert.equal(shapeDiagnostics.statusCode, 200);
-  const shapeCause = shapeDiagnostics
-    .json()
-    .unresolved.find((row: any) => row.submissionId === "missing-relationship-reason").reason;
-  assert.match(shapeCause, /changes\[0\]\.reason must be a nonempty string/);
-  assert.doesNotMatch(shapeCause, /PRIVATE EXPLANATION|aqua/);
-
-  await turn(
-    "unavailable-memory-citation",
-    "*waits*",
-    [{ speakerId: "aqua", text: "I hear you." }],
-    {},
-    { memoryChanges: [{ ...durable, evidence: ["99"] }] },
-    0,
-  );
-  const citationDiagnostics = await app.inject({ method: "GET", url: "/api/villages/rooms/" + scene.id + "/changes" });
-  assert.match(
-    citationDiagnostics.json().unresolved.find((row: any) => row.submissionId === "unavailable-memory-citation").reason,
-    /did not meet the requirements for saving/,
-  );
-  const rejectedText = "Aqua is permanently timid.";
-  await turn(
-    "durable-unresolved",
-    "How are you tonight?",
-    [{ kind: "dialogue", speakerId: "aqua", text: "I am a little tired tonight." }],
-    {},
-    { memoryChanges: [{ ...durable, text: rejectedText }] },
-  );
-  const pending = state().submissions.find((row: any) => row.id === "durable-unresolved");
-  assert.equal(pending.processing.domains.memories.status, "rejected");
-  assert(
-    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
-      (row: any) => row.text === rejectedText,
-    ),
-  );
-  const boundary = "Please ask me before reading my private letters.";
-  await turn(
-    "source-disclosure",
-    '"Is there a boundary you want me to respect?"',
-    [{ kind: "dialogue", speakerId: "aqua", text: boundary }],
-    {},
-    { relationshipChanges: { disclosures: [{ source: 0, kind: "boundary" }] } },
-  );
-  assert(state().lines.some((line: any) => line.content === boundary));
-  const beforeNoop = clone(state().sceneAttendance);
-  const step = "She takes a step closer along the railing.";
-  await turn(
-    "local-noop",
-    '"Come a little closer if you like."',
-    [{ kind: "narration", text: step }],
-    {},
-    { contactMoves: [{ characterId: "aqua", zoneId: "terrace", segment: 0 }] },
-  );
-  assert.deepEqual(state().sceneAttendance, beforeNoop);
-  assert.deepEqual(state().activeIds, ["aqua", "feddy"]);
-  assert.deepEqual(state().submissions.at(-1).contactMoves ?? [], []);
-  const savedNoopText =
-    "Arun unhooks the garden gate, steps through into the courtyard and lets it swing shut behind him. He rolls a sleeve back down over a damp forearm and settles his weight evenly, the stance he takes when he intends to finish a thought out loud.";
-  const beforeQualifiedNoop = clone(state().sceneAttendance);
-  const acceptedNoop = await turn(
-    "saved-intent-noop",
-    '"What do you think?"',
-    [
-      { kind: "narration", text: savedNoopText },
-      { kind: "dialogue", speakerId: "aqua", text: "I would keep the useful habits." },
-    ],
-    {},
-    { contactMoves: [{ characterId: "aqua", zoneId: "terrace", segment: 0, quote: savedNoopText }] },
-  );
-  assert(acceptedNoop.session.lines.some((line: any) => line.content === savedNoopText));
-  assert.deepEqual(state().sceneAttendance, beforeQualifiedNoop);
-  assert.deepEqual(
-    state().submissions.at(-1).contactMoves ?? [],
-    [],
-    "redundant annotation never becomes saved movement",
-  );
-  assert.deepEqual(state().activeIds, ["aqua", "feddy"]);
-  assert.deepEqual(
-    state().lines.findLast((line: any) => line.content === savedNoopText).heardBy,
-    state().lines.findLast((line: any) => line.content === step).heardBy,
-    "same-Zone no-op cannot widen the narration’s witnesses",
-  );
-  const compactProse = "Aqua sets the cup beside the railing.";
-  await turn("compact-segment-kinds", '"Thank you."', [
-    { text: compactProse },
-    { speakerId: "aqua", text: "You are welcome.", delivery: "whisper", targetId: "player" },
-  ]);
-  const compactNarration = state().lines.findLast((line: any) => line.content === compactProse);
-  assert.equal(compactNarration.kind, "narration");
-  const compactSpeech = state().lines.findLast((line: any) => line.content === "You are welcome.");
-  assert.equal(compactSpeech.kind, "whisper");
-  assert.equal(compactSpeech.delivery, "whisper");
-  assert.deepEqual(compactSpeech.heardBy, ["aqua"]);
-  await turn("aside-shorthand", '"Any last thought?"', [
-    { kind: "narration", text: "Aqua sets her cup down." },
-    { kind: "dialogue", speakerId: "aqua", delivery: "aside", text: "A good place for a pause." },
-  ]);
-  const asideLine = state().lines.findLast((line: any) => line.content === "A good place for a pause.");
-  assert.equal(asideLine.presentation, "aside");
-  assert.equal(asideLine.delivery, "ordinary");
-  assert(
-    asideLine.soundOnly.characterIds.includes("neighbor"),
-    "ordinary asides remain audible across a connection without exposing words",
-  );
-  for (const [field, domain] of [
-    ["memoryChanges", "memories"],
-    ["relationshipChanges", "relationships"],
-    ["wishChanges", "wishes"],
-    ["projectSpeech", "projects"],
-  ]) {
-    const id = "corrupt-" + domain;
-    const text = "Accepted prose for " + domain + ".";
-    const response = await turn(
-      id,
-      "*waits*",
-      [{ kind: "dialogue", speakerId: "aqua", text }],
-      {},
-      { [field]: field === "projectSpeech" ? [{}] : "bad" },
-    );
-    const saved = state().submissions.find((row: any) => row.id === id);
-    assert.equal(saved.processing.domains[domain].status, "failed");
-    assert(saved.effectFailures[domain]);
-    assert(response.session.lines.some((line: any) => line.content === text));
-    assert.doesNotMatch(JSON.stringify(response), /effectFailures|speechSource|Malformed Project/);
-    const beforeReplay = modelCalls;
-    const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/" + scene.id + "/changes/replay" });
-    assert.equal(replay.statusCode, 200, replay.body);
-    assert.equal(modelCalls, beforeReplay, "storage replay makes zero model calls");
-    domainRecoveryAnswer =
-      domain === "projects"
-        ? { projectSpeech: [] }
-        : domain === "memories"
-          ? { memoryChanges: [] }
-          : domain === "wishes"
-            ? { wishChanges: [] }
-            : { relationshipChanges: { changes: [], permissions: [], disclosures: [] } };
-    const beforeLines = clone(state().lines);
-    const beforeNarration = narrationCalls;
-    const retry = await app.inject({
-      method: "POST",
-      url: "/api/villages/rooms/" + scene.id + "/changes/" + id + "/interpret",
-      payload: { domain },
-    });
-    assert.equal(retry.statusCode, 200, retry.body);
-    assert.equal(narrationCalls, beforeNarration, "effect recovery never rewrites Narration");
-    assert.deepEqual(state().lines, beforeLines);
-    assert.equal(state().submissions.find((row: any) => row.id === id).processing.domains[domain].status, "applied");
-  }
-  const denial = "You never told me which tea you liked.";
-  const falseFact = "The player never shared a tea preference.";
-  await turn(
-    "denial-is-not-history",
-    '"Do you remember my tea preference?"',
-    [{ kind: "dialogue", speakerId: "aqua", text: denial }],
-    {},
-    {
-      memoryChanges: [
-        {
-          kind: "passing",
-          text: falseFact,
-          category: "personal-fact",
-          subjectCharacterIds: [],
-          knownByCharacterIds: ["aqua"],
-          evidence: [0],
-        },
-      ],
-    },
-  );
-  assert(
-    state().lines.some((line: any) => line.content === denial),
-    "forgetful/bluffing character dialogue remains intact",
-  );
-  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
-  assert(
-    !fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
-      (row: any) => row.text === falseFact,
-    ),
-  );
-  await turn("continue-after-effects", "*nods*", [
-    { kind: "dialogue", speakerId: "aqua", text: "We can keep talking." },
-  ]);
-
-  // Missing capture checkpoints the original Narration; explicit retries request only System.
-  const recoveryText = "Aqua considers the tea.";
-  answer = { segments: [{ kind: "narration", text: recoveryText }] };
-  const capturePayload = {
-    sessionId: scene.id,
-    submissionId: "capture-recovery",
-    mode: "chat",
-    targetId: "",
-    message: '"Mint, please."',
-    expectedSceneRevision: state().sceneRevision,
-  };
-  const beforeCaptureNarration = narrationCalls;
-  const missing = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: capturePayload });
-  assert.equal(missing.statusCode, 502, missing.body);
-  assert(!state().lines.some((line: any) => line.content === recoveryText));
-  assert(Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")));
-  // A separate failed precommit Scene can be ended without generating or losing history.
-  const failedCloseId = "failed-close-fixture";
-  const failedCloseKey = "villages-venue-visit-" + failedCloseId;
-  const failedCloseRow = clone(records.get("villages-venue-visit-" + scene.id));
-  failedCloseRow.id = failedCloseKey;
-  failedCloseRow.data = clone(fixtureSceneState(failedCloseRow.data, records));
-  failedCloseRow.data.id = failedCloseId;
-  failedCloseRow.data.operation.snapshot = {
-    ...clone(fixtureSceneState(failedCloseRow.data.operation.snapshot, records)),
-    id: failedCloseId,
-  };
-  // This fixture authors a separate Scene; its typed captures must name that new owner.
-  const rebindCapture = (value: any) => {
-    if (value?.wishContexts?.format === 1) value.wishContexts.sceneId = failedCloseId;
-  };
-  for (const value of [failedCloseRow.data, failedCloseRow.data.operation.snapshot]) {
-    for (const turn of value.submissions) rebindCapture(turn);
-    for (const checkpoint of Object.values(value.operation?.checkpoints ?? {})) rebindCapture(checkpoint);
-  }
-  const originalLines = clone(failedCloseRow.data.lines);
-  failedCloseRow.data = authorSceneFixture(records, failedCloseRow.data);
-  records.set(failedCloseKey, failedCloseRow);
-  const originalFailed = JSON.parse(JSON.stringify(fixtureSceneState(failedCloseRow.data, records).operation));
-  const beforeFailedClose = modelCalls;
-  const endFailedPayload = {
-    sessionId: failedCloseId,
-    expectedSceneRevision: failedCloseRow.data.sceneRevision,
-    abandonOperationId: originalFailed.id,
-    retryOfAttemptId: originalFailed.attemptId,
-  };
-  const staleFailedClose = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/end",
-    payload: { ...endFailedPayload, retryOfAttemptId: "wrong" },
-  });
-  assert.equal(staleFailedClose.statusCode, 409, staleFailedClose.body);
-  const endedFailed = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
-  assert.equal(endedFailed.statusCode, 200, endedFailed.body);
-  assert.equal(records.get(failedCloseKey).data.status, "closed");
-  assert.deepEqual(fixtureSceneState(records.get(failedCloseKey).data, records).lines, originalLines);
-  assert.deepEqual(
-    fixtureSceneState(records.get(failedCloseKey).data, records).operation!.checkpoints["abandoned-request"],
-    {
-      ...originalFailed,
-      snapshot: null,
-    },
-  );
-  assert.doesNotMatch(endedFailed.body, /abandoned-request|writing-completion|snapshot/);
-  const endedAgain = await app.inject({ method: "POST", url: "/api/villages/rooms/end", payload: endFailedPayload });
-  assert.equal(endedAgain.statusCode, 200, endedAgain.body);
-  const abandoned = fixtureSceneState(records.get(failedCloseKey).data, records).operation!.checkpoints[
-    "abandoned-request"
-  ] as any;
-  assert.equal(abandoned.snapshot, null);
-  assert.deepEqual(abandoned.input, originalFailed.input);
-  assert.deepEqual(abandoned.checkpoints, originalFailed.checkpoints);
-  assert.deepEqual(abandoned.attempts, originalFailed.attempts);
-  assert.equal(modelCalls, beforeFailedClose, "Ending and replaying failed Scene makes no provider calls");
-  captureRecoveryAnswers = [
-    {},
-    {
-      additionalSpeech: [{ beforeSegment: 0, kind: "dialogue", speakerId: "player", text: "Mint, please." }],
-      playerSpeechCapture: {
-        status: "captured",
-        segments: [{ segment: 0, sources: [{ text: "Mint, please.", occurrence: 1 }] }],
-      },
-    },
-  ];
-  model.model = "changed-after-failure";
-  const invalidRecovery = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/turn",
-    payload: { ...capturePayload, retryOfAttemptId: state().operation.attemptId },
-  });
-  assert.equal(invalidRecovery.statusCode, 502, invalidRecovery.body);
-  const recovered = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/turn",
-    payload: { ...capturePayload, retryOfAttemptId: state().operation.attemptId },
-  });
-  assert.equal(recovered.statusCode, 200, recovered.body);
-  assert.equal(narrationCalls, beforeCaptureNarration + 1);
-  assert.equal(state().lines.filter((line: any) => line.content === recoveryText).length, 1);
-  const playerSource = state().lines.find((line: any) => line.attentionEvidence && line.content === "Mint, please.");
-  assert(playerSource.speechSource?.spans.length);
-  assert.deepEqual(playerSource.heardBy, ["aqua", "feddy"]);
-  assert.deepEqual(playerSource.soundOnly.characterIds, ["neighbor"]);
-  assert.doesNotMatch(recovered.body, /speechSource|effectFailures|writing-completion/);
-  const compact = await turn(
-    "compact-preference",
-    '"Mint is my favourite, only hot."',
-    [{ kind: "dialogue", speakerId: "aqua", text: "Noted." }],
-    {},
-    {
-      playerSpeechCapture: { status: "captured", utterances: [{ quote: 0 }] },
-      memoryChanges: [
-        {
-          kind: "passing",
-          text: "The player said mint is their favourite only when hot.",
-          category: "preference",
-          subjectCharacterIds: [],
-          knownByCharacterIds: ["aqua"],
-          evidence: ["utterance:0"],
-        },
-      ],
-    },
-  );
-  assert.equal(state().submissions.at(-1).processing.domains.memories.status, "rejected");
-  assert(
-    state().lines.some((line: any) => line.attentionEvidence && line.content === "Mint is my favourite, only hot."),
-  );
-  assert.doesNotMatch(JSON.stringify(compact), /utterances|playerSpeechCapture|speechCapture/);
-  const privatePayload = {
-    sessionId: scene.id,
-    submissionId: "compact-private-recovery",
-    mode: "chat",
-    targetId: "",
-    message: '"Secret ginger."',
-    expectedSceneRevision: state().sceneRevision,
-  };
-  answer = {
-    segments: [{ kind: "narration", text: "Aqua nods once." }],
-    playerSpeechCapture: { status: "uncertain", utterances: [{ quote: 0, delivery: "whisper", targetId: "aqua" }] },
-  };
-  let privateRecovery = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: privatePayload });
-  assert.equal(privateRecovery.statusCode, 502);
-  captureRecoveryAnswers = [
-    {
-      additionalSpeech: [{ kind: "dialogue", speakerId: "player", text: "Secret ginger.", delivery: "ordinary" }],
-      playerSpeechCapture: {
-        status: "captured",
-        segments: [{ segment: 0, sources: [{ text: "Secret ginger.", occurrence: 1 }] }],
-      },
-    },
-    {
-      additionalSpeech: [
-        { kind: "dialogue", speakerId: "player", text: "Secret ginger.", delivery: "whisper", targetId: "aqua" },
-      ],
-      playerSpeechCapture: {
-        status: "captured",
-        segments: [{ segment: 0, sources: [{ text: "Secret ginger.", occurrence: 1 }] }],
-      },
-    },
-  ];
-  privateRecovery = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/turn",
-    payload: { ...privatePayload, retryOfAttemptId: state().operation.attemptId },
-  });
-  assert.equal(privateRecovery.statusCode, 502, privateRecovery.body);
-  privateRecovery = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/turn",
-    payload: { ...privatePayload, retryOfAttemptId: state().operation.attemptId },
-  });
-  assert.equal(privateRecovery.statusCode, 200, privateRecovery.body);
-  assert.deepEqual(
-    state().lines.find((line: any) => line.attentionEvidence && line.content === "Secret ginger.").heardBy,
-    ["aqua"],
-  );
-  // Both observed tea failures: absent legacy witnesses stay unknown; new witnessed speech survives old history.
-  const preference = "I dislike cinnamon in tea. Mint is my favourite. What about you?";
-  editFixtureScene((saved) =>
-    saved.lines.push({
-      id: "legacy-unwitnessed-tea",
-      speakerId: "",
-      name: "",
-      role: "user",
-      content: '"' + preference + '"',
-      at: now,
-      zoneId: "terrace",
-      heardBy: [],
-    }),
-  );
-  await turn("legacy-tea-query", '"Which tea flavour did I dislike?"', [
-    { kind: "dialogue", speakerId: "aqua", text: "You never told me." },
-  ]);
-  assert(
-    !narrationPrompts.at(-1)!.includes('"id":"legacy-unwitnessed-tea"'),
-    "a reaction or the raw transcript cannot invent legacy hearing",
-  );
-  await turn(
-    "witnessed-tea",
-    '"' + preference + '"',
-    [{ kind: "dialogue", speakerId: "aqua", text: "I prefer plain black tea." }],
-    {},
-    { playerSpeechCapture: { status: "captured", utterances: [{ quote: 0 }] } },
-  );
-  const teaSource = state().lines.find((line: any) => line.attentionEvidence && line.content === preference);
-  assert(teaSource?.heardBy.includes("aqua"));
-  // Age the witnessed preference through the real HTTP path in one exchange.
-  // Repeating admission/replay 24 times only grows unrelated fixture checkpoints.
-  await turn(
-    "tea-distance",
-    "*listens*",
-    Array.from({ length: 24 }, (_, i) => ({
-      kind: "dialogue",
-      speakerId: "aqua",
-      text: "We discuss the wooden bench and its grain. " + "Timber and joinery. ".repeat(8) + i,
-    })),
-  );
-  assert(state().lines.findIndex((line: any) => line.id === teaSource.id) < state().lines.length - 24);
-  await turn("old-tea-retrieval", '"Which tea flavour did I dislike?"', [
-    { kind: "dialogue", speakerId: "aqua", text: "Cinnamon. You preferred mint." },
-  ]);
-  assert(
-    narrationPrompts.at(-1)!.includes(preference),
-    "the older exact player preference is retrieved before recent-history limits",
-  );
-  assert(narrationPrompts.at(-1)!.includes('"id":"' + teaSource.id + '"'));
-  assert(!narrationPrompts.at(-1)!.includes('"id":"legacy-unwitnessed-tea"'));
-  // A capture checkpoint belongs to exactly one completion, including replacement after core rejection.
-  const replacePayload = {
-    sessionId: scene.id,
-    submissionId: "replace-after-core",
-    mode: "chat",
-    targetId: "",
-    message: "*waits quietly*",
-    expectedSceneRevision: state().sceneRevision,
-  };
-  answer = {
-    segments: [{ kind: "narration", text: "Rejected original prose." }],
-    contactMoves: [{ characterId: "unknown", zoneId: "terrace", segment: 0 }],
-  };
-  const replaceNarrationBefore = narrationCalls;
-  let replaceResult = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: replacePayload });
-  assert.equal(replaceResult.statusCode, 502);
-  captureRecoveryAnswers = [{ playerSpeechCapture: { status: "silent", segments: [] } }];
-  replaceResult = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/turn",
-    payload: { ...replacePayload, retryOfAttemptId: state().operation.attemptId },
-  });
-  assert.equal(replaceResult.statusCode, 502, replaceResult.body);
-  answer = { segments: [{ kind: "narration", text: "Accepted replacement prose." }] };
-  captureRecoveryAnswers = [{ playerSpeechCapture: { status: "silent", segments: [] } }];
-  replaceResult = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/turn",
-    payload: { ...replacePayload, retryOfAttemptId: state().operation.attemptId },
-  });
-  assert.equal(replaceResult.statusCode, 200, replaceResult.body);
-  assert.equal(narrationCalls, replaceNarrationBefore + 2);
-  assert(!state().lines.some((line: any) => line.content === "Rejected original prose."));
-  assert.equal(state().lines.filter((line: any) => line.content === "Accepted replacement prose.").length, 1);
-  for (const fault of ["before", "after"] as const) {
-    failedSaveId = "save-fault-" + fault;
-    saveFault = fault;
-    const text = "Exactly once prose " + fault;
-    answer = { playerSpeechCapture: { status: "silent", segments: [] }, segments: [{ kind: "narration", text }] };
-    const payload = {
-      sessionId: scene.id,
-      submissionId: failedSaveId,
-      mode: "chat",
-      targetId: "",
-      message: "*waits*",
-      expectedSceneRevision: state().sceneRevision,
-    };
-    const beforeCalls = modelCalls;
-    const failed = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
-    assert.equal(failed.statusCode, 500, failed.body);
-    await stop?.();
-    await app.close();
-    app = Fastify();
-    await start();
-    const recovered = await app.inject({
-      method: "POST",
-      url: "/api/villages/rooms/turn",
-      payload: { ...payload, retryOfAttemptId: state().operation.attemptId },
-    });
-    assert.equal(recovered.statusCode, 200, recovered.body);
-    assert.equal(modelCalls, beforeCalls + 1, "restart/storage replay uses the checkpointed Narration");
-    assert.equal(state().lines.filter((line: any) => line.content === text).length, 1);
-    assert.equal(state().submissions.filter((turn: any) => turn.id === failedSaveId).length, 1);
-  }
-  const beforeRestart = modelCalls;
-  await stop?.();
-  await app.close();
-  app = Fastify();
-  await start();
-  const restored = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
-  assert.equal(restored.statusCode, 200, restored.body);
-  const restoredHistory = await publicHistory(restored.json().session.playback.scope);
-  assert.match(restoredHistory, /indistinct/);
-  assert.doesNotMatch(
-    restored.body + restoredHistory,
-    /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/,
-  );
-  assert.equal(modelCalls, beforeRestart, "restart and read-only restoration request no model work");
-  assert(restoredHistory.includes(naturalProse));
-  assert(!(restored.body + restoredHistory).includes(audibleCue));
-  assert.equal(
-    heardLines(fixtureSceneState(state(), records), "neighbor").find((line) => line.id === narratedLine.id)?.content,
-    audibleCue,
-  );
-  // Actual packaged navigation records visits without adding a classifier/model request.
-  const beforePictureNavigation = modelCalls;
-  for (const [index, zoneId] of ["kitchen", "terrace", "kitchen"].entries()) {
-    const moved = await app.inject({
-      method: "POST",
-      url: "/api/villages/rooms/zone",
-      payload: {
-        sessionId: scene.id,
-        zoneId,
-        expectedSceneRevision: state().sceneRevision,
-        operationId: `picture-entry-${index}`,
-      },
-    });
-    assert.equal(moved.statusCode, 200, moved.body);
-  }
-  assert.equal(
-    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen,
-    true,
-  );
-  assert.equal(
-    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "terrace").seen,
-    true,
-  );
-  const rejectedEntry = await app.inject({
-    method: "POST",
-    url: "/api/villages/rooms/zone",
-    payload: {
-      sessionId: scene.id,
-      zoneId: "bedroom",
-      expectedSceneRevision: state().sceneRevision,
-      operationId: "picture-entry-denied",
-    },
-  });
-  assert.equal(rejectedEntry.statusCode, 409, rejectedEntry.body);
-  assert(!records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "bedroom").seen);
-  assert.equal(modelCalls, beforePictureNavigation, "Zone image evaluation never adds a language-model call");
-  await stop?.();
-  await app.close();
-  app = Fastify();
-  await start();
-  await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
-  assert.equal(
-    records.get("villages-village").data.venues[0].zones.find((zone: any) => zone.id === "kitchen").seen,
-    true,
-  );
   // A fresh v2 Scene exercises the archive-identical server and real HTTP application owners.
   records.get("villages-venue-visit-" + scene.id).data = coerceSession({
     version: 3,
@@ -1363,6 +519,201 @@ try {
     /semanticIntent|semanticProvenance|semanticAccess|semanticReady|residentActionReceipt|residentActions|FORGED NARRATOR AUTHORITY/,
   );
   assert.equal(modelCalls, beforeSemanticRead, "New-contract read and replay are provider-free");
+
+  // Current packaged coverage replaces the retired Narration-owned protocol fixtures.
+  {
+    const retained = clone(records),
+      oldIntent = semanticIntentAnswer,
+      oldExchange = semanticExchangeAnswer;
+    const quietSystem = () => ({
+      consistent: true,
+      authority: { physical: false, access: false, projects: false, standing: false, social: false },
+      action: null,
+      access: [],
+      events: { moves: [], departures: [], contactEnd: [] },
+      memoryChanges: [],
+      relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+      wishChanges: [],
+      projectSpeech: [],
+    });
+    semanticIntentAnswer = {
+      status: "resolved",
+      timeline: [{ kind: "action", text: "*waits*" }],
+      instructions: "",
+      action: null,
+      movement: null,
+    };
+    semanticExchangeAnswer = quietSystem();
+    const distant = await turn("current-distant-call", "*waits*", [
+      { speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", delivery: "shout" },
+      { text: "You pause by the railing." },
+    ]);
+    const history = await publicHistory(distant.session.playback.scope);
+    assert.match(history, /indistinct/);
+    assert.doesNotMatch(
+      JSON.stringify(distant) + history,
+      /PRIVATE WORDS NEVER DELIVERED|Distant Resident|"distant"|soundOnly|heardHistory/,
+    );
+    const local = await turn("current-local-speech", "*waits*", [
+      { speakerId: "aqua", text: "Only the terrace hears these words." },
+    ]);
+    const localLine = state().lines.findLast((line: any) => line.content === "Only the terrace hears these words.");
+    assert.deepEqual(localLine.heardBy, ["aqua", "feddy"]);
+    assert.deepEqual(localLine.soundOnly.characterIds, ["neighbor"]);
+    for (const [field, domain] of [
+      ["memoryChanges", "memories"],
+      ["relationshipChanges", "relationships"],
+      ["wishChanges", "wishes"],
+      ["projectSpeech", "projects"],
+    ]) {
+      const id = "corrupt-" + domain;
+      const text = "Accepted prose for " + domain + ".";
+      semanticExchangeAnswer = quietSystem();
+      delete semanticExchangeAnswer[field];
+      if (field === "relationshipChanges")
+        semanticExchangeAnswer[field] = { changes: "bad", permissions: [], disclosures: [] };
+      answer = {
+        playerSpeechCapture: { status: "silent", utterances: [] },
+        segments: [{ kind: "dialogue", speakerId: "aqua", text }],
+      };
+      const beforeTurn = modelCalls;
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: {
+          sessionId: scene.id,
+          submissionId: id,
+          message: "*waits*",
+          mode: "chat",
+          targetId: "",
+          expectedSceneRevision: state().sceneRevision,
+        },
+      });
+      assert.equal(response.statusCode, domain === "relationships" ? 500 : 200, response.body);
+      assert.equal(modelCalls, beforeTurn + 2);
+      const saved = state().submissions.find((row: any) => row.id === id);
+      assert.equal(saved.processing.domains[domain].status, "failed");
+      assert(saved.effectFailures[domain]);
+      assert(state().lines.some((line: any) => line.content === text));
+      assert.doesNotMatch(response.body, /effectFailures|speechSource|Malformed Project/);
+      const beforeReplay = modelCalls;
+      const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/" + scene.id + "/changes/replay" });
+      assert.equal(replay.statusCode, 200, replay.body);
+      assert.equal(modelCalls, beforeReplay, "storage replay makes zero model calls");
+      domainRecoveryAnswer =
+        domain === "projects"
+          ? { projectSpeech: [] }
+          : domain === "memories"
+            ? { memoryChanges: [] }
+            : domain === "wishes"
+              ? { wishChanges: [] }
+              : { relationshipChanges: { changes: [], permissions: [], disclosures: [] } };
+      const beforeLines = clone(state().lines);
+      const beforeNarration = narrationCalls;
+      const retry = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/" + scene.id + "/changes/" + id + "/interpret",
+        payload: { domain },
+      });
+      assert.equal(retry.statusCode, 200, retry.body);
+      assert.equal(narrationCalls, beforeNarration, "effect recovery never rewrites Narration");
+      assert.deepEqual(state().lines, beforeLines);
+      assert.equal(state().submissions.find((row: any) => row.id === id).processing.domains[domain].status, "applied");
+    }
+
+    semanticExchangeAnswer = quietSystem();
+    {
+      const previousIntent = semanticIntentAnswer;
+      const message = 'I whisper "PRIVATE WORDS." to Feddy. *drops a pebble*';
+      const span = (kind: string, words: string, extra: Record<string, unknown> = {}) => ({
+        kind,
+        text: words,
+        start: message.indexOf(words),
+        end: message.indexOf(words) + words.length,
+        ...extra,
+      });
+      semanticIntentAnswer = {
+        status: "resolved",
+        instructions: "Preserve whispered speech and separate nonverbal noise.",
+        action: null,
+        movement: null,
+        timeline: [
+          span("context", "I whisper"),
+          span("speech", "PRIVATE WORDS.", { delivery: "whisper", targetId: "feddy" }),
+          span("context", "to Feddy."),
+          span("action", "*drops a pebble*"),
+        ],
+      };
+      await turn("current-mixed-private-noise", message, [
+        { speakerId: "player", text: "PRIVATE WORDS.", delivery: "whisper", targetId: "feddy" },
+        {
+          kind: "narration",
+          text: "A pebble taps the terrace boards.",
+          sound: { sourceId: "player", text: "A pebble taps", loud: true },
+        },
+      ]);
+      const queries = createSceneQueryService({
+        readSession: async () => fixtureSceneState(state(), records),
+        readVillageState: async () => village,
+        villagesDocuments: () => documents,
+      } as any);
+      const evidence = await queries.readProjectTurnEvidence(scene.id, "current-mixed-private-noise");
+      assert.equal(evidence.playerMessagesByActor.feddy, "PRIVATE WORDS.");
+      assert.equal(evidence.playerMessagesByActor.aqua, undefined);
+      assert.equal(
+        evidence.playerMessagesByActor.neighbor,
+        undefined,
+        "Hearing noise cannot disclose the private Project input",
+      );
+      semanticIntentAnswer = previousIntent;
+    }
+    for (const fault of ["before", "after"] as const) {
+      failedSaveId = "save-fault-" + fault;
+      saveFault = fault;
+      const text = "Exactly once prose " + fault;
+      answer = { playerSpeechCapture: { status: "silent", segments: [] }, segments: [{ kind: "narration", text }] };
+      const payload = {
+        sessionId: scene.id,
+        submissionId: failedSaveId,
+        mode: "chat",
+        targetId: "",
+        message: "*waits*",
+        expectedSceneRevision: state().sceneRevision,
+      };
+      const beforeCalls = modelCalls;
+      const failed = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload });
+      assert.equal(failed.statusCode, 500, failed.body);
+      await stop?.();
+      await app.close();
+      app = Fastify();
+      await start();
+      const recovered = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: { ...payload, retryOfAttemptId: state().operation.attemptId },
+      });
+      assert.equal(recovered.statusCode, 200, recovered.body);
+      assert.equal(modelCalls, beforeCalls + 2, "restart/storage replay uses the checkpointed Narration");
+      assert.equal(state().lines.filter((line: any) => line.content === text).length, 1);
+      assert.equal(state().submissions.filter((turn: any) => turn.id === failedSaveId).length, 1);
+    }
+
+    const beforeRestart = modelCalls;
+    await stop?.();
+    await app.close();
+    app = Fastify();
+    await start();
+    const restored = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    assert.doesNotMatch(
+      restored.body + (await publicHistory(local.session.playback.scope)),
+      /PRIVATE WORDS NEVER DELIVERED|Distant Resident/,
+    );
+    assert.equal(modelCalls, beforeRestart, "Reading restored sound history buys no model response");
+    records.clear();
+    for (const [id, row] of retained) records.set(id, row);
+    semanticIntentAnswer = oldIntent;
+    semanticExchangeAnswer = oldExchange;
+  }
   delete semanticExchangeAnswer.memoryChanges;
   semanticIntentAnswer.timeline = [{ kind: "action", text: "*waits*" }];
   await turn("semantic-missing-domain", "*waits*", [{ text: "The conversation pauses." }]);
@@ -1440,12 +791,7 @@ try {
   // Invalid writer sound metadata must be replaced only by a deliberate retry,
   // including after System has completed and across package reactivation.
   const beforeInvalidSound = clone(records);
-  for (const [semanticVersion, writingVersion] of [
-    [1, 3],
-    [2, 3],
-    [2, 2],
-    [2, 1],
-  ]) {
+  for (const [semanticVersion, writingVersion] of [[2, 3]]) {
     records.clear();
     for (const [key, record] of clone(beforeInvalidSound)) records.set(key, record);
     editFixtureScene((saved) => {
@@ -2659,7 +2005,7 @@ try {
   await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
   assert.equal(modelCalls, beforeConcludeRead, "Reading the concluded Scene performs no paid recovery");
   console.log(
-    "Archive-identical HTTP acceptance: legacy Zone events, sound/privacy, replay/restart plus v2 independent System discovery, forged narrator rejection, continuity/Continue and simple Wish settlement passed with synthetic providers.",
+    "Archive-identical HTTP acceptance: current System generation, private sound/history, exactly-once recovery, held domains, continuity and Wish settlement passed with synthetic providers.",
   );
 } finally {
   await stop?.();
