@@ -1,11 +1,11 @@
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } }),
       errors = [],
@@ -140,6 +140,4 @@ try {
   console.log(
     "Owned Agenda controls: opt-in, independent categories, explicit interpretation and preserved day on desktop/phones; mocked HTTP only.",
   );
-} finally {
-  await browser.close();
-}
+});

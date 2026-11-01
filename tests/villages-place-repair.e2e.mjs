@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { build } from "../scripts/esbuild.mjs";
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -24,7 +24,7 @@ const bundle = await build({
 });
 const browser = await chromium.launch({ headless: true });
 await mkdir(".build-tmp/place-repair", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const [name, width] of [
     ["desktop", 1440],
     ["phone", 390],
@@ -160,6 +160,4 @@ try {
       assert.match(state.venues[0].zones[0].description, /Shelves/);
       await page.close();
     });
-} finally {
-  await browser.close();
-}
+});

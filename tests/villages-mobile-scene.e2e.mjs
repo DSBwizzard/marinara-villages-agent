@@ -4,7 +4,7 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
@@ -35,7 +35,7 @@ cases.push(
     mode,
   })),
 );
-try {
+await withBrowser(browser, async () => {
   for (const { width, height, count, mode } of cases) {
     const mobile = width !== 1440;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
@@ -373,6 +373,4 @@ try {
   console.log(
     "Mobile Scenes: visible toolbar, grouped scale, speaker opacity, portrait/initial/error fallbacks, dock edges, keyboard, drafts and staging passed",
   );
-} finally {
-  await browser.close();
-}
+});

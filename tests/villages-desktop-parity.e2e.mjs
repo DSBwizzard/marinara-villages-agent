@@ -3,7 +3,7 @@ const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -112,7 +112,7 @@ const snapshot = {
   },
 };
 
-try {
+await withBrowser(browser, async () => {
   for (const { width, height, mobile } of [
     { width: 390, height: 844, mobile: true },
     { width: 360, height: 640, mobile: true },
@@ -580,6 +580,4 @@ try {
     await page.close();
   }
   console.log("Villages desktop parity: five viewports, four-person stage, compact reading, and map controls passed");
-} finally {
-  await browser.close();
-}
+});

@@ -4,12 +4,12 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
 const prefix = "marinara-capability-villages";
-try {
+await withBrowser(browser, async () => {
   for (const width of [1366, 850, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
@@ -559,6 +559,4 @@ try {
       `PASS ${width}px shared Venue, public graph/private details, access labels, name-only save, Projects and housing links`,
     );
   }
-} finally {
-  await browser.close();
-}
+});
