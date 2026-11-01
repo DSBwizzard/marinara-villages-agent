@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { currentProject, openProjectPage, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
 
 const browser = await chromium.launch({ headless: true });
 const output = process.env.VILLAGES_VISUAL_OUTPUT;
 if (output) await mkdir(output, { recursive: true });
 
-try {
+await withBrowser(browser, async () => {
   for (const { width, height } of [
     { width: 1280, height: 900 },
     { width: 850, height: 900 },
@@ -109,6 +109,4 @@ try {
   await expect(old.page.getByRole("button", { name: /Finished 7/ })).toBeVisible();
   await old.page.close();
   console.log("Project drafts and active slots fit on desktop and phone.");
-} finally {
-  await browser.close();
-}
+});

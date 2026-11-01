@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chromium, allowConsole, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, allowConsole, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 for (const kind of ["warning", "error", "pageerror", "popup", "allowed", "extra", "wrong-url", "http"]) {
   const browser = await chromium.launch({ headless: true });
@@ -36,9 +36,43 @@ for (const kind of ["warning", "error", "pageerror", "popup", "allowed", "extra"
       if (twice) console.error("expected error");
     }, kind === "extra");
   } else await page.evaluate((kind) => console[kind === "warning" ? "warn" : "error"]("unexpected diagnostic"), kind);
-  if (kind === "allowed" || kind === "http") await browser.close();
-  else await assert.rejects(browser.close(), /Unexpected browser diagnostics/);
+  if (kind === "allowed" || kind === "http")
+    assert.equal(await withBrowser(browser, async () => "complete"), "complete");
+  else
+    await assert.rejects(
+      withBrowser(browser, async () => {}),
+      /Unexpected browser diagnostics/,
+    );
 }
+for (const diagnostic of [false, true]) {
+  const primary = new Error("Primary browser assertion failed");
+  const browser = await chromium.launch({ headless: true });
+  await assert.rejects(
+    withBrowser(browser, async () => {
+      const page = await browser.newPage();
+      if (diagnostic) {
+        const observed = page.waitForEvent("console");
+        await page.evaluate(() => console.error("Cleanup diagnostic"));
+        await observed;
+      }
+      throw primary;
+    }),
+    (error) => {
+      if (!diagnostic) return error === primary;
+      assert(error instanceof AggregateError);
+      assert.equal(error.cause, primary);
+      assert.equal(error.errors[0], primary);
+      assert.match(error.errors[1].message, /Unexpected browser diagnostics/);
+      return true;
+    },
+  );
+}
+await assert.rejects(
+  withBrowser(await chromium.launch({ headless: true }), async () => {
+    throw null;
+  }),
+  (error) => error === null,
+);
 console.log(
   "Browser diagnostics reject warnings, errors, page exceptions, popup errors and excess/mismatched allowances; explicit negative HTTP fixtures pass.",
 );

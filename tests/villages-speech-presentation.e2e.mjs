@@ -4,7 +4,7 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
@@ -13,7 +13,7 @@ const browser = await chromium.launch({
 });
 const output = resolve("artifacts/speech-presentation");
 mkdirSync(output, { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
@@ -146,9 +146,7 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-} finally {
-  await browser.close();
-}
+});
 console.log(
   "Main and floating ordinary/whisper/shout speech, legacy main whispers, restored orphan anchors and desktop/mobile rendering passed.",
 );

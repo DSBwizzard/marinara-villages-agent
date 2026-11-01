@@ -4,7 +4,7 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
 const browser = await chromium.launch({
   headless: true,
@@ -148,7 +148,7 @@ async function mount(tab) {
   await tab.goto("http://villages.test/");
   await tab.addScriptTag({ path: resolve("packages/villages/client.js") });
 }
-try {
+await withBrowser(browser, async () => {
   await mount(page);
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
   const tray = page.getByRole("button", { name: /World changes?/ });
@@ -263,6 +263,4 @@ try {
   console.log(
     "villages-room-notices: live Wish chips, stars/hearts, focus, details, duplicate receipts, refresh, two-tab dismissal, and explicit recovery passed",
   );
-} finally {
-  await browser.close();
-}
+});

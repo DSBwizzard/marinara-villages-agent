@@ -2,7 +2,7 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 // Test cases: settings/hooks, settings/package
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
 import { build } from "../scripts/esbuild.mjs";
 import { resolve } from "node:path";
@@ -623,7 +623,7 @@ async function checkPackage(width) {
   assert.deepEqual(errors, []);
   await page.close();
 }
-try {
+await withBrowser(browser, async () => {
   await runCase("settings/hooks/1366", () => checkHooks(1366));
   for (const width of [1366, 390]) {
     await runCase("settings/package/" + width, () => checkPackage(width));
@@ -631,6 +631,4 @@ try {
   console.log(
     "Selected Settings/Venue navigation and lifetime scenarios passed; the case report records exact coverage.",
   );
-} finally {
-  await browser.close();
-}
+});

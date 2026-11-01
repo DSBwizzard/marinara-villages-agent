@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { PNG } from "pngjs";
 import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as base, mapImage, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
@@ -15,7 +15,7 @@ const P = "marinara-capability-villages";
 const output = resolve(process.env.VILLAGES_VISUAL_OUTPUT || ".build-tmp/dossier");
 mkdirSync(output, { recursive: true });
 let executedViewports = 0;
-try {
+await withBrowser(browser, async () => {
   for (const [width, height] of [
     [1440, 900],
     [1366, 600],
@@ -1479,6 +1479,4 @@ try {
     console.log(`Dossier ${width}×${height}: privacy, filtering, navigation, actions and layout passed`);
   }
   assert(executedViewports > 0, "No Dossier viewport matched the selected dimensions");
-} finally {
-  await browser.close();
-}
+});

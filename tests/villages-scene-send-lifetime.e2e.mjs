@@ -2,7 +2,7 @@ import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
@@ -217,7 +217,7 @@ async function mount({
     },
   };
 }
-try {
+await withBrowser(browser, async () => {
   // Hook state is viewport-independent; packaged layout suites retain desktop/phone coverage.
   for (const width of [1366])
     for (const strict of [false, true]) {
@@ -423,6 +423,4 @@ try {
   console.log(
     "PASS mocked mounted Scene sends: selection tokens, preflight/recovery fences, independent pending owners, reset/disposal and ordinary admission",
   );
-} finally {
-  await browser.close();
-}
+});

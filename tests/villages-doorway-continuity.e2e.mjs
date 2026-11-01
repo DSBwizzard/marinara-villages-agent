@@ -5,14 +5,14 @@ import { openSceneErrors, closeSceneErrors } from "./fixtures/villages-scene-err
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const browser = await chromium.launch({
   headless: true,
 });
 await mkdir(".build-tmp/doorway-continuity", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     await mockEngineLookups(page);
@@ -170,6 +170,4 @@ try {
     await page.close();
   }
   console.log("Doorway arrival/departure playback and nonempty save feedback passed on desktop and phones.");
-} finally {
-  await browser.close();
-}
+});

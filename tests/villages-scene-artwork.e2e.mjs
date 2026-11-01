@@ -2,7 +2,7 @@ import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
 import { build } from "../scripts/esbuild.mjs";
-import { chromium, expect, fulfill, mockEngineLookups } from "./fixtures/browser-diagnostics.mjs";
+import { chromium, expect, fulfill, mockEngineLookups, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, image, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const bundle = await build({
@@ -25,7 +25,7 @@ installFeature(c=>c.screen==='venue'?<VenueScreen controller={c}/>:<SceneScreen 
   jsx: "automatic",
 });
 const browser = await chromium.launch({ headless: true });
-try {
+await withBrowser(browser, async () => {
   for (const [width, area] of [
     [1366, "public"],
     [390, "public"],
@@ -192,6 +192,4 @@ try {
   console.log(
     "Scene artwork updates: generated/uploaded/removed images, retained captured facts and Scene draft, desktop and phone passed.",
   );
-} finally {
-  await browser.close();
-}
+});
