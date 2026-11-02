@@ -1309,6 +1309,7 @@ try {
   const canonicalVenue = records.get("villages-village").data.venues[0];
   initializeVenueAccess(canonicalVenue);
   canonicalVenue.access.managerIds = ["aqua"];
+  canonicalVenue.zones.find((zone) => zone.id === "bedroom").access.inviterIds = ["aqua"];
   {
     const retained = clone(records),
       oldIntent = semanticIntentAnswer,
@@ -1385,12 +1386,20 @@ try {
         records.clear();
         for (const [id, row] of clone(retained)) records.set(id, row);
         const legacyVenue = records.get("villages-village").data.venues[0];
-        delete legacyVenue.access;
-        legacyVenue.classes = ["residence"];
+        legacyVenue.classes = ["residence", "other"];
         legacyVenue.residentIds = ["aqua"];
         const legacyRoom = legacyVenue.zones.find((zone: any) => zone.id === "kitchen");
         legacyRoom.kind = "shared-residence";
         legacyRoom.venueClass = "residence";
+        legacyRoom.access = {
+          mode: "permission-required",
+          managerIds: ["aqua"],
+          memberIds: ["aqua"],
+          memberRoles: ["residents"],
+          inviterIds: [],
+          visitorHours: "always",
+          accompanied: false,
+        };
         const quote = timing === "now" ? "Come into the kitchen." : "Visit the kitchen tomorrow.";
         const check = {
           id: "retained-invitation",
@@ -1421,6 +1430,7 @@ try {
           invitationSignal: {
             residentId: "aqua",
             venueId: "harbour",
+            accessRevision: legacyVenue.access.revision,
             zoneId: "kitchen",
             zoneLabel: "Kitchen",
             scope: "shared",
@@ -1484,20 +1494,12 @@ try {
         });
         assert.equal(replay.statusCode, 200, replay.body);
         assert.equal(modelCalls, beforeReplay, "Retained complete greeting applies without dispatch");
-        assert.equal(
-          state().entryOffers?.some((offer: any) => offer.zoneId === "kitchen") ?? false,
-          source === "system" && timing === "now",
-        );
-        assert.equal(
-          state().zoneGrants?.some((grant: any) => grant.zoneId === "kitchen") ?? false,
-          source === "system" && timing === "now",
-        );
-        assert.equal(
-          records
-            .get("villages-village")
-            .data.venues[0].playerInvitations?.some((invite: any) => invite.quote === quote) ?? false,
-          source === "system" && timing === "later",
-        );
+        const spoken = state().lines.find((line) => line.content === quote);
+        const grant = records
+          .get("villages-village")
+          .data.venues[0].access.permissions.find((permission) => permission.sourceLineIds.includes(spoken.id));
+        assert.equal(!!grant, source === "system", "Only retained System authority grants canonical invitation");
+        if (grant) assert.equal(grant.sceneId, timing === "now" ? scene.id : null);
       }
     records.clear();
     for (const [id, row] of retained) records.set(id, row);

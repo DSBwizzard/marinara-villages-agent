@@ -578,7 +578,7 @@ async function main() {
         .find((venue) => venue.id === outside.id)!
         .archivedZones!.some((entry) => entry.zone.id === chamber.id),
     );
-    await assert.rejects(proposeVillageResidence("b", outside.id, "player", "", chamber.id), /no longer vacant/);
+    await assert.rejects(proposeVillageResidence("b", outside.id, "player", "", chamber.id), /available sleeping Zone/);
     for (const layout of ["exterior", "common", "private", "both"]) {
       await createNewVenueProject({
         name: "New " + layout,
