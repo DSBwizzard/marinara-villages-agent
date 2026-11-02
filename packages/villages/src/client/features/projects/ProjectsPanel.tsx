@@ -512,18 +512,26 @@ export function ProjectsPanel({
             </div>
             <div role="tabpanel" id={tabId + "panel"} aria-labelledby={tabId + tab}>
               {tab === "Overview & Progress" || tab === "Design & Spaces" ? (
-                <div className="vp-detail-pages" role="group" aria-label={tab + " pages"}>
+                <div
+                  className={
+                    "vp-detail-pages" +
+                    (tab === "Design & Spaces" && project.kind === "renovation" ? " vp-renovation-pages" : "")
+                  }
+                  role="group"
+                  aria-label={tab + " pages"}
+                >
                   {(tab === "Overview & Progress"
                     ? ["Overview", "Progress", ...(mobile && venue?.presentation.image ? ["Artwork"] : [])]
-                    : ["Design", "Zones", "Connections"]
+                    : ["Design", ...(project.kind === "renovation" ? ["Building"] : []), "Zones", "Connections"]
                   ).map((page) => (
                     <button
                       type="button"
                       key={page}
+                      aria-label={page}
                       aria-pressed={detailPage === page}
                       onClick={() => selectDetailPage(page)}
                     >
-                      {page}
+                      {mobile && page === "Connections" ? "Links" : page}
                     </button>
                   ))}
                 </div>
@@ -638,6 +646,23 @@ export function ProjectsPanel({
                     )}
                   </section>
                 </div>
+              ) : null}
+              {tab === "Design & Spaces" && detailPage === "Building" && venue ? (
+                <section className="vp-panel">
+                  <label>
+                    Building form
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Building form"
+                      rows={4}
+                      maxLength={MAX_PHYSICAL_DESIGN_LENGTH}
+                      value={venue.form ?? ""}
+                      readOnly={!editable}
+                      disabled={draft.busy}
+                      onChange={(event) => patchVenue({ ...venue, form: event.target.value })}
+                    />
+                  </label>
+                </section>
               ) : null}
               {tab === "Design & Spaces" && detailPage === "Zones" && venue ? (
                 <ProjectZones

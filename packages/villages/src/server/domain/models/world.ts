@@ -745,6 +745,8 @@ export type ResidentPlanningOpportunity = {
 
 export type VillageProjectPhase = "planning" | "working" | "paused" | "complete" | "cancelled";
 export type VillageProjectChange = {
+  form?: string;
+  exteriorDescription?: string;
   classes?: VillageVenueClass[];
   capacity?: number;
   zones?: VillageZoneDraft[];

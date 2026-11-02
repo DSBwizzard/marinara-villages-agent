@@ -8,7 +8,7 @@ import {
   trimProjectFocus,
   projectAgendaReservations,
 } from "./project-focus.js";
-import { approvalScope, projectDesignKey, renovationAffectedIds } from "./project-terms.js";
+import { approvalScope, matchesProjectDesign, renovationAffectedIds } from "./project-terms.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
@@ -118,7 +118,7 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
     if (
       !state.villagers.some((resident) => resident.characterId === flow.builderId) ||
       !flow.candidates.some(
-        (candidate) => candidate.residentId === flow.builderId && candidate.scope === projectDesignKey(project),
+        (candidate) => candidate.residentId === flow.builderId && matchesProjectDesign(candidate.scope, project),
       )
     ) {
       pauseProject(project, at, "Choose a willing resident lead, then Resume.");

@@ -38,4 +38,22 @@ assert.equal(
   validateProjectSpeech({ ...bound[0], speakerId: "b" }, [{ ...draft[0], id: "saved-line" }]),
   "Interpretation citation does not match this speaker's saved words.",
 );
+const persisted = fixture();
+const persistedId = await renovation(persisted, {
+  form: "A restored stone hall",
+  exteriorDescription: "A repaired doorway beneath the original arch.",
+});
+await persisted.agree(persistedId);
+const savedDesign = structuredClone(persisted.get(persistedId).lifecycle!.change!);
+await persisted.service.reviseRenovationProject(persistedId, persisted.body(persistedId, savedDesign));
+assert.equal(persisted.get(persistedId).lifecycle!.builderId, "a", "an unchanged save retains the chosen lead");
+assert.equal(persisted.get(persistedId).lifecycle!.candidates.length, 1, "spoken willingness survives decoding");
+assert.equal(persisted.get(persistedId).lifecycle!.approvals.length, 1, "unchanged approval remains valid");
+await persisted.service.reviseRenovationProject(
+  persistedId,
+  persisted.body(persistedId, { ...savedDesign, exteriorDescription: "A different Entrance." }),
+);
+assert.equal(persisted.get(persistedId).lifecycle!.builderId, "", "changed physical terms need renewed willingness");
+assert.equal(persisted.get(persistedId).lifecycle!.candidates.length, 0);
+assert.equal(persisted.get(persistedId).lifecycle!.approvals.length, 0, "changed Entrance needs renewed approval");
 console.log("Current Project interpretation contracts, independent checks and grounded citations passed.");
