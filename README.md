@@ -12,7 +12,7 @@ A Village can be a small town, a space station, a workplace, or another shared s
 - Work with residents on Projects that create or renovate places.
 - Return later to a Village whose clock and construction have kept moving.
 
-Conversations keep the moment when they began, so taking a break does not turn a morning chat into a conversation days later. Conclude the Scene when you are ready to rejoin the Village's current day.
+New Scenes follow the Village's current time between exchanges. Residents can leave for commitments and others can arrive while you remain in the Venue. Each admitted exchange keeps its captured time, participants, and witnesses; later arrivals do not automatically learn earlier conversations. Returning preserves earlier replies and leaves your draft unsent. Scenes already open in an older build keep their original captured moment until you conclude them.
 
 ## Status and access
 
