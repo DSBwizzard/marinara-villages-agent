@@ -388,6 +388,28 @@ assert.equal(applied.expressions.length, 1);
 assert.equal(applied.assignments.length, 2);
 assert.equal(applied.defaultExpressionId, paired.defaultExpressionId);
 assert.equal(applied.artwork.length, 2);
+catalog.sprites.push({ filename: "full_conflict.png", label: "Happy", folderId: "front-folder" });
+residentDraft = await service.prepare("resident", undefined, {
+  revision: residentDraft.revision,
+  folderId: "front-folder",
+  view: "front",
+  filenames: ["full_conflict.png"],
+});
+residentDraft = await service.save("resident", {
+  ...residentDraft,
+  assignments: residentDraft.assignments.map((item) => ({ ...item, approved: true })),
+  validateForUse: true,
+});
+const beforeConflict = structuredClone(village.villagers[0].spriteManager);
+await assert.rejects(
+  service.applyResident("resident", { revision: residentDraft.revision, residentToken: residentDraft.residentToken }),
+  /already has artwork/,
+);
+assert.deepEqual(
+  village.villagers[0].spriteManager,
+  beforeConflict,
+  "A facing conflict never replaces an existing assignment or partially commits artwork",
+);
 for (const alreadyAssigned of [false, true]) {
   const id = `adoption-race-${alreadyAssigned}`;
   village.villagers.push({ ...village.villagers[0], characterId: id, spriteManager: undefined });
