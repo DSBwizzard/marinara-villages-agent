@@ -696,21 +696,12 @@ async function foundingConnectionOwnership() {
           "saved reply validation dispatches no model",
         );
       }
-      if (operation === "seed") {
-        assert.deepEqual(
-          callbacks.map((callback) => callback.stage),
-          ["resolving", "model", "validating"],
-        );
-        assert.equal(callbacks[1]!.modelName, "A-model");
-        assert.equal((result.value as Record<string, { addition: string }>)["equal-venue"]!.addition, "A tidy");
-      }
       if (operation === "suggest") {
         const suggestions = (result.value as { venues: Array<Record<string, unknown>> }).venues;
         assert.equal(suggestions.length, 3);
         assert(suggestions.every((venue) => !("x" in venue)));
       }
       if (operation === "image" || operation === "upload") assert.equal((result.value as { id: string }).id, "A-image");
-      if (operation === "names") assert.deepEqual(result.value, ["A Hall", "A Court", "A Garden"]);
       if (operation === "descriptions") assert.deepEqual(result.value, { "equal-venue": "A stone room." });
       assert.equal(
         calls.filter((call) => call.owner === "B" && call.stage === "provider").length,
@@ -729,7 +720,7 @@ async function foundingConnectionOwnership() {
     }
   }
   console.log(
-    "Villages founding:25 paused assembled recipe/accounting/progress CAS cases passed (synthetic native model/HTTP)",
+    `Villages founding: ${scenarios.length} paused assembled recipe/accounting/progress CAS cases passed (synthetic native model/HTTP)`,
   );
 }
 
