@@ -5,7 +5,6 @@ import {
   parseCompactFoundingCompletion,
 } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { routineDay } from "../packages/villages/src/server/domain/rules/owned-routine.js";
-import { createCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact-service.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
@@ -104,86 +103,7 @@ for (const endMinute of [360, 480]) {
   );
 }
 
-async function openingIdeaShapes() {
-  const proposal = {
-    name: "Pavilion garden",
-    description: "A small garden along the entrance.",
-    situation: "The paved entrance has little shade.",
-    venueClass: "community",
-    established: false,
-    provenance: ["The entrance is paved.", "The park has local gardeners."],
-    work: "Coordinate a planting day.",
-    firstUse: "Visitors enjoy the planting.",
-  };
-  const renovation = { venueId: "hall", spaceId: "garden", title: "Garden", description: "Low shrubs." };
-  let answer: unknown;
-  let calls = 0;
-  const requestKeys: string[] = [];
-  const model = { maxOutputTokens: 1536, fitContext: (messages: unknown) => ({ messages, maxTokens: 1536 }) };
-  const service = createCompactFounding({
-    villagesLanguageModels: () => ({ resolveForRequest: async () => model }),
-    villagesConnectionIdFor: async () => "system",
-    completeWithRoom: async (_model: unknown, _messages: unknown, _tokens: unknown, options: any) => {
-      calls++;
-      requestKeys.push(options.savedRequest.key);
-      const completion = { content: JSON.stringify(answer), finishReason: "stop" };
-      assert.equal(
-        options.savedRequest.valid(completion),
-        true,
-        "the purchased response is usable without replacement",
-      );
-      const projected = { ...completion, content: options.savedRequest.replayContent(completion) };
-      assert.equal(
-        options.savedRequest.valid(projected),
-        true,
-        "The saved domain projection round-trips through application",
-      );
-      return projected;
-    },
-  } as any);
-  const openingContext = {
-    ...context(null),
-    openingVersion: 2,
-    venues: [
-      {
-        id: "hall",
-        name: "Pavilion",
-        classes: ["community"],
-        occupancy: {},
-        state: { condition: "Open", publicFacts: [] },
-        zones: [
-          { id: "exterior", name: "Entrance", kind: "exterior", state: { condition: "", features: [] } },
-          {
-            id: "garden",
-            name: "Garden",
-            kind: "public",
-            venueClass: "community",
-            description: "A garden.",
-            state: { condition: "Paved", features: [] },
-          },
-        ],
-      },
-    ],
-  } as any;
-  for (const kind of ["new-venue", "renovation"] as const) {
-    answer = { openingProposal: proposal, kind, ...(kind === "renovation" ? { renovation } : {}) };
-    const parsed = await service.proposeOpeningIdea(openingContext, kind, false);
-    assert.equal(parsed.kind, kind);
-    assert.equal(parsed.provenance, proposal.provenance.join("\n"));
-    if (kind === "renovation") {
-      assert.equal(parsed.renovation?.venueId, renovation.venueId);
-      assert.match(parsed.renovation?.sourceFingerprint ?? "", /^[a-f0-9]{64}$/u);
-    }
-  }
-  assert.equal(calls, 2, "normalizing each response needs only its original request");
-  assert.deepEqual(
-    requestKeys,
-    ["new-venue:format:2", "renovation:format:2"],
-    "the corrected prompt uses new identities without overwriting earlier paid receipts",
-  );
-}
 async function main() {
-  await openingIdeaShapes();
   const unscheduled = parseCompactFounding(payload(0), context(null) as any);
   assert.equal(Object.hasOwn(unscheduled, "wishes"), false, "Routine output cannot establish a desire");
   assert.equal(Object.keys(unscheduled.agenda.week ?? {}).length, 7);

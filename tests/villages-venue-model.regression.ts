@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -33,7 +34,7 @@ const state = coerceVillageState({
     },
   ],
   venues: [
-    {
+    venueFixture({
       id: "shop",
       name: "The Rolling Workshop",
       classes: ["residence", "workplace"],
@@ -69,7 +70,7 @@ const state = coerceVillageState({
           ownerId: "bob",
         },
       ],
-    },
+    }),
   ],
 });
 const venue = state.venues[0];

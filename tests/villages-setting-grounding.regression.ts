@@ -126,7 +126,7 @@ async function main() {
         name,
         setting,
         foundingReason: "custom",
-        foundingDetails: circumstances,
+        foundingHistory: circumstances,
         setupAt: "2026-10-01T12:00:00Z",
         playerBackground: DEFAULT_PLAYER_BACKGROUND,
       });
@@ -202,7 +202,7 @@ async function main() {
     const full = {
       setting: "x".repeat(2000),
       foundingReason: "custom",
-      foundingDetails: "We share the rent.",
+      foundingHistory: "We share the rent.",
       foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
     };
     await proposeCompactFounding(
@@ -219,7 +219,7 @@ async function main() {
       },
       async () => {},
     );
-    assert.ok(captured.includes(full.foundingDetails));
+    assert.ok(captured.includes(full.foundingHistory));
     assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|Player-authored creative preferences/);
     const map = buildTownMapPrompt("No water or decorative buildings.", scenarios[4][1]);
     assert.match(map, /Map details take priority over conflicting Village description/);
@@ -319,11 +319,11 @@ async function main() {
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
-      foundingDetails: "On Day 1 we arrived.",
+      foundingHistory: "On Day 1 we arrived.",
       promptKnowledge: "My custom prompt",
       playerBackground: "I arrived to help the harbor.",
     });
-    assert.equal(legacy.foundingDetails, "On Day 1 we arrived.");
+    assert.equal(legacy.foundingHistory, "On Day 1 we arrived.");
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(

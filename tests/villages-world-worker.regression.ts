@@ -6,7 +6,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { createNarrative } from "../packages/villages/src/server/features/narrative/narrative-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { synchronizeVenueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { worldRepairRecords } from "../packages/villages/src/server/domain/rules/repair-records.js";
 import { createRepairGate } from "../packages/villages/src/server/adapters/storage/repair-gate.js";

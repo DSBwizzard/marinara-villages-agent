@@ -3,17 +3,14 @@ import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profil
 import type { VillageSnapshot, VillageState, VillageBackgroundPace } from "../../domain/models/world.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
-import { remapVenues } from "../../domain/rules/prompt-preset.js";
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { readBool } from "../../domain/rules/village-projections.js";
-import { readPromptBox, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
+import { readPromptBox, readVillageName } from "../../domain/rules/world-input.js";
 
 export interface VillageSettingsPorts {
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
   readLinkedPersona(id: unknown): Promise<{ id: string; name: string; identity: string }>;
-  runVillageBootstrap(): Promise<VillageSnapshot>;
-  villagesLogger(): { warn(message: string, ...args: unknown[]): void };
   activityChanged?: () => void;
 }
 
@@ -22,8 +19,6 @@ export function createVillageSettings({
   mutateVillageState,
   buildVillageSnapshot,
   readLinkedPersona,
-  runVillageBootstrap,
-  villagesLogger,
   activityChanged,
 }: VillageSettingsPorts) {
   /** Store the box: what a villager in this village knows. */
@@ -165,31 +160,6 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
-  async function setVillageSetting(value: unknown): Promise<VillageSnapshot> {
-    const setting = readVillageSetting(value);
-    let shouldPropose = false;
-    await mutateVillageState((state) => {
-      state.setting = setting;
-      // The houses are places now, and a village with four houses and nowhere to
-      // send anybody is exactly the village that needs places invented. Counting
-      // every stored place here would read the roofs as the answer and leave a
-      // village of four cottages and nothing else.
-      shouldPropose = setting.length > 0 && remapVenues(state.venues).length === 0;
-    });
-
-    if (shouldPropose) {
-      // The setting is saved either way. A model that is offline, unconfigured or
-      // merely unhelpful must not cost the player the text they just typed; they
-      // are told in the tab that no places arrived and can ask again.
-      try {
-        await runVillageBootstrap();
-      } catch (error) {
-        villagesLogger().warn("[villages] could not propose places for the new setting: %s", String(error));
-      }
-    }
-    return buildVillageSnapshot();
-  }
-
   async function setScenerySettings(value: {
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
@@ -226,7 +196,6 @@ export function createVillageSettings({
     setVillageCharacterSpeechColors,
     setVillageName,
     setVillagePlayer,
-    setVillageSetting,
     setVillageWorldName,
     setScenerySettings,
   };

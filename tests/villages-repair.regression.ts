@@ -1169,14 +1169,14 @@ await runCase("repair/domain-editors", async () => {
         openingConditions: [],
         visualCues: [],
       };
-      s.foundingDetails = "Ignored fallback";
+      s.foundingHistory = "Ignored fallback";
     },
     { memories: true },
   );
   const opening = await f.api.inspect(repairId("founding"));
   assert.equal(opening.fields[0].value, "Original authoritative founding");
   const founding = await f.prepare(
-    edit(opening.id, { foundingDetails: "Corrected authoritative founding", foundingGuidance: "" }, "fix-founding"),
+    edit(opening.id, { foundingHistory: "Corrected authoritative founding", foundingGuidance: "" }, "fix-founding"),
   );
   await f.api.apply(founding.id, founding.token);
   assert.equal((await f.read()).scenarioImprint?.origin, "Corrected authoritative founding");

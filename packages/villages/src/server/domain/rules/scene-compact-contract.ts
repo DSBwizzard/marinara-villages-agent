@@ -5,7 +5,7 @@ import { accessManagementPrompt } from "./access-speech.js";
 import { conflict } from "./errors.js";
 import { LIVE_RELATIONSHIP_INSTRUCTION } from "./live-exchange.js";
 import { SCENE_MEMORY_INSTRUCTION } from "./scene-memories.js";
-import { hasVenueClass, venueResidentIds } from "./venue-model.js";
+import { hasVenueClass, venueAssignedCount, venueCapacity } from "./venue-model.js";
 import type { VenueResponseContext } from "./venue-response-contract.js";
 import { venueZones } from "./venue-zones.js";
 import { ZONE_SOUND_CONTRACT } from "./zone-events.js";
@@ -49,7 +49,7 @@ ACTION-BASED SOUND. ${ZONE_SOUND_CONTRACT}`
       : "",
     capabilities.residences ? `Optional residenceRequest:{source:0,venueId} for a listed available Residence.` : "",
     capabilities.residenceDecision
-      ? `Optional residenceDecision:{source:0,approved} for a pending player move request.`
+      ? `Optional residenceDecision:{source:0,characterId,approved} for a exact pending household move request.`
       : "",
     c.projects
       ? `Optional interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover all eligible current main speech; uncertainty and short contextual answers remain uncertain/potential. Optional projectSpeech:[{projectId,kind:"approval|builder|withdrawal",speakerId,citations:[{segment:0}]}]. Code supplies exact cited quotes (at most 1200 characters) and current revision. For longer speech supply a supported quote explicitly; never omit conditions or negation. Speech is no completed work.`
@@ -78,11 +78,10 @@ export function sceneWritingCapabilities(state: VillageState, scene: VenueScene)
       (venue) =>
         hasVenueClass(venue, "residence") &&
         venue.constructionStatus !== "worksite" &&
-        !venue.occupancy.playerHome &&
-        venueResidentIds(venue).length === 0,
+        venueAssignedCount(venue) < venueCapacity(venue),
     ),
     residenceDecision: state.residences.some(
-      (move) => move.status === "pending" && move.requestedBy === "player" && actors.includes(move.characterId),
+      (move) => move.status !== "current" && (move.agreement?.requiredIds ?? []).some((id) => actors.includes(id)),
     ),
   };
 }
@@ -135,7 +134,9 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
       ? 'Spontaneous proposals:venueRequest:{source:0,name,classes:["workplace|community|other"]} for NEW public Venue,1–2 classes. Approval starts planning,never construction; accepted commitments bind until withdrawn.'
       : "",
     capabilities.residences ? "residenceRequest:{source:0,venueId},listed available Residence only." : "",
-    capabilities.residenceDecision ? "residenceDecision:{source:0,approved},pending player move only." : "",
+    capabilities.residenceDecision
+      ? "residenceDecision:{source:0,characterId,approved},exact pending household move only."
+      : "",
     c.projects
       ? 'interpretationRouting:[{actorId,domain:"project",relevance:"irrelevant|potential|uncertain",targetIds:[],segments:[]}]. Cover eligible current main speech; short/contextual/uncertain answers stay potential/uncertain. projectSpeech:[{projectId,kind:"approval|builder|withdrawal",speakerId,citations:[{segment:0}]}]. Code supplies full quotes(max1200 chars)/revision; longer speech needs explicit supported quote retaining conditions/negation. Speech is no completed work.'
       : "",

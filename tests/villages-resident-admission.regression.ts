@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import Fastify from "fastify";
 import assert from "node:assert/strict";
 import {
@@ -138,7 +139,8 @@ const contextBefore = agendaRevision(state, "buster");
 state.villagers[0].admission.startingSituation = "Settled here.";
 assert.notEqual(agendaRevision(state, "buster"), contextBefore);
 const venue = parsePlace(
-  {
+  venueFixture({
+    residentIds: ["buster"].filter((id) => typeof id === "string" && !!id),
     id: "home",
     name: "Home",
     classes: ["residence"],
@@ -148,7 +150,7 @@ const venue = parsePlace(
     layout: "both",
     occupancy: { residentCharacterId: "buster", playerHome: false },
     presentation: { x: 0.5, y: 0.5 },
-  },
+  }),
   0,
 ) as any;
 const zone = {

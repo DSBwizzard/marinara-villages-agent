@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { clientImplementation } from "./client-source.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
@@ -277,7 +278,9 @@ async function main() {
         },
       ] as any;
       state.venues = [
-        {
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
           id: "square",
           name: "Village Square",
           category: "public",
@@ -285,7 +288,7 @@ async function main() {
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
           capabilities: [],
           state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
-        },
+        }),
       ];
     });
 
@@ -410,7 +413,7 @@ async function main() {
       ];
       state.residences = [];
       state.venues = [
-        {
+        venueFixture({
           ...state.venues[0]!,
           id: "rosa-home",
           classes: ["residence"],
@@ -422,8 +425,8 @@ async function main() {
           description: "Rosa's little house.",
           occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
           presentation: { image: null, x: 0.2, y: 0.2 },
-        },
-        {
+        }),
+        venueFixture({
           ...state.venues[0]!,
           id: "empty-venue",
           classes: ["residence"],
@@ -435,7 +438,7 @@ async function main() {
           description: "A small bakery.",
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
           presentation: { image: null, x: 0.6, y: 0.6 },
-        },
+        }),
       ];
     });
     await assert.rejects(

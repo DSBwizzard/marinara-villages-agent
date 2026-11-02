@@ -2,12 +2,10 @@ import type { FoundingRetry, FoundingTaskKind } from "../../../shared/contracts/
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageSnapshot } from "../../domain/models/world.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
 import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { badRequest, conflict, safeFailureMessage } from "../../domain/rules/errors.js";
 import { foundingReadyForPlay, foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
-import { readOpeningProposal } from "../../domain/rules/opening-project.js";
-import { proposalSourceCompatible } from "../../domain/rules/opening-proposal-source.js";
+
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type {
   backgroundJobSnapshot,
@@ -21,11 +19,9 @@ import type { readFoundingResidentContext } from "../residents/resident-agendas.
 import type { queueFoundingWish } from "../residents/wishes/service.js";
 import type { buildVillageSnapshot } from "../world/snapshot.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
-import type { proposeOpeningIdea } from "./founding-compact.js";
-import type { seedFoundingVenueDetails } from "./founding-drafts.js";
+
 import type { reportFoundingProgress } from "./founding-progress.js";
 export interface FoundingPreparationPorts {
-  proposeOpeningIdea?: typeof proposeOpeningIdea;
   backgroundJobSnapshot: typeof backgroundJobSnapshot;
   readFoundingResidentContext: typeof readFoundingResidentContext;
   queueFoundingWish: typeof queueFoundingWish;
@@ -33,7 +29,6 @@ export interface FoundingPreparationPorts {
   mutateVillageState: typeof mutateVillageState;
   buildVillageSnapshot: typeof buildVillageSnapshot;
   villagesLogger: typeof villagesLogger;
-  seedFoundingVenueDetails: typeof seedFoundingVenueDetails;
   reportFoundingProgress: typeof reportFoundingProgress;
   preparePrivateSpaces: typeof preparePrivateSpaces;
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
@@ -51,7 +46,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
     mutateVillageState,
     buildVillageSnapshot,
     villagesLogger,
-    seedFoundingVenueDetails,
     reportFoundingProgress,
     preparePrivateSpaces,
     backgroundWorkSummaries,
@@ -70,76 +64,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
       if (initial.foundingPreparation?.status !== "pending") return;
       await initializeTasks(initial.seed);
       const targeted = !!initial.foundingPreparation.selectedTasks?.length;
-      if (!targeted && !initial.foundingPreparation.venueDetailsSeeded) {
-        try {
-          await reportFoundingProgress(initial.seed, {
-            phase: "venues",
-            stage: "lore",
-            currentId: "",
-            currentVenueId: "",
-            currentZoneId: "",
-          });
-          const details = await seedFoundingVenueDetails(initial, (progress) =>
-            reportFoundingProgress(initial.seed, progress),
-          );
-          await reportFoundingProgress(initial.seed, { stage: "saving" });
-          await mutateVillageState((state) => {
-            if (
-              state.seed !== initial.seed ||
-              state.foundingPreparation?.status !== "pending" ||
-              state.foundingPreparation.venueDetailsSeeded
-            )
-              return;
-            for (const venue of state.venues) {
-              const seed = details[venue.id];
-              if (!seed) continue;
-              const original = initial.venues.find((row) => row.id === venue.id);
-              const source =
-                original?.zones?.find((zone) => zone.kind === "public" || zone.kind === "shared-residence") ??
-                original?.zones?.find((zone) => zone.kind === "exterior");
-              const space = venue.zones?.find((zone) => zone.id === source?.id);
-              const physicalSource = (place: typeof venue) => [
-                place.form,
-                place.classes,
-                place.zones?.map((zone) => [
-                  zone.id,
-                  zone.name,
-                  zone.kind,
-                  zone.ownerId,
-                  zone.description,
-                  zone.state.revision,
-                ]),
-              ];
-              if (
-                !original ||
-                !source ||
-                !space ||
-                backgroundRevision(physicalSource(original)) !== backgroundRevision(physicalSource(venue))
-              )
-                throw conflict(
-                  "The founding Zone changed while its details were prepared. Its saved response is retained.",
-                );
-              if (seed.addition) {
-                const description = [space.description, seed.addition].filter(Boolean).join("\n");
-                if (description.length > 4000) throw badRequest("The complete initial Zone description is too long.");
-                space.description = description;
-                space.state = {
-                  revision: space.state.revision + 1,
-                  updatedAt: villageNow().toISOString(),
-                  recent: null,
-                };
-              }
-            }
-            state.foundingPreparation.venueDetailsSeeded = true;
-          });
-        } catch (error) {
-          villagesLogger().warn("[villages] initial venue details unavailable: %s", String(error));
-          await mutateVillageState((state) => {
-            if (state.seed === initial.seed && state.foundingPreparation?.status === "pending")
-              state.foundingPreparation.error = safeFailureMessage(error).slice(0, 300);
-          });
-        }
-      }
       try {
         if ((await readVillageState()).seed !== initial.seed) return;
         await reportFoundingProgress(initial.seed, {
@@ -245,46 +169,6 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
           }
         }
       }
-      // Opening ideas are independent of Routine/Wish parsing and commit one resident at a time.
-      let openingError = "";
-      if (!targeted && !connectionBlocked && initial.opening?.version === 2) {
-        for (const id of initial.opening?.residentIds ?? []) {
-          try {
-            const live = await readVillageState();
-            if (live.seed !== initial.seed || live.opening?.id !== initial.opening?.id) return;
-            if (
-              live.opening.stage !== "gathering" ||
-              live.opening.proposals.some((row) => row.residentId === id) ||
-              !live.villagers.some((row) => row.characterId === id)
-            )
-              continue;
-            const context = await readFoundingResidentContext(id);
-            if (!context || !ports.proposeOpeningIdea) throw new Error("Opening idea preparation is unavailable.");
-            if (!proposalSourceCompatible({ input: { context } }, live, id))
-              throw new Error("Opening context changed. Retry preparation.");
-            const source = backgroundRevision([context.sourceRevision, context.circumstances]);
-            const proposal = await ports.proposeOpeningIdea(
-              context,
-              `opening:${live.seed}:${live.opening.id}:${source}:${id}`,
-              !!live.foundingPreparation?.retryActions?.length,
-            );
-            await mutateVillageState((state) => {
-              if (
-                state.seed !== live.seed ||
-                state.opening?.id !== live.opening?.id ||
-                state.opening?.stage !== "gathering" ||
-                !proposalSourceCompatible({ input: { context } }, state, id) ||
-                !state.villagers.some((row) => row.characterId === id)
-              )
-                throw new Error("Opening changed. Saved idea is preserved.");
-              if (!state.opening.proposals.some((row) => row.residentId === id))
-                state.opening.proposals.push(readOpeningProposal(proposal, id));
-            });
-          } catch (error) {
-            openingError ||= safeFailureMessage(error).slice(0, 300);
-          }
-        }
-      }
       await mutateVillageState((state) => {
         const marker = state.foundingPreparation;
         if (state.seed !== initial.seed || marker?.status !== "pending") return;
@@ -298,29 +182,15 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
         const residentIds = Object.keys(marker.tasks ?? {}).filter((id) =>
           state.villagers.some((resident) => resident.characterId === id),
         );
-        const ideasReady =
-          state.opening?.version !== 2 ||
-          !state.opening.residentIds.some(
-            (id) =>
-              state.villagers.some((row) => row.characterId === id) &&
-              !state.opening!.proposals.some((row) => row.residentId === id),
-          );
         const spacesReady = privatePreparationRooms(state).every(({ zone }) => zone.preparation?.status === "ready");
-        marker.status =
-          marker.venueDetailsSeeded && spacesReady && ideasReady && marker.completedIds.length === residentIds.length
-            ? "ready"
-            : "failed";
+        marker.status = spacesReady && marker.completedIds.length === residentIds.length ? "ready" : "failed";
         marker.error =
           marker.status === "ready"
             ? ""
-            : !marker.venueDetailsSeeded
-              ? "Venue preparation incomplete."
-              : !spacesReady
-                ? privatePreparationRooms(state).find(({ zone }) => zone.preparation?.status !== "ready")?.zone
-                    .preparation?.error || "Interior preparation incomplete."
-                : !ideasReady
-                  ? openingError || "Opening ideas incomplete. Retry preparation."
-                  : "Resident preparation incomplete.";
+            : !spacesReady
+              ? privatePreparationRooms(state).find(({ zone }) => zone.preparation?.status !== "ready")?.zone
+                  .preparation?.error || "Interior preparation incomplete."
+              : "Resident preparation incomplete.";
         marker.currentId = "";
         marker.currentTask = undefined;
         marker.stage = undefined;

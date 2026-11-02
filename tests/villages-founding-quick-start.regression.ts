@@ -16,9 +16,30 @@ import { parsePlace } from "../packages/villages/src/server/domain/rules/foundin
 import { extractFoundingVenueReply } from "../packages/villages/src/server/domain/rules/founding-venue-reply.js";
 
 const rows = [
-  { id: "player", venueClass: "residence", residentCharacterId: "", form: "Stolen hearse" },
-  { id: "buster", venueClass: "residence", residentCharacterId: "buster", form: "Dumpster" },
-  { id: "community", venueClass: "community", residentCharacterId: "", form: "Covered market" },
+  {
+    id: "player",
+    residentIds: [],
+    playerHome: true,
+    venueClass: "residence",
+    residentCharacterId: "",
+    form: "Stolen hearse",
+  },
+  {
+    id: "buster",
+    residentIds: ["buster"],
+    playerHome: false,
+    venueClass: "residence",
+    residentCharacterId: "buster",
+    form: "Dumpster",
+  },
+  {
+    id: "community",
+    residentIds: [],
+    playerHome: false,
+    venueClass: "community",
+    residentCharacterId: "",
+    form: "Covered market",
+  },
 ];
 const suggestions = rows.map((row) => ({
   id: row.id,
@@ -84,7 +105,12 @@ for (const personal of [false, true]) {
 }
 const templates = quickStartTemplates([
   draft,
-  { ...draft, id: "npc", occupancy: { ...draft.occupancy, playerHome: false, residentCharacterId: "buster" } },
+  {
+    ...draft,
+    id: "npc",
+    residentIds: ["buster"],
+    occupancy: { ...draft.occupancy, playerHome: false, residentCharacterId: "buster" },
+  },
   newSetupVenue("community", "community", 0.5, 0.5),
 ]);
 assert.deepEqual(
@@ -102,17 +128,33 @@ assert.equal(
 );
 assert.equal(templates[2].category, "public-center");
 assert.equal(parsed[1].privateDescription, "A resident berth with a blue blanket.");
-for (const layout of ["common", "private", "exterior"])
-  assert.throws(
-    () =>
-      parseFoundingVenueSuggestions(
-        { venues: [{ ...suggestions[0], layout }, ...suggestions.slice(1)] },
-        rows.map((row) => row.id),
-        rows,
-        true,
-      ),
-    /both Common Space and Private Space/,
+for (const layout of ["common", "private"]) {
+  const suggestion = {
+    ...suggestions[0],
+    layout,
+    connections: layout === "common" ? [["exterior", "common:base"]] : [["exterior", "private:base"]],
+  };
+  assert.equal(
+    parseFoundingVenueSuggestions(
+      { venues: [suggestion, ...suggestions.slice(1)] },
+      rows.map((row) => row.id),
+      rows,
+      true,
+    )[0].layout,
+    layout,
+    "a private sleeping room is optional",
   );
+}
+assert.throws(
+  () =>
+    parseFoundingVenueSuggestions(
+      { venues: [{ ...suggestions[0], layout: "exterior" }, ...suggestions.slice(1)] },
+      rows.map((row) => row.id),
+      rows,
+      true,
+    ),
+  /Common or Private/,
+);
 assert.throws(
   () =>
     parseFoundingVenueSuggestions(
@@ -198,12 +240,12 @@ const request = {
   mode: "quick-start",
   villageName: "Tidebreak",
   setting: "A coastal settlement made of salvaged shelters",
-  worldFacts: ["The tide floods the lower street"],
-  scenarioImprint: {
-    origin: "Dockside shelter",
-    worldFacts: ["The railway is abandoned"],
-    openingConditions: [],
-    visualCues: [],
+  communityVenueId: "community",
+  foundingHistory: "Dockside shelter",
+  context: {
+    rules: "The tide floods the lower street",
+    history: "Dockside shelter",
+    circumstances: [{ scope: "village", summary: "The railway is abandoned" }],
   },
   playerPersonaId: "driver",
   selectedLorebookIds: ["coast"],
@@ -213,13 +255,13 @@ const request = {
 const generated = await service.suggestStartingVenues(request);
 assert.deepEqual(generated.venues, parsed);
 assert.equal(calls, 1, "one explicit generation makes one model request");
-assert.match(system, /EVERY Residence MUST have layout both/);
+assert.match(system, /single-person Residence/);
 assert.match(system, /dumpster.*train car.*stolen hearse/);
 assert.match(system, /Sleeps in a stolen hearse/);
 assert.match(system, /discarded shelters/);
 assert.match(system, /old market/);
-assert.deepEqual(input.worldFacts, request.worldFacts);
-assert.deepEqual(input.scenario, request.scenarioImprint);
+assert.equal(input.worldRules, request.context.rules);
+assert.deepEqual(input.currentCircumstances, ["The railway is abandoned"]);
 assert.equal(input.villageName, "Tidebreak");
 assert.match(loreQuery, /tide floods/);
 assert.match(loreQuery, /railway is abandoned/);
@@ -241,8 +283,10 @@ await assert.rejects(
 );
 await assert.rejects(service.suggestStartingVenues({ ...request, mode: "automatic" }), /valid Venue suggestion mode/);
 assert.equal(calls, 2, "invalid requests never reach the model");
-replyState.override = { venues: suggestions.map((row) => (row.id === "buster" ? { ...row, layout: "private" } : row)) };
-await assert.rejects(service.suggestStartingVenues(request), /both Common Space and Private Space/);
+replyState.override = {
+  venues: suggestions.map((row) => (row.id === "buster" ? { ...row, layout: "exterior" } : row)),
+};
+await assert.rejects(service.suggestStartingVenues(request), /Common or Private/);
 assert.equal(calls, 3, "invalid model output is rejected without an automatic paid retry");
 
 // Recover complete values locally; formatting never authorizes another model request.
@@ -351,12 +395,12 @@ const context: any = {
   setupSetting: request.setting,
   setupLorebookDraft: [],
   selectedResidentAdmissions: {},
-  setupWorldFacts: request.worldFacts,
+  setupContext: request.context,
   setupName: "Tidebreak",
 };
 const key = calculateSetupBeginningSourceKey(context);
 for (const patch of [
-  { setupWorldFacts: ["Changed fact"] },
+  { setupContext: { ...request.context, rules: "Changed rule" } },
   { setupName: "Changed name" },
   { setupSetting: "A thriving farm" },
   { setupWorldName: "Othiras" },

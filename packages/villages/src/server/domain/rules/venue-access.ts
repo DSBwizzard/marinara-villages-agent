@@ -161,7 +161,7 @@ export function initializeVenueAccess(venue: VillageVenue): void {
   venue.access ??= {
     version: 1,
     revision: 0,
-    managerIds: venue.occupancy.playerHome ? ["player"] : [...(venue.residentIds ?? [])],
+    managerIds: [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])],
     visitorHours: null,
     permissions: [],
     bans: [],
@@ -347,11 +347,17 @@ export function evaluateZoneAccess(
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
     return restricted
-      ? result(
-          false,
-          "unavailable",
-          "Ordinary use is restricted. A controller can authorize inspection or corrective work.",
-        )
+      ? !zoneManagers(venue, zone).length
+        ? result(
+            true,
+            "public",
+            "Ordinary use is restricted. Public access permits inspection and corrective work only.",
+          )
+        : result(
+            false,
+            "unavailable",
+            "Ordinary use is restricted. A controller can authorize inspection or corrective work.",
+          )
       : result(true, "public", "Public during visitor hours.");
   if (eligible.some((grant) => grant.accompaniedBy || policy.accompanied))
     return result(false, "accompaniment-required", "Your named escort must be here with you.");

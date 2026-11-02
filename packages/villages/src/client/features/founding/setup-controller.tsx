@@ -38,7 +38,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupName?: FoundingState["setupName"];
-  readonly setupWorldFacts?: FoundingState["setupWorldFacts"];
+  readonly setupContext?: FoundingState["setupContext"];
 
   readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
   readonly setupVenues: FoundingState["setupVenues"];
@@ -80,9 +80,9 @@ export function createFoundingSuggestSetupVenues(ports: {
         worldName: ports.setupWorldName,
         ...(options?.quickStart ? { mode: "quick-start", targetVenueId: options.venueId } : {}),
         villageName: ports.setupName,
-        worldFacts: ports.setupWorldFacts,
-        scenarioImprint: null,
-        foundingDetails: "",
+        context: ports.setupContext,
+        communityVenueId: ports.setupContext?.communityVenueId,
+        foundingHistory: ports.setupContext?.history ?? "",
         playerPersonaId: personaDraft,
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,
@@ -93,8 +93,10 @@ export function createFoundingSuggestSetupVenues(ports: {
           form: replacing ? "" : row.form,
           description: replacing ? "" : row.description,
           spaceDescription: replacing ? "" : (row.spaces?.[0]?.description ?? ""),
-          venueClass: row.category === "public-center" ? "community" : "residence",
-          residentCharacterId: row.occupancy.residentCharacterId ?? "",
+          venueClass: row.classes?.[0] ?? "other",
+          residentIds: row.residentIds ?? [],
+          playerHome: row.occupancy.playerHome,
+          residentCharacterId: row.residentIds?.[0] ?? "",
         })),
       });
       if (
@@ -156,7 +158,7 @@ export function createFoundingSuggestSetupVenues(ports: {
             JSON.stringify(row.privateSpaces) === JSON.stringify(before.privateSpaces) &&
             row.layout === before.layout
           ) {
-            const role = row.category === "public-center" ? "community" : "residence";
+            const role = row.classes?.[0] ?? "other";
             changed.layout = proposal.layout;
             changed.spaces =
               proposal.layout === "common" || proposal.layout === "both"
@@ -192,15 +194,15 @@ export function createFoundingSuggestSetupVenues(ports: {
                           ?.filter((edge) => edge.includes("private:base"))
                           .map((edge) => (edge[0] === "private:base" ? edge[1] : edge[0])),
                       venueClass: role,
-                      ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
+                      ownerId: row.occupancy.playerHome ? "player" : (row.residentIds?.[0] ?? ""),
                       name: proposal.privateName,
                       purpose: proposal.privatePurpose,
-                      description: row.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
+                      description: proposal.privateDescription ?? "",
                       access: draftZonePolicy(
                         row,
                         {
                           venueClass: role,
-                          ownerId: row.occupancy.playerHome ? "player" : row.occupancy.residentCharacterId || "",
+                          ownerId: row.occupancy.playerHome ? "player" : row.residentIds?.[0] || "",
                         },
                         true,
                       ),
@@ -288,11 +290,11 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 4 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep || step === 4) {
+    if (step > setupStep || step === 3) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
@@ -318,7 +320,7 @@ export function createFoundingGotoSetupStep(ports: {
         connectionSetupProblem ||
         (step >= 2 ? peopleProblem : "") ||
         (step >= 3 ? mapProblem : "") ||
-        (step >= 4 ? setupBlocker(step === 4) : "");
+        (step >= 3 ? setupBlocker(step === 3) : "");
       if (problem) {
         if (placeProblem || problem === connectionSetupProblem) setSetupStep(0);
         else if (step >= 2 && peopleProblem) setSetupStep(1);
@@ -328,7 +330,7 @@ export function createFoundingGotoSetupStep(ports: {
       }
     }
     setSetupProblem("");
-    if (step === 4) setSetupMapReviewed(true);
+    if (step === 3) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();

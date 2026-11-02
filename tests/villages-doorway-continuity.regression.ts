@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -19,7 +20,7 @@ import type { VenueReplyLine } from "../packages/villages/src/server/domain/mode
 
 const state = defaultVillageState();
 state.venues = [
-  {
+  venueFixture({
     id: "home",
     name: "Home",
     classes: ["residence"],
@@ -35,7 +36,7 @@ state.venues = [
         ownerId: "other",
       },
     ],
-  },
+  }),
 ] as typeof state.venues;
 const village = coerceVillageState(state);
 const venue = village.venues[0];

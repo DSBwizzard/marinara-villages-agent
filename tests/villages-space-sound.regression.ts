@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { bindSceneMemorySuggestion } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import assert from "node:assert/strict";
 import {
@@ -83,7 +84,7 @@ assert.deepEqual(contactNeighborIds(rewired, "exterior"), ["bedroom"]);
 
 const world = defaultVillageState();
 world.venues = [
-  {
+  venueFixture({
     id: "house",
     name: "House",
     layoutVersion: 1,
@@ -101,7 +102,7 @@ world.venues = [
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     presentation: { image: null, x: 0, y: 0 },
     zones: layout,
-  },
+  }),
 ] as any;
 const village = coerceVillageState(world),
   venue = village.venues[0];
@@ -426,21 +427,16 @@ const suggestion: any = {
   commonDescription: "",
   privateName: "Room",
   privatePurpose: "Rest",
+  privateDescription: "A quiet room.",
   connections: [["exterior", "private:base"]],
 };
 assert.equal(
-  parseFoundingVenueSuggestions({ venues: [suggestion] }, ["house"], undefined, false, true)[0].connections?.length,
+  parseFoundingVenueSuggestions({ venues: [suggestion] }, ["house"], undefined, true)[0].connections?.length,
   1,
 );
 assert.throws(
   () =>
-    parseFoundingVenueSuggestions(
-      { venues: [{ ...suggestion, connections: undefined }] },
-      ["house"],
-      undefined,
-      false,
-      true,
-    ),
+    parseFoundingVenueSuggestions({ venues: [{ ...suggestion, connections: undefined }] }, ["house"], undefined, true),
   /explicit/,
 );
 assert.throws(() =>
@@ -448,7 +444,6 @@ assert.throws(() =>
     { venues: [{ ...suggestion, connections: [["exterior", "missing"]] }] },
     ["house"],
     undefined,
-    false,
     true,
   ),
 );

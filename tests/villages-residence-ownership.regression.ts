@@ -7,7 +7,7 @@ import {
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { MAX_VENUE_DESCRIPTION_LENGTH } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   createResidences,

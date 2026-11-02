@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -34,7 +35,7 @@ function fixture(name: string) {
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,
-      venues: [{ id: "venue", name, classes: ["community"], description: name }],
+      venues: [venueFixture({residentIds: [null].filter((id) => typeof id === "string" && !!id), id: "venue", name, classes: ["community"], description: name })],
     });
   initializeVenueAccess(world.venues[0]!);
   const saved = coerceSession({

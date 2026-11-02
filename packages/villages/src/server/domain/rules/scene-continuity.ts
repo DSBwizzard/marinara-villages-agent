@@ -50,7 +50,8 @@ export const sceneContinuityFields = [
   "name",
   "setting",
   "worldName",
-  "worldFacts",
+  "worldRules",
+  "foundingHistory",
   "narrative",
   "foundedAt",
   "socialContractVersion",
@@ -199,17 +200,6 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
     if (live) {
       resident.sprite = structuredClone(live.sprite);
       resident.spriteManager = structuredClone(live.spriteManager);
-    }
-  }
-  // Opening progression is fiction too; only this Scene's saved proofs can advance it.
-  if (view.opening && current.opening?.id === view.opening.id) {
-    for (const proof of current.opening.reveals)
-      if (proof.sceneId === scene.id && !view.opening.reveals.some((row) => row.residentId === proof.residentId))
-        view.opening.reveals.push(structuredClone(proof));
-    if (current.opening.firstUseEvidence?.sceneId === scene.id) {
-      view.opening.firstUseEvidence = structuredClone(current.opening.firstUseEvidence);
-      view.opening.stage = "complete";
-      view.opening.outcome = "First use";
     }
   }
   const baselineReceipts = new Set(context.receiptIds);

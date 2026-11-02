@@ -2,8 +2,7 @@ import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillageProject, VillageState } from "../../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, conflict } from "../../domain/rules/errors.js";
-import { openingActive, openingView, reconcileOpening } from "../../domain/rules/opening-project.js";
-import { openingRenovationDraft } from "../../domain/rules/opening-renovation.js";
+
 import { readProjectPlan } from "../../domain/rules/project-completion.js";
 import {
   effectiveRenovationChange,
@@ -160,7 +159,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       planning(project);
       const venue = state.venues.find((venue) => venue.id === project.venueId);
       if (project.kind !== "renovation" || !venue) throw conflict("Choose a finished Venue.");
-      project.lifecycle.change = readRenovationChange(state, venue, row);
+      project.lifecycle.change = readRenovationChange(state, venue, row, villageNow());
       project.lifecycle.changedZoneIds = changedZoneIds(venue, project.lifecycle.change);
       project.lifecycle.baseDesignHash = venueDesignHash(
         venue,
@@ -228,7 +227,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
         flow.change!.capacity === (venue.residenceCapacity ?? 1)
       )
         throw conflict("Choose a physical change before Start.");
-      validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds));
+      validateRenovationDesign(state, venue, effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds), now);
     } else {
       if (!project.plan) throw conflict("Save the physical design first.");
       const position = project.venueDraft!.position;
@@ -309,58 +308,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       renew(state, project);
     });
   }
-  async function decideOpeningProposal(value: unknown) {
-    const row = asRecord(value),
-      residentId = asTrimmedString(row.residentId);
-    await mutateVillageState((state) => {
-      reconcileOpening(state);
-      const opening = state.opening;
-      if (!opening || row.openingId !== opening.id) throw conflict("Refresh the opening.");
-      if (row.action === "skip") {
-        if (openingActive(state)) {
-          opening.stage = "ended";
-          opening.outcome = "Skipped";
-        }
-        return;
-      }
-      const id = "opening:" + state.seed + ":" + residentId;
-      if (row.action === "accept" && opening.projectId === id) return;
-      const view = openingView(state)!;
-      if (opening.stage !== "conversations" || !view.heardIds.includes(residentId))
-        throw conflict("Hear this resident's proposal first.");
-      if (row.action === "decline") {
-        if (!opening.declinedIds.includes(residentId)) opening.declinedIds.push(residentId);
-        reconcileOpening(state);
-        return;
-      }
-      if (row.action !== "accept" || opening.declinedIds.includes(residentId))
-        throw conflict("Choose an available proposal.");
-      const proposal = opening.proposals.find((proposal) => proposal.residentId === residentId)!;
-      const project =
-        proposal.kind === "renovation" && proposal.renovation
-          ? draftRenovationProject(
-              state,
-              proposal.renovation.venueId,
-              openingRenovationDraft(proposal, state.venues),
-              id,
-            )
-          : draftNewVenueProject(
-              state,
-              { name: proposal.name, classes: [proposal.venueClass], description: proposal.description },
-              residentId,
-              id,
-            );
-      project.requesterCharacterId = residentId;
-      project.opening = {
-        established: proposal.established,
-        provenance: proposal.provenance,
-        work: proposal.work,
-        firstUse: proposal.firstUse,
-      };
-      opening.projectId = project.id;
-      opening.stage = "project";
-    });
-  }
   return {
     createNewVenueProject,
     createRenovationProject,
@@ -373,7 +320,6 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     cancelProject,
     debugCompleteProjectConstruction,
     renewRenovationApprovals,
-    decideOpeningProposal,
   };
 }
 export type ProjectLifecycle = ReturnType<typeof createProjectLifecycle>;

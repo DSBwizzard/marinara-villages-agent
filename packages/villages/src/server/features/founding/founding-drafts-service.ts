@@ -1,15 +1,12 @@
-import { MAX_VENUE_DESCRIPTION_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import type { findVillagerCard } from "../../adapters/engine/catalog.js";
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
 import type { decodeVillageImageDataUrl } from "../../adapters/engine/image-files.js";
 import type { readVillageLore, readVillageVisualLore } from "../../adapters/engine/lorebooks.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
-import type { VillageState, VillageVenueImage } from "../../domain/models/world.js";
-import { backgroundRevision } from "../../domain/rules/background-revision.js";
+import type { VillageVenueImage } from "../../domain/models/world.js";
 import { asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { extractFoundingVenueReply } from "../../domain/rules/founding-venue-reply.js";
 import {
   LOCATION_IMAGE_WIDTH,
@@ -22,21 +19,15 @@ import {
   readLoreTokenBudget,
   readSelectedLorebookIds,
 } from "../../domain/rules/lore-policy.js";
-import { MAX_SETTING_LENGTH, MAX_VENUE_IMAGE_BYTES, villageFoundingSetting } from "../../domain/rules/prompt-preset.js";
-import {
-  readFoundingResidentAdmissions,
-  renderResidentAdmission,
-  RESIDENT_CONTINUITY_RULE,
-} from "../../domain/rules/resident-admission.js";
-import { coerceScenarioImprint, coerceWorldFacts } from "../../domain/rules/scenario-rules.js";
+import { MAX_SETTING_LENGTH, MAX_VENUE_IMAGE_BYTES } from "../../domain/rules/prompt-preset.js";
+import { readFoundingResidentAdmissions, renderResidentAdmission } from "../../domain/rules/resident-admission.js";
+
 import { readSceneryStyle, sceneryCardsContext, sceneryPrompt } from "../../domain/rules/scenery-context.js";
 import { fitVenueWritingMessages, venueCardProfile } from "../../domain/rules/venue-writing.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { generateVillageImage } from "../media/image-generation.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
-import type { FoundingProgress } from "../../domain/models/founding-progress-model.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 
 import {
   type FoundingVenueSuggestion,
@@ -44,7 +35,6 @@ import {
   type DraftRow,
   record,
   rowsOf,
-  type SeededFoundingVenueDetails,
 } from "../../domain/rules/founding-draft-rules.js";
 
 export type FoundingDraftsServicePorts = {
@@ -79,28 +69,36 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const quickStart = input.mode === "quick-start";
     if (input.mode !== undefined && !quickStart) throw badRequest("Choose a valid Venue suggestion mode.");
     const setting = asTrimmedString(input.setting);
-    const circumstances = asTrimmedString(input.foundingDetails);
+    const circumstances = asTrimmedString(input.foundingHistory);
     if (!setting || setting.length > MAX_SETTING_LENGTH || circumstances.length > 2000)
       throw badRequest("Describe the place first.");
     const rows = rowsOf(input.venues);
+    const communityVenueId = asTrimmedString(input.communityVenueId);
+    const community = rows.find((row) => row.id === communityVenueId);
+    const residents = rows.flatMap((row) => row.residentIds);
     if (
-      rows.length < 3 ||
-      new Set(rows.map((row) => row.id)).size !== rows.length ||
-      rows.filter((row) => row.venueClass === "community").length !== 1 ||
-      rows.some((row) => row.venueClass === "community" && row.residentCharacterId) ||
-      rows.filter((row) => row.venueClass === "residence" && !row.residentCharacterId).length !== 1 ||
-      rows.some((row) => !["residence", "community"].includes(row.venueClass))
+      !community ||
+      community.venueClass === "residence" ||
+      community.residentIds.length ||
+      community.playerHome ||
+      rows.filter((row) => row.playerHome).length !== 1 ||
+      residents.length < 1 ||
+      residents.length > 3 ||
+      new Set(residents).size !== residents.length ||
+      rows.some((row) => row.residentIds.length + Number(row.playerHome) > 4)
     )
-      throw badRequest("Include one living space per person and one Community Place.");
-    const residents = rows.filter((row) => row.residentCharacterId).map((row) => row.residentCharacterId);
-    if (residents.length !== rows.length - 2 || new Set(residents).size !== residents.length)
-      throw badRequest("Assign a different villager to each starting living space.");
+      throw badRequest(
+        "Choose households for one to three residents and a separate Community Venue before suggestions.",
+      );
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && (!quickStart || !rows.some((row) => row.id === targetId)))
       throw badRequest("Choose a required starting Venue to regenerate.");
     const requestedRows = targetId ? rows.filter((row) => row.id === targetId) : rows;
-    const worldFacts = coerceWorldFacts(input.worldFacts);
-    const scenario = coerceScenarioImprint(input.scenarioImprint);
+    const context = record(input.context);
+    const worldRules = asTrimmedString(context.rules);
+    const currentCircumstances = Array.isArray(context.circumstances)
+      ? context.circumstances.map((row) => asTrimmedString(record(row).summary)).filter(Boolean)
+      : [];
     const villageName = asTrimmedString(input.villageName).slice(0, 80);
     const contexts = readFoundingResidentAdmissions(input.foundingResidentAdmissions, residents);
     const cards = (await Promise.all(residents.map(findVillagerCard))).map((card) =>
@@ -120,8 +118,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           cards.map((card) => card?.admission),
         ),
         circumstances,
-        ...worldFacts,
-        ...(scenario?.worldFacts ?? []),
+        worldRules,
+        ...currentCircumstances,
         ...cards.map((card) => card!.name),
       ].join("\n"),
       undefined,
@@ -143,11 +141,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Community Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
             ...(quickStart
               ? [
-                  "Quick Start: EVERY Residence MUST have layout both, with a complete Common Space and Private Space. The Community venue MUST have layout common and no Private Space. Do not return common-only or private-only Residences.",
+                  "Quick Start: a single-person Residence uses both Common and Private Space. A shared Residence uses a common sleeping/living space, without a Private Space. The designated Community Venue has a public Common Space.",
                   "Create fresh templates. Tailor each Residence and both its Zones to its assigned character, or to the Player Persona for the player's Residence. Tailor the Community Venue and its Common Zone to the Village itself. These template defaults do not restrict later editing.",
                 ]
               : []),
-            "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned resident or the Player Persona. Describe the space and ordinary furnishings, not private thoughts or secrets. Identify the player's residence by its absent residentCharacterId.",
+            "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned household member. Describe the space and ordinary furnishings, not private thoughts or secrets. The explicit playerHome flag identifies the player's home; residentIds identifies its other household members.",
             'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
             'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
             "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 4000.",
@@ -163,8 +161,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         worldName: asTrimmedString(input.worldName),
         circumstances,
         villageName,
-        worldFacts,
-        scenario,
+        worldRules,
+        currentCircumstances,
         venues: rows,
         responseTemplate: {
           venues: requestedRows.map((row) => ({
@@ -173,7 +171,16 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             venueType: "",
             form: "",
             description: "",
-            layout: row.venueClass === "community" ? "common" : quickStart ? "both" : "common|private|both",
+            layout:
+              row.venueClass === "community"
+                ? "common"
+                : quickStart
+                  ? row.residentIds.length + Number(row.playerHome) > 1
+                    ? "common"
+                    : "both"
+                  : row.venueClass === "residence"
+                    ? "common|private|both"
+                    : "exterior|common|private|both",
             connections: [],
             commonName: "",
             commonPurpose: "",
@@ -213,131 +220,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         payload,
         requestedRows.map((row) => row.id),
         requestedRows,
-        quickStart,
         true,
       ),
     };
-  }
-
-  async function seedFoundingVenueDetails(
-    village: VillageState,
-    onProgress?: (progress: Partial<FoundingProgress>) => Promise<void>,
-  ): Promise<Record<string, SeededFoundingVenueDetails>> {
-    const sourceZone = (venue: VillageState["venues"][number]) =>
-      venue.zones?.find((zone) => zone.kind === "public" || zone.kind === "shared-residence") ??
-      venue.zones?.find((zone) => zone.kind === "exterior");
-    const rows = await Promise.all(
-      rowsOf(
-        village.venues.map((venue) => ({
-          id: venue.id,
-          name: venue.name,
-          form: venue.form,
-          description: venue.description,
-          spaceDescription: sourceZone(venue)?.description,
-          layout:
-            venue.layoutVersion === 1
-              ? venue.zones?.filter((zone) => zone.kind !== "exterior").length
-                ? "Explicit saved zones"
-                : "Exterior only"
-              : undefined,
-          areas: venue.zones?.map((zone) => ({ id: zone.id, name: zone.name, kind: zone.kind })),
-          venueClass: venue.classes?.includes("community") ? "community" : "residence",
-          residentCharacterId: venue.occupancy.residentCharacterId,
-        })),
-      ).map(async (row) => {
-        const prepared = await withResident(row);
-        const resident = village.villagers.find((person) => person.characterId === row.residentCharacterId);
-        if (prepared.resident && resident?.admission)
-          prepared.resident.admissionContext = renderResidentAdmission(resident.cardSnapshot.name, resident.admission);
-        return prepared;
-      }),
-    );
-    const setting = villageFoundingSetting(village);
-    const lore = await readVillageLore(
-      village.selectedLorebookIds,
-      [
-        setting,
-        admissionLoreContext(
-          village.worldName,
-          village.villagers.map((person) => person.admission),
-        ),
-        ...rows.map((row) => `${row.name} ${row.form} ${row.description} ${row.spaceDescription}`),
-      ].join("\n"),
-      undefined,
-      village.loreTokenBudget,
-    );
-    await onProgress?.({ stage: "resolving", loreEntryCount: lore.length });
-    const model = await villagesLanguageModels().resolveForRequest({
-      connectionId: await villagesConnectionIdFor("system"),
-    });
-    const messages: CapabilityLanguageModelMessage[] = [
-      {
-        role: "system",
-        content: [
-          "Seed a few observable initial physical details for each founding Venue.",
-          ...(village.villagers.some((person) => person.admission) ? [RESIDENT_CONTINUITY_RULE] : []),
-          "Player-written names, form, exterior and interior descriptions are authoritative. Never replace or redefine them.",
-          "Use shared starting circumstances selectively for plausible initial condition; do not invent completed player actions or repeat the premise in every Venue.",
-          "Use selected lore and resident cards where relevant. Do not invent named people or contradict established facts.",
-          'Return JSON only: {"venues":[{"id":"...","addition":"brief grounded observable physical details to append"}]}.',
-          "Respect the actual layout. Exterior-only venues have no interior. A Private Space can be the entire interior with no Common Space. Seed only observable exterior/Common Space details, never private contents.",
-          "Use short concrete additions. Empty addition is valid. Never repeat or replace supplied descriptions; complete description plus addition must fit4000 characters.",
-        ].join("\n"),
-      },
-      { role: "user", content: JSON.stringify({ setting, lore, venues: rows }) },
-    ];
-    const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2000, 2000) });
-    if (
-      village.villagers.some((person) => person.admission) &&
-      JSON.stringify(fitted.messages) !== JSON.stringify(messages)
-    )
-      throw badRequest("The required starting situations do not fit the System connection. No request was sent.");
-    await onProgress?.({ stage: "model", modelName: model.name || model.model, attempt: 1 });
-    const read = (completion: Parameters<typeof extractModelJsonObject>[0]) => {
-      if (["length", "max_tokens"].includes(completion.finishReason ?? ""))
-        throw badRequest("The initial physical details were truncated. Retry preparation.");
-      const payload = extractModelJsonObject(completion);
-      const generated = Array.isArray(payload?.venues) ? payload.venues : [];
-      const details: [string, SeededFoundingVenueDetails][] = [];
-      for (const row of rows) {
-        const result = generated.map(record).find((candidate) => candidate.id === row.id);
-        if (!result) throw badRequest("The model did not return every founding Venue.");
-        const addition = asTrimmedString(result.addition);
-        if (addition.length > MAX_VENUE_DESCRIPTION_LENGTH) throw badRequest("Shorten the initial physical details.");
-        const original = village.venues.find((venue) => venue.id === row.id);
-        const source = original && sourceZone(original);
-        if (source && [source.description, addition].filter(Boolean).join("\n").length > MAX_VENUE_DESCRIPTION_LENGTH)
-          throw badRequest("The complete initial Zone description is too long.");
-        details.push([row.id, { addition }]);
-      }
-      return Object.fromEntries(details);
-    };
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2000, {
-      savedRequest: {
-        key: "founding-venue-details:" + village.seed + ":" + backgroundRevision(messages),
-        retry: !!village.foundingPreparation?.retryActions?.length,
-        valid: (result) => {
-          try {
-            read(result);
-            return true;
-          } catch {
-            return false;
-          }
-        },
-        replayContent: (result) =>
-          JSON.stringify({
-            venues: Object.entries(read(result)).map(([id, details]) => ({ id, ...details })),
-          }),
-      },
-      responseFormat: { type: "json_object" },
-      temperature: 0.7,
-      reasoningEffort: "none",
-      retryEmpty: false,
-      usagePurpose: "background",
-      debugMode: false,
-    });
-    await onProgress?.({ stage: "validating" });
-    return read(completion);
   }
 
   async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {
@@ -385,13 +270,12 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     )
       throw badRequest("That area is absent from the selected layout.");
     if (!areaDescription) throw badRequest(`Add an ${area} description before generating its image.`);
-    const imprint = coerceScenarioImprint(input.scenarioImprint);
+    const context = record(input.context);
     const setting = [
       asTrimmedString(input.setting),
       asTrimmedString(input.worldName).slice(0, 120),
       admission?.homeworld ?? "",
-      ...(imprint?.worldFacts ?? coerceWorldFacts(input.worldFacts)),
-      ...(imprint?.visualCues ?? []),
+      asTrimmedString(context.rules),
     ]
       .filter(Boolean)
       .join("; ");
@@ -426,8 +310,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       [
         character ? `Occupant context, reflect preferences in the space without depicting people: ${character}.` : "",
         lore ? `Established lore: ${lore}.` : "",
-        asTrimmedString(input.foundingDetails)
-          ? `Starting circumstances where visually relevant: ${asTrimmedString(input.foundingDetails).slice(0, 600)}`
+        asTrimmedString(input.foundingHistory)
+          ? `Starting circumstances where visually relevant: ${asTrimmedString(input.foundingHistory).slice(0, 600)}`
           : "",
       ],
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
@@ -488,6 +372,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     };
   }
 
-  return { suggestStartingVenues, seedFoundingVenueDetails, generateFoundingVenueImage, uploadFoundingVenueImage };
+  return { suggestStartingVenues, generateFoundingVenueImage, uploadFoundingVenueImage };
 }
 export type FoundingDraftsService = ReturnType<typeof createFoundingDrafts>;

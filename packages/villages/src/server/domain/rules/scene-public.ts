@@ -93,8 +93,6 @@ export function publicSceneAuthority(scene: VenueScene) {
     "activeIds",
     "sceneRevision",
     "memoryMode",
-    "openingReader",
-    "openingIntroductionResidentId",
     "semanticVersion",
     "liveSceneVersion",
   ] as const;

@@ -13,7 +13,7 @@ import type {
   VillageVenue,
 } from "../models/world.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { openingPresence } from "./opening-presence.js";
+
 import { PERSONAL_LETTER_INSTRUCTION } from "./personal-letter.js";
 import { renderPlayerBackgroundContext } from "./player-background.js";
 import { boundText } from "./prompt-preset.js";
@@ -41,7 +41,7 @@ export function residentPlanningOpportunity(
   startsAt: string,
   encounterConflicts: ReadonlySet<string> = new Set(),
 ): ResidentPlanningOpportunity | null {
-  const residents = village.villagers.filter((r) => !openingPresence(village, r.characterId));
+  const residents = village.villagers;
   if (!residents.length) return null;
   const currentPlaces = new Map<string, string[]>();
   for (const resident of residents) {
@@ -118,6 +118,7 @@ export type ResidentPlanningContext = {
   moment: VillageMoment;
   environment?: {
     weather: string;
+    circumstances: ReturnType<typeof import("./narrative-environment.js").environmentCircumstances>;
     conditions: ReturnType<typeof import("./narrative-environment.js").environmentObservations>;
   };
   residents: {

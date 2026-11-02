@@ -9,15 +9,7 @@ export type NarrativeTarget = PlaceAfter & {
   controllers: string[];
   correctiveActorIds: string[];
 };
-export type NarrativeSituation = {
-  id: string;
-  revision: number;
-  title: string;
-  summary: string;
-  status: "active" | "resolved";
-  targets: { venueId: string; zoneId: string }[];
-  updatedAt: string;
-};
+export type NarrativeSituation = import("../../../shared/contracts/village.js").VillageCircumstance;
 export type NarrativeCondition = {
   id: string;
   revision: number;
@@ -66,6 +58,7 @@ export type NarrativeDevelopment = {
   severity: VillageNarrativeConsequence;
   occurrence: string;
   situation: {
+    scope: "village" | "zone";
     id: string | null;
     expectedRevision: number;
     title: string;

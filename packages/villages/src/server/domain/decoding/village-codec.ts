@@ -1,3 +1,4 @@
+import { readResidenceAgreement } from "../rules/residence-agreement.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import {
@@ -5,7 +6,7 @@ import {
   readResidentAdmission,
   readWorldName,
 } from "../../../shared/helpers/resident-admission.js";
-import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
+import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
@@ -79,30 +80,23 @@ import {
   VILLAGES_PROMPT_BOX_MAX_LENGTH,
 } from "../rules/prompt-preset.js";
 import { localDateKey } from "../rules/resident-planning.js";
-import { coerceScenarioImprint, coerceWorldFacts } from "../rules/scenario-rules.js";
+
 import { coerceSocialActivities } from "../rules/social-activity.js";
 import { copySocialWishes } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
 import { readNarrativeState } from "./narrative-codec.js";
 import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
-import {
-  canInviteToZone,
-  chooseAgendaZone,
-  legacyVenueZones,
-  synchronizeVenueZones,
-  ZONE_KINDS,
-} from "../rules/venue-zones.js";
+import { canInviteToZone, chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
 import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
 import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
-import { savedVenueClassRecord } from "./venue-class-compat.js";
 
 import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 13,
+    version: 14,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -121,13 +115,11 @@ export function defaultVillageState(): VillageState {
     // An empty setting means "no place yet": the venue and routine blocks render
     // nothing, and the village behaves exactly as it did before they existed.
     setting: "",
-    foundingReason: "",
+    worldRules: "",
     worldName: "",
-    foundingDetails: "",
-    foundingGuidance: "",
+    foundingHistory: "",
+    communityVenueId: "",
     playerBackground: "",
-    scenarioImprint: null,
-    worldFacts: [],
     selectedLorebookIds: [],
     sceneryArtStyle: "",
     personalizeVenueImagesByDefault: true,
@@ -464,9 +456,15 @@ function coerceVenue(value: unknown): VillageVenue | null {
   const original = asRecord(value);
   if (Array.isArray(original.zones) && original.zones.filter((value) => asRecord(value).id !== "exterior").length > 6)
     throw new Error("A Venue may have at most six Zones besides Entrance.");
-  const legacyCommunity = [original.classes].some((classes) => Array.isArray(classes) && classes.includes("gathering"));
-  const raw = savedVenueClassRecord(value);
-  if (Array.isArray(raw.spaces)) raw.spaces = raw.spaces.map(savedVenueClassRecord);
+  const raw = original;
+  if (
+    raw.layoutVersion !== 1 ||
+    !Array.isArray(raw.zones) ||
+    !Array.isArray(raw.residentIds) ||
+    !validVenueClasses(raw.classes) ||
+    !raw.access
+  )
+    throw new Error("Saved Venues need explicit fresh-format Zones, classes, residents and access policies.");
   const name = boundText(raw.name, MAX_VENUE_NAME_LENGTH);
   const description = readPlaceDescription(raw.description);
   const category = boundText(raw.category, MAX_VENUE_NOTE_LENGTH);
@@ -481,15 +479,18 @@ function coerceVenue(value: unknown): VillageVenue | null {
   const x = asFraction(presentation.x);
   const y = asFraction(presentation.y);
   const playerHome = occupancy.playerHome === true;
-  const residentCharacterId = asTrimmedString(occupancy.residentCharacterId);
   const homeKind = isHomeBuildingKind(occupancy.homeKind) ? occupancy.homeKind : null;
-  const classes: VillageVenueClass[] = validVenueClasses(raw.classes)
-    ? raw.classes
-    : playerHome || residentCharacterId || homeKind
-      ? ["residence"]
-      : ["other"];
+  const classes: VillageVenueClass[] = raw.classes as VillageVenueClass[];
   const residentIds = coerceVenueIds(raw.residentIds);
-  if (!residentIds.length && residentCharacterId && !playerHome) residentIds.push(residentCharacterId);
+  if (residentIds.length !== raw.residentIds.length || residentIds.includes("player"))
+    throw new Error("Saved resident IDs must be distinct non-player people.");
+  if (
+    !Number.isInteger(raw.residenceCapacity) ||
+    Number(raw.residenceCapacity) < 1 ||
+    Number(raw.residenceCapacity) > 4 ||
+    residentIds.length + Number(playerHome) > Number(raw.residenceCapacity)
+  )
+    throw new Error("Saved household membership must fit explicit residential capacity.");
   const coerceSpaceState = readPlaceContinuity;
   const privateSpaceFor = (ownerId: string, value: unknown) => {
     const row = asRecord(value);
@@ -530,44 +531,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
     };
   };
-  const explicitLayout = raw.layoutVersion === 1;
-  const privateSpaces =
-    !explicitLayout && classes.includes("residence")
-      ? [...residentIds, ...(playerHome ? ["player"] : [])].map((ownerId) =>
-          privateSpaceFor(
-            ownerId,
-            Array.isArray(raw.privateSpaces)
-              ? raw.privateSpaces.find((entry) => asTrimmedString(asRecord(entry).ownerId) === ownerId)
-              : null,
-          ),
-        )
-      : [];
-  const spaceClasses = explicitLayout
-    ? Array.isArray(raw.spaces)
-      ? raw.spaces
-          .map((entry) => asRecord(entry).venueClass)
-          .filter((entry): entry is VillageVenueClass => validVenueClasses([entry]))
-      : []
-    : classes;
-  const spaces = spaceClasses.map((venueClass) => {
-    const row = Array.isArray(raw.spaces)
-      ? asRecord(raw.spaces.find((entry) => asRecord(entry).venueClass === venueClass))
-      : {};
-    const fallback = defaultVenueSpace(venueClass, description);
-    return {
-      ...fallback,
-      id: asTrimmedString(row.id) || (legacyCommunity && venueClass === "community" ? "gathering" : venueClass),
-      description: readPlaceDescription(row.description) || description,
-      image:
-        coerceVenueImage(row.image) ??
-        (Array.isArray(raw.spaces) || venueClass === "residence" ? null : coerceVenueImage(presentation.image)),
-      state: readPlaceContinuity(row.state),
-    };
-  });
-  if (
-    asTrimmedString(raw.id).length === 0 ||
-    (name.length === 0 && !playerHome && residentCharacterId.length === 0 && homeKind === null)
-  ) {
+  const privateSpaces: VillageVenue["privateSpaces"] = [];
+  const spaces: VillageVenue["spaces"] = [];
+
+  if (asTrimmedString(raw.id).length === 0 || name.length === 0) {
     return null;
   }
   const venue: VillageVenue = {
@@ -596,7 +563,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     name,
     form: boundText(raw.form, MAX_PHYSICAL_DESIGN_LENGTH),
     classes,
-    layoutVersion: explicitLayout ? 1 : undefined,
+    layoutVersion: 1,
     spaces,
     residenceCapacity:
       Number.isInteger(raw.residenceCapacity) &&
@@ -667,22 +634,22 @@ function coerceVenue(value: unknown): VillageVenue | null {
     state: readPlaceContinuity(raw.state),
   };
   const readZone = (value: unknown, archived = false): VillageVenueZone | null => {
-    const row = savedVenueClassRecord(value);
+    const row = asRecord(value);
     const id = asTrimmedString(row.id);
     if (!id || !ZONE_KINDS.includes(row.kind as VillageVenueZone["kind"])) return null;
+    if (!archived && (!Array.isArray(row.connectedTo) || (row.kind !== "exterior" && row.access === undefined)))
+      throw new Error("Saved Zones need explicit connections and access policies.");
     const ownerId = asTrimmedString(row.ownerId);
     if (
       !archived &&
       row.kind === "private-residence" &&
-      !(explicitLayout && !ownerId) &&
+      !!ownerId &&
       !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome))
     )
       return null;
     const zone: VillageVenueZone = {
       id,
-      connectedTo: Array.isArray(row.connectedTo)
-        ? row.connectedTo.filter((id): id is string => typeof id === "string")
-        : undefined,
+      connectedTo: Array.isArray(row.connectedTo) ? (row.connectedTo as string[]) : undefined,
       name: boundText(row.name, MAX_VENUE_NAME_LENGTH) || "Zone",
       kind: row.kind as VillageVenueZone["kind"],
       venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
@@ -744,12 +711,12 @@ function coerceVenue(value: unknown): VillageVenue | null {
     const ids = new Set<string>();
     venue.zones = raw.zones.flatMap((value) => {
       const zone = readZone(value);
-      if (!zone || ids.has(zone.id)) return [];
+      if (!zone || ids.has(zone.id)) throw new Error("Saved Zone identities must be valid and unique.");
       ids.add(zone.id);
       return [zone];
     });
-    for (const legacy of explicitLayout ? [] : legacyVenueZones(venue))
-      if (!venue.zones.some((zone) => zone.id === legacy.id)) venue.zones.push(legacy);
+    if (!venue.zones.some((zone) => zone.id === "exterior" && zone.kind === "exterior"))
+      throw new Error("A saved Venue needs its Entrance.");
     const exterior = venue.zones.find((zone) => zone.kind === "exterior");
     if (exterior) {
       venue.exteriorState = exterior.state;
@@ -762,7 +729,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
   }
   if (raw.zoneLayout !== undefined) {
-    const ids = (venue.zones ?? legacyVenueZones(venue)).map((zone) => zone.id);
+    const ids = (venue.zones ?? []).map((zone) => zone.id);
     venue.zoneLayout =
       readZoneLayout(
         Object.fromEntries(Object.entries(asRecord(raw.zoneLayout)).filter(([id]) => ids.includes(id))),
@@ -781,15 +748,8 @@ function coerceVenue(value: unknown): VillageVenue | null {
         })
         .slice(-64)
     : [];
-  venue.zones = (venue.zones ?? legacyVenueZones(venue)).flatMap((zone) => {
-    const parsed = readZone(zone);
-    return parsed ? [parsed] : [];
-  });
-  synchronizeVenueZones(venue, structuredClone(venue));
-  venue.zones = materializeConnections(venue.zones ?? legacyVenueZones(venue)).flatMap((zone) => {
-    const parsed = readZone(zone);
-    return parsed ? [parsed] : [];
-  });
+  const graphProblem = connectionProblem(venue.zones ?? []);
+  if (graphProblem) throw new Error(graphProblem);
   synchronizeVenueZones(venue, structuredClone(venue));
   venue.playerInvitations = venue.playerInvitations?.filter((invitation) => {
     invitation.zoneId ??=
@@ -809,7 +769,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
 function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.flatMap((entry) => {
-    const row = savedVenueClassRecord(entry),
+    const row = asRecord(entry),
       id = asTrimmedString(row.id),
       name = boundText(row.name, MAX_VENUE_NAME_LENGTH),
       description = readPlaceDescription(row.description);
@@ -875,13 +835,15 @@ function coerceVenues(value: unknown): VillageVenue[] {
   let sawPlayerHome = false;
   for (const entry of value) {
     const venue = coerceVenue(entry);
-    if (!venue || seenIds.has(venue.id) || venues.length >= MAX_PLACES) continue;
+    if (!venue || seenIds.has(venue.id) || venues.length >= MAX_PLACES)
+      throw new Error("Saved Venues must have distinct valid identities within the Village limit.");
     if (venue.occupancy.playerHome) {
-      if (sawPlayerHome) continue;
+      if (sawPlayerHome) throw new Error("The player cannot have two homes.");
       sawPlayerHome = true;
-    } else if (venue.occupancy.residentCharacterId !== null) {
-      if (seenOccupants.has(venue.occupancy.residentCharacterId)) continue;
-      seenOccupants.add(venue.occupancy.residentCharacterId);
+    }
+    for (const id of venue.residentIds ?? []) {
+      if (seenOccupants.has(id)) throw new Error("A resident cannot have two homes.");
+      seenOccupants.add(id);
     }
     seenIds.add(venue.id);
     venues.push(venue);
@@ -938,9 +900,12 @@ function coerceResidence(value: unknown): VillageResidence | null {
   const raw = asRecord(value);
   const venueId = asTrimmedString(raw.venueId);
   const characterId = asTrimmedString(raw.characterId);
-  if (venueId.length === 0 || characterId.length === 0) return null;
+  if (characterId.length === 0) throw new Error("A saved move needs its incoming person.");
   const status = raw.status === "pending" || raw.status === "moving" ? raw.status : "current";
   return {
+    ...(status !== "current"
+      ? { agreement: readResidenceAgreement(raw.agreement), holdReason: boundText(raw.holdReason, 600) }
+      : {}),
     venueId,
     characterId,
     status,
@@ -1202,7 +1167,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
       const proposedAt = asIsoString(raw.proposedAt);
       if (!id || !title || !proposedAt) return [];
       const kinds = ["residence", "project", "venue", "departure", "other"] as const;
-      const draft = savedVenueClassRecord(raw.venueDraft);
+      const draft = asRecord(raw.venueDraft);
       const requestName = boundText(draft.name, MAX_VENUE_NAME_LENGTH);
       const requestClasses = validVenueClasses(draft.classes) ? draft.classes : [];
       return [
@@ -1285,7 +1250,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
         "playerPersonaIdentity",
       ].every((key) => typeof world[key] === "string") ||
       typeof world.playerPersonaMissing !== "boolean" ||
-      !["worldFacts", "villagers", "venues", "residences", "projects"].every((key) => Array.isArray(world[key])) ||
+      !["villagers", "venues", "residences", "projects"].every((key) => Array.isArray(world[key])) ||
       (world.timeZone !== "" && !validTimeZone(world.timeZone)) ||
       !(world.villagers as unknown[]).every((value) => {
         const resident = asRecord(value),
@@ -1442,7 +1407,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 13) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 14) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1485,7 +1450,7 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
   const state: VillageState = {
-    version: 13,
+    version: 14,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
@@ -1520,13 +1485,11 @@ export function coerceVillageState(value: unknown): VillageState {
     spriteCardFlipEnabled: raw.spriteCardFlipEnabled !== false,
     spriteVariantsEnabled: raw.spriteVariantsEnabled !== false,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
-    foundingReason: boundText(raw.foundingReason, 40),
+    worldRules: boundText(raw.worldRules, MAX_SETTING_LENGTH),
     worldName: readWorldName(raw.worldName) ?? "",
-    foundingDetails: boundText(raw.foundingDetails, 2_000),
-    foundingGuidance: boundText(raw.foundingGuidance, 500),
+    foundingHistory: boundText(raw.foundingHistory, 2_000),
+    communityVenueId: asTrimmedString(raw.communityVenueId),
     playerBackground: coercePlayerBackground(raw.playerBackground),
-    scenarioImprint: coerceScenarioImprint(raw.scenarioImprint),
-    worldFacts: coerceWorldFacts(raw.worldFacts),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),
     sceneryStyleProfileId:
@@ -1585,7 +1548,6 @@ export function coerceVillageState(value: unknown): VillageState {
             }
           : {}),
         completedIds: asStringArray(preparation.completedIds).slice(0, 12),
-        venueDetailsSeeded: preparation.venueDetailsSeeded === true,
         currentId: asTrimmedString(preparation.currentId),
         error: boundText(preparation.error, 300),
         ...(["venues", "private-spaces", "residents"].includes(String(preparation.phase))

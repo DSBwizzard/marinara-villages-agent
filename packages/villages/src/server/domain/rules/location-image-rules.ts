@@ -1,3 +1,4 @@
+import { currentVillageCircumstances } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { imagePromptId } from "./image-generation-rules.js";
 import { venueZones } from "./venue-zones.js";
@@ -51,13 +52,15 @@ export function buildLocationPrompt(
     venue.layoutVersion === 1
       ? `Physical layout: ${JSON.stringify(venueZones(venue).map((zone) => ({ kind: zone.kind, role: zone.venueClass })))}. Do not invent absent or adjoining interiors, or reveal private contents outside this depicted area.`
       : "",
-    venue.occupancy.residentCharacterId && !building ? "This venue is also a villager's residence." : "",
+    venue.residentIds?.length && !building ? "This venue is also a villager's residence." : "",
     form ? `Venue form: ${form}.` : "",
     approvedDescription
       ? `Approved description of this ${outside ? "venue (show exterior cues only)" : "space"}: ${approvedDescription}.`
       : "",
     setting.length > 0 ? `Village setting and theme: ${setting}.` : "",
-    village.worldFacts.length ? `Current world facts: ${village.worldFacts.join("; ")}.` : "",
+    currentVillageCircumstances(village).length
+      ? `Current world facts: ${currentVillageCircumstances(village).join("; ")}.`
+      : "",
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
     `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,

@@ -12,17 +12,15 @@ export type InactiveFoundingZones = {
 
 export function startingZone(venue: VillageVenue, personal: boolean) {
   const community = venue.category === "public-center";
-  const role = community ? "community" : "residence";
-  const ownerId = personal ? (venue.occupancy.playerHome ? "player" : (venue.occupancy.residentCharacterId ?? "")) : "";
+  const role = venue.classes?.[0] ?? (community ? "community" : "residence");
+  const ownerId = personal ? (venue.occupancy.playerHome ? "player" : (venue.residentIds?.[0] ?? "")) : "";
   return {
     ...personalSpaceDraft(),
     id: personal ? "private:base" : "common:base",
     name: personal ? "Private Space" : "Common Space",
     purpose: personal ? "Rest and personal activities" : community ? "Community gatherings" : "Everyday activities",
     description: personal
-      ? venue.occupancy.playerHome
-        ? "A private space for rest."
-        : ""
+      ? "A private space for rest."
       : community
         ? "A shared space for the community."
         : "A shared space in the residence.",

@@ -1,3 +1,4 @@
+import { currentVillageCircumstances } from "../domain/rules/prompt-preset.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
 import type { mutateDocument } from "../adapters/storage/document-store.js";
 import { rejectedSyntaxError } from "../domain/rules/rejected-response.js";
@@ -24,7 +25,7 @@ export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZon
     village && [
       village.worldName,
       village.setting,
-      village.worldFacts,
+      currentVillageCircumstances(village),
       village.selectedLorebookIds,
       village.loreTokenBudget,
       village.villagers
@@ -192,7 +193,9 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         };
         const lore = await readVillageLore(
           village.selectedLorebookIds,
-          [village.setting, village.worldName, ...village.worldFacts, JSON.stringify(room)].join("\n"),
+          [village.setting, village.worldName, ...currentVillageCircumstances(village), JSON.stringify(room)].join(
+            "\n",
+          ),
           signal,
           Math.min(village.loreTokenBudget, 256),
         );
@@ -214,7 +217,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             content: JSON.stringify({
               setting: village.setting,
               worldName: village.worldName,
-              worldFacts: village.worldFacts,
+              worldFacts: currentVillageCircumstances(village),
               rooms: [{ ...room, lore }],
             }),
           },

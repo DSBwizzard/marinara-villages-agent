@@ -96,7 +96,7 @@ export function buildVenueResponseContract(context: VenueResponseContext): strin
       : "",
     context.conversational ? PLACE_UPDATE_INSTRUCTION : "",
     context.conversational
-      ? 'Spontaneous speech signals: residenceRequest:{speakerId,venueId,quote} for an available Residence; residenceDecision:{speakerId,approved,quote} for their pending player move; venueRequest:{speakerId,name,classes:["workplace|community|other"],quote} for a NEW public Venue (one or two classes); Omit unused signals. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.'
+      ? 'Spontaneous speech signals: residenceRequest:{speakerId,venueId,quote} for an available Residence; residenceDecision:{speakerId,characterId,approved,quote} for the exact pending household move identified by characterId; venueRequest:{speakerId,name,classes:["workplace|community|other"],quote} for a NEW public Venue (one or two classes); Omit unused signals. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.'
       : "",
     context.projects
       ? 'Optional projectSpeech:[{projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}] requires exact witnessed speaker dialogue about a supplied Project and revision. Approval and volunteering are independent and can share one exchange. No speech starts or completes work.'

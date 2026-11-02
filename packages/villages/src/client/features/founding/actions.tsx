@@ -304,7 +304,7 @@ export function useOpenSetup(ports: {
   setSetupStep: React.Dispatch<SetStateAction<number>>;
   setSetupVenues: React.Dispatch<SetStateAction<VillageVenue[]>>;
   setSetupWorkspace: React.Dispatch<SetStateAction<FoundingWorkspaceState>>;
-  setSetupWorldFacts: React.Dispatch<SetStateAction<string[]>>;
+  setSetupContext: React.Dispatch<SetStateAction<import("./draft-model.js").FoundingContext>>;
   setVisualLoreDefault: React.Dispatch<SetStateAction<boolean>>;
   updateSetupMapRequest: (value: SetupMapRequest | null) => void;
 }) {
@@ -351,7 +351,7 @@ export function useOpenSetup(ports: {
     setSetupStep,
     setSetupVenues,
     setSetupWorkspace,
-    setSetupWorldFacts,
+    setSetupContext,
     setVisualLoreDefault,
     updateSetupMapRequest,
   } = ports;
@@ -376,7 +376,13 @@ export function useOpenSetup(ports: {
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       setSetupPlayerBackground(fresh ? "" : (village?.settings.playerBackground ?? ""));
       if (fresh) setSetupResidentAdmissions({});
-      setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
+      setSetupContext({
+        rules: "",
+        history: "",
+        circumstances: [],
+        communityVenueId: "founding-community",
+        households: {},
+      });
       const foundingPlaces =
         fresh || !village
           ? []
@@ -384,11 +390,7 @@ export function useOpenSetup(ports: {
               (venue) => venue.classes?.includes("residence") || venue.category === "public-center",
             );
       setSetupVenues(foundingPlaces);
-      setSetupFoundingVillagerIds(
-        foundingPlaces.flatMap((venue) =>
-          venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [],
-        ),
-      );
+      setSetupFoundingVillagerIds(foundingPlaces.flatMap((venue) => venue.residentIds ?? []));
       setSetupEditorOpen(false);
       setSceneryStyle("");
       setSceneryStyleProfileId("");
@@ -458,7 +460,7 @@ export function useOpenSetup(ports: {
       setSetupStep,
       setSetupVenues,
       setSetupWorkspace,
-      setSetupWorldFacts,
+      setSetupContext,
       setSetupWorldName,
       setVisualLoreDefault,
       updateSetupMapRequest,
@@ -467,6 +469,7 @@ export function useOpenSetup(ports: {
 }
 
 export function useFoundVillage(ports: {
+  setupContext: import("./draft-model.js").FoundingContext;
   draftSaveQueue: React.RefObject<Promise<void>>;
   element: HTMLElement;
   flushSetupDraft: () => Promise<void>;
@@ -565,7 +568,7 @@ export function useFoundVillage(ports: {
               ? "exterior-description"
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
-        setSetupStep(3);
+        setSetupStep(2);
         window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);
@@ -582,11 +585,11 @@ export function useFoundVillage(ports: {
           timeZone: setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
           worldName: setupWorldName,
           setting: setupSetting.trim(),
-          foundingReason: "none",
-          foundingDetails: "",
+          worldRules: ports.setupContext.rules,
+          foundingHistory: ports.setupContext.history,
+          communityVenueId: ports.setupContext.communityVenueId,
           playerBackground: setupPlayerBackground,
-          scenarioImprint: null,
-          worldFacts: [],
+          circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),
           selectedLorebookIds: setupLorebookDraft,
           personalizeVenueImagesByDefault: personalizeHomes,
           useVisualLoreByDefault: visualLoreDefault,
@@ -632,6 +635,7 @@ export function useFoundVillage(ports: {
     setupTimeZone,
     setupWorldName,
     setupSetting,
+    ports.setupContext,
     setupPlayerBackground,
     setupLorebookDraft,
     personalizeHomes,

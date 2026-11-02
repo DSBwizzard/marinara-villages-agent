@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,

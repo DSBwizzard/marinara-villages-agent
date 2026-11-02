@@ -7,7 +7,7 @@ import { residentPlanningOpportunity } from "../packages/villages/src/server/dom
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { returnCatchupOpportunities } from "../packages/villages/src/server/domain/rules/return-catchup-opportunities.js";
 import {
   captureReturnContext,

@@ -1,4 +1,3 @@
-import { foundingDraftDescription } from "./draft-model.js";
 import { savedFoundingStep } from "./founding-steps.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
@@ -146,7 +145,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupSuggestionsKey: FoundingState["setSetupSuggestionsKey"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setSetupWorkspace: FoundingState["setSetupWorkspace"];
-  readonly setSetupWorldFacts: FoundingState["setSetupWorldFacts"];
+  readonly setSetupContext: FoundingState["setSetupContext"];
   readonly setupEditorAuthoredOriginal: FoundingState["setupEditorAuthoredOriginal"];
   readonly setupEditorOriginal: FoundingState["setupEditorOriginal"];
   readonly setupEditorZoneOriginal: FoundingState["setupEditorZoneOriginal"];
@@ -198,7 +197,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupSuggestionsKey,
       setSetupVenues,
       setSetupWorkspace,
-      setSetupWorldFacts,
+      setSetupContext,
       setupEditorAuthoredOriginal,
       setupEditorOriginal,
       setupEditorZoneOriginal,
@@ -208,23 +207,25 @@ export function createFoundingRestoreSetupDraft(ports: {
     } = ports;
 
     if (
+      data.version !== 2 ||
+      !data.context ||
+      !Array.isArray(data.context.circumstances) ||
       !Array.isArray(data.venues) ||
       !Array.isArray(data.roster) ||
       data.roster.length > 3 ||
-      data.venues.length > 5 ||
+      data.venues.length > 16 ||
       data.venues.some((row) => !row.id || !row.presentation || !row.occupancy || typeof row.description !== "string")
     ) {
       setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
       return;
     }
-    const legacySimpleMap = data.mapSource === "none";
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");
     setSetupWorldName(data.worldName ?? "");
-    setSetupSetting(foundingDraftDescription(data));
+    setSetupSetting(data.setting);
     setSetupPlayerBackground(data.playerBackground ?? "");
-    setSetupWorldFacts(data.worldFacts);
+    setSetupContext(data.context);
     const inactive = { ...data.workspace?.inactive };
     for (const [id, saved] of Object.entries(data.zoneDrafts ?? {})) {
       inactive[id] = {
@@ -246,14 +247,14 @@ export function createFoundingRestoreSetupDraft(ports: {
     setPersonalizeHomes(data.personalizeHomes);
     setVisualLoreDefault(data.visualLoreDefault);
     setMapVisualLore(data.mapVisualLore);
-    setSetupMapSource(data.mapSource === "none" ? (data.mapImage ? data.mapImageSource : "generate") : data.mapSource);
+    setSetupMapSource(data.mapSource);
     setSetupMapImage(data.mapImage);
     setSetupMapImageSource(data.mapImageSource);
     setSetupMapGeneratedKey(data.mapGeneratedKey);
     setSetupMapSize(data.mapSize);
     setSetupMapPrompt(data.mapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapReviewed(legacySimpleMap ? false : data.mapReviewed);
+    setSetupMapReviewed(data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");
     const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
     updateSetupMapRequest(mapRequest);

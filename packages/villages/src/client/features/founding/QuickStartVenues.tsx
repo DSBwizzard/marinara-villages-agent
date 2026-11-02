@@ -242,7 +242,7 @@ export function QuickStartVenues({
                   ? "Your residence"
                   : selected.category === "public-center"
                     ? "Community venue"
-                    : `${people.find((person) => person.id === selected.occupancy.residentCharacterId)?.name ?? "Villager"}’s residence`}
+                    : `${people.find((person) => person.id === selected.residentIds?.[0])?.name ?? "Villager"}’s residence`}
               </h3>
               <button data-close-quick type="button" aria-label="Close Venue details" onClick={close}>
                 ×
@@ -289,6 +289,19 @@ export function QuickStartVenues({
               {tab === "venue" ? (
                 <>
                   <fieldset className="villages-quick-venue-fields" disabled={busy || imageBusy}>
+                    {selected.classes?.includes("residence") ? (
+                      <label>
+                        Resident capacity
+                        <input
+                          aria-label="Resident capacity"
+                          type="number"
+                          min={1}
+                          max={4}
+                          value={selected.residenceCapacity ?? 1}
+                          onChange={(event) => onPatch({ ...selected, residenceCapacity: Number(event.target.value) })}
+                        />
+                      </label>
+                    ) : null}
                     <label>
                       Venue Name
                       <input
@@ -396,6 +409,35 @@ export function QuickStartVenues({
                           />
                           {fieldError("zone-purpose")}
                         </label>
+                        {personal && zone.venueClass === "residence" ? (
+                          <label>
+                            Private room for
+                            <select
+                              aria-label="Private room for"
+                              value={zone.ownerId ?? ""}
+                              onChange={(event) =>
+                                patchZone(personal, zone.id, {
+                                  ownerId: event.target.value,
+                                  access: {
+                                    ...draftZonePolicy(selected, { ...zone, ownerId: event.target.value }, true),
+                                    managerIds: event.target.value ? [event.target.value] : null,
+                                    memberIds: event.target.value ? [event.target.value] : [],
+                                  },
+                                })
+                              }
+                            >
+                              <option value="">Unassigned</option>
+                              {[
+                                ...(selected.occupancy.playerHome ? [{ id: "player", name: "You" }] : []),
+                                ...people.filter((person) => selected.residentIds?.includes(person.id)),
+                              ].map((person) => (
+                                <option key={person.id} value={person.id}>
+                                  {person.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
                       </>
                     ) : null}
                     <div className="villages-quick-zone-appearance">

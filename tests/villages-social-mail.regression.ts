@@ -1,4 +1,6 @@
 import { fixtureCapturedAdmissions } from "./helpers/village-storage.fixture.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { ensureNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import { createCapturedAdmissions } from "../packages/villages/src/server/adapters/storage/captured-admission-store.js";
 import assert from "node:assert/strict";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -290,6 +292,11 @@ const coreService = createSocialMail({
     calls++;
     if (model.connectionId === "system") assert.equal(options.reasoningEffort, "low");
     if (model.connectionId === "narration") {
+      if (active.admitted.worldRules === "The sun never sets.") {
+        assert.match(JSON.stringify(messages), /The sun never sets/);
+        assert.match(JSON.stringify(messages), /A festival is underway/);
+        assert.match(JSON.stringify(messages), /not automatic knowledge/);
+      }
       const value = { content: JSON.stringify({ text: narrationReply }), finishReason: "stop" };
       if (writingReplay) writingReplay.response = { messages: JSON.stringify(messages), value };
       return value;
@@ -438,9 +445,33 @@ assert.equal(
 await service.retry("personal:ada", "personal:ada:input-read", "input-retry");
 assert.equal(queued.at(-1).input.sourceText, "Retain this letter.");
 resetFixtureWork(queued.at(-1).input);
+const originalMailRules = village.worldRules,
+  originalMailNarrative = structuredClone(village.narrative);
+village.worldRules = "The sun never sets.";
+ensureNarrative(village, new Date().toISOString()).situations = [
+  {
+    id: "festival",
+    scope: "village",
+    revision: 1,
+    title: "Festival",
+    summary: "A festival is underway.",
+    status: "active",
+    targets: [],
+    updatedAt: new Date().toISOString(),
+  },
+];
 await service.send({ residentId: "ada", requestId: "one", text: "Hello\n  exact text" });
 assert.equal(calls, 0, "Sending first saves exact pending text before dispatch");
 active = queued.at(-1).input;
+assert.equal(active.admitted.worldRules, "The sun never sets.");
+assert.equal(active.admitted.narrative!.situations[0].summary, "A festival is underway.");
+village.worldRules = originalMailRules;
+village.narrative = originalMailNarrative;
+assert.equal(
+  active.admitted.narrative!.situations[0].summary,
+  "A festival is underway.",
+  "later world changes cannot rewrite admitted correspondence",
+);
 const beforeInvalidReply = calls;
 {
   const input = { ...active, admitted: structuredClone(active.admitted) };
@@ -962,7 +993,7 @@ await assert.rejects(() => service.handler.generate(active), /4,096 output-token
 assert.equal(social.mailDeliveries[active.messageId], undefined);
 truncateMeaning = false;
 resetFixtureWork(active);
-const home = {
+const home = venueFixture({
   id: "ada-home",
   name: "Ada's home",
   classes: ["residence"],
@@ -972,7 +1003,7 @@ const home = {
   zones: [
     { ...defaultVenueSpace("residence", "Living room"), id: "living", kind: "shared-residence", name: "Living room" },
   ],
-} as any;
+} as any);
 initializeVenueAccess(home);
 village.venues = [home];
 await service.send({ residentId: "ada", requestId: "no-mail-access", text: "Come into my room." });
@@ -1303,7 +1334,7 @@ assert.equal(calls, beforeMeaning + 1, "Explicit metadata recovery reuses writin
     packageId: "villages",
     kind: "village",
     data: {
-      version: 13,
+      version: 14,
       seed: village.seed,
       setupAt: village.setupAt,
       memoryHead: null,

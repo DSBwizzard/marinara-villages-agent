@@ -1,7 +1,7 @@
 import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVillager } from "../../packages/villages/src/server/domain/models/world.js";
 import { initializeVenueAccess } from "../../packages/villages/src/server/domain/rules/venue-access.js";
-import { venueDraft } from "../../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "../helpers/venues.fixture.js";
 export const START = "2026-09-01T12:00:00.000Z";
 export const elapsed = (days: number) => new Date(Date.parse(START) + days * 86400000).toISOString();
 export function socialWorldFixture() {

@@ -122,9 +122,11 @@ export function readBaseVenueLayout(
     if (roomSpecification.length > 4000) throw badRequest("Room specification must be at most 4000 characters.");
     if (description.length > 4000 || (!isPrivate && !description))
       throw badRequest("Describe the Common Space in at most 4000 characters.");
-    const ownerId = isPrivate && role === "residence" ? residentId || undefined : undefined;
-    const prepareInterior =
-      isPrivate && ownerId !== "player" && (!options.founding || (role === "residence" && !!ownerId));
+    const ownerId =
+      isPrivate && role === "residence"
+        ? (options.founding ? asTrimmedString(area.ownerId) : asTrimmedString(area.ownerId) || residentId) || undefined
+        : undefined;
+    const prepareInterior = isPrivate && ownerId !== "player" && !options.founding;
     const controllers = Array.isArray(area.controllerIds)
       ? [...new Set(area.controllerIds.filter((id): id is string => typeof id === "string" && !!id))]
       : [];

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -45,7 +46,8 @@ import type { VillageVenue } from "../packages/villages/src/server/domain/models
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 
 function draft(layout: string, role = "residence", owner = "a") {
-  return {
+  return venueFixture({
+    residentIds: [owner === "player" ? null : owner || null].filter((id) => typeof id === "string" && !!id),
     id: "venue:" + layout + ":" + role + ":" + owner,
     layoutVersion: 1,
     layout,
@@ -82,7 +84,7 @@ function draft(layout: string, role = "residence", owner = "a") {
             },
           ]
         : [],
-  };
+  });
 }
 function place(layout: string, role = "residence", owner = "a"): VillageVenue {
   const source = draft(layout, role, owner);

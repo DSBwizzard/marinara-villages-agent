@@ -28,7 +28,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly setupMapRequestRef: FoundingState["setupMapRequestRef"];
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
-  readonly setupWorldFacts: FoundingState["setupWorldFacts"];
+  readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly updateSetupMapRequest: (value: import("../../../shared/contracts/village").SetupMapRequest) => void;
 }) {
@@ -48,7 +48,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
     setupMapPrompt,
     setupMapRequestRef,
     setupSetting,
-    setupWorldFacts,
+    setupContext,
     snapshot,
     updateSetupMapRequest,
   } = ports;
@@ -91,9 +91,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
           useVisualLore: mapVisualLore,
-          scenarioImprint: snapshot?.isFounded
-            ? { origin: "", worldFacts: setupWorldFacts, openingConditions: [], visualCues: [] }
-            : null,
+          worldRules: setupContext.rules,
         }),
       });
       updateSetupMapRequest({
@@ -122,7 +120,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
     setupMapPrompt,
     snapshot?.settings?.townMapLayoutPrompt,
     snapshot?.settings?.townMapNegativePrompt,
-    snapshot?.isFounded,
     setupMapNegativePrompt,
     setupWorldName,
     setupLorebookDraft,
@@ -130,7 +127,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
     sceneryStyle,
     sceneryStyleProfileId,
     mapVisualLore,
-    setupWorldFacts,
+    setupContext,
   ]);
 }
 export function createFoundingSetupDraftRow() {
@@ -182,7 +179,7 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
-  readonly setupWorldFacts: FoundingState["setupWorldFacts"];
+  readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly visualLoreDefault: FoundingState["visualLoreDefault"];
   readonly withSetupImage: (
@@ -216,7 +213,7 @@ export function createFoundingGenerateSetupImage(ports: {
       setupName,
       setupSetting,
       setupVenuesRef,
-      setupWorldFacts,
+      setupContext,
       snapshot,
       withSetupImage,
     } = ports;
@@ -284,9 +281,9 @@ export function createFoundingGenerateSetupImage(ports: {
           useVisualLore: true,
           villageName: setupName,
           setting: setupSetting,
-          foundingDetails: "",
-          scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
-          worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
+          foundingHistory: "",
+          worldRules: setupContext.rules,
+          worldFacts: snapshot?.isFounded ? setupContext : [],
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
         }),

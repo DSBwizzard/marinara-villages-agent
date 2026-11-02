@@ -21,8 +21,12 @@ export type FoundingVenueSuggestion = {
 export function parseFoundingVenueSuggestions(
   value: unknown,
   ids: readonly string[],
-  template?: readonly { id: string; venueClass: string; residentCharacterId?: string | null }[],
-  quickStart = false,
+  template?: readonly {
+    id: string;
+    venueClass: string;
+    residentIds?: string[];
+    playerHome?: boolean;
+  }[],
   requireConnections = false,
 ): FoundingVenueSuggestion[] {
   const payload = record(value);
@@ -46,11 +50,11 @@ export function parseFoundingVenueSuggestions(
     };
     const layout = row.layout;
     const venue = template?.find((venue) => venue.id === id);
-    if (quickStart && venue?.venueClass === "residence" && layout !== "both")
-      throw badRequest(
-        "Quick Start requires both Common Space and Private Space for every Residence. Your draft is unchanged.",
-      );
-    if (venue && (venue.venueClass === "community" ? layout !== "common" : layout === "exterior"))
+    if (
+      venue &&
+      ((venue.venueClass === "community" && layout !== "common") ||
+        (venue.venueClass === "residence" && layout === "exterior"))
+    )
       throw badRequest(
         "Residences require Common or Private Space; the starting Community Place requires Common only.",
       );
@@ -103,11 +107,7 @@ export function parseFoundingVenueSuggestions(
       privatePurpose: text("privatePurpose", 240, layout === "private" || layout === "both"),
       ...(layout === "private" || layout === "both"
         ? {
-            privateDescription: text(
-              "privateDescription",
-              4000,
-              venue?.venueClass === "residence" && !venue.residentCharacterId,
-            ),
+            privateDescription: text("privateDescription", 4000, true),
           }
         : {}),
     };
@@ -122,6 +122,8 @@ export type DraftRow = {
   spaceDescription: string;
   venueClass: "residence" | "community" | "workplace" | "other";
   residentCharacterId: string;
+  residentIds: string[];
+  playerHome: boolean;
   layout?: string;
   areas?: unknown;
 };
@@ -131,8 +133,8 @@ export function record(value: unknown): Record<string, unknown> {
 }
 
 export function rowsOf(value: unknown): DraftRow[] {
-  if (!Array.isArray(value) || value.length < 1 || value.length > 5)
-    throw badRequest("Choose one to five founding venues.");
+  if (!Array.isArray(value) || value.length < 1 || value.length > 16)
+    throw badRequest("Choose one to sixteen founding Venues.");
   return value.map((raw) => {
     const row = record(raw);
     const venueClass = row.venueClass;
@@ -151,12 +153,13 @@ export function rowsOf(value: unknown): DraftRow[] {
       spaceDescription: asTrimmedString(row.spaceDescription),
       venueClass: venueClass as DraftRow["venueClass"],
       residentCharacterId: asTrimmedString(row.residentCharacterId).slice(0, 100),
+      residentIds:
+        Array.isArray(row.residentIds) && row.residentIds.every((id) => typeof id === "string" && id.trim())
+          ? (row.residentIds as string[])
+          : [],
+      playerHome: row.playerHome === true,
       layout: asTrimmedString(row.layout),
       areas: row.areas,
     };
   });
 }
-
-export type SeededFoundingVenueDetails = {
-  addition: string;
-};

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -51,17 +52,24 @@ const residents = residentNames.map((name, index) => ({
   place: null,
 }));
 const mapImage = image("#719b77");
-const place = (id, x, y) => ({
-  id,
-  name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-  classes: id === "mill" ? ["workplace", "community"] : ["other"],
-  category: "destination",
-  description: "A village place.",
-  capabilities: [],
-  presentation: { mapId: "map-house", image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
-  occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-  state: { revision: 0, recent: null, updatedAt: now },
-});
+const place = (id, x, y) =>
+  venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
+    id,
+    name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
+    classes: id === "mill" ? ["workplace", "community"] : ["other"],
+    category: "destination",
+    description: "A village place.",
+    capabilities: [],
+    presentation: {
+      mapId: "map-house",
+      image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id },
+      x,
+      y,
+    },
+    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+    state: { revision: 0, recent: null, updatedAt: now },
+  });
 const snapshot = {
   worldScope: "a".repeat(64),
   status: "ready",
@@ -102,7 +110,7 @@ const snapshot = {
     selectedLorebookIds: [],
     setting: "",
     foundingReason: "",
-    foundingDetails: "",
+    foundingHistory: "",
     maxPlaces: 10,
     maxVenueNameLength: 80,
     maxVenueNoteLength: 2000,

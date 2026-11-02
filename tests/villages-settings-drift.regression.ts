@@ -4,7 +4,7 @@ import type { VillageSettings } from "../packages/villages/src/shared/contracts/
 import type { VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -96,8 +96,8 @@ const publicFields = [
   "characterSpeechColors",
   "defaultHomeBuilding",
   "defaultPromptKnowledge",
-  "foundingDetails",
-  "foundingDetailsMaxLength",
+  "foundingHistory",
+  "foundingHistoryMaxLength",
   "foundingGuidance",
   "foundingGuidanceMaxLength",
   "foundingReason",

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
@@ -41,7 +42,7 @@ import { generateFirstZoneImage } from "../packages/villages/src/server/features
 import type { VillageVenue, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 const stamp = new Date().toISOString();
 function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): VillageVenue {
-  return {
+  return venueFixture({
     id,
     name: id,
     form: "A bank built inside a tent",
@@ -54,7 +55,7 @@ function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): Villa
     workerIds: [],
     spaces: classes.map((c) => defaultVenueSpace(c, "Public lobby")),
     state: { revision: 0, recent: null, updatedAt: stamp },
-  };
+  });
 }
 const state = defaultVillageState();
 state.villagers = ["a", "b"].map((id) => ({

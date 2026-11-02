@@ -1,6 +1,6 @@
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { projectAgendaReservations } from "./project-focus.js";
-import { reconcileOpening } from "./opening-project.js";
+
 import { refreshProjectAgreements } from "./project-lifecycle-rules.js";
 import { initializeVenueAccess, reconcileVenueAccess } from "./venue-access.js";
 import { assertVillageVenueCapacity, villageVenueUsage } from "./venue-capacity.js";
@@ -47,7 +47,6 @@ export function normalizeVillageMutation(
     if (prior && venue.presentation.mapId !== prior.presentation.mapId)
       throw new Error("Moving an existing Venue between maps is not supported.");
   }
-  reconcileOpening(state);
   if (state.seed !== relationshipSeed) delete state.relationshipContext;
   const capacity = villageVenueUsage(state);
   if (capacity.total > previousCapacity.total || capacity.nonResidential > previousCapacity.nonResidential)

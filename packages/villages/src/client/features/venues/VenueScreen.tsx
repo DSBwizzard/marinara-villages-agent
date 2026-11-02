@@ -344,26 +344,26 @@ function AssignedVillagers({
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                disabled={venueAssignedCountFor(place) > 0}
+                disabled={venueAssignedCountFor(place) >= venueCapacityFor(place)}
                 onClick={() => setHousing((open) => !open)}
                 aria-expanded={housing}
               >
                 Move here
               </button>
-              {venueAssignedCountFor(place) > 0 ? <p>Moving into a shared Residence is not available yet.</p> : null}
-              {housing && venueAssignedCountFor(place) === 0 ? (
+              {housing && venueAssignedCountFor(place) < venueCapacityFor(place) ? (
                 <div className={`${ELEMENT_TAG}-venue-section`}>
                   <label className={`${ELEMENT_TAG}-label`}>
-                    Your destination Private Space
+                    Your sleeping Zone
                     <select
                       value={playerMovePrivateZoneId}
                       onChange={(event) => setPlayerMovePrivateZoneId(event.target.value)}
                     >
-                      <option value="">No Private Space</option>
+                      <option value="">Choose shared sleeping space automatically</option>
                       {place.zones
                         ?.filter(
                           (zone) =>
-                            zone.kind === "private-residence" &&
+                            zone.venueClass === "residence" &&
+                            zone.kind !== "exterior" &&
                             !zone.ownerId &&
                             !zone.closed &&
                             !snapshot.residences.some(

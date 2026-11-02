@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import { conflict } from "../../domain/rules/errors.js";
-import { gatheringDialogueComplete } from "../../domain/rules/opening-project.js";
+
 import {
   accessExits,
   captureSceneAttendance,
@@ -55,15 +55,6 @@ export function createLiveScenes({
   }
   async function completeGathering(session: VenueScene): Promise<void> {
     if (!session.openingGatheringId) return;
-    if (session.openingReader && !gatheringDialogueComplete(session)) return;
-    if (
-      session.openingReader &&
-      (session.status !== "closed" ||
-        !session.activeIds.every((id) =>
-          session.lines.some((line) => line.kind === "dialogue" && line.speakerId === id),
-        ))
-    )
-      return;
     await mutateVillageState((state) => {
       if (
         state.seed === session.villageSeed &&
@@ -71,7 +62,7 @@ export function createLiveScenes({
         state.opening.gatheringSceneId === session.id &&
         state.opening.id === session.openingGatheringId
       )
-        state.opening.stage = state.opening.version === 3 ? "complete" : "conversations";
+        state.opening.stage = "complete";
     });
   }
   async function activeVenueSession(): Promise<VenueScene | null> {

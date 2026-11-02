@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -19,30 +20,31 @@ async function main() {
   const at = new Date("2026-10-07T12:00:00.000Z");
   const stamp = at.toISOString();
   const dateKey = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
-  const venue = (id: string) => ({
-    layoutVersion: 1,
-    id,
-    name: id,
-    classes: ["residence", "community"],
-    baseClasses: ["residence", "community"],
-    residentIds: id === "hub" ? ["hidden"] : [],
-    description: "A shared building.",
-    presentation: { image: null, x: 0.5, y: 0.5 },
-    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    state: { revision: 0, recent: null, updatedAt: stamp },
-    zones: [
-      { ...defaultVenueSpace("community"), id: "exterior", name: "Entrance", kind: "exterior", seen: true },
-      { ...defaultVenueSpace("community"), id: "common", name: "Common Space", kind: "public", seen: true },
-      {
-        ...defaultVenueSpace("residence"),
-        id: "private:hidden",
-        name: "Private Space",
-        kind: "private-residence",
-        ownerId: "hidden",
-        seen: false,
-      },
-    ],
-  });
+  const venue = (id: string) =>
+    venueFixture({
+      layoutVersion: 1,
+      id,
+      name: id,
+      classes: ["residence", "community"],
+      baseClasses: ["residence", "community"],
+      residentIds: id === "hub" ? ["hidden"] : [],
+      description: "A shared building.",
+      presentation: { image: null, x: 0.5, y: 0.5 },
+      occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+      state: { revision: 0, recent: null, updatedAt: stamp },
+      zones: [
+        { ...defaultVenueSpace("community"), id: "exterior", name: "Entrance", kind: "exterior", seen: true },
+        { ...defaultVenueSpace("community"), id: "common", name: "Common Space", kind: "public", seen: true },
+        {
+          ...defaultVenueSpace("residence"),
+          id: "private:hidden",
+          name: "Private Space",
+          kind: "private-residence",
+          ownerId: "hidden",
+          seen: false,
+        },
+      ],
+    });
   const resident = (characterId: string, venueId: string, zoneId: string, activity: string) => ({
     characterId,
     cardSnapshot: {

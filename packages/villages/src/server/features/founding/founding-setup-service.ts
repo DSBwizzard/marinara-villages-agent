@@ -19,11 +19,11 @@ import {
 import { initialOpening } from "../../domain/rules/opening-project.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
 import { playerBackgroundForSetup } from "../../domain/rules/player-background.js";
-import { isHousePlace, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { readFoundingResidentAdmissions } from "../../domain/rules/resident-admission.js";
 import { snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
-import { readScenarioImprint, readWorldFacts } from "../../domain/rules/scenario-rules.js";
+import { readFoundingCircumstances, seedFoundingCircumstances } from "../../domain/rules/founding-circumstances.js";
 import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
 import { validVenueClasses, venueResidentIds } from "../../domain/rules/venue-model.js";
@@ -85,13 +85,12 @@ export function createFoundingSetup({
     name?: unknown;
     timeZone?: unknown;
     setting?: unknown;
-    foundingReason?: unknown;
+    worldRules?: unknown;
     worldName?: unknown;
-    foundingDetails?: unknown;
-    foundingGuidance?: unknown;
+    foundingHistory?: unknown;
+    communityVenueId?: unknown;
     playerBackground?: unknown;
-    scenarioImprint?: unknown;
-    worldFacts?: unknown;
+    circumstances?: unknown;
     selectedLorebookIds?: unknown;
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
@@ -111,33 +110,25 @@ export function createFoundingSetup({
       throw badRequest("Choose a valid village timezone.");
     const setting = readVillageSetting(input.setting);
     if (setting.length === 0) throw badRequest("Describe the place and world before founding.");
-    const foundingReason = input.foundingReason === undefined ? "none" : asTrimmedString(input.foundingReason);
-    if (!["rebuild", "pioneer", "prosper", "custom", "none"].includes(foundingReason)) {
-      throw badRequest("Choose a founding scenario.");
-    }
+    if (typeof (input.worldRules ?? "") !== "string" || String(input.worldRules ?? "").length > 4096)
+      throw badRequest("Standing rules must be text of at most 4,096 characters.");
+    const worldRules = asTrimmedString(input.worldRules);
+    const communityVenueId = asTrimmedString(input.communityVenueId);
+
     if (
-      input.foundingDetails !== undefined &&
-      (typeof input.foundingDetails !== "string" || input.foundingDetails.length > 2_000)
+      input.foundingHistory !== undefined &&
+      (typeof input.foundingHistory !== "string" || input.foundingHistory.length > 2_000)
     ) {
       throw badRequest("Starting circumstances must be text of at most 2,000 characters.");
     }
-    const foundingDetails = asTrimmedString(input.foundingDetails);
+    const foundingHistory = asTrimmedString(input.foundingHistory);
     if (input.worldName !== undefined && readWorldName(input.worldName) === null)
       throw badRequest("Use a world name within 120 characters.");
-    if (typeof (input.foundingGuidance ?? "") !== "string" || String(input.foundingGuidance ?? "").length > 500) {
-      throw badRequest("Narrative direction must be text of at most 500 characters.");
-    }
-    const foundingGuidance = String(input.foundingGuidance ?? "").trim();
     const selectedLorebookIds = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
     const loreTokenBudget =
       input.loreTokenBudget === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(input.loreTokenBudget);
-    if (foundingReason === "none" && foundingGuidance) {
-      throw badRequest("No preset does not use a separate narrative direction.");
-    }
     const village = await readVillageState();
     const playerBackground = playerBackgroundForSetup(village.playerBackground, input.playerBackground, true);
-    const scenarioImprint = input.scenarioImprint == null ? null : readScenarioImprint(input.scenarioImprint);
-    const worldFacts = scenarioImprint?.worldFacts ?? [];
     if (!input.townMapImage) throw badRequest("Generate or upload map artwork before founding.");
     const townMap = await prepareVillageMap({
       id: randomUUID(),
@@ -154,21 +145,18 @@ export function createFoundingSetup({
     if (!Array.isArray(input.venues)) throw badRequest("The setup needs the places you put on the map.");
     const cards = await listVillagerCards();
     const cardNames = new Map(cards.map((card) => [card.id, card.name]));
-    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true);
+    const places = parsePlaces(input.venues, new Set(cardNames.keys()), true, communityVenueId, villageNow());
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
     );
-    const assignedResidents = new Set(
-      places.flatMap((place) => (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : [])),
-    );
+    const assignedResidents = new Set(places.flatMap((place) => place.residentIds));
+    const circumstances = readFoundingCircumstances(input.circumstances, places, villageNow().toISOString());
     const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
     if (input.foundingCharacterIds !== undefined)
       validateFoundingRoster(input.foundingCharacterIds, assignedResidents, new Set(cardNames.keys()));
     if (privateControllers.some((id) => id !== "player" && !assignedResidents.has(id)))
       throw badRequest("Choose founding villagers as room controllers.");
-    const initialResidentIds = [
-      ...new Set(places.flatMap((place) => [place.occupancy.residentCharacterId]).filter(Boolean)),
-    ];
+    const initialResidentIds = [...assignedResidents];
     const cardsById = new Map(cards.map((card) => [card.id, card]));
     const initialResidents = initialResidentIds.map((characterId) => cardsById.get(characterId)!);
     const letterFonts = new Map(initialResidents.map((card) => [card.id, chooseLetterFont(randomUUID())]));
@@ -213,18 +201,6 @@ export function createFoundingSetup({
         },
       };
     });
-    for (const old of village.venues) {
-      if (!old.occupancy.residentCharacterId) continue;
-      const next = venues.find((venue) => venue.id === old.id);
-      if (
-        !next ||
-        next.occupancy.residentCharacterId !== old.occupancy.residentCharacterId ||
-        next.presentation.x !== old.presentation.x ||
-        next.presentation.y !== old.presentation.y ||
-        next.occupancy.homeKind !== old.occupancy.homeKind
-      )
-        throw conflict("Move the resident before changing or removing their home.");
-    }
 
     const addedResidents: VillagerCard[] = [];
     await mutateVillageState((state) => {
@@ -233,12 +209,10 @@ export function createFoundingSetup({
       state.name = name;
       state.setting = setting;
       if (typeof input.timeZone === "string") state.timeZone = input.timeZone;
-      state.foundingReason = foundingReason;
-      state.foundingDetails = foundingDetails;
+      state.worldRules = worldRules;
+      state.foundingHistory = foundingHistory;
       if (input.worldName !== undefined) state.worldName = readWorldName(input.worldName)!;
-      state.foundingGuidance = foundingGuidance;
-      state.scenarioImprint = scenarioImprint;
-      state.worldFacts = worldFacts;
+      state.communityVenueId = communityVenueId;
       state.selectedLorebookIds = selectedLorebookIds;
       state.loreTokenBudget = loreTokenBudget;
       state.maps = [townMap];
@@ -260,16 +234,10 @@ export function createFoundingSetup({
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
       state.setupAt ||= villageNow().toISOString();
       state.progressEngineVersion = 1;
-      state.opening = initialOpening(
-        [...assignedResidents],
-        venues.find((venue) => venue.category === "public-center")!.id,
-        randomUUID(),
-        3,
-      );
+      state.opening = initialOpening([...assignedResidents], communityVenueId, randomUUID());
       state.foundingPreparation = {
         status: "pending",
         completedIds: [],
-        venueDetailsSeeded: false,
         currentId: "",
         error: "",
         phase: "venues",
@@ -300,6 +268,8 @@ export function createFoundingSetup({
         });
         addedResidents.push(card);
       }
+      const at = state.setupAt;
+      seedFoundingCircumstances(state, circumstances, ["player", ...assignedResidents], at);
     });
 
     if (addedResidents.length > 0) {
@@ -320,34 +290,6 @@ export function createFoundingSetup({
       void prepareFoundedVillage();
     });
     if (addedResidents.length) await queueStartingTies?.();
-    return buildVillageSnapshot();
-  }
-
-  /**
-   * Ask the model what places this village has, and keep what it says.
-   *
-   * Split out from `setVillageSetting` so the tab can offer it as an explicit
-   * "suggest places" action for a village whose setting is already saved.
-   */
-  async function runVillageBootstrap(): Promise<VillageSnapshot> {
-    const village = await readVillageState();
-    const setting = village.setting.trim();
-    if (setting.length === 0) throw badRequest("Write what the village is like before asking for places.");
-
-    const settingForProposal = villageCurrentSetting(village);
-    const proposal = await proposeVillage(settingForProposal, {
-      lore: await readVillageLore(village.selectedLorebookIds, settingForProposal, undefined, village.loreTokenBudget),
-    });
-    await mutateVillageState((state) => {
-      // Only the places you can be sent to are replaced. The houses stay, because
-      // the model was never asked about them: it is asked what there is to do in a
-      // village like this, and where everybody sleeps is not one of the answers.
-      // Throwing the whole list away would demolish a village the player had just
-      // finished drawing, on the strength of an answer to a different question.
-      const venues = [...state.venues.filter((place) => isHousePlace(place)), ...proposal.venues];
-      assertVillageVenueCapacity(state, venues);
-      state.venues = venues;
-    });
     return buildVillageSnapshot();
   }
 
@@ -375,7 +317,7 @@ export function createFoundingSetup({
     const village = await readVillageState();
     const setting = villageCurrentSetting({
       setting: typeof input.setting === "string" ? input.setting.trim() : village.setting,
-      worldFacts: input.worldFacts === undefined ? village.worldFacts : readWorldFacts(input.worldFacts),
+      worldRules: typeof input.worldRules === "string" ? input.worldRules : village.worldRules,
     });
     const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? village.selectedLorebookIds);
     const rows = Array.isArray(input.venues) ? input.venues : [];
@@ -398,7 +340,6 @@ export function createFoundingSetup({
   }
   return {
     runVillageSetup,
-    runVillageBootstrap,
     suggestFoundingPlaces,
     suggestFoundingVenueNames,
     draftVenueDescriptions,

@@ -696,6 +696,8 @@ export type VillageVenueDraft = {
 
 /** A home is now an occupancy fact on a venue, never a second place system. */
 export type VillageResidence = {
+  agreement?: import("../../../shared/contracts/village.js").ResidenceAgreement;
+  holdReason?: string;
   proposedPrivateZoneId?: string;
   venueId: string;
   characterId: string;
@@ -848,26 +850,6 @@ export type VillagePendingDecision = {
   sourceKey?: string;
 };
 
-/**
- * A memory as a reader draws it: the stored entry plus the calendar date its
- * `dayIndex` falls on.
- *
- * The date is derived rather than stored for the same reason the whole clock
- * is: the day number is the fact and the date is one of the things it means, so
- * a village whose founding stamp is restored from a backup gets its dates back
- * without a migration. Nothing is derived from `at` here either.
- */
-export type VillageScenarioImprint = {
-  /** A past event, if the scenario actually describes one. */
-  origin: string;
-  /** Stable facts approved for the present world at founding. */
-  worldFacts: string[];
-  /** Conditions offered to founding drafts and initial agendas only. */
-  openingConditions: string[];
-  /** Visual guidance for founding map and venue art only. */
-  visualCues: string[];
-};
-
 export const RETURN_CATCHUP_HISTORY_LIMIT = 20;
 export type ReturnCatchupBatch = {
   id: string;
@@ -901,7 +883,8 @@ export type ReturnCatchupCapture = {
     | "name"
     | "setting"
     | "worldName"
-    | "worldFacts"
+    | "worldRules"
+    | "foundingHistory"
     | "narrative"
     | "narrativeConsequence"
     | "eventAttempts"
@@ -955,7 +938,7 @@ export type VillageState = {
   socialOutbox?: import("./social-outbox-model.js").WorldSocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  version: 13;
+  version: 14;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;
@@ -972,16 +955,13 @@ export type VillageState = {
    */
   setting: string;
   /** The player's reason for starting this village, kept apart from its visual setting. */
-  foundingReason: string;
+  worldRules: string;
   worldName: string;
-  foundingDetails: string;
-  foundingGuidance: string;
+  foundingHistory: string;
+  communityVenueId: string;
   /** Founding-only narrative role; null preserves legacy framing. */
   playerBackground: VillagePlayerBackground | null;
   /** The reviewed starting point. Historical after setup; never a live plot instruction. */
-  scenarioImprint: VillageScenarioImprint | null;
-  /** Editable facts that still hold in the present village. */
-  worldFacts: string[];
   /** Internal admission policy; older founded saves retain their original limits. */
   /** Engine lorebook links; entry content is always read live. */
   selectedLorebookIds: string[];
@@ -1032,7 +1012,6 @@ export type VillageState = {
     retryActions?: string[];
     selectedTasks?: string[];
     currentTask?: "routine" | "wish";
-    venueDetailsSeeded?: boolean;
     currentId: string;
     error: string;
     phase?: "venues" | "private-spaces" | "residents";

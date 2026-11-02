@@ -1,4 +1,3 @@
-import { openingPresence } from "./opening-presence.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
@@ -76,7 +75,6 @@ export function captureSceneAttendance(
       const position = presence.get(villager.characterId);
       if (position?.id !== placeId) return [];
       const block = agendaAt(villager.agenda, moment.minuteOfDay, now, villager.ingestSchedule !== false);
-      const staged = openingPresence(village, villager.characterId);
       const zone =
         resolveVenueZone(venue, position.zoneId ?? "") ??
         chooseAgendaZone(venue, villager.characterId, block?.activity, block?.zoneId, village, {
@@ -88,10 +86,9 @@ export function captureSceneAttendance(
           characterId: villager.characterId,
           name: villager.cardSnapshot.name,
           doing:
-            staged?.activity ??
-            ((block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
+            (block?.zoneId && block.zoneId !== zone.id) || (block?.venueId && block.venueId !== venue.id)
               ? "Taking care of their own affairs"
-              : (block?.activity ?? "")),
+              : (block?.activity ?? ""),
           zoneId: zone.id,
         },
       ];

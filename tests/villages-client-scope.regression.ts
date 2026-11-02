@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization";
 import { playerDisplayName } from "../packages/villages/src/client/shared/presentation.js";
@@ -11,7 +12,9 @@ for (const playerPersonaName of [undefined, null, 1, "", "   ", " Robin "]) {
   );
 }
 
-const validVenue = {
+const validVenue = venueFixture({
+  residentIds: [null].filter((id) => typeof id === "string" && !!id),
+  classes: false || null ? ["residence"] : ["other"],
   id: "library",
   name: "Library",
   category: "destination",
@@ -19,7 +22,7 @@ const validVenue = {
   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
   capabilities: ["reading"],
   state: { revision: 0, updatedAt: "", recent: null },
-};
+});
 const malformedVenue = { id: "legacy-library", name: "Legacy Library" };
 const normalizedSnapshot = normalizeVillageSnapshot({
   settings: { venues: [validVenue, malformedVenue] },

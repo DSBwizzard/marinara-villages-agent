@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
@@ -84,29 +85,31 @@ function fixture(seeded = true) {
       },
       addedAt: stamp,
     })),
-    venues: ["aqua", "feddy", "sneak", "hall"].map((id, index) => ({
-      id,
-      name: id === "hall" ? "Community Place" : `${names[index]}'s living space`,
-      form: "Converted station space",
-      description: "An old station door",
-      layoutVersion: 1,
-      classes: id === "hall" ? ["community"] : ["residence"],
-      occupancy: { playerHome: false, residentCharacterId: id === "hall" ? null : id, homeKind: null },
-      residentIds: id === "hall" ? [] : [id],
-      presentation: { image: null, x: (index + 1) / 5, y: 0.5 },
-      zones: [
-        { ...defaultVenueSpace("other", "An old station door"), id: "exterior", name: "Exterior", kind: "exterior" },
-        {
-          ...defaultVenueSpace(id === "hall" ? "community" : "residence"),
-          id: "private:base",
-          name: ["Signal Loft", "Storage Bay", "Underplatform Den", "Ticket Office"][index],
-          kind: id === "hall" ? "restricted" : "private-residence",
-          ownerId: id === "hall" ? undefined : id,
-          controllerIds: id === "hall" ? ["player"] : [],
-          preparation: { status: "pending" },
-        },
-      ],
-    })),
+    venues: ["aqua", "feddy", "sneak", "hall"].map((id, index) =>
+      venueFixture({
+        id,
+        name: id === "hall" ? "Community Place" : `${names[index]}'s living space`,
+        form: "Converted station space",
+        description: "An old station door",
+        layoutVersion: 1,
+        classes: id === "hall" ? ["community"] : ["residence"],
+        occupancy: { playerHome: false, residentCharacterId: id === "hall" ? null : id, homeKind: null },
+        residentIds: id === "hall" ? [] : [id],
+        presentation: { image: null, x: (index + 1) / 5, y: 0.5 },
+        zones: [
+          { ...defaultVenueSpace("other", "An old station door"), id: "exterior", name: "Exterior", kind: "exterior" },
+          {
+            ...defaultVenueSpace(id === "hall" ? "community" : "residence"),
+            id: "private:base",
+            name: ["Signal Loft", "Storage Bay", "Underplatform Den", "Ticket Office"][index],
+            kind: id === "hall" ? "restricted" : "private-residence",
+            ownerId: id === "hall" ? undefined : id,
+            controllerIds: id === "hall" ? ["player"] : [],
+            preparation: { status: "pending" },
+          },
+        ],
+      }),
+    ),
   });
   for (const resident of state.villagers)
     resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
@@ -352,7 +355,6 @@ async function main() {
     install(false);
     await Promise.all([prepareFoundedVillage(), prepareFoundedVillage()]);
     assert.deepEqual(calls, [
-      "venues",
       "aqua",
       "feddy",
       "sneak",
@@ -367,7 +369,6 @@ async function main() {
     let state = await readVillageState({ memories: true });
     assert.equal(state.foundingPreparation?.status, "ready");
     assert.equal(state.foundingPreparation?.completedIds.length, 3);
-    assert.ok(stages.includes("venues:model:"));
     assert.ok(stages.includes("private-spaces:model:aqua"));
     assert.ok(stages.includes("residents:model:aqua"));
     assert.ok(stages.includes("residents:saving:aqua"));
@@ -770,9 +771,6 @@ async function main() {
     install();
     mode = "routine-timeout";
     await prepareFoundedVillage();
-    await mutateVillageState((current) => {
-      current.foundingPreparation!.venueDetailsSeeded = false;
-    });
     const targeted = (await readVillageState({ memories: true })).foundingPreparation!.tasks!.aqua.routine!;
     calls.length = 0;
     mode = "valid";
@@ -794,7 +792,6 @@ async function main() {
       "completed",
       "Explicit founding retry retains task ownership after ordinary regeneration",
     );
-    assert.equal((await readVillageState({ memories: true })).foundingPreparation!.venueDetailsSeeded, false);
     console.log(
       "Founding preparation: Station Fields, single-space checkpoints, failures, retries, claims, fencing, progress and forecasts passed.",
     );

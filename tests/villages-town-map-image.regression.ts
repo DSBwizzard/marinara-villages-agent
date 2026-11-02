@@ -62,7 +62,7 @@ async function main() {
     setting: "Misty cliffs",
     worldFacts: ["The cliffs shelter seabirds"],
     foundingReason: "rebuild",
-    foundingDetails: "Survivors gathered after the flood in the early days.",
+    foundingHistory: "Survivors gathered after the flood in the early days.",
     foundingGuidance: "Favor quiet solidarity.",
     scenarioImprint: {
       origin: "Survivors founded the village after a flood.",
@@ -84,7 +84,7 @@ async function main() {
   const openBeginning = {
     ...founded,
     foundingReason: "none",
-    foundingDetails: "Friends gather with tools to build a new home.",
+    foundingHistory: "Friends gather with tools to build a new home.",
     foundingGuidance: "",
     scenarioImprint: { origin: "", worldFacts: [], openingConditions: ["A temporary camp"], visualCues: [] },
   };
@@ -94,7 +94,7 @@ async function main() {
     setting: "A fishing village above the sea",
     worldFacts: [],
     foundingReason: "none",
-    foundingDetails: "On Day 1, storm-damaged boats reach the cove.",
+    foundingHistory: "On Day 1, storm-damaged boats reach the cove.",
     foundingGuidance: "",
     scenarioImprint: null,
   };
@@ -108,7 +108,7 @@ async function main() {
     /Survivors founded the village after a flood/,
   );
   assert.equal(
-    villageRelevantOrigin({ setting: "Misty cliffs", foundingReason: "none", foundingDetails: "" }, "history"),
+    villageRelevantOrigin({ setting: "Misty cliffs", foundingReason: "none", foundingHistory: "" }, "history"),
     "",
   );
   const legacy = coerceVillageState({
@@ -117,7 +117,7 @@ async function main() {
     wishSystemVersion: 3,
     setting: "Misty cliffs",
     foundingReason: "rebuild",
-    foundingDetails: "After the flood",
+    foundingHistory: "After the flood",
   });
   assert.equal(legacy.scenarioImprint, null);
   assert.deepEqual(legacy.worldFacts, []);

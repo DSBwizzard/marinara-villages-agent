@@ -1,3 +1,4 @@
+import { currentVillageCircumstances } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { badRequest } from "./errors.js";
 import { MAX_IMAGE_PROMPT_LENGTH } from "./image-generation-rules.js";
@@ -98,8 +99,9 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     village.sceneryArtStyle,
     village.sceneryStyleProfileId ?? null,
     village.setting,
+    village.worldRules,
     village.worldName,
-    village.worldFacts,
+    currentVillageCircumstances(village),
     (venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault) ? village.selectedLorebookIds : [],
     personality && ownerId === "player" ? [village.playerPersonaId, village.playerName, village.playerDescription] : [],
     personality

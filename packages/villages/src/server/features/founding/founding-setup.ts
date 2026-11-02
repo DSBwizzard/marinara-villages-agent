@@ -7,9 +7,6 @@ export function configureFoundingSetup(service: FoundingSetup): () => void {
 export async function runVillageSetup(...args: Parameters<FoundingSetup["runVillageSetup"]>) {
   return binding.get().runVillageSetup(...args);
 }
-export async function runVillageBootstrap(...args: Parameters<FoundingSetup["runVillageBootstrap"]>) {
-  return binding.get().runVillageBootstrap(...args);
-}
 export async function suggestFoundingPlaces(...args: Parameters<FoundingSetup["suggestFoundingPlaces"]>) {
   return binding.get().suggestFoundingPlaces(...args);
 }

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
@@ -11,7 +12,7 @@ import { readVillagerCard } from "../packages/villages/src/server/adapters/engin
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { DEFAULT_TOWN_MAP_VIEW } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { createFoundingSetup } from "../packages/villages/src/server/features/founding/founding-setup-service.js";
 import {
   configureFoundingSetup,
@@ -31,32 +32,39 @@ function input(name: string) {
     ),
     setting: "An observatory village",
     townMapImage: "test-map",
-    foundingReason: "none",
-    foundingDetails: "We begin our first day as neighbours.",
+    communityVenueId: "hall",
+    worldRules: "",
+    circumstances: [],
+    foundingHistory: "We begin our first day as neighbours.",
     playerPersonaId: "player",
     foundingCharacterIds: ["same"],
-    venues: ["player", "same", "hall"].map((id, index) => ({
-      id,
-      name: `${name} ${id}`,
-      form: "A room",
-      description: "A welcoming doorway",
-      category: id === "hall" ? "public-center" : "house",
-      classes: [id === "hall" ? "community" : "residence"],
-      layoutVersion: 1,
-      layout: "common",
-      spaces: [
-        {
-          id: "common:base",
-          name: "Shared room",
-          purpose: "Conversation",
-          description: "A table",
-          venueClass: id === "hall" ? "community" : "residence",
-        },
-      ],
-      privateSpaces: [],
-      occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
-      presentation: { x: 0.2 + index * 0.2, y: 0.5 },
-    })),
+    venues: ["player", "same", "hall"].map((id, index) => {
+      const venue = venueFixture({
+        residentIds: [id === "same" ? id : null].filter((id) => typeof id === "string" && !!id),
+        id,
+        name: `${name} ${id}`,
+        form: "A room",
+        description: "A welcoming doorway",
+        category: id === "hall" ? "public-center" : "house",
+        classes: [id === "hall" ? "community" : "residence"],
+        layoutVersion: 1,
+        layout: "common",
+        spaces: [
+          {
+            id: "common:base",
+            name: "Shared room",
+            purpose: "Conversation",
+            description: "A table",
+            venueClass: id === "hall" ? "community" : "residence",
+          },
+        ],
+        privateSpaces: [],
+        occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
+        presentation: { x: 0.2 + index * 0.2, y: 0.5 },
+      });
+      if (id === "hall") venue.access!.managerIds = [];
+      return venue;
+    }),
   };
 }
 function fixture(name: string) {
@@ -230,7 +238,7 @@ for (const invalid of ["missing-purpose", "layout-mismatch"]) {
     await server.close();
   }
 }
-// Templates are defaults: the HTTP founding path accepts Entrance-only homes and Community.
+// Founding rejects homes without sleeping destinations and a Community without usable common space.
 {
   const api = fixture("Entrance-only"),
     server = Fastify();
@@ -240,8 +248,8 @@ for (const invalid of ["missing-purpose", "layout-mismatch"]) {
     const payload = input("Entrance-only");
     for (const venue of payload.venues) Object.assign(venue, { layout: "exterior", spaces: [], privateSpaces: [] });
     const response = await server.inject({ method: "POST", url: "/setup", payload });
-    assert.equal(response.statusCode, 200, response.body);
-    assert.ok(api.state.venues.every((venue) => venue.zones?.length === 1 && venue.zones[0].id === "exterior"));
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(api.state.setupAt, "");
     assert.ok(
       !api.calls.some((call) => ["propose", "names", "descriptions"].includes(call)),
       "founding does not regenerate edited templates",
@@ -292,12 +300,10 @@ const direct = fixture("Direct");
 for (const setting of ["A farm", "An abandoned farm"]) {
   const everyday = fixture("Everyday");
   const payload = { ...input("Everyday"), setting };
-  delete payload.foundingDetails;
-  delete payload.foundingReason;
+  delete payload.foundingHistory;
   await everyday.service.runVillageSetup(payload);
   assert.equal(everyday.state.setting, setting);
-  assert.equal(everyday.state.foundingDetails, "");
-  assert.equal(everyday.state.foundingReason, "none");
+  assert.equal(everyday.state.foundingHistory, "");
   assert.equal(everyday.state.opening?.stage, "gathering", "the tutorial is unchanged");
 }
 const noChangesFixture = fixture("No changes");
@@ -323,7 +329,7 @@ assert(!direct.calls.includes("propose"));
 const saved = structuredClone(direct.state);
 const callsBeforeReopening = direct.calls.length;
 await assert.rejects(
-  direct.service.runVillageSetup({ ...input("Direct"), foundingDetails: "Changed starting history" }),
+  direct.service.runVillageSetup({ ...input("Direct"), foundingHistory: "Changed starting history" }),
   /already founded/,
 );
 assert.deepEqual(direct.state, saved);
@@ -358,13 +364,6 @@ assert.equal(suggestions.calls.filter((call) => call === "propose").length, 1);
 assert.equal(suggestions.calls.filter((call) => call === "names").length, 1);
 assert.equal(suggestions.calls.filter((call) => call === "descriptions").length, 1);
 assert(JSON.stringify(suggestions.contexts).includes("Private lore Suggestions"));
-const beforeBootstrap = structuredClone(
-  direct.state.venues.filter((venue) => venue.occupancy.playerHome || venue.occupancy.residentCharacterId),
-);
-await direct.service.runVillageBootstrap();
-assert.deepEqual(direct.state.venues.slice(0, 2), beforeBootstrap, "Bootstrap retains the saved homes.");
-assert.equal(direct.state.venues.at(-1)!.name, "Direct garden");
-
 const changed = fixture("Changed");
 changed.retryWith((state) => {
   state.setupAt = "concurrent-founded";

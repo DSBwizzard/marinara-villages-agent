@@ -10,7 +10,7 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
 import {
   applyVillagerRefresh,

@@ -25,13 +25,12 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       name?: unknown;
       timeZone?: unknown;
       setting?: unknown;
-      foundingReason?: unknown;
+      worldRules?: unknown;
       worldName?: unknown;
-      foundingDetails?: unknown;
-      foundingGuidance?: unknown;
+      foundingHistory?: unknown;
+      communityVenueId?: unknown;
       playerBackground?: unknown;
-      scenarioImprint?: unknown;
-      worldFacts?: unknown;
+      circumstances?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
       sceneryStyleProfileId?: unknown;
@@ -55,13 +54,12 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
         name: body.name,
         timeZone: body.timeZone,
         setting: body.setting,
-        foundingReason: body.foundingReason,
+        worldRules: body.worldRules,
         worldName: body.worldName,
-        foundingDetails: body.foundingDetails,
-        foundingGuidance: body.foundingGuidance,
+        foundingHistory: body.foundingHistory,
+        communityVenueId: body.communityVenueId,
         playerBackground: body.playerBackground,
-        scenarioImprint: body.scenarioImprint,
-        worldFacts: body.worldFacts,
+        circumstances: body.circumstances,
         selectedLorebookIds: body.selectedLorebookIds,
         sceneryArtStyle: body.sceneryArtStyle,
         sceneryStyleProfileId: body.sceneryStyleProfileId,
@@ -109,7 +107,6 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
-      scenarioImprint?: unknown;
       actionId?: unknown;
       targetId?: unknown;
       sourceKey?: unknown;

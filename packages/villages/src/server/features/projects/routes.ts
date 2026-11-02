@@ -11,7 +11,6 @@ import {
   createNewVenueProject,
   createRenovationProject,
   debugCompleteProjectConstruction,
-  decideOpeningProposal,
   lockProjectBuilder,
   placeNewVenueProject,
   renewRenovationApprovals,
@@ -23,14 +22,6 @@ import {
 
 export function registerProjectRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.post<{ Body: unknown }>("/projects/opening", async (request, reply) => {
-    try {
-      await decideOpeningProposal(request.body);
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "updating the opening");
-    }
-  });
   app.post<{ Body: unknown }>("/projects", async (request, reply) => {
     try {
       await createNewVenueProject(request.body);

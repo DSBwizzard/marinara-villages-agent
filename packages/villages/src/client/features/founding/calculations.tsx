@@ -32,7 +32,7 @@ export function calculateSetupBeginningSourceKey(ports: {
   setupWorldName?: string;
   setupSetting: string;
   setupName?: string;
-  setupWorldFacts?: string[];
+  setupContext?: import("./draft-model.js").FoundingContext;
 
   visualLoreDefault: boolean;
 }) {
@@ -50,7 +50,7 @@ export function calculateSetupBeginningSourceKey(ports: {
   } = ports;
   return JSON.stringify({
     name: ports.setupName,
-    worldFacts: ports.setupWorldFacts,
+    context: ports.setupContext,
     worldName: ports.setupWorldName,
     residentAdmissions: selectedResidentAdmissions,
     setting: setupSetting.trim(),
@@ -69,7 +69,7 @@ export function calculateSetupImageContextKey(ports: {
   setupBeginningSourceKey: string;
 
   setupName: string;
-  setupWorldFacts: string[];
+  setupContext: import("./draft-model.js").FoundingContext;
   visualLoreDefault: boolean;
 }) {
   const {
@@ -78,13 +78,13 @@ export function calculateSetupImageContextKey(ports: {
     setupBeginningSourceKey,
 
     setupName,
-    setupWorldFacts,
+    setupContext,
     visualLoreDefault,
   } = ports;
   return JSON.stringify({
     source: setupBeginningSourceKey,
     name: setupName,
-    worldFacts: setupWorldFacts,
+    context: setupContext,
     persona: personaDraft,
     personalizeHomes,
     visualLoreDefault,
@@ -100,7 +100,7 @@ export function calculateSetupMapGenerationKey(ports: {
   setupMapPrompt: string;
   setupWorldName?: string;
   setupSetting: string;
-  setupWorldFacts: string[];
+  setupContext: import("./draft-model.js").FoundingContext;
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
   const {
@@ -112,13 +112,12 @@ export function calculateSetupMapGenerationKey(ports: {
     setupMapNegativePrompt,
     setupMapPrompt,
     setupSetting,
-    setupWorldFacts,
-    snapshot,
+    setupContext,
   } = ports;
   return JSON.stringify({
     setting: setupSetting.trim(),
     worldName: ports.setupWorldName,
-    worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
+    context: setupContext,
     lorebooks: setupLorebookDraft,
     loreBudget: setupLoreTokenBudgetDraft,
     artStyle: sceneryStyle,

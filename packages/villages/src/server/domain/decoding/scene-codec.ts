@@ -14,7 +14,7 @@ import type { VenueActionResult } from "../models/venue-action-model.js";
 import type { WishProposal } from "../models/wish-check-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
-import { readOpeningSignal } from "../rules/opening-project.js";
+
 import { coerceProjectSpeech } from "../rules/project-interpretation.js";
 import { immutableRelationshipState } from "../rules/relationship-rules.js";
 import { coercePendingAttention } from "../rules/scene-attention.js";
@@ -27,7 +27,6 @@ import { reuseSceneSubmission } from "../rules/scene-submissions.js";
 import type { ContactIntent, DoorwayContact } from "../rules/venue-contact.js";
 import type { VenueSceneChange } from "../rules/venue-scene-state.js";
 import { coerceExchangeProcessing } from "./exchange-codec.js";
-import { savedVenueClassRecord } from "./venue-class-compat.js";
 import { coerceVillageState } from "./village-codec.js";
 
 export function coerceActive(value: unknown): ActiveVenue {
@@ -57,7 +56,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   // This is an already-captured projection, not an old world to migrate.
   const decoded = coerceVillageState({
     ...facts,
-    version: 13,
+    version: 14,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
   });
@@ -77,7 +76,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
 }
 
 export function coerceSession(value: unknown): VenueScene {
-  const raw = savedVenueClassRecord(value);
+  const raw = asRecord(value);
   if (raw.liveSceneVersion !== undefined && raw.liveSceneVersion !== 1)
     throw conflict("Unsupported live Scene format. Its saved data is preserved.");
   if (
@@ -220,8 +219,6 @@ export function coerceSession(value: unknown): VenueScene {
       ? (raw.generationReceipts as VenueScene["generationReceipts"])
       : [],
     openingGatheringId: asTrimmedString(raw.openingGatheringId) || undefined,
-    openingReader: raw.openingReader === true ? true : undefined,
-    openingIntroductionResidentId: asTrimmedString(raw.openingIntroductionResidentId) || undefined,
     id: asTrimmedString(raw.id),
     placeId: asTrimmedString(raw.placeId),
     placeName: asTrimmedString(raw.placeName),
@@ -421,20 +418,6 @@ export function coerceSession(value: unknown): VenueScene {
                 ? { replyLineIds: row.replyLineIds.filter((id): id is string => typeof id === "string") }
                 : {}),
               ...(typeof row.progressProcessedAt === "string" ? { progressProcessedAt: row.progressProcessedAt } : {}),
-              openingProcessedAt: asTrimmedString(row.openingProcessedAt) || undefined,
-              openingContext: row.openingContext
-                ? {
-                    stage: asTrimmedString(asRecord(row.openingContext).stage),
-                    projectId: asTrimmedString(asRecord(row.openingContext).projectId),
-                    ...(asRecord(row.openingContext).gatheringComplete === true
-                      ? { gatheringComplete: true as const }
-                      : {}),
-                    ...(Object.hasOwn(asRecord(row.openingContext), "proposalFingerprint")
-                      ? { proposalFingerprint: asTrimmedString(asRecord(row.openingContext).proposalFingerprint) }
-                      : {}),
-                  }
-                : undefined,
-              openingSignal: readOpeningSignal(row.openingSignal),
               ...(Array.isArray(row.projectContexts)
                 ? {
                     projectContexts: row.projectContexts.slice(0, 100).map((value) => {

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
@@ -257,7 +258,7 @@ async function main() {
 
       wishSystemVersion: 3,
       setting,
-      foundingDetails: "Built beside the ridge",
+      foundingHistory: "Built beside the ridge",
       venues: [{ id: "square", name: "market square", form: "trade" }],
     }),
     coerceVillageState({
@@ -845,10 +846,11 @@ async function main() {
     townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
     setting: settingText,
     foundingReason: "pioneer",
-    foundingDetails: "The group arrives at the riverside and opens the first shared path.",
+    foundingHistory: "The group arrives at the riverside and opens the first shared path.",
     playerPersonaId: "persona-robin",
     venues: [
-      {
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "player-home",
         layoutVersion: 1,
         layout: "both",
@@ -876,8 +878,9 @@ async function main() {
         ],
         presentation: { x: 0.2, y: 0.3 },
         occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
-      },
-      {
+      }),
+      venueFixture({
+        residentIds: ["character-millie"].filter((id) => typeof id === "string" && !!id),
         id: "millie-home",
         layoutVersion: 1,
         layout: "both",
@@ -904,8 +907,9 @@ async function main() {
         ],
         presentation: { x: 0.4, y: 0.5 },
         occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
-      },
-      {
+      }),
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "village-square",
         layoutVersion: 1,
         layout: "common",
@@ -924,7 +928,7 @@ async function main() {
         category: "public-center",
         presentation: { x: 0.6, y: 0.7 },
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      },
+      }),
     ],
   });
   assert.equal(founded.statusCode, 200, founded.body);
@@ -1292,7 +1296,7 @@ async function main() {
   const foundingImageInput = {
     villageName: "Ashcroft",
     setting: "A cliffside village above the sea.",
-    foundingDetails: "On Day 1, a storm damages several boats.",
+    foundingHistory: "On Day 1, a storm damages several boats.",
     selectedLorebookIds: [],
   };
   const beforeInvalidImage = draws().length;

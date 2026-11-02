@@ -7,9 +7,7 @@ export const MAX_ZONE_VILLAGERS = 4;
 
 export function venueClasses(venue: Pick<VillageVenue, "classes" | "occupancy">): VillageVenueClass[] {
   if (venue.classes?.length) return venue.classes;
-  return venue.occupancy.playerHome || venue.occupancy.residentCharacterId || venue.occupancy.homeKind
-    ? ["residence"]
-    : ["other"];
+  return venue.occupancy.playerHome || venue.occupancy.homeKind ? ["residence"] : ["other"];
 }
 
 export function hasVenueClass(
@@ -20,7 +18,7 @@ export function hasVenueClass(
 }
 
 export function venueResidentIds(venue: Pick<VillageVenue, "residentIds" | "occupancy">): string[] {
-  return venue.residentIds ?? (venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : []);
+  return venue.residentIds ?? [];
 }
 
 export function venueCapacity(venue: Pick<VillageVenue, "residenceCapacity">): number {

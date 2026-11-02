@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import { socialContextState } from "../packages/villages/src/server/domain/rules/social-context.js";
@@ -78,7 +79,7 @@ function fixture(): VillageVenue {
     ownerId,
     seen: false,
   });
-  const result: VillageVenue = {
+  const result: VillageVenue = venueFixture({
     id: "home",
     name: "Jim's home",
     venueType: "Home",
@@ -103,7 +104,7 @@ function fixture(): VillageVenue {
       zone("office", "jim"),
       zone("mara-bedroom", "mara"),
     ],
-  };
+  });
   initializeVenueAccess(result);
   result.access!.managerIds = ["jim"];
   return result;

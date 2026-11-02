@@ -64,7 +64,7 @@ export function draftRenovationProject(
   const venue = state.venues.find((venue) => venue.id === venueId && venue.constructionStatus !== "worksite");
   if (!venue) throw notFound("Choose a finished Venue.");
   const row = asRecord(value),
-    change = readRenovationChange(state, venue, row);
+    change = readRenovationChange(state, venue, row, villageNow());
   const project: VillageProject = {
     id: requestId || randomUUID(),
     kind: "renovation",

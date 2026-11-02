@@ -1,10 +1,10 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import type { VillageResidence, VillageSnapshot } from "../../domain/models/world.js";
+import { randomUUID } from "node:crypto";
+import type { VillageSnapshot } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
+import { assertResidenceAgreement, residenceProposal } from "../../domain/rules/residence-agreement.js";
 import { completeResidenceMove } from "../../domain/rules/residence-move.js";
-import { assertResidencePrivateDestination } from "../../domain/rules/venue-layout.js";
-import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "../../domain/rules/venue-model.js";
-import { venueZones } from "../../domain/rules/venue-zones.js";
+import { hasVenueClass, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { residenceCharacterId, residenceVenueId } from "../../domain/rules/world-input.js";
 import type { buildVillageSnapshot } from "../world/snapshot.js";
 import type { mutateVillageState } from "../world/village-store.js";
@@ -16,44 +16,8 @@ export interface ResidencePorts {
 export function createResidences(ports: ResidencePorts) {
   const { mutateVillageState, buildVillageSnapshot } = ports;
 
-  async function movePlayerToResidence(venueId: string, privateZoneId = ""): Promise<void> {
-    const at = villageNow().toISOString();
-    await mutateVillageState((state) => {
-      const venue = state.venues.find((entry) => entry.id === venueId);
-      if (!venue) throw notFound("That Residence no longer exists.");
-      if (venue.constructionStatus === "worksite") throw conflict("The build project governs this unfinished site.");
-      if (!hasVenueClass(venue, "residence")) throw conflict("The destination is not a Residence.");
-      if (venue.occupancy.playerHome) throw conflict("You already live here.");
-      if (venueResidentIds(venue).length) throw conflict("Moves into a shared Residence are not available yet.");
-      const reserved = state.residences.filter(
-        (entry) => entry.proposedVenueId === venue.id && entry.status === "moving",
-      ).length;
-      if (venueAssignedCount(venue) + reserved >= venueCapacity(venue))
-        throw conflict("This Residence has no available resident slot.");
-      assertResidencePrivateDestination(state, venue, "player", privateZoneId);
-      for (const current of state.venues) {
-        if (!current.occupancy.playerHome && current.id !== venue.id) continue;
-        current.zones ??= venueZones(current);
-        current.layoutVersion = 1;
-        const personal = current.zones.find((zone) => zone.kind === "private-residence" && zone.ownerId === "player");
-        if (personal) {
-          current.archivedZones = [
-            ...(current.archivedZones ?? []),
-            { zone: structuredClone(personal), archivedAt: at },
-          ].slice(-64);
-          personal.ownerId = undefined;
-          current.playerInvitations = current.playerInvitations?.filter((invite) => invite.zoneId !== personal.id);
-        }
-        current.occupancy.playerHome = false;
-      }
-      venue.occupancy.playerHome = true;
-      if (privateZoneId) {
-        const personal = venue.zones!.find((zone) => zone.id === privateZoneId)!;
-        personal.ownerId = "player";
-        personal.seen = true;
-        personal.preparation = undefined;
-      }
-    });
+  async function movePlayerToResidence(venueId: string, sleepZoneId = ""): Promise<void> {
+    await proposeVillageResidence("player", venueId, "player", "", sleepZoneId);
   }
   async function proposeVillageResidence(
     characterValue: unknown,
@@ -64,9 +28,10 @@ export function createResidences(ports: ResidencePorts) {
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
     const proposedVenueId = residenceVenueId(venueValue);
+    const requestId = randomUUID();
     await mutateVillageState((state) => {
       if (sourceKey && state.processedActionIds.includes(sourceKey)) return;
-      if (!state.villagers.some((villager) => villager.characterId === characterId)) {
+      if (characterId !== "player" && !state.villagers.some((villager) => villager.characterId === characterId)) {
         throw notFound("That villager is not in this village.");
       }
       const destination = state.venues.find((venue) => venue.id === proposedVenueId);
@@ -74,39 +39,53 @@ export function createResidences(ports: ResidencePorts) {
       if (!hasVenueClass(destination, "residence")) throw badRequest("Choose a Residence for this move.");
       if (destination.constructionStatus === "worksite") throw conflict("This Residence is still under construction.");
       const current = state.residences.find((residence) => residence.characterId === characterId);
-      const currentVenueId = state.venues.find((venue) => venueResidentIds(venue).includes(characterId))?.id ?? "";
+      const currentVenueId =
+        state.venues.find((venue) =>
+          characterId === "player" ? venue.occupancy.playerHome : venueResidentIds(venue).includes(characterId),
+        )?.id ?? "";
       if (currentVenueId === proposedVenueId) throw badRequest("That villager already lives there.");
-      if (current?.status === "moving" || current?.status === "pending")
-        throw conflict("That villager already has a move request in progress.");
-      const reserved = state.residences.filter(
-        (entry) =>
-          entry.characterId !== characterId && entry.proposedVenueId === proposedVenueId && entry.status === "moving",
-      ).length;
-      if (venueAssignedCount(destination) + reserved >= venueCapacity(destination))
-        throw conflict("This Residence has no available bed.");
-      assertResidencePrivateDestination(state, destination, characterId, privateZoneId);
-      if (venueResidentIds(destination).some((id) => id !== characterId))
-        throw conflict("Moves into a shared Residence are not available yet.");
-      const next: VillageResidence = {
-        proposedPrivateZoneId: privateZoneId,
-        venueId: currentVenueId,
+      if (current && current.status !== "current" && !current.holdReason) {
+        let stale = false;
+        try {
+          assertResidenceAgreement(state, current, false, villageNow().toISOString());
+        } catch {
+          stale = true;
+        }
+        if (!stale) throw conflict("That person already has a move request in progress.");
+      }
+      const next = residenceProposal(
+        state,
         characterId,
-        status: "pending",
-        proposedVenueId,
-        requestedAt: villageNow().toISOString(),
+        destination,
         requestedBy,
-        villagerDecision: "pending",
-      };
+        villageNow().toISOString(),
+        privateZoneId,
+        requestId,
+      );
       const index = state.residences.findIndex((residence) => residence.characterId === characterId);
       if (index < 0) state.residences.push(next);
       else state.residences[index] = next;
+      if (characterId === "player") {
+        let agreed = false;
+        try {
+          assertResidenceAgreement(state, next, true, villageNow().toISOString());
+          agreed = true;
+        } catch {
+          /* Other household members still need to decide. */
+        }
+        if (agreed) {
+          next.status = "moving";
+          next.completesAt = villageNow().toISOString();
+          completeResidenceMove(state, "player", true, villageNow());
+        }
+      }
       if (sourceKey) state.processedActionIds = [...state.processedActionIds, sourceKey].slice(-256);
     });
     return buildVillageSnapshot();
   }
 
-  async function approveVillageResidence(characterValue: unknown): Promise<VillageSnapshot> {
-    return decideVillageResidence(characterValue, true, "player");
+  async function approveVillageResidence(characterValue: unknown, expectedScope?: string): Promise<VillageSnapshot> {
+    return decideVillageResidence(characterValue, true, "player", undefined, undefined, expectedScope);
   }
 
   async function decideVillageResidence(
@@ -114,11 +93,13 @@ export function createResidences(ports: ResidencePorts) {
     approved: boolean,
     actor: "player" | "villager",
     operationId?: string,
+    approverId?: string,
+    expectedScope?: string,
   ): Promise<VillageSnapshot> {
     const characterId = residenceCharacterId(characterValue);
     await mutateVillageState((state) => {
       if (operationId) {
-        const fingerprint = JSON.stringify([characterId, approved, actor]);
+        const fingerprint = JSON.stringify([characterId, approved, actor, approverId, expectedScope]);
         const prior = state.semanticRequestReceipts?.[operationId];
         if (prior && prior !== fingerprint) throw conflict("That residence decision ID belongs to another request.");
         if (prior) return;
@@ -126,34 +107,37 @@ export function createResidences(ports: ResidencePorts) {
         state.semanticRequestReceipts[operationId] = fingerprint;
       }
       const residence = state.residences.find((entry) => entry.characterId === characterId);
-      if (!residence || residence.status !== "pending" || residence.proposedVenueId.length === 0) {
+      if (!residence || !["pending", "moving"].includes(residence.status) || residence.proposedVenueId.length === 0) {
         throw badRequest("That villager has no pending residence change.");
       }
-      if (residence.requestedBy === actor) throw badRequest("The requester cannot approve their own move request.");
+      const approver = actor === "player" ? "player" : approverId || characterId;
+      const allowed = [
+        ...(residence.agreement?.requiredIds ?? []),
+        ...(residence.requestedBy === "player" ? ["player"] : []),
+      ];
+      if (!allowed.includes(approver))
+        throw conflict("Only the incoming person, housemates and destination managers may decide this move.");
+      if (!expectedScope || expectedScope !== residence.agreement?.scope)
+        throw conflict("This decision does not match the reviewed move. Review the current request.");
       if (!approved) {
         if (actor === "villager") residence.villagerDecision = "denied";
         state.residences = state.residences.filter((entry) => entry.characterId !== characterId);
         return;
       }
-      const nextVenue = state.venues.find((venue) => venue.id === residence.proposedVenueId);
-      if (!nextVenue) throw notFound("The proposed residence is no longer in the village.");
-      if (!hasVenueClass(nextVenue, "residence")) throw conflict("The destination is no longer a Residence.");
-      if (nextVenue.constructionStatus === "worksite") throw conflict("This Residence is still under construction.");
-      const reserved = state.residences.filter(
-        (entry) =>
-          entry.characterId !== characterId && entry.proposedVenueId === nextVenue.id && entry.status === "moving",
-      ).length;
-      if (venueAssignedCount(nextVenue) + reserved >= venueCapacity(nextVenue))
-        throw conflict("This Residence has no available bed.");
-      assertResidencePrivateDestination(state, nextVenue, characterId, residence.proposedPrivateZoneId);
-      const now = villageNow().getTime();
-      if (venueResidentIds(nextVenue).some((id) => id !== characterId)) {
-        throw conflict("Moves into a shared Residence are not available yet.");
+      assertResidenceAgreement(state, residence, false, villageNow().toISOString());
+      if (residence.status === "moving") return;
+      residence.agreement!.approvals[approver] = true;
+      try {
+        assertResidenceAgreement(state, residence, true, villageNow().toISOString());
+      } catch {
+        return;
       }
+      const now = villageNow();
       residence.status = "moving";
       residence.villagerDecision = "approved";
-      residence.approvedAt = new Date(now).toISOString();
-      residence.completesAt = new Date(now + 24 * 60 * 60_000).toISOString();
+      residence.approvedAt = now.toISOString();
+      residence.completesAt = new Date(now.getTime() + (characterId === "player" ? 0 : 24 * 60 * 60_000)).toISOString();
+      if (characterId === "player") completeResidenceMove(state, characterId, true, now);
     });
     return buildVillageSnapshot();
   }

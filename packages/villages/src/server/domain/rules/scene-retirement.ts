@@ -4,7 +4,6 @@ import type { VillageState } from "../models/world.js";
 import { pendingProgressTurns } from "./scene-record.js";
 import { asRecord } from "./coerce.js";
 import { EXCHANGE_DOMAINS } from "../models/exchange-model.js";
-import { readOpeningSignal } from "./opening-project.js";
 
 /** Do not let permissive compatibility decoding turn corrupt saved work into a settled Scene. */
 export function sceneRetirementSourceIsValid(value: unknown): boolean {
@@ -67,7 +66,6 @@ export function sceneRetirementSourceIsValid(value: unknown): boolean {
     if (typeof turn.id !== "string" || !turn.id || submissionIds.has(turn.id)) return false;
     submissionIds.add(turn.id);
     if (!turn.movement && (typeof turn.at !== "string" || !Number.isFinite(Date.parse(turn.at)))) return false;
-    if (turn.openingSignal !== undefined && !readOpeningSignal(turn.openingSignal)) return false;
     if (turn.processing !== undefined) {
       const processing = asRecord(turn.processing);
       const domains = asRecord(processing.domains);
@@ -138,7 +136,6 @@ export function sceneReadyForRetirement(scene: VenueScene, village: VillageState
   if (pendingProgressTurns(scene, village.foundedAt).length) return false;
   return !scene.submissions.some(
     (turn) =>
-      (turn.openingSignal && !turn.openingProcessedAt) ||
       (turn.processing && unfinishedExchange(turn.processing)) ||
       (turn.semanticProvenance?.version === 2 &&
         (!turn.semanticReady || !village.socialPublications?.[scene.id + ":" + turn.id])),

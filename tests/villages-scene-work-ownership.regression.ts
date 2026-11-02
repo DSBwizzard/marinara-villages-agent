@@ -10,7 +10,7 @@ import { createExchangeProcessing } from "../packages/villages/src/server/domain
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {

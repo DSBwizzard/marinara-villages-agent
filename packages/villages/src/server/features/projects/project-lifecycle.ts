@@ -52,8 +52,3 @@ export async function renewRenovationApprovals(
 ): Promise<void> {
   return binding.get().renewRenovationApprovals(...args);
 }
-export async function decideOpeningProposal(
-  ...args: Parameters<ProjectLifecycle["decideOpeningProposal"]>
-): Promise<void> {
-  return binding.get().decideOpeningProposal(...args);
-}

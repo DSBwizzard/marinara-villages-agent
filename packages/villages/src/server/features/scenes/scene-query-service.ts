@@ -417,11 +417,7 @@ export function createSceneQueryService({
       const pending = new Set(pendingProgressTurns(session, village.foundedAt));
       backlog.push(
         ...session.submissions
-          .filter(
-            (turn) =>
-              (turn.openingSignal && !turn.openingProcessedAt) ||
-              (turn.processing ? unfinishedExchange(turn.processing) : pending.has(turn)),
-          )
+          .filter((turn) => (turn.processing ? unfinishedExchange(turn.processing) : pending.has(turn)))
           .map((turn) => ({
             sessionId: session.id,
             submissionId: turn.id,

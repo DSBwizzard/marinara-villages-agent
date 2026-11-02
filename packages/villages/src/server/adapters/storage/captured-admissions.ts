@@ -200,7 +200,7 @@ export function capturedJobOwners(raw: unknown): CapturedAdmissionOwners {
 export function capturedWorldOwners(raw: unknown): CapturedAdmissionOwners {
   memoryObject(raw);
   memoryRequire(
-    raw.version === 13 && typeof raw.seed === "string" && typeof raw.setupAt === "string",
+    raw.version === 14 && typeof raw.seed === "string" && typeof raw.setupAt === "string",
     "unsupported captured World format",
   );
   const into = emptyOwners();

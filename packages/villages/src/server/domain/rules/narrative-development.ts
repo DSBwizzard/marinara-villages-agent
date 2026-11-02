@@ -8,12 +8,14 @@ import type {
   NarrativeState,
 } from "../models/narrative-model.js";
 import { conflict, badGateway } from "./errors.js";
-import { villageCurrentSetting } from "./prompt-preset.js";
+import { currentVillageCircumstances, villageCurrentSetting } from "./prompt-preset.js";
 import { hashString, deriveVillageMoment } from "./village-clock.js";
 import { backgroundRevision } from "./background-revision.js";
 import { activeNarrativeConditions } from "./narrative-environment.js";
-import { venueZones, zoneClosed, zoneControllerIds, canOccupyZone } from "./venue-zones.js";
+import { venueZones, zoneClosed, zoneControllerIds } from "./venue-zones.js";
 import { applyPlaceUpdate, readPlaceUpdate } from "./zone-continuity.js";
+import { accessibleVenueRoute } from "./venue-path.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 
 export const CONSEQUENCES = ["gentle", "moderate", "dramatic"] as const;
 function correctiveActors(
@@ -22,15 +24,16 @@ function correctiveActors(
   zone: ReturnType<typeof venueZones>[number],
   at: string,
 ): string[] {
-  return zoneControllerIds(venue, zone)
+  const controllers = zoneControllerIds(venue, zone);
+  const candidates =
+    controllers.length || zone.access?.mode !== "public"
+      ? controllers
+      : ["player", ...state.villagers.map((row) => row.characterId)];
+  return candidates
     .filter(
       (id) =>
         (id === "player" || state.villagers.some((row) => row.characterId === id)) &&
-        canOccupyZone(venue, zone, id, {
-          at: new Date(at),
-          environment: state.narrative,
-          relationships: state.relationshipContext,
-        }),
+        accessibleVenueRoute(state, venue, id, zone.id, new ZonedDate(at, state.timeZone || "UTC"), false, false),
     )
     .sort();
 }
@@ -113,13 +116,17 @@ export function admitNarrative(
     at,
     adoptedAt: narrative.adoptedAt,
     setting: villageCurrentSetting(state),
-    facts: state.worldFacts,
+    facts: currentVillageCircumstances(state),
     consequence: state.narrativeConsequence ?? "gentle",
     reviewBasis: state.eventAttempts?.lastAttemptAt ?? "",
     targets: [target],
     situations: [
-      ...narrative.situations.filter((row) => row.status === "active" && row.targets.some(relevant)).slice(0, 3),
-      ...narrative.situations.filter((row) => row.status === "resolved" && row.targets.some(relevant)).slice(-1),
+      ...narrative.situations
+        .filter((row) => row.status === "active" && (row.scope === "village" || row.targets.some(relevant)))
+        .slice(0, 7),
+      ...narrative.situations
+        .filter((row) => row.status === "resolved" && (row.scope === "village" || row.targets.some(relevant)))
+        .slice(-1),
     ],
     conditions: activeNarrativeConditions(narrative, at).filter(relevant).slice(-8),
     weather: narrative.weather,
@@ -146,7 +153,7 @@ export function assertNarrativeAdmission(state: VillageState, grant: NarrativeAd
     state.narrative?.adoptedAt !== grant.adoptedAt ||
     grant.at < grant.adoptedAt ||
     grant.setting !== villageCurrentSetting(state) ||
-    JSON.stringify(grant.facts) !== JSON.stringify(state.worldFacts) ||
+    JSON.stringify(grant.facts) !== JSON.stringify(currentVillageCircumstances(state)) ||
     grant.targets.length !== 1
   )
     throw conflict("The admitted world context changed. The saved result is retained.");
@@ -170,7 +177,14 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
   exact(row, ["severity", "occurrence", "situation", "physical", "conditions", "weather"]);
   if (!CONSEQUENCES.includes(row.severity)) throw badGateway("Invalid narrative consequence.");
   const situation = object(row.situation);
-  exact(situation, ["id", "expectedRevision", "title", "summary", "status"]);
+  exact(situation, ["scope", "id", "expectedRevision", "title", "summary", "status"]);
+  const previousSituation = grant.situations.find((item) => item.id === situation.id);
+  if (
+    !["village", "zone"].includes(situation.scope) ||
+    (previousSituation && previousSituation.scope !== situation.scope) ||
+    (!previousSituation && situation.scope === "village" && grant.source !== "world")
+  )
+    throw badGateway("Situation scope exceeds its admission.");
   if (situation.id !== null && !grant.situations.some((item) => item.id === situation.id))
     throw badGateway("Situation was not admitted.");
   if (!["active", "resolved"].includes(situation.status)) throw badGateway("Invalid situation status.");
@@ -262,6 +276,7 @@ export function readNarrativeDevelopment(value: unknown, grant: NarrativeAdmissi
     severity: row.severity,
     occurrence: text(row.occurrence, 1200),
     situation: {
+      scope: situation.scope,
       id: situation.id,
       expectedRevision: revision(situation.expectedRevision),
       title: text(situation.title, 160),
@@ -299,9 +314,10 @@ export function applyNarrativeDevelopment(
     throw conflict("The situation changed. The saved result is retained.");
   const situation = {
     ...proposed,
+    scope: proposed.scope,
     id: prior?.id ?? grant.id + ":situation",
     revision: proposed.expectedRevision + 1,
-    targets: grant.targets.map(({ venueId, zoneId }) => ({ venueId, zoneId })),
+    targets: proposed.scope === "village" ? [] : grant.targets.map(({ venueId, zoneId }) => ({ venueId, zoneId })),
     updatedAt: grant.at,
   };
   const conditions: NarrativeCondition[] = development.conditions.map((change, index) => {

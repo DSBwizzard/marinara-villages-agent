@@ -80,7 +80,11 @@ community.spaces![0] = {
   description: "Trees and benches",
 };
 const parsedPark = parsePlace(community, true);
-assert.deepEqual(parsedPark.access?.managerIds, []);
+assert.deepEqual(
+  parsedPark.access?.managerIds,
+  ["player"],
+  "unselected infrastructure is player-managed; Community designation is validated separately",
+);
 assert.equal(parsedPark.zones?.find((zone) => zone.id === "common:base")?.access?.mode, "public");
 assert.doesNotThrow(() => parsePlace({ ...community, layout: "exterior", spaces: [], privateSpaces: [] }, true));
 const restricted = parsePlace(
@@ -162,7 +166,12 @@ assert.equal(
     .privateDescription,
   "Hammock",
 );
-const npc = parsePlace({ ...residence, occupancy: { playerHome: false, residentCharacterId: "npc" } }, true);
+const npc = parsePlace({
+  ...residence,
+  residentIds: ["npc"],
+  privateSpaces: residence.privateSpaces!.map((room) => ({ ...room, ownerId: "npc", access: undefined })),
+  occupancy: { playerHome: false, residentCharacterId: null },
+});
 const world = defaultVillageState();
 world.venues = [npc as (typeof world.venues)[number]];
 const settings = villageSettings(

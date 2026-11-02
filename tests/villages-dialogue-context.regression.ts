@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import assert from "node:assert/strict";
 import { addMemory } from "./helpers/memories-fixture.js";
@@ -51,7 +52,7 @@ state.villagers = ["outgoing", "reserved"].map((id) => ({
   },
 })) as any;
 state.venues = [
-  {
+  venueFixture({
     id: "camp",
     name: "Camp",
     classes: ["community"],
@@ -68,7 +69,7 @@ state.venues = [
       },
     ],
     state: { revision: 0, updatedAt: "", recent: null },
-  },
+  }),
 ] as any;
 state.memories = addMemory(state.memories, {
   sourceId: "dialogue-0",

@@ -27,8 +27,6 @@ import {
 } from "../../domain/rules/errors.js";
 import { bindLiveProposals, createLiveEvidenceContext, liveEvidence } from "../../domain/rules/live-exchange.js";
 import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
-import { openingPresence } from "../../domain/rules/opening-presence.js";
-import { gatheringDialogueComplete, openingActive } from "../../domain/rules/opening-project.js";
 import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
 import { structuralShape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
@@ -623,7 +621,6 @@ export function createSceneCommands({
   ): Promise<VenueScene> {
     assertVenueOwnership();
     let session = await requireLiveVenueSession(sessionId);
-    if (session.openingReader) throw conflict("Finish the gathering or skip the opening first.");
     if (!session.sceneAttendance) session = await refreshZoneParticipants(session, true);
     const operationId = venueOperationId();
     const recorded =
@@ -1024,7 +1021,7 @@ export function createSceneCommands({
               state.opening?.gatheringSceneId === id &&
               state.opening.stage === "gathering"
             )
-              state.opening.stage = state.opening.version === 3 ? "complete" : "conversations";
+              state.opening.stage = "complete";
           });
           return prior;
         }
@@ -1115,18 +1112,7 @@ export function createSceneCommands({
       .map(({ characterId, name, doing }) => ({ characterId, name, doing }));
     if (participants.length > 4)
       throw conflict("Five residents occupy this Zone. Edit their agendas before starting a Scene.");
-    const introduction =
-      village.opening?.version === 2 && village.opening.stage === "conversations"
-        ? village.opening.residentIds.find((residentId) => {
-            const meeting = openingPresence(village, residentId);
-            return meeting?.venueId === placeId && meeting.zoneId === zone.id;
-          })
-        : undefined;
-    if (introduction && (participants.length !== 1 || participants[0].characterId !== introduction))
-      throw conflict("This conversation is not available alone here. Try later or skip the opening.");
     const session: VenueScene = {
-      openingReader: gathering && village.opening!.version === 2 ? true : undefined,
-      openingIntroductionResidentId: introduction,
       openingGatheringId: gathering ? village.opening!.id : undefined,
       pendingAccessClaim: initialPermissionId,
       version: 3,
@@ -1291,30 +1277,10 @@ export function createSceneCommands({
     signal.throwIfAborted();
     const reply = await venueCheckpoint("greeting-reply", async () => {
       const reply = await generate(session, "", "greet", "", null, signal, trace);
-      if (session.openingReader && reply.openingContext?.gatheringComplete !== true)
-        throw conflict("Finish the gathering before continuing.");
-      if (
-        session.openingReader &&
-        !session.activeIds.every((residentId) =>
-          reply.lines.some((line) => line.speakerId === residentId && line.kind === "dialogue" && line.content.trim()),
-        )
-      )
-        throw conflict("The gathering is incomplete. Retry the opening.");
-      if (session.openingIntroductionResidentId && reply.openingSignal?.kind !== "pitch")
-        throw conflict("The introduction is incomplete. Retry or leave and return.");
       return reply;
     });
     signal.throwIfAborted();
     const greetingVillage = await readVillageState();
-    if (
-      session.openingReader &&
-      !session.activeIds.every((residentId) =>
-        reply.lines.some((line) => line.speakerId === residentId && line.kind === "dialogue" && line.content.trim()),
-      )
-    )
-      throw conflict("The gathering is incomplete. Retry the opening.");
-    if (session.openingIntroductionResidentId && reply.openingSignal?.kind !== "pitch")
-      throw conflict("The introduction is incomplete. Retry or leave and return.");
     validateCurrentRoomInvitation(reply, greetingVillage);
     if (reply.narrativeSource?.development)
       provisionalSceneNarrative(greetingVillage, greetingVillage, reply.narrativeSource);
@@ -1342,8 +1308,6 @@ export function createSceneCommands({
         );
         state.submissions.push({
           id: "greeting",
-          openingContext: reply.openingContext,
-          openingSignal: reply.openingSignal,
           zoneIdAtTurn: state.zoneId,
           mode: "chat",
           message: "",
@@ -1461,9 +1425,7 @@ export function createSceneCommands({
   }
 
   async function continueVenueWithoutGreetingInActivation(id: string): Promise<VenueScene> {
-    const pending = await readSession(id);
-    if ((pending.openingReader || pending.openingIntroductionResidentId) && openingActive(await readVillageState()))
-      throw conflict("Retry this introduction or skip the opening first.");
+    await readSession(id);
     const work = sceneWork();
     await cancelVenueOperation(id);
     await requireLiveVenueSession(id);
@@ -1645,8 +1607,6 @@ export function createSceneCommands({
         );
       return unavailableTurnResult(rejected, input.submissionId);
     }
-    if ((await readSession(input.sessionId)).openingReader)
-      throw conflict("Continue from the gathering or skip the opening first.");
     const scene = await readSession(input.sessionId);
     const prior = scene.submissions.find((entry) => entry.id === input.submissionId);
     if (prior) runtimeDebug("submission replay", { sceneId: input.sessionId, submissionId: input.submissionId });
@@ -2028,8 +1988,6 @@ export function createSceneCommands({
             ]),
           ].filter((id) => !reply.departures.includes(id)),
           replyLineIds,
-          openingContext: reply.openingContext,
-          openingSignal: reply.openingSignal,
           projectContexts: reply.projectContexts,
           projectInterpretationVersion: 1 as const,
 
@@ -2600,6 +2558,8 @@ export function createSceneCommands({
             submission.semanticProvenance?.version === 2
               ? `semantic-residence:${session.id}:${submission.id}`
               : undefined,
+            signal.approverId,
+            signal.agreementScope,
           );
         } catch (error) {
           if (submission.semanticProvenance?.version === 2) throw error;
@@ -3131,23 +3091,6 @@ export function createSceneCommands({
     abandonOperationId?: string,
   ): Promise<VenueScene> {
     const scene = await readSession(id);
-    if (
-      scene.openingReader &&
-      openingActive(await readVillageState()) &&
-      scene.status !== "closed" &&
-      (scene.status !== "active" ||
-        !scene.activeIds.every((residentId) =>
-          scene.lines.some((line) => line.kind === "dialogue" && line.speakerId === residentId),
-        ))
-    )
-      throw conflict("Finish the gathering or skip the opening first.");
-    if (
-      scene.openingReader &&
-      scene.status !== "closed" &&
-      openingActive(await readVillageState()) &&
-      !gatheringDialogueComplete(scene)
-    )
-      throw conflict("Finish the gathering or skip the opening first.");
     if (scene.status === "closed") return scene;
     const resumingAbandon = scene.operation?.id === "close" && !!scene.operation.checkpoints?.["abandoned-request"];
     const closeInput = resumingAbandon ? scene.operation!.input : abandonOperationId ? { abandonOperationId } : {};
@@ -3186,7 +3129,7 @@ export function createSceneCommands({
         state.opening?.stage === "gathering" &&
         state.opening.gatheringSceneId === id
       )
-        state.opening.stage = state.opening.version === 3 ? "complete" : "conversations";
+        state.opening.stage = "complete";
     });
     return closed;
   }

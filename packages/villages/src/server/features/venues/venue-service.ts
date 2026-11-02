@@ -1,20 +1,11 @@
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
-import type {
-  VillageSnapshot,
-  VillageState,
-  VillageVenue,
-  VillageVenueClass,
-  VillageVenueImage,
-} from "../../domain/models/world.js";
+import type { VillageSnapshot, VillageState, VillageVenueClass, VillageVenueImage } from "../../domain/models/world.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
-import { parsePlace } from "../../domain/rules/founding-record.js";
-import { boundText, isHousePlace, MAX_PLACES, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
+import { boundText, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
 import { keepAgendaPlaces } from "../../domain/rules/resident-agenda.js";
 import { sceneryImageKey } from "../../domain/rules/scenery-context.js";
 import { applyAccessCommand, readAccessCommand } from "../../domain/rules/venue-access.js";
-import { addVillageVenue, venueDraft } from "../../domain/rules/venue-authoring.js";
-import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
 import { hasVenueClass, venueAssignedCount, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { legacyZoneId, privateTarget, resolveVenueZone, zoneClosed } from "../../domain/rules/venue-zones.js";
 import { readVenueImageContext } from "../../domain/rules/village-projections.js";
@@ -69,145 +60,6 @@ export function createVenueCommands({
       typeof body.privateSpaceId === "string" ? body.privateSpaceId : undefined,
       typeof body.privateOwnerId === "string" ? body.privateOwnerId : "",
     );
-  }
-  /**
-   * Replace every place in the village in one write.
-   *
-   * Positions are not meaningful the way they are for notices, so the whole list
-   * is replaced rather than merged — and now that the houses are in the same list
-   * as the venues that matters more than it did: the panel that edits names and
-   * notes and the map that moves pins are editing ONE list, and a merge would mean
-   * a save from either of them silently reverting the other.
-   *
-   * Over-long entries are refused for the same reason over-long presets are: the
-   * player typed them and can see them.
-   */
-  async function setVillageVenues(value: unknown, scope: "all" | "homes" = "all"): Promise<VillageSnapshot> {
-    if (!Array.isArray(value)) throw badRequest("The places must be a list.");
-    if (value.length > MAX_PLACES) throw badRequest(`A village holds at most ${MAX_PLACES} places.`);
-
-    const stored = await readVillageState();
-    const residents = new Set(stored.villagers.map((villager) => villager.characterId));
-    // Pictures come across by id rather than out of the request. The panel edits
-    // names and notes and has no opinion about art, so a save that arrives
-    // without a picture means "unchanged" — and trusting the request instead
-    // would let a tab built before this field existed, or a save sent while a
-    // generation was still running, quietly delete every picture in the village.
-    const previous = new Map(stored.venues.map((place) => [place.id, place.presentation.image]));
-    const previousPlaces = new Map(stored.venues.map((place) => [place.id, place]));
-
-    const places: VillageVenue[] = [];
-    const seenIds = new Set<string>();
-    const seenNames = new Set<string>();
-    const seenOccupants = new Set<string>();
-    let sawPlayerHome = false;
-    for (const entry of value) {
-      const place = parsePlace(entry);
-      if (seenIds.has(place.id)) throw badRequest("Two places cannot share an id.");
-      if (place.occupancy.playerHome) {
-        if (sawPlayerHome) throw badRequest("Only one place can be your home.");
-        sawPlayerHome = true;
-      }
-      if (place.occupancy.residentCharacterId !== null) {
-        if (!residents.has(place.occupancy.residentCharacterId)) {
-          throw badRequest("A place can only belong to somebody who lives here.");
-        }
-        if (seenOccupants.has(place.occupancy.residentCharacterId))
-          throw badRequest("A villager can only live in one place.");
-        seenOccupants.add(place.occupancy.residentCharacterId);
-      }
-      const key = place.name.toLowerCase();
-      if (seenNames.has(key)) throw badRequest("Every Venue needs a distinct name.");
-      seenNames.add(key);
-      seenIds.add(place.id);
-      const prior = previousPlaces.get(place.id);
-      if (!prior && !place.description.trim()) throw badRequest("Approve a description before creating this venue.");
-      if (
-        prior?.occupancy.residentCharacterId &&
-        (!place.occupancy.residentCharacterId ||
-          place.occupancy.residentCharacterId !== prior.occupancy.residentCharacterId ||
-          place.presentation.x !== prior.presentation.x ||
-          place.presentation.y !== prior.presentation.y ||
-          place.occupancy.homeKind !== prior.occupancy.homeKind)
-      )
-        throw conflict("This home is occupied. Its resident must approve a move first.");
-      places.push({
-        ...place,
-        form: place.form || prior?.form || "",
-        classes: prior?.classes ?? place.classes,
-        spaces: prior?.spaces ?? place.spaces,
-        residenceCapacity: prior?.residenceCapacity ?? place.residenceCapacity,
-        residentIds: prior ? venueResidentIds(prior) : place.residentIds,
-        playerInvitations: prior?.playerInvitations ?? [],
-        exteriorState: prior?.exteriorState,
-        privateSpaces: prior?.privateSpaces,
-        archivedPrivateSpaces: prior?.archivedPrivateSpaces,
-        playerSeenShared: prior?.playerSeenShared,
-        playerSeenPublic: prior?.playerSeenPublic,
-        playerSeenPrivateIds: prior?.playerSeenPrivateIds,
-
-        description: prior?.description ?? place.description,
-        capabilities: prior?.capabilities ?? place.capabilities,
-        workerIds: prior?.workerIds ?? [],
-        state: prior?.state ?? place.state,
-        presentation: { ...place.presentation, image: previous.get(place.id) ?? null },
-      });
-    }
-
-    await mutateVillageState((state) => {
-      if (isVillageFounded(state)) {
-        const target = scope === "homes" ? state.venues.filter(isHousePlace) : state.venues;
-        if (places.length !== target.length || places.some((place) => !target.some((entry) => entry.id === place.id)))
-          throw conflict("After founding, new venues begin as projects; the settings list cannot add or remove them.");
-        for (const place of places) {
-          const current = state.venues.find((entry) => entry.id === place.id)!;
-          if (place.presentation.x !== current.presentation.x || place.presentation.y !== current.presentation.y)
-            throw conflict("Move Venue photographs while replacing the map in World Configuration.");
-          if (current.constructionStatus === "worksite") {
-            if (place.name !== current.name || place.description !== current.description)
-              throw conflict("A worksite's identity belongs to its active project.");
-            continue;
-          }
-          current.name = place.name;
-        }
-        return;
-      }
-      const next =
-        scope === "homes"
-          ? [...places.filter(isHousePlace), ...state.venues.filter((place) => !isHousePlace(place))]
-          : places;
-      const names = next.map((place) => place.name.trim().toLowerCase()).filter(Boolean);
-      if (new Set(names).size !== names.length) throw badRequest("Every Venue needs a distinct name.");
-      if (
-        state.venues.some(
-          (place) => place.occupancy.residentCharacterId && !next.some((entry) => entry.id === place.id),
-        )
-      )
-        throw conflict("Move the resident before removing their home.");
-      if (isVillageFounded(state) && !next.some((place) => place.occupancy.playerHome))
-        throw conflict("The village must keep your home.");
-      assertVillageVenueCapacity(state, next);
-      state.venues = next.map((place) => {
-        const latest = state.venues.find((entry) => entry.id === place.id);
-        return latest
-          ? {
-              ...place,
-              spaces: latest.spaces,
-              state: latest.state,
-              exteriorState: latest.exteriorState,
-              privateSpaces: latest.privateSpaces,
-              archivedPrivateSpaces: latest.archivedPrivateSpaces,
-              playerInvitations: latest.playerInvitations,
-              playerSeenShared: latest.playerSeenShared,
-              playerSeenPublic: latest.playerSeenPublic,
-              playerSeenPrivateIds: latest.playerSeenPrivateIds,
-              presentation: { ...place.presentation, image: latest.presentation.image },
-            }
-          : place;
-      });
-      keepAgendaPlaces(state);
-    });
-    return buildVillageSnapshot();
   }
 
   /**
@@ -340,16 +192,6 @@ export function createVenueCommands({
     return (await activeVenueSession())?.placeId === venueId;
   }
 
-  async function createVillageVenue(value: unknown): Promise<VillageSnapshot> {
-    const draft = venueDraft(value, null);
-    if (!draft.description) throw badRequest("Approve a description before creating this venue.");
-    await mutateVillageState((state) => {
-      if (isVillageFounded(state)) throw conflict("After founding, propose a venue project instead.");
-      addVillageVenue(state, draft);
-    });
-    return buildVillageSnapshot();
-  }
-
   /** Host authentication identifies the player; the request cannot impersonate an NPC. */
   async function changeVenueAccess(venueId: string, value: unknown): Promise<VillageSnapshot> {
     const command = readAccessCommand(value);
@@ -465,12 +307,10 @@ export function createVenueCommands({
   }
   return {
     imageTarget,
-    setVillageVenues,
     setVillageVenueImage,
     assertVenueImageAccess,
     setVillageHomeBuildingNames,
     previewVillageVenueDeletion,
-    createVillageVenue,
     changeVenueAccess,
     updateVillageVenue,
     renameVillageZone,

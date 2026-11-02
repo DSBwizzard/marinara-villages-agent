@@ -1,3 +1,5 @@
+import { freshRowKey } from "../../shared/presentation.js";
+import { newSetupVenue } from "./FoundingPanels.js";
 import { useEffect, useRef, useState } from "react";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
@@ -114,6 +116,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupWorldName,
     setSetupWorldName,
     setupSetting,
+    setupContext,
+    setSetupContext,
     setupStep,
     setupSuggestionsBusy,
     setupSuggestionsClaim,
@@ -136,7 +140,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   useEffect(() => {
     if (
       screen !== "setup" ||
-      setupStep < 3 ||
+      setupStep < 2 ||
       !setupMapSrc ||
       !setupVenues.length ||
       cameraSource.current === setupMapSrc
@@ -364,13 +368,59 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 onAdmissions={setSetupResidentAdmissions}
                 disabled={busy}
               />
+              <section className="villages-forging-card">
+                <h3>Housing</h3>
+                <div className="villages-forging-actions">
+                  <button type="button" onClick={() => setSetupContext((context) => ({ ...context, households: {} }))}>
+                    Separate homes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSetupContext((context) => ({
+                        ...context,
+                        households: Object.fromEntries(
+                          ["player", ...setupFoundingVillagerIds].map((id) => [id, "player"]),
+                        ),
+                      }))
+                    }
+                  >
+                    One shared home
+                  </button>
+                </div>
+                {[{ id: "player", name: "You" }, ...wizardVillagers].map((person) => (
+                  <label key={person.id}>
+                    {person.name}’s household
+                    <select
+                      aria-label={`${person.name} household`}
+                      value={setupContext.households[person.id] || person.id}
+                      onChange={(event) =>
+                        setSetupContext((context) => ({
+                          ...context,
+                          households: { ...context.households, [person.id]: event.target.value },
+                        }))
+                      }
+                    >
+                      {[{ id: "player", name: "Your" }, ...wizardVillagers].map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name} home group
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ))}
+              </section>
             </div>
           </div>
           {setupStep === 0 ? (
             <>
               <div className="villages-place-panels">
                 <section className="villages-forging-card">
-                  <h3>Place</h3>
+                  <h3>Setting</h3>
+                  <p>
+                    Geography sets where the community is. Standing rules constrain play. Venues and circumstances
+                    describe the starting state and can change.
+                  </p>
                   <FoundingField
                     title="Village Timezone"
                     help="Villages runs on real-time. Select the timezone you wish for Villages' clock to use."
@@ -433,15 +483,15 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     />
                   </FoundingField>
                   <FoundingField
-                    title="Place"
+                    title="Local geography and boundary"
                     error={
                       validatedFields.includes("place-setting") && !setupSetting.trim() ? PLACE_ERRORS.setting : ""
                     }
                   >
                     <textarea
                       autoComplete="off"
-                      placeholder="An abandoned farm beside a forest in a present-day world without magic."
-                      aria-label="Place"
+                      placeholder="An oceanfront expanse between the cliffs and the river."
+                      aria-label="Local geography and boundary"
                       maxLength={snapshot?.settings.settingMaxLength ?? 4096}
                       rows={4}
                       value={setupSetting}
@@ -452,12 +502,84 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                       }}
                     />
                   </FoundingField>
+                  <label>
+                    Standing world rules
+                    <textarea
+                      aria-label="Standing world rules"
+                      maxLength={4096}
+                      rows={2}
+                      value={setupContext.rules}
+                      onChange={(event) => setSetupContext((context) => ({ ...context, rules: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Historical backstory
+                    <textarea
+                      aria-label="Historical backstory"
+                      maxLength={2000}
+                      rows={2}
+                      value={setupContext.history}
+                      onChange={(event) => setSetupContext((context) => ({ ...context, history: event.target.value }))}
+                    />
+                  </label>
+                  <fieldset>
+                    <legend>Starting circumstances</legend>
+                    {setupContext.circumstances.map((text, index) => (
+                      <label key={index}>
+                        Circumstance {index + 1}
+                        <textarea
+                          aria-label={`Starting circumstance ${index + 1}`}
+                          rows={2}
+                          maxLength={600}
+                          value={text.summary}
+                          onChange={(event) =>
+                            setSetupContext((context) => ({
+                              ...context,
+                              circumstances: context.circumstances.map((old, i) =>
+                                i === index ? { ...old, summary: event.target.value } : old,
+                              ),
+                            }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setSetupContext((context) => ({
+                              ...context,
+                              circumstances: context.circumstances.filter((_, i) => i !== index),
+                            }))
+                          }
+                        >
+                          Remove circumstance
+                        </button>
+                      </label>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={setupContext.circumstances.length >= 4}
+                      onClick={() =>
+                        setSetupContext((context) => ({
+                          ...context,
+                          circumstances: [
+                            ...context.circumstances,
+                            { scope: "village", summary: "", venueId: "", zoneId: "" },
+                          ],
+                        }))
+                      }
+                    >
+                      Add circumstance
+                    </button>
+                  </fieldset>
+                  <p>
+                    Starting conditions persist until changed. Standing rules constrain ordinary play. Add buildings and
+                    their current condition in Venues and Map.
+                  </p>
                 </section>
                 <section className="villages-forging-card villages-place-options">
-                  {snapshot?.settings.foundingDetails ? (
+                  {snapshot?.settings.foundingHistory ? (
                     <details>
                       <summary>Founding history</summary>
-                      <p>{snapshot.settings.foundingDetails}</p>
+                      <p>{snapshot.settings.foundingHistory}</p>
                     </details>
                   ) : null}
                   <VillageLorebookPicker
@@ -654,7 +776,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </div>
             </section>
           ) : null}
-          {setupStep === 3 ? (
+          {setupStep === 2 ? (
             <>
               <div className="villages-venue-heading">
                 <h2>Starting Venues</h2>
@@ -667,6 +789,85 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   />
                 </div>
               </div>
+              <label>
+                Community Venue
+                <select
+                  aria-label="Community Venue"
+                  value={setupContext.communityVenueId}
+                  onChange={(event) =>
+                    setSetupContext((context) => ({ ...context, communityVenueId: event.target.value }))
+                  }
+                >
+                  {setupVenues
+                    .filter((venue) => !venue.classes?.includes("residence"))
+                    .map((venue) => (
+                      <option key={venue.id} value={venue.id}>
+                        {venue.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {setupContext.circumstances.length ? (
+                <section className="villages-forging-card">
+                  <h3>Circumstance scope</h3>
+                  {setupContext.circumstances.map((circumstance, index) => (
+                    <label key={index}>
+                      {circumstance.summary || `Circumstance ${index + 1}`}
+                      <select
+                        aria-label={`Circumstance ${index + 1} scope`}
+                        value={
+                          circumstance.scope === "village"
+                            ? "village"
+                            : JSON.stringify([circumstance.venueId, circumstance.zoneId])
+                        }
+                        onChange={(event) => {
+                          const target =
+                            event.target.value === "village" ? null : (JSON.parse(event.target.value) as string[]);
+                          setSetupContext((context) => ({
+                            ...context,
+                            circumstances: context.circumstances.map((old, i) =>
+                              i === index
+                                ? {
+                                    ...old,
+                                    scope: target ? "zone" : "village",
+                                    venueId: target?.[0] ?? "",
+                                    zoneId: target?.[1] ?? "",
+                                  }
+                                : old,
+                            ),
+                          }));
+                        }}
+                      >
+                        <option value="village">Village-wide</option>
+                        {setupVenues.flatMap((venue) =>
+                          [
+                            { id: "exterior", name: "Entrance" },
+                            ...(venue.spaces ?? []),
+                            ...(venue.privateSpaces ?? []),
+                          ].map((zone) => (
+                            <option
+                              key={JSON.stringify([venue.id, zone.id])}
+                              value={JSON.stringify([venue.id, zone.id])}
+                            >
+                              {venue.name} / {zone.name}
+                            </option>
+                          )),
+                        )}
+                      </select>
+                    </label>
+                  ))}
+                </section>
+              ) : null}
+              <button
+                type="button"
+                disabled={setupVenues.length >= 16}
+                onClick={() => {
+                  const venue = newSetupVenue(freshRowKey(), "other", 0.5, 0.5);
+                  setSetupVenues((rows) => [...rows, venue]);
+                }}
+              >
+                Add existing Venue
+              </button>
               <QuickStartVenues
                 venues={setupVenues}
                 people={wizardVillagers}
@@ -715,7 +916,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               />
             </>
           ) : null}
-          {setupStep === 4 ? (
+          {setupStep === 3 ? (
             <>
               <h2>Review {setupName}</h2>
               <p>Check your complete starting situation before founding.</p>
@@ -747,17 +948,29 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </section>
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
-                      <h3>Place</h3>
-                      <button type="button" onClick={() => gotoSetupStep(1)}>
-                        Change place
+                      <h3>Setting</h3>
+                      <button type="button" onClick={() => gotoSetupStep(0)}>
+                        Change setting
                       </button>
                     </div>
                     <p>{setupSetting}</p>
+                    {setupContext.rules ? <p>Standing rules: {setupContext.rules}</p> : null}
+                    {setupContext.history ? <p>History: {setupContext.history}</p> : null}
+                    {setupContext.circumstances
+                      .filter((row) => row.summary.trim())
+                      .map((row, index) => (
+                        <p key={index}>
+                          {row.scope === "village"
+                            ? "Village-wide"
+                            : `${setupVenues.find((venue) => venue.id === row.venueId)?.name} / ${row.zoneId}`}
+                          : {row.summary}
+                        </p>
+                      ))}
                     {setupWorldName ? <p>Village world: {setupWorldName}</p> : null}
-                    {snapshot?.settings.foundingDetails ? (
+                    {snapshot?.settings.foundingHistory ? (
                       <details>
                         <summary>Founding history</summary>
-                        <p>{snapshot.settings.foundingDetails}</p>
+                        <p>{snapshot.settings.foundingHistory}</p>
                       </details>
                     ) : null}
                     <p>{setupLorebookDraft.length} lorebooks selected</p>
@@ -783,7 +996,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <section className="villages-forging-card">
                     <div className="villages-forging-card-heading">
                       <h3>Starting Venues</h3>
-                      <button type="button" onClick={() => gotoSetupStep(3)}>
+                      <button type="button" onClick={() => gotoSetupStep(2)}>
                         Change starting Venues
                       </button>
                     </div>
@@ -794,6 +1007,22 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                           {venueHasPrivate(venue) ? " / Private" : ""}
                         </summary>
                         <p>{venue.description}</p>
+                        {venue.id === setupContext.communityVenueId ? (
+                          <p>Community Venue · public and unowned at Founding</p>
+                        ) : null}
+                        {venue.residentIds?.length || venue.occupancy.playerHome ? (
+                          <p>
+                            Household:{" "}
+                            {[
+                              ...(venue.occupancy.playerHome ? ["You"] : []),
+                              ...(venue.residentIds ?? []).map(
+                                (id) => wizardVillagers.find((person) => person.id === id)?.name ?? id,
+                              ),
+                            ].join(", ")}
+                          </p>
+                        ) : (
+                          <p>No assigned household</p>
+                        )}
                         {venue.spaces?.map((space) => (
                           <p key={space.id}>
                             {space.name}: {space.description}
@@ -815,7 +1044,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     {placed} of {setupVenues.length} Venues placed
                   </p>
                   <h3>After founding</h3>
-                  <p>Prepare Venues, private spaces, Agendas, and initial Wishes before the first Scene.</p>
+                  <p>Prepare local routines and optional initial Wishes, then meet at the Community Venue.</p>
                 </section>
               </div>
             </>
@@ -899,26 +1128,24 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     : []),
                 ]),
               ]);
-              if (setupStep === 3 && setupIssues.length) {
+              if (setupStep === 2 && setupIssues.length) {
                 setSetupShowIssues(true);
                 openIssue(setupIssues[0]);
                 return;
               }
-              if (setupStep === 4) void foundVillage();
+              if (setupStep === 3) void foundVillage();
               else gotoSetupStep(setupStep + 1);
             }}
           >
             {busy
               ? "Saving village…"
-              : setupStep === 4
+              : setupStep === 3
                 ? "Found village"
-                : setupStep === 3
+                : setupStep === 2
                   ? "Review village"
-                  : setupStep === 2
-                    ? "Continue to Venues"
-                    : setupStep === 1
-                      ? "Continue to Map"
-                      : "Continue to People"}
+                  : setupStep === 1
+                    ? "Continue to Venues and Map"
+                    : "Continue to People"}
           </button>
         </footer>
       </div>

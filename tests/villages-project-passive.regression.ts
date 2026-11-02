@@ -81,6 +81,15 @@ await m.mutate((state) => {
     name: "Private room",
     purpose: "Sleeping",
     connectedTo: ["exterior"],
+    access: {
+      mode: "permission-required",
+      managerIds: ["a"],
+      memberIds: ["a"],
+      memberRoles: [],
+      inviterIds: [],
+      visitorHours: "always",
+      accompanied: false,
+    },
   });
 });
 const capacity = await renovation(m, { capacity: 3 });

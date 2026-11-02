@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
 import {
@@ -11,7 +12,6 @@ import {
   semanticBlocker,
 } from "../packages/villages/src/server/domain/rules/semantic-continuity.js";
 import assert from "node:assert/strict";
-import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
@@ -24,16 +24,16 @@ import {
   createLiveScenes,
   type LiveScenePorts,
 } from "../packages/villages/src/server/features/scenes/live-session-service.js";
-import { createSceneQueryService } from "../packages/villages/src/server/features/scenes/scene-query-service.js";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import { ACTIVE_ID, SESSION_KIND } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
+import { ACTIVE_ID } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
 
 const state = defaultVillageState();
 state.seed = "recovery-village";
 state.opening = initialOpening(["resident"], "community", "recovery-opening");
 state.opening.gatheringSceneId = "gathering";
 state.venues = [
-  {
+  venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: "community",
     classes: ["community"],
     name: "Meeting Hall",
@@ -43,7 +43,7 @@ state.venues = [
     occupancy: { playerHome: false, residentCharacterId: null },
     spaces: [defaultVenueSpace("community", "A common room")],
     state: { revision: 0, updatedAt: "", recent: null },
-  },
+  }),
 ] as any;
 const old = new Date(Date.now() - 3_600_000).toISOString();
 let saved = coerceSession({
@@ -98,7 +98,7 @@ saved.status = "closed";
 saved.endReason = "player";
 assert.equal(await live.activeVenueSession(), null);
 assert.equal(saved.status, "closed");
-assert.equal(state.opening.stage, "conversations");
+assert.equal(state.opening.stage, "complete");
 assert.equal(saved.lines[0].content, "I remember this conversation.");
 
 // Simulate a crash after closing the Scene and clearing its pointer, before the opening write.
@@ -128,7 +128,7 @@ const commands = createSceneCommands({
 const resumed = await commands.enterVenue("community", "community");
 assert.equal(resumed.id, "gathering");
 assert.equal(resumed.lines[0].content, "I remember this conversation.");
-assert.equal(state.opening.stage, "conversations");
+assert.equal(state.opening.stage, "complete");
 assert.equal(sceneWrites, 0, "a closed gathering is never restaged or regenerated");
 
 // A saved live Scene with a missing pointer is reattached intact.
@@ -185,54 +185,6 @@ for (const how of ["semantic", "abandon"] as const) {
   assert.equal(state.opening.stage, "complete", how);
   assert.equal(pointer.sessionId, "", how);
 }
-state.opening.version = 2;
-state.opening.stage = "gathering";
-saved.status = "active";
-saved.submissions = [];
-
-// A failed opening-receipt write stays discoverable even after other exchange domains finished.
-const processing = createExchangeProcessing({
-  seed: state.seed,
-  sceneId: "gathering",
-  submissionId: "use",
-  order: 0,
-  lineIds: [],
-  actionReceiptIds: [],
-});
-for (const domain of Object.values(processing.domains)) domain.status = "applied";
-saved.submissions = [
-  {
-    id: "use",
-    mode: "chat",
-    message: "We watch together.",
-    targetId: "",
-    verdict: null,
-    wishId: "",
-    wishMemory: "",
-    processing,
-    openingContext: { stage: "first-use", projectId: "project" },
-    openingSignal: { kind: "first-use", residentId: "", quote: "The film begins.", playerQuote: "We watch together." },
-  },
-];
-const queryPages = new Map<string, any>();
-const queries = createSceneQueryService({
-  readSession: async () => saved,
-  readVillageState: async () => state,
-  villagesDocuments: () => ({
-    getById: async (_packageId: string, id: string) => structuredClone(queryPages.get(id) ?? null),
-    list: async (_packageId: string, kind: string) => {
-      assert.equal(kind, SESSION_KIND);
-      return [{ data: authorSceneFixture(queryPages, saved, state) }];
-    },
-  }),
-} as any);
-assert.ok((await queries.progressBacklog()).some((entry) => entry.submissionId === "use"));
-saved.submissions[0].openingProcessedAt = new Date().toISOString();
-assert.ok(!(await queries.progressBacklog()).some((entry) => entry.submissionId === "use"));
-console.log(
-  "Opening recovery passed: persistent gathering, missing-pointer recovery, transcript preservation and interrupted opening receipts.",
-);
-
 // Invalid saved lead metadata is reassessed before replay can grant a commitment.
 {
   const village = defaultVillageState();

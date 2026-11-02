@@ -54,7 +54,8 @@ export function foundingZoneProblem(venue: VillageVenue): string {
     )
   )
     return "Give each Zone a name and describe what it is used for.";
-  if (venue.spaces?.some((zone) => !zone.description.trim())) return "Add long-term details for each Zone.";
+  if ([...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].some((zone) => !zone.description.trim()))
+    return "Add long-term details for each Zone.";
   return foundingLayoutProblem(venue);
 }
 
@@ -63,7 +64,7 @@ export function draftZonePolicy(
   area: { ownerId?: string; venueClass: string },
   personal = false,
 ): ZoneAccessPolicy {
-  const owner = area.ownerId || (venue.occupancy.playerHome ? "player" : venue.occupancy.residentCharacterId || "");
+  const owner = area.ownerId || (venue.occupancy.playerHome ? "player" : venue.residentIds?.[0] || "");
   return {
     mode: area.venueClass === "residence" || personal ? "permission-required" : "public",
     managerIds: personal && owner ? [owner] : null,
@@ -262,9 +263,7 @@ export function FoundingZoneFields({
             </section>
           );
         })}
-      {(() => {
-        const actor = venue.occupancy.playerHome ? "player" : venue.occupancy.residentCharacterId;
-        if (!actor) return null;
+      {[...(venue.occupancy.playerHome ? ["player"] : []), ...(venue.residentIds ?? [])].flatMap((actor) => {
         const home = [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].filter(
           (zone) => zone.venueClass === "residence" && (!zone.ownerId || zone.ownerId === actor),
         );
@@ -274,10 +273,11 @@ export function FoundingZoneFields({
           const choices = role === "home" ? (shared.length ? shared : home) : owned.length ? owned : home;
           if (choices.length < 2) return null;
           return (
-            <label key={role}>
-              Default {role === "home" ? "home activities" : "sleeping"} Zone
+            <label key={`${actor}:${role}`}>
+              {actor === "player" ? "Your" : people.find((person) => person.id === actor)?.name}{" "}
+              {role === "home" ? "home activities" : "sleeping"} Zone
               <select
-                aria-label={`Default ${role} Zone`}
+                aria-label={`${actor} default ${role} Zone`}
                 value={venue.destinations?.[actor]?.[role] ?? ""}
                 onChange={(event) =>
                   onPatch({
@@ -302,7 +302,7 @@ export function FoundingZoneFields({
             </label>
           );
         });
-      })()}
+      })}
     </>
   );
 }

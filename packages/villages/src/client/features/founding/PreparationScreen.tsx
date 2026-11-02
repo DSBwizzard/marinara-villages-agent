@@ -14,8 +14,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
     const current = snapshot?.villagers.find((villager) => villager.characterId === preparation?.currentId)?.name;
     const currentVenue = snapshot?.settings.venues.find((venue) => venue.id === preparation?.currentVenueId);
     const currentSpace = currentVenue?.zones?.find((zone) => zone.id === preparation?.currentZoneId)?.name;
-    const phase =
-      preparation?.phase ?? (current ? "residents" : preparation?.venueDetailsSeeded ? "private-spaces" : "venues");
+    const phase = preparation?.phase ?? (current ? "residents" : "private-spaces");
     const subject =
       phase === "private-spaces" ? [currentSpace, currentVenue?.name].filter(Boolean).join(" · ") : current;
     const task =

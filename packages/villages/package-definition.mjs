@@ -24,17 +24,7 @@ export const villagesDefinition = {
     description,
     runtimeDisabled: false,
   },
-  assetPaths: [
-    ...letterFontAssets,
-    "villages-icon.png",
-    "icon-licenses.txt",
-    "menu-desk.jpg",
-    "founding-rebuild.jpg",
-    "founding-pioneer.jpg",
-    "founding-prosper.jpg",
-    "founding-custom.jpg",
-    "founding-none.jpg",
-  ],
+  assetPaths: [...letterFontAssets, "villages-icon.png", "icon-licenses.txt", "menu-desk.jpg"],
   boundaryDisplayName: "Villages",
   capabilityApi: {
     major: 1,
@@ -48,15 +38,7 @@ export const villagesDefinition = {
       iconPaths: ["villages-icon.png"],
     },
     assets: {
-      paths: [
-        ...letterFontAssets.filter((path) => path.endsWith(".json")),
-        "menu-desk.jpg",
-        "founding-rebuild.jpg",
-        "founding-pioneer.jpg",
-        "founding-prosper.jpg",
-        "founding-custom.jpg",
-        "founding-none.jpg",
-      ],
+      paths: [...letterFontAssets.filter((path) => path.endsWith(".json")), "menu-desk.jpg"],
     },
   },
 };

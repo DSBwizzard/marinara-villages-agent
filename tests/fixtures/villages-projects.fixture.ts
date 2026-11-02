@@ -1,3 +1,4 @@
+import { venueFixture } from "../helpers/venues.fixture.js";
 import { randomUUID } from "node:crypto";
 import {
   coerceVillageState,
@@ -36,7 +37,7 @@ export function venue(id = "cafe", role: "community" | "residence" = "community"
     seen: true,
     connectedTo: ["exterior"],
   };
-  const result: VillageVenue = {
+  const result: VillageVenue = venueFixture({
     id,
     name: id,
     classes: [role],
@@ -53,7 +54,7 @@ export function venue(id = "cafe", role: "community" | "residence" = "community"
     presentation: { mapId: "map-projects", image: null, x: 0.2, y: 0.2 },
     capabilities: [],
     state: { revision: 0, recent: null, updatedAt: "" },
-  };
+  });
   initializeVenueAccess(result);
   result.access!.managerIds = ["a"];
   return result;

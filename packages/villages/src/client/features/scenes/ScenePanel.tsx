@@ -442,11 +442,7 @@ export function RoomPanel({
           {room.operation?.recoverable ? "Recover saved opening" : "Retry opening"}
         </button>
         {room.id ? (
-          <button
-            type="button"
-            onClick={onContinueWithoutGreeting}
-            disabled={busy || room.openingReader || !!room.openingIntroductionResidentId}
-          >
+          <button type="button" onClick={onContinueWithoutGreeting} disabled={busy}>
             Continue without opening
           </button>
         ) : null}
@@ -711,7 +707,7 @@ export function RoomPanel({
     };
     checkpoint.current.window = playback.window;
   }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
-  const canDraft = !room.openingReader && !ended && room.status === "active";
+  const canDraft = !ended && room.status === "active";
   const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
@@ -1496,11 +1492,7 @@ export function RoomPanel({
               >
                 ‹ <span>Previous</span>
               </button>
-              {room.openingReader && !canReadNext && room.status === "active" ? (
-                <button type="button" className={`${ELEMENT_TAG}-chat-vn-button`} onClick={onEnd} disabled={busy}>
-                  Continue
-                </button>
-              ) : !ended || canReadNext ? (
+              {!ended || canReadNext ? (
                 <button
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}

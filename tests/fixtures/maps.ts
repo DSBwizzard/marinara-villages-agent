@@ -1,3 +1,4 @@
+import { venueFixture } from "../helpers/venues.fixture.js";
 import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageMap, VillageSnapshot } from "../../packages/villages/src/server/domain/models/world.js";
 import { defaultVenueSpace } from "../../packages/villages/src/server/domain/rules/venue-model.js";
@@ -19,18 +20,21 @@ export function mapsFixture() {
   state.seed = "map-world";
   state.setupAt = state.foundedAt = "2026-10-24T12:00:00.000Z";
   state.maps = [map("map-house"), map("map-street")];
-  state.venues = ["home", "cafe"].map((id, index) => ({
-    id,
-    name: id,
-    classes: ["community" as const],
-    description: id,
-    category: "",
-    presentation: { mapId: state.maps[index].id, image: null, x: 0.3, y: 0.3 },
-    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    capabilities: [],
-    spaces: [defaultVenueSpace("community", id)],
-    state: { revision: 0, recent: null, updatedAt: state.setupAt },
-  }));
+  state.venues = ["home", "cafe"].map((id, index) =>
+    venueFixture({
+      residentIds: [null].filter((id) => typeof id === "string" && !!id),
+      id,
+      name: id,
+      classes: ["community" as const],
+      description: id,
+      category: "",
+      presentation: { mapId: state.maps[index].id, image: null, x: 0.3, y: 0.3 },
+      occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+      capabilities: [],
+      spaces: [defaultVenueSpace("community", id)],
+      state: { revision: 0, recent: null, updatedAt: state.setupAt },
+    }),
+  );
   let beforeWrite: (() => void) | undefined;
   let inspect: (() => Promise<{ width: number; height: number }>) | undefined;
   const uploads: string[] = [];

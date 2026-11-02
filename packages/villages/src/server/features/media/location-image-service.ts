@@ -1,3 +1,4 @@
+import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { createZonePictures } from "./zone-picture-service.js";
 import type { resolveVillageImageEditing, resolveVillageImageConnectionId } from "./image-generation.js";
@@ -121,13 +122,13 @@ export function createLocationImages(ports: LocationImagePorts) {
       (found.venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault)
         ? await readVillageVisualLore(
             village.selectedLorebookIds,
-            `${village.name}\n${village.worldName}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
+            `${village.name}\n${village.worldName}\n${village.setting}\n${currentVillageCircumstances(village).join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
             900,
             village.loreTokenBudget,
           )
         : "";
     const basePrompt = buildLocationPrompt(
-      { ...village, setting: "", worldFacts: [], venues: [] },
+      { ...village, setting: "", worldRules: "", narrative: undefined, venues: [] },
       { ...venue, description: "" },
       moment,
       "",
@@ -167,7 +168,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       village.sceneryArtStyle,
       [
         village.setting ? "Authored place description; later verified state takes precedence: " + village.setting : "",
-        ...village.worldFacts.map((fact) => "Current world fact: " + fact),
+        ...currentVillageCircumstances(village).map((fact) => "Current world fact: " + fact),
         `Current physical account: ${venue.description}`,
         ...(onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
           ? sceneryAdmissionContext(village, found.venue)

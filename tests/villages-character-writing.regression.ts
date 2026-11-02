@@ -45,7 +45,7 @@ const state = defaultVillageState();
 state.seed = "character-writing";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
-state.foundingDetails = "FOUNDING PREMISE: arrive to establish a new life";
+state.foundingHistory = "FOUNDING PREMISE: arrive to establish a new life";
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
 state.villagers = [
   {

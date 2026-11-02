@@ -1,8 +1,10 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state";
 import type { VillageVenue } from "../packages/villages/src/shared/contracts/village.js";
 
-const venue = {
+const venue = venueFixture({
+  residentIds: [null].filter((id) => typeof id === "string" && !!id),
   id: "home",
   name: "Home",
   form: "Cottage",
@@ -33,7 +35,7 @@ const venue = {
       image: null,
     },
   ],
-} as unknown as VillageVenue;
+}) as unknown as VillageVenue;
 assert.deepEqual(foundingVenueIssues([venue]), [], "artwork and hidden resident appearance are optional");
 const incomplete = structuredClone(venue);
 incomplete.presentation.x = null;

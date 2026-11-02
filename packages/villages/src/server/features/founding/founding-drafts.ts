@@ -11,12 +11,6 @@ export async function suggestStartingVenues(
   return binding.get().suggestStartingVenues(...args);
 }
 
-export async function seedFoundingVenueDetails(
-  ...args: Parameters<FoundingDraftsService["seedFoundingVenueDetails"]>
-): ReturnType<FoundingDraftsService["seedFoundingVenueDetails"]> {
-  return binding.get().seedFoundingVenueDetails(...args);
-}
-
 export async function generateFoundingVenueImage(
   ...args: Parameters<FoundingDraftsService["generateFoundingVenueImage"]>
 ): ReturnType<FoundingDraftsService["generateFoundingVenueImage"]> {

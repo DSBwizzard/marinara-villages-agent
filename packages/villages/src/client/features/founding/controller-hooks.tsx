@@ -14,6 +14,7 @@ import {
 import { foundingZoneProblem } from "./villages-founding-zones";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { foundingHouseholds } from "./founding-households.js";
 
 /** Initial values belong to this mounted founding workspace; effects update the same refs. */
 export function useFoundingDraftReferences(ports: {
@@ -129,7 +130,7 @@ export function useFoundingSetupDraftData(ports: {
   setupVenueBusy: boolean;
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
   setupWorkspace: import("./villages-founding-workspace-state.js").FoundingWorkspaceState;
-  setupWorldFacts: string[];
+  setupContext: import("./draft-model.js").FoundingContext;
   setupZoneDrafts: React.RefObject<Record<string, AreaDraftCache["current"]>>;
   visualLoreDefault: boolean;
 }) {
@@ -176,7 +177,7 @@ export function useFoundingSetupDraftData(ports: {
     setupVenueBusy,
     setupVenues,
     setupWorkspace,
-    setupWorldFacts,
+    setupContext,
     setupZoneDrafts,
     visualLoreDefault,
   } = ports;
@@ -188,9 +189,9 @@ export function useFoundingSetupDraftData(ports: {
       timeZone: setupTimeZone,
       worldName: setupWorldName,
       setting: setupSetting,
-      descriptionVersion: 1 as const,
+      version: 2 as const,
       playerBackground: setupPlayerBackground,
-      worldFacts: setupWorldFacts,
+      context: setupContext,
       venues: setupVenues,
       zoneDrafts: structuredClone(setupZoneDrafts.current),
       spriteRevisions: setupSpriteRevisions ?? {},
@@ -233,7 +234,7 @@ export function useFoundingSetupDraftData(ports: {
       setupWorldName,
       setupSetting,
       setupPlayerBackground,
-      setupWorldFacts,
+      setupContext,
       setupVenues,
       setupZoneDrafts,
       setupSpriteRevisions,
@@ -275,6 +276,8 @@ export function useFoundingSetupDraftData(ports: {
 }
 
 export function useFoundingRosterReconciliation(ports: {
+  setupContext: import("./draft-model.js").FoundingContext;
+  setSetupContext: React.Dispatch<React.SetStateAction<import("./draft-model.js").FoundingContext>>;
   catalog: import("../../../shared/contracts/village.js").CatalogEntry[];
   draftReady: boolean;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
@@ -286,35 +289,37 @@ export function useFoundingRosterReconciliation(ports: {
   useEffect(() => {
     if (screen !== "setup" || snapshot?.isFounded || !draftReady || setupFoundingVillagerIds.length < 1) return;
     setSetupVenues((rows) => {
-      const home = rows.find((row) => row.occupancy.playerHome);
-      const center = rows.find((row) => row.category === "public-center");
+      const center = rows.find((row) => row.id === ports.setupContext.communityVenueId);
       const emptyVenue = (residence: boolean, player = false) => {
         const row = newSetupVenue(freshRowKey(), residence ? "residence" : "community", 0.5, 0.5, player);
         return { ...row, presentation: { ...row.presentation, x: null, y: null } };
       };
-      const next = [
-        home ?? emptyVenue(true, true),
-        ...setupFoundingVillagerIds.map((id) => {
-          const existing = rows.find((row) => row.occupancy.residentCharacterId === id);
-          if (existing) return existing;
-          const venue = emptyVenue(true);
-          return {
-            ...venue,
-            name: (catalog?.find((person) => person.id === id)?.name ?? "Villager") + "'s living space",
-            residentIds: [id],
-            occupancy: { playerHome: false, residentCharacterId: id, homeKind: null },
-            privateSpaces: venue.privateSpaces?.map((zone) => ({
-              ...zone,
-              ownerId: id,
-              access: { ...zone.access!, managerIds: [id], memberIds: [id] },
-            })),
-          };
-        }),
-        center ?? emptyVenue(false),
-      ];
-      return next.length === rows.length && next.every((row, index) => row === rows[index]) ? rows : next;
+      const community = center ?? { ...emptyVenue(false), id: ports.setupContext.communityVenueId };
+      const next = foundingHouseholds(
+        rows,
+        [
+          { id: "player", name: "Your" },
+          ...setupFoundingVillagerIds.map((id) => ({
+            id,
+            name: catalog?.find((person) => person.id === id)?.name ?? "Villager",
+          })),
+        ],
+        ports.setupContext.households,
+      );
+      if (!next.some((row) => row.id === community.id)) next.push(community);
+      return JSON.stringify(next) === JSON.stringify(rows) ? rows : next;
     });
-  }, [screen, snapshot?.isFounded, draftReady, setupFoundingVillagerIds, catalog, setSetupVenues]);
+  }, [
+    screen,
+    snapshot?.isFounded,
+    draftReady,
+    setupFoundingVillagerIds,
+    catalog,
+    setSetupVenues,
+    ports.setupContext.households,
+    ports.setupContext.communityVenueId,
+    ports.setSetupContext,
+  ]);
 }
 
 export function useFoundingMapReceipt(ports: {
@@ -425,7 +430,7 @@ export function useFoundingSetupBlocker(ports: {
   setupPlayerBackground: import("../../../shared/contracts/player-background.js").PlayerBackground;
   setupSetting: string;
   setupVenues: import("../../../shared/contracts/village.js").VillageVenue[];
-  setupWorldFacts: string[];
+  setupContext: import("./draft-model.js").FoundingContext;
   snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
 }) {
   const {
@@ -441,7 +446,7 @@ export function useFoundingSetupBlocker(ports: {
     setupPlayerBackground,
     setupSetting,
     setupVenues,
-    setupWorldFacts,
+    setupContext,
     snapshot,
   } = ports;
   return useCallback(
@@ -450,9 +455,9 @@ export function useFoundingSetupBlocker(ports: {
       if (personaDraft.trim().length === 0) return "Choose the Persona who lives in this village.";
       if (!snapshot?.isFounded && playerBackgroundProblem(setupPlayerBackground))
         return playerBackgroundProblem(setupPlayerBackground);
-      const presentFacts = setupWorldFacts.map((line) => line.trim()).filter(Boolean);
-      if (snapshot?.isFounded && (presentFacts.length > 4 || presentFacts.some((line) => line.length > 160)))
-        return "Use at most four current world facts of 160 characters each.";
+      const presentFacts = setupContext.circumstances.map((line) => line.summary.trim()).filter(Boolean);
+      if (presentFacts.length > 4 || presentFacts.some((line) => line.length > 600))
+        return "Use at most four starting circumstances of 600 characters each.";
       if (setupSetting.trim().length === 0) return "Describe what the village is like.";
       if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
       if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";
@@ -464,8 +469,11 @@ export function useFoundingSetupBlocker(ports: {
       if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap) return "Check the Venue positions on the map.";
 
       const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
-      const villagerHomes = residences.filter((venue) => !venue.occupancy.playerHome);
-      if (villagerHomes.length < SETUP_MIN_VILLAGER_COUNT || villagerHomes.length > SETUP_MAX_VILLAGER_COUNT) {
+      const villagerHomes = residences;
+      if (
+        setupFoundingVillagerIds.length < SETUP_MIN_VILLAGER_COUNT ||
+        setupFoundingVillagerIds.length > SETUP_MAX_VILLAGER_COUNT
+      ) {
         return "Place one to three homes for initial villagers.";
       }
       if (!residences.some((venue) => venue.occupancy.playerHome)) return "One Residence has to be yours.";
@@ -480,10 +488,7 @@ export function useFoundingSetupBlocker(ports: {
         )
       )
         return "Complete each Venue's physical form and each Zone's name, use and long-term details on Venues.";
-      const occupants = villagerHomes
-        .map((home) => home.occupancy.residentCharacterId)
-        .filter((id): id is string => id !== null);
-      if (occupants.length !== villagerHomes.length) return "Choose who lives in each villager home.";
+      const occupants = villagerHomes.flatMap((home) => home.residentIds ?? []);
       if (new Set(occupants).size !== occupants.length) return "A villager can only live in one house.";
       if (
         !snapshot?.isFounded &&
@@ -504,8 +509,34 @@ export function useFoundingSetupBlocker(ports: {
         return "Give each Private Space a name, purpose, and controller on Venues.";
       if (!snapshot?.isFounded && setupFoundingVillagerIds.some((id) => !catalog?.some((entry) => entry.id === id)))
         return "A chosen villager is no longer in your character cards. Choose another villager on People.";
-      if (setupVenues.filter((venue) => venue.category === "public-center").length !== 1)
-        return "Place one Community Place.";
+      const community = setupVenues.find((venue) => venue.id === setupContext.communityVenueId);
+      if (
+        !community ||
+        community.classes?.includes("residence") ||
+        community.residentIds?.length ||
+        community.occupancy.playerHome ||
+        community.workerIds?.length
+      )
+        return "Choose a separate non-residential Community Venue.";
+      if (
+        !community.spaces?.some(
+          (zone) =>
+            zone.description.trim() &&
+            (!zone.access ||
+              (zone.access.mode === "public" &&
+                !zone.access.accompanied &&
+                !zone.access.managerIds?.length &&
+                !Array.isArray(zone.access.visitorHours))),
+        )
+      )
+        return "The Community Venue needs a usable public common Zone.";
+      if (setupVenues.length > 16) return "A Village supports at most 16 Venues.";
+      if (
+        residences.some(
+          (home) => (home.residentIds?.length ?? 0) + Number(home.occupancy.playerHome) > (home.residenceCapacity ?? 1),
+        )
+      )
+        return "Household assignments exceed a Residence’s capacity.";
       return "";
     },
     [
@@ -520,7 +551,7 @@ export function useFoundingSetupBlocker(ports: {
       setupName,
       setupPlayerBackground,
       snapshot?.isFounded,
-      setupWorldFacts,
+      setupContext,
       setupSetting,
     ],
   );

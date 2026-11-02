@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -17,7 +18,7 @@ const now = new Date(),
   dateKey = agendaDateKey(now),
   weekday = now.toLocaleDateString("en-US", { weekday: "long" });
 function venue(id: string, classes: VillageVenue["classes"] = ["community"]): VillageVenue {
-  return {
+  return venueFixture({
     id,
     name: id,
     classes,
@@ -36,7 +37,7 @@ function venue(id: string, classes: VillageVenue["classes"] = ["community"]): Vi
       recent: null,
       updatedAt: stamp,
     },
-  };
+  });
 }
 function villager(id: string, venueId: string, zoneId: string, activity = "Visiting"): VillageVillager {
   const block = {

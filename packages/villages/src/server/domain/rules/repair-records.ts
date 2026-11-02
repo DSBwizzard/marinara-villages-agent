@@ -62,18 +62,17 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
     text("name", "Village name", state.name),
     text("setting", "Place description", state.setting),
     text("worldName", "World name", state.worldName),
-    text("worldFacts", "Current world facts", state.worldFacts.join("\n")),
+    text("worldRules", "Standing rules", state.worldRules),
   ]);
   add(["founding"], "world", "Founding history", "Shared starting context", [
-    text("foundingDetails", "Starting history", state.scenarioImprint?.origin ?? state.foundingDetails),
-    text("foundingGuidance", "Starting guidance", state.foundingGuidance),
+    text("foundingHistory", "Starting history", state.foundingHistory),
   ]);
   for (const situation of state.narrative?.situations ?? [])
     add(
       ["narrative-situation", situation.id],
       "world",
       situation.title,
-      situation.summary,
+      `${situation.scope === "village" ? "Village-wide" : "Zone-local"}: ${situation.summary}`,
       [
         text("title", "Title", situation.title),
         text("summary", "Current circumstances", situation.summary),
@@ -480,11 +479,6 @@ function inputValues(record: RepairRecord, request: RepairRequest) {
     throw badRequest("This repair contains an unknown field.");
   return result;
 }
-const lines = (value: string | number | boolean) =>
-  String(value)
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
 export function applyWorldRepair(state: VillageState, record: RepairRecord, request: RepairRequest, at: string) {
   if (!record.actions.some((a) => a.id === request.action)) throw badRequest("Choose an available repair action.");
   const values = inputValues(record, request),
@@ -517,6 +511,8 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         throw badRequest("Shorten the situation text.");
       row.title = str("title");
       row.summary = str("summary");
+      if (!["active", "resolved"].includes(str("status")))
+        throw badRequest("Choose an active or resolved circumstance.");
       row.status = str("status") as "active" | "resolved";
       row.updatedAt = at;
       row.revision++;
@@ -650,13 +646,11 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         state.name = str("name");
         state.setting = str("setting");
         state.worldName = str("worldName");
-        state.worldFacts = lines(values.worldFacts);
+        if (str("worldRules").length > 4096) throw badRequest("Shorten the standing rules.");
+        state.worldRules = str("worldRules");
       } else if (kind === "founding") {
-        if (str("foundingDetails").length > 2000 || str("foundingGuidance").length > 500)
-          throw badRequest("Shorten the starting history.");
-        state.foundingDetails = str("foundingDetails");
-        state.foundingGuidance = str("foundingGuidance");
-        if (state.scenarioImprint) state.scenarioImprint.origin = str("foundingDetails");
+        if (str("foundingHistory").length > 2000) throw badRequest("Shorten the starting history.");
+        state.foundingHistory = str("foundingHistory");
       } else if (kind === "home") {
         if (!str("destination")) throw badRequest("Choose a residential Private Space.");
         const [venueId, zoneId] = repairParts(str("destination")),

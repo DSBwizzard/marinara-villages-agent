@@ -11,7 +11,7 @@ import {
   TOWN_MAP_EXPECTED_HEIGHT,
   TOWN_MAP_EXPECTED_WIDTH,
 } from "../../domain/rules/prompt-preset.js";
-import { coerceScenarioImprint } from "../../domain/rules/scenario-rules.js";
+
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import {
   buildTownMapPrompt,
@@ -35,7 +35,7 @@ export function createTownMapImage(ports: TownMapImagePorts) {
     connectionId?: unknown;
     selectedLorebookIds?: unknown;
     loreTokenBudget?: unknown;
-    scenarioImprint?: unknown;
+    worldRules?: unknown;
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
     useVisualLore?: unknown;
@@ -46,14 +46,14 @@ export function createTownMapImage(ports: TownMapImagePorts) {
       throw badRequest("Visual lore must be on or off.");
     const style = input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle);
     // Validate required inputs before lore reads or image dispatch.
-    const base = buildTownMapPrompt(input.structure, input.setting, "", input.scenarioImprint, style);
+    const base = buildTownMapPrompt(input.structure, input.setting, "", input.worldRules, style);
     const negativePrompt = buildTownMapNegativePrompt(input.negative);
     const lore =
       input.useVisualLore === false
         ? []
         : await readVillageVisualLoreEntries(
             ids,
-            [input.setting, JSON.stringify(coerceScenarioImprint(input.scenarioImprint))].filter(Boolean).join("\n"),
+            [input.setting, typeof input.worldRules === "string" ? input.worldRules : ""].filter(Boolean).join("\n"),
             900,
             budget,
           );
