@@ -19,7 +19,7 @@ import {
 } from "../../domain/rules/project-lifecycle-rules.js";
 import { changedZoneIds, venueDesignHash } from "../../domain/rules/project-structure.js";
 import { allocateProjectFocus, projectAgendaReservations, trimProjectFocus } from "../../domain/rules/project-focus.js";
-import { approvalScope, projectDesignKey } from "../../domain/rules/project-terms.js";
+import { approvalScope, projectDesignKey, matchesProjectDesign } from "../../domain/rules/project-terms.js";
 import { assertCanAddVillageVenue } from "../../domain/rules/venue-capacity.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
@@ -71,7 +71,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           row.scope === approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds),
       );
     }
-    flow.candidates = flow.candidates.filter((row) => row.scope === projectDesignKey(project));
+    flow.candidates = flow.candidates.filter((row) => matchesProjectDesign(row.scope, project));
     if (!flow.candidates.some((row) => row.residentId === flow.builderId)) flow.builderId = "";
   }
   async function createNewVenueProject(value: unknown) {
@@ -179,7 +179,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       const residentId = asTrimmedString(row.residentId);
       if (
         !project.lifecycle.candidates.some(
-          (candidate) => candidate.residentId === residentId && candidate.scope === projectDesignKey(project),
+          (candidate) => candidate.residentId === residentId && matchesProjectDesign(candidate.scope, project),
         )
       )
         throw conflict("Ask this resident to lead the current design.");
@@ -200,7 +200,7 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     if (
       !state.villagers.some((resident) => resident.characterId === lead) ||
       !flow.candidates.some(
-        (candidate) => candidate.residentId === lead && candidate.scope === projectDesignKey(project),
+        (candidate) => candidate.residentId === lead && matchesProjectDesign(candidate.scope, project),
       )
     )
       throw conflict("Choose a willing resident lead for this design.");
@@ -251,13 +251,12 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
           )
         )
           throw conflict("That spot overlaps a Venue.");
-        const priorScope = projectDesignKey(project);
+        const agreed = flow.candidates.filter((candidate) => matchesProjectDesign(candidate.scope, project));
         state.venues.push(shell);
         project.venueId = shell.id;
         flow.targetVenueId = shell.id;
         // Assigning the live site is an implementation detail, not changed agreement terms.
-        for (const candidate of flow.candidates)
-          if (candidate.scope === priorScope) candidate.scope = projectDesignKey(project);
+        for (const candidate of agreed) candidate.scope = projectDesignKey(project);
       }
     }
     const at = now.toISOString(),

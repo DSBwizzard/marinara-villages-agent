@@ -127,3 +127,17 @@ export function projectDesignKey(project: VillageProject): string {
     project.lifecycle?.change,
   ]);
 }
+export function matchesProjectDesign(scope: string, project: VillageProject): boolean {
+  try {
+    // Saved decoding changes object field order without changing the agreed design.
+    const canonical = (value: unknown) =>
+      JSON.stringify(value, (_key, entry: unknown) =>
+        entry && typeof entry === "object" && !Array.isArray(entry)
+          ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b)))
+          : entry,
+      );
+    return canonical(JSON.parse(scope)) === canonical(JSON.parse(projectDesignKey(project)));
+  } catch {
+    return false;
+  }
+}
