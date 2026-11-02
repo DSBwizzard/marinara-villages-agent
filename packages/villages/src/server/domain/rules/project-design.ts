@@ -17,6 +17,8 @@ import { venueZones } from "./venue-zones.js";
 import { validateLayoutZones } from "./venue-layout.js";
 import { readConnectionIds } from "./space-connections.js";
 import { boundText } from "./prompt-preset.js";
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
+import { readPlaceDescription } from "./zone-continuity.js";
 
 export function readRenovationChange(
   state: VillageState,
@@ -25,6 +27,13 @@ export function readRenovationChange(
   at: Date,
 ): VillageProjectChange {
   const row = asRecord(value);
+  if (row.form !== undefined && (typeof row.form !== "string" || row.form.length > MAX_PHYSICAL_DESIGN_LENGTH))
+    throw badRequest("Physical form must be at most 2000 characters.");
+  const form = typeof row.form === "string" ? row.form.trim() : undefined;
+  const exteriorDescription =
+    row.exteriorDescription === undefined ? undefined : readPlaceDescription(row.exteriorDescription).trim();
+  const entrance = venueZones(venue).find((zone) => zone.kind === "exterior")!;
+  if (exteriorDescription !== undefined && !exteriorDescription) throw badRequest("Describe the Entrance.");
   const classes = row.classes ?? venue.classes;
   const capacity = Number(row.capacity ?? venue.residenceCapacity ?? 1);
   if (!validVenueClasses(classes)) throw badRequest("Choose one or two Venue Classes.");
@@ -72,7 +81,16 @@ export function readRenovationChange(
       connectedTo: raw.connectedTo === undefined ? previous?.connectedTo : readConnectionIds(raw.connectedTo),
     };
   });
-  const change = { classes, capacity, zones, detail: boundText(row.detail, 2000).trim() } as VillageProjectChange;
+  const change: VillageProjectChange = {
+    classes,
+    capacity,
+    zones,
+    detail: boundText(row.detail, 2000).trim(),
+    ...(form !== undefined && form !== (venue.form ?? "") ? { form } : {}),
+    ...(exteriorDescription !== undefined && exteriorDescription !== entrance.description
+      ? { exteriorDescription }
+      : {}),
+  };
   if (!change.detail) throw badRequest("Describe the physical change.");
   validateRenovationDesign(state, venue, change, at);
   return change;

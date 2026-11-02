@@ -1059,6 +1059,11 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (
       raw.kind === "renovation" &&
       (!validVenueClasses(change.classes) ||
+        (change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
+        (change.exteriorDescription !== undefined &&
+          (typeof change.exteriorDescription !== "string" ||
+            !change.exteriorDescription.trim() ||
+            change.exteriorDescription.length > 4000)) ||
         !Number.isInteger(change.capacity) ||
         Number(change.capacity) < 1 ||
         Number(change.capacity) > 4 ||
@@ -1123,6 +1128,12 @@ function coerceProjects(value: unknown): VillageProject[] {
               capacity: Number(asRecord(flow.change).capacity),
               zones,
               detail: asTrimmedString(asRecord(flow.change).detail),
+              ...(asRecord(flow.change).form !== undefined
+                ? { form: asTrimmedString(asRecord(flow.change).form) }
+                : {}),
+              ...(asRecord(flow.change).exteriorDescription !== undefined
+                ? { exteriorDescription: asTrimmedString(asRecord(flow.change).exteriorDescription) }
+                : {}),
             },
       affectedIds: asStringArray(flow.affectedIds),
       approvals: structuredClone(approvals) as NonNullable<VillageProject["lifecycle"]>["approvals"],

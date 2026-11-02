@@ -69,7 +69,12 @@ export function useProjectsController({
             : {}),
         }
       : target
-        ? { ...target, classes: project?.lifecycle?.change?.classes ?? target.classes }
+        ? {
+            ...target,
+            classes: project?.lifecycle?.change?.classes ?? target.classes,
+            form: project?.lifecycle?.change?.form ?? target.form,
+            description: project?.lifecycle?.change?.exteriorDescription ?? target.description,
+          }
         : null;
   const workspace = useProjectWorkspaces(
     project ? "project:" + project.id : "draft:" + draftType + ":" + venueId,
@@ -122,6 +127,8 @@ export function useProjectsController({
             detail: description,
             classes: workspace.draft.venue?.classes,
             capacity: workspace.draft.capacity,
+            form: workspace.draft.venue?.form,
+            exteriorDescription: workspace.draft.venue?.description,
             zones: workspace.draft.zones,
           },
     );
@@ -155,6 +162,8 @@ export function useProjectsController({
           expectedRevision: draft.revision,
           title: draft.title,
           detail: draft.detail,
+          form: venue.form,
+          exteriorDescription: venue.description,
           classes: venue.classes,
           capacity: draft.capacity,
           zones: draft.zones,

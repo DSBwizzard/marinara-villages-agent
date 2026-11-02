@@ -250,7 +250,14 @@ export type BuildProject = {
     phase: BuildProject["status"];
     revision: number;
     targetVenueId: string;
-    change: { classes?: VenueClass[]; capacity?: number; zones?: VillageZoneDraft[]; detail: string } | null;
+    change: {
+      form?: string;
+      exteriorDescription?: string;
+      classes?: VenueClass[];
+      capacity?: number;
+      zones?: VillageZoneDraft[];
+      detail: string;
+    } | null;
     affectedIds: string[];
     approvals: { residentId: string; source: "conversation" }[];
     candidates: { residentId: string }[];
