@@ -260,6 +260,7 @@ export function QuickStartVenues({
                   {[{ id: "player", name: "You" }, ...people].map((person) => (
                     <label key={person.id}>
                       <input
+                        autoComplete="off"
                         type="checkbox"
                         aria-label={person.name}
                         checked={assigned.includes(person.id)}
