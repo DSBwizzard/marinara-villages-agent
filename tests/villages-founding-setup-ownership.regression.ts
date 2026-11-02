@@ -34,7 +34,6 @@ function input(name: string) {
     communityVenueId: "hall",
     worldRules: "",
     circumstances: [],
-    foundingHistory: "We begin our first day as neighbours.",
     playerPersonaId: "player",
     foundingCharacterIds: ["same"],
     venues: ["player", "same", "hall"].map((id, index) => {
@@ -285,10 +284,9 @@ const direct = fixture("Direct");
 for (const setting of ["A farm", "An abandoned farm"]) {
   const everyday = fixture("Everyday");
   const payload = { ...input("Everyday"), setting };
-  delete payload.foundingHistory;
   await everyday.service.runVillageSetup(payload);
   assert.equal(everyday.state.setting, setting);
-  assert.equal(everyday.state.foundingHistory, "");
+  assert.equal(Object.hasOwn(everyday.state, "foundingHistory"), false);
   assert.equal(everyday.state.opening?.stage, "gathering", "the tutorial is unchanged");
 }
 const noChangesFixture = fixture("No changes");
@@ -314,7 +312,7 @@ assert(!direct.calls.includes("propose"));
 const saved = structuredClone(direct.state);
 const callsBeforeReopening = direct.calls.length;
 await assert.rejects(
-  direct.service.runVillageSetup({ ...input("Direct"), foundingHistory: "Changed starting history" }),
+  direct.service.runVillageSetup({ ...input("Direct"), worldRules: "Changed standing rules" }),
   /already founded/,
 );
 assert.deepEqual(direct.state, saved);

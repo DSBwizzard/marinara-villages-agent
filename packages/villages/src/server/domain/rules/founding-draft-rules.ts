@@ -5,22 +5,16 @@ import type { FoundingCircumstance } from "../../../shared/contracts/village.js"
 
 export function readFoundingDraftContext(value: unknown): {
   rules: string;
-  history: string;
   circumstances: FoundingCircumstance[];
 } {
   const row = record(value);
-  for (const [field, limit] of [
-    ["rules", 4096],
-    ["history", 2000],
-  ] as const)
-    if (row[field] !== undefined && (typeof row[field] !== "string" || row[field].length > limit))
-      throw badRequest("Use bounded text for founding rules and history.");
+  if (row.rules !== undefined && (typeof row.rules !== "string" || row.rules.length > 4096))
+    throw badRequest("Use up to 4096 characters for standing rules.");
   const circumstances = row.circumstances ?? [];
   if (!Array.isArray(circumstances) || circumstances.length > 4)
     throw badRequest("Choose at most four starting circumstances.");
   return {
     rules: asTrimmedString(row.rules),
-    history: asTrimmedString(row.history),
     circumstances: circumstances
       .filter((value) => record(value).summary !== "")
       .map((value) => {

@@ -886,7 +886,6 @@ export type ReturnCatchupCapture = {
     | "setting"
     | "worldName"
     | "worldRules"
-    | "foundingHistory"
     | "narrative"
     | "narrativeConsequence"
     | "eventAttempts"
@@ -959,7 +958,6 @@ export type VillageState = {
   /** The player's reason for starting this village, kept apart from its visual setting. */
   worldRules: string;
   worldName: string;
-  foundingHistory: string;
   communityVenueId: string;
   /** Founding-only narrative role; null preserves legacy framing. */
   playerBackground: VillagePlayerBackground | null;

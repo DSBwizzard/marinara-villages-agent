@@ -62,8 +62,17 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   });
   if (facts.relationshipContext)
     decoded.relationshipContext = immutableRelationshipState(raw.seed, facts.relationshipContext);
+  if (Object.hasOwn(facts, "foundingHistory") && typeof facts.foundingHistory !== "string")
+    throw conflict("This saved Scene has invalid captured history. Its data is preserved.");
+  // Retired source text stays only in already admitted facts, in its original serialized position.
   const captured = Object.fromEntries(
-    sceneContinuityFields.map((key) => [key, decoded[key]]),
+    Object.entries(facts).flatMap(([key, value]) =>
+      key === "foundingHistory"
+        ? [[key, value]]
+        : sceneContinuityFields.includes(key as (typeof sceneContinuityFields)[number])
+          ? [[key, decoded[key as (typeof sceneContinuityFields)[number]]]]
+          : [],
+    ),
   ) as SceneContinuity["facts"];
   return {
     version: 3,

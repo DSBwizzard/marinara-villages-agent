@@ -118,7 +118,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       contractVersion: 2 as const,
       circumstances: {
         worldFacts: currentVillageCircumstances(village),
-        details: village.foundingHistory,
         worldRules: village.worldRules,
       },
       playerBackground: village.playerBackground,
@@ -236,7 +235,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     valid: (state, input) =>
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
       (input.foundingContract === 1
-        ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
+        ? ownsFoundingTask(state, input.characterId, "routine", input.revision, input.context)
         : agendaRevision(state, input.characterId) === input.revision),
     apply: (state, input, result) => {
       const resident = state.villagers.find((row) => row.characterId === input.characterId);

@@ -241,10 +241,8 @@ const request = {
   villageName: "Tidebreak",
   setting: "A coastal settlement made of salvaged shelters",
   communityVenueId: "community",
-  foundingHistory: "Dockside shelter",
   context: {
     rules: "The tide floods the lower street",
-    history: "Dockside shelter",
     circumstances: [{ scope: "village", summary: "The railway is abandoned" }],
   },
   playerPersonaId: "driver",

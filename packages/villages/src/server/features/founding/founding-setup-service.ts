@@ -83,7 +83,6 @@ export function createFoundingSetup({
     setting?: unknown;
     worldRules?: unknown;
     worldName?: unknown;
-    foundingHistory?: unknown;
     communityVenueId?: unknown;
     playerBackground?: unknown;
     circumstances?: unknown;
@@ -111,13 +110,6 @@ export function createFoundingSetup({
     const worldRules = asTrimmedString(input.worldRules);
     const communityVenueId = asTrimmedString(input.communityVenueId);
 
-    if (
-      input.foundingHistory !== undefined &&
-      (typeof input.foundingHistory !== "string" || input.foundingHistory.length > 2_000)
-    ) {
-      throw badRequest("Starting circumstances must be text of at most 2,000 characters.");
-    }
-    const foundingHistory = asTrimmedString(input.foundingHistory);
     if (input.worldName !== undefined && readWorldName(input.worldName) === null)
       throw badRequest("Use a world name within 120 characters.");
     const selectedLorebookIds = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
@@ -206,7 +198,6 @@ export function createFoundingSetup({
       state.setting = setting;
       if (typeof input.timeZone === "string") state.timeZone = input.timeZone;
       state.worldRules = worldRules;
-      state.foundingHistory = foundingHistory;
       if (input.worldName !== undefined) state.worldName = readWorldName(input.worldName)!;
       state.communityVenueId = communityVenueId;
       state.selectedLorebookIds = selectedLorebookIds;

@@ -97,7 +97,6 @@ import {
 } from "../../domain/rules/venue-model.js";
 import type { MovementIntent } from "../../domain/rules/venue-movement.js";
 import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
-import { venueFoundingBackground } from "../../domain/rules/venue-scene-context.js";
 import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
 import { environmentObservations, environmentCircumstances } from "../../domain/rules/narrative-environment.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
@@ -511,7 +510,6 @@ export function createSceneWriting({
         session.contactGeneration?.actorIds
           ? `Only selected residents ${JSON.stringify(audience)} may speak, act or receive invented reactions. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
           : "",
-        venueFoundingBackground(village),
         `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} ${session.liveSceneVersion === 1 ? "Attendance, activities and time are admitted for this exchange only. Schedules can change them between exchanges. Never reintroduce an absent speaker or give new arrivals knowledge of earlier dialogue. Current physical facts supersede old narration." : "Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed."}`,
         session.liveSceneVersion === 1
           ? "Continue in the admitted current situation. Earlier dialogue belongs to its recorded time and witnesses. After a break, do not invent what the player said, did, felt or agreed to during the gap. No automatic greeting or conversation occurred merely because another resident arrived. Do not advance the Village into the future."

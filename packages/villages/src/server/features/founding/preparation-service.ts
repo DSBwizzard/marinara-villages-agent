@@ -5,6 +5,7 @@ import type { VillageSnapshot } from "../../domain/models/world.js";
 import { connectionFailureKind } from "../../domain/rules/connection-failure.js";
 import { badRequest, conflict, safeFailureMessage } from "../../domain/rules/errors.js";
 import { foundingReadyForPlay, foundingSlot, foundingTaskRevision } from "../../domain/rules/founding-tasks.js";
+import { asRecord } from "../../domain/rules/coerce.js";
 
 import { randomVillageSeed } from "../../domain/rules/village-clock.js";
 import type {
@@ -289,6 +290,18 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
   }
 
   async function initializeTasks(seed: string) {
+    const initial = await readVillageState();
+    const retained = new Map<string, { revision: string; context: unknown }>();
+    if (initial.seed === seed)
+      for (const [id, tasks] of Object.entries(initial.foundingPreparation?.tasks ?? {}))
+        for (const kind of ["routine", "wish"] as const) {
+          const task = tasks[kind];
+          if (!task || task.status === "completed" || task.revision === foundingTaskRevision(initial, id, kind))
+            continue;
+          const job = await backgroundJobSnapshot(kind === "routine" ? "agenda" : "wish", id);
+          if (job?.seed === seed && job.revision === task.revision)
+            retained.set(kind + ":" + id, { revision: task.revision, context: asRecord(job.input).context });
+        }
     await mutateVillageState(
       (live) => {
         const marker = live.foundingPreparation;
@@ -306,6 +319,13 @@ export function createFoundingPreparation(ports: FoundingPreparationPorts) {
             const revision = foundingTaskRevision(live, resident.characterId, kind),
               prior = marker.tasks[resident.characterId][kind];
             if (prior?.status === "completed" || prior?.revision === revision) continue;
+            const saved = retained.get(kind + ":" + resident.characterId);
+            if (
+              saved &&
+              prior?.revision === saved.revision &&
+              foundingTaskRevision(live, resident.characterId, kind, saved.context) === saved.revision
+            )
+              continue;
             marker.tasks[resident.characterId][kind] = {
               contract: 1,
               revision,

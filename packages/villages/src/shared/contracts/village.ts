@@ -552,7 +552,6 @@ export type VillageSettings = {
   worldRules: string;
   communityVenueId: string;
   worldName: string | null;
-  foundingHistory: string;
   playerBackground: PlayerBackground | null;
   circumstances: VillageCircumstance[];
   selectedLorebookIds: string[];
@@ -564,7 +563,6 @@ export type VillageSettings = {
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;
-  foundingHistoryMaxLength: number;
   townMapLayoutPrompt: string;
   townMapNegativePrompt: string;
   /**

@@ -21,14 +21,8 @@ async function main() {
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
   const { DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } =
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
-  const {
-    TOWN_MAP_EXPECTED_HEIGHT,
-    TOWN_MAP_EXPECTED_WIDTH,
-    MAX_TOWN_MAP_IMAGE_LENGTH,
-    villageCurrentSetting,
-    villageFoundingSetting,
-    villageRelevantOrigin,
-  } = await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
+  const { TOWN_MAP_EXPECTED_HEIGHT, TOWN_MAP_EXPECTED_WIDTH, MAX_TOWN_MAP_IMAGE_LENGTH, villageCurrentSetting } =
+    await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
   const { defaultVillageState } = await import(pathToFileURL(join(services, "domain/decoding/village-codec.ts")).href);
   const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 
@@ -60,14 +54,10 @@ async function main() {
     ...defaultVillageState(),
     setting: "Misty cliffs",
     worldRules: "The sun never sets",
-    foundingHistory: "Survivors gathered after a flood",
   };
   assert.match(villageCurrentSetting(founded), /Misty cliffs/);
   assert.match(villageCurrentSetting(founded), /Standing world rules.*The sun never sets/s);
   assert.doesNotMatch(villageCurrentSetting(founded), /Survivors gathered/);
-  assert.match(villageFoundingSetting(founded), /Survivors gathered/);
-  assert.match(villageRelevantOrigin(founded, "Who founded this village?"), /Survivors gathered/);
-  assert.equal(villageRelevantOrigin(founded, "What is for dinner?"), "");
   assert.deepEqual(defaultVillageState().maps, []);
   assert.match(
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,

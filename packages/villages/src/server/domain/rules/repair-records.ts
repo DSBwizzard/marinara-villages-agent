@@ -64,9 +64,6 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
     text("worldName", "World name", state.worldName),
     text("worldRules", "Standing rules", state.worldRules),
   ]);
-  add(["founding"], "world", "Founding history", "Shared starting context", [
-    text("foundingHistory", "Starting history", state.foundingHistory),
-  ]);
   for (const situation of state.narrative?.situations ?? [])
     add(
       ["narrative-situation", situation.id],
@@ -648,9 +645,6 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
         state.worldName = str("worldName");
         if (str("worldRules").length > 4096) throw badRequest("Shorten the standing rules.");
         state.worldRules = str("worldRules");
-      } else if (kind === "founding") {
-        if (str("foundingHistory").length > 2000) throw badRequest("Shorten the starting history.");
-        state.foundingHistory = str("foundingHistory");
       } else if (kind === "home") {
         if (!str("destination")) throw badRequest("Choose a residential Private Space.");
         const [venueId, zoneId] = repairParts(str("destination")),

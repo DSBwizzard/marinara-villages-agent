@@ -51,7 +51,6 @@ export const sceneContinuityFields = [
   "setting",
   "worldName",
   "worldRules",
-  "foundingHistory",
   "narrative",
   "foundedAt",
   "socialContractVersion",
@@ -79,7 +78,7 @@ export type SceneContinuity = {
   setupAt: string;
   capturedAt: string;
   receiptIds: string[];
-  facts: Pick<VillageState, (typeof sceneContinuityFields)[number]>;
+  facts: Pick<VillageState, (typeof sceneContinuityFields)[number]> & { foundingHistory?: string };
 };
 /** Captured relationship history is immutable; copying other facts must not duplicate it. */
 export function cloneSceneFacts(facts: SceneContinuity["facts"]): SceneContinuity["facts"] {

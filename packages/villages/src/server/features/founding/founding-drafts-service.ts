@@ -71,9 +71,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     if (input.mode !== undefined && !quickStart) throw badRequest("Choose a valid Venue suggestion mode.");
     const setting = asTrimmedString(input.setting);
     const context = readFoundingDraftContext(input.context);
-    const circumstances = context.history;
-    if (!setting || setting.length > MAX_SETTING_LENGTH || circumstances.length > 2000)
-      throw badRequest("Describe the place first.");
+    if (!setting || setting.length > MAX_SETTING_LENGTH) throw badRequest("Describe the place first.");
     const rows = rowsOf(input.venues);
     const communityVenueId = asTrimmedString(input.communityVenueId);
     const community = rows.find((row) => row.id === communityVenueId);
@@ -118,7 +116,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           asTrimmedString(input.worldName),
           cards.map((card) => card?.admission),
         ),
-        circumstances,
         worldRules,
         ...currentCircumstances,
         ...cards.map((card) => card!.name),
@@ -160,7 +157,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       JSON.stringify({
         setting,
         worldName: asTrimmedString(input.worldName),
-        circumstances,
         villageName,
         worldRules,
         currentCircumstances,

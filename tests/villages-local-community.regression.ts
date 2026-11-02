@@ -140,7 +140,6 @@ assert.throws(
 {
   const state = world();
   state.worldRules = "No magic.";
-  state.foundingHistory = "The founders arrived after a storm.";
   const summary = "海辺の共同生活を始める人々が不足した交通手段を工夫している。".repeat(12);
   const situations = readFoundingCircumstances(
     [
@@ -697,5 +696,81 @@ console.log(
     isHouse({ classes: ["other"], occupancy: { playerHome: true, residentCharacterId: "stale" } } as any),
     false,
     "Residence class is explicit",
+  );
+}
+
+{
+  const { captureSceneContinuity } = await import("../packages/villages/src/server/domain/rules/scene-continuity.js");
+  const { coerceSession } = await import("../packages/villages/src/server/domain/decoding/scene-codec.js");
+  const { captureReturnContext } =
+    await import("../packages/villages/src/server/domain/rules/return-catchup-capture.js");
+  const { returnCaptureRevision } =
+    await import("../packages/villages/src/server/domain/rules/return-capture-revision.js");
+  const { fixtureRelationshipIdentity, fixtureWishIdentity } = await import("./helpers/village-storage.fixture.js");
+  const { foundingTaskRevision, ownsFoundingTask } =
+    await import("../packages/villages/src/server/domain/rules/founding-tasks.js");
+  const state = coerceVillageState(JSON.parse(JSON.stringify(world())));
+  const scene = coerceSession({
+    version: 3,
+    id: "frozen-history",
+    placeId: "community",
+    zoneId: "common:base",
+    area: "public",
+    status: "active",
+    liveSceneVersion: 1,
+    villageSeed: state.seed,
+    startedAt: at,
+    participants: [],
+    activeIds: [],
+    lines: [],
+    submissions: [],
+  });
+  const captured = captureSceneContinuity(state, scene, Date.parse(at));
+  assert.equal(Object.hasOwn(captured.facts, "foundingHistory"), false);
+  captured.facts = Object.fromEntries(
+    Object.entries(captured.facts).flatMap(([key, value]) =>
+      key === "worldRules"
+        ? [
+            [key, value],
+            ["foundingHistory", "EXACT RETAINED HISTORY"],
+          ]
+        : [[key, value]],
+    ),
+  ) as typeof captured.facts;
+  scene.continuity = captured;
+  const serialized = JSON.stringify(captured.facts);
+  const restarted = coerceSession(JSON.parse(JSON.stringify(scene)));
+  assert.equal(
+    JSON.stringify(restarted.continuity!.facts),
+    serialized,
+    "Already admitted Scene facts retain exact text and serialized order",
+  );
+  const departure = captureReturnContext(state, new Date(at));
+  (departure.world as any).foundingHistory = "EXACT DEPARTURE HISTORY";
+  state.returnCatchup = { capture: departure };
+  const identity = returnCaptureRevision(departure, fixtureRelationshipIdentity, fixtureWishIdentity);
+  const loaded = coerceVillageState(JSON.parse(JSON.stringify(state)));
+  assert.equal(
+    returnCaptureRevision(loaded.returnCatchup!.capture, fixtureRelationshipIdentity, fixtureWishIdentity),
+    identity,
+  );
+  assert.equal(Object.hasOwn(loaded, "foundingHistory"), false);
+  const context = { circumstances: { details: "Admitted source history" } };
+  const revision = foundingTaskRevision(state, "a", "routine", context);
+  state.foundingPreparation = {
+    status: "pending",
+    tasksVersion: 1,
+    tasks: { a: { routine: { contract: 1, revision, jobId: "retained", status: "failed", attempt: 1, error: "" } } },
+    completedIds: [],
+    currentId: "",
+    error: "",
+  };
+  assert.equal(ownsFoundingTask(state, "a", "routine", revision, context), true);
+  const changed = structuredClone(state);
+  changed.venues[0].zones![1].description += " A new room layout.";
+  assert.equal(
+    ownsFoundingTask(changed, "a", "routine", revision, context),
+    false,
+    "Retained source history does not bypass current physical validation",
   );
 }

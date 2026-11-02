@@ -227,7 +227,12 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupWorldName(data.worldName ?? "");
     setSetupSetting(data.setting);
     setSetupPlayerBackground(data.playerBackground ?? "");
-    setSetupContext(data.context);
+    setSetupContext({
+      rules: data.context.rules,
+      circumstances: data.context.circumstances,
+      communityVenueId: data.context.communityVenueId,
+      households: data.context.households,
+    });
     setSetupVenues(data.venues);
     setupZoneDrafts.current = data.zoneDrafts;
     setSetupSpriteRevisions?.(data.spriteRevisions ?? {});

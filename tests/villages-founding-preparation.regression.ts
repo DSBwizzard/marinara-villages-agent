@@ -51,6 +51,7 @@ let releaseWish: (() => void) | undefined;
 let feddyWishCalls = 0;
 let conflicts = 0;
 let writes = 0;
+let retainedWishProof: { revision: string; input: string; fingerprints: string[] } | undefined;
 const sourceSnapshots = new Map<string, any>();
 
 function fixture(seeded = true) {
@@ -160,6 +161,31 @@ const release = configureVillagesRuntime({
         if (!previous || previous.revision !== input.expectedRevision) return null;
         if (input.id === "villages-village" && conflicts-- > 0) return null;
         const row = { ...previous, ...structuredClone(input), revision: previous.revision + 1 };
+        if (
+          retainedWishProof &&
+          row.kind === "background-work" &&
+          row.data.kind === "wish" &&
+          row.data.revision === retainedWishProof.revision &&
+          row.data.status !== "completed"
+        ) {
+          assert.equal(
+            JSON.stringify(row.data.input),
+            retainedWishProof.input,
+            "Recovery keeps exact admitted input until application",
+          );
+          assert.deepEqual(
+            row.data.steps.map((step: any) => step.fingerprint),
+            retainedWishProof.fingerprints,
+          );
+        }
+        if (
+          mode === "wish-paid-ack" &&
+          input.id === "villages-village" &&
+          row.data.foundingPreparation?.tasks?.aqua?.wish?.status === "completed"
+        ) {
+          mode = "valid";
+          throw new Error("Synthetic failure after retaining the paid Wish result");
+        }
         rows.set(row.id, row);
         writes++;
         const p = row.data?.foundingPreparation;
@@ -529,7 +555,7 @@ async function main() {
 
     // Simulate the old validator rejecting a purchased venueNumber reply.
     // Retry must validate it locally before discarding its failed checkpoint.
-    for (const recovery of ["alias", "dayparts", "malformed", "truncated", "stale"]) {
+    for (const recovery of ["alias", "dayparts", "retired-history", "malformed", "truncated", "stale"]) {
       install();
       mode = "routine-invalid";
       await prepareFoundedVillage();
@@ -537,6 +563,16 @@ async function main() {
       const checkpoint = [...rows.values()].find(
         (row) => row.kind === "background-work" && row.data.kind === "agenda",
       )!;
+      if (recovery === "retired-history") {
+        const context = checkpoint.data.input.context;
+        context.circumstances.details = "History retained only in an already admitted request";
+        const revision = foundingTaskRevision(await readVillageState(), "aqua", "routine", context);
+        context.sourceRevision = checkpoint.data.input.revision = checkpoint.data.revision = revision;
+        checkpoint.data.id = backgroundRevision([checkpoint.data.seed, "agenda", "aqua", revision]);
+        await mutateVillageState((live) => {
+          live.foundingPreparation!.tasks!.aqua.routine!.revision = revision;
+        });
+      }
       if (recovery === "alias") {
         const current = await readVillageState({ memories: true }),
           old = sourceSnapshots.get("aqua");
@@ -586,7 +622,7 @@ async function main() {
       const previewWrites = writes;
       assert.equal(
         (await previewVillageBurst({ action: "founding" })).requests,
-        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
+        ["alias", "dayparts", "retired-history"].includes(recovery) ? 2 : 3,
       );
       assert.equal(writes, previewWrites, "recovery forecasts do not write");
       assert.equal(calls.length, 0, "recovery forecasts do not dispatch");
@@ -598,7 +634,7 @@ async function main() {
       assert.equal(state.foundingPreparation?.completedIds.length, 3);
       assert.equal(
         calls.length,
-        ["alias", "dayparts"].includes(recovery) ? 2 : 3,
+        ["alias", "dayparts", "retired-history"].includes(recovery) ? 2 : 3,
         "only invalid saved replies need replacement requests: " + recovery + JSON.stringify(calls),
       );
       assert.ok(
@@ -611,6 +647,46 @@ async function main() {
       await prepareFoundedVillage();
       assert.equal(calls.length, before, "repeated actions after recovery generate nothing");
     }
+
+    install();
+    mode = "wish-paid-ack";
+    await prepareFoundedVillage();
+    const retainedWish = [...rows.values()].find(
+      (row) => row.kind === "background-work" && row.data.kind === "wish" && row.data.subjectId === "aqua",
+    )!;
+    const { responseStorage: _wishStorage, ...wishJob } = retainedWish.data;
+    assert.ok(wishJob.input, "Failed application retains admitted Wish context");
+    wishJob.steps = wishJob.steps.map((step: any) => ({
+      ...step,
+      response: validateBackgroundResponse(rows.get(step.responseRef.id)).response,
+    }));
+    const actorId = wishJob.subjectId;
+    wishJob.input.context.circumstances.details = "Retained paid Wish source";
+    const current = await readVillageState();
+    const wishRevision = foundingTaskRevision(current, actorId, "wish", wishJob.input.context);
+    wishJob.input.context.sourceRevision = foundingTaskRevision(current, actorId, "routine", wishJob.input.context);
+    wishJob.input.revision = wishJob.revision = wishRevision;
+    wishJob.id = backgroundRevision([wishJob.seed, "wish", actorId, wishRevision]);
+    wishJob.status = "failed";
+    retainedWish.data = authorBackgroundFixture(rows, wishJob);
+    retainedWishProof = {
+      revision: wishRevision,
+      input: JSON.stringify(retainedWish.data.input),
+      fingerprints: retainedWish.data.steps.map((step: any) => step.fingerprint),
+    };
+    await mutateVillageState((live) => {
+      live.foundingPreparation!.status = "failed";
+      const task = live.foundingPreparation!.tasks![actorId].wish!;
+      task.status = "failed";
+      task.revision = wishRevision;
+    });
+    calls.length = 0;
+    await retryFoundedVillagePreparation();
+    await prepareFoundedVillage();
+    assert.equal(calls.length, 0, "Retired history never repurchases a saved Wish response");
+    assert.equal((await readVillageState()).foundingPreparation!.tasks![actorId].wish!.revision, wishRevision);
+    assert.equal(rows.get(retainedWish.id).data.status, "completed");
+    retainedWishProof = undefined;
 
     for (const interruptedStatus of ["queued", "paused"]) {
       install();

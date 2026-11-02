@@ -1163,17 +1163,27 @@ await runCase("repair/domain-editors", async () => {
       Object.assign(s, model);
       s.memories = f.initial.memories;
       s.seed = "repair-world";
-      s.foundingHistory = "Original authoritative founding";
+      s.name = "Village";
+      s.worldRules = "Original standing rules";
     },
     { memories: true },
   );
-  const opening = await f.api.inspect(repairId("founding"));
-  assert.equal(opening.fields[0].value, "Original authoritative founding");
+  const opening = await f.api.inspect(repairId("world"));
+  assert.equal(opening.fields.find((field) => field.key === "worldRules")!.value, "Original standing rules");
   const founding = await f.prepare(
-    edit(opening.id, { foundingHistory: "Corrected authoritative founding" }, "fix-founding"),
+    edit(
+      opening.id,
+      Object.fromEntries(
+        opening.fields.map((field) => [
+          field.key,
+          field.key === "worldRules" ? "Corrected standing rules" : field.value,
+        ]),
+      ),
+      "fix-rules",
+    ),
   );
   await f.api.apply(founding.id, founding.token);
-  assert.equal((await f.read()).foundingHistory, "Corrected authoritative founding");
+  assert.equal((await f.read()).worldRules, "Corrected standing rules");
   const place = await f.api.inspect(repairId("venue", "cafe"));
   const values = Object.fromEntries(place.fields.map((field) => [field.key, field.value]));
   values.x = 0.3;

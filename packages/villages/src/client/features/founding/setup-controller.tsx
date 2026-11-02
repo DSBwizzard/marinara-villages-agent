@@ -82,7 +82,6 @@ export function createFoundingSuggestSetupVenues(ports: {
         villageName: ports.setupName,
         context: ports.setupContext,
         communityVenueId: ports.setupContext?.communityVenueId,
-        foundingHistory: ports.setupContext?.history ?? "",
         playerPersonaId: personaDraft,
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,

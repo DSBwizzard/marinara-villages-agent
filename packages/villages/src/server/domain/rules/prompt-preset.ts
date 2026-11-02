@@ -397,55 +397,6 @@ export function villageCurrentSetting(village: {
     .join("\n");
 }
 
-/** This context is used only while preparing the first village, never as a recurring plot instruction. */
-export function villageFoundingSetting(village: {
-  setting: string;
-  worldRules?: string;
-  narrative?: import("../models/narrative-model.js").NarrativeState;
-  foundingHistory: string;
-}): string {
-  return [
-    villageCurrentSetting(village),
-    village.foundingHistory.trim()
-      ? `Shared founding backstory (history, not current physical state): ${village.foundingHistory.trim()}`
-      : "",
-    "Use the founding backstory selectively. Preserve character identity and existing relationships; do not invent player actions or a first-day script. Current circumstances persist until supported events change them. Current Venue and Zone records govern physical truth.",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** Historical context is recalled only for a question about origins or a distinctive founding detail. */
-export function villageRelevantOrigin(village: { foundingHistory: string }, query: string): string {
-  const origin = village.foundingHistory.trim();
-  if (!origin) return "";
-  const q = query.toLowerCase();
-  const asksHistory =
-    /\b(found|founded|founding|origin|history|begin|began|beginning|started|settled|first came)\b/u.test(q) ||
-    /\bwhy\b.{0,80}\b(here|together|came|arrived|living|staying)\b/u.test(q) ||
-    /\bhow did\b.{0,80}\b(here|together|came|arrived|meet|met)\b/u.test(q) ||
-    /\bwhat\b.{0,40}\b(brings?|brought|led)\b.{0,40}\b(here|together)\b/u.test(q);
-  const ordinaryWords = new Set([
-    "village",
-    "people",
-    "their",
-    "there",
-    "before",
-    "became",
-    "within",
-    "around",
-    "through",
-    "settled",
-    "started",
-  ]);
-  const queryWords = new Set(q.match(/[a-z]{6,}/gu) ?? []);
-  const distinctive = [...new Set(origin.toLowerCase().match(/[a-z]{6,}/gu) ?? [])].some(
-    (word) => !ordinaryWords.has(word) && queryWords.has(word),
-  );
-  if (!asksHistory && !distinctive) return "";
-  return `Founding backstory (history, not a description of today): ${origin} This does not give everyone one ambition or personality. Current verified Venue and Zone state governs physical facts.`;
-}
-
 /**
  * How a picture that is not that shape is made to fit it.
  *

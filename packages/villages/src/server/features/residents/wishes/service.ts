@@ -106,7 +106,7 @@ export function createWishes(ports: Ports) {
       });
     },
     valid: (state, input) =>
-      ownsFoundingTask(state, input.characterId, "wish", input.revision) &&
+      ownsFoundingTask(state, input.characterId, "wish", input.revision, input.context) &&
       state.villagers.some(
         (r) => r.characterId === input.characterId && r.cardSnapshot.capturedAt === input.capturedAt,
       ),

@@ -17,7 +17,6 @@ const snapshot = {
   settings: {
     venues: [],
     worldRules: "",
-    foundingHistory: "",
     circumstances: [],
     communityVenueId: "",
     selectedLorebookIds: [],
@@ -43,6 +42,7 @@ const personas = [
 export async function verifyFoundingLayout(group) {
   await withBrowser(browser, async () => {
     const viewports = [
+      { width: 2550, height: 1072, fontSize: 16, count: 3, housing: "separate" },
       { width: 1366, height: 768, fontSize: 16, count: 3, housing: "separate" },
       { width: 1440, height: 650, fontSize: 16, count: 1, housing: "shared" },
       { width: 1917, height: 600, fontSize: 20, count: 3, housing: "custom" },
@@ -238,10 +238,10 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("Village Name", { exact: true })).toBeFocused();
         await root.getByLabel("Village Name", { exact: true }).fill("Coastal Community");
         await root
-          .getByLabel("Local geography and boundary", { exact: true })
+          .getByLabel("Local area", { exact: true })
           .fill("An oceanfront expanse between the cliffs and river.");
-        await root.getByLabel("Standing world rules", { exact: true }).fill("The sun never sets.");
-        await root.getByLabel("Historical backstory", { exact: true }).fill("Families arrived by sea.");
+        await root.getByLabel("Standing rules", { exact: true }).fill("The sun never sets.");
+        await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
         await bounds("setting");
         await button("Continue to People").click();
         await expect(root).toHaveAttribute("data-step", "1");
@@ -254,14 +254,28 @@ export async function verifyFoundingLayout(group) {
             .getByRole("button", { name: "Add without sprites", exact: true })
             .click();
         }
-        if (view.housing === "shared") await button("One shared home").click();
-        if (view.housing === "custom") await root.getByLabel("Finn household", { exact: true }).selectOption("player");
+        await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await bounds("people");
         await button("Continue to Venues and Map").click();
         await expect(root).toHaveAttribute("data-step", "2");
+        await expect.poll(() => root.evaluate((element) => element.scrollTop)).toBe(0);
+        const housingSummary = root.getByRole("status", { name: "Household summary", exact: true });
+        await button("One shared home").click();
+        await expect(button("One shared home")).toHaveAttribute("aria-pressed", "true");
+        await expect(housingSummary).toHaveText(`1 home for ${view.count + 1} people`);
+        await expect.poll(() => page.evaluate(() => window.featureController.setupVenues.length)).toBe(2);
+        if (view.housing !== "shared") {
+          await button("Separate homes").click();
+          await expect(button("Separate homes")).toHaveAttribute("aria-pressed", "true");
+          await expect(housingSummary).toHaveText(`${view.count + 1} homes for ${view.count + 1} people`);
+        }
+        if (view.housing === "custom") await root.getByLabel("Finn household", { exact: true }).selectOption("player");
         assert.equal(suggestions, 0, "Choosing housing never generates suggestions");
         assert.equal(generatedImages, 0, "The simple map requires no model call");
         const expectedHomes = view.housing === "shared" ? 1 : view.housing === "custom" ? view.count : view.count + 1;
+        await expect(housingSummary).toHaveText(
+          `${expectedHomes} ${expectedHomes === 1 ? "home" : "homes"} for ${view.count + 1} people`,
+        );
         await expect
           .poll(() => page.evaluate(() => window.featureController.setupVenues.length))
           .toBe(expectedHomes + 1);
@@ -284,18 +298,23 @@ export async function verifyFoundingLayout(group) {
           )
           .toBe(true);
         await root.getByRole("button", { name: "Arrange automatically", exact: true }).click();
+        if (view.width > 1000) {
+          const options = await root.locator(".villages-founding-place-options").boundingBox();
+          const map = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
+          assert.ok(map.x >= options.x + options.width, "Venue map sits beside setup options on desktop");
+          assert.ok(map.width >= options.width, "Playable map gets the larger column");
+        }
         await bounds("venues");
         await button("Review village").click();
         await expect(root).toHaveAttribute("data-step", "3");
         await expect(root.getByText("Standing rules: The sun never sets.", { exact: true })).toBeVisible();
-        await expect(root.getByText("History: Families arrived by sea.", { exact: true })).toBeVisible();
         await expect(root.getByRole("button", { name: "Community Courtyard", exact: true })).toBeVisible();
         await bounds("review");
         await button("Found village").click();
         await expect.poll(() => payload).toBeTruthy();
         assert.equal(payload.communityVenueId, "founding-community");
         assert.equal(payload.worldRules, "The sun never sets.");
-        assert.equal(payload.foundingHistory, "Families arrived by sea.");
+        assert.equal(Object.hasOwn(payload, "foundingHistory"), false);
         assert.equal(payload.venues.length, expectedHomes + 1);
         const community = payload.venues.find((row) => row.id === payload.communityVenueId);
         assert.equal(community.residentIds.length, 0);
@@ -348,10 +367,10 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     await expect.poll(() => page.evaluate(() => typeof window.openSetup)).toBe("function");
     for (const founded of [false, true]) {
-      const details = "x".repeat(2000);
+      const details = "x".repeat(4096);
       const village = structuredClone(snapshot);
       village.isFounded = founded;
-      village.settings.foundingHistory = details;
+      village.settings.worldRules = details;
       const values = await page.evaluate((village) => {
         window.values = {};
         window.openSetup(false, village);
@@ -365,7 +384,7 @@ createRoot(document.getElementById('root')).render(window.strict?<StrictMode><Ha
       assert.equal(values.setSetupWorldName, "", "World identity is optional and has no generated default");
       assert.equal(Object.hasOwn(values, "setSetupFoundingReason"), false);
       assert.equal(Object.hasOwn(values, "setSetupFoundingDetails"), false);
-      assert.equal(village.settings.foundingHistory, details, "Opening setup preserves saved history");
+      assert.equal(village.settings.worldRules, details, "Opening setup preserves saved standing rules");
       assert.equal(Object.hasOwn(values, "setSetupFoundingGuidance"), false);
       assert.equal(values.setScreen, "setup");
     }

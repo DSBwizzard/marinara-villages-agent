@@ -96,8 +96,6 @@ const publicFields = [
   "characterSpeechColors",
   "defaultHomeBuilding",
   "defaultPromptKnowledge",
-  "foundingHistory",
-  "foundingHistoryMaxLength",
   "homeBuildingNames",
   "homeBuildings",
   "loreTokenBudget",

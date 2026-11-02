@@ -1413,7 +1413,6 @@ export function createRepairService(ports: RepairPorts) {
       { label: "Setting", value: world.setting },
       { label: "Current circumstances", value: currentVillageCircumstances(world).join("\n") },
       { label: "Standing rules", value: world.worldRules },
-      { label: "Starting history", value: world.foundingHistory },
       { label: "Residents", value: world.villagers.map((p) => p.cardSnapshot.name).join(", ") },
       { label: "Memories", value: String(world.memories.records.length) },
       { label: "Places", value: world.venues.map((v) => v.name).join(", ") },

@@ -45,7 +45,6 @@ const state = defaultVillageState();
 state.seed = "character-writing";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
-state.foundingHistory = "FOUNDING PREMISE: arrive to establish a new life";
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
 state.villagers = [
   {
@@ -153,7 +152,6 @@ async function run() {
       "BACKSTORY TAIL",
       "Appearance:\nFeathered arms; no wings",
       "Example dialogue:\nResident: Your move,",
-      "FOUNDING PREMISE",
       "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED",
       "narrator-only truths are not resident knowledge",
     ])
@@ -187,11 +185,6 @@ async function run() {
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
       assert.match(outsidePrompt, /Activity captured at Scene start: Checking a map/);
       assert.match(outsidePrompt, /witnessed developments establish what is happening now/i);
-      assert.match(
-        outsidePrompt,
-        /Shared historical background, separate from the current activity and individual ambitions/,
-      );
-      assert.ok(outsidePrompt.includes("FOUNDING PREMISE"), "history is retained in ordinary conversation");
 
       for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
         assert.ok(outsidePrompt.includes(fragment), fragment);

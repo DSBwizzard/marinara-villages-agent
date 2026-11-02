@@ -202,7 +202,15 @@ export const VILLAGES_FORGING_STYLES = `
 
 
 /* Place and Map reuse People's panels and field geometry. */
-.villages-map-panel { width:100%; max-width:42rem; margin-inline:auto; }
+.villages-founding-places { display:grid; grid-template-columns:minmax(19rem,min(26rem,38%)) minmax(0,1fr); gap:1rem; width:100%; max-width:100rem; margin-inline:auto; align-items:start; }
+.villages-founding-place-options,.villages-founding-place-map { min-width:0; }
+.villages-founding-place-map { position:sticky; top:1rem; display:flex; flex-direction:column; gap:.75rem; }
+.villages-founding-place-map .villages-quick-start { width:100%; max-width:none; align-self:stretch; }
+.villages-founding-place-map .villages-quick-map { height:clamp(20rem,58dvh,42rem); min-height:20rem; }
+.villages-founding-place-options .villages-forging-card:last-child { margin-bottom:0; }
+.villages-founding-housing [role=status] { color:#c1c9e9; margin:.5rem 0; }
+.villages-map-panel { width:100%; margin-inline:0; }
+@media(max-width:1000px) { .villages-founding-places { grid-template-columns:minmax(0,1fr); } .villages-founding-place-map { position:static; } .villages-founding-place-map .villages-quick-map { height:clamp(16rem,50dvh,28rem); min-height:16rem; } }
 .villages-map-panel h3 { font-size:1rem; font-weight:400; margin:0 0 .65rem; }
 .villages-place-panels { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; }
 .villages-place-panels .villages-forging-card h3 { font-size:1rem; font-weight:400; margin:0 0 .65rem; }

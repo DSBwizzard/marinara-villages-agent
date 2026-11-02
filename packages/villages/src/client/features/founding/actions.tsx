@@ -333,7 +333,6 @@ export function useOpenSetup(ports: {
       if (fresh) setSetupResidentAdmissions({});
       setSetupContext({
         rules: "",
-        history: "",
         circumstances: [],
         communityVenueId: "founding-community",
         households: {},
@@ -541,7 +540,6 @@ export function useFoundVillage(ports: {
           worldName: setupWorldName,
           setting: setupSetting.trim(),
           worldRules: ports.setupContext.rules,
-          foundingHistory: ports.setupContext.history,
           communityVenueId: ports.setupContext.communityVenueId,
           playerBackground: setupPlayerBackground,
           circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),

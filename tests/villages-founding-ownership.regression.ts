@@ -133,7 +133,7 @@ function fixture(name: string) {
         sourceRevision: foundingTaskRevision(state, id, "routine"),
         card: readEffectiveVillagerCard(state.villagers.find((row) => row.characterId === id)!),
         venues: remapVenues(state.venues),
-        circumstances: { worldRules: state.worldRules, history: state.foundingHistory },
+        circumstances: { worldRules: state.worldRules },
       }) as any,
     adoptFoundingRoutine: () => {},
     backgroundJobSnapshot: async (kind, id) =>

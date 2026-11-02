@@ -599,9 +599,8 @@ async function foundingConnectionOwnership() {
     };
     const scenarioInput = {
       communityVenueId: "community",
-      context: { rules: "", history: "A shared study begins.", circumstances: [] },
+      context: { rules: "", circumstances: [] },
       setting: "Quiet harbor",
-      foundingHistory: "A shared study begins.",
       selectedLorebookIds: ["visual"],
     };
     const compactContext = {
@@ -876,7 +875,7 @@ await main()
   );
   const draft = {
     version: 2,
-    context: { rules: "", history: "", circumstances: [], communityVenueId: "community", households: {} },
+    context: { rules: "", circumstances: [], communityVenueId: "community", households: {} },
     workspace: emptyFoundingWorkspace(),
     zoneDrafts: {},
     venues: [],

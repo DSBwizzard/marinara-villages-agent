@@ -283,7 +283,6 @@ async function main() {
 
       wishSystemVersion: 3,
       setting,
-      foundingHistory: "Built beside the ridge",
       venues: [
         venueFixture({
           residentIds: [null].filter((id) => typeof id === "string" && !!id),
@@ -752,7 +751,6 @@ async function main() {
     communityVenueId: "village-square",
     circumstances: [],
     worldRules: "",
-    foundingHistory: "The group arrives at the riverside and opens the first shared path.",
     playerPersonaId: "persona-robin",
     venues: [
       venueFixture({
@@ -1212,7 +1210,6 @@ async function main() {
   const foundingImageInput = {
     villageName: "Ashcroft",
     setting: "A cliffside village above the sea.",
-    foundingHistory: "On Day 1, a storm damages several boats.",
     selectedLorebookIds: [],
   };
   const beforeInvalidImage = draws().length;
