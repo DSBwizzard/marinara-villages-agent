@@ -541,3 +541,108 @@ console.log(
   assert.deepEqual(currentVillageCircumstances(state, "community", "common:base"), ["Local-only circumstance"]);
   assert.deepEqual(currentVillageCircumstances(state, "founding-home:a", "common:base"), []);
 }
+
+{
+  const { fixture } = await import("./fixtures/villages-projects.fixture.js");
+  const f = fixture();
+  await f.mutate((state) => {
+    const maps = state.maps,
+      villagers = state.villagers;
+    Object.assign(state, world());
+    state.maps = maps;
+    state.villagers = villagers;
+  });
+  const target = f.state().venues.find((v) => v.id === "community")!;
+  await f.service.createRenovationProject(target.id, {
+    requestId: "repurpose-community",
+    title: "A new use",
+    detail: "Convert this gathering room into an unused residence",
+    classes: ["residence"],
+    capacity: 2,
+    zones: target
+      .zones!.filter((z) => z.kind !== "exterior")
+      .map((z) => ({ ...z, venueClass: "residence", kind: "shared-residence" })),
+  });
+  const id = "project:repurpose-community";
+  await f.agree(id);
+  await f.service.startProjectConstruction(id, f.body(id));
+  await f.service.debugCompleteProjectConstruction(id, f.body(id));
+  const loaded = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
+  assert.equal(loaded.communityVenueId, target.id, "The original designation remains historical");
+  assert.deepEqual(
+    loaded.venues.find((v) => v.id === target.id)!.classes,
+    ["residence"],
+    "Starting Community land use is not permanently protected",
+  );
+}
+{
+  let state = world({ a: "a", b: "a" });
+  const target = state.venues.find((v) => v.residentIds?.includes("a"))!;
+  target.residenceCapacity = 4;
+  const source = target.zones!.find((z) => z.kind !== "exterior")!;
+  target.zones!.push({
+    ...structuredClone(source),
+    id: "guest-room",
+    kind: "private-residence",
+    name: "Guest room",
+    ownerId: undefined,
+    connectedTo: ["exterior"],
+    access: {
+      mode: "permission-required",
+      managerIds: ["c"],
+      memberIds: [],
+      memberRoles: [],
+      inviterIds: [],
+      visitorHours: "always",
+      accompanied: false,
+    },
+  });
+  const service = createResidences({
+    mutateVillageState: async (update) => {
+      const next = structuredClone(state);
+      update(next);
+      state = next;
+      return state;
+    },
+    buildVillageSnapshot: async () => state as any,
+  });
+  await service.movePlayerToResidence(target.id, "guest-room");
+  let move = state.residences.find((row) => row.characterId === "player")!;
+  const scope = move.agreement!.scope;
+  await assert.rejects(service.proposeVillageResidence("c", target.id, "player", "", "guest-room"), /reserved/);
+  for (const id of ["a", "b"])
+    await service.decideVillageResidence("player", true, "villager", "housemate:" + id, id, scope);
+  assert.equal(
+    state.venues.find((v) => v.id === target.id)!.occupancy.playerHome,
+    false,
+    "Housemates cannot approve on behalf of a private room controller",
+  );
+  await service.decideVillageResidence("player", false, "villager", "withdraw-room", "b", scope);
+  assert.equal(
+    state.residences.some((row) => row.characterId === "player"),
+    false,
+    "Withdrawal cancels the reservation",
+  );
+  await service.proposeVillageResidence("c", target.id, "player", "", "guest-room");
+  assert.equal(
+    state.residences.find((row) => row.characterId === "c")!.status,
+    "pending",
+    "Cancellation releases the exact room for another proposed move",
+  );
+  assert.equal(
+    state.venues.find((v) => v.id === target.id)!.zones!.find((z) => z.id === "guest-room")!.ownerId,
+    undefined,
+    "A reservation never transfers a private room",
+  );
+  move = state.residences.find((row) => row.characterId === "c")!;
+  for (const id of ["a", "b", "c"])
+    await service.decideVillageResidence("c", true, "villager", "reserve-approved:" + id, id, move.agreement!.scope);
+  assert.equal(state.residences.find((row) => row.characterId === "c")!.status, "moving");
+  await service.decideVillageResidence("c", false, "villager", "scheduled-withdrawal", "a", move.agreement!.scope);
+  assert.equal(
+    state.residences.some((row) => row.characterId === "c"),
+    false,
+    "A housemate can withdraw before a scheduled move applies",
+  );
+  assert.equal(state.venues.find((v) => v.id === target.id)!.residentIds!.includes("c"), false);
+}

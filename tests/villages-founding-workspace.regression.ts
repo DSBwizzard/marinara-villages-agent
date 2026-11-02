@@ -29,14 +29,14 @@ const venue = venueFixture({
       id: "bedroom",
       name: "Bedroom",
       purpose: "Sleeping",
-      description: "",
-      ownerId: "other-resident",
+      description: "A reviewed sleeping room",
+      ownerId: "player",
       venueClass: "residence",
       image: null,
     },
   ],
 }) as unknown as VillageVenue;
-assert.deepEqual(foundingVenueIssues([venue]), [], "artwork and hidden resident appearance are optional");
+assert.deepEqual(foundingVenueIssues([venue]), [], "artwork is optional while starting appearances are reviewed");
 const incomplete = structuredClone(venue);
 incomplete.presentation.x = null;
 incomplete.name = "";
@@ -57,7 +57,11 @@ assert.equal(
   foundingVenueIssues([incomplete], true).some(({ field }) => field === "placement" || field === "layout"),
   false,
 );
-const sharedResident = { ...venue, occupancy: { ...venue.occupancy, playerHome: false, residentCharacterId: "jim" } };
+const sharedResident = {
+  ...venue,
+  residentIds: ["jim"],
+  occupancy: { ...venue.occupancy, playerHome: false, residentCharacterId: null },
+};
 assert.equal(
   foundingVenueIssues([sharedResident, { ...sharedResident, id: "duplicate" }]).filter(
     ({ field }) => field === "assignment",

@@ -68,6 +68,7 @@ await exterior.mutate((state) => {
   const site = state.venues[0];
   site.classes = ["residence", "workplace"];
   site.residentIds = ["b"];
+  site.destinations = { b: { home: "common", sleep: "common" } };
   site.workerIds = ["c"];
   site.zones![1].kind = "shared-residence";
   site.zones![1].venueClass = "residence";
