@@ -431,3 +431,113 @@ await housing();
 console.log(
   "Local community: housing, public Community, stable places, scoped circumstances, shared knowledge and consent persistence passed.",
 );
+
+{
+  const initial = foundingHouseholds([], actors, {});
+  const home = initial.find((row) => row.residentIds?.includes("a"))!;
+  home.name = "Ada's authored home";
+  home.privateSpaces![0].description = "A keepsake on a shelf";
+  const regrouped = foundingHouseholds(initial, actors, { a: "player" });
+  const retained = regrouped.find((row) => row.id === home.id)!;
+  assert.equal(retained.name, home.name);
+  assert.equal(retained.privateSpaces![0].description, "A keepsake on a shelf");
+  retained.presentation = { ...retained.presentation, x: 0.3, y: 0.2 };
+  const saved = parsePlaces(
+    [...regrouped, newSetupVenue("community", "community", 0.7, 0.7)].map((row, i) => ({
+      ...row,
+      presentation: { ...row.presentation, x: 0.1 + i * 0.1, y: 0.5 },
+    })),
+    new Set(["a", "b", "c"]),
+    true,
+    "community",
+    new ZonedDate(at, "UTC"),
+  );
+  const vacant = saved.find((row) => row.id === home.id)!;
+  assert.equal(
+    evaluateZoneAccess(
+      vacant,
+      vacant.zones!.find((zone) => zone.kind === "shared-residence")!,
+      "b",
+    ).allowed,
+    true,
+    "A retained vacant home starts open",
+  );
+}
+
+{
+  const { fixture, renovation, venue: makeVenue } = await import("./fixtures/villages-projects.fixture.js");
+  const { venueFixture } = await import("./helpers/venues.fixture.js");
+  const { buildLocationPrompt } = await import("../packages/villages/src/server/domain/rules/location-image-rules.js");
+  const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
+  const { venueInZone } = await import("../packages/villages/src/server/domain/rules/venue-zones.js");
+  const f = fixture();
+  await f.mutate((state) => {
+    const mall = state.venues[0];
+    mall.name = "Seafront mall";
+    mall.description = "An abandoned mall with a boarded entrance";
+    mall.zones![0].description = mall.description;
+    mall.zones![1].description = "The atrium floor is damaged; shopfronts remain boarded.";
+    state.venues.push(
+      venueFixture({ ...makeVenue("second-mall", "community"), description: "An operating mall with glass doors" }),
+    );
+    state.venues.find((v) => v.id === "second-mall")!.zones![0].description = "An operating mall with glass doors";
+    state.setting = "An oceanfront expanse";
+    state.worldRules = "The sun never sets";
+  });
+  const mall = f.state().venues[0];
+  const id = await renovation(f, {
+    zones: mall
+      .zones!.filter((z) => z.kind !== "exterior")
+      .map((z) => ({ ...z, description: "The atrium floor is repaired; shopfronts remain boarded." })),
+  });
+  await f.agree(id);
+  await f.service.startProjectConstruction(id, f.body(id));
+  await f.service.debugCompleteProjectConstruction(id, f.body(id));
+  const restarted = coerceVillageState(JSON.parse(JSON.stringify(f.state())));
+  const restored = restarted.venues.find((v) => v.id === mall.id)!;
+  assert.match(
+    restored.zones!.find((z) => z.id === "common")!.description,
+    /floor is repaired; shopfronts remain boarded/,
+  );
+  assert.match(restored.description, /boarded entrance/);
+  assert.equal(restarted.venues.find((v) => v.id === "second-mall")!.description, "An operating mall with glass doors");
+  const picture = buildLocationPrompt(
+    restarted,
+    venueInZone(restored, "common"),
+    deriveVillageMoment({ foundedAt: restarted.foundedAt, seed: restarted.seed, now: new Date(at) }),
+    "Old lore describes a damaged atrium",
+    "interior",
+  );
+  assert.match(picture, /floor is repaired/);
+  assert.match(picture, /Standing world rules: The sun never sets/);
+  assert.match(picture, /lore and starting descriptions cannot undo/);
+}
+
+{
+  const initial = foundingHouseholds([], actors, {}),
+    home = initial.find((row) => row.residentIds?.includes("b"))!;
+  home.residenceCapacity = 4;
+  assert.equal(
+    foundingHouseholds(initial, actors, { b: "player" }).find((row) => row.id === home.id)?.residenceCapacity,
+    4,
+    "Regrouping retains capacity-only edits",
+  );
+  const state = world();
+  state.setting += " " + Array.from({ length: 75 }, (_, i) => "Farm " + i).join(", ");
+  assert.equal(coerceVillageState(state).venues.length, 5, "Seventy-five farm mentions create no destinations");
+  const cases = readFoundingCircumstances(
+    [{ scope: "zone", summary: "Local-only circumstance", venueId: "community", zoneId: "common:base" }],
+    state.venues,
+    at,
+  );
+  seedFoundingCircumstances(
+    state,
+    cases,
+    actors.map((row) => row.id),
+    at,
+  );
+  const { currentVillageCircumstances } = await import("../packages/villages/src/server/domain/rules/prompt-preset.js");
+  assert.deepEqual(currentVillageCircumstances(state), []);
+  assert.deepEqual(currentVillageCircumstances(state, "community", "common:base"), ["Local-only circumstance"]);
+  assert.deepEqual(currentVillageCircumstances(state, "founding-home:a", "common:base"), []);
+}

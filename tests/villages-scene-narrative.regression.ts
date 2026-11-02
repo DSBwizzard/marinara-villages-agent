@@ -89,7 +89,14 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   return {
     severity: "gentle",
     occurrence: "A gust loosens the hall sign.",
-    situation: { id: null, expectedRevision: 0, title: "Loose sign", summary: "A sign rattles.", status: "active" },
+    situation: {
+      scope: "zone",
+      id: null,
+      expectedRevision: 0,
+      title: "Loose sign",
+      summary: "A sign rattles.",
+      status: "active",
+    },
     physical: [
       {
         venueId: target.venueId,

@@ -1,3 +1,4 @@
+import { venueFixture } from "../helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { pathToFileURL } from "node:url";
@@ -63,7 +64,7 @@ export async function packagedSceneServer() {
         },
       ],
     },
-  ] as typeof world.venues;
+  ].map(venueFixture) as typeof world.venues;
   const scene = coerceSession({
     version: 3,
     id: "browser",

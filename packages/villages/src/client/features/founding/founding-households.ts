@@ -44,11 +44,27 @@ export function foundingHouseholds(
     .flatMap((row) => {
       if (!row.classes?.includes("residence") || (!row.occupancy.playerHome && !row.residentIds?.length)) return [row];
       if (
+        row.name ===
+          [...(row.occupancy.playerHome ? ["player"] : []), ...(row.residentIds ?? [])]
+            .map((id) => actors.find((actor) => actor.id === id)?.name ?? "")
+            .join(" & ") +
+            " home" &&
+        row.residenceCapacity === Math.max(1, (row.residentIds?.length ?? 0) + Number(row.occupancy.playerHome)) &&
+        !row.venueType &&
+        !row.workerIds?.length &&
+        !row.capabilities?.length &&
         row.form === "Residence" &&
         row.description === "A residence in the Village." &&
         !row.presentation.image &&
         row.presentation.x === null &&
-        row.presentation.y === null
+        row.presentation.y === null &&
+        !row.zoneLayout &&
+        !row.imageContext &&
+        JSON.stringify(row.spaces) === JSON.stringify([startingZone(row, false)]) &&
+        JSON.stringify(row.privateSpaces) ===
+          JSON.stringify(
+            (row.residentIds?.length ?? 0) + Number(row.occupancy.playerHome) > 1 ? [] : [startingZone(row, true)],
+          )
       )
         return [];
       return [
@@ -57,6 +73,8 @@ export function foundingHouseholds(
           residentIds: [],
           occupancy: { ...row.occupancy, playerHome: false, residentCharacterId: null },
           destinations: {},
+          access: undefined,
+          spaces: row.spaces?.map((room) => ({ ...room, access: undefined })),
           privateSpaces: row.privateSpaces?.map((room) => ({ ...room, ownerId: "", access: undefined })),
         },
       ];

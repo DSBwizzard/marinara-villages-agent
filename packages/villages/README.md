@@ -24,7 +24,7 @@ The current package requires **Engine 2.5.0 or later, before 4.0.0**, plus its d
 
 Have a Persona and **one to three characters** ready in your Engine library. Your Persona represents you; the characters become the first residents. Villages keeps its own captured copies of their cards and does not rewrite your originals.
 
-Create or check your model connections in Engine before founding. Choose them on the founding screen's **Place** step:
+Create or check your model connections in Engine before founding. Choose them on the founding screen's **Setting** step:
 
 | Connection    | What it does                                                              |
 | ------------- | ------------------------------------------------------------------------- |
@@ -40,13 +40,18 @@ An image connection is optional. You can start with a simple map or upload one i
 
 ## Found your Village
 
-The setup steps are **Place → People → Map → Venues → Review**.
+The setup steps are **Setting → People → Venues and Map → Review**.
 
-1. **Place:** Name the Village and describe the location, world, and current situation. It can be an established place in good condition; you do not have to begin by rebuilding a ruin.
-2. **People:** Choose your Persona and one to three residents. Write **Your backstory** for your own situation. Optional **Homeworld** and **Add starting note** fields explain each resident's connection to the setting. The **Village world** label can help distinguish shared and different origins.
-3. **Map:** Use the simple starting map, upload artwork, or deliberately generate it. The first map uses the Village's name. For generated artwork, describe the area actually shown, whether it is a building interior or a neighborhood.
-4. **Venues:** Select a Venue on the map or in the selector, then tap the map to move its marker; arrow keys make small adjustments. Pan and zoom as on the in-game Map. **Edit** opens its physical form, Zones and artwork. Added Zones start with blank Used for and Long-term details fields and keep the current tab. **Quick Start** always asks before replacing the Venue drafts with fresh templates: Entrance, Common and Private Zones for each residence, tailored to its resident or your persona; Entrance and Common for the Community Venue, tailored to the Village. Those defaults impose no layout requirements afterward: every Venue needs only its Entrance and may have up to six additional Zones. All Zone details and saved artwork are visible without a first visit. Entry still follows each Zone’s access rules.
-5. **Review:** Resolve the listed setup problems and found the Village. The Village opens automatically once places and local routines are usable. Optional details, personal routines and initial Wishes continue preparing in the background. A resident having no initial Wish is a valid result.
+1. **Setting:** Name the Village and describe its local geography and boundary. Optional standing rules constrain ordinary play. Historical backstory describes its origins; starting circumstances describe current conditions that persist until supported events change them.
+2. **People:** Choose your Persona and one to three residents, with optional personal starting context. Choose separate homes, one shared home, or custom household groups before requesting suggestions. A home holds up to four people, including you. Private sleeping rooms are optional.
+3. **Venues and Map:** Review housing and designate one separate **Community Venue**. It starts unowned, non-residential and public, with Entrance and a usable public common Zone. A campfire or courtyard counts; it need not be a building. Add any other existing infrastructure, including empty or damaged places. Use a simple map, upload artwork or deliberately generate it; place each Venue's marker. **Edit** changes its building and Zones. **Quick Start** requests suggestions for your chosen arrangement. Suggestions never run automatically.
+4. **Review:** Check playable destinations, conditions, household assignments, standing rules and circumstances. Every founder needs exactly one home and an accessible sleeping destination. Every Venue needs connected Zones and descriptions, with Entrance plus at most six Zones. The Village opens at the Community Venue once local routines are usable; optional personal routines and Wishes continue preparing in the background.
+
+Founding describes the start of play. Current Venue and Zone records describe physical conditions thereafter. Restoring part of an abandoned mall changes that same mall; it keeps its identity and any unrestored spaces. Historical descriptions and lorebooks cannot undo the restoration. Resolving a broader circumstance does not repair buildings, remove unrelated restrictions or change standing rules.
+
+The playable world is a local community with at most **16 Venues**. Existing starting infrastructure is playable immediately, subject to its condition and access. Mentioning more farms or saying another mall exists does not add destinations. After Founding, new infrastructure and material alterations use supported actions or Projects. Visiting a place does not construct or restore it. Administrative **REPAIR** remains separate.
+
+The Community Venue's public, unowned status is a starting requirement. Later supported changes can alter its control or use, and damage can disrupt ordinary use while preserving inspection and corrective work.
 
 Map uploads need at least **768 pixels on the shorter side** and **1024 on the longer side**, with proportions between **2:3 and 2:1**. Generation requests an overhead map at 2560 × 1440; providers may return other dimensions.
 
@@ -92,7 +97,7 @@ A Scene is an ongoing interaction within one Venue. It can continue as you move 
 | **Say / Do** | Speak or attempt an action in your current Zone.                         |
 | **Move**     | Travel to a permitted Zone without requesting a generated arrival reply. |
 | **Contact**  | Knock, call, or speak toward an adjacent Zone.                           |
-| **Conclude** | End the Scene.                                                          |
+| **Conclude** | End the Scene.                                                           |
 
 For a first visit, try a greeting and a small action, then ask about the resident's day. Residents can agree, refuse, or suggest something else. A request or a future plan is not automatically a completed change.
 
@@ -126,6 +131,8 @@ Starting history honors the resident cards, your backstory, and selected lore. C
 
 Residents follow routines, and their availability changes through the day. Founding admits the chosen characters; accepted sprite copies and your original library cards stay separate.
 
+Moving into an occupied home requires your incoming resident and every current housemate to agree to the exact destination and sleeping space. Private rooms retain their individual control; shared rooms use household control. Resident moves take 24 Village hours after approval; your own move applies immediately once the required people agree. Changed membership or room availability holds a scheduled move for renewed review. Cancelling releases its reservation.
+
 ### Memories
 
 Memories keep meaningful experiences, information, and open matters. Each belongs to the people who learned it. Mentioning a character does not give that character the information.
@@ -154,7 +161,7 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 
 The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
 
-This build requires a fresh format-13 Village. Older worlds and setup records remain stored and are rejected without conversion.
+This build requires a fresh format-14 Village. Older worlds and setup records remain stored and are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
@@ -170,7 +177,7 @@ Pause or cancellation releases the reserved periods. Resume arranges the remaini
 
 If the lead withdraws or the necessary authority is lost, work pauses. **Resume** requires a willing lead and valid agreements and preserves the remaining time. Completion applies the agreed design automatically. To change the scope after work starts, finish or cancel first. Canceling an unfinished site leaves its captured Scenes available to conclude.
 
-A Venue supports up to six non-Entrance Zones, two Classes, and four residents. Renovation can change its building form and Entrance details as well as selected interior Zones. Building changes require the affected people's agreement and preserve unrelated interiors. Renovation does not automatically move residents, assign jobs, or grant access.
+A Venue supports up to six non-Entrance Zones, two Classes, and four occupants, including the player. Renovation can change its building form and Entrance details as well as selected interior Zones. Building changes require the affected people's agreement and preserve unrelated interiors. Renovation does not automatically move residents, assign jobs, or grant access.
 
 ## Maps, artwork, and sprites
 
@@ -206,14 +213,14 @@ Background work shows progress, failures, and provider-reported usage where avai
 
 ## If something goes wrong
 
-| Problem                       | What to do                                                                                                        |
-| ----------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Founding asks for connections | Select available language connections for both **System** and **Narration**.                                      |
-| A setup suggestion seems lost | Use **Check suggestions** before requesting another result.                                                       |
+| Problem                       | What to do                                                                                                    |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Founding asks for connections | Select available language connections for both **System** and **Narration**.                                  |
+| A setup suggestion seems lost | Use **Check suggestions** before requesting another result.                                                   |
 | Preparation stops             | Fix any connection problem, then retry unfinished work under **REPAIR → Progress**. Completed tasks are kept. |
-| A Scene send fails            | Keep or edit the retained draft. An unchanged submission can reuse saved work.                                    |
-| Saved output needs applying   | Use **Replay saved work** when offered. This applies saved output without buying another interpretation.          |
-| A turn is held with HALT      | Read the notice and rewrite the preserved input. That turn has not become story history.                          |
+| A Scene send fails            | Keep or edit the retained draft. An unchanged submission can reuse saved work.                                |
+| Saved output needs applying   | Use **Replay saved work** when offered. This applies saved output without buying another interpretation.      |
+| A turn is held with HALT      | Read the notice and rewrite the preserved input. That turn has not become story history.                      |
 
 Failures do not automatically purchase replacement responses. Explicit interpretation, replacement, or generation retries may make another model request. A timed-out or interrupted provider request may already have been billed. Saved results reduce repeated work but cannot guarantee that every response survives a hard server crash.
 
@@ -231,6 +238,6 @@ In **General Settings**, choose your connections. **Writing Settings** control p
 
 **Send on Enter** defaults Off. Normally, Enter adds a newline. When enabled, Enter sends and Shift+Enter adds a newline.
 
-Progress saves as you play, and refresh restores it. The current test build uses **Village format 13** and **Scene format 3**. Older worlds, setup records, Scenes and checkpoints require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
+Progress saves as you play, and refresh restores it. The current test build uses **Village format 14** and **Scene format 3**. Older worlds, setup records, Scenes and checkpoints require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
 
 Installed package files remain on the Marinara server, but model-driven play still needs a working connection to your configured provider. Before changing or removing a test installation, arrange a backup and confirm how to keep its world with the server operator. **Reset the village and start over** is a separate destructive action.

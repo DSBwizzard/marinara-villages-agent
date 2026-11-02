@@ -13,7 +13,6 @@ import {
   captureReturnContext,
   departureMemoriesAvailable,
 } from "../packages/villages/src/server/domain/rules/return-catchup-capture.js";
-import { initialOpening } from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { createReturnCatchup } from "../packages/villages/src/server/features/background/return-catchup-service.js";
 import {
   discoverReturnBatch,
@@ -124,21 +123,6 @@ assert.equal(planned.opportunities.length, 1, "Repeated overlapping routines do 
 assert.equal(planned.opportunities[0]!.kind, "encounter");
 assert.deepEqual(planned.opportunities[0]!.actorIds, ["ada", "ben"]);
 assert.ok(Date.parse(planned.opportunities[0]!.startsAt) > now.getTime());
-const openingWorld = structuredClone(frozen);
-openingWorld.venues[0]!.residentIds = ["ada"];
-openingWorld.opening = initialOpening(["ada"], venue.id, "opening");
-openingWorld.opening.stage = "conversations";
-const openingCapture = captureReturnContext(openingWorld, now);
-openingWorld.opening.stage = "complete";
-assert.ok(
-  returnCatchupOpportunities(
-    { ...defaultVillageState(), ...openingCapture.world },
-    now,
-    afterTwoHours,
-    3,
-  ).opportunities.every((row) => !row.actorIds.includes("ada")),
-  "A resident held at an unrevealed opening position cannot be assigned an offscreen event.",
-);
 assert.deepEqual(returnCatchupOpportunities(capture, now, afterTwoHours, 0).opportunities, []);
 assert.deepEqual(returnCatchupOpportunities(capture, now, new Date(now.getTime() + 59 * 60_000), 3).opportunities, []);
 const tracking = { ...defaultVillageState(), ...structuredClone(savedCapture.world), setupAt: now.toISOString() };

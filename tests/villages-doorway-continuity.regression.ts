@@ -24,7 +24,7 @@ state.venues = [
     id: "home",
     name: "Home",
     classes: ["residence"],
-    residentIds: ["buster"],
+    residentIds: ["buster", "other"],
     zones: [
       { ...defaultVenueSpace("other"), id: "exterior", name: "Entrance", kind: "exterior", seen: true },
       { ...defaultVenueSpace("residence"), id: "common", name: "Main Room", kind: "shared-residence" },

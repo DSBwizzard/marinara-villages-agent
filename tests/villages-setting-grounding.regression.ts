@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -189,7 +190,7 @@ async function main() {
       assert.equal(Object.hasOwn(result, "wishes"), false);
       assert.ok(captured.includes(setting));
       assert.ok(captured.includes(circumstances));
-      assert.match(captured, /Starting play does not mean this place has just been established/);
+      assert.match(captured, /history, not current physical state/);
       assert.equal(JSON.stringify(state), before, "prompt assembly does not rewrite saved facts or history");
       if (name === "Denny's") {
         assert.match(current, /ongoing zombie outbreak/);
@@ -225,7 +226,7 @@ async function main() {
     assert.match(map, /Map details take priority over conflicting Village description/);
     assert.match(map, /Map details: No water or decorative buildings/);
     assert.throws(
-      () => buildTownMapPrompt(undefined, "x".repeat(2000), "", null, "s".repeat(600)),
+      () => buildTownMapPrompt(undefined, "x".repeat(4000), "", undefined, "s".repeat(600)),
       /characters over.*no image request was made/,
       "individually valid maximum inputs share a final allowance",
     );
@@ -240,7 +241,8 @@ async function main() {
       setupAt: "2026-10-01T12:00:00Z",
       setting: "An abandoned farm. " + "Fields and trees. ".repeat(40) + "The farmhouse roof leaks.",
       venues: [
-        {
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
           id: "common-room",
           name: "Farmhouse",
           form: "Farmhouse",
@@ -248,7 +250,7 @@ async function main() {
           description: "A farmhouse with a leaking roof",
           spaces: [common],
           playerSeenPublic: true,
-        },
+        }),
       ],
     });
     const farmhouse = farm.venues[0]!;

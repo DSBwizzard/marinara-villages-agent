@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 // Test cases: place-repair/desktop, place-repair/phone
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -35,7 +36,7 @@ await withBrowser(browser, async () => {
         ...defaultVillageState(),
         seed: "place-repair",
         venues: [
-          {
+          venueFixture({
             id: "hall",
             name: "Hall",
             classes: ["community"],
@@ -56,7 +57,7 @@ await withBrowser(browser, async () => {
                 },
               },
             ],
-          },
+          }),
         ],
       });
       const getRecord = () => ({

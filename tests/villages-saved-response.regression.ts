@@ -8,8 +8,6 @@ import {
 } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import { claimSavedResponse } from "../packages/villages/src/server/features/generation/saved-response.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
-import { createFoundingDrafts } from "../packages/villages/src/server/features/founding/founding-drafts-service.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const rows = new Map<string, any>();
 let writes = 0,
@@ -284,79 +282,6 @@ for (const fault of ["before", "after"] as const) {
   }
   assert.equal(calls, callsAtFailure, "Publication failure never silently purchases a replacement");
 }
-
-// The founding application and reusable-result classifier use the same parser and frozen Zone limits.
-let answer: any = {
-  venues: [
-    { id: "hall", addition: "  a flower box  " },
-    { id: "hall", addition: "ignored" },
-    { id: "extra", addition: "ignored" },
-  ],
-};
-let classified = false,
-  projected: any;
-const foundingKeys: string[] = [];
-const founding = createFoundingDrafts({
-  findVillagerCard: async () => null,
-  readLinkedPersona: async () => null,
-  readVillageLore: async () => [],
-  villagesConnectionIdFor: async () => "synthetic",
-  villagesLanguageModels: () => ({
-    resolveForRequest: async () => ({
-      fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
-    }),
-  }),
-  completeWithRoom: async (_model: any, messages: any, _tokens: any, options: any) => {
-    foundingKeys.push(options.savedRequest.key);
-    assert.equal(JSON.parse(messages[1].content).venues[0].spaceDescription, village.venues[0].zones[0].description);
-    const completion = result(JSON.stringify(answer));
-    classified = options.savedRequest.valid(completion);
-    if (classified) {
-      projected = JSON.parse(options.savedRequest.replayContent(completion));
-      return result(JSON.stringify(projected));
-    }
-    return completion;
-  },
-} as any);
-const village = {
-  ...defaultVillageState(),
-  seed: "synthetic",
-  villagers: [],
-  venues: [
-    {
-      id: "hall",
-      name: "Hall",
-      classes: ["community"],
-      occupancy: {},
-      zones: [{ id: "common", kind: "public", description: "Hall interior." }],
-    },
-  ],
-} as any;
-assert.deepEqual(await founding.seedFoundingVenueDetails(village), { hall: { addition: "a flower box" } });
-assert.deepEqual(projected, { venues: [{ id: "hall", addition: "a flower box" }] });
-const originalFoundingKey = foundingKeys.at(-1);
-village.venues[0].zones[0].description = "A revised interior.";
-await founding.seedFoundingVenueDetails(village);
-assert.notEqual(
-  foundingKeys.at(-1),
-  originalFoundingKey,
-  "The frozen acceptance source belongs to the request fingerprint",
-);
-answer = { venues: [{ id: "hall", addition: "x".repeat(4001) }] };
-await assert.rejects(founding.seedFoundingVenueDetails(village), /Shorten/);
-assert.equal(classified, false);
-answer = { venues: [{ id: "hall", addition: "x".repeat(3990) }] };
-await assert.rejects(founding.seedFoundingVenueDetails(village), /complete initial Zone/);
-assert.equal(classified, false);
-answer = { venues: [{ id: "hall", addition: null }] };
-assert.deepEqual(await founding.seedFoundingVenueDetails(village), { hall: { addition: "" } });
-assert.equal(classified, true, "Existing accepted empty/non-string additions remain empty");
-village.venues[0].id = "__proto__";
-answer = { venues: [{ id: "__proto__", addition: "Exact special Venue details" }] };
-const special = await founding.seedFoundingVenueDetails(village);
-assert.equal(Object.hasOwn(special, "__proto__"), true);
-assert.equal(special["__proto__"].addition, "Exact special Venue details");
-assert.deepEqual(projected, { venues: [{ id: "__proto__", addition: "Exact special Venue details" }] });
 
 console.log(
   "Saved responses: deterministic CAS selection, late races, uncertainty, compact settled evidence, 100 diagnostics, exact projection and provider-free replay passed.",

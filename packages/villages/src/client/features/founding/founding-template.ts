@@ -23,9 +23,11 @@ export function startingZone(venue: VillageVenue, personal: boolean) {
       ? "A private space for rest."
       : community
         ? "A shared space for the community."
-        : "A shared space in the residence.",
+        : role === "residence"
+          ? "A shared space in the residence."
+          : "A shared space in this Venue.",
     ownerId,
-    venueClass: role as "community" | "residence",
+    venueClass: role,
     access: {
       ...draftZonePolicy(venue, { ownerId, venueClass: role }, personal),
       ...(personal && community ? { managerIds: ["player"], memberIds: ["player"] } : {}),

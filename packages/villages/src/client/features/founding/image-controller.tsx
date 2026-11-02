@@ -147,8 +147,9 @@ export function createFoundingSetupDraftRow() {
         purpose: "purpose" in area ? area.purpose : "",
         venueClass: area.venueClass,
       })),
-      venueClass: venue.classes?.includes("community") ? "community" : "residence",
-      residentCharacterId: venue.occupancy.residentCharacterId ?? "",
+      venueClass: venue.classes?.[0] ?? "other",
+      residentIds: venue.residentIds ?? [],
+      playerHome: venue.occupancy.playerHome,
     };
   };
 }
@@ -214,7 +215,6 @@ export function createFoundingGenerateSetupImage(ports: {
       setupSetting,
       setupVenuesRef,
       setupContext,
-      snapshot,
       withSetupImage,
     } = ports;
 
@@ -266,14 +266,11 @@ export function createFoundingGenerateSetupImage(ports: {
           zoneName: selectedArea?.name,
           zonePurpose: selectedArea?.purpose,
           zoneAppearance: selectedArea?.description,
-          privateOwnerId:
-            area === "private"
-              ? (selectedArea?.ownerId ?? (venue.occupancy.playerHome ? "player" : venue.occupancy.residentCharacterId))
-              : undefined,
+          privateOwnerId: area === "private" ? selectedArea?.ownerId : undefined,
           privateDescription: description,
-          residentAdmission: venue.occupancy.residentCharacterId
-            ? selectedResidentAdmissions[venue.occupancy.residentCharacterId]
-            : undefined,
+          foundingResidentAdmissions: Object.fromEntries(
+            (venue.residentIds ?? []).map((id) => [id, selectedResidentAdmissions[id]]),
+          ),
           playerPersonaId: personaDraft,
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
@@ -281,9 +278,7 @@ export function createFoundingGenerateSetupImage(ports: {
           useVisualLore: true,
           villageName: setupName,
           setting: setupSetting,
-          foundingHistory: "",
-          worldRules: setupContext.rules,
-          worldFacts: snapshot?.isFounded ? setupContext : [],
+          context: setupContext,
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
         }),

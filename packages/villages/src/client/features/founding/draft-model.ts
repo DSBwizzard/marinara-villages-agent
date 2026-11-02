@@ -1,6 +1,5 @@
 import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 
-/** Stored founding drafts predate the optional workspace navigation field. */
 export type FoundingContext = {
   rules: string;
   history: string;

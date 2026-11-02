@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import {
   fixtureCapturedAdmissions,
@@ -49,7 +50,14 @@ const village = coerceVillageState({
   seed: "events",
   foundedAt: "2026-10-22T18:00:00Z",
   timeZone: "America/New_York",
-  venues: [{ id: "cafe", name: "Cafe", classes: ["community"] }],
+  venues: [
+    venueFixture({
+      residentIds: [null].filter((id) => typeof id === "string" && !!id),
+      id: "cafe",
+      name: "Cafe",
+      classes: ["community"],
+    }),
+  ],
   villagers: ["a", "b"].map((id) => ({
     characterId: id,
     addedAt: "2026-10-22T18:00:00Z",

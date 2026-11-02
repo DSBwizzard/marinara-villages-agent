@@ -377,7 +377,7 @@ assert.equal(calls, beforeTruncation + 1);
 delete replyState.content;
 delete replyState.finishReason;
 
-for (const count of [3, 4, 5]) {
+for (const count of [3, 4, 5, 16]) {
   const venues = Array.from({ length: count }, (_, index) => {
     const venue = newSetupVenue(String(index), index === count - 1 ? "community" : "residence", 0.2, 0.3, index === 0);
     venue.presentation.x = index === 0 ? 0.22 : null;
@@ -413,3 +413,22 @@ for (const patch of [
 console.log(
   "Quick Start: fresh replacement, template defaults, visible villager interiors and one-call generation pass (synthetic model).",
 );
+
+{
+  let paid = 0;
+  const drafts = createFoundingDrafts({
+    villagesLanguageModels: () => {
+      paid++;
+      throw Error("Unexpected model lookup");
+    },
+  } as any);
+  await assert.rejects(
+    drafts.suggestStartingVenues({
+      setting: "A local community",
+      context: {},
+      venues: Array.from({ length: 17 }, (_, i) => ({ id: String(i) })),
+    }),
+    /sixteen/,
+  );
+  assert.equal(paid, 0, "Capacity rejects before any generation");
+}

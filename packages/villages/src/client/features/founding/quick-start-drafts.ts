@@ -36,14 +36,13 @@ export function quickStartTemplates(venues: readonly VillageVenue[]): VillageVen
     const residence = previous.classes?.includes("residence") ?? false;
     const venue = newSetupVenue(
       previous.id,
-      residence ? "residence" : "community",
+      previous.classes?.[0] ?? "other",
       0.5,
       0.5,
       residence && previous.occupancy.playerHome,
       index,
     );
-    venue.occupancy.residentCharacterId =
-      residence && !venue.occupancy.playerHome ? (previous.residentIds?.[0] ?? null) : null;
+    venue.category = previous.category;
     venue.residentIds = previous.residentIds ?? [];
     venue.residenceCapacity = previous.residenceCapacity;
     venue.classes = previous.classes;
@@ -64,28 +63,29 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
     venueType: proposal.venueType,
     form: proposal.form,
     description: proposal.description,
-    layout:
-      residence && (venue.residentIds?.length ?? 0) + Number(venue.occupancy.playerHome) === 1 ? "both" : "common",
-    spaces: [
-      {
-        ...startingZone(venue, false),
-        name: proposal.commonName,
-        purpose: proposal.commonPurpose || (residence ? "Everyday activities" : "Community gatherings"),
-        description: proposal.commonDescription,
-        connectedTo: links("common:base") ?? (residence ? ["exterior", "private:base"] : ["exterior"]),
-      },
-    ],
-    privateSpaces:
-      residence && (venue.residentIds?.length ?? 0) + Number(venue.occupancy.playerHome) === 1
-        ? [
-            {
-              ...startingZone(venue, true),
-              name: proposal.privateName,
-              purpose: proposal.privatePurpose,
-              description: proposal.privateDescription ?? "",
-              connectedTo: links("private:base") ?? ["common:base"],
-            },
-          ]
-        : [],
+    layout: proposal.layout,
+    spaces: ["common", "both"].includes(proposal.layout)
+      ? [
+          {
+            ...startingZone(venue, false),
+            name: proposal.commonName,
+            purpose: proposal.commonPurpose || (residence ? "Everyday activities" : "Community gatherings"),
+            description: proposal.commonDescription,
+            connectedTo:
+              links("common:base") ?? (proposal.layout === "both" ? ["exterior", "private:base"] : ["exterior"]),
+          },
+        ]
+      : [],
+    privateSpaces: ["private", "both"].includes(proposal.layout)
+      ? [
+          {
+            ...startingZone(venue, true),
+            name: proposal.privateName,
+            purpose: proposal.privatePurpose,
+            description: proposal.privateDescription ?? "",
+            connectedTo: links("private:base") ?? [proposal.layout === "private" ? "exterior" : "common:base"],
+          },
+        ]
+      : [],
   };
 }

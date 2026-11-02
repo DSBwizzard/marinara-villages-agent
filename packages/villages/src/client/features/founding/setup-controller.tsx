@@ -96,7 +96,6 @@ export function createFoundingSuggestSetupVenues(ports: {
           venueClass: row.classes?.[0] ?? "other",
           residentIds: row.residentIds ?? [],
           playerHome: row.occupancy.playerHome,
-          residentCharacterId: row.residentIds?.[0] ?? "",
         })),
       });
       if (
@@ -125,7 +124,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           paused: false,
           sections: {},
           zones: {},
-          inactive: undefined,
+          inactive: {},
         }));
         setSetupSuggestionsKey(setupBeginningSourceKey);
         return;

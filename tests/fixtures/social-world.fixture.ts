@@ -67,12 +67,14 @@ export function socialWorldFixture() {
         description: "A simple home.",
         classes: ["residence"],
         residenceCapacity: 2,
+        residentIds: [id],
       },
       null,
     );
     v.residentIds = [id!];
     v.occupancy.residentCharacterId = id!;
     v.residenceCapacity = 2;
+    v.destinations = { [id]: { home: "residence", sleep: "residence" } };
     initializeVenueAccess(v);
     return v;
   });

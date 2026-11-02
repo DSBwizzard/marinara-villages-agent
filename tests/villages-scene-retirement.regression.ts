@@ -56,13 +56,6 @@ await runCase("scene-retirement/eligibility", () => {
     }),
     false,
   );
-  assert.equal(
-    sceneRetirementSourceIsValid({
-      ...closed,
-      submissions: [{ id: "t", at: "2026-01-01", openingSignal: { kind: "unknown" } }],
-    }),
-    false,
-  );
   assert.equal(sceneReadyForRetirement(closed, world, ""), true);
   assert.equal(sceneReadyForRetirement(closed, world, closed.id), false);
   assert.equal(sceneReadyForRetirement({ ...closed, status: "active" }, world, ""), false);

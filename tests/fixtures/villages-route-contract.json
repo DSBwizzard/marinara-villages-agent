@@ -441,14 +441,6 @@
     },
     {
       "method": "post",
-      "path": "/locations/venue"
-    },
-    {
-      "method": "post",
-      "path": "/projects/opening"
-    },
-    {
-      "method": "post",
       "path": "/projects"
     },
     {

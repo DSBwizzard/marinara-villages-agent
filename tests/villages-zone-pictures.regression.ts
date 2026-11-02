@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -21,7 +22,8 @@ function fixture() {
     seed: "pictures",
     foundedAt: "2026-10-29T10:00:00Z",
     venues: [
-      {
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "home",
         name: "Hall",
         classes: ["community"],
@@ -36,7 +38,7 @@ function fixture() {
             image: image("original"),
           },
         ],
-      },
+      }),
     ],
   });
   let stamp = Date.parse("2026-10-29T12:00:00Z"),

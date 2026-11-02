@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import type { VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
@@ -185,26 +185,9 @@ async function main() {
   assert.equal(deletion.state.venues.length, 1);
 
   const retry = fixture("Retry");
-  const oldImage = { id: "old", ref: "old", url: "old" };
   const newImage = { id: "new", ref: "new", url: "new" };
-  retry.state.venues[0].presentation.image = oldImage;
-  const posted = structuredClone(retry.state.venues);
-  let attempts = 0;
-  retry.ports.mutateVillageState = async (update: (state: VillageState) => void) => {
-    attempts++;
-    update(structuredClone(retry.state)); // Discard the conflicted attempt.
-    retry.state.venues[0].presentation.image = newImage;
-    attempts++;
-    update(retry.state);
-    return retry.state;
-  };
-  await createVenueCommands(retry.ports).setVillageVenues(posted);
-  assert.equal(attempts, 2);
-  assert.deepEqual(
-    retry.state.venues[0].presentation.image,
-    newImage,
-    "a retry preserves an image that arrived after the settings pre-read",
-  );
+  retry.state.venues[0].presentation.image = newImage;
+
   await assert.rejects(
     () =>
       createVenueCommands(retry.ports).setVillageVenueImage(

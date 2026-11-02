@@ -168,7 +168,10 @@ export function createLocationImages(ports: LocationImagePorts) {
       village.sceneryArtStyle,
       [
         village.setting ? "Authored place description; later verified state takes precedence: " + village.setting : "",
-        ...currentVillageCircumstances(village).map((fact) => "Current world fact: " + fact),
+        village.worldRules ? "Standing world rules: " + village.worldRules : "",
+        ...currentVillageCircumstances(village, found.venue.id, targetZone.id).map(
+          (fact) => "Current circumstance: " + fact,
+        ),
         `Current physical account: ${venue.description}`,
         ...(onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
           ? sceneryAdmissionContext(village, found.venue)

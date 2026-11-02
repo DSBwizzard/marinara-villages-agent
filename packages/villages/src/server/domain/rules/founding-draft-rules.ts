@@ -1,6 +1,49 @@
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
+import type { FoundingCircumstance } from "../../../shared/contracts/village.js";
+
+export function readFoundingDraftContext(value: unknown): {
+  rules: string;
+  history: string;
+  circumstances: FoundingCircumstance[];
+} {
+  const row = record(value);
+  for (const [field, limit] of [
+    ["rules", 4096],
+    ["history", 2000],
+  ] as const)
+    if (row[field] !== undefined && (typeof row[field] !== "string" || row[field].length > limit))
+      throw badRequest("Use bounded text for founding rules and history.");
+  const circumstances = row.circumstances ?? [];
+  if (!Array.isArray(circumstances) || circumstances.length > 4)
+    throw badRequest("Choose at most four starting circumstances.");
+  return {
+    rules: asTrimmedString(row.rules),
+    history: asTrimmedString(row.history),
+    circumstances: circumstances
+      .filter((value) => record(value).summary !== "")
+      .map((value) => {
+        const item = record(value),
+          summary = asTrimmedString(item.summary),
+          venueId = asTrimmedString(item.venueId),
+          zoneId = asTrimmedString(item.zoneId);
+        if (
+          !summary ||
+          summary.length > 600 ||
+          !["village", "zone"].includes(String(item.scope)) ||
+          (item.scope === "zone" && (!venueId || !zoneId))
+        )
+          throw badRequest("Each starting circumstance needs its scope and up to 600 characters.");
+        return {
+          scope: item.scope as FoundingCircumstance["scope"],
+          summary,
+          venueId: item.scope === "zone" ? venueId : "",
+          zoneId: item.scope === "zone" ? zoneId : "",
+        };
+      }),
+  };
+}
 
 export type FoundingVenueSuggestion = {
   id: string;
@@ -95,15 +138,15 @@ export function parseFoundingVenueSuggestions(
     return {
       id,
       ...(connections === undefined ? {} : { connections: connections as [string, string][] }),
-      name: text("name", 100, true),
-      form: text("form", 240, true),
+      name: text("name", 60, true),
+      form: text("form", 2000, true),
       venueType: text("venueType", 100),
       description: text("description", 4000, true),
       layout: layout as FoundingVenueSuggestion["layout"],
-      commonName: text("commonName", 100, layout === "common" || layout === "both"),
+      commonName: text("commonName", 60, layout === "common" || layout === "both"),
       commonPurpose: text("commonPurpose", 240, !!template && (layout === "common" || layout === "both")),
       commonDescription: text("commonDescription", 4000, layout === "common" || layout === "both"),
-      privateName: text("privateName", 100, layout === "private" || layout === "both"),
+      privateName: text("privateName", 60, layout === "private" || layout === "both"),
       privatePurpose: text("privatePurpose", 240, layout === "private" || layout === "both"),
       ...(layout === "private" || layout === "both"
         ? {
@@ -121,7 +164,6 @@ export type DraftRow = {
   description: string;
   spaceDescription: string;
   venueClass: "residence" | "community" | "workplace" | "other";
-  residentCharacterId: string;
   residentIds: string[];
   playerHome: boolean;
   layout?: string;
@@ -146,13 +188,12 @@ export function rowsOf(value: unknown): DraftRow[] {
       throw badRequest("Zone descriptions must be at most 4000 characters.");
     return {
       id,
-      name: asTrimmedString(row.name).slice(0, 100),
+      name: asTrimmedString(row.name).slice(0, 60),
       venueType: asTrimmedString(row.venueType).slice(0, 100),
-      form: asTrimmedString(row.form).slice(0, 240),
+      form: asTrimmedString(row.form).slice(0, 2000),
       description: asTrimmedString(row.description),
       spaceDescription: asTrimmedString(row.spaceDescription),
       venueClass: venueClass as DraftRow["venueClass"],
-      residentCharacterId: asTrimmedString(row.residentCharacterId).slice(0, 100),
       residentIds:
         Array.isArray(row.residentIds) && row.residentIds.every((id) => typeof id === "string" && id.trim())
           ? (row.residentIds as string[])

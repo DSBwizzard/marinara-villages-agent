@@ -72,7 +72,7 @@ const register = () =>
     },
     apply: (state: any, resultInput: any, result: any) => {
       assert.equal(result.ok, true);
-      state.worldFacts.push("applied");
+      state.name = "Applied";
       applied++;
     },
   });

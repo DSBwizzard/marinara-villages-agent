@@ -1,14 +1,10 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { fixtureWishIdentity, fixtureRelationshipIdentity } from "./helpers/village-storage.fixture.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import assert from "node:assert/strict";
 import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  initialOpening,
-  openingProposalFingerprint,
-  openingSceneDirection,
-} from "../packages/villages/src/server/domain/rules/opening-project.js";
 import { lifecycle } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import { parseRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
@@ -370,8 +366,8 @@ async function main() {
   let behavior: "valid" | "wrong-hash" | "length" | "missing-domain" | "needs-context" | "project-authority" = "valid";
   let lastPacket: any;
   let openingSignal: unknown = null;
-  let gatheringContributions: unknown = undefined;
-  let openingEvents: any = { moves: [], departures: [], contactEnd: [] };
+  const gatheringContributions: unknown = undefined;
+  const openingEvents: any = { moves: [], departures: [], contactEnd: [] };
   let spoofOpening = false;
   const model = {
     model: "fake-system",
@@ -744,7 +740,7 @@ async function main() {
     "x",
   );
   assert.deepEqual(sanitized.memoryChanges, [{ text: "test" }]);
-  const venue = {
+  const venue = venueFixture({
     id: "access-venue",
     name: "House",
     residentIds: ["host"],
@@ -757,7 +753,7 @@ async function main() {
       kind: "restricted",
       ownerId: "host",
     })),
-  } as any;
+  }) as any;
   initializeVenueAccess(venue);
   state.venues.push(venue);
   const accessLine = {
@@ -953,316 +949,6 @@ async function main() {
   assert.equal(generated.lines[0].content, "The room is quiet.");
   assert.equal(generated.semanticProvenance?.version, 2);
   assert.deepEqual(calls, ["narration", "exchange"], "actual Scene writer uses the current two-request pipeline");
-  // Narration cannot advance the opening; only frozen, cited System evidence can.
-  state.opening = initialOpening(["host"], "none", "system-opening");
-  state.opening.stage = "conversations";
-  state.opening.proposals = [
-    {
-      residentId: "host",
-      name: "Sky Terrace",
-      description: "A small shared terrace",
-      situation: "Enjoying the sky",
-      venueClass: "community",
-      established: false,
-      provenance: "The open sky",
-      work: "Arrange a shared observation",
-      firstUse: "Watch the sky together",
-    },
-  ];
-  spoofOpening = true;
-  checkpoints.clear();
-  const forged = await createSceneWriting(writerPorts).generate(
-    scene,
-    "Another ordinary conversation",
-    "chat",
-    "",
-    null,
-  );
-  assert.equal(
-    forged.openingSignal,
-    undefined,
-    "Forged Narration metadata is ignored when System finds no opening event",
-  );
-  scene.activeIds = ["host"];
-  const pitchLine = {
-    speakerId: "host",
-    role: "assistant",
-    kind: "dialogue",
-    content: "We could arrange Sky Terrace for watching the sky together.",
-    heardBy: ["host"],
-  } as any;
-  assert(
-    !openingSceneDirection(state, scene, false).includes("openingSignal"),
-    "Narration receives story direction without semantic output instructions",
-  );
-  openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
-  const pitched = await service.exchange(scene, "Tell me your idea", [pitchLine], null);
-  assert.deepEqual(pitched.effects.openingSignal, openingSignal);
-  assert.deepEqual(pitched.effects.openingContext, { stage: "conversations", projectId: "" });
-  const splitPitch = [
-    { ...pitchLine, kind: "narration", speakerId: "__venue_scene__", content: "The host sets down the plans." },
-    { ...pitchLine, content: "My idea is called Sky Terrace." },
-    { ...pitchLine, content: "We can watch the sky there without blocking the path." },
-    { ...pitchLine, content: "We need to build a low platform and put a railing around it." },
-  ];
-  openingSignal = { kind: "pitch", residentId: "host", segment: 1, quote: "Sky Terrace ... a platform ... sky" };
-  const indexedPitch = await service.exchange(scene, "Pitch spread across speech segments", splitPitch, null);
-  assert.deepEqual(
-    indexedPitch.effects.openingSignal,
-    {
-      kind: "pitch",
-      residentId: "host",
-      quote: splitPitch[1].content,
-      playerQuote: "",
-    },
-    "Code retains exact saved speech without asking the checker to reconstruct the pitch",
-  );
-  const savedIndexed = coerceSession({
-    version: 3,
-    ...scene,
-    submissions: [
-      {
-        id: "greeting",
-        mode: "chat",
-        message: "",
-        at: scene.startedAt,
-        openingSignal: indexedPitch.effects.openingSignal,
-      },
-    ],
-  });
-  assert.deepEqual(
-    savedIndexed.submissions[0].openingSignal,
-    indexedPitch.effects.openingSignal,
-    "Indexed citations reload through the existing saved OpeningSignal format",
-  );
-  const indexedCalls = calls.length;
-  await service.exchange(scene, "Pitch spread across speech segments", splitPitch, null);
-  assert.equal(calls.length, indexedCalls, "Replaying accepted indexed evidence makes no new request");
-  for (const segment of [-1, 0.5, 99, "2", null]) {
-    openingSignal = { kind: "pitch", residentId: "host", segment, quote: pitchLine.content };
-    await assert.rejects(
-      service.exchange(scene, "Invalid opening index " + String(segment), [pitchLine], null),
-      /AI check returned details that do not match/,
-    );
-    assert.equal(
-      rejected.at(-1).options.preserveWriting,
-      true,
-      "An invalid index retains the draft without quote fallback",
-    );
-  }
-  for (const [label, cited] of [
-    ["unheard", { ...pitchLine, contactHidden: true }],
-    ["wrong speaker", { ...pitchLine, speakerId: "other" }],
-    ["narration", { ...pitchLine, kind: "narration" }],
-    ["private thought", { ...pitchLine, kind: "thought" }],
-    ["player speech", { ...pitchLine, role: "user" }],
-    ["sound only", { ...pitchLine, soundOnly: true }],
-  ] as const) {
-    openingSignal = { kind: "pitch", residentId: "host", segment: 1 };
-    await assert.rejects(
-      service.exchange(scene, "Invalid indexed pitch: " + label, [pitchLine, cited] as any, null),
-      /AI check returned details that do not match/,
-    );
-    assert.equal(rejected.at(-1).options.preserveWriting, true, "Only the cited segment may justify the result");
-  }
-  openingSignal = { kind: "pitch", residentId: "host", segment: 0 };
-  const bound = await service.exchange(
-    { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as any,
-    "Bound opening proposal",
-    [pitchLine],
-    null,
-  );
-  assert.equal(
-    (bound.effects.openingContext as any).proposalFingerprint,
-    openingProposalFingerprint(state.opening.proposals[0]),
-    "System binds the actual frozen prepared proposal, never a field supplied by the model",
-  );
-  const boundCalls = calls.length,
-    frozenFingerprint = (bound.effects.openingContext as any).proposalFingerprint;
-  const originalWork = state.opening.proposals[0].work;
-  state.opening.proposals[0].work = "Changed work under the same title";
-  const boundReplay = await service.exchange(
-    { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as any,
-    "Bound opening proposal",
-    [pitchLine],
-    null,
-  );
-  assert.equal(calls.length, boundCalls, "Saved System result is reused without a new request");
-  assert.equal(
-    (boundReplay.effects.openingContext as any).proposalFingerprint,
-    frozenFingerprint,
-    "Replay retains frozen preparation identity",
-  );
-  state.opening.proposals[0].work = originalWork;
-  const beforeReplay = calls.length;
-  state.opening.stage = "ended";
-  await service.exchange(scene, "Tell me your idea", [pitchLine], null);
-  assert.equal(
-    calls.length,
-    beforeReplay,
-    "Saved System opening result replays without another request after context changes",
-  );
-  state.opening.stage = "gathering";
-  openingSignal = undefined;
-  const gathering = await service.exchange(scene, "Ordinary gathering chat", [pitchLine], null);
-  assert.equal(gathering.effects.openingSignal, undefined);
-  assert.deepEqual(gathering.effects.openingContext, { stage: "gathering", projectId: "" });
-  openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
-  await assert.rejects(
-    service.exchange(scene, "Forged gathering pitch", [pitchLine], null),
-    /AI check returned details that do not match/,
-  );
-  state.opening.stage = "conversations";
-  openingSignal = undefined;
-  await assert.rejects(
-    service.exchange(scene, "Missing opening metadata", [pitchLine], null),
-    /opening interpretation is incomplete/,
-  );
-  openingSignal = { kind: "pitch", residentId: "host", quote: "Invented evidence", playerQuote: "" };
-  await assert.rejects(
-    service.exchange(scene, "Invalid opening metadata", [pitchLine], null),
-    /AI check returned details that do not match/,
-  );
-  assert.equal(rejected.at(-1).options.preserveWriting, true, "Invalid System metadata retains the draft");
-  openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
-  await assert.rejects(
-    service.exchange(scene, "Unheard opening metadata", [{ ...pitchLine, contactHidden: true }], null),
-    /AI check returned details that do not match/,
-  );
-  assert.doesNotMatch(
-    systemPrompt,
-    /intent belongs inside|Return \{sourceHash,intent:/,
-    "Legacy exchange prompts do not require combined intent",
-  );
-  state.opening.version = 2;
-  scene.openingIntroductionResidentId = "host";
-  openingSignal = null;
-  await assert.rejects(
-    service.exchange(scene, "Required introduction omitted", [pitchLine], null),
-    /introduction did not explain/,
-  );
-  openingSignal = { kind: "pitch", residentId: "host", quote: "Sky Terrace", playerQuote: "" };
-  const shortPitch = await service.exchange(
-    { ...scene, operation: { input: { semanticPipelineVersion: 3 } } } as any,
-    "Short exact citation",
-    [pitchLine],
-    null,
-  );
-  assert.equal(
-    (shortPitch.effects.openingContext as any).proposalFingerprint,
-    openingProposalFingerprint(state.opening.proposals[0]),
-  );
-  openingEvents = { moves: [{ segment: 1, characterId: "host", zoneId: "next-door" }], departures: [], contactEnd: [] };
-  await assert.rejects(
-    service.exchange(
-      scene,
-      "Moved speaker cannot complete guided introduction",
-      [
-        pitchLine,
-        {
-          speakerId: "__venue_scene__",
-          kind: "narration",
-          content: "The host steps into the next Zone.",
-          heardBy: ["host"],
-        } as any,
-      ],
-      null,
-    ),
-    /introduction did not explain/,
-  );
-  openingEvents = { moves: [], departures: [], contactEnd: [] };
-  delete scene.openingIntroductionResidentId;
-  state.opening.stage = "gathering";
-  state.opening.gatheringSceneId = scene.id;
-  // Real providers can return a redundant individual pitch alongside gathering evidence.
-  openingSignal = { kind: "pitch", residentId: "host", quote: pitchLine.content, playerQuote: "" };
-  const contribution = { residentId: "host", quote: pitchLine.content };
-  for (const [label, rows] of [
-    ["Duplicate contributors", [contribution, contribution]],
-    ["Unsupported quote", [{ ...contribution, quote: "An invented idea" }]],
-    ["Unknown founder", [{ ...contribution, residentId: "unknown" }]],
-  ] as const) {
-    gatheringContributions = rows;
-    await assert.rejects(service.exchange(scene, label, [pitchLine], null), /gathering check could not match/);
-    assert.equal(rejected.at(-1).options.preserveWriting, true, `${label} retains the purchased dialogue`);
-  }
-  const interruptedSpeech = [
-    { ...pitchLine, content: "My backroom has tables, but the dust gets into the—" },
-    { ...pitchLine, speakerId: "__venue_scene__", kind: "narration", content: "His jaw clicks and pauses." },
-    { ...pitchLine, content: "—vents! I could sweep and make room for a gathering." },
-  ] as any;
-  const joinedSpeech = interruptedSpeech
-    .filter((line: any) => line.kind === "dialogue")
-    .map((line: any) => line.content)
-    .join(" ");
-  gatheringContributions = [{ residentId: "host", quote: joinedSpeech }];
-  const interruptedGathering = await service.exchange(scene, "Interrupted founder speech", interruptedSpeech, null);
-  assert.equal((interruptedGathering.effects.openingContext as any).gatheringComplete, true);
-  for (const [label, lines] of [
-    ["unheard speech", [interruptedSpeech[0], interruptedSpeech[1], { ...interruptedSpeech[2], contactHidden: true }]],
-    ["other speaker", [interruptedSpeech[0], interruptedSpeech[1], { ...interruptedSpeech[2], speakerId: "other" }]],
-    ["private thought", [interruptedSpeech[0], { ...interruptedSpeech[1], kind: "thought" }, interruptedSpeech[2]]],
-    ["intervening speaker", [interruptedSpeech[0], { ...pitchLine, speakerId: "other" }, interruptedSpeech[2]]],
-    ["sound only", [interruptedSpeech[0], interruptedSpeech[1], { ...interruptedSpeech[2], soundOnly: true }]],
-  ] as const) {
-    await assert.rejects(service.exchange(scene, label, lines as any, null), /gathering check could not match/);
-    assert.equal(rejected.at(-1).options.preserveWriting, true, "invalid evidence preserves purchased dialogue");
-  }
-  gatheringContributions = [];
-  await assert.rejects(
-    service.exchange(scene, "Gathering missing idea", [pitchLine], null),
-    /gathering did not include/,
-  );
-  gatheringContributions = [{ residentId: "host", quote: pitchLine.content }];
-  const completeGathering = await service.exchange(scene, "Complete gathering ideas", [pitchLine], null);
-  assert.equal((completeGathering.effects.openingContext as any).gatheringComplete, true);
-  assert.equal(completeGathering.effects.openingSignal, null, "A gathering cannot record an individual pitch");
-  assert.equal((completeGathering.effects.openingContext as any).proposalFingerprint, undefined);
-  assert.deepEqual(state.opening.reveals, [], "Gathering completion does not mark individual introductions heard");
-  openingSignal = { kind: "first-use", residentId: "host", quote: pitchLine.content, playerQuote: "invented" };
-  const extraFirstUse = await service.exchange(
-    scene,
-    "Gathering with irrelevant first-use metadata",
-    [pitchLine],
-    null,
-  );
-  assert.equal(extraFirstUse.effects.openingSignal, null, "Gathering metadata cannot finish the tutorial");
-  gatheringContributions = undefined;
-  state.opening.stage = "first-use";
-  state.opening.projectId = "opening-use";
-  state.projects = [
-    {
-      id: "opening-use",
-      status: "complete",
-      venueId: scene.placeId,
-      requesterCharacterId: "host",
-      venueDraft: { description: "Watch the sky together" },
-    },
-  ] as any;
-  const useMessage = "I sit down and watch the sky.";
-  const useResponse = {
-    ...pitchLine,
-    kind: "narration",
-    speakerId: "__venue_scene__",
-    content: "The sky-watching begins as you settle beside the host.",
-  } as any;
-  openingSignal = { kind: "first-use", residentId: "", segment: 0, playerQuote: useMessage };
-  const firstUse = await service.exchange(scene, useMessage, [useResponse], null);
-  assert.deepEqual(firstUse.effects.openingSignal, {
-    kind: "first-use",
-    residentId: "",
-    quote: useResponse.content,
-    playerQuote: useMessage,
-  });
-  await assert.rejects(
-    service.exchange(scene, useMessage, [{ ...useResponse, contactHidden: true }, useResponse], null),
-    /AI check returned details that do not match/,
-  );
-  openingSignal = { kind: "first-use", residentId: "", segment: 0, playerQuote: "Invented participation" };
-  await assert.rejects(
-    service.exchange(scene, "No matching participation", [useResponse], null),
-    /AI check returned details that do not match/,
-  );
   state.projects = [];
   state.opening = undefined;
   scene.activeIds = [];
@@ -2241,7 +1927,7 @@ async function main() {
       "events always includes moves, departures and contactEnd arrays, even when empty; never return events:{}",
     ),
   );
-  assert(systemPrompt.includes("openingSignal:null,memoryChanges:[]"));
+  assert(systemPrompt.includes("memoryChanges:[]"));
   const rootExchangeExample = systemPrompt.slice(
     systemPrompt.indexOf("Return {sourceHash"),
     systemPrompt.indexOf("Return exactly one JSON object."),
@@ -2279,7 +1965,7 @@ async function main() {
   assert(narrationPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("within the player's already occupied public Zone do not change access"));
   assert(systemPrompt.includes("resident-owned concrete desired social outcomes"));
-  assert(systemPrompt.includes("Opening pitches are reported in openingSignal, not projectSpeech."));
+
   assert(systemPrompt.includes('Include literal "player" as a learner ONLY'));
   assert(systemPrompt.includes("new:local-key"));
   assert.doesNotMatch(systemPrompt, /lineIds:\["player",0\]/);
@@ -2483,8 +2169,8 @@ async function main() {
     /coverage/,
   );
   actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
-  const room = venue.zones[0],
-    other = venue.zones[1],
+  const room = venue.zones.find((zone: any) => zone.id === "room")!,
+    other = venue.zones.find((zone: any) => zone.id === "other")!,
     context = { sceneId: scene.id };
   assert.equal(evaluateZoneAccess(venue, room, "player", context).allowed, false);
   const accessCommand = (permitted.access!.checks[0].facts as any).accessCommand;
@@ -2537,7 +2223,7 @@ async function main() {
   );
   actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
   state.villagers = [{ characterId: "host", cardSnapshot: { name: "Host" } }] as any;
-  venue.zones[0].closed = true;
+  venue.zones.find((zone: any) => zone.id === "room")!.closed = true;
   const standingGrant = readResidentActions([makeAction(accessLine.content, { duration: "standing" })]);
   await assert.rejects(
     service.exchange(accessScene, "Closed standing grant", [accessLine], null, standingGrant),
@@ -2565,9 +2251,9 @@ async function main() {
   );
   const legacyVenue = structuredClone(venue);
   delete legacyVenue.access;
-  legacyVenue.zones[0].kind = "private-residence";
-  legacyVenue.zones[0].ownerId = "host";
-  legacyVenue.zones[0].closed = false;
+  legacyVenue.zones.find((zone: any) => zone.id === "room")!.kind = "private-residence";
+  legacyVenue.zones.find((zone: any) => zone.id === "room")!.ownerId = "host";
+  legacyVenue.zones.find((zone: any) => zone.id === "room")!.closed = false;
   const legacyVillage = { ...state, venues: [legacyVenue] },
     relationshipState = defaultRelationshipState(state.seed),
     stamp = scene.startedAt;
@@ -2577,7 +2263,7 @@ async function main() {
     permissions: [{ ...standingRows[0], id: "old-grant", action: "grant" }],
   } as any;
   applyRelationshipReview(relationshipState, standingGrantReview, legacyVillage, "grant", stamp, Date.parse(stamp));
-  legacyVenue.zones[0].closed = true;
+  legacyVenue.zones.find((zone: any) => zone.id === "room")!.closed = true;
   const withdrawalReview = {
     changes: [],
     disclosures: [],
@@ -2593,7 +2279,7 @@ async function main() {
   const once = structuredClone(relationshipState);
   applyRelationshipReview(relationshipState, withdrawalReview, legacyVillage, "revoke", later, Date.parse(later));
   assert.deepEqual(relationshipState, once, "Standing withdrawal replay is idempotent");
-  venue.zones[0].closed = false;
+  venue.zones.find((zone: any) => zone.id === "room")!.closed = false;
   narrativeActions = undefined;
   actionReview = undefined;
   // A greeting has no player input: an empty intent is a no-op, not an unresolved player choice.
@@ -2686,7 +2372,8 @@ async function main() {
       cardSnapshot: { id: characterId, name: characterId },
     })) as any;
     requestState.venues = [
-      {
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "house",
         name: "House",
         classes: ["community"],
@@ -2699,7 +2386,7 @@ async function main() {
           seen: true,
           connectedTo: id === "hall" ? ["exterior", "studio"] : ["hall"],
         })),
-      },
+      }),
     ] as any;
     const requestScene = coerceSession({
       version: 3,

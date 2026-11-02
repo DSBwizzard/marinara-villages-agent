@@ -147,7 +147,7 @@ const venue = parsePlace(
     form: "Apartment",
     description: "A doorway",
     layoutVersion: 1,
-    layout: "both",
+    layout: "common",
     occupancy: { residentCharacterId: "buster", playerHome: false },
     presentation: { x: 0.5, y: 0.5 },
   }),

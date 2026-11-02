@@ -130,6 +130,9 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     uploadSetupImage,
   } = controller;
   const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    rootRef.current?.querySelector(".villages-forging-body")?.scrollTo({ top: 0 });
+  }, [setupStep]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
   const cameraSource = useRef<string | null>(null);
@@ -296,7 +299,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       <div
         className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-home ${ELEMENT_TAG}-setup-root villages-forging-v2`}
         data-step={setupStep}
-        data-map-first={setupStep === 3 ? "true" : undefined}
         ref={rootRef}
       >
         <header className={`${ELEMENT_TAG}-setup-heading villages-forging-heading`}>
@@ -401,7 +403,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         }))
                       }
                     >
-                      {[{ id: "player", name: "Your" }, ...wizardVillagers].map((group) => (
+                      {[
+                        { id: "player", name: "Your" },
+                        ...wizardVillagers,
+                        ...[...new Set(Object.values(setupContext.households))]
+                          .filter((id) => id !== "player" && !wizardVillagers.some((person) => person.id === id))
+                          .map((id, index) => ({ id, name: "Custom household " + (index + 1) })),
+                      ].map((group) => (
                         <option key={group.id} value={group.id}>
                           {group.name} home group
                         </option>
@@ -506,6 +514,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     Standing world rules
                     <textarea
                       aria-label="Standing world rules"
+                      autoComplete="off"
                       maxLength={4096}
                       rows={2}
                       value={setupContext.rules}
@@ -516,6 +525,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     Historical backstory
                     <textarea
                       aria-label="Historical backstory"
+                      autoComplete="off"
                       maxLength={2000}
                       rows={2}
                       value={setupContext.history}
@@ -529,6 +539,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         Circumstance {index + 1}
                         <textarea
                           aria-label={`Starting circumstance ${index + 1}`}
+                          autoComplete="off"
                           rows={2}
                           maxLength={600}
                           value={text.summary}
@@ -839,6 +850,18 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                         }}
                       >
                         <option value="village">Village-wide</option>
+                        {circumstance.scope === "zone" &&
+                        !setupVenues.some(
+                          (venue) =>
+                            venue.id === circumstance.venueId &&
+                            [{ id: "exterior" }, ...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])].some(
+                              (zone) => zone.id === circumstance.zoneId,
+                            ),
+                        ) ? (
+                          <option value={JSON.stringify([circumstance.venueId, circumstance.zoneId])}>
+                            Unavailable Zone — choose a scope
+                          </option>
+                        ) : null}
                         {setupVenues.flatMap((venue) =>
                           [
                             { id: "exterior", name: "Entrance" },
@@ -870,6 +893,12 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               </button>
               <QuickStartVenues
                 venues={setupVenues}
+                communityVenueId={setupContext.communityVenueId}
+                onRemove={(venue) => {
+                  setSetupVenues((rows) => rows.filter((row) => row.id !== venue.id));
+                  setSelectedSetupVenueId(null);
+                  setSetupMapReviewed(false);
+                }}
                 people={wizardVillagers}
                 selectedId={selectedSetupVenueId}
                 state={setupWorkspace}

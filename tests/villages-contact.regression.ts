@@ -87,8 +87,9 @@ const state = defaultVillageState();
 state.seed = "social-fixture";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
-const house = venue("house", ["residence", "workplace"]);
+let house = venue("house", ["residence", "workplace"]);
 house.residentIds = ["messenger", "alex"];
+house.residenceCapacity = 2;
 house.workerIds = ["alex"];
 house.layoutVersion = 1;
 house.zones = [
@@ -104,6 +105,7 @@ house.zones = [
     ownerId: "alex",
   },
 ];
+house = venueFixture(house);
 state.venues = [house];
 state.villagers = [villager("messenger", "house", "common"), villager("alex", "house", "office")];
 const saved = coerceVillageState(state);

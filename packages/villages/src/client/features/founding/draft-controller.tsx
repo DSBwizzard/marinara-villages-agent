@@ -6,7 +6,6 @@ import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { readDeviceDraft, removeDeviceDraft, saveDeviceDraft } from "../../shared/device-drafts.js";
-import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import { useCallback, useEffect } from "react";
 
 export function useFoundingPersistSetupDraft(ports: {
@@ -210,6 +209,9 @@ export function createFoundingRestoreSetupDraft(ports: {
       data.version !== 2 ||
       !data.context ||
       !Array.isArray(data.context.circumstances) ||
+      !data.workspace ||
+      !data.workspace.inactive ||
+      !data.zoneDrafts ||
       !Array.isArray(data.venues) ||
       !Array.isArray(data.roster) ||
       data.roster.length > 3 ||
@@ -226,16 +228,8 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSetupSetting(data.setting);
     setSetupPlayerBackground(data.playerBackground ?? "");
     setSetupContext(data.context);
-    const inactive = { ...data.workspace?.inactive };
-    for (const [id, saved] of Object.entries(data.zoneDrafts ?? {})) {
-      inactive[id] = {
-        ...(saved.common ? { common: [saved.common] } : {}),
-        ...(saved.personal ? { private: [saved.personal] } : {}),
-        ...inactive[id],
-      };
-    }
     setSetupVenues(data.venues);
-    setupZoneDrafts.current = data.zoneDrafts ?? {};
+    setupZoneDrafts.current = data.zoneDrafts;
     setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);
     setSetupResidentAdmissions(data.residentAdmissions ?? {});
@@ -264,14 +258,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSelectedSetupVenueId(data.selectedVenueId);
     setMovingSetupVenueId(data.movingVenueId);
     setSetupEditorOpen(false);
-    setSetupWorkspace({
-      ...(data.workspace ?? {
-        ...emptyFoundingWorkspace(),
-        view: data.editorOpen ? "details" : "map",
-        paused: !!data.editorOpen,
-      }),
-      inactive,
-    });
+    setSetupWorkspace(data.workspace);
     setupEditorOriginal.current = data.editorOriginal;
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;

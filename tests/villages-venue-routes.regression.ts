@@ -21,7 +21,6 @@ for (const path of [
   "/rooms/end",
   "/rooms/leave",
   "/rooms/:id/recovery",
-  "/locations/venue",
   "/locations/venue/:venueId",
   "/locations/venue/image",
   "/locations/venue/:venueId/dependencies",
@@ -31,6 +30,7 @@ for (const path of [
   assert.ok(routes.includes(`"${path}"`), `${path} is exposed`);
 
 for (const retired of [
+  "/locations/venue",
   "/villagers/:characterId/conversation",
   "/villagers/:characterId/greet",
   "/villagers/:characterId/end",

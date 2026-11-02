@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
@@ -73,7 +74,8 @@ world.villagers = people.map(({ id, name }) => ({
   ingestSchedule: false,
 })) as typeof world.villagers;
 world.venues = [
-  {
+  venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: "harbour",
     name: "The Harbour Terrace",
     classes: ["other"],
@@ -102,9 +104,24 @@ world.venues = [
         kind: "public",
         connectedTo: ["terrace", "bedroom"],
       },
-      { ...defaultVenueSpace("other"), id: "bedroom", name: "Bedroom", kind: "restricted", connectedTo: ["kitchen"] },
+      {
+        ...defaultVenueSpace("other"),
+        id: "bedroom",
+        name: "Bedroom",
+        kind: "restricted",
+        connectedTo: ["kitchen"],
+        access: {
+          mode: "permission-required",
+          managerIds: ["distant"],
+          memberIds: ["distant"],
+          memberRoles: [],
+          inviterIds: [],
+          visitorHours: "always",
+          accompanied: false,
+        },
+      },
     ],
-  },
+  }),
 ] as typeof world.venues;
 const village = coerceVillageState(world);
 const scene = coerceSession({
@@ -418,6 +435,19 @@ async function turn(
     ...effects,
     segments,
   };
+  const currentScene = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+  assert.equal(currentScene.statusCode, 200, currentScene.body);
+  if (id === "current-distant-call") {
+    assert.equal(
+      state().sceneAttendance.occupants.find((person) => person.characterId === "distant").zoneId,
+      "bedroom",
+    );
+    assert.equal(
+      state().accompanying?.some((person) => person.characterId === "distant") ?? false,
+      false,
+      "A legally present distant speaker has not exited to Entrance",
+    );
+  }
   const expectedCalls = state().semanticVersion === 2 ? 2 : 1;
   const payload = {
     sessionId: scene.id,
@@ -425,7 +455,7 @@ async function turn(
     mode: "chat",
     targetId: "",
     message,
-    expectedSceneRevision: state().sceneRevision,
+    expectedSceneRevision: currentScene.json().session.sceneRevision,
     ...extra,
   };
   const before = modelCalls;

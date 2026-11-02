@@ -35,7 +35,15 @@ function fixture(name: string) {
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,
-      venues: [venueFixture({residentIds: [null].filter((id) => typeof id === "string" && !!id), id: "venue", name, classes: ["community"], description: name })],
+      venues: [
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          id: "venue",
+          name,
+          classes: ["community"],
+          description: name,
+        }),
+      ],
     });
   initializeVenueAccess(world.venues[0]!);
   const saved = coerceSession({

@@ -582,7 +582,6 @@ await withBrowser(browser, async () => {
         .click();
       await expect(page.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Move here" })).toBeDisabled();
-      await expect(page.getByText("Moving into a shared Residence is not available yet.")).toBeVisible();
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     }
     await page.close();

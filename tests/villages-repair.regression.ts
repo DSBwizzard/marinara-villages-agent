@@ -221,7 +221,7 @@ await runCase("repair/review", async () => {
   );
   const before = await f.read();
   const review = await f.prepare(
-    edit(id, { name: "Willowmere", setting: "Corrected setting", worldName: "", worldFacts: "" }),
+    edit(id, { name: "Willowmere", setting: "Corrected setting", worldName: "", worldRules: "" }),
   );
   assert.equal((await f.read()).setting, before.setting, "Review cannot mutate the world");
   assert.equal(review.changes[0].before, "Original setting");
@@ -233,7 +233,7 @@ await runCase("repair/review", async () => {
   await f.api.apply(undo.id, undo.token);
   assert.equal((await f.read()).setting, before.setting);
   const stale = await f.prepare(
-    edit(id, { name: "Willowmere", setting: "Stale", worldName: "", worldFacts: "" }, "stale"),
+    edit(id, { name: "Willowmere", setting: "Stale", worldName: "", worldRules: "" }, "stale"),
   );
   await f.repo.mutateAuthority((s) => {
     s.setting = "Changed elsewhere";
@@ -876,7 +876,7 @@ await runCase("repair/snapshot-integrity", async () => {
 await runCase("repair/recovery", async () => {
   const f = await fixture();
   const review = await f.prepare(
-    edit(repairId("world"), { name: "Willowmere", setting: "Survives a crash", worldName: "", worldFacts: "" }),
+    edit(repairId("world"), { name: "Willowmere", setting: "Survives a crash", worldName: "", worldRules: "" }),
   );
   let fired = false;
   f.hook((event, id) => {
@@ -894,7 +894,7 @@ await runCase("repair/recovery", async () => {
   const second = await f.prepare(
     edit(
       repairId("world"),
-      { name: "Willowmere", setting: "Control acknowledgment", worldName: "", worldFacts: "" },
+      { name: "Willowmere", setting: "Control acknowledgment", worldName: "", worldRules: "" },
       "control-ack",
     ),
   );
@@ -969,7 +969,7 @@ await runCase("repair/journal-integrity", async () => {
 
   const reviewFixture = await fixture();
   const review = await reviewFixture.prepare(
-    edit(repairId("world"), { name: "Willowmere", setting: "Invalid read set", worldName: "", worldFacts: "" }),
+    edit(repairId("world"), { name: "Willowmere", setting: "Invalid read set", worldName: "", worldRules: "" }),
   );
   const plan = [...reviewFixture.rows.values()].find((r) => r.kind === "repair-plan");
   const transaction = structuredClone(plan.data.transaction);
@@ -1056,7 +1056,7 @@ await runCase("repair/fences", async () => {
   await nested;
   assert.equal((await f.read()).setting, "Saved background response");
   const review = await f.prepare(
-    edit(repairId("world"), { name: "Willowmere", setting: "Guarded", worldName: "", worldFacts: "" }),
+    edit(repairId("world"), { name: "Willowmere", setting: "Guarded", worldName: "", worldRules: "" }),
   );
   await f.api.apply(review.id, review.token);
   await f.repo.mutateAuthority((s) => {
@@ -1080,7 +1080,7 @@ await runCase("repair/fences", async () => {
     })();
   });
   const next = await f.prepare(
-    edit(repairId("world"), { name: "Willowmere", setting: "New epoch", worldName: "", worldFacts: "" }, "new-epoch"),
+    edit(repairId("world"), { name: "Willowmere", setting: "New epoch", worldName: "", worldRules: "" }, "new-epoch"),
   );
   await f.api.apply(next.id, next.token);
   finish();
@@ -1163,23 +1163,17 @@ await runCase("repair/domain-editors", async () => {
       Object.assign(s, model);
       s.memories = f.initial.memories;
       s.seed = "repair-world";
-      s.scenarioImprint = {
-        origin: "Original authoritative founding",
-        worldFacts: [],
-        openingConditions: [],
-        visualCues: [],
-      };
-      s.foundingHistory = "Ignored fallback";
+      s.foundingHistory = "Original authoritative founding";
     },
     { memories: true },
   );
   const opening = await f.api.inspect(repairId("founding"));
   assert.equal(opening.fields[0].value, "Original authoritative founding");
   const founding = await f.prepare(
-    edit(opening.id, { foundingHistory: "Corrected authoritative founding", foundingGuidance: "" }, "fix-founding"),
+    edit(opening.id, { foundingHistory: "Corrected authoritative founding" }, "fix-founding"),
   );
   await f.api.apply(founding.id, founding.token);
-  assert.equal((await f.read()).scenarioImprint?.origin, "Corrected authoritative founding");
+  assert.equal((await f.read()).foundingHistory, "Corrected authoritative founding");
   const place = await f.api.inspect(repairId("venue", "cafe"));
   const values = Object.fromEntries(place.fields.map((field) => [field.key, field.value]));
   values.x = 0.3;
@@ -1225,6 +1219,15 @@ await runCase("repair/domain-editors", async () => {
       kind: "private-residence",
       connectedTo: ["common"],
       ownerId,
+      access: {
+        mode: "permission-required",
+        managerIds: ownerId ? [ownerId] : ["player"],
+        memberIds: ownerId ? [ownerId] : [],
+        memberRoles: [],
+        inviterIds: [],
+        visitorHours: "always",
+        accompanied: false,
+      },
     });
   oldHome.zones!.find((z) => z.id === "bedroom")!.description = "A red scarf rests here.";
   await f.repo.mutateAuthority((s) => {
@@ -1571,7 +1574,7 @@ await runCase("repair/http", async () => {
     const input = {
       ...edit(
         record.id,
-        { name: "Willowmere", setting: "HTTP correction", worldName: "", worldFacts: "" },
+        { name: "Willowmere", setting: "HTTP correction", worldName: "", worldRules: "" },
         "http-repair",
       ),
       expectedRecord: record.token,

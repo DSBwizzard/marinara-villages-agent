@@ -28,6 +28,8 @@ export function QuickStartVenues({
   onUploadImage,
   onArrange,
   onMove,
+  communityVenueId,
+  onRemove,
 }: {
   venues: VillageVenue[];
   people: { id: string; name: string }[];
@@ -46,6 +48,8 @@ export function QuickStartVenues({
   onUploadImage(venue: VillageVenue, area: "exterior" | "interior" | "private", file: File, zoneId?: string): void;
   onArrange(): void;
   onMove(venue: VillageVenue | null): void;
+  communityVenueId?: string;
+  onRemove?(venue: VillageVenue): void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const mapDetails = useRef<HTMLElement>(null);
@@ -289,11 +293,38 @@ export function QuickStartVenues({
               {tab === "venue" ? (
                 <>
                   <fieldset className="villages-quick-venue-fields" disabled={busy || imageBusy}>
+                    {!selected.occupancy.playerHome &&
+                    !selected.residentIds?.length &&
+                    !selected.workerIds?.length &&
+                    selected.id !== communityVenueId ? (
+                      <label>
+                        Venue Class
+                        <select
+                          aria-label="Venue Class"
+                          value={selected.classes?.[0] ?? "other"}
+                          onChange={(event) => {
+                            const role = event.target.value as NonNullable<VillageVenue["classes"]>[number];
+                            onPatch({
+                              ...selected,
+                              classes: [role],
+                              spaces: selected.spaces?.map((zone) => ({ ...zone, venueClass: role })),
+                              privateSpaces: selected.privateSpaces?.map((zone) => ({ ...zone, venueClass: role })),
+                            });
+                          }}
+                        >
+                          <option value="other">Other</option>
+                          <option value="residence">Residence</option>
+                          <option value="community">Community</option>
+                          <option value="workplace">Workplace</option>
+                        </select>
+                      </label>
+                    ) : null}
                     {selected.classes?.includes("residence") ? (
                       <label>
                         Resident capacity
                         <input
                           aria-label="Resident capacity"
+                          autoComplete="off"
                           type="number"
                           min={1}
                           max={4}
@@ -308,7 +339,7 @@ export function QuickStartVenues({
                         autoComplete="off"
                         aria-label="Venue Name"
                         {...errorProps("name")}
-                        maxLength={100}
+                        maxLength={60}
                         value={selected.name}
                         onChange={(event) => onPatch({ ...selected, name: event.target.value })}
                       />
@@ -320,13 +351,29 @@ export function QuickStartVenues({
                         autoComplete="off"
                         aria-label="Physical Form"
                         {...errorProps("form")}
-                        maxLength={240}
+                        maxLength={2000}
                         value={selected.form ?? ""}
                         onChange={(event) => onPatch({ ...selected, form: event.target.value })}
                       />
                       {fieldError("form")}
                     </label>
                   </fieldset>
+                  {onRemove &&
+                  selected.id !== communityVenueId &&
+                  !selected.occupancy.playerHome &&
+                  !selected.residentIds?.length &&
+                  !selected.workerIds?.length ? (
+                    <button
+                      type="button"
+                      disabled={busy || imageBusy}
+                      onClick={() => {
+                        onRemove(selected);
+                        close();
+                      }}
+                    >
+                      Remove Venue
+                    </button>
+                  ) : null}
                   <FoundingConnections
                     venue={selected}
                     onPatch={onPatch}

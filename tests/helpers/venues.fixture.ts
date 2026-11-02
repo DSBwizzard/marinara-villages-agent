@@ -27,6 +27,8 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
     classes: ["other"],
     residenceCapacity: Math.max(1, (input.residentIds?.length ?? 0) + Number(!!input.occupancy?.playerHome)),
     spaces: [],
+    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+    presentation: { mapId: "", image: null, x: null, y: null },
     ...input,
     layoutVersion: 1,
   } as VillageVenue;
@@ -42,7 +44,11 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
     seen: true,
   };
   const common = (
-    venue.spaces?.length ? venue.spaces : venue.classes!.map((role) => defaultVenueSpace(role, venue.description))
+    venue.spaces?.length
+      ? venue.spaces
+      : ["private", "exterior"].includes(String((venue as any).layout))
+        ? []
+        : venue.classes!.map((role) => defaultVenueSpace(role, venue.description))
   ).map((space) => ({
     ...space,
     name: "Common Space",
@@ -64,10 +70,18 @@ export function venueFixture(input: Partial<VillageVenue>): VillageVenue {
         : [entrance, ...venue.zones]
       : [entrance, ...common, ...personal],
   );
+  venue.zones = venue.zones.map((zone) =>
+    zone.kind !== "exterior" && zone.connectedTo?.length === 0 ? { ...zone, connectedTo: ["exterior"] } : zone,
+  );
+  venue.spaces = venue.zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+  venue.privateSpaces = venue.zones
+    .filter((zone) => zone.kind === "private-residence")
+    .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
   initializeVenueAccess(venue);
   return venue;
 }
 
+const asRecord = (value: unknown) => (value && typeof value === "object" ? (value as Record<string, unknown>) : {});
 export function venueDraftFixture(value: unknown, existing: VillageVenue | null): VillageVenue {
   return venueFixture(venueDraft(value, existing));
 }
@@ -154,7 +168,7 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
     classes,
     spaces,
     residenceCapacity,
-    residentIds: existing ? venueResidentIds(existing) : [],
+    residentIds: existing ? venueResidentIds(existing) : venueStringList(record.residentIds, []),
     playerInvitations: existing?.playerInvitations ?? [],
     exteriorState: existing?.exteriorState,
     privateSpaces: existing?.privateSpaces,
@@ -171,7 +185,11 @@ function venueDraft(value: unknown, existing: VillageVenue | null): VillageVenue
       x: position.x,
       y: position.y,
     },
-    occupancy: existing?.occupancy ?? { playerHome: false, residentCharacterId: null, homeKind: null },
+    occupancy: existing?.occupancy ?? {
+      playerHome: asRecord(record.occupancy).playerHome === true,
+      residentCharacterId: null,
+      homeKind: null,
+    },
     capabilities: venueStringList(record.capabilities, existing?.capabilities ?? []),
     workerIds: venueStringList(record.workerIds, existing?.workerIds ?? []),
     state: existing?.state ?? { revision: 0, updatedAt: "", recent: null },

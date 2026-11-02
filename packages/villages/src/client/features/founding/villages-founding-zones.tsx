@@ -65,8 +65,9 @@ export function draftZonePolicy(
   personal = false,
 ): ZoneAccessPolicy {
   const owner = area.ownerId || (venue.occupancy.playerHome ? "player" : venue.residentIds?.[0] || "");
+  const occupied = venue.occupancy.playerHome || !!venue.residentIds?.length || !!venue.workerIds?.length;
   return {
-    mode: area.venueClass === "residence" || personal ? "permission-required" : "public",
+    mode: occupied && (area.venueClass === "residence" || personal) ? "permission-required" : "public",
     managerIds: personal && owner ? [owner] : null,
     memberIds: personal && owner ? [owner] : [],
     memberRoles:

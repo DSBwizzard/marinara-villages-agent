@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -64,7 +65,8 @@ function fixture(count: number) {
     foundedAt: stamp,
     setupAt: stamp,
     venues: [
-      {
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "hall",
         layoutVersion: 1,
         name: "Hall",
@@ -74,26 +76,28 @@ function fixture(count: number) {
           zone("a", "public", ["exterior", "b"]),
           zone("b", "public", ["a"]),
         ],
-      },
-      ...Array.from({ length: Math.ceil((count + 1) / 4) }, (_, i) => ({
-        id: "home" + i,
-        layoutVersion: 1,
-        residenceCapacity: 4,
-        name: "Home " + i,
-        classes: ["residence"],
-        occupancy: { playerHome: i === 0, homeKind: "house", residentCharacterId: null },
-        residentIds: ids.filter((_, index) => Math.floor((index + 1) / 4) === i),
-        zones: [
-          zone("exterior", "exterior", ["common"]),
-          zone("common", "shared-residence", ["exterior", "private"]),
-          zone(
-            "private",
-            "private-residence",
-            ["common"],
-            ids.find((_, index) => Math.floor((index + 1) / 4) === i),
-          ),
-        ],
-      })),
+      }),
+      ...Array.from({ length: Math.ceil((count + 1) / 4) }, (_, i) =>
+        venueFixture({
+          id: "home" + i,
+          layoutVersion: 1,
+          residenceCapacity: 4,
+          name: "Home " + i,
+          classes: ["residence"],
+          occupancy: { playerHome: i === 0, homeKind: "house", residentCharacterId: null },
+          residentIds: ids.filter((_, index) => Math.floor((index + 1) / 4) === i),
+          zones: [
+            zone("exterior", "exterior", ["common"]),
+            zone("common", "shared-residence", ["exterior", "private"]),
+            zone(
+              "private",
+              "private-residence",
+              ["common"],
+              ids.find((_, index) => Math.floor((index + 1) / 4) === i),
+            ),
+          ],
+        }),
+      ),
     ],
     villagers: ids.map((id, i) => ({
       characterId: id,
@@ -202,6 +206,15 @@ assert.equal(
     id: "hidden",
     name: "Unseen archive",
     kind: "restricted",
+    access: {
+      mode: "permission-required",
+      managerIds: [],
+      memberIds: [],
+      memberRoles: [],
+      inviterIds: [],
+      visitorHours: "always",
+      accompanied: false,
+    },
     connectedTo: ["a"],
     ownerId: ids[0],
   });

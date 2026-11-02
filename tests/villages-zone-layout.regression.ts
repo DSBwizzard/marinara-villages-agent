@@ -111,7 +111,15 @@ assert.throws(
   /managers/,
   "A Venue manager cannot rewire independently managed private boundaries",
 );
-delete zone.access;
+zone.access = {
+  mode: "public",
+  managerIds: ["player"],
+  memberIds: [],
+  memberRoles: [],
+  inviterIds: [],
+  visitorHours: "always",
+  accompanied: false,
+};
 state.projects.push({ venueId: venue.id, lifecycle: { phase: "planning" } } as VillageProject);
 assert.throws(() => applyVenueZoneLayout(state, venue, unauthorized), /current Venue project/);
 state.projects = [];
@@ -182,7 +190,7 @@ assert.deepEqual(
 );
 assert.throws(
   () => parsePlace({ ...home, zoneLayout: { ...home.zoneLayout, [homeIds[1]]: home.zoneLayout!.exterior } }, true),
-  /without overlapping/,
+  /valid and distinct/,
 );
 assert.deepEqual(
   zoneSoundRange(snapshot, venue, "exterior"),

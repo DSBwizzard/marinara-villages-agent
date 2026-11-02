@@ -81,6 +81,7 @@ const narrative = createNarrative({
       severity: failApply ? "moderate" : "gentle",
       occurrence: "Drizzle collects beneath a window.",
       situation: {
+        scope: "zone",
         id: null,
         expectedRevision: 0,
         title: "Drizzle",

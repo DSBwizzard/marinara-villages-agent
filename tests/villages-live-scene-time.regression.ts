@@ -38,8 +38,20 @@ function fixture(live = true) {
     foundedAt: "2026-11-01T00:00:00Z",
     timeZone: "UTC",
     venues: [
-      venueFixture({residentIds: [null].filter((id) => typeof id === "string" && !!id), id: "garden", name: "Garden", classes: ["community"], description: "Garden benches" }),
-      venueFixture({residentIds: [null].filter((id) => typeof id === "string" && !!id), id: "work", name: "Café", classes: ["workplace"], description: "A café" }),
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
+        id: "garden",
+        name: "Garden",
+        classes: ["community"],
+        description: "Garden benches",
+      }),
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
+        id: "work",
+        name: "Café",
+        classes: ["workplace"],
+        description: "A café",
+      }),
     ],
     villagers: ["Maya", "Jimmy"].map((name) => ({
       characterId: name.toLowerCase(),

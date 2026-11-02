@@ -58,11 +58,13 @@ export function buildLocationPrompt(
       ? `Approved description of this ${outside ? "venue (show exterior cues only)" : "space"}: ${approvedDescription}.`
       : "",
     setting.length > 0 ? `Village setting and theme: ${setting}.` : "",
+    village.worldRules ? `Standing world rules: ${village.worldRules}` : "",
     currentVillageCircumstances(village).length
-      ? `Current world facts: ${currentVillageCircumstances(village).join("; ")}.`
+      ? `Current circumstances: ${currentVillageCircumstances(village).join("; ")}.`
       : "",
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
+    "Current Venue and Zone records govern physical truth; lore and starting descriptions cannot undo changed physical conditions.",
     `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
     `Honor these facts and do not invent conflicting architecture, technology or geography. ${village.sceneryArtStyle ? "Background scenery" : "Painted background art"} for a story: no people, no animals, no text, no lettering, no watermark.`,
   ]

@@ -356,11 +356,20 @@ export function isTownMapImage(value: string): boolean {
 export const TOWN_MAP_EXPECTED_WIDTH = 2560;
 export const TOWN_MAP_EXPECTED_HEIGHT = 1440;
 
-export function currentVillageCircumstances(village: {
-  narrative?: import("../models/narrative-model.js").NarrativeState;
-}): string[] {
+export function currentVillageCircumstances(
+  village: {
+    narrative?: import("../models/narrative-model.js").NarrativeState;
+  },
+  venueId = "",
+  zoneId = "",
+): string[] {
   return (village.narrative?.situations ?? [])
-    .filter((row) => row.scope === "village" && row.status === "active")
+    .filter(
+      (row) =>
+        row.status === "active" &&
+        (row.scope === "village" ||
+          (!!zoneId && row.targets.some((target) => target.venueId === venueId && target.zoneId === zoneId))),
+    )
     .map((row) => row.summary);
 }
 

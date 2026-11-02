@@ -201,6 +201,23 @@ export async function verifyFoundingLayout(group) {
                   ? "Review village"
                   : "Found village",
           ).scrollIntoViewIfNeeded();
+          if (phase === "venues") {
+            const map = root.locator(".villages-quick-map");
+            assert.ok((await map.boundingBox()).height >= 200, "The actual playable map remains visible on phones");
+            await map.scrollIntoViewIfNeeded();
+          }
+          if (phase === "review") {
+            assert.equal(
+              await root.evaluate((element) => getComputedStyle(element).overflowY),
+              "auto",
+              "Review remains scrollable",
+            );
+            const community = root.locator("details").filter({ hasText: "Community Courtyard" });
+            await community.locator("summary").click();
+            await community
+              .getByText("Community Venue · public and unowned at Founding", { exact: true })
+              .scrollIntoViewIfNeeded();
+          }
           if (process.env.VILLAGES_SCREENSHOT_DIR)
             await page.screenshot({
               path: resolve(

@@ -5,7 +5,7 @@ import { validateStartingVenue } from "./founding-template.js";
 import { isGlobalGalleryRef, MAX_VENUE_IMAGE_URL_LENGTH, MAX_VENUE_NAME_LENGTH } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readPlaceDescription } from "./zone-continuity.js";
-import { initializeVenueAccess, readVenueAccess } from "./venue-access.js";
+import { defaultZonePolicy, initializeVenueAccess, readVenueAccess } from "./venue-access.js";
 import { readPlacePosition } from "./venue-authoring.js";
 import { readBaseVenueLayout } from "./venue-layout.js";
 import { validVenueClasses } from "./venue-model.js";
@@ -110,6 +110,10 @@ export function parsePlace(value: unknown): VillageVenue {
     if (!layout) throw badRequest("Zone positions must be valid and distinct.");
     result.zoneLayout = layout;
   }
+  if (!household.length && !workerIds.length)
+    for (const zone of zones)
+      if (zone.kind !== "exterior" && !zone.access)
+        zone.access = { ...defaultZonePolicy(result, zone), mode: "public" };
   initializeVenueAccess(result);
   for (const zone of zones)
     if (zone.ownerId && JSON.stringify(zone.access?.managerIds) !== JSON.stringify([zone.ownerId]))
@@ -188,7 +192,11 @@ export function parsePlaces(
   if (
     community.access!.managerIds.length ||
     community.access!.visitorHours !== null ||
-    community.access!.bans.some((ban) => ban.active)
+    community.access!.bans.some((ban) => ban.active) ||
+    community.zones!.some(
+      (zone) =>
+        zone.ownerId || zone.controllerIds?.length || zone.access?.managerIds?.length || zone.access?.inviterIds.length,
+    )
   )
     throw badRequest("The starting Community Venue must be unowned and always open.");
   const common = community.zones!.find(

@@ -1411,7 +1411,8 @@ export function createRepairService(ports: RepairPorts) {
     const summarize = (world: VillageState) => [
       { label: "Village", value: world.name },
       { label: "Setting", value: world.setting },
-      { label: "World facts", value: currentVillageCircumstances(world).join("\n") },
+      { label: "Current circumstances", value: currentVillageCircumstances(world).join("\n") },
+      { label: "Standing rules", value: world.worldRules },
       { label: "Starting history", value: world.foundingHistory },
       { label: "Residents", value: world.villagers.map((p) => p.cardSnapshot.name).join(", ") },
       { label: "Memories", value: String(world.memories.records.length) },

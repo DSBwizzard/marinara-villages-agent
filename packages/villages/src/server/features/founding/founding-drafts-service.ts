@@ -35,6 +35,7 @@ import {
   type DraftRow,
   record,
   rowsOf,
+  readFoundingDraftContext,
 } from "../../domain/rules/founding-draft-rules.js";
 
 export type FoundingDraftsServicePorts = {
@@ -69,7 +70,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const quickStart = input.mode === "quick-start";
     if (input.mode !== undefined && !quickStart) throw badRequest("Choose a valid Venue suggestion mode.");
     const setting = asTrimmedString(input.setting);
-    const circumstances = asTrimmedString(input.foundingHistory);
+    const context = readFoundingDraftContext(input.context);
+    const circumstances = context.history;
     if (!setting || setting.length > MAX_SETTING_LENGTH || circumstances.length > 2000)
       throw badRequest("Describe the place first.");
     const rows = rowsOf(input.venues);
@@ -94,7 +96,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     if (targetId && (!quickStart || !rows.some((row) => row.id === targetId)))
       throw badRequest("Choose a required starting Venue to regenerate.");
     const requestedRows = targetId ? rows.filter((row) => row.id === targetId) : rows;
-    const context = record(input.context);
     const worldRules = asTrimmedString(context.rules);
     const currentCircumstances = Array.isArray(context.circumstances)
       ? context.circumstances.map((row) => asTrimmedString(record(row).summary)).filter(Boolean)
@@ -148,7 +149,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned household member. Describe the space and ordinary furnishings, not private thoughts or secrets. The explicit playerHome flag identifies the player's home; residentIds identifies its other household members.",
             'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
             'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
-            "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 100 characters, form/purpose at most 240 and descriptions at most 4000.",
+            "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 60 characters, purpose at most 240, form at most 2000 and descriptions at most 4000.",
             `Return exactly ${requestedRows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Return only the requested template rows.`,
           ].join("\n"),
         },
@@ -227,16 +228,21 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
 
   async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {
     const input = record(value);
-    const row = (await withResident(rowsOf([input.venue])[0]!)) as Awaited<ReturnType<typeof withResident>> & {
-      venueType?: string;
-    };
-    const admission =
-      input.residentAdmission === undefined
-        ? undefined
-        : readFoundingResidentAdmissions({ [row.residentCharacterId]: input.residentAdmission }, [
-            row.residentCharacterId,
-          ])[row.residentCharacterId];
+    const context = readFoundingDraftContext(input.context);
+    const row = rowsOf([input.venue])[0]! as DraftRow & { venueType?: string };
     const area = input.area === "private" ? "private" : input.area === "interior" ? "interior" : "exterior";
+    const owner = asTrimmedString(input.privateOwnerId);
+    if (area === "private" && owner && !(owner === "player" ? row.playerHome : row.residentIds.includes(owner)))
+      throw badRequest("Choose this private room's assigned household member.");
+    const selectedIds = area === "private" ? (owner && owner !== "player" ? [owner] : []) : row.residentIds;
+    const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, row.residentIds);
+    const cards = await Promise.all(
+      selectedIds.map(async (id) => {
+        const card = await findVillagerCard(id);
+        if (!card) throw badRequest("Choose a villager who is still in the library.");
+        return { ...card, admission: admissions[id] };
+      }),
+    );
     if (
       [input.zoneAppearance, input.privateDescription].some((value) => typeof value === "string" && value.length > 4000)
     )
@@ -258,11 +264,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest("Image context controls must be on or off.");
     const persona =
       area === "private" && input.privateOwnerId === "player" ? await readLinkedPersona(input.playerPersonaId) : null;
-    const character = persona
-      ? `${persona.name}; ${persona.identity.slice(0, 900)}`
-      : personality && row.resident
-        ? sceneryCardsContext([row.resident])
-        : "";
+    const character = !personality
+      ? ""
+      : persona
+        ? `${persona.name}; ${persona.identity.slice(0, 900)}`
+        : sceneryCardsContext(cards);
     if (
       (row.layout === "exterior" && area !== "exterior") ||
       (row.layout === "private" && area === "interior") ||
@@ -270,11 +276,10 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     )
       throw badRequest("That area is absent from the selected layout.");
     if (!areaDescription) throw badRequest(`Add an ${area} description before generating its image.`);
-    const context = record(input.context);
     const setting = [
       asTrimmedString(input.setting),
       asTrimmedString(input.worldName).slice(0, 120),
-      admission?.homeworld ?? "",
+      ...cards.map((card) => card.admission?.homeworld ?? ""),
       asTrimmedString(context.rules),
     ]
       .filter(Boolean)
@@ -310,14 +315,30 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       [
         character ? `Occupant context, reflect preferences in the space without depicting people: ${character}.` : "",
         lore ? `Established lore: ${lore}.` : "",
-        asTrimmedString(input.foundingHistory)
-          ? `Starting circumstances where visually relevant: ${asTrimmedString(input.foundingHistory).slice(0, 600)}`
-          : "",
+        ...(Array.isArray(context.circumstances)
+          ? context.circumstances
+              .filter((value) => {
+                const situation = record(value);
+                return (
+                  situation.scope === "village" ||
+                  (situation.scope === "zone" && situation.venueId === row.id && situation.zoneId === input.zoneId)
+                );
+              })
+              .map(
+                (value) =>
+                  "Current circumstance where visually relevant; current physical details remain authoritative: " +
+                  asTrimmedString(record(value).summary),
+              )
+          : []),
       ],
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
       [
         "Place: " + setting,
-        ...(personality && row.resident && admission ? [renderResidentAdmission(row.resident.name, admission)] : []),
+        ...(personality
+          ? cards
+              .filter((card) => card.admission?.homeworld || card.admission?.startingSituation)
+              .map((card) => renderResidentAdmission(card.name, card.admission))
+          : []),
       ],
     );
     const decoded = await generateVillageImage({
@@ -351,25 +372,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       name: asTrimmedString(input.name) || "Founding venue",
       prompt: "",
     });
-  }
-
-  async function withResident(row: DraftRow) {
-    const card = row.residentCharacterId ? await findVillagerCard(row.residentCharacterId) : null;
-    if (row.residentCharacterId && !card) throw badRequest("Choose a villager who is still in the library.");
-    return {
-      ...row,
-      resident: card
-        ? {
-            admissionContext: renderResidentAdmission(card.name, card.admission),
-            name: card.name,
-            summary: card.summary.slice(0, 400),
-            description: card.description.slice(0, 600),
-            personality: card.personality.slice(0, 400),
-            backstory: card.backstory.slice(0, 400),
-            appearance: card.appearance.slice(0, 300),
-          }
-        : null,
-    };
   }
 
   return { suggestStartingVenues, generateFoundingVenueImage, uploadFoundingVenueImage };

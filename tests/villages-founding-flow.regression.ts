@@ -1,3 +1,5 @@
+import { createFoundingRestoreSetupDraft } from "../packages/villages/src/client/features/founding/draft-controller.js";
+import { emptyFoundingWorkspace } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import type {
   CapabilityDocumentStore,
@@ -752,7 +754,17 @@ async function foundingArchitecturePrompts() {
     throw new Error("Unexpected provider or catalog request");
   };
   const service = createFoundingDrafts({
-    findVillagerCard: async () => null,
+    findVillagerCard: async (id) =>
+      ({
+        id,
+        name: "Resident",
+        summary: "A reader.",
+        description: "A reader.",
+        personality: "Quiet",
+        backstory: "",
+        appearance: "",
+        tags: [],
+      }) as any,
     readLinkedPersona: async () => null,
     readVillageLore: unused,
     readVillageVisualLore: async () => "",
@@ -773,6 +785,8 @@ async function foundingArchitecturePrompts() {
     id: "bungalow",
     name: "Professor Mari's Bungalow",
     venueClass: "residence",
+    residentIds: ["resident"],
+    playerHome: true,
     form: "A pleasant resort bungalow",
     description: "A small timber bungalow with a low roof.",
     spaceDescription: "A desk under the window.",
@@ -860,3 +874,39 @@ await main()
     console.error(error);
     process.exitCode = 1;
   });
+
+{
+  const values: Record<string, unknown> = {};
+  const setters = new Proxy(
+    {
+      setupEditorOriginal: { current: null },
+      setupEditorAuthoredOriginal: { current: [] },
+      setupEditorZoneOriginal: { current: null },
+      setupZoneDrafts: { current: {} },
+      loadCatalog: async () => {},
+      loadLorebooks: async () => {},
+      loadPersonas: async () => {},
+    },
+    {
+      get(target, key: string) {
+        return key in target
+          ? target[key]
+          : (value) => {
+              values[key] = value;
+            };
+      },
+    },
+  );
+  const draft = {
+    version: 2,
+    context: { rules: "", history: "", circumstances: [], communityVenueId: "community", households: {} },
+    workspace: emptyFoundingWorkspace(),
+    zoneDrafts: {},
+    venues: [],
+    roster: [],
+    step: 0,
+  } as any;
+  createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
+  assert.equal(values.setScreen, "setup", "A freshly serialized v2 draft resumes without old-format backfill");
+  assert.deepEqual(values.setSetupWorkspace, draft.workspace);
+}

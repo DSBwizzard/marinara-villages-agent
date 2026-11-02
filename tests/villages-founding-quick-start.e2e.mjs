@@ -27,7 +27,7 @@ import {saveDeviceDraft,readDeviceDraft} from './packages/villages/src/client/sh
 function Harness(){
   const initial=()=>arrangeQuickStartVenues(['player','buster','feddy','mira','community'].map((id,index)=>{
     const row=newSetupVenue(id,id==='community'?'community':'residence',.5,.5,id==='player');
-    return {...row,presentation:{...row.presentation,x:null,y:null},occupancy:{...row.occupancy,residentCharacterId:index>0&&index<4?id:null},privateSpaces:row.privateSpaces?.map(zone=>({...zone,ownerId:id}))};
+    return {...row,presentation:{...row.presentation,x:null,y:null},residentIds:index>0&&index<4?[id]:[],occupancy:{...row.occupancy,residentCharacterId:null},privateSpaces:row.privateSpaces?.map(zone=>({...zone,ownerId:id}))};
   }));
   const [venues,setVenues]=useState(initial),[workspace,setWorkspace]=useState(emptyFoundingWorkspace),[selected,setSelected]=useState(null);
   const [busy,setBusy]=useState(false),[suggestionsKey,setKey]=useState(''),[problem,setProblem]=useState(''),[source,setSource]=useState('coast');
@@ -37,15 +37,15 @@ function Harness(){
   const persist=async()=>{const result=await saveDeviceDraft('quick-start',{venues,workspace,authored,suggestionsKey},revision.current);revision.current=result.revision;setSaved(true)};
   useEffect(()=>{readDeviceDraft('quick-start').then(draft=>{if(draft){revision.current=draft.revision;setVenues(draft.data.venues);setWorkspace(draft.data.workspace);setAuthored(draft.data.authored);setKey(draft.data.suggestionsKey)}})},[]);
   window.quickState={venues,workspace,authored,suggestionsKey,problem};window.persist=persist;window.changeContext=()=>setSource('new setting');window.clearProblem=()=>setProblem('');
-  const suggest=createFoundingSuggestSetupVenues({setupWorkspace:workspace,setSetupWorkspace:setWorkspace,onQuickStartApplied:()=>{setAuthored({});authoredRef.current={};setSelected(null)},setupDraftData:{venues,workspace,authored,suggestionsKey},persistSetupDraft:async data=>{const result=await saveDeviceDraft('quick-start',data,revision.current);revision.current=result.revision},personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:['coast'],setupLoreTokenBudgetDraft:1600,setupSetting:'A dockside settlement of reclaimed shelters',setupName:'Tidebreak',setupWorldFacts:['The tide floods the lower street'],setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
+  const suggest=createFoundingSuggestSetupVenues({setupWorkspace:workspace,setSetupWorkspace:setWorkspace,onQuickStartApplied:()=>{setAuthored({});authoredRef.current={};setSelected(null)},setupDraftData:{venues,workspace,authored,suggestionsKey},persistSetupDraft:async data=>{const result=await saveDeviceDraft('quick-start',data,revision.current);revision.current=result.revision},personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:['coast'],setupLoreTokenBudgetDraft:1600,setupSetting:'A dockside settlement of reclaimed shelters',setupName:'Tidebreak',setupContext:{rules:'',history:'',circumstances:[{scope:'village',summary:'The tide floods the lower street',venueId:'',zoneId:''}],households:{},communityVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
   const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
-  window.reassign=()=>setVenues(rows=>rows.map(row=>row.id==='buster'?{...row,occupancy:{...row.occupancy,residentCharacterId:'another-character'}}:row));
+  window.reassign=()=>setVenues(rows=>rows.map(row=>row.id==='buster'?{...row,residentIds:['another-character']}:row));
   window.referenceZone=id=>patch('player',venue=>({...venue,destinations:{player:{sleep:id,home:venue.spaces[0].id}},spaces:venue.spaces.map((zone,index)=>index===0?{...zone,connectedTo:[...(zone.connectedTo??[]),id]}:zone)}));
   const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
   const select=venue=>{setSelected(venue.id);setWorkspace(state=>({...state,view:'details',paused:true}))};
   const people=['buster','feddy','mira'].map(id=>({id,name:id[0].toUpperCase()+id.slice(1)}));
-  return <><style>{VILLAGES_FORGING_STYLES}</style><div className="villages-forging-v2" data-map-first="true"><header className="marinara-capability-villages-setup-heading villages-forging-heading"><ol className="villages-forging-steps">{[1,2,3,4,5].map(n=><li key={n} data-active={n===4}>{n}</li>)}</ol><h1>Forging the Village</h1></header><main className="villages-forging-body"><h2>Starting Venues</h2><div className="villages-quick-switch"><QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({quickStart:true})}/></div>
-  <QuickStartVenues venues={venues} people={people} selectedId={selected} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={venue=>{setSelected(venue?.id??null);setWorkspace(state=>({...state,view:"map",paused:!venue}))}}/>
+  return <><style>{VILLAGES_FORGING_STYLES}</style><div className="villages-forging-v2" ><header className="marinara-capability-villages-setup-heading villages-forging-heading"><ol className="villages-forging-steps">{[1,2,3,4].map(n=><li key={n} data-active={n===3}>{n}</li>)}</ol><h1>Forging the Village</h1></header><main className="villages-forging-body"><h2>Starting Venues</h2><div className="villages-quick-switch"><QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({quickStart:true})}/></div>
+  <QuickStartVenues communityVenueId="community" venues={venues} people={people} selectedId={selected} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={venue=>{setSelected(venue?.id??null);setWorkspace(state=>({...state,view:"map",paused:!venue}))}}/>
   {problem?<p role="alert">{problem}</p>:null}{saved?<p>Draft saved</p>:null}{review?<p>Review Tidebreak</p>:null}</main><footer className="villages-forging-footer"><button disabled={busy||!!foundingVenueIssues(venues,false).length} onClick={()=>setReview(true)}>Review village</button><button onClick={persist}>Save draft</button></footer></div></>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);
@@ -91,7 +91,7 @@ await withBrowser(browser, async () => {
         const body = route.request().postDataJSON();
         assert.equal(body.mode, "quick-start");
         assert.ok(body.venues.every((row) => !row.name && !row.form && !row.description && !row.spaceDescription));
-        assert.deepEqual(body.worldFacts, ["The tide floods the lower street"]);
+        assert.equal(body.context.circumstances[0].summary, "The tide floods the lower street");
         if (hold)
           await new Promise((resolve) => {
             release = resolve;
@@ -124,7 +124,7 @@ await withBrowser(browser, async () => {
               commonDescription: "Worn seats face a folding table.",
               privateName: "Curtained berth",
               privatePurpose: "Sleeping and storing belongings",
-              privateDescription: row.residentCharacterId
+              privateDescription: row.residentIds?.length
                 ? "A resident berth with a blue blanket."
                 : "A padded berth behind a curtain.",
             })),

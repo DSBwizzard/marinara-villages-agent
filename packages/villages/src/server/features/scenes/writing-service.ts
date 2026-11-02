@@ -507,7 +507,7 @@ export function createSceneWriting({
         place?.constructionStatus === "worksite"
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
           : "",
-        accessManagementPrompt(village, audience, session.placeId),
+        capabilities.management ? accessManagementPrompt(village, audience, session.placeId) : "",
         session.contactGeneration?.actorIds
           ? `Only selected residents ${JSON.stringify(audience)} may speak, act or receive invented reactions. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
           : "",

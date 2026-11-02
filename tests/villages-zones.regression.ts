@@ -21,6 +21,15 @@ await f.mutate((state) => {
     kind: "public",
     seen: true,
     connectedTo: ["exterior"],
+    access: {
+      mode: "public",
+      managerIds: null,
+      memberIds: [],
+      memberRoles: [],
+      inviterIds: [],
+      visitorHours: "always",
+      accompanied: false,
+    },
   });
 });
 const scene: any = {

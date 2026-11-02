@@ -88,6 +88,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     severity: "gentle",
     occurrence: "Wind loosens the hall sign.",
     situation: {
+      scope: "zone",
       id: null,
       expectedRevision: 0,
       title: "Loose sign",

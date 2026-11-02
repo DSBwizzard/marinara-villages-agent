@@ -108,6 +108,7 @@ const village = coerceVillageState(world),
   venue = village.venues[0];
 const oldWorld = structuredClone(world);
 oldWorld.venues[0].zones = older;
+oldWorld.venues = oldWorld.venues.map(venueFixture);
 const migratedWorld = coerceVillageState(oldWorld);
 assert.deepEqual(
   migratedWorld.venues[0].zones?.map((entry) => entry.connectedTo),
