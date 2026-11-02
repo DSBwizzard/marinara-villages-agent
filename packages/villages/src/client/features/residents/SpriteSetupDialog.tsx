@@ -22,6 +22,9 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     [error, setError] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [folderId, setFolderId] = useState("");
+  const [importView, setImportView] = useState<"front" | "side" | "unassigned">("front");
+  const [progress, setProgress] = useState("");
   const [activeArtwork, setActiveArtwork] = useState("");
   const reviewDialog = useRef<HTMLDialogElement>(null);
   const activeButton = useRef<HTMLButtonElement | null>(null);
@@ -32,15 +35,29 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     if (activeArtwork) reviewDialog.current?.showModal();
   }, [activeArtwork]);
   const importArtwork = useCallback(
-    async (controller = new AbortController()) => {
+    async (
+      controller = new AbortController(),
+      selection?: { folderId: string | null; view: string; filenames: string[]; revision: number },
+    ) => {
       importAbort.current = controller;
       setImporting(true);
       try {
-        const value = await request<SpriteSetupState>(base + "/prepare", {
-          method: "POST",
-          signal: controller.signal,
-        });
-        if (!controller.signal.aborted) setData(value);
+        const filenames = selection?.filenames ?? [];
+        let revision = selection?.revision;
+        for (let offset = 0; offset < Math.max(filenames.length, 1); offset += 40) {
+          if (controller.signal.aborted) break;
+          if (selection) setProgress(`Importing ${offset} / ${filenames.length}`);
+          const value = await request<SpriteSetupState>(base + "/prepare", {
+            method: "POST",
+            signal: controller.signal,
+            ...(selection
+              ? { body: JSON.stringify({ ...selection, revision, filenames: filenames.slice(offset, offset + 40) }) }
+              : {}),
+          });
+          revision = value.revision;
+          if (!controller.signal.aborted) setData(value);
+          if (selection) setProgress(`Importing ${Math.min(offset + 40, filenames.length)} / ${filenames.length}`);
+        }
       } catch (cause) {
         if (!controller.signal.aborted) {
           // Import may have saved before its response was lost. Read after its writer settles.
@@ -54,6 +71,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         }
       } finally {
         setImporting(false);
+        setProgress("");
       }
     },
     [base],
@@ -67,7 +85,12 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         if (controller.signal.aborted) return;
         setData(value);
         if (
-          value.files.some((file) => !value.manager.artwork.some((art) => art.engineSource?.filename === file.filename))
+          !value.folderSupport &&
+          value.files.some(
+            (file) =>
+              !file.adoptedArtworkId &&
+              !value.manager.artwork.some((art) => art.engineSource?.filename === file.filename),
+          )
         ) {
           await importArtwork(controller);
         }
@@ -188,8 +211,16 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
   const included = candidates.filter((item) => item.included);
   const completeCount = included.filter(complete).length;
   const excludedCount = candidates.length - included.length;
+  const folderFiles = (data?.files ?? []).filter(
+    (file) => folderId && file.folderId === (folderId === "unfiled" ? null : folderId),
+  );
+  const pendingFiles = folderFiles.filter(
+    (file) =>
+      !file.adoptedArtworkId && !data?.manager.artwork.some((art) => art.engineSource?.filename === file.filename),
+  );
   const defaultItem = candidates.find((item) => complete(item) && item.artworkId === data?.defaultArtworkId);
-  const canFinish = Boolean(defaultItem && completeCount === included.length);
+  const canFinish =
+    candidates.length > 0 && (included.length === 0 || Boolean(defaultItem && completeCount === included.length));
   function closeEditor() {
     reviewDialog.current?.close();
     setActiveArtwork("");
@@ -217,6 +248,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       .villages-sprite-setup button,.villages-sprite-setup input,.villages-sprite-setup select,.villages-sprite-setup textarea{font:inherit;color:inherit;background:#1a2b44;border:1px solid #62718a;border-radius:6px;padding:8px;box-sizing:border-box;max-width:100%}
       .villages-sprite-setup button{min-height:44px}.villages-sprite-setup button:disabled{opacity:.5}.villages-sprite-setup .sprite-primary{background:#36567a}
       .villages-sprite-setup .sprite-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+      .villages-sprite-setup .sprite-actions button[aria-pressed=true]{outline:2px solid #b0d2ff;outline-offset:-2px;background:#36567a}
       .villages-sprite-setup label{display:grid;gap:4px}.villages-sprite-setup .sprite-inline{display:flex;align-items:center;gap:6px}
       .villages-sprite-setup .sprite-inline input{flex:0 0 18px;width:18px;height:18px;min-width:18px;min-height:18px;padding:0;margin:0}
       .villages-sprite-setup small{overflow-wrap:anywhere;color:#b9c6da}.villages-sprite-setup [role=alert]{color:#ffbeb5}
@@ -244,7 +276,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
           <h2>{name}’s sprites</h2>
           {!data || importing ? (
             <p role="status" style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "#b9c6da" }}>
-              {importing ? "Preparing sprites…" : "Reading sprites…"}
+              {importing ? progress || "Preparing sprites…" : "Reading sprites…"}
             </p>
           ) : null}
         </div>
@@ -263,11 +295,11 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
           {!data ? null : (
             <>
               <p role="status" className="sprite-counts">
-                {candidates.length} sprites · {completeCount} ready
+                {candidates.length} {candidates.length === 1 ? "sprite" : "sprites"} · {completeCount} ready
                 {included.length - completeCount > 0 ? (
                   <span> · {included.length - completeCount} incomplete</span>
                 ) : null}
-                {excludedCount ? <span> · {excludedCount} excluded</span> : null}
+                {excludedCount ? <span> · {excludedCount} unassigned</span> : null}
                 {defaultItem ? <span> · Default: {defaultItem.name}</span> : null}
               </p>
               {included.length > 0 && completeCount === included.length && !defaultItem ? (
@@ -275,24 +307,109 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                   <small>Choose a default sprite.</small>
                 </p>
               ) : null}
-              <p>
-                <small>Use front views or side views facing right.</small>
-              </p>
-              <div className="sprite-actions">
-                <button
-                  disabled={busy}
-                  onClick={() =>
-                    void perform(async () => {
-                      await save(data.useSprites);
-                      void importArtwork();
-                    })
-                  }
-                >
-                  Refresh sprites
-                </button>
-              </div>
+              {data.folderSupport ? (
+                <>
+                  <label>
+                    Engine folder
+                    <select disabled={busy} value={folderId} onChange={(event) => setFolderId(event.target.value)}>
+                      <option value="">Choose a folder</option>
+                      {(["full-body", "expressions"] as const).map((category) => (
+                        <optgroup key={category} label={category === "full-body" ? "Full-body" : "Facial expressions"}>
+                          {(data.folders ?? [])
+                            .filter((folder) => folder.category === category)
+                            .slice()
+                            .reverse()
+                            .map((folder) => (
+                              <option key={folder.id} value={folder.id}>
+                                {folder.name} ({data.files.filter((file) => file.folderId === folder.id).length})
+                              </option>
+                            ))}
+                        </optgroup>
+                      ))}
+                      <option value="unfiled">
+                        Unfiled sprites ({data.files.filter((file) => file.folderId === null).length})
+                      </option>
+                    </select>
+                  </label>
+                  <div className="sprite-actions" role="group" aria-label="Import as">
+                    {(["front", "side", "unassigned"] as const).map((view) => (
+                      <button
+                        key={view}
+                        disabled={busy}
+                        aria-pressed={importView === view}
+                        onClick={() => setImportView(view)}
+                      >
+                        {view === "front" ? "Front" : view === "side" ? "Side" : "Unassigned"}
+                      </button>
+                    ))}
+                    <button
+                      className="sprite-primary"
+                      disabled={busy || reloadRequired || !pendingFiles.length}
+                      onClick={() =>
+                        void perform(async () => {
+                          const saved = data.revision ? await save(data.useSprites) : data;
+                          if (saved)
+                            void importArtwork(new AbortController(), {
+                              folderId: folderId === "unfiled" ? null : folderId,
+                              view: importView,
+                              filenames: pendingFiles.map((file) => file.filename),
+                              revision: saved.revision,
+                            });
+                        })
+                      }
+                    >
+                      Import {pendingFiles.length} {pendingFiles.length === 1 ? "sprite" : "sprites"}
+                    </button>
+                    <button
+                      disabled={busy || reloadRequired}
+                      onClick={() =>
+                        void perform(async () => {
+                          if (data.revision) await save(data.useSprites);
+                          await reloadSavedSprites();
+                        })
+                      }
+                    >
+                      Refresh folders
+                    </button>
+                  </div>
+                  {folderId ? (
+                    <p>
+                      <small>
+                        {folderFiles.length} {folderFiles.length === 1 ? "sprite" : "sprites"} ·{" "}
+                        {folderFiles.length - pendingFiles.length} already imported
+                      </small>
+                    </p>
+                  ) : null}
+                  {importView === "side" ? (
+                    <p>
+                      <small>Side views must face right.</small>
+                    </p>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <p>
+                    <small>Use front views or side views facing right.</small>
+                  </p>
+                  <div className="sprite-actions">
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        void perform(async () => {
+                          await save(data.useSprites);
+                          void importArtwork();
+                        })
+                      }
+                    >
+                      Refresh sprites
+                    </button>
+                  </div>
+                </>
+              )}
               {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
-              {!importing && !candidates.length ? <p>No character sprites available.</p> : null}
+              {!importing && !candidates.length ? (
+                <p>{data.files.length ? "No sprites imported yet." : "No character sprites available."}</p>
+              ) : null}
               <>
                 <div className="sprite-gallery" aria-label="Sprites">
                   {data.manager.artwork.map((art, index) => {
@@ -321,7 +438,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                           <small>
                             {data.errors[art.id] ? "Retry · " : ""}
                             {!item.included
-                              ? "Excluded"
+                              ? "Unassigned"
                               : !complete(item)
                                 ? "Incomplete"
                                 : item.view === "front"
@@ -353,9 +470,13 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         <button
           className="sprite-primary"
           disabled={busy || importing || !canFinish}
-          onClick={() => void perform(() => finish(true))}
+          onClick={() => void perform(() => finish(completeCount > 0))}
         >
-          {existing ? "Use sprites" : "Add villager with sprites"}
+          {candidates.length && !included.length
+            ? "Keep artwork"
+            : existing
+              ? "Use sprites"
+              : "Add villager with sprites"}
         </button>
       </footer>
       {data ? (
@@ -406,22 +527,18 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                         <select
                           aria-label="Facing"
                           disabled={busy}
-                          value={item.view}
-                          onChange={(event) => edit(art.id, { view: event.target.value as "front" | "side" })}
+                          value={item.included ? item.view : "unassigned"}
+                          onChange={(event) =>
+                            edit(art.id, {
+                              included: event.target.value !== "unassigned",
+                              view: event.target.value === "side" ? "side" : "front",
+                            })
+                          }
                         >
                           <option value="front">Front</option>
                           <option value="side">Side</option>
+                          <option value="unassigned">Unassigned</option>
                         </select>
-                      </label>
-                      <label className="sprite-inline">
-                        <input
-                          autoComplete="off"
-                          type="checkbox"
-                          disabled={busy}
-                          checked={item.included}
-                          onChange={(event) => edit(art.id, { included: event.target.checked })}
-                        />
-                        Include
                       </label>
                       <label className="sprite-inline">
                         <input
