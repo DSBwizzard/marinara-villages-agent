@@ -33,7 +33,7 @@ import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { prepareVillageMap } from "../media/town-map-review.js";
 import type { readVillageConnectionSettings, validateVillageSetupConnections } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
-import type { draftVillageVenueDescriptions, proposePublicVenueNames, proposeVillage } from "./village-bootstrap.js";
+import type { draftVillageVenueDescriptions } from "./village-bootstrap.js";
 
 export interface FoundingSetupPorts {
   peekVillageAuthority(): Promise<VillageState>;
@@ -53,8 +53,6 @@ export interface FoundingSetupPorts {
   queueStartingTies?(): Promise<void>;
   queueMicrotask(work: () => void): void;
   readVillageLore: typeof readVillageLore;
-  proposeVillage: typeof proposeVillage;
-  proposePublicVenueNames: typeof proposePublicVenueNames;
   draftVillageVenueDescriptions: typeof draftVillageVenueDescriptions;
 }
 
@@ -74,8 +72,6 @@ export function createFoundingSetup({
   queueStartingTies,
   queueMicrotask,
   readVillageLore,
-  proposeVillage,
-  proposePublicVenueNames,
   draftVillageVenueDescriptions,
 }: FoundingSetupPorts) {
   async function runVillageSetup(input: {
@@ -293,24 +289,6 @@ export function createFoundingSetup({
     return buildVillageSnapshot();
   }
 
-  /** Read-only founding suggestion; the wizard keeps the result until its final write. */
-  async function suggestFoundingPlaces(settingValue: unknown, idsValue: unknown, budgetValue?: unknown) {
-    const setting = readVillageSetting(settingValue);
-    if (!setting) throw badRequest("Describe what the village is like before suggesting places.");
-    const ids = readSelectedLorebookIds(idsValue ?? []);
-    const budget = budgetValue === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(budgetValue);
-    const proposal = await proposeVillage(setting, { lore: await readVillageLore(ids, setting, undefined, budget) });
-    return { places: proposal.venues.map((venue) => ({ name: venue.name })) };
-  }
-
-  async function suggestFoundingVenueNames(settingValue: unknown, idsValue: unknown, budgetValue?: unknown) {
-    const setting = readVillageSetting(settingValue);
-    if (!setting) throw badRequest("Describe what the village is like before suggesting names.");
-    const ids = readSelectedLorebookIds(idsValue ?? []);
-    const budget = budgetValue === undefined ? DEFAULT_LORE_TOKEN_BUDGET : readLoreTokenBudget(budgetValue);
-    return { names: await proposePublicVenueNames(setting, await readVillageLore(ids, setting, undefined, budget)) };
-  }
-
   async function draftVenueDescriptions(value: unknown): Promise<{ descriptions: Record<string, string> }> {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw badRequest("Describe the places to draft.");
     const input = value as Record<string, unknown>;
@@ -340,8 +318,6 @@ export function createFoundingSetup({
   }
   return {
     runVillageSetup,
-    suggestFoundingPlaces,
-    suggestFoundingVenueNames,
     draftVenueDescriptions,
   };
 }

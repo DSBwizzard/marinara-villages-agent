@@ -91,7 +91,6 @@ const snapshot = {
     playerPersonaMissing: false,
     selectedLorebookIds: [],
     setting: "",
-    foundingReason: "",
     foundingHistory: "",
     maxPlaces: 10,
     maxVenueNameLength: 80,

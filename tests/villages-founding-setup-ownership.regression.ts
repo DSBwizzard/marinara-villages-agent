@@ -12,12 +12,11 @@ import { readVillagerCard } from "../packages/villages/src/server/adapters/engin
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { DEFAULT_TOWN_MAP_VIEW } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { createFoundingSetup } from "../packages/villages/src/server/features/founding/founding-setup-service.js";
 import {
   configureFoundingSetup,
   runVillageSetup,
-  suggestFoundingVenueNames,
+  draftVenueDescriptions,
 } from "../packages/villages/src/server/features/founding/founding-setup.js";
 
 function deferred() {
@@ -70,10 +69,6 @@ function input(name: string) {
 function fixture(name: string) {
   const state = defaultVillageState();
   const card = readVillagerCard({ id: "same", comment: "", data: { name, description: `Private card ${name}` } });
-  const proposal = venueDraft(
-    { id: "proposed", name: `${name} garden`, classes: ["community"], form: "Garden", description: "A quiet garden" },
-    null,
-  );
   const calls: string[] = [],
     owners: unknown[] = [],
     attempts: VillageState[] = [],
@@ -175,16 +170,6 @@ function fixture(name: string) {
       note("lore");
       contexts.push(args);
       return [`Private lore ${name}`];
-    },
-    async proposeVillage(...args) {
-      note("propose");
-      contexts.push(args);
-      return { venues: [structuredClone(proposal)], model: "mock" };
-    },
-    async proposePublicVenueNames(...args) {
-      note("names");
-      contexts.push(args);
-      return [`${name} square`];
     },
     async draftVillageVenueDescriptions(...args) {
       note("descriptions");
@@ -345,12 +330,6 @@ assert.deepEqual(direct.state, saved);
 assert.deepEqual(direct.calls.slice(callsBeforeReopening), ["peek", "peek"], "Rejected setup has no side effects");
 
 const suggestions = fixture("Suggestions");
-assert.deepEqual(await suggestions.service.suggestFoundingPlaces("Observatory", ["book"], 1600), {
-  places: [{ name: "Suggestions garden" }],
-});
-assert.deepEqual(await suggestions.service.suggestFoundingVenueNames("Observatory", ["book"], 1600), {
-  names: ["Suggestions square"],
-});
 assert.deepEqual(
   await suggestions.service.draftVenueDescriptions({
     setting: "Observatory",
@@ -360,8 +339,6 @@ assert.deepEqual(
   { descriptions: { hall: "Suggestions description" } },
 );
 assert(!suggestions.calls.includes("mutate"));
-assert.equal(suggestions.calls.filter((call) => call === "propose").length, 1);
-assert.equal(suggestions.calls.filter((call) => call === "names").length, 1);
 assert.equal(suggestions.calls.filter((call) => call === "descriptions").length, 1);
 assert(JSON.stringify(suggestions.contexts).includes("Private lore Suggestions"));
 const changed = fixture("Changed");
@@ -404,7 +381,13 @@ assert(current.calls.includes("prepare"));
 a.run(releaseA);
 a.dispose();
 clearA();
-assert.deepEqual(await suggestFoundingVenueNames("Observatory", []), { names: ["Current square"] });
+assert.deepEqual(
+  await draftVenueDescriptions({
+    setting: "Observatory",
+    venues: [{ id: "hall", name: "Hall", classes: ["community"] }],
+  }),
+  { descriptions: { hall: "Current description" } },
+);
 const missing = createActivationScope();
 await assert.rejects(
   missing.run(() => runVillageSetup(input("Missing"))),
@@ -414,7 +397,9 @@ b.run(releaseB);
 b.dispose();
 clearB();
 await assert.rejects(
-  b.run(() => suggestFoundingVenueNames("Observatory", [])),
+  b.run(() =>
+    draftVenueDescriptions({ setting: "Observatory", venues: [{ id: "hall", name: "Hall", classes: ["community"] }] }),
+  ),
   /not configured/,
 );
 console.log(

@@ -27,7 +27,6 @@ import {
   usePickSetupTownMap,
   usePlaceSetupPin,
   useRetryPreparation,
-  useSuggestPlaces,
   useUpdateSetupMapRequest,
 } from "../features/founding/actions.js";
 import {
@@ -864,14 +863,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
 
-  /**
-   * Ask the model for places again. Deliberately a separate button from Save:
-   * the call is slow and can fail on its own, and its result replaces the
-   * venue editor wholesale, which is a decision the player should make
-   * explicitly rather than have happen on every save.
-   */
-  const suggestPlaces = useSuggestPlaces({ setBusy, setSettingsError, setVenuesDraft, snapshot });
-
   // ── Town map ───────────────────────────────────────────────────────────────
   useFoundingMapReceipt({ ...founding, visible, screen, updateSetupMapRequest });
 
@@ -1569,7 +1560,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     spriteProfileScroll,
     standingAt,
     startOver,
-    suggestPlaces,
     suggestSetupVenues,
     townMapImage,
     updateSetupMapRequest,

@@ -13,12 +13,7 @@ export const serverFeatureInterfaces = Object.freeze({
     "foundingPreparationSnapshot",
     "assertFoundedVillageReady",
   ],
-  "founding/village-bootstrap.ts": [
-    "interpretSocialSource",
-    "draftVillageVenueDescriptions",
-    "proposeVillage",
-    "proposePublicVenueNames",
-  ],
+  "founding/village-bootstrap.ts": ["interpretSocialSource", "draftVillageVenueDescriptions"],
   "generation/interpretation-diagnostics.ts": [
     "readInterpretationDiagnostics",
     "writeInterpretationDiagnostics",

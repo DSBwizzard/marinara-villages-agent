@@ -28,11 +28,7 @@ import {
   uploadFoundingVenueImage,
 } from "../packages/villages/src/server/features/founding/founding-drafts.js";
 import { reportFoundingProgress } from "../packages/villages/src/server/features/founding/founding-progress.js";
-import {
-  draftVillageVenueDescriptions,
-  proposePublicVenueNames,
-  proposeVillage,
-} from "../packages/villages/src/server/features/founding/village-bootstrap.js";
+import { draftVillageVenueDescriptions } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
@@ -281,7 +277,7 @@ async function foundingConnectionOwnership() {
   const deferred = () => {
     return Promise.withResolvers<void>();
   };
-  type Operation = "progress" | "compact" | "suggest" | "image" | "upload" | "places" | "names" | "descriptions";
+  type Operation = "progress" | "compact" | "suggest" | "image" | "upload" | "descriptions";
   type Stage =
     "read" | "write" | "lore" | "agent" | "resolve" | "provider" | "callback" | "card" | "persona" | "gallery";
   type Variant = "ordinary" | "cas" | "seed-changed" | "status-changed" | "resident-changed" | "failure" | "disposed";
@@ -304,8 +300,6 @@ async function foundingConnectionOwnership() {
     ["image", "lore"],
     ["image", "gallery"],
     ["upload", "gallery"],
-    ["places", "agent"],
-    ["names", "provider"],
     ["descriptions", "resolve"],
   ];
   const png =
@@ -476,11 +470,7 @@ async function foundingConnectionOwnership() {
                   x: 0.9,
                 })),
               }
-            : operation === "places"
-              ? { venues: [{ name: `${label} courtyard` }] }
-              : operation === "names"
-                ? { names: [`${label} Hall`, `${label} Court`, `${label} Garden`] }
-                : { descriptions: [{ id: "equal-venue", text: `${label} stone room.` }] };
+            : { descriptions: [{ id: "equal-venue", text: `${label} stone room.` }] };
       const model: CapabilityResolvedLanguageModel = {
         name: `${label}-model`,
         model: "fixture",
@@ -642,13 +632,9 @@ async function foundingConnectionOwnership() {
                 ? generateFoundingVenueImage({ ...scenarioInput, venue: draftRows[0] })
                 : operation === "upload"
                   ? uploadFoundingVenueImage({ image: png, name: "Uploaded room" })
-                  : operation === "places"
-                    ? proposeVillage("Quiet harbor")
-                    : operation === "names"
-                      ? proposePublicVenueNames("Quiet harbor")
-                      : draftVillageVenueDescriptions("Quiet harbor", [
-                          { id: "equal-venue", name: "Room", classes: ["residence"] },
-                        ]);
+                  : draftVillageVenueDescriptions("Quiet harbor", [
+                      { id: "equal-venue", name: "Room", classes: ["residence"] },
+                    ]);
       const outcome = work.then(
         (value) => ({ value, error: undefined }),
         (error) => ({ value: undefined, error: error as unknown }),

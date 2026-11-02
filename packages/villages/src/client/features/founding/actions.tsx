@@ -1,4 +1,3 @@
-import { useConfirmation } from "../../shared/confirmation.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
@@ -11,7 +10,7 @@ import type { SetupMapRequest, VillageSnapshot, VillageVenue } from "../../../sh
 import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
-import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
+import { measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
@@ -32,50 +31,6 @@ export function useUpdateSetupMapRequest(ports: {
     },
     [setSetupMapRequest, setupMapRequestRef],
   );
-}
-
-export function useSuggestPlaces(ports: {
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setVenuesDraft: React.Dispatch<SetStateAction<VillageVenue[]>>;
-  snapshot: VillageSnapshot;
-}) {
-  const confirmVillages = useConfirmation(ports.snapshot?.settings.maps?.[0]?.id);
-  const { setBusy, setSettingsError, setVenuesDraft, snapshot } = ports;
-  return useCallback(async () => {
-    if (
-      snapshot &&
-      destinationPlaces(snapshot.settings.venues).length > 0 &&
-      !(await confirmVillages(
-        "Replace the current places with new suggestions? This removes places you created or approved.",
-      ))
-    )
-      return;
-    setBusy(true);
-    setSettingsError("");
-    try {
-      const next = await request<{ places: Array<{ name: string }> }>("/bootstrap", {
-        method: "POST",
-      });
-      // Suggestions stay in the editor until each description has been reviewed and saved.
-      setVenuesDraft(
-        next.places.map((place): VillageVenue => ({
-          id: freshRowKey(),
-          name: place.name,
-          description: "",
-          category: "public",
-          presentation: { mapId: "", image: null, x: null, y: null },
-          occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-          capabilities: [],
-          state: { revision: 0, updatedAt: "", recent: null },
-        })),
-      );
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "The village did not suggest any places."));
-    } finally {
-      setBusy(false);
-    }
-  }, [confirmVillages, setBusy, setSettingsError, setVenuesDraft, snapshot]);
 }
 
 export function usePickSetupTownMap(ports: {

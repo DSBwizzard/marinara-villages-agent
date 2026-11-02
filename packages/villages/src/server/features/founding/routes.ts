@@ -4,13 +4,7 @@ import { requestFoundingSuggestions, readFoundingSuggestions } from "./founding-
 import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town-map-generation.js";
 
 import { resetVenueSessions } from "../scenes/archive.js";
-import { buildVillageSnapshot } from "../world/snapshot.js";
-import {
-  draftVenueDescriptions,
-  runVillageSetup,
-  suggestFoundingPlaces,
-  suggestFoundingVenueNames,
-} from "./founding-setup.js";
+import { draftVenueDescriptions, runVillageSetup } from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, suggestStartingVenues, uploadFoundingVenueImage } from "./founding-drafts.js";
 import type { FastifyInstance } from "fastify";
@@ -136,32 +130,6 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return fail(reply, error, "resetting the village");
     }
   });
-  app.post("/bootstrap", async (_request, reply) => {
-    try {
-      const snapshot = await buildVillageSnapshot();
-      return await suggestFoundingPlaces(
-        snapshot.settings.setting,
-        snapshot.settings.selectedLorebookIds,
-        snapshot.settings.loreTokenBudget,
-      );
-    } catch (error) {
-      return fail(reply, error, "suggesting places");
-    }
-  });
-  app.post<{ Body: { setting?: unknown; selectedLorebookIds?: unknown; loreTokenBudget?: unknown } }>(
-    "/setup/public-venue/names/suggest",
-    async (request, reply) => {
-      try {
-        return await suggestFoundingVenueNames(
-          request.body?.setting,
-          request.body?.selectedLorebookIds,
-          request.body?.loreTokenBudget,
-        );
-      } catch (error) {
-        return fail(reply, error, "suggesting public venue names");
-      }
-    },
-  );
   app.post<{ Body: unknown }>("/locations/venue/descriptions/draft", async (request, reply) => {
     try {
       return await draftVenueDescriptions(request.body);

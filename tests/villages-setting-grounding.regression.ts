@@ -126,7 +126,6 @@ async function main() {
         wishSystemVersion: 3,
         name,
         setting,
-        foundingReason: "custom",
         foundingHistory: circumstances,
         setupAt: "2026-10-01T12:00:00Z",
         playerBackground: DEFAULT_PLAYER_BACKGROUND,
@@ -202,7 +201,6 @@ async function main() {
     // Maximum authored world context must not truncate the separate starting circumstances.
     const full = {
       setting: "x".repeat(2000),
-      foundingReason: "custom",
       foundingHistory: "We share the rent.",
       foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
     };

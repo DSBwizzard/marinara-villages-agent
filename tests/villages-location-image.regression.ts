@@ -1160,7 +1160,6 @@ async function main() {
     "features/world/village-store.ts",
     "features/founding/village-bootstrap.ts",
     "features/founding/village-bootstrap-service.ts",
-    "domain/rules/village-bootstrap-rules.ts",
     "domain/rules/village-clock.ts",
     "jobs/village-refresh-scheduler.ts",
     "domain/rules/native-remap.ts",

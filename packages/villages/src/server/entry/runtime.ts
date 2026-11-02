@@ -120,8 +120,6 @@ import {
   configureVillageBootstrap,
   draftVillageVenueDescriptions,
   interpretSocialSource,
-  proposePublicVenueNames,
-  proposeVillage,
 } from "../features/founding/village-bootstrap.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
 import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
@@ -526,9 +524,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesLanguageModels,
       villagesConnectionIdFor,
       completeWithRoom,
-      backgroundCalls: background.backgroundCalls,
-      villagesDebugAgentsEnabled,
-      villagesLogger,
     }),
   );
   const releaseFoundingDrafts = configureFoundingDrafts(
@@ -973,8 +968,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       queueStartingTies: startingTies.queue,
       queueMicrotask,
       readVillageLore,
-      proposeVillage,
-      proposePublicVenueNames,
       draftVillageVenueDescriptions,
     }),
   );

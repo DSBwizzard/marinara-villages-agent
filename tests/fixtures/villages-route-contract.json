@@ -387,14 +387,6 @@
     },
     {
       "method": "post",
-      "path": "/bootstrap"
-    },
-    {
-      "method": "post",
-      "path": "/setup/public-venue/names/suggest"
-    },
-    {
-      "method": "post",
       "path": "/locations/venue/descriptions/draft"
     },
     {
