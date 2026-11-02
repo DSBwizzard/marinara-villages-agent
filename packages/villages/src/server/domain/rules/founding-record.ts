@@ -166,7 +166,7 @@ export function parsePlaces(
     }
   }
   if (playerHomes !== 1 || assigned.size < 1 || assigned.size > 3)
-    throw badRequest("Founding needs one player home and one to three residents, with one home per person.");
+    throw badRequest("Founding needs one to three residents and exactly one home assignment for each person.");
   for (const venue of venues) {
     if (
       venue.workerIds?.some((id) => !assigned.has(id)) ||

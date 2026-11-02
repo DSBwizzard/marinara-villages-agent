@@ -1160,10 +1160,23 @@ function coerceProjects(value: unknown): VillageProject[] {
       blockedReason: asTrimmedString(flow.blockedReason),
       completedAt: asTrimmedString(flow.completedAt),
     };
-    if (raw.plan)
+    if (raw.plan) {
+      const plan = asRecord(raw.plan);
+      const interiors = [
+        ...(Array.isArray(plan.spaces) ? plan.spaces : []),
+        ...(Array.isArray(plan.privateSpaces) ? plan.privateSpaces : []),
+      ].map((entry) => {
+        const zone = asRecord(entry);
+        if (typeof zone.id !== "string" || !zone.id || zone.id !== zone.id.trim() || zone.id === "exterior")
+          throw new Error("The saved Project plan needs explicit Zone identities.");
+        return { id: zone.id, connectedTo: zone.connectedTo as string[] };
+      });
+      const problem = connectionProblem([{ id: "exterior", connectedTo: [] }, ...interiors]);
+      if (problem) throw new Error(`The saved Project plan needs explicit connections: ${problem}`);
       project.plan = readProjectPlan(raw.plan, {
         classes: validVenueClasses(draft.classes) ? draft.classes : ["other"],
       } as VillageVenue);
+    }
     return project;
   });
 }

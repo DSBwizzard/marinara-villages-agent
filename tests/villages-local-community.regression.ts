@@ -358,6 +358,26 @@ await housing();
     true,
     "Project output supplies canonical links and policies before native decoding",
   );
+  const malformed = JSON.parse(JSON.stringify(projects.state())) as VillageState;
+  const savedPlan = malformed.projects.find((project) => project.id === id)!.plan!;
+  for (const zone of [...(savedPlan.spaces ?? []), ...(savedPlan.privateSpaces ?? [])]) delete zone.connectedTo;
+  assert.throws(
+    () => coerceVillageState(malformed),
+    /explicit connections/,
+    "Saved plans cannot invent passages on reload",
+  );
+  const unidentified = JSON.parse(JSON.stringify(projects.state())) as VillageState;
+  const unnamedPlan = unidentified.projects.find((project) => project.id === id)!.plan!;
+  const unnamedZones = [...(unnamedPlan.spaces ?? []), ...(unnamedPlan.privateSpaces ?? [])];
+  unnamedZones.forEach((zone) => {
+    zone.connectedTo = ["exterior"];
+  });
+  delete (unnamedZones[0] as { id?: string }).id;
+  assert.throws(
+    () => coerceVillageState(unidentified),
+    /explicit Zone identities/,
+    "Saved plans cannot invent Zone IDs",
+  );
 }
 {
   const state = world({ a: "a", b: "a" }),
@@ -649,7 +669,13 @@ console.log(
 
 {
   const { isHouse, venueAssignedCountFor } = await import("../packages/villages/src/client/shared/venue.js");
+  const { captureSceneLayout } = await import("../packages/villages/src/server/domain/rules/scene-layout.js");
   const canonical = world().venues[0];
+  const broken = structuredClone(canonical);
+  broken.zones!.forEach((zone) => {
+    delete zone.connectedTo;
+  });
+  assert.throws(() => captureSceneLayout(broken), /connection map/, "New Scenes cannot invent missing passages");
   assert.equal(
     venueAssignedCountFor({
       ...canonical,

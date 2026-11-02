@@ -23,9 +23,9 @@ import { managesAccess } from "./venue-access.js";
 /** Cosmetic positioning and explicit passages never edit access or an active Scene's captured layout. */
 export function applyVenueZoneLayout(state: VillageState, venue: VillageVenue, value: unknown): void {
   const row = asRecord(value),
-    zones = materializeConnections(venueZones(venue));
+    zones = venueZones(venue);
   const ids = zones.map((zone) => zone.id);
-  if (ids.length > 7) throw conflict("This legacy Venue needs at most six Zones before editing its layout.");
+  if (ids.length > 7) throw conflict("A Venue may have at most six Zones besides Entrance.");
   if (Object.keys(row).some((key) => !["base", "positions", "connections"].includes(key)))
     throw badRequest("Only Zone positions and connections may be edited here.");
   const positions = readZoneLayout(row.positions, ids);
@@ -160,7 +160,7 @@ export function readBaseVenueLayout(
   }
   if (new Set(result.map((zone) => zone.id)).size !== result.length)
     throw badRequest("Every area needs a distinct ID.");
-  // Older drafts retain their inferred layout. Explicit drafts must be valid.
+  // New authoring gets an initial graph; explicit passages must be valid.
   const connected = materializeConnections(result);
   const problem = connectionProblem(connected);
   if (problem) throw badRequest(problem);
@@ -186,16 +186,16 @@ export function validateLayoutZones(
     )
       throw badRequest("Connections must reference other included spaces, without duplicates.");
   }
-  const currentLayout = materializeConnections(venueZones(venue));
+  const currentLayout = venueZones(venue);
   for (const zone of drafts) if (zone.connectedTo) zone.connectedTo = zone.connectedTo.filter((id) => allowed.has(id));
   const entrance = currentLayout.find((zone) => zone.id === "exterior")!;
   const combined = [entrance, ...drafts];
-  // Old API clients may omit connections; retain exact current connections, or the legacy layout for old new-zone drafts.
+  // Partial renovations preserve unchanged passages.
   const resolved = combined.map((zone) => ({
     ...zone,
     connectedTo: zone.connectedTo ?? currentLayout.find((old) => old.id === zone.id)?.connectedTo,
   }));
-  const problem = connectionProblem(materializeConnections(applyConnectionEdits(resolved, drafts)));
+  const problem = connectionProblem(applyConnectionEdits(resolved, drafts));
   if (problem) throw badRequest(problem);
   for (const zone of drafts) {
     if (zone.ownerId && zone.kind !== "private-residence")

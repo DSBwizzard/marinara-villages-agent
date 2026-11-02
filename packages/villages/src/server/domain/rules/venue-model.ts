@@ -5,9 +5,8 @@ export const MAX_VENUE_CLASSES = 2;
 export const MAX_VENUE_RESIDENTS = 4;
 export const MAX_ZONE_VILLAGERS = 4;
 
-export function venueClasses(venue: Pick<VillageVenue, "classes" | "occupancy">): VillageVenueClass[] {
-  if (venue.classes?.length) return venue.classes;
-  return venue.occupancy.playerHome || venue.occupancy.homeKind ? ["residence"] : ["other"];
+export function venueClasses(venue: Pick<VillageVenue, "classes">): VillageVenueClass[] {
+  return venue.classes?.length ? venue.classes : ["other"];
 }
 
 export function hasVenueClass(
@@ -40,16 +39,10 @@ export function defaultVenueSpace(venueClass: VillageVenueClass, description = "
 }
 
 export function venueSpaces(venue: VillageVenue): VillageVenueSpace[] {
-  return venue.layoutVersion === 1 || venue.spaces?.length
-    ? (venue.spaces ?? [])
-    : venueClasses(venue).map((venueClass) => ({
-        ...defaultVenueSpace(venueClass, venue.description),
-        image: venue.presentation.image,
-        state: venue.state,
-      }));
+  return venue.spaces ?? [];
 }
 
-/** Present a single scene through legacy readers without merging private and public rooms. */
+/** Project one common space without merging private and public rooms. */
 export function venueInSpace(venue: VillageVenue, venueClass: VillageVenueClass): VillageVenue {
   const space = venueSpaces(venue).find((entry) => entry.venueClass === venueClass);
   if (!space) return venue;

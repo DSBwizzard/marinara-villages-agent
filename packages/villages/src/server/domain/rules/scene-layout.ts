@@ -5,7 +5,6 @@ import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { defaultVenueSpace } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
-import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import { sceneRelationshipView } from "./relationship-rules.js";
 import { mergeNarrativeAfter } from "./narrative-development.js";
 import { extendSceneNarrative } from "./scene-narrative-effects.js";
@@ -82,8 +81,11 @@ export function sceneLayoutVenue(venue: VillageVenue, scene?: VenueScene): Villa
   };
 }
 export function captureSceneLayout(venue: VillageVenue) {
+  const zones = venueZones(venue);
+  if (connectionProblem(zones))
+    throw conflict("The Venue connection map is invalid. Review it before opening a Scene.");
   return structuredClone(
-    materializeConnections(venueZones(venue)).map((zone) => ({
+    zones.map((zone) => ({
       id: zone.id,
       kind: zone.kind,
       name: zone.name,
