@@ -12,6 +12,7 @@ import { validVenueClasses } from "./venue-model.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { readVenueImageContext } from "./village-projections.js";
 import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
+import { communityVenueEligible } from "./community-venue.js";
 export type ParsedPlace = VillageVenue;
 
 export function foundingImage(value: unknown): VillageVenueImage | null {
@@ -214,6 +215,10 @@ export function parsePlaces(
       ),
   );
   if (!common) throw badRequest("The starting Community Venue needs an Entrance and a usable public common Zone.");
+  if (!communityVenueEligible(community))
+    throw badRequest(
+      "Every Community Venue Zone must be public, unowned and open without accompaniment or opening hours.",
+    );
   return venues;
 }
 

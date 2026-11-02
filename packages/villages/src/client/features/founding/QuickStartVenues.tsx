@@ -30,6 +30,10 @@ export function QuickStartVenues({
   onMove,
   communityVenueId,
   onRemove,
+  actions,
+  mapArtwork,
+  onAssignHome,
+  onCommunityVenue,
 }: {
   venues: VillageVenue[];
   people: { id: string; name: string }[];
@@ -50,6 +54,10 @@ export function QuickStartVenues({
   onMove(venue: VillageVenue | null): void;
   communityVenueId?: string;
   onRemove?(venue: VillageVenue): void;
+  actions?: ReactNode;
+  mapArtwork?: ReactNode;
+  onAssignHome?(venue: VillageVenue, actorId: string, assigned: boolean): void;
+  onCommunityVenue?(venue: VillageVenue): void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const mapDetails = useRef<HTMLElement>(null);
@@ -182,7 +190,7 @@ export function QuickStartVenues({
   };
   const addZone = (personal: boolean) => {
     if (!selected) return;
-    if (personal && selected.category === "public-center") return;
+    if (personal && selected.id === communityVenueId) return;
     const id = `zone:${createVillagesClientId()}`;
     const next = addFoundingZone(selected, personal, id);
     if (next === selected) return;
@@ -191,43 +199,124 @@ export function QuickStartVenues({
   };
   return (
     <section className="villages-quick-start" aria-label="Venues">
-      <div className="villages-quick-map-toolbar" role="group" aria-label="Venue placement controls">
-        <select
-          aria-label="Move Venue"
-          value={moving?.id ?? ""}
-          disabled={busy || imageBusy || !venues.length}
-          onChange={(event) => {
-            const venue = venues.find((row) => row.id === event.target.value);
-            onMove(venue ?? null);
-          }}
-        >
-          <option value="">Choose Venue</option>
-          {venues.map((venue) => (
-            <option key={venue.id} value={venue.id}>
-              {venue.name || "Venue"}
-            </option>
-          ))}
-        </select>
-        <button
-          type="button"
-          aria-label="Edit Venue"
-          disabled={busy || imageBusy || !moving}
-          onClick={() => moving && onSelect(moving)}
-        >
-          Edit
-        </button>
-        <button
-          className="villages-quick-arrange"
-          type="button"
-          aria-label="Arrange automatically"
-          disabled={busy || imageBusy}
-          onClick={onArrange}
-        >
-          Arrange
-        </button>
-      </div>
-      <section ref={mapDetails} className="villages-quick-map" aria-label="Venue placement">
-        {map}
+      <section className="villages-forging-card villages-quick-venue-list" aria-label="Starting Venues">
+        <header className="villages-venue-heading">
+          <h2>Starting Venues</h2>
+          <div className="villages-quick-venue-actions">{actions}</div>
+        </header>
+        {[
+          ...venues.filter((venue) => venue.classes?.includes("residence")),
+          ...venues.filter((venue) => !venue.classes?.includes("residence")),
+        ].map((venue) => {
+          const home = venue.classes?.includes("residence");
+          const community = venue.id === communityVenueId;
+          const assigned = [...(venue.occupancy.playerHome ? ["player"] : []), ...(venue.residentIds ?? [])];
+          const image = venue.presentation.image;
+          return (
+            <section
+              key={venue.id}
+              className="villages-quick-venue-card"
+              aria-label={venue.name || "Venue"}
+              data-venue-id={venue.id}
+              data-selected={selectedId === venue.id}
+            >
+              <div className="villages-quick-venue-summary">
+                {image ? <img className="villages-quick-venue-thumbnail" src={image.url} alt="" /> : null}
+                <div className="villages-quick-venue-title">
+                  <h3>
+                    <button type="button" disabled={busy || imageBusy} onClick={() => onSelect(venue)}>
+                      {venue.name || "Venue"}
+                    </button>
+                  </h3>
+                  {community ? (
+                    <span className="villages-quick-venue-badge">Community Venue</span>
+                  ) : home ? (
+                    <span className="villages-quick-venue-badge">Home</span>
+                  ) : null}
+                  {community ? <p>Starting meeting place</p> : !home ? <p>{venue.description}</p> : null}
+                </div>
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  aria-label={`Place ${venue.name || "Venue"} on map`}
+                  title="Place on map"
+                  aria-pressed={moving?.id === venue.id}
+                  onClick={() => onMove(moving?.id === venue.id ? null : venue)}
+                >
+                  ⌖
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || imageBusy}
+                  aria-label={`Edit ${venue.name || "Venue"}`}
+                  onClick={() => onSelect(venue)}
+                >
+                  Edit
+                </button>
+              </div>
+              {home && onAssignHome ? (
+                <fieldset className="villages-quick-home-people" disabled={busy || imageBusy}>
+                  <legend>Who lives here?</legend>
+                  {[{ id: "player", name: "You" }, ...people].map((person) => (
+                    <label key={person.id}>
+                      <input
+                        type="checkbox"
+                        aria-label={person.name}
+                        checked={assigned.includes(person.id)}
+                        onChange={(event) => onAssignHome(venue, person.id, event.target.checked)}
+                      />
+                      {person.name}
+                    </label>
+                  ))}
+                </fieldset>
+              ) : home ? (
+                <p>
+                  Lives here:{" "}
+                  {assigned
+                    .map((id) =>
+                      id === "player" ? "You" : (people.find((person) => person.id === id)?.name ?? "Villager"),
+                    )
+                    .join(", ") || "Nobody assigned"}
+                </p>
+              ) : null}
+              <div className="villages-quick-venue-actions">
+                {onCommunityVenue && !community && !home && !assigned.length && !venue.workerIds?.length ? (
+                  <button type="button" disabled={busy || imageBusy} onClick={() => onCommunityVenue(venue)}>
+                    Use as Community Venue
+                  </button>
+                ) : null}
+              </div>
+            </section>
+          );
+        })}
+      </section>
+      <section className="villages-forging-card villages-quick-map-panel" aria-label="Village map">
+        <div className="villages-quick-map-toolbar" role="group" aria-label="Venue placement controls">
+          <h2>Village map</h2>
+          <button
+            className="villages-quick-arrange"
+            type="button"
+            aria-label="Arrange automatically"
+            disabled={busy || imageBusy}
+            onClick={onArrange}
+          >
+            Arrange
+          </button>
+        </div>
+        {mapArtwork ? (
+          <details className="villages-quick-map-artwork">
+            <summary>Map artwork</summary>
+            {mapArtwork}
+          </details>
+        ) : null}
+        {moving ? (
+          <p role="status" className="villages-quick-placement-hint">
+            Place {moving.name || "Venue"} on the map.
+          </p>
+        ) : null}
+        <section ref={mapDetails} className="villages-quick-map" aria-label="Venue placement">
+          {map}
+        </section>
       </section>
       <dialog
         ref={dialog}
@@ -241,13 +330,7 @@ export function QuickStartVenues({
         {selected ? (
           <Fragment key={selected.id}>
             <div className="villages-quick-heading">
-              <h3>
-                {selected.occupancy.playerHome
-                  ? "Your residence"
-                  : selected.category === "public-center"
-                    ? "Community venue"
-                    : `${people.find((person) => person.id === selected.residentIds?.[0])?.name ?? "Villager"}’s residence`}
-              </h3>
+              <h3>{selected.name || "Venue"}</h3>
               <button data-close-quick type="button" aria-label="Close Venue details" onClick={close}>
                 ×
               </button>
@@ -432,7 +515,8 @@ export function QuickStartVenues({
                                     ...(zone.access ?? draftZonePolicy(selected, zone, personal)),
                                     mode,
                                     ...(mode === "permission-required" &&
-                                    selected.category === "public-center" &&
+                                    personal &&
+                                    !zone.ownerId &&
                                     !zone.access?.managerIds?.length
                                       ? { managerIds: ["player"], memberIds: ["player"] }
                                       : {}),

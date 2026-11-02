@@ -287,6 +287,81 @@ replyState.override = {
 await assert.rejects(service.suggestStartingVenues(request), /Common or Private/);
 assert.equal(calls, 3, "invalid model output is rejected without an automatic paid retry");
 
+{
+  replyState.override = undefined;
+  const selectedPlace = {
+    ...request,
+    venues: rows.map((row) => (row.id === "community" ? { ...row, venueClass: "other" } : row)),
+  };
+  await service.suggestStartingVenues(selectedPlace);
+  assert.equal(input.communityVenueId, "community");
+  assert.equal(
+    input.responseTemplate.venues.find((row: any) => row.id === "community").layout,
+    "common",
+    "The Community designation is independent of a Venue's class",
+  );
+  replyState.override = {
+    venues: suggestions.map((row) =>
+      row.id === "community"
+        ? {
+            ...row,
+            layout: "private",
+            commonName: "",
+            commonPurpose: "",
+            commonDescription: "",
+            privateName: "Closed room",
+            privatePurpose: "Private use",
+            privateDescription: "An enclosed room",
+            connections: [["exterior", "private:base"]],
+          }
+        : row,
+    ),
+  };
+  await assert.rejects(
+    service.suggestStartingVenues(selectedPlace),
+    /Common only/,
+    "The designated place needs a public common space even when its Class is Other",
+  );
+  replyState.override = undefined;
+}
+
+{
+  const priorCommunity = suggestions.find((row) => row.id === "community")!;
+  replyState.override = {
+    venues: [
+      ...suggestions.map((row) =>
+        row.id === "community"
+          ? {
+              ...row,
+              layout: "both",
+              privateName: "Archive",
+              privatePurpose: "Storage",
+              privateDescription: "A quiet archive",
+              connections: [
+                ["exterior", "common:base"],
+                ["common:base", "private:base"],
+              ],
+            }
+          : row,
+      ),
+      { ...priorCommunity, id: "courtyard", name: "New courtyard" },
+    ],
+  };
+  const moved = {
+    ...request,
+    communityVenueId: "courtyard",
+    venues: [...rows, { ...rows.find((row) => row.id === "community")!, id: "courtyard", venueClass: "other" }],
+  };
+  const result = await service.suggestStartingVenues(moved);
+  assert.equal(
+    result.venues.find((row) => row.id === "community")!.layout,
+    "both",
+    "A former Community Venue can have an ordinary layout",
+  );
+  assert.equal(result.venues.find((row) => row.id === "courtyard")!.layout, "common");
+  replyState.override = undefined;
+}
+
 // Recover complete values locally; formatting never authorizes another model request.
 const reply = JSON.stringify({ venues: suggestions });
 const formattedReplies = [

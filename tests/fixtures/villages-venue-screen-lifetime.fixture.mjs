@@ -213,6 +213,59 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
 /** Actual owner and delegated panels; HTTP is held independently and never reaches providers. */
 export async function verifyVenueScreenLifetimes(browser) {
   const mount = await createVenueScreenHarness(browser);
+  for (const width of [1366, 390]) {
+    const f = await mount(true, width, {
+      prepareSeed: (seed) => {
+        seed.isFounded = true;
+        seed.settings.communityVenueId = "B / venue";
+        for (const venue of seed.settings.venues) {
+          venue.classes = ["other"];
+          venue.residentIds = [];
+          venue.occupancy.playerHome = false;
+          venue.accessView = {
+            revision: 1,
+            canManage: false,
+            canRecover: false,
+            canDesignateCommunity: venue.id === "A / venue",
+          };
+        }
+      },
+    });
+    const choose = f.page.getByRole("button", { name: "Use as Community Venue", exact: true });
+    await expect(choose).toBeVisible();
+    await choose.click();
+    await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
+    await expect.poll(() => f.requests.length).toBe(1);
+    assert.equal(f.requests[0].path, "/api/villages/venues/A%20%2F%20venue/access");
+    assert.equal(f.requests[0].body.action, "community-venue");
+    assert.equal(f.requests[0].body.previousVenueId, "B / venue");
+    assert.equal(f.requests[0].body.previousRevision, 1);
+    assert.equal(f.requests[0].body.expectedRevision, 1);
+    const reply = structuredClone(f.seed);
+    reply.settings.communityVenueId = "A / venue";
+    reply.settings.venues[0].accessView = {
+      revision: 2,
+      canManage: false,
+      canRecover: false,
+      canDesignateCommunity: false,
+    };
+    reply.settings.venues[1].accessView = {
+      revision: 2,
+      canManage: false,
+      canRecover: true,
+      canDesignateCommunity: true,
+    };
+    await fulfill(f.requests[0].route, { status: 200, contentType: "application/json", body: JSON.stringify(reply) });
+    await expect(choose).toHaveCount(0);
+    await expect(
+      f.page.getByText(
+        "Public and unowned, with no bans or opening hours. Designate another Venue before changing its use or control.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    assert.equal(f.requests.length, 1, "Selecting a Community Venue sends one bounded access command");
+    await f.finish();
+  }
   const kinds = ["name", "image", "player", "access", "retry", "zone", "residence", "proposal"];
   const paths = {
     name: "/locations/venue/A%20%2F%20venue",

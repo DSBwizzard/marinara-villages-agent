@@ -2264,6 +2264,7 @@ export function createSceneCommands({
               turn.at,
               ["player", ...state.villagers.map((person) => person.characterId)],
               sources.map((line) => line.id),
+              state.communityVenueId,
             );
           else if (result.outcome.startsWith("ban-"))
             applyAccessCommand(
@@ -2273,6 +2274,7 @@ export function createSceneCommands({
               turn.at,
               ["player", ...state.villagers.map((person) => person.characterId)],
               sources.map((line) => line.id),
+              state.communityVenueId,
             );
           else if (result.outcome === "invite-outside-hours")
             applyAccessCommand(
@@ -2289,6 +2291,7 @@ export function createSceneCommands({
               turn.at,
               ["player", ...state.villagers.map((person) => person.characterId)],
               sources.map((line) => line.id),
+              state.communityVenueId,
             );
           else if (venue.id === scene.placeId)
             applyAccessCommand(
@@ -2298,6 +2301,7 @@ export function createSceneCommands({
               turn.at,
               ["player", ...state.villagers.map((person) => person.characterId)],
               sources.map((line) => line.id),
+              state.communityVenueId,
             );
           else continue;
           batch.traces[index].applied = "Scoped access change recorded with current authority and saved speech";

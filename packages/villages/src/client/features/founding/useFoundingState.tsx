@@ -38,7 +38,6 @@ export function useFoundingState() {
     rules: "",
     circumstances: [],
     communityVenueId: "founding-community",
-    households: {},
   });
 
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);

@@ -335,7 +335,6 @@ export function useOpenSetup(ports: {
         rules: "",
         circumstances: [],
         communityVenueId: "founding-community",
-        households: {},
       });
       const foundingPlaces =
         fresh || !village

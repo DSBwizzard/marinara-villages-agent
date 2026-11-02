@@ -275,7 +275,7 @@ export function villageSettings(
       return {
         ...venue,
         access: undefined,
-        accessView: projectVenueAccess(venue, "player"),
+        accessView: projectVenueAccess(venue, "player", village.communityVenueId),
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],

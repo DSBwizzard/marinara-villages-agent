@@ -37,7 +37,7 @@ function Harness(){
   const persist=async()=>{const result=await saveDeviceDraft('quick-start',{venues,workspace,authored,suggestionsKey},revision.current);revision.current=result.revision;setSaved(true)};
   useEffect(()=>{readDeviceDraft('quick-start').then(draft=>{if(draft){revision.current=draft.revision;setVenues(draft.data.venues);setWorkspace(draft.data.workspace);setAuthored(draft.data.authored);setKey(draft.data.suggestionsKey)}})},[]);
   window.quickState={venues,workspace,authored,suggestionsKey,problem};window.persist=persist;window.changeContext=()=>setSource('new setting');window.clearProblem=()=>setProblem('');
-  const suggest=createFoundingSuggestSetupVenues({setupWorkspace:workspace,setSetupWorkspace:setWorkspace,onQuickStartApplied:()=>{setAuthored({});authoredRef.current={};setSelected(null)},setupDraftData:{venues,workspace,authored,suggestionsKey},persistSetupDraft:async data=>{const result=await saveDeviceDraft('quick-start',data,revision.current);revision.current=result.revision},personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:['coast'],setupLoreTokenBudgetDraft:1600,setupSetting:'A dockside settlement of reclaimed shelters',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[{scope:'village',summary:'The tide floods the lower street',venueId:'',zoneId:''}],households:{},communityVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
+  const suggest=createFoundingSuggestSetupVenues({setupWorkspace:workspace,setSetupWorkspace:setWorkspace,onQuickStartApplied:()=>{setAuthored({});authoredRef.current={};setSelected(null)},setupDraftData:{venues,workspace,authored,suggestionsKey},persistSetupDraft:async data=>{const result=await saveDeviceDraft('quick-start',data,revision.current);revision.current=result.revision},personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:['coast'],setupLoreTokenBudgetDraft:1600,setupSetting:'A dockside settlement of reclaimed shelters',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[{scope:'village',summary:'The tide floods the lower street',venueId:'',zoneId:''}],communityVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
   const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
   window.reassign=()=>setVenues(rows=>rows.map(row=>row.id==='buster'?{...row,residentIds:['another-character']}:row));
   window.referenceZone=id=>patch('player',venue=>({...venue,destinations:{player:{sleep:id,home:venue.spaces[0].id}},spaces:venue.spaces.map((zone,index)=>index===0?{...zone,connectedTo:[...(zone.connectedTo??[]),id]}:zone)}));
@@ -144,11 +144,12 @@ await withBrowser(browser, async () => {
       );
       await page.goto("http://quick-start.test/");
       const sheet = page.locator("dialog.villages-quick-dialog");
-      const selector = page.getByLabel("Move Venue", { exact: true });
-      const venueEntry = (id) => selector.locator('option[value="' + id + '"]');
+      const card = (id) => page.locator('[data-venue-id="' + id + '"]');
+      const venueEntry = (id) => card(id).locator("h3");
       const openVenue = async (id) => {
-        await selector.selectOption(id);
-        await page.getByRole("button", { name: "Edit Venue", exact: true }).click();
+        await card(id)
+          .getByRole("button", { name: /^Edit / })
+          .click();
       };
       const selectZone = async (id) => {
         const navigation = sheet.getByRole("group", { name: "Zone navigation", exact: true });
@@ -167,11 +168,11 @@ await withBrowser(browser, async () => {
         });
       };
 
-      const generate = page.getByRole("button", { name: "Quick Start", exact: true });
-      const confirm = page.getByRole("dialog", { name: "Quick Start", exact: true });
+      const generate = page.getByRole("button", { name: "Suggest Venues", exact: true });
+      const confirm = page.getByRole("dialog", { name: "Suggest Venues", exact: true });
       const generateConfirmed = async () => {
-        await page.getByRole("button", { name: /^(Quick Start|Check Quick Start)$/ }).click();
-        await expect(confirm).toContainText("Quick Start will overwrite any changes you’ve made to the Venues.");
+        await page.getByRole("button", { name: /^(Suggest Venues|Check suggestions)$/ }).click();
+        await expect(confirm).toContainText("Suggestions will replace Venue details and arrange the map.");
         await confirm.getByRole("button", { name: "Confirm", exact: true }).click();
       };
       await expect(generate).toBeVisible();
@@ -272,11 +273,11 @@ await withBrowser(browser, async () => {
       fail = false;
       hold = true;
       await generateConfirmed();
-      await expect(page.getByRole("button", { name: "Generating Venues…", exact: true })).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Suggesting Venues…", exact: true })).toBeDisabled();
       await expect.poll(() => typeof release).toBe("function");
       hold = false;
       release();
-      await expect(page.getByRole("button", { name: "Quick Start", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Suggest Venues", exact: true })).toBeEnabled();
       await expect(page.getByRole("button", { name: "Review village", exact: true })).toBeEnabled();
       assert.equal(count, 2);
       const rows = await page.evaluate(() => window.quickState.venues);
@@ -289,13 +290,13 @@ await withBrowser(browser, async () => {
       assert.ok(rows.every((row) => row.presentation.x !== null && row.presentation.y !== null));
       assert.equal(new Set(rows.map((row) => `${row.presentation.x}:${row.presentation.y}`)).size, 5);
       assert.deepEqual(
-        await selector.locator('option:not([value=""])').allTextContents(),
+        await page.locator(".villages-quick-venue-card h3").allTextContents(),
         rows.map((row) => row.name),
       );
       const toolbarBox = await page.getByRole("group", { name: "Venue placement controls", exact: true }).boundingBox();
       assert.ok(toolbarBox.height <= 60, "One compact toolbar leaves room for the map");
       await capture("review-list");
-      const edit = page.getByRole("button", { name: "Edit Venue", exact: true });
+      const edit = card("player").getByRole("button", { name: /^Edit / });
       await openVenue("player");
       await expect(sheet).toBeVisible();
       await expect(sheet.getByLabel("Physical Form", { exact: true })).toHaveValue("Converted hearse");
@@ -522,12 +523,12 @@ await withBrowser(browser, async () => {
       assert.equal(count, 2, "cancelling after edits leaves them intact without a model request");
       loseReply = true;
       await generateConfirmed();
-      await expect(page.getByRole("button", { name: "Check Quick Start", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Check suggestions", exact: true })).toBeEnabled();
       assert.equal(count, 3);
       await page.reload();
-      await expect(page.getByRole("button", { name: "Check Quick Start", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Check suggestions", exact: true })).toBeVisible();
       await generateConfirmed();
-      await expect(page.getByRole("button", { name: "Quick Start", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Suggest Venues", exact: true })).toBeEnabled();
       assert.equal(count, 3, "reloading and checking a lost reply uses GET without another model request");
       const replaced = (await page.evaluate(() => window.quickState.venues))[0];
       assert.equal(replaced.name, "The Last Ride");
@@ -538,7 +539,7 @@ await withBrowser(browser, async () => {
       assert.deepEqual(await page.evaluate(() => window.quickState.authored), {});
       loseReply = true;
       await generateConfirmed();
-      await expect(page.getByRole("button", { name: "Check Quick Start", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: "Check suggestions", exact: true })).toBeEnabled();
       await page.evaluate(() => window.reassign());
       const reassigned = await page.evaluate(() => window.quickState.venues);
       await generateConfirmed();

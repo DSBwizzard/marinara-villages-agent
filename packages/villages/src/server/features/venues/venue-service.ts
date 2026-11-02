@@ -13,6 +13,7 @@ import { readHomeBuildingNames } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import { zonePictureBaseline, zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { applyVenueZoneLayout } from "../../domain/rules/venue-layout.js";
+import { designateCommunityVenue } from "../../domain/rules/community-venue.js";
 export type VillageVenueDeletionDependencies = {
   venueId: string;
   venueName: string;
@@ -207,10 +208,19 @@ export function createVenueCommands({
     await mutateVillageState((state) => {
       const venue = state.venues.find((row) => row.id === venueId);
       if (!venue) throw notFound("That Venue is no longer here.");
-      applyAccessCommand(venue, command, "player", villageNow().toISOString(), [
+      if (command.action === "community-venue") {
+        designateCommunityVenue(state, venue, command, villageNow().toISOString());
+        return;
+      }
+      applyAccessCommand(
+        venue,
+        command,
         "player",
-        ...state.villagers.map((person) => person.characterId),
-      ]);
+        villageNow().toISOString(),
+        ["player", ...state.villagers.map((person) => person.characterId)],
+        [],
+        state.communityVenueId,
+      );
     });
     await activeVenueSession(); // Reconcile recorded exits before returning the next snapshot.
     return buildVillageSnapshot();

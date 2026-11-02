@@ -4,7 +4,8 @@ export type FoundingContext = {
   rules: string;
   circumstances: import("../../../shared/contracts/village.js").FoundingCircumstance[];
   communityVenueId: string;
-  households: Record<string, string>;
+  /** Opaque source data retained only while an already-admitted request is recovered. */
+  households?: unknown;
 };
 
 export type SetupDraftData = ReturnType<typeof useFoundingSetupDraftData>;

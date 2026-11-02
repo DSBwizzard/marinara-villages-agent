@@ -96,6 +96,7 @@ export type ZoneAccessView = {
   changes?: AccessChange[];
 };
 export type VenueAccessView = {
+  canDesignateCommunity?: boolean;
   revision: number;
   canManage: boolean;
   canRecover?: boolean;
@@ -110,6 +111,7 @@ export type AccessCommand = {
   expectedRevision: number;
   zoneId: string | null;
 } & (
+  | { action: "community-venue"; previousVenueId: string; previousRevision: number }
   | { action: "recover-managers"; managerIds: string[] }
   | { action: "venue-policy"; managerIds: string[]; visitorHours: VisitorHours | null }
   | { action: "zone-policy"; policy: ZoneAccessPolicy }

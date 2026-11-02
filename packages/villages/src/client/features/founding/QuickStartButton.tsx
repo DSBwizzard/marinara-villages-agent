@@ -16,11 +16,11 @@ export function QuickStartButton({
   return (
     <>
       <button type="button" disabled={busy || disabled} onClick={() => setConfirming(true)}>
-        {busy ? "Generating Venues…" : pending ? "Check Quick Start" : "Quick Start"}
+        {busy ? "Suggesting Venues…" : pending ? "Check suggestions" : "Suggest Venues"}
       </button>
       {confirming ? (
-        <FoundingDialog title="Quick Start" compact showCloseButton={false} onClose={() => setConfirming(false)}>
-          <p>Quick Start will overwrite any changes you’ve made to the Venues.</p>
+        <FoundingDialog title="Suggest Venues" compact showCloseButton={false} onClose={() => setConfirming(false)}>
+          <p>Suggestions will replace Venue details and arrange the map.</p>
           <footer>
             <button type="button" onClick={() => setConfirming(false)}>
               Cancel

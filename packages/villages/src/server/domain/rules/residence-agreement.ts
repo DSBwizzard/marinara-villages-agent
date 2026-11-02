@@ -77,6 +77,8 @@ export function captureResidenceAgreement(
   requestId: string,
   at: string,
 ): NonNullable<VillageResidence["agreement"]> {
+  if (venue.id === state.communityVenueId)
+    throw conflict("Designate another Community Venue before assigning residents to this neutral public place.");
   const zones = venueZones(venue);
   const shared = zones.filter((zone) => zone.kind === "shared-residence" && !zoneClosed(state, venue, zone));
   const sleep = zones.find((zone) => zone.id === (sleepZoneId || (shared.length === 1 ? shared[0].id : "")));

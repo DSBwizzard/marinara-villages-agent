@@ -108,11 +108,11 @@ export function createFoundingSuggestSetupVenues(ports: {
       if (replacing) {
         if (!options.quickStart || options.venueId)
           throw new Error(
-            "The older suggestion attempt was checked. Press Quick Start again to generate all template Venues.",
+            "The older suggestion attempt was checked. Use Suggest Venues again to generate all template Venues.",
           );
         const next = rows.map((row) => {
           const proposal = result.venues.find((item) => item.id === row.id);
-          if (!proposal) throw new Error("Quick Start did not return every template Venue. Your draft is unchanged.");
+          if (!proposal) throw new Error("Suggestions did not return every template Venue. Your draft is unchanged.");
           return replaceQuickStartVenue(row, proposal);
         });
         setSetupVenues(arrangeQuickStartVenues(next, true));
@@ -128,7 +128,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         setSetupSuggestionsKey(setupBeginningSourceKey);
         return;
       }
-      if (options.quickStart) throw new Error("Use Quick Start to confirm replacing Venue drafts.");
+      if (options.quickStart) throw new Error("Use Suggest Venues to confirm replacing Venue drafts.");
       setSetupVenues((currentRows) => {
         const nextRows = currentRows.map((row) => {
           const proposal = result.venues.find((item) => item.id === row.id);

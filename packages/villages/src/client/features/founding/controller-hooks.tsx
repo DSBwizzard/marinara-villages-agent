@@ -3,18 +3,12 @@ import { SETUP_STEPS } from "./founding-steps.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { EMPTY_RESIDENT_ADMISSION } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
-import { freshRowKey, measureImage } from "../../shared/presentation.js";
+import { measureImage } from "../../shared/presentation.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
-import {
-  newSetupVenue,
-  requestSetupMapReceipt,
-  SETUP_MAX_VILLAGER_COUNT,
-  SETUP_MIN_VILLAGER_COUNT,
-} from "./FoundingPanels.js";
+import { requestSetupMapReceipt, SETUP_MAX_VILLAGER_COUNT, SETUP_MIN_VILLAGER_COUNT } from "./FoundingPanels.js";
 import { foundingZoneProblem } from "./villages-founding-zones";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { foundingHouseholds } from "./founding-households.js";
 
 /** Initial values belong to this mounted founding workspace; effects update the same refs. */
 export function useFoundingDraftReferences(ports: {
@@ -273,53 +267,6 @@ export function useFoundingSetupDraftData(ports: {
       setupSuggestionsBusy,
     ],
   );
-}
-
-export function useFoundingRosterReconciliation(ports: {
-  setupContext: import("./draft-model.js").FoundingContext;
-  setSetupContext: React.Dispatch<React.SetStateAction<import("./draft-model.js").FoundingContext>>;
-  catalog: import("../../../shared/contracts/village.js").CatalogEntry[];
-  draftReady: boolean;
-  screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
-  setSetupVenues: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillageVenue[]>>;
-  setupFoundingVillagerIds: string[];
-  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
-}) {
-  const { catalog, draftReady, screen, setSetupVenues, setupFoundingVillagerIds, snapshot } = ports;
-  useEffect(() => {
-    if (screen !== "setup" || snapshot?.isFounded || !draftReady || setupFoundingVillagerIds.length < 1) return;
-    setSetupVenues((rows) => {
-      const center = rows.find((row) => row.id === ports.setupContext.communityVenueId);
-      const emptyVenue = (residence: boolean, player = false) => {
-        const row = newSetupVenue(freshRowKey(), residence ? "residence" : "community", 0.5, 0.5, player);
-        return { ...row, presentation: { ...row.presentation, x: null, y: null } };
-      };
-      const community = center ?? { ...emptyVenue(false), id: ports.setupContext.communityVenueId };
-      const next = foundingHouseholds(
-        rows,
-        [
-          { id: "player", name: "Your" },
-          ...setupFoundingVillagerIds.map((id) => ({
-            id,
-            name: catalog?.find((person) => person.id === id)?.name ?? "Villager",
-          })),
-        ],
-        ports.setupContext.households,
-      );
-      if (!next.some((row) => row.id === community.id)) next.push(community);
-      return JSON.stringify(next) === JSON.stringify(rows) ? rows : next;
-    });
-  }, [
-    screen,
-    snapshot?.isFounded,
-    draftReady,
-    setupFoundingVillagerIds,
-    catalog,
-    setSetupVenues,
-    ports.setupContext.households,
-    ports.setupContext.communityVenueId,
-    ports.setSetupContext,
-  ]);
 }
 
 export function useFoundingMapReceipt(ports: {

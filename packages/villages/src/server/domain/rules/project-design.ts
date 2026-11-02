@@ -19,6 +19,7 @@ import { readConnectionIds } from "./space-connections.js";
 import { boundText } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readPlaceDescription } from "./zone-continuity.js";
+import { assertCommunityVenueUse } from "./community-venue.js";
 
 export function readRenovationChange(
   state: VillageState,
@@ -140,6 +141,7 @@ export function validateRenovationDesign(
     zones,
   );
   initializeVenueAccess(proposed);
+  assertCommunityVenueUse(state, proposed);
   for (const actor of [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])]) {
     for (const role of ["home", "sleep"] as const) {
       const id = venue.destinations?.[actor]?.[role];

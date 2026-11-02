@@ -885,4 +885,18 @@ await main()
   createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
   assert.equal(values.setScreen, "setup", "A freshly serialized v2 draft resumes without old-format backfill");
   assert.deepEqual(values.setSetupWorkspace, draft.workspace);
+  assert.equal(
+    Object.hasOwn(values.setSetupContext, "households"),
+    false,
+    "Settled drafts discard retired grouping state",
+  );
+  draft.workspace.suggestionRequest = { id: "admitted-source", sourceKey: "exact-source", quickStart: true };
+  draft.context.households = { a: "player" };
+  createFoundingRestoreSetupDraft(setters as any)(JSON.parse(JSON.stringify(draft)));
+  assert.deepEqual(
+    values.setSetupContext.households,
+    draft.context.households,
+    "An admitted request keeps its exact opaque source ingredient until resolved",
+  );
+  assert.deepEqual(values.setSetupWorkspace.suggestionRequest, draft.workspace.suggestionRequest);
 }

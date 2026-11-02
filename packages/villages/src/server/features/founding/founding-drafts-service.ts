@@ -88,7 +88,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       rows.some((row) => row.residentIds.length + Number(row.playerHome) > 4)
     )
       throw badRequest(
-        "Choose households for one to three residents and a separate Community Venue before suggestions.",
+        "Assign homes for one to three residents and choose a separate Community Venue before suggestions.",
       );
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && (!quickStart || !rows.some((row) => row.id === targetId)))
@@ -158,6 +158,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         setting,
         worldName: asTrimmedString(input.worldName),
         villageName,
+        communityVenueId,
         worldRules,
         currentCircumstances,
         venues: rows,
@@ -169,9 +170,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             form: "",
             description: "",
             layout:
-              row.venueClass === "community"
+              row.id === communityVenueId
                 ? "common"
-                : quickStart
+                : quickStart && row.venueClass === "residence"
                   ? row.residentIds.length + Number(row.playerHome) > 1
                     ? "common"
                     : "both"
@@ -216,7 +217,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       venues: parseFoundingVenueSuggestions(
         payload,
         requestedRows.map((row) => row.id),
-        requestedRows,
+        requestedRows.map((row) => ({
+          ...row,
+          venueClass:
+            row.id === communityVenueId ? "community" : row.venueClass === "community" ? "other" : row.venueClass,
+        })),
         true,
       ),
     };

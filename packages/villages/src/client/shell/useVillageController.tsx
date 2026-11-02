@@ -46,7 +46,6 @@ import {
   useFoundingImageContext,
   useFoundingMapReceipt,
   useFoundingPreparationPolling,
-  useFoundingRosterReconciliation,
   useFoundingSelectedResidentContexts,
   useFoundingSetupBlocker,
   useFoundingSetupDraftData,
@@ -480,7 +479,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const retrySetupSaving = createFoundingRetrySetupSaving({ ...founding, persistSetupDraft, setupDraftData });
 
   // Roster changes reconcile only the required graph; existing authored Venues survive.
-  useFoundingRosterReconciliation({ ...founding, catalog, screen, snapshot });
 
   const suggestionSignal = useActivitySignal(visible && screen === "setup");
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
