@@ -54,8 +54,9 @@ await withBrowser(browser, async () => {
     const before = await page.evaluate(() => window.venue.privateSpaces.map((s) => s.connectedTo));
     await page.getByRole("button", { name: "Change access" }).click();
     assert.deepEqual(await page.evaluate(() => window.venue.privateSpaces.map((s) => s.connectedTo)), before);
-    await map.getByRole("button", { name: "Connect Zones", exact: true }).click();
-    await map.getByRole("button", { name: "Remove connection Entrance to Kitchen" }).click();
+    await map.getByRole("button", { name: "Modify Zone Connections", exact: true }).click();
+    await map.locator('[data-layout-zone="exterior"]').click();
+    await map.locator('[data-layout-zone="kitchen"]').click();
     await expect(map.locator("svg line")).toHaveCount(1);
     assert.deepEqual(
       await page.evaluate(() => window.venue.privateSpaces.find((s) => s.id === "kitchen").connectedTo),
@@ -68,6 +69,12 @@ await withBrowser(browser, async () => {
       await page.evaluate(() => window.venue.privateSpaces.find((s) => s.id === "kitchen").connectedTo),
       ["bedroom"],
     );
+    await map.locator('[data-layout-zone="kitchen"]').click();
+    await map.locator('[data-layout-zone="bedroom"]').click();
+    await expect(map.locator("svg line")).toHaveCount(1);
+    await map.locator('[data-layout-zone="kitchen"]').click();
+    await map.locator('[data-layout-zone="bedroom"]').click();
+    await expect(map.locator("svg line")).toHaveCount(2);
     const saved = await page.evaluate(() => JSON.stringify(window.venue));
     await page.evaluate(() => window.remount());
     await expect(map.locator("svg line")).toHaveCount(2);

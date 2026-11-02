@@ -205,7 +205,7 @@ await withBrowser(browser, async () => {
         .locator(".villages-zone-map-toolbar")
         .getByRole("button")
         .allTextContents();
-      assert.deepEqual(toolbarButtons, ["Add Zone", "Remove Zone", "Connect Zones"]);
+      assert.deepEqual(toolbarButtons, ["Add Zone", "Remove Zone", "Modify Zone Connections"]);
       const toolbarBoxes = await quickLayout
         .locator(".villages-zone-map-toolbar button")
         .evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
@@ -236,20 +236,17 @@ await withBrowser(browser, async () => {
           );
         }
       await capture("layout");
-      await quickLayout.getByRole("button", { name: "Connect Zones", exact: true }).click();
-      await quickLayout
-        .getByRole("button", {
-          name: /Remove connection Common Space to Entrance|Remove connection Entrance to Common Space/,
-        })
-        .click();
+      await quickLayout.getByRole("button", { name: "Modify Zone Connections", exact: true }).click();
+      await quickLayout.locator('[data-layout-zone="common:base"]').click();
+      await quickLayout.locator('[data-layout-zone="exterior"]').click();
       await expect(sheet.getByText(/Every space needs|Zones cannot overlap/)).toHaveCount(0);
       await expect(sheet.getByRole("alert")).toHaveCount(0);
-      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await sheet.locator(".villages-quick-footer").getByRole("button", { name: "Done", exact: true }).click();
       await expect(sheet).toBeVisible();
       await expect(sheet.getByRole("alert")).toHaveText("Cannot save Venue layout: Unreachable Zones.");
       await quickLayout.locator('[data-layout-zone="common:base"]').click();
       await quickLayout.locator('[data-layout-zone="exterior"]').click();
-      await quickLayout.getByRole("button", { name: "Done connecting", exact: true }).click();
+      await quickLayout.getByRole("button", { name: "Done", exact: true }).click();
       await expect(sheet.getByRole("alert")).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "Edit Zone", exact: true })).toHaveCount(0);
       await page.locator("dialog.villages-quick-dialog").getByRole("tab", { name: "Zone", exact: true }).click();

@@ -351,6 +351,7 @@ export function FoundingConnections({
       selectedId={selectedZoneId}
       onSelect={onSelect}
       disabled={busy}
+      modifyConnections
       toolbar={
         allowAdd ? (
           <>
