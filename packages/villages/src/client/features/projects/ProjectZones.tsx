@@ -272,7 +272,7 @@ export function ProjectZones({
                 aria-label="Long-term details"
                 rows={4}
                 value={venue.description}
-                readOnly={renovation}
+                readOnly={!editable}
                 onChange={(event) => onVenue({ ...venue, description: event.target.value })}
               />
             </label>

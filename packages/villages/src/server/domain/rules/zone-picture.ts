@@ -6,14 +6,19 @@ export function zonePicturePhysicalRecord(zone: VillageVenueZone) {
     description: zone.description,
   };
 }
-export function zonePictureContext(_state: VillageState, _venue: VillageVenue, zone: VillageVenueZone): string {
-  return JSON.stringify(zonePicturePhysicalRecord(zone));
+export function zonePictureContext(_state: VillageState, venue: VillageVenue, zone: VillageVenueZone): string {
+  return JSON.stringify({ ...zonePicturePhysicalRecord(zone), ...(venue.form ? { form: venue.form } : {}) });
 }
 
 export function zonePictureBaseline(context: string): string {
   try {
     const parsed = JSON.parse(context);
-    return parsed && typeof parsed.description === "string" ? JSON.stringify({ description: parsed.description }) : "";
+    return parsed && typeof parsed.description === "string"
+      ? JSON.stringify({
+          description: parsed.description,
+          ...(typeof parsed.form === "string" && parsed.form ? { form: parsed.form } : {}),
+        })
+      : "";
   } catch {
     return "";
   }

@@ -129,6 +129,31 @@ await withBrowser(browser, async () => {
       await expect.poll(() => calls.length).toBeGreaterThan(0);
       assert.deepEqual(calls.at(-1).body.zones.at(-1).controllerIds, ["player", secondId]);
     }
+    if (width >= 700) {
+      await page.getByRole("button", { name: "‹ All Projects" }).click();
+      await page
+        .getByRole("navigation", { name: "Projects", exact: true })
+        .getByRole("button", { name: /Workshop/ })
+        .click();
+    }
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await page.getByRole("button", { name: "Building", exact: true }).click();
+    await page.getByLabel("Building form", { exact: true }).fill("A restored timber mill");
+    await fits("renovation building form");
+    if (process.env.VILLAGES_SCREENSHOT_DIR) {
+      await mkdir(process.env.VILLAGES_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: join(process.env.VILLAGES_SCREENSHOT_DIR, `renovation-${width}x${height}.png`) });
+    }
+    await page.getByRole("button", { name: "Zones", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Project Zones" })
+      .getByRole("button", { name: /Entrance/ })
+      .click();
+    await page.getByLabel("Long-term details", { exact: true }).fill("A repaired entrance with new timber doors.");
+    await fits("renovation entrance");
+    await page.getByRole("button", { name: "Save design", exact: true }).click();
+    await expect.poll(() => calls.at(-1)?.body.form).toBe("A restored timber mill");
+    assert.equal(calls.at(-1).body.exteriorDescription, "A repaired entrance with new timber doors.");
     await page.close();
     const working = projectSnapshot();
     working.village.timeZone = "America/Los_Angeles";

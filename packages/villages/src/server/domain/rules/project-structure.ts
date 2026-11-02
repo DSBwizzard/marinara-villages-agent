@@ -19,9 +19,9 @@ export function structuralShape(zone: VillageZoneDraft) {
   return shape({ ...zone, description: "" });
 }
 export function changedZoneIds(venue: VillageVenue, change?: VillageProjectChange | null): string[] {
-  if (!change?.zones) return [];
+  if (!change) return [];
   const old = (venue.zones ?? []).filter((zone) => zone.kind !== "exterior");
-  const next = change.zones.map((zone) => {
+  const next = (change.zones ?? old).map((zone) => {
     const previous = old.find((saved) => saved.id === zone.id);
     return {
       ...zone,
@@ -29,11 +29,13 @@ export function changedZoneIds(venue: VillageVenue, change?: VillageProjectChang
       roomSpecification: zone.roomSpecification ?? previous?.roomSpecification,
     };
   });
-  return [...new Set([...old, ...next].map((zone) => zone.id))].filter(
+  const changed = [...new Set([...old, ...next].map((zone) => zone.id))].filter(
     (id) =>
       JSON.stringify(old.find((zone) => zone.id === id) && shape(old.find((zone) => zone.id === id)!)) !==
       JSON.stringify(next.find((zone) => zone.id === id) && shape(next.find((zone) => zone.id === id)!)),
   );
+  if (change.form !== undefined || change.exteriorDescription !== undefined) changed.push("exterior");
+  return changed;
 }
 export function venueDesignHash(
   venue: VillageVenue,
@@ -43,6 +45,7 @@ export function venueDesignHash(
   return createHash("sha256")
     .update(
       JSON.stringify([
+        ...(change?.form !== undefined ? [venue.form ?? ""] : []),
         [...(venue.classes ?? [])].sort(),
         venue.residenceCapacity,
         (venue.zones ?? []).map((zone) => zone.id).sort(),
@@ -55,10 +58,12 @@ export function venueDesignHash(
             const privateInterior = ["private-residence", "staff", "restricted"].includes(zone.kind);
             const draft = change?.zones?.find((row) => row.id === id);
             const replacing =
-              !!change &&
-              (!draft ||
-                !draft.preserveDescription ||
-                (draft.roomSpecification !== undefined && draft.roomSpecification !== zone.roomSpecification));
+              zone.kind === "exterior"
+                ? change?.exteriorDescription !== undefined
+                : !!change &&
+                  (!draft ||
+                    !draft.preserveDescription ||
+                    (draft.roomSpecification !== undefined && draft.roomSpecification !== zone.roomSpecification));
             return [
               structuralShape(privateInterior ? { ...zone, name: "" } : zone),
               replacing ? zone.description : null,

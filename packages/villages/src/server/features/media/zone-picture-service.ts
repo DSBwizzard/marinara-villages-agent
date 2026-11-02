@@ -88,7 +88,8 @@ export function createZonePictures(
             (state.zonePictureEpoch ?? 0) === epoch &&
             (current.pictureRevision ?? 0) === revision &&
             current.image?.id === source?.id &&
-            current.description === zone.description &&
+            found.venue &&
+            zonePictureContext(state, found.venue, current) === target &&
             (!freshContext || (found.venue && sceneryImageKey(state, found.venue, zone.id) === freshContext)) &&
             eligible(state, current)
             ? current
@@ -142,13 +143,14 @@ export function createZonePictures(
           support?.multiple && base?.id !== source?.id
             ? "Reference 2 is the original architectural anchor; preserve later furnishings unless the target changes them."
             : "",
+          "Venue form describes the whole building. Follow explicit architectural changes in the target while preserving unrelated furnishings and details.",
           "Previous physical account: " +
             (prior
               ? zonePictureBaseline(prior)
-                ? String(JSON.parse(zonePictureBaseline(prior)).description)
+                ? zonePictureBaseline(prior)
                 : "Not recorded"
               : "Not recorded; preserve existing visual details unless the target contradicts them."),
-          "Complete target physical account: " + zone.description,
+          "Complete target physical account: " + target,
         ]
           .filter(Boolean)
           .join("\n");

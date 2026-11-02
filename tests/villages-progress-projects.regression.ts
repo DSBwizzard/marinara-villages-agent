@@ -8,6 +8,7 @@ import {
   reconcileProjectLifecycles,
 } from "../packages/villages/src/server/domain/rules/project-lifecycle-rules.js";
 import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
+import { approvalScope } from "../packages/villages/src/server/domain/rules/project-terms.js";
 const f = fixture(),
   now = new Date("2026-10-24T00:00:00Z");
 const first = await f.newProject("Art Hall", "a", { x: 0.5, y: 0.5 }),
@@ -37,6 +38,13 @@ assert.equal(f.state().projects.filter((p) => p.status === "complete").length, 2
 assert.equal(f.state().progressTasks.length, 0, "Projects do not create old progress tasks");
 const r = await renovation(f),
   r2 = await renovation(f, { capacity: 4 });
+const baseline = fixture();
+const baselineProject = await renovation(baseline);
+assert.equal(
+  baseline.get(baselineProject).lifecycle!.baseDesignHash,
+  "359cddcb54ac76783524d528f4b5daab3a2a655d27c773f4a4f71fdecb9e52a3",
+  "Previously saved interior-only renovation designs retain their fingerprint",
+);
 await f.agree(r);
 await f.agree(r2, "b");
 await f.service.startProjectConstruction(r, f.body(r), now);
@@ -55,4 +63,66 @@ for (const old of [{ version: 2 }, {}, { version: 0 }, { version: 5 }, { version
   assert.throws(() => coerceVillageState(old), /Unsupported Village format/);
 const fresh = defaultVillageState();
 assert.deepEqual(coerceVillageState(fresh).projects, []);
+const exterior = fixture();
+await exterior.mutate((state) => {
+  const site = state.venues[0];
+  site.classes = ["residence", "workplace"];
+  site.residentIds = ["b"];
+  site.workerIds = ["c"];
+  site.zones![1].kind = "shared-residence";
+  site.zones![1].venueClass = "residence";
+});
+const restored = await renovation(exterior, {
+  form: "A restored shopping mall",
+  exteriorDescription: "A repaired entrance with clean glass doors.",
+});
+const siteBefore = structuredClone(exterior.state().venues[0]);
+assert.deepEqual(exterior.get(restored).lifecycle!.affectedIds.sort(), ["a", "b", "c"]);
+assert.equal(exterior.get(restored).lifecycle!.change!.form, "A restored shopping mall");
+const consent = approvalScope(siteBefore, exterior.get(restored).lifecycle!.change!, "c");
+assert.notEqual(
+  consent,
+  approvalScope(
+    siteBefore,
+    {
+      ...exterior.get(restored).lifecycle!.change!,
+      exteriorDescription: "A different entrance.",
+    },
+    "c",
+  ),
+  "Entrance changes need fresh agreement",
+);
+await exterior.agree(restored);
+await exterior.mutate((state) => {
+  state.projects[0].lifecycle!.approvals = state.projects[0].lifecycle!.approvals.filter(
+    (row) => row.residentId !== "c",
+  );
+});
+await assert.rejects(exterior.service.startProjectConstruction(restored, exterior.body(restored), now), /agreements/);
+await exterior.agree(restored);
+await exterior.service.startProjectConstruction(restored, exterior.body(restored), now);
+await exterior.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS)));
+assert.equal(exterior.get(restored).status, "complete");
+const siteAfter = exterior.state().venues[0];
+assert.equal(siteAfter.form, "A restored shopping mall");
+assert.equal(siteAfter.zones![0].description, "A repaired entrance with clean glass doors.");
+assert.equal(
+  siteAfter.zones![1].description,
+  siteBefore.zones![1].description,
+  "Architecture does not replace unrelated interior details",
+);
+assert.ok(siteAfter.zones!.every((zone) => zone.picture?.dirty && zone.state.revision > 0));
+const completedSite = structuredClone(siteAfter);
+await exterior.mutate((state) => reconcileProjectLifecycles(state, new Date(now.getTime() + PROJECT_DURATION_MS * 2)));
+assert.deepEqual(exterior.state().venues[0], completedSite, "Completion replay does not apply physical changes twice");
+const stale = fixture();
+const staleProject = await renovation(stale, { form: "A new structure" });
+await stale.agree(staleProject);
+await stale.mutate((state) => {
+  state.venues[0].form = "Changed architecture";
+});
+await assert.rejects(
+  stale.service.startProjectConstruction(staleProject, stale.body(staleProject), now),
+  /design changed/,
+);
 console.log("Fresh Project lifecycle, atomic starts, deadlines, cancellation and format checks passed.");
