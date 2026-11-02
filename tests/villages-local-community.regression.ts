@@ -646,3 +646,30 @@ console.log(
   );
   assert.equal(state.venues.find((v) => v.id === target.id)!.residentIds!.includes("c"), false);
 }
+
+{
+  const { isHouse, venueAssignedCountFor } = await import("../packages/villages/src/client/shared/venue.js");
+  const canonical = world().venues[0];
+  assert.equal(
+    venueAssignedCountFor({
+      ...canonical,
+      residentIds: ["a", "b"],
+      occupancy: { ...canonical.occupancy, playerHome: true },
+    } as any),
+    3,
+  );
+  assert.equal(
+    venueAssignedCountFor({
+      ...canonical,
+      residentIds: undefined,
+      occupancy: { ...canonical.occupancy, playerHome: false, residentCharacterId: "stale" },
+    } as any),
+    0,
+    "A singular stale field cannot invent a household member",
+  );
+  assert.equal(
+    isHouse({ classes: ["other"], occupancy: { playerHome: true, residentCharacterId: "stale" } } as any),
+    false,
+    "Residence class is explicit",
+  );
+}
