@@ -446,7 +446,7 @@ export function SpriteManager({
               if (await mayLeave()) setSetupOpen(true);
             }}
           >
-            Import character sprites
+            Import Engine sprites
           </button>
           <button className="vsm-primary" disabled={busy || !manager} onClick={() => fileInput.current?.click()}>
             Upload images

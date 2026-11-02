@@ -4,6 +4,7 @@ import type {
   SpriteSetupDraft,
   SpriteSetupState,
   SpriteManagerState,
+  SpriteLibraryFolder,
 } from "../../../shared/contracts/sprites.js";
 import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
@@ -13,7 +14,7 @@ import type { SpriteWrites } from "./sprite-writes.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { emptySpriteManager } from "../../domain/rules/sprite-manager-model.js";
 import { asRecord, asString } from "../../domain/rules/coerce.js";
-import { badRequest, conflict } from "../../domain/rules/errors.js";
+import { badRequest, conflict, badGateway, VillagesRequestError } from "../../domain/rules/errors.js";
 import { isEngineSpriteFilename } from "../../domain/rules/sprite-manager-model.js";
 
 export interface SpriteSetupPorts {
@@ -58,23 +59,47 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
   }
   async function files(id: string) {
     await ports.villageEngineJson(`/api/characters/${encodeURIComponent(id)}`);
-    const response = await ports.villageEngineJson<unknown>(`/api/sprites/${encodeURIComponent(id)}`);
-    return (Array.isArray(response) ? response : []).map(asRecord).flatMap((file) => {
+    let catalog: Record<string, unknown> = {};
+    try {
+      catalog = asRecord(await ports.villageEngineJson(`/api/sprites/${encodeURIComponent(id)}/catalog`));
+      if (!Array.isArray(catalog.folders) || !Array.isArray(catalog.sprites))
+        throw badGateway("The Engine returned invalid sprite folder information. Refresh folders to retry.");
+    } catch (error) {
+      if (!(error instanceof VillagesRequestError) || !error.message.includes("(404)")) throw error;
+      // Older Engines retain the flat full-body import.
+    }
+    const folderSupport = Array.isArray(catalog.folders) && Array.isArray(catalog.sprites);
+    const folders: SpriteLibraryFolder[] = (Array.isArray(catalog.folders) ? catalog.folders : [])
+      .map(asRecord)
+      .flatMap((folder) =>
+        typeof folder.id === "string" &&
+        typeof folder.name === "string" &&
+        (folder.category === "expressions" || folder.category === "full-body")
+          ? [{ id: folder.id, name: folder.name, category: folder.category } as SpriteLibraryFolder]
+          : [],
+      );
+    const response = folderSupport
+      ? catalog.sprites
+      : await ports.villageEngineJson<unknown>(`/api/sprites/${encodeURIComponent(id)}`);
+    const items = (Array.isArray(response) ? response : []).map(asRecord).flatMap((file) => {
       const filename = asString(file.filename);
-      return isEngineSpriteFilename(filename) && /^full_/i.test(filename)
+      return isEngineSpriteFilename(filename) && (folderSupport || /^full_/i.test(filename))
         ? [
             {
               filename,
               label: asString(file.label).trim() || filename,
+              folderId: folders.some((folder) => folder.id === file.folderId) ? asString(file.folderId) : null,
               url: `/api/sprites/${encodeURIComponent(id)}/file/${encodeURIComponent(filename)}`,
             },
           ]
         : [];
     });
+    return { items, folders, folderSupport };
   }
   async function read(id: string): Promise<SpriteSetupState> {
     const person = (await ports.readVillageState()).villagers.find((person) => person.characterId === id);
-    let library: Awaited<ReturnType<typeof files>> = [],
+    const current = await draft(id);
+    let library: Awaited<ReturnType<typeof files>> = { items: [], folders: [], folderSupport: true },
       libraryError = "";
     try {
       library = await files(id);
@@ -82,8 +107,18 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
       libraryError = "Character sprites are unavailable. Retry import or add without using sprites.";
     }
     return {
-      ...(await draft(id)),
-      files: library,
+      ...current,
+      files: library.items.map((file) => {
+        const art = [...(person?.spriteManager?.artwork ?? []), ...current.manager.artwork].find(
+          (art) =>
+            art.origin === "engine" &&
+            art.engineSource.characterId === id &&
+            art.engineSource.filename === file.filename,
+        );
+        return { ...file, ...(art ? { adoptedArtworkId: art.id } : {}) };
+      }),
+      folders: library.folders,
+      folderSupport: library.folderSupport,
       libraryError,
       resident: Boolean(person),
       residentToken: person ? residentToken(person) : "",
@@ -97,14 +132,46 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     });
     return draft(id);
   }
-  function prepare(id: string, signal?: AbortSignal) {
+  function prepare(id: string, signal?: AbortSignal, raw?: unknown) {
     return ports.writes.serialize("setup:" + id, async () => {
       const current = await draft(id);
       const library = await files(id);
+      const input = asRecord(raw),
+        scoped = raw !== undefined;
+      if (scoped && current.revision !== input.revision)
+        throw conflict("Sprite setup changed. Reload before importing.");
+      if (
+        scoped &&
+        (!["front", "side", "unassigned"].includes(asString(input.view)) ||
+          !Array.isArray(input.filenames) ||
+          !input.filenames.length ||
+          input.filenames.length > 40 ||
+          new Set(input.filenames).size !== input.filenames.length ||
+          !(input.folderId === null || library.folders.some((folder) => folder.id === input.folderId)))
+      )
+        throw badRequest("Choose a folder and Front, Side, or Unassigned.");
+      if (library.folderSupport && !scoped) throw badRequest("Choose a sprite folder before importing.");
+      const selected = scoped
+        ? library.items.filter(
+            (file) => file.folderId === input.folderId && (input.filenames as unknown[]).includes(file.filename),
+          )
+        : library.items;
+      if (scoped && selected.length !== (input.filenames as unknown[]).length)
+        throw conflict("The Engine folder changed. Reload before importing.");
+      const person = (await ports.readVillageState()).villagers.find((person) => person.characterId === id);
+      const existing = person?.spriteManager?.artwork ?? [];
       const manager = structuredClone(current.manager);
       const errors = { ...current.errors };
-      const missing = library
-        .filter((file) => !manager.artwork.some((art) => art.engineSource?.filename === file.filename))
+      const missing = selected
+        .filter(
+          (file) =>
+            ![...manager.artwork, ...existing].some(
+              (art) =>
+                art.origin === "engine" &&
+                art.engineSource.characterId === id &&
+                art.engineSource.filename === file.filename,
+            ),
+        )
         .slice(0, 40);
       if (!missing.length && current.revision) return read(id);
       let attempted = false;
@@ -139,12 +206,12 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
               (art) =>
                 ({
                   artworkId: art.id,
-                  name: (library.find((file) => file.filename === art.engineSource?.filename)?.label ?? art.name)
+                  name: (library.items.find((file) => file.filename === art.engineSource?.filename)?.label ?? art.name)
                     .replace(/\.(png|jpe?g|webp)$/i, "")
                     .replace(/^full_/i, "")
                     .slice(0, 100),
-                  view: "front",
-                  included: true,
+                  view: input.view === "side" ? "side" : "front",
+                  included: input.view !== "unassigned",
                   approved: false,
                 }) as SpriteSetupAssignment,
             ),
@@ -261,6 +328,20 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           throw conflict("The resident’s sprites changed. Reopen sprite setup.");
         if (!existing?.artwork.length) person.spriteManager = prepared;
         else {
+          // The character library may have copied the same source after setup was prepared.
+          prepared.artwork = prepared.artwork.map((art) => {
+            const owned = existing.artwork.find(
+              (saved) =>
+                art.origin === "engine" &&
+                saved.origin === "engine" &&
+                saved.engineSource.characterId === art.engineSource.characterId &&
+                saved.engineSource.filename === art.engineSource.filename,
+            );
+            if (!owned || owned.id === art.id) return art;
+            for (const assignment of prepared.assignments)
+              if (assignment.artworkId === art.id) assignment.artworkId = owned.id;
+            return owned;
+          });
           const owned = new Set(existing.artwork.map((art) => art.id));
           existing.artwork.push(...prepared.artwork.filter((art) => !owned.has(art.id)));
           const fresh = prepared.assignments.filter(
@@ -270,11 +351,36 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
           existing.artwork = existing.artwork.map((art) =>
             freshArt.has(art.id) ? prepared.artwork.find((item) => item.id === art.id)! : art,
           );
+          let defaultId = prepared.defaultExpressionId;
+          for (const expression of prepared.expressions) {
+            const additions = fresh.filter((item) => item.expressionId === expression.id);
+            if (!additions.length) continue;
+            const matches = existing.expressions.filter(
+              (item) => item.name.toLocaleLowerCase() === expression.name.toLocaleLowerCase(),
+            );
+            const unique =
+              prepared.expressions.filter(
+                (item) => item.name.toLocaleLowerCase() === expression.name.toLocaleLowerCase(),
+              ).length === 1;
+            const match = unique && matches.length === 1 ? matches[0] : undefined;
+            if (match) {
+              if (
+                additions.some((item) =>
+                  existing.assignments.some((saved) => saved.expressionId === match.id && saved.view === item.view),
+                )
+              )
+                throw conflict(
+                  `“${expression.name}” already has artwork for that facing. Rename or unassign the imported sprite.`,
+                );
+              for (const item of additions) item.expressionId = match.id;
+              if (defaultId === expression.id) defaultId = match.id;
+            } else if (!existing.expressions.some((item) => item.id === expression.id))
+              existing.expressions.push(expression);
+          }
           existing.assignments.push(...fresh);
-          existing.expressions.push(
-            ...prepared.expressions.filter((item) => fresh.some((assignment) => assignment.expressionId === item.id)),
-          );
-          existing.defaultExpressionId ??= prepared.defaultExpressionId;
+          existing.defaultExpressionId ??= existing.assignments.some((item) => item.expressionId === defaultId)
+            ? defaultId
+            : existing.assignments[0]?.expressionId;
         }
       });
       return { applied: true };
