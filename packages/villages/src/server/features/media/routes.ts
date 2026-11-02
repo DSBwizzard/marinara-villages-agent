@@ -61,7 +61,7 @@ export function registerSpriteManagerRoutes(engine: FastifyInstance) {
         try {
           const service = spriteSetup(),
             id = readCharacterId(request.params.characterId);
-          if (action === "prepare") return await service.prepare(id, controller.signal);
+          if (action === "prepare") return await service.prepare(id, controller.signal, request.body);
           if (action === "save") return await service.save(id, request.body);
           if (action === "frame") return await service.frame(id, request.body);
           return await service.applyResident(id, request.body);
