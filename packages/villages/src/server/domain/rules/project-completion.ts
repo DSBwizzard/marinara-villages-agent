@@ -88,6 +88,20 @@ export function completeProject(state: VillageState, project: VillageProject, at
     ];
     venue.zones = applyConnectionEdits(venue.zones, drafts);
     validateConnections(venue.zones);
+    const entrance = venue.zones.find((zone) => zone.kind === "exterior")!;
+    if (change.exteriorDescription !== undefined) {
+      entrance.description = change.exteriorDescription;
+      venue.description = change.exteriorDescription;
+      entrance.state = { ...entrance.state, revision: entrance.state.revision + 1, updatedAt: at };
+      entrance.picture = { ...entrance.picture, base: entrance.picture?.base ?? entrance.image, dirty: true };
+    }
+    if (change.form !== undefined) {
+      venue.form = change.form;
+      for (const zone of venue.zones) {
+        zone.state = { ...zone.state, revision: zone.state.revision + 1, updatedAt: at };
+        zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
+      }
+    }
     venue.classes = change.classes ?? venue.classes;
     venue.residenceCapacity = change.capacity ?? venue.residenceCapacity;
     venue.playerInvitations = venue.playerInvitations?.filter(

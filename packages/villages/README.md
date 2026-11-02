@@ -170,7 +170,7 @@ Pause or cancellation releases the reserved periods. Resume arranges the remaini
 
 If the lead withdraws or the necessary authority is lost, work pauses. **Resume** requires a willing lead and valid agreements and preserves the remaining time. Completion applies the agreed design automatically. To change the scope after work starts, finish or cancel first. Canceling an unfinished site leaves its captured Scenes available to conclude.
 
-A Venue supports up to six non-Entrance Zones, two Classes, and four residents. Renovation does not automatically move residents, assign jobs, or grant access.
+A Venue supports up to six non-Entrance Zones, two Classes, and four residents. Renovation can change its building form and Entrance details as well as selected interior Zones. Building changes require the affected people's agreement and preserve unrelated interiors. Renovation does not automatically move residents, assign jobs, or grant access.
 
 ## Maps, artwork, and sprites
 

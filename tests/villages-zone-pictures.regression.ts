@@ -110,6 +110,36 @@ const connection = (imageService: string, model = "") => ({
   imageService,
   model,
 });
+{
+  const f = fixture();
+  await f.enter();
+  const before = f.zone().description;
+  f.world().venues[0].form = "A restored glass-roofed mall";
+  f.zone().picture!.dirty = true;
+  await f.enter();
+  assert.equal(f.calls.length, 1, "A changed building form updates existing artwork even when Zone prose is unchanged");
+  assert.match(String(f.calls[0].prompt), /restored glass-roofed mall/);
+  assert.equal(f.zone().description, before);
+  assert.equal(f.zone().picture!.dirty, false);
+  await f.enter();
+  assert.equal(f.calls.length, 1, "The saved architectural image context prevents repeat work");
+}
+{
+  const f = fixture();
+  f.dirty("A brass lamp.");
+  f.during(() => {
+    f.world().venues[0].form = "A different building structure";
+    f.zone().picture!.dirty = true;
+  });
+  await f.enter();
+  assert.equal(f.zone().image!.id, "original", "An image admitted before a form change cannot publish afterward");
+  assert.equal(f.zone().picture!.dirty, true);
+  f.during();
+  f.advance(5 * 60_000);
+  await f.enter();
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.zone().image!.id, "render-2");
+}
 assert.equal(imageEditSupport(connection("openai", "gpt-image-1")).status, "supported");
 assert.equal(imageEditSupport(connection("openai", "dall-e-3")).status, "unknown");
 assert.equal(imageEditSupport(connection("gemini_image", "gemini-2.5-flash-image")).multiple, true);

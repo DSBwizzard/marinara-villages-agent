@@ -128,6 +128,7 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
  .${P}-project-board .vp-tabs{grid-template-columns:repeat(4,minmax(0,1fr));margin:.5rem 0}
  .${P}-project-board .vp-tabs button{font:600 .72rem/1.2 Arial,sans-serif;padding:.3rem .15rem;overflow-wrap:normal}
  .${P}-project-board .vp-detail-pages{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:.35rem}
+ .${P}-project-board .vp-detail-pages.vp-renovation-pages{grid-template-columns:repeat(4,minmax(0,1fr))}
  .${P}-project-board .vp-detail-pages button{font-size:.75rem;padding:.3rem .15rem}
  .${P}-project-board .vp-panel-heading button{font-size:.75rem;padding:.3rem .45rem;white-space:nowrap}
  .${P}-project-board .vp-panel{padding:.65rem}
