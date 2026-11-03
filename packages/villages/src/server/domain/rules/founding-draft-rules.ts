@@ -40,21 +40,8 @@ export function readFoundingDraftContext(value: unknown): {
   };
 }
 
-export type FoundingVenueSuggestion = {
-  id: string;
-  name: string;
-  form: string;
-  venueType?: string;
-  description: string;
-  layout: "exterior" | "common" | "private" | "both";
-  connections?: [string, string][];
-  commonName: string;
-  commonPurpose?: string;
-  commonDescription: string;
-  privateName: string;
-  privatePurpose: string;
-  privateDescription?: string;
-};
+export type { FoundingVenueSuggestion } from "../../../shared/contracts/founding.js";
+import type { FoundingVenueSuggestion } from "../../../shared/contracts/founding.js";
 
 export function parseFoundingVenueSuggestions(
   value: unknown,

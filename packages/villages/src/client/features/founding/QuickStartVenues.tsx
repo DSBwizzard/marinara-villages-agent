@@ -1,3 +1,4 @@
+import { FoundingVenuePages } from "./FoundingVenuePages.js";
 import { FoundingPagination } from "./FoundingPagination.js";
 import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
@@ -80,7 +81,6 @@ export function QuickStartVenues({
   const mapDetails = useRef<HTMLElement>(null);
   const zoneFields = useRef<HTMLFieldSetElement>(null);
   const fieldId = useId();
-  const [page, setPage] = useState(0);
   const [sleepPage, setSleepPage] = useState(0);
   const [editorTab, setEditorTab] = useState("Venue");
   const [zoneTab, setZoneTab] = useState("Details");
@@ -93,11 +93,6 @@ export function QuickStartVenues({
     ...venues.filter((venue) => venue.classes?.includes("residence")),
     ...venues.filter((venue) => !venue.classes?.includes("residence")),
   ];
-  const selectedPage = Math.floor(ordered.findIndex((venue) => venue.id === selectedId) / 3);
-  useEffect(() => {
-    const index = selectedPage;
-    setPage((current) => (index >= 0 ? index : Math.min(current, Math.max(0, Math.ceil(venues.length / 3) - 1))));
-  }, [selectedPage, venues.length]);
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
   const open = state.view === "details" && !!selected;
@@ -143,7 +138,10 @@ export function QuickStartVenues({
   const personal = !!selected?.privateSpaces?.some((zone) => zone.id === zoneId);
   const zone = [...(selected?.spaces ?? []), ...(selected?.privateSpaces ?? [])].find((row) => row.id === zoneId);
   const area = zoneId === "exterior" ? "exterior" : personal ? "private" : "interior";
-  const image = zoneId === "exterior" ? selected?.presentation.image : zone?.image;
+  const artworkZone = editorTab === "Zones" ? zone : undefined;
+  const artworkArea = artworkZone ? area : "exterior";
+  const image = artworkZone ? artworkZone.image : selected?.presentation.image;
+  const artworkName = artworkZone?.name || (artworkZone ? "Zone" : "Entrance");
   const fieldIssue = (field: FoundingIssue["field"]) =>
     saveAttempted || focusIssue?.venueId === selected?.id
       ? issues.find(
@@ -259,75 +257,76 @@ export function QuickStartVenues({
         {onAssignHome && unassigned.length ? (
           <p role="status">Choose a home for {unassigned.map((person) => person.name).join(", ")}.</p>
         ) : null}
-        {ordered.slice(page * 3, page * 3 + 3).map((venue) => {
-          const home = venue.classes?.includes("residence");
-          const community = venue.id === communityVenueId;
-          const members = foundingHomeMembers(venue);
-          return (
-            <section
-              key={venue.id}
-              className="villages-quick-venue-card"
-              aria-label={venue.name || "Venue"}
-              data-venue-id={venue.id}
-              data-selected={selectedId === venue.id}
-            >
-              <div className="villages-quick-venue-summary">
-                {venue.presentation.image ? (
-                  <img className="villages-quick-venue-thumbnail" src={venue.presentation.image.url} alt="" />
-                ) : null}
-                <div className="villages-quick-venue-title">
-                  <h3>
-                    <button type="button" disabled={busy || imageBusy} onClick={() => onSelect(venue)}>
-                      {venue.name || "Venue"}
-                    </button>
-                  </h3>
-                  {community ? (
-                    <span className="villages-quick-venue-badge">Community Venue</span>
-                  ) : home ? (
-                    <span className="villages-quick-venue-badge">{members.length ? "Home" : "Vacant home"}</span>
+        <FoundingVenuePages selectedId={selectedId}>
+          {ordered.map((venue) => {
+            const home = venue.classes?.includes("residence");
+            const community = venue.id === communityVenueId;
+            const members = foundingHomeMembers(venue);
+            return (
+              <section
+                key={venue.id}
+                className="villages-quick-venue-card"
+                aria-label={venue.name || "Venue"}
+                data-venue-id={venue.id}
+                data-selected={selectedId === venue.id}
+              >
+                <div className="villages-quick-venue-summary">
+                  {venue.presentation.image ? (
+                    <img className="villages-quick-venue-thumbnail" src={venue.presentation.image.url} alt="" />
                   ) : null}
-                  {community ? <p>Starting meeting place</p> : !home ? <p>{venue.description}</p> : null}
+                  <div className="villages-quick-venue-title">
+                    <h3>
+                      <button type="button" disabled={busy || imageBusy} onClick={() => onSelect(venue)}>
+                        {venue.name || "Venue"}
+                      </button>
+                    </h3>
+                    {community ? (
+                      <span className="villages-quick-venue-badge">Community Venue</span>
+                    ) : home ? (
+                      <span className="villages-quick-venue-badge">{members.length ? "Home" : "Vacant home"}</span>
+                    ) : null}
+                    {community ? <p>Starting meeting place</p> : !home ? <p>{venue.description}</p> : null}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy || imageBusy}
+                    aria-label={`Place ${venue.name || "Venue"} on map`}
+                    title="Place on map"
+                    aria-pressed={moving?.id === venue.id}
+                    onClick={() => onMove(moving?.id === venue.id ? null : venue)}
+                  >
+                    ⌖
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy || imageBusy}
+                    aria-label={`Edit ${venue.name || "Venue"}`}
+                    onClick={() => onSelect(venue)}
+                  >
+                    Edit
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  disabled={busy || imageBusy}
-                  aria-label={`Place ${venue.name || "Venue"} on map`}
-                  title="Place on map"
-                  aria-pressed={moving?.id === venue.id}
-                  onClick={() => onMove(moving?.id === venue.id ? null : venue)}
-                >
-                  ⌖
-                </button>
-                <button
-                  type="button"
-                  disabled={busy || imageBusy}
-                  aria-label={`Edit ${venue.name || "Venue"}`}
-                  onClick={() => onSelect(venue)}
-                >
-                  Edit
-                </button>
-              </div>
-              {home && members.length ? (
-                <p className="villages-quick-household">
-                  {members.length
-                    ? members
-                        .map((id) => {
-                          const actor = actors.find((person) => person.id === id)?.name ?? "Resident";
-                          const choices = foundingSleepZones(venue, id);
-                          const sleep =
-                            choices.find((zone) => zone.id === venue.destinations?.[id]?.sleep) ??
-                            choices.find((zone) => zone.ownerId === id) ??
-                            choices[0];
-                          return actor + " · " + (sleep?.name || "Choose sleeping Zone");
-                        })
-                        .join("; ")
-                    : "Vacant home"}
-                </p>
-              ) : null}
-            </section>
-          );
-        })}
-        <FoundingPagination page={page} count={Math.ceil(venues.length / 3)} onPage={setPage} label="Venues" />
+                {home && members.length ? (
+                  <p className="villages-quick-household">
+                    {members.length
+                      ? members
+                          .map((id) => {
+                            const actor = actors.find((person) => person.id === id)?.name ?? "Resident";
+                            const choices = foundingSleepZones(venue, id);
+                            const sleep =
+                              choices.find((zone) => zone.id === venue.destinations?.[id]?.sleep) ??
+                              choices.find((zone) => zone.ownerId === id) ??
+                              choices[0];
+                            return actor + " · " + (sleep?.name || "Choose sleeping Zone");
+                          })
+                          .join("; ")
+                      : "Vacant home"}
+                  </p>
+                ) : null}
+              </section>
+            );
+          })}
+        </FoundingVenuePages>
       </section>
       <section hidden={open} className="villages-forging-card villages-quick-map-panel" aria-label="Village map">
         <div className="villages-quick-map-toolbar">
@@ -371,6 +370,14 @@ export function QuickStartVenues({
                   {tab}
                 </button>
               ))}
+              <button
+                disabled={busy || imageBusy}
+                className="villages-quick-artwork-button"
+                aria-label={"Artwork for " + artworkName}
+                onClick={() => setArtworkOpen(true)}
+              >
+                {image ? <img src={image.url} alt="" /> : null}Artwork
+              </button>
             </div>
             <section className="villages-quick-panel" aria-label="Venue editor">
               <div hidden={editorTab !== "People"}>
@@ -589,7 +596,7 @@ export function QuickStartVenues({
                   </button>
                 </div>
                 <div className="villages-founding-tabs" role="group" aria-label="Zone sections">
-                  {["Details", "Access", "Connections", "Artwork"].map((tab) => (
+                  {["Details", "Access", "Connections"].map((tab) => (
                     <button key={tab} aria-pressed={zoneTab === tab} onClick={() => setZoneTab(tab)}>
                       {tab}
                     </button>
@@ -717,22 +724,6 @@ export function QuickStartVenues({
                         />
                         {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
                       </label>
-                      <button
-                        type="button"
-                        hidden={zoneTab !== "Artwork"}
-                        className="villages-quick-zone-image"
-                        aria-label={image ? "Edit Zone artwork" : "Artwork"}
-                        onClick={() => setArtworkOpen(true)}
-                      >
-                        {image ? (
-                          <img
-                            src={image.url}
-                            alt={`Artwork for ${zoneId === "exterior" ? "Entrance" : zone?.name || "Zone"}`}
-                          />
-                        ) : (
-                          "Artwork"
-                        )}
-                      </button>
                     </div>
                   </fieldset>
                 </div>
@@ -781,13 +772,13 @@ export function QuickStartVenues({
             {artworkOpen ? (
               <QuickStartZoneArtwork
                 image={image}
-                name={zoneId === "exterior" ? "Entrance" : zone?.name || "Zone"}
+                name={artworkName}
                 busy={busy || imageBusy}
                 onClose={() => setArtworkOpen(false)}
-                onUpload={(file) => onUploadImage(selected, area, file, zone?.id)}
-                onGenerate={() => onGenerateImage(selected, area, zone?.id)}
+                onUpload={(file) => onUploadImage(selected, artworkArea, file, artworkZone?.id)}
+                onGenerate={() => onGenerateImage(selected, artworkArea, artworkZone?.id)}
                 onRemove={() =>
-                  zoneId === "exterior"
+                  !artworkZone
                     ? patch({ ...selected, presentation: { ...selected.presentation, image: null } })
                     : patchZone({ image: null })
                 }

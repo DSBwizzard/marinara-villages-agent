@@ -274,15 +274,19 @@ await withBrowser(browser, async () => {
       await sheet.getByLabel("Zone name", { exact: true }).fill("Kitchen");
       await sheet.getByLabel("Used for", { exact: true }).fill("Cooking");
       await sheet.getByLabel("Long-term details", { exact: true }).fill("A sunny kitchen.");
-      await sheet.getByRole("button", { name: "Artwork", exact: true }).first().click();
-      await sheet.getByRole("button", { name: "Artwork", exact: true }).last().click();
+      await expect(
+        sheet
+          .getByRole("group", { name: "Zone sections", exact: true })
+          .getByRole("button", { name: "Artwork", exact: true }),
+      ).toHaveCount(0);
+      await sheet.getByRole("button", { name: "Artwork for Kitchen", exact: true }).click();
       const artwork = page.getByRole("dialog", { name: "Artwork for Kitchen", exact: true });
       await artwork
         .getByLabel("Upload Zone image", { exact: true })
         .setInputFiles({ name: "kitchen.png", mimeType: "image/png", buffer: Buffer.from("fixture") });
       await expect(artwork.getByRole("img", { name: "Artwork for Kitchen", exact: true })).toBeVisible();
       await artwork.getByRole("button", { name: "Close artwork", exact: true }).click();
-      await expect(sheet.getByRole("button", { name: "Edit Zone artwork", exact: true })).toBeFocused();
+      await expect(sheet.getByRole("button", { name: "Artwork for Kitchen", exact: true })).toBeFocused();
       const added = (await page.evaluate(() => window.quickState.venues))[0].spaces.find(
         (zone) => zone.name === "Kitchen",
       );
@@ -297,8 +301,11 @@ await withBrowser(browser, async () => {
       await open("founding-home:player");
       await chooseZone(added.id);
       await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveValue("A sunny kitchen.");
-      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
-      await expect(sheet.getByRole("img", { name: "Artwork for Kitchen", exact: true })).toBeVisible();
+      await expect(
+        sheet.getByRole("button", { name: "Artwork for Kitchen", exact: true }).locator("img"),
+      ).toBeVisible();
+      await sheet.getByRole("button", { name: "Venue", exact: true }).click();
+      await expect(sheet.getByRole("button", { name: "Artwork for Entrance", exact: true })).toBeVisible();
       loseReply = true;
       await confirm();
       await expect(sheet.getByRole("button", { name: "Check suggestions", exact: true })).toBeEnabled();

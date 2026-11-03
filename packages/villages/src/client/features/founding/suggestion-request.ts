@@ -1,11 +1,16 @@
 import { request, VillageApiError } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { SetupDraftData } from "./draft-model.js";
-import type { StartingVenueSuggestion } from "./quick-start-drafts.js";
+import type { FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
 import type { FoundingState } from "./useFoundingState.js";
 
-type Options = { quickStart?: boolean; venueId?: string };
-type Result = { venues: StartingVenueSuggestion[] };
+export type FoundingSuggestionOptions = {
+  quickStart?: boolean;
+  venueId?: string;
+  fullVenue?: boolean;
+  draftEntranceImage?: boolean;
+};
+type Result = FoundingSuggestionsResult;
 type Receipt = {
   id: string;
   sourceKey: string;
@@ -25,7 +30,7 @@ type Ports = {
 /** POST admits one attempt; status checks only read the saved receipt. */
 export async function requestFoundingSuggestions(
   ports: Ports,
-  options: Options | undefined,
+  options: FoundingSuggestionOptions | undefined,
   input: object,
 ): Promise<Result> {
   const { signal } = ports;
@@ -40,12 +45,20 @@ export async function requestFoundingSuggestions(
     sourceKey: ports.setupBeginningSourceKey,
     quickStart: !!options?.quickStart,
     venueId: options?.venueId,
+    ...(options?.fullVenue ? { fullVenue: true, draftEntranceImage: !!options.draftEntranceImage } : {}),
     ...(!options?.quickStart && options?.venueId ? { sourceInputs: JSON.stringify(input) } : {}),
   };
   // Recovery must use the original merge mode and target, regardless of which button was tapped.
   if (options) {
     options.quickStart = pending.quickStart;
     options.venueId = pending.venueId;
+    if (pending.fullVenue) {
+      options.fullVenue = true;
+      options.draftEntranceImage = pending.draftEntranceImage;
+    } else {
+      delete options.fullVenue;
+      delete options.draftEntranceImage;
+    }
   }
   const clear = () =>
     setSetupWorkspace((state) =>

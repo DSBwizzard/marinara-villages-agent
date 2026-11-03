@@ -91,6 +91,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setSetupMapSource,
     setSetupName,
     setSetupProblem,
+    setSetupPlacementError,
     setSetupSetting,
     setSetupShowIssues,
     setSetupVenues,
@@ -243,7 +244,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             alt={`Map of ${setupName || "your village"}`}
             pins={draftPins.map((pin) => ({
               ...pin,
-              selected: nextPin?.id === pin.id,
+              selected: selectedSetupVenueId === pin.id,
               onSelect: interactive
                 ? () => {
                     setSelectedSetupVenueId(pin.id);
@@ -264,6 +265,20 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             view={defaultView("contain")}
             shape={setupMapShape}
             onPlace={interactive ? (x, y, size) => placeSetupPin(x, y, size, nextPin?.id) : undefined}
+            onMovePin={
+              interactive &&
+              mapReady &&
+              !setupEditorOpen &&
+              setupWorkspace.view !== "details" &&
+              !setupSuggestionsBusy &&
+              !setupVenueBusy
+                ? (id, x, y, size) => {
+                    setSelectedSetupVenueId(id);
+                    placeSetupPin(x, y, size, id);
+                  }
+                : undefined
+            }
+            onMoveInvalid={() => setSetupPlacementError("Place the Venue inside the map.")}
             compact={false}
             mobile={false}
             fitToRoom={false}
@@ -744,7 +759,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     busy={busy || setupSuggestionsBusy}
                     disabled={setupVenueBusy}
                     pending={!!setupWorkspace.suggestionRequest}
-                    onGenerate={() => void suggestSetupVenues({ venueId: selectedSetupVenueId ?? undefined })}
+                    onGenerate={(draftEntranceImage) =>
+                      void suggestSetupVenues({
+                        venueId: selectedSetupVenueId ?? undefined,
+                        fullVenue: true,
+                        draftEntranceImage,
+                      })
+                    }
                   />
                 }
                 state={setupWorkspace}

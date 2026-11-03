@@ -106,14 +106,40 @@ export async function verifyFoundingLayout(group) {
             suggestions++;
             const body = route.request().postDataJSON();
             assert.equal(body.communityVenueId, "founding-community");
+            assert.equal(body.mode, "draft-venue");
+            assert.equal(body.draftEntranceImage, view.width === 1366);
             assert.equal(body.context.rules, "The sun never sets.");
             const result = {
+              ...(body.draftEntranceImage
+                ? {
+                    entranceImage: {
+                      id: "drafted-entrance",
+                      ref: "global-gallery:drafted-entrance",
+                      url: "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==",
+                    },
+                  }
+                : {}),
               venues: body.venues
                 .filter((row) => row.id === body.targetVenueId)
                 .map((row) => {
                   const shared = row.residentIds.length + Number(row.playerHome) > 1;
                   const layout = row.venueClass === "residence" && !shared ? "both" : "common";
                   return {
+                    ...(body.mode === "draft-venue"
+                      ? {
+                          zones: [...(body.targetVenue.spaces ?? []), ...(body.targetVenue.privateSpaces ?? [])].map(
+                            (zone) => ({
+                              id: zone.id,
+                              name: zone.name,
+                              purpose: zone.purpose,
+                              description: "Drafted visible Zone appearance.",
+                              private: body.targetVenue.privateSpaces?.some((room) => room.id === zone.id) ?? false,
+                              ownerId: zone.ownerId ?? "",
+                              connectedTo: zone.connectedTo ?? ["exterior"],
+                            }),
+                          ),
+                        }
+                      : {}),
                     id: row.id,
                     name:
                       row.venueClass === "residence"
@@ -315,6 +341,93 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
+        const mapCanvas = root.locator(".villages-quick-map");
+        const marker = mapCanvas.locator('[data-pin-id="founding-home:player"]');
+        await marker.scrollIntoViewIfNeeded();
+        const beforeDrag = await page.evaluate(
+          () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
+        );
+        const drag = async (dx, dy) => {
+          const box = await marker.locator(".marinara-capability-villages-map-point").boundingBox();
+          await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+          await page.mouse.down();
+          await page.mouse.move(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { steps: 5 });
+          await page.mouse.up();
+        };
+        await drag(24, 12);
+        await expect
+          .poll(() =>
+            page.evaluate(
+              () =>
+                window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
+            ),
+          )
+          .not.toBe(beforeDrag.x);
+        const afterDrag = await page.evaluate(
+          () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
+        );
+        assert.ok(afterDrag.y > beforeDrag.y);
+        await expect(sheet).toBeHidden();
+        if (view.width >= 1000) {
+          const frameBeforeBadDrop = await marker.boundingBox();
+          await drag(-frameBeforeBadDrop.x - 100, 0);
+          await expect(root.getByRole("alert")).toContainText("inside the map");
+          assert.deepEqual(
+            await page.evaluate(
+              () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
+            ),
+            afterDrag,
+            "Dropping outside the map keeps the previous saved position",
+          );
+        }
+        await drag(12, 0);
+        if (view.width === 390) {
+          await marker.scrollIntoViewIfNeeded();
+          const box = await marker.locator(".marinara-capability-villages-map-point").boundingBox(),
+            beforeTouch = await page.evaluate(
+              () =>
+                window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
+            );
+          const touch = await context.newCDPSession(page),
+            x = box.x + box.width / 2,
+            y = box.y + box.height / 2;
+          await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
+          await touch.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + 20, y, id: 1 }] });
+          await touch.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+          await touch.detach();
+          await expect
+            .poll(() =>
+              page.evaluate(
+                () =>
+                  window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation.x,
+              ),
+            )
+            .not.toBe(beforeTouch);
+        }
+        const draggedPosition = await page.evaluate(
+          () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
+        );
+        if (view.width === 2550) {
+          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
+          await page.setViewportSize({ width: view.width, height: 480 });
+          await expect
+            .poll(() => root.locator(".villages-quick-venue-card:visible").count())
+            .toBeLessThan(view.count + 2);
+          const nextPage = root.getByRole("button", { name: "Next Venues page", exact: true });
+          await nextPage.click();
+          const fitting = await root.locator(".villages-quick-page-viewport").evaluate((view) => {
+            const box = view.getBoundingClientRect();
+            return [...view.querySelectorAll(".villages-quick-venue-card")]
+              .filter((row) => getComputedStyle(row).visibility !== "hidden")
+              .every((row) => {
+                const rect = row.getBoundingClientRect();
+                return rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1;
+              });
+          });
+          assert.ok(fitting, "Resized pages keep complete Venue rows inside the available height");
+          await page.setViewportSize({ width: view.width, height: view.height });
+          await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
+        }
         const home = root.locator('[data-venue-id="founding-home:player"]');
         await editVenue("founding-home:player", "People");
         for (const person of characters.slice(0, view.count))
@@ -356,6 +469,13 @@ export async function verifyFoundingLayout(group) {
           await page.addScriptTag({ content: foundingBundle });
           await page.getByRole("button", { name: "Resume founding", exact: true }).click();
           await expect(root).toHaveAttribute("data-step", "2");
+          assert.deepEqual(
+            await page.evaluate(
+              () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
+            ),
+            draggedPosition,
+            "Dragged map positions survive save and resume",
+          );
           await expect
             .poll(() =>
               page.evaluate(
@@ -387,7 +507,8 @@ export async function verifyFoundingLayout(group) {
           await details.getByLabel("Venue Name", { exact: true }).fill("Public courtyard");
           await details.getByRole("button", { name: "Done", exact: true }).click();
           const courtyard = root.getByRole("region", { name: "Public courtyard", exact: true });
-          await editVenue(await courtyard.getAttribute("data-venue-id"));
+          const courtyardId = await courtyard.getAttribute("data-venue-id");
+          await editVenue(courtyardId);
           await sheet.getByRole("button", { name: "Use as Community Venue", exact: true }).click();
           await closeVenue();
           await expect(courtyard.getByText("Community Venue", { exact: true })).toBeVisible();
@@ -398,9 +519,9 @@ export async function verifyFoundingLayout(group) {
           await editVenue("founding-community");
           await sheet.getByRole("button", { name: "Use as Community Venue", exact: true }).click();
           await closeVenue();
-          await editVenue(await courtyard.getAttribute("data-venue-id"));
+          await editVenue(courtyardId);
           await sheet.getByRole("button", { name: "Remove Public courtyard", exact: true }).click();
-          await expect(courtyard).toHaveCount(0);
+          await expect(root.locator('[data-venue-id="' + courtyardId + '"]')).toHaveCount(0);
           assert.equal(suggestions, 0, "Reload and designation changes make no model requests");
         }
         await editVenue("founding-community");
@@ -412,6 +533,9 @@ export async function verifyFoundingLayout(group) {
           .click();
         assert.equal(suggestions, 0, "Cancel makes no model request");
         await suggestionDetails.getByRole("button", { name: "Suggest details", exact: true }).click();
+        const draftImage = page.getByRole("checkbox", { name: "Draft entrance image", exact: true });
+        await expect(draftImage).not.toBeChecked();
+        if (view.width === 1366) await draftImage.check();
         await page
           .getByRole("dialog", { name: "Suggest details", exact: true })
           .getByRole("button", { name: "Confirm", exact: true })
@@ -426,6 +550,18 @@ export async function verifyFoundingLayout(group) {
             ),
           )
           .toBe(true);
+        await suggestionDetails.getByRole("button", { name: "Zones", exact: true }).click();
+        await suggestionDetails
+          .getByRole("combobox", { name: "Selected Zone", exact: true })
+          .selectOption("common:base");
+        await expect(suggestionDetails.getByRole("textbox", { name: "Long-term details", exact: true })).toHaveValue(
+          "Drafted visible Zone appearance.",
+        );
+        await suggestionDetails.getByRole("button", { name: "Venue", exact: true }).click();
+        if (view.width === 1366)
+          await expect(
+            suggestionDetails.getByRole("button", { name: "Artwork for Entrance", exact: true }).locator("img"),
+          ).toBeVisible();
         await suggestionDetails.getByRole("button", { name: "Done", exact: true }).click();
         assert.equal(
           await page.evaluate(() => window.featureController.setupWorkspace.paused),

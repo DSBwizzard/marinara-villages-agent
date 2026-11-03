@@ -10,9 +10,10 @@ export function QuickStartButton({
   busy: boolean;
   disabled?: boolean;
   pending: boolean;
-  onGenerate(): void;
+  onGenerate(draftEntranceImage?: boolean): void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [draftEntranceImage, setDraftEntranceImage] = useState(false);
   return (
     <>
       <button type="button" disabled={busy || disabled} onClick={() => setConfirming(true)}>
@@ -26,7 +27,21 @@ export function QuickStartButton({
           onClose={() => setConfirming(false)}
         >
           {!pending ? (
-            <p>Suggest this Venue’s name, form and Entrance description. Keep its Zones, residents and map position.</p>
+            <>
+              <p>
+                Draft this Venue’s name, form, Zones, descriptions and connections. Keep its household, existing Zone
+                ownership and map position.
+              </p>
+              <label>
+                <input
+                  autoComplete="off"
+                  type="checkbox"
+                  checked={draftEntranceImage}
+                  onChange={(event) => setDraftEntranceImage(event.target.checked)}
+                />
+                Draft entrance image
+              </label>
+            </>
           ) : null}
           <footer>
             <button type="button" onClick={() => setConfirming(false)}>
@@ -38,7 +53,7 @@ export function QuickStartButton({
               disabled={busy || disabled}
               onClick={() => {
                 setConfirming(false);
-                onGenerate();
+                onGenerate(draftEntranceImage);
               }}
             >
               Confirm

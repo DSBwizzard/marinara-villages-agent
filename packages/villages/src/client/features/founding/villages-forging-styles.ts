@@ -461,7 +461,16 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-venue-list,.villages-quick-map-panel,.villages-forging-v2 .villages-quick-dialog { min-height:0; height:100%; margin:0; overflow:auto; position:static; }
 .villages-quick-venue-list { display:flex; flex-direction:column; gap:.4rem; }
 .villages-quick-venue-list h2 { font-size:1.1rem; }
-.villages-quick-venue-card { padding:.4rem .6rem; margin:0; }
+.villages-quick-venue-card { padding:.4rem .6rem; margin:0; max-height:var(--venue-page-height); overflow:auto; }
+.villages-quick-venue-list>.villages-venue-heading,.villages-quick-venue-list>p { flex:none; }
+.villages-quick-pages { display:flex; flex-direction:column; flex:1; min-height:0; gap:.4rem; }
+.villages-quick-page-viewport { flex:1; min-height:0; overflow:hidden; }
+.villages-quick-page-rows { position:relative; display:flex; flex-direction:column; gap:.4rem; }
+.villages-quick-page-controls { min-height:44px; flex:none; }
+.villages-quick-map .marinara-capability-villages-stage[data-pin-movable=true] .marinara-capability-villages-pin { touch-action:none; cursor:grab; }
+.villages-quick-map .marinara-capability-villages-stage[data-pin-movable=true] .marinara-capability-villages-pin:active { cursor:grabbing; }
+.villages-quick-artwork-button { display:flex; align-items:center; gap:.4rem; margin-left:auto; }
+.villages-quick-artwork-button img { width:2rem; height:2rem; object-fit:cover; border-radius:.25rem; }
 .villages-quick-venue-card h3 { margin:0; }
 .villages-quick-household { font-size:.8rem; margin:.1rem 0!important; }
 .villages-quick-map-panel { display:flex; flex-direction:column; }
@@ -485,5 +494,6 @@ export const VILLAGES_FORGING_STYLES = `
  .villages-quick-venue-list,.villages-quick-map-panel,.villages-forging-v2 .villages-quick-dialog { height:auto; max-height:none; }
  .villages-quick-map-panel .villages-quick-map { height:300px; flex:none; }
  .villages-quick-panel { overflow:visible; }
+ .villages-quick-pages { flex:none; height:clamp(16rem,50dvh,32rem); }
 }
 `;

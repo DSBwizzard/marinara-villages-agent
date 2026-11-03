@@ -106,7 +106,11 @@ import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wi
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
 import { configureCompactFounding, proposeCompactFounding } from "../features/founding/founding-compact.js";
 import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
-import { configureFoundingDrafts, suggestStartingVenues } from "../features/founding/founding-drafts.js";
+import {
+  configureFoundingDrafts,
+  suggestStartingVenues,
+  generateFoundingVenueImage,
+} from "../features/founding/founding-drafts.js";
 import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
 import { configureFoundingProgress, reportFoundingProgress } from "../features/founding/founding-progress.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
@@ -1013,6 +1017,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesDocuments,
       mutateDocument: createDocumentMutator(villagesDocuments),
       suggestStartingVenues,
+      generateFoundingVenueImage,
       villagesLogger,
     }),
   );

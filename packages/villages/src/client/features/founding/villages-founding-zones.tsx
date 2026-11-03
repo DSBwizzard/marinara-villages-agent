@@ -2,7 +2,6 @@ import { ZoneMap } from "../../shared/ZoneMap.js";
 import { resolveZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { connectionProblem, materializeConnections } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
-import type { ZoneAccessPolicy } from "../../../shared/helpers/venue-access.js";
 
 function foundingLayoutZones(venue: VillageVenue) {
   return materializeConnections([
@@ -57,28 +56,7 @@ export function foundingZoneProblem(venue: VillageVenue): string {
   return foundingLayoutProblem(venue);
 }
 
-export function draftZonePolicy(
-  venue: VillageVenue,
-  area: { ownerId?: string; venueClass: string },
-  personal = false,
-): ZoneAccessPolicy {
-  const owner = area.ownerId || (venue.occupancy.playerHome ? "player" : venue.residentIds?.[0] || "");
-  const occupied = venue.occupancy.playerHome || !!venue.residentIds?.length || !!venue.workerIds?.length;
-  return {
-    mode: occupied && (area.venueClass === "residence" || personal) ? "permission-required" : "public",
-    managerIds: personal && owner ? [owner] : null,
-    memberIds: personal && owner ? [owner] : [],
-    memberRoles:
-      !personal && area.venueClass === "residence"
-        ? ["residents"]
-        : personal && area.venueClass === "workplace"
-          ? ["workers"]
-          : [],
-    inviterIds: [],
-    visitorHours: "inherit",
-    accompanied: false,
-  };
-}
+export { draftZonePolicy } from "../../../shared/helpers/founding-zone-policy.js";
 /** Founding Zone layout editor. */
 export function FoundingConnections({
   venue,

@@ -1,3 +1,10 @@
+import {
+  readFoundingVenueDraftSource,
+  readFoundingZoneIds,
+  parseFoundingVenueDraft,
+} from "../../domain/rules/founding-venue-draft.js";
+import type { FoundingSuggestionsResult } from "../../../shared/contracts/founding.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import type { findVillagerCard } from "../../adapters/engine/catalog.js";
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
@@ -30,7 +37,6 @@ import type { villagesConnectionIdFor } from "../settings/connections.js";
 import type { readLinkedPersona } from "../settings/personas.js";
 
 import {
-  type FoundingVenueSuggestion,
   parseFoundingVenueSuggestions,
   type DraftRow,
   record,
@@ -65,10 +71,14 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     decodeVillageImageDataUrl,
   } = ports;
 
-  async function suggestStartingVenues(value: unknown): Promise<{ venues: FoundingVenueSuggestion[] }> {
+  async function suggestStartingVenues(value: unknown): Promise<FoundingSuggestionsResult> {
     const input = record(value);
     const quickStart = input.mode === "quick-start";
-    if (input.mode !== undefined && !quickStart) throw badRequest("Choose a valid Venue suggestion mode.");
+    const fullDraft = input.mode === "draft-venue";
+    if (fullDraft && (!asTrimmedString(input.actionId) || !asTrimmedString(input.targetVenueId)))
+      throw badRequest("Draft this Venue through a saved suggestion attempt.");
+    if (input.mode !== undefined && !quickStart && !fullDraft)
+      throw badRequest("Choose a valid Venue suggestion mode.");
     const setting = asTrimmedString(input.setting);
     const context = readFoundingDraftContext(input.context);
     if (!setting || setting.length > MAX_SETTING_LENGTH) throw badRequest("Describe the place first.");
@@ -93,6 +103,17 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const targetId = asTrimmedString(input.targetVenueId);
     if (targetId && !rows.some((row) => row.id === targetId))
       throw badRequest("Choose a required starting Venue to regenerate.");
+    const draftSource = fullDraft ? readFoundingVenueDraftSource(input.targetVenue) : undefined;
+    const newZoneIds = draftSource ? readFoundingZoneIds(input.newZoneIds, draftSource) : [];
+    if (
+      draftSource &&
+      (draftSource.id !== targetId ||
+        draftSource.classes?.[0] !== rows.find((row) => row.id === targetId)!.venueClass ||
+        draftSource.occupancy.playerHome !== rows.find((row) => row.id === targetId)!.playerHome ||
+        JSON.stringify(draftSource.residentIds) !==
+          JSON.stringify(rows.find((row) => row.id === targetId)!.residentIds))
+    )
+      throw badRequest("The selected Venue no longer matches its household.");
     const requestedRows = targetId ? rows.filter((row) => row.id === targetId) : rows;
     const worldRules = asTrimmedString(context.rules);
     const currentCircumstances = Array.isArray(context.circumstances)
@@ -118,6 +139,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         ),
         worldRules,
         ...currentCircumstances,
+        ...(draftSource
+          ? [draftSource.name, draftSource.form ?? "", ...draftSource.zones!.map((zone) => zone.name)]
+          : []),
         ...cards.map((card) => card!.name),
       ].join("\n"),
       undefined,
@@ -136,7 +160,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "A Residence can take literally any physical form supported by the context: a dumpster, apartment, house, train car, stolen hearse, or something else. Fit its spaces to that form; spaces need not be separate rooms. Respect a supplied nonempty physical form when suggesting its spaces.",
             "Suggest a specific, setting-appropriate name for every Venue, replacing generic or existing names. Supplied names are context, not fixed choices.",
             "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
-            ...(targetId && !quickStart
+            ...(targetId && !quickStart && !fullDraft
               ? [
                   "The player requested details for one existing Venue. Preserve its current condition and supplied physical facts. The player keeps all existing Zones, access rules, residents, sleeping assignments and map placement; your suggested layout is not applied.",
                 ]
@@ -149,7 +173,9 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                 ]
               : []),
             "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned household member. Describe the space and ordinary furnishings, not private thoughts or secrets. The explicit playerHome flag identifies the player's home; residentIds identifies its other household members.",
-            'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
+            fullDraft
+              ? 'Draft the complete selected Venue. Preserve every supplied existing Zone id, private/shared use and owner, and its physical condition. Improve its names, purposes and visible descriptions; add only genuinely useful Zones using availableNewZoneIds, with at most six Zones besides Entrance. Keep the form consistent across rooms. New private Zones are only for this household; shared Zones have ownerId empty. All Zones need valid connections and every resident must be able to reach their sleeping Zone without passing through another resident’s private room. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","zones":[{"id":"...","name":"...","purpose":"...","description":"...","private":false,"ownerId":"","connectedTo":["exterior"]}]}]}. Do not generate access policies, images, household changes or map positions.'
+              : 'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
             'Return one JSON object with a "venues" array, using double-quoted keys and escaped string values. No commentary, reasoning, Markdown fences, alternative answers, or trailing commas.',
             "Keep each description to one short sentence and each name, form and purpose to a short phrase. The limits are maxima, not targets: names at most 60 characters, purpose at most 240, form at most 2000 and descriptions at most 4000.",
             `Return exactly ${requestedRows.length} venues. Fill every row in the supplied response template, preserve each id verbatim, and use empty strings for absent Zones. Return only the requested template rows.`,
@@ -167,31 +193,72 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         worldRules,
         currentCircumstances,
         venues: rows,
+        ...(draftSource
+          ? {
+              targetVenue: {
+                id: draftSource.id,
+                classes: draftSource.classes,
+                zones: draftSource
+                  .zones!.filter((zone) => zone.kind !== "exterior")
+                  .map((zone) => ({
+                    id: zone.id,
+                    name: zone.name,
+                    purpose: zone.purpose,
+                    description: zone.description,
+                    private: draftSource.privateSpaces!.some((room) => room.id === zone.id),
+                    ownerId: zone.ownerId ?? "",
+                    access: zone.access,
+                  })),
+              },
+              availableNewZoneIds: newZoneIds,
+            }
+          : {}),
         responseTemplate: {
-          venues: requestedRows.map((row) => ({
-            id: row.id,
-            name: "",
-            venueType: "",
-            form: "",
-            description: "",
-            layout:
-              row.id === communityVenueId
-                ? "common"
-                : quickStart && row.venueClass === "residence"
-                  ? row.residentIds.length + Number(row.playerHome) > 1
-                    ? "common"
-                    : "both"
-                  : row.venueClass === "residence"
-                    ? "common|private|both"
-                    : "exterior|common|private|both",
-            connections: [],
-            commonName: "",
-            commonPurpose: "",
-            commonDescription: "",
-            privateName: "",
-            privatePurpose: "",
-            privateDescription: "",
-          })),
+          venues: requestedRows.map((row) =>
+            fullDraft
+              ? {
+                  id: row.id,
+                  name: "",
+                  venueType: "",
+                  form: "",
+                  description: "",
+                  zones: draftSource!
+                    .zones!.filter((zone) => zone.kind !== "exterior")
+                    .map((zone) => ({
+                      id: zone.id,
+                      name: "",
+                      purpose: "",
+                      description: "",
+                      private: draftSource!.privateSpaces!.some((room) => room.id === zone.id),
+                      ownerId: zone.ownerId ?? "",
+                      connectedTo: zone.connectedTo ?? [],
+                    })),
+                }
+              : {
+                  id: row.id,
+                  name: "",
+                  venueType: "",
+                  form: "",
+                  description: "",
+                  layout:
+                    row.id === communityVenueId
+                      ? "common"
+                      : quickStart && row.venueClass === "residence"
+                        ? row.residentIds.length + Number(row.playerHome) > 1
+                          ? "common"
+                          : "both"
+                        : row.venueClass === "residence"
+                          ? "common|private|both"
+                          : "exterior|common|private|both",
+                  connections: [],
+                  commonName: "",
+                  commonPurpose: "",
+                  commonDescription: "",
+                  privateName: "",
+                  privatePurpose: "",
+                  privateDescription: "",
+                },
+          ),
         },
       }),
       Math.min(model.maxOutputTokens ?? 4000, 4000),
@@ -218,6 +285,12 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       throw badRequest(
         "The System reply did not contain one complete, readable set of Venue suggestions. Your draft is unchanged. Try generating again; if this repeats, check the System model’s response format and output limit.",
       );
+    if (draftSource)
+      return {
+        venues: [
+          parseFoundingVenueDraft(payload, draftSource, newZoneIds, targetId === communityVenueId, villageNow()),
+        ],
+      };
     return {
       venues: parseFoundingVenueSuggestions(
         payload,

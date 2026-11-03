@@ -1,5 +1,6 @@
 import {
   type CSSProperties,
+  type DOMAttributes,
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
@@ -14,7 +15,7 @@ import type { TownMapFit, TownMapView } from "../../../shared/contracts/village.
 import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
-import { ExplorationMarkers } from "./villages-exploration";
+import { ExplorationMarkers, type ExplorationPin } from "./villages-exploration";
 export type { MobileMapView } from "./villages-mobile-map.js";
 import {
   focusedPhotoScale,
@@ -560,6 +561,7 @@ export function MapStage({
       pointersRef.current.clear();
       suppressTouchClickRef.current = false;
     }
+    if (onMovePin && event.target instanceof Element && event.target.closest("[data-pin-id]")) return;
     if (!frameRef.current) return;
     if (event.target instanceof Element && event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)) return;
     stageRef.current?.setAttribute("data-mobile-gesturing", "true");
@@ -671,6 +673,81 @@ export function MapStage({
     onNavigationView?.(null);
   };
 
+  const pinInteractions = (pin: ExplorationPin, box: PictureBox): DOMAttributes<HTMLButtonElement> => ({
+    onPointerDown: (event) => {
+      if (!onMovePin || event.button !== 0 || !event.isPrimary) return;
+      event.stopPropagation();
+      suppressPinClick.current = false;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      pinDrag.current = {
+        id: pin.id,
+        pointer: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        x: pin.x,
+        y: pin.y,
+        width: box.width,
+        height: box.height,
+        moved: false,
+      };
+    },
+    onPointerMove: (event) => {
+      const drag = pinDrag.current;
+      if (!drag || drag.id !== pin.id || drag.pointer !== event.pointerId) return;
+      event.stopPropagation();
+      const x = event.clientX - drag.startX,
+        y = event.clientY - drag.startY;
+      if (Math.hypot(x, y) >= 8) drag.moved = true;
+      if (drag.moved) {
+        event.preventDefault();
+        setPinOffset({ id: pin.id, x, y });
+      }
+    },
+    onPointerUp: (event) => {
+      const drag = pinDrag.current;
+      if (!drag || drag.id !== pin.id || drag.pointer !== event.pointerId) return;
+      event.stopPropagation();
+      pinDrag.current = null;
+      setPinOffset(null);
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      if (!drag.moved) return;
+      suppressPinClick.current = true;
+      const x = drag.x + (event.clientX - drag.startX) / drag.width;
+      const y = drag.y + (event.clientY - drag.startY) / drag.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1 || drag.width !== box.width || drag.height !== box.height) {
+        onMoveInvalid?.();
+        return;
+      }
+      const photo = event.currentTarget
+        .querySelector<HTMLElement>(`.${ELEMENT_TAG}-pin-photo`)
+        ?.getBoundingClientRect();
+      onMovePin?.(pin.id, round4(x), round4(y), {
+        width: box.width,
+        height: box.height,
+        photoWidth: compactPhotos
+          ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 36
+          : (photo?.width ?? 88),
+        photoHeight: compactPhotos
+          ? parseFloat(getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width")) || 36
+          : (photo?.height ?? 88),
+      });
+    },
+    onPointerCancel: () => {
+      pinDrag.current = null;
+      setPinOffset(null);
+      suppressPinClick.current = true;
+    },
+    onClick: (event) => {
+      // Otherwise a click on a pin would also read as a click on the
+      // map underneath it while the wizard is placing homes.
+      event.stopPropagation();
+      if (suppressPinClick.current) {
+        suppressPinClick.current = false;
+        return;
+      }
+      pin.onSelect?.();
+    },
+  });
   return (
     <div
       ref={stageRef}
@@ -680,6 +757,7 @@ export function MapStage({
       data-framing={framing && live.fit === "cover" ? "true" : "false"}
       data-mobile={mobile ? "true" : "false"}
       data-exploration={exploration ? "true" : "false"}
+      data-pin-movable={onMovePin ? true : undefined}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
       data-photo-pins={exploration ? "false" : "true"}
       data-picture-width={picture?.width}
@@ -823,7 +901,14 @@ export function MapStage({
           />
         ) : null}
         {exploration && picture && frame ? (
-          <ExplorationMarkers pins={pins} picture={picture} frame={frame} onNudge={onNudgePin} />
+          <ExplorationMarkers
+            pins={pins}
+            picture={picture}
+            frame={frame}
+            onNudge={onNudgePin}
+            offset={pinOffset}
+            pinInteractions={(pin) => pinInteractions(pin, picture)}
+          />
         ) : null}
         {picture && !exploration
           ? pins.map((pin) => (
@@ -849,90 +934,7 @@ export function MapStage({
                   disabled={pin.onSelect === undefined}
                   title={pin.label ?? pin.text}
                   aria-label={pin.label}
-                  onPointerDown={(event) => {
-                    if (!onMovePin || event.button !== 0 || !event.isPrimary) return;
-                    event.stopPropagation();
-                    suppressPinClick.current = false;
-                    event.currentTarget.setPointerCapture(event.pointerId);
-                    pinDrag.current = {
-                      id: pin.id,
-                      pointer: event.pointerId,
-                      startX: event.clientX,
-                      startY: event.clientY,
-                      x: pin.x,
-                      y: pin.y,
-                      width: picture.width,
-                      height: picture.height,
-                      moved: false,
-                    };
-                  }}
-                  onPointerMove={(event) => {
-                    const drag = pinDrag.current;
-                    if (!drag || drag.id !== pin.id || drag.pointer !== event.pointerId) return;
-                    event.stopPropagation();
-                    const x = event.clientX - drag.startX,
-                      y = event.clientY - drag.startY;
-                    if (Math.hypot(x, y) >= 8) drag.moved = true;
-                    if (drag.moved) {
-                      event.preventDefault();
-                      setPinOffset({ id: pin.id, x, y });
-                    }
-                  }}
-                  onPointerUp={(event) => {
-                    const drag = pinDrag.current;
-                    if (!drag || drag.id !== pin.id || drag.pointer !== event.pointerId) return;
-                    event.stopPropagation();
-                    pinDrag.current = null;
-                    setPinOffset(null);
-                    event.currentTarget.releasePointerCapture(event.pointerId);
-                    if (!drag.moved) return;
-                    suppressPinClick.current = true;
-                    const x = drag.x + (event.clientX - drag.startX) / drag.width;
-                    const y = drag.y + (event.clientY - drag.startY) / drag.height;
-                    if (
-                      x < 0 ||
-                      x > 1 ||
-                      y < 0 ||
-                      y > 1 ||
-                      drag.width !== picture.width ||
-                      drag.height !== picture.height
-                    ) {
-                      onMoveInvalid?.();
-                      return;
-                    }
-                    const photo = event.currentTarget
-                      .querySelector<HTMLElement>(`.${ELEMENT_TAG}-pin-photo`)
-                      ?.getBoundingClientRect();
-                    onMovePin?.(pin.id, round4(x), round4(y), {
-                      width: picture.width,
-                      height: picture.height,
-                      photoWidth: compactPhotos
-                        ? parseFloat(
-                            getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width"),
-                          ) || 36
-                        : (photo?.width ?? 88),
-                      photoHeight: compactPhotos
-                        ? parseFloat(
-                            getComputedStyle(event.currentTarget).getPropertyValue("--founding-photo-width"),
-                          ) || 36
-                        : (photo?.height ?? 88),
-                    });
-                  }}
-                  onPointerCancel={() => {
-                    pinDrag.current = null;
-                    setPinOffset(null);
-                    suppressPinClick.current = true;
-                  }}
-                  onClick={(event) => {
-                    // Otherwise a click on a pin would also read as a click on the
-                    // map underneath it while the wizard is placing homes.
-                    event.stopPropagation();
-                    if (suppressPinClick.current) {
-                      suppressPinClick.current = false;
-                      return;
-                    }
-                    pin.onSelect?.();
-                  }}
+                  {...pinInteractions(pin, picture)}
                 >
                   {pin.kind !== "person" ? (
                     <VenuePolaroid
