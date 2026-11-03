@@ -201,7 +201,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-v2 .villages-founding-dialog[data-compact=true] textarea { min-height:6rem; max-height:12rem; }
 
 
-.villages-founding-places { width:100%; max-width:100rem; margin-inline:auto; min-width:0; }
+.villages-founding-places { width:100%; min-width:0; }
 .villages-map-panel { width:100%; margin:0; }
 .villages-map-panel h3 { font-size:1rem; font-weight:400; margin:0 0 .65rem; }
 .villages-place-panels { display:grid; grid-template-columns:minmax(0,1fr); min-width:0; }

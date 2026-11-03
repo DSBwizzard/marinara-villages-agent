@@ -228,6 +228,14 @@ export async function verifyFoundingLayout(group) {
                   : "Found village",
           ).scrollIntoViewIfNeeded();
           if (phase === "venues") {
+            const widths = await root.locator(".villages-forging-body").evaluate((body) => {
+              const style = getComputedStyle(body);
+              return {
+                available: body.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+                venues: body.querySelector(".villages-quick-start").getBoundingClientRect().width,
+              };
+            });
+            assert.ok(Math.abs(widths.available - widths.venues) <= 1, "Venues use the full Founding content width");
             const map = root.locator(".villages-quick-map");
             assert.ok((await map.boundingBox()).height >= 200, "The actual playable map remains visible on phones");
             await map.scrollIntoViewIfNeeded();
