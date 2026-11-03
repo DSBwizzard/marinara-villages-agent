@@ -263,7 +263,7 @@ await withBrowser(browser, async () => {
     await coldPage.getByRole("button", { name: "Add without sprites", exact: true }).click();
     releaseImport();
     await expect(coldPage.getByText("Move-in failed.", { exact: true })).toBeVisible();
-    await expect(coldPage.getByText("No character sprites available.", { exact: true })).toBeVisible();
+    await expect(coldPage.getByText("No sprites imported yet.", { exact: true })).toBeVisible();
     await coldPage.close();
     const page = await browser.newPage({ viewport });
     await mockEngineLookups(page);
@@ -376,7 +376,7 @@ await withBrowser(browser, async () => {
     await closeSprite();
     await expect(page.getByRole("button", { name: "Use sprites", exact: true })).toBeDisabled();
     await chooseSprite(2);
-    await popup.getByLabel("Include", { exact: true }).uncheck();
+    await popup.getByLabel("Facing", { exact: true }).selectOption("unassigned");
     await closeSprite();
     failSave = true;
     await page.getByRole("button", { name: "Back", exact: true }).click();
@@ -397,7 +397,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Use sprites", exact: true }).click();
     await expect(dialog).toHaveCount(0);
     assert.ok(
-      state.assignments.every((item) => item.approved),
+      state.assignments.every((item) => item.approved === item.included),
       "Final action explicitly approves the complete set",
     );
     assert.equal(applications.length, 1);
@@ -405,6 +405,147 @@ await withBrowser(browser, async () => {
     assert.equal(requests.filter((url) => /\/analyze|\/api\/connections/.test(url)).length, 0);
     assert.deepEqual(errors, []);
     await page.close();
+  }
+  for (const viewport of [
+    { width: 1440, height: 1000 },
+    { width: 390, height: 844 },
+    { width: 320, height: 568 },
+  ]) {
+    for (const unassignedOnly of [false, true]) {
+      const page = await browser.newPage({ viewport });
+      await mockEngineLookups(page);
+      const state = {
+        revision: 0,
+        manager: { version: 1, artwork: [], expressions: [], assignments: [], framing: { mode: "full" } },
+        assignments: [],
+        defaultArtworkId: "",
+        useSprites: false,
+        errors: {},
+        folders: [
+          { id: "front-folder", name: "Everyday", category: "full-body" },
+          { id: "side-folder", name: "Side", category: "full-body" },
+          { id: "spare-folder", name: "Sketches", category: "expressions" },
+        ],
+        folderSupport: true,
+        resident: false,
+        residentToken: "",
+        files: [
+          ...Array.from({ length: 43 }, (_, index) => ({
+            filename: `full_front-${index}.png`,
+            label: `Expression ${index}`,
+            folderId: "front-folder",
+            url: mapImage,
+          })),
+          { filename: "full_side.png", label: "Expression 0", folderId: "side-folder", url: mapImage },
+          { filename: "spare.png", label: "Sketch", folderId: "spare-folder", url: mapImage },
+        ],
+      };
+      const imports = [],
+        saves = [];
+      let failImage = true;
+      await page.route("http://villages.test/", (route) =>
+        fulfill(route, { contentType: "text/html", body: '<div id="app"></div>' }),
+      );
+      await page.route("**/api/villages/**", async (route) => {
+        const path = new URL(route.request().url()).pathname;
+        const body = route.request().postDataJSON();
+        if (path.endsWith("/prepare")) {
+          imports.push(body);
+          assert.equal(body.revision, state.revision);
+          assert.ok(body.filenames.length <= 40);
+          for (const filename of body.filenames) {
+            const file = state.files.find((file) => file.filename === filename);
+            assert.equal(file.folderId, body.folderId, "Only the selected folder is imported");
+            if (failImage && filename === "full_front-2.png") {
+              failImage = false;
+              state.errors[filename] = "Could not import image.";
+              continue;
+            }
+            const artworkId = "art-" + filename;
+            state.manager.artwork.push({
+              id: artworkId,
+              name: filename,
+              engineSource: { filename },
+              rendered: { url: mapImage },
+              warnings: [],
+            });
+            state.assignments.push({
+              artworkId,
+              name: file.label,
+              view: body.view === "side" ? "side" : "front",
+              included: body.view !== "unassigned",
+              approved: false,
+            });
+            file.adoptedArtworkId = artworkId;
+            delete state.errors[filename];
+          }
+          state.revision++;
+        } else if (path.endsWith("/save")) {
+          saves.push(body);
+          assert.equal(body.revision, state.revision);
+          Object.assign(state, {
+            assignments: body.assignments,
+            defaultArtworkId: body.defaultArtworkId,
+            useSprites: body.useSprites,
+          });
+          state.revision++;
+        } else assert.ok(path.endsWith("/settled"));
+        await fulfill(route, { contentType: "application/json", body: JSON.stringify(state) });
+      });
+      await page.goto("http://villages.test/");
+      await page.addScriptTag({ content: bundle.outputFiles[0].text });
+      await page.getByRole("button", { name: "Choose Bupkis", exact: true }).click();
+      await expect(page.getByLabel("Engine folder")).toBeVisible();
+      assert.equal(imports.length, 0, "Opening folder-aware setup copies no artwork");
+      const facing = page.getByRole("group", { name: "Import as", exact: true });
+      if (unassignedOnly) {
+        await page.getByLabel("Engine folder").selectOption("spare-folder");
+        await facing.getByRole("button", { name: "Unassigned", exact: true }).click();
+        await facing.getByRole("button", { name: "Import 1 sprite", exact: true }).click();
+        await expect(page.locator(".sprite-thumb")).toHaveCount(1);
+        await expect(page.getByRole("button", { name: "Keep artwork", exact: true })).toBeEnabled();
+      } else {
+        await page.getByLabel("Engine folder").selectOption("front-folder");
+        await facing.getByRole("button", { name: "Front", exact: true }).click();
+        await facing.getByRole("button", { name: "Import 43 sprites", exact: true }).click();
+        await expect(page.locator(".sprite-thumb")).toHaveCount(42);
+        await expect(facing.getByRole("button", { name: "Import 1 sprite", exact: true })).toBeEnabled();
+        assert.deepEqual(
+          imports.map((item) => item.filenames.length),
+          [40, 3],
+        );
+        await expect(page.getByText(/Could not import image/)).toBeVisible();
+        await facing.getByRole("button", { name: "Import 1 sprite", exact: true }).click();
+        await expect(page.locator(".sprite-thumb")).toHaveCount(43);
+        await page.getByLabel("Engine folder").selectOption("side-folder");
+        await facing.getByRole("button", { name: "Side", exact: true }).click();
+        await facing.getByRole("button", { name: "Import 1 sprite", exact: true }).click();
+        await expect(page.locator(".sprite-thumb")).toHaveCount(44);
+        await page.locator(".sprite-thumb").last().click();
+        const review = page.getByRole("dialog", { name: "Bupkis sprite review", exact: true });
+        await expect(review.getByLabel("Facing", { exact: true })).toHaveValue("side");
+        await review.getByRole("button", { name: "Done", exact: true }).click();
+        await page.locator(".sprite-thumb").first().click();
+        await review.getByLabel("Default", { exact: true }).check();
+        await review.getByRole("button", { name: "Done", exact: true }).click();
+      }
+      const main = page.locator(".villages-sprite-setup > main");
+      assert.ok(
+        await main.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+        "Folder import fits the phone width",
+      );
+      await page.screenshot({
+        path: `.build-tmp/sprite-setup/folders-${viewport.width}-${unassignedOnly ? "unassigned" : "paired"}.png`,
+      });
+      await page
+        .getByRole("button", { name: unassignedOnly ? "Keep artwork" : "Add villager with sprites", exact: true })
+        .click();
+      await expect(page.getByText("Bupkis added", { exact: true })).toBeVisible();
+      assert.equal(saves.at(-1).useSprites, !unassignedOnly);
+      assert.equal(state.manager.artwork.length, unassignedOnly ? 1 : 44);
+      assert.ok(state.assignments.every((item) => item.included === !unassignedOnly));
+      await page.close();
+    }
   }
   console.log(
     "Sprite setup browser: modal sprite review, prepared markers, draft persistence, final approval, manual naming, conflict recovery and portrait fallback passed on desktop/phone.",
