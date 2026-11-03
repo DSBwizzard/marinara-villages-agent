@@ -1,7 +1,7 @@
 import { freshRowKey } from "../../shared/presentation.js";
 import { newSetupVenue } from "./FoundingPanels.js";
 import { assignFoundingHome, reconcileFoundingRoster } from "./founding-homes.js";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MAP_UPLOAD_GUIDANCE } from "../../../shared/helpers/town-map-upload.js";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -136,7 +136,27 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   const [contextView, setContextView] = useState("World rules");
   const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
-  const spriteOpen = spriteId !== null;
+  const availableSpriteIds = setupFoundingVillagerIds.filter((id) => catalog?.some((person) => person.id === id));
+  const activeSpriteId = spriteId && availableSpriteIds.includes(spriteId) ? spriteId : (availableSpriteIds[0] ?? null);
+  const [spriteBusy, setSpriteBusy] = useState(false);
+  const spriteWorking = useRef(false);
+  const spriteBusyChanged = useCallback((value: boolean) => {
+    spriteWorking.current = value;
+    setSpriteBusy(value);
+  }, []);
+  const spriteSaved = useCallback(
+    (revision?: number) => {
+      if (!activeSpriteId) return;
+      setSetupSpriteRevisions((prior) => {
+        if (prior[activeSpriteId] === revision) return prior;
+        const next = { ...prior };
+        if (revision === undefined) delete next[activeSpriteId];
+        else next[activeSpriteId] = revision;
+        return next;
+      });
+    },
+    [activeSpriteId, setSetupSpriteRevisions],
+  );
   const reviewIndex = Math.min(reviewPage, Math.max(0, Math.ceil(setupVenues.length / 3) - 1));
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -308,6 +328,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       </div>
     );
     const chooseRoster = (ids: string[]) => {
+      if (spriteWorking.current) return;
       clearFieldValidation("villagers");
       const actors = [
         { id: "player", name: "Your" },
@@ -361,10 +382,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   personas={personas}
                   draft={personaDraft}
                   onDraft={(id) => {
+                    if (spriteWorking.current) return;
                     setPersonaDraft(id);
                     clearFieldValidation("persona");
                   }}
-                  disabled={busy || spriteOpen}
+                  disabled={busy || spriteBusy}
                 />
 
                 <h3 className="villages-initial-residents" aria-label="Initial residents">
@@ -376,41 +398,42 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </p>
                 ) : null}
                 <FoundingVillagerPicker
-                  onEditSprites={setSpriteId}
+                  onEditSprites={(id) => {
+                    if (spriteWorking.current) return;
+                    setSpriteId(id);
+                    requestAnimationFrame(() => {
+                      const root = rootRef.current;
+                      const body = root?.querySelector<HTMLElement>(".villages-forging-body");
+                      const pane = root?.querySelector<HTMLElement>(".villages-founding-sprites");
+                      if (root && root.clientWidth < 728 && body && pane)
+                        body.scrollTop += pane.getBoundingClientRect().top - body.getBoundingClientRect().top;
+                    });
+                  }}
+                  activeId={activeSpriteId}
                   catalog={catalog}
                   portraits={portraits}
                   selectedIds={setupFoundingVillagerIds}
                   onChange={chooseRoster}
-                  disabled={busy || spriteOpen}
+                  disabled={busy || spriteBusy}
                 />
               </section>
               <section className="villages-forging-card villages-founding-sprites" aria-label="Resident sprites">
-                {spriteId ? (
+                {setupStep === 1 && activeSpriteId ? (
                   <SpriteSetupDialog
-                    key={spriteId}
+                    key={activeSpriteId}
                     embedded
-                    characterId={spriteId}
-                    name={wizardVillagers.find((person) => person.id === spriteId)?.name ?? "Resident"}
-                    preserveSelection={setupSpriteRevisions[spriteId] !== undefined}
-                    onClose={(revision) => {
-                      if (revision !== undefined && setupSpriteRevisions[spriteId] !== undefined)
-                        setSetupSpriteRevisions((prior) => ({ ...prior, [spriteId]: revision }));
-                      setSpriteId(null);
-                    }}
-                    onDone={(revision) => {
-                      setSetupSpriteRevisions((prior) => {
-                        const next = { ...prior };
-                        if (revision === undefined) delete next[spriteId];
-                        else next[spriteId] = revision;
-                        return next;
-                      });
-                      setSpriteId(null);
-                    }}
+                    characterId={activeSpriteId}
+                    name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
+                    portrait={portraits[activeSpriteId]}
+                    preserveSelection={setupSpriteRevisions[activeSpriteId] !== undefined}
+                    onClose={() => setSpriteId(null)}
+                    onDone={spriteSaved}
+                    onBusyChange={spriteBusyChanged}
                   />
                 ) : (
                   <>
                     <h3>Resident sprites</h3>
-                    <p>Choose a resident’s Sprites to set up their artwork.</p>
+                    <p>Choose a resident to set up their artwork.</p>
                   </>
                 )}
               </section>
@@ -976,8 +999,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           {setupStep > 0 ? (
             <button
               type="button"
-              disabled={busy || spriteOpen || setupEditorOpen}
-              onClick={() => gotoSetupStep(setupStep - 1)}
+              disabled={busy || spriteBusy || setupEditorOpen}
+              onClick={() => {
+                if (!spriteWorking.current) gotoSetupStep(setupStep - 1);
+              }}
             >
               Back
             </button>
@@ -993,21 +1018,22 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           </span>
           <button
             type="button"
-            disabled={busy || spriteOpen || setupEditorOpen || setupVenueBusy || setupSuggestionsBusy}
+            disabled={busy || spriteBusy || setupEditorOpen || setupVenueBusy || setupSuggestionsBusy}
             onClick={() => {
-              if (setupImageClaim.current || setupSuggestionsClaim.current) return;
+              if (spriteWorking.current || setupImageClaim.current || setupSuggestionsClaim.current) return;
               void exitSetupDraft();
             }}
           >
-            Save & exit
+            Exit
           </button>
           <button
             type="button"
             className="villages-forging-primary"
             disabled={
-              busy || spriteOpen || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError
+              busy || spriteBusy || setupEditorOpen || setupSuggestionsBusy || setupVenueBusy || !!draftSaveError
             }
             onClick={() => {
+              if (spriteWorking.current) return;
               if (setupStep === 0 && connectionSetupProblem) setContextView("Connections");
               setValidationAttempt((attempt) => attempt + 1);
               setValidatedFields((fields) => [

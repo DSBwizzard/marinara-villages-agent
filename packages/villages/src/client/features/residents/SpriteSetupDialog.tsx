@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpriteFrame, SpriteSetupAssignment, SpriteSetupState } from "../../../shared/contracts/sprites.js";
 import { request, messageFrom, VillageApiError } from "../../shared/api.js";
 import type { Portrait } from "../../shared/types.js";
+import { FoundingSpriteSetup } from "./FoundingSpriteSetup.js";
 
 type Props = {
   characterId: string;
@@ -12,17 +13,13 @@ type Props = {
   embedded?: boolean;
   existing?: boolean;
   preserveSelection?: boolean;
+  onBusyChange?(busy: boolean): void;
 };
 const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim());
-export function SpriteSetupDialog({
-  characterId,
-  name,
-  onClose,
-  onDone,
-  existing,
-  preserveSelection,
-  embedded,
-}: Props) {
+export function SpriteSetupDialog(props: Props) {
+  return props.embedded ? <FoundingSpriteSetup {...props} /> : <SpriteSetupReviewDialog {...props} />;
+}
+function SpriteSetupReviewDialog({ characterId, name, onClose, onDone, existing, preserveSelection }: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const importAbort = useRef<AbortController | null>(null);
   const working = useRef(false);
@@ -31,8 +28,6 @@ export function SpriteSetupDialog({
     [error, setError] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [galleryPage, setGalleryPage] = useState(0);
-  const [showImport, setShowImport] = useState(false);
   const [folderId, setFolderId] = useState("");
   const [importView, setImportView] = useState<"front" | "side" | "unassigned">("front");
   const [progress, setProgress] = useState("");
@@ -90,7 +85,7 @@ export function SpriteSetupDialog({
   useEffect(() => {
     const controller = new AbortController();
     importAbort.current = controller;
-    if (!embedded) dialog.current?.showModal();
+    dialog.current?.showModal();
     void request<SpriteSetupState>(base + "/settled", { signal: controller.signal })
       .then(async (value) => {
         if (controller.signal.aborted) return;
@@ -116,7 +111,7 @@ export function SpriteSetupDialog({
       controller.abort();
       importAbort.current?.abort();
     };
-  }, [base, importArtwork, embedded]);
+  }, [base, importArtwork]);
   async function perform(action: () => Promise<void>) {
     if (working.current) return;
     working.current = true;
@@ -242,8 +237,6 @@ export function SpriteSetupDialog({
     <dialog
       className="villages-sprite-setup"
       ref={dialog}
-      open={embedded || undefined}
-      data-embedded={embedded || undefined}
       aria-label={`${name} sprite setup`}
       onCancel={(event) => {
         event.preventDefault();
@@ -253,8 +246,6 @@ export function SpriteSetupDialog({
       <style>{`
       .villages-sprite-setup{position:fixed;inset:0;margin:auto;height:90dvh;background:#111d31;color:#f2f4fb;border:1px solid #66758f;border-radius:14px;padding:0;width:min(780px,calc(100vw - 24px));max-height:90dvh;overflow:hidden;box-sizing:border-box;font-family:system-ui,sans-serif}
       .villages-sprite-setup[open]{display:flex;flex-direction:column}
-      .villages-sprite-setup[data-embedded]{position:static;inset:auto;margin:0;height:100%;max-height:100%;width:100%;border:0;border-radius:0;background:transparent}
-      .villages-sprite-setup[data-embedded] .sprite-gallery{grid-template-columns:repeat(3,minmax(0,1fr))}
       .villages-sprite-setup::backdrop{background:#080e19bd}
       .villages-sprite-setup header,.villages-sprite-setup footer{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:16px;flex-wrap:wrap;flex-shrink:0}
       .villages-sprite-setup h2{margin:0;font-size:1.25rem}.villages-sprite-setup h3{margin:0;font-size:1rem}
@@ -296,7 +287,7 @@ export function SpriteSetupDialog({
           ) : null}
         </div>
         <button disabled={busy} onClick={() => void perform(close)}>
-          {embedded ? "Save & close" : "Back"}
+          Back
         </button>
       </header>
       <main>
@@ -322,17 +313,7 @@ export function SpriteSetupDialog({
                   <small>Choose a default sprite.</small>
                 </p>
               ) : null}
-              {embedded ? (
-                <div className="sprite-actions">
-                  <button aria-pressed={!showImport} onClick={() => setShowImport(false)}>
-                    Sprites
-                  </button>
-                  <button aria-pressed={showImport} onClick={() => setShowImport(true)}>
-                    Import
-                  </button>
-                </div>
-              ) : null}
-              <div hidden={embedded && !showImport}>
+              <div>
                 {data.folderSupport ? (
                   <>
                     <label>
@@ -441,10 +422,9 @@ export function SpriteSetupDialog({
                 <p>{data.files.length ? "No sprites imported yet." : "No character sprites available."}</p>
               ) : null}
               <>
-                <div hidden={embedded && showImport}>
+                <div>
                   <div className="sprite-gallery" aria-label="Sprites">
                     {data.manager.artwork.map((art, index) => {
-                      if (embedded && Math.floor(index / 3) !== galleryPage) return null;
                       const item = candidates.find((item) => item.artworkId === art.id)!;
                       return (
                         <div className="sprite-choice" key={art.id}>
@@ -483,22 +463,6 @@ export function SpriteSetupDialog({
                       );
                     })}
                   </div>
-                  {embedded && data.manager.artwork.length > 3 ? (
-                    <nav className="sprite-actions" aria-label="Sprite pages">
-                      <button disabled={galleryPage === 0} onClick={() => setGalleryPage(galleryPage - 1)}>
-                        Previous
-                      </button>
-                      <span>
-                        {galleryPage + 1} / {Math.ceil(data.manager.artwork.length / 3)}
-                      </span>
-                      <button
-                        disabled={(galleryPage + 1) * 3 >= data.manager.artwork.length}
-                        onClick={() => setGalleryPage(galleryPage + 1)}
-                      >
-                        Next
-                      </button>
-                    </nav>
-                  ) : null}
                 </div>
               </>
               {Object.entries(data.errors)
@@ -514,7 +478,7 @@ export function SpriteSetupDialog({
       </main>
       <footer>
         <button disabled={busy} onClick={() => void perform(() => finish(false))}>
-          {embedded ? "Use portrait" : "Add without sprites"}
+          Add without sprites
         </button>
         <button
           className="sprite-primary"
@@ -523,7 +487,7 @@ export function SpriteSetupDialog({
         >
           {candidates.length && !included.length
             ? "Keep artwork"
-            : existing || embedded
+            : existing
               ? "Use sprites"
               : "Add villager with sprites"}
         </button>

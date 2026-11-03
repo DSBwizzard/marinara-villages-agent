@@ -252,7 +252,7 @@ export function createSpriteSetup(ports: SpriteSetupPorts) {
     manager.expressions = [];
     manager.assignments = [];
     manager.defaultExpressionId = undefined;
-    if (!value.useSprites) return manager;
+    if (!value.useSprites || !value.assignments.some((item) => item.included)) return manager;
     for (const item of value.assignments.filter(ready)) {
       const view = item.view;
       let expression = manager.expressions.find(

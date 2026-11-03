@@ -328,11 +328,11 @@ export async function verifyFoundingLayout(group) {
         }
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         const resident = root.locator(".villages-selected-villager").first();
-        await resident.getByRole("button", { name: "Sprites", exact: true }).click();
-        const spritePane = page.getByRole("dialog", { name: characters[0].name + " sprite setup", exact: true });
-        await expect(spritePane).toHaveAttribute("data-embedded", "true");
-        await expect(button("Continue to Venues and Map")).toBeDisabled();
-        await spritePane.getByRole("button", { name: "Use portrait", exact: true }).click();
+        await resident.getByRole("button", { name: characters[0].name, exact: true }).click();
+        const spritePane = page.getByRole("region", { name: characters[0].name + " sprite setup", exact: true });
+        await expect(spritePane.getByRole("button", { name: "Use Portrait", exact: true })).toBeEnabled();
+        await expect(resident.getByRole("button", { name: "Sprites", exact: true })).toHaveCount(0);
+        await spritePane.getByRole("button", { name: "Use Portrait", exact: true }).click();
         await expect(button("Continue to Venues and Map")).toBeEnabled();
         await bounds("people");
         await button("Continue to Venues and Map").click();
@@ -464,7 +464,7 @@ export async function verifyFoundingLayout(group) {
           root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
         ).toBeVisible();
         if (view.width === 1366) {
-          await button("Save & exit").click();
+          await button("Exit").click();
           await page.reload();
           await page.addScriptTag({ content: foundingBundle });
           await page.getByRole("button", { name: "Resume founding", exact: true }).click();
