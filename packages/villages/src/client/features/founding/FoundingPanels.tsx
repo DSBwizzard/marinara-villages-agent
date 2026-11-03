@@ -11,7 +11,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
 import { startingZone } from "./founding-template.js";
-import { type ReactNode, useId, useState } from "react";
+import { useId, useState } from "react";
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it
