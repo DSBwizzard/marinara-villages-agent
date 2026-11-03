@@ -1,3 +1,4 @@
+import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import type { AreaDraftCache } from "./villages-founding-editor.js";
 import { SETUP_STEPS } from "./founding-steps.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
@@ -403,8 +404,8 @@ export function useFoundingSetupBlocker(ports: {
       if (!snapshot?.isFounded && playerBackgroundProblem(setupPlayerBackground))
         return playerBackgroundProblem(setupPlayerBackground);
       const presentFacts = setupContext.circumstances.map((line) => line.summary.trim()).filter(Boolean);
-      if (presentFacts.length > 4 || presentFacts.some((line) => line.length > 600))
-        return "Use at most four starting circumstances of 600 characters each.";
+      if (presentFacts.length > 4 || presentFacts.some((line) => line.length > FOUNDING_CIRCUMSTANCE_MAX_LENGTH))
+        return "Use at most four starting circumstances of 4000 characters each.";
       if (setupSetting.trim().length === 0) return "Describe what the village is like.";
       if (!snapshot?.isFounded && setupMapBusy) return "Wait for the requested map artwork.";
       if (!snapshot?.isFounded && !setupMapSrc) return "Generate or upload map artwork on Map before founding.";

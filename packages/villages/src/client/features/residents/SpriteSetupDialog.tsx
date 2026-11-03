@@ -9,11 +9,20 @@ type Props = {
   portrait?: Portrait;
   onClose(revision?: number): void;
   onDone(revision?: number): void | Promise<void>;
+  embedded?: boolean;
   existing?: boolean;
   preserveSelection?: boolean;
 };
 const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim());
-export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing, preserveSelection }: Props) {
+export function SpriteSetupDialog({
+  characterId,
+  name,
+  onClose,
+  onDone,
+  existing,
+  preserveSelection,
+  embedded,
+}: Props) {
   const dialog = useRef<HTMLDialogElement>(null);
   const importAbort = useRef<AbortController | null>(null);
   const working = useRef(false);
@@ -22,6 +31,8 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     [error, setError] = useState("");
   const [reloadRequired, setReloadRequired] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [galleryPage, setGalleryPage] = useState(0);
+  const [showImport, setShowImport] = useState(false);
   const [folderId, setFolderId] = useState("");
   const [importView, setImportView] = useState<"front" | "side" | "unassigned">("front");
   const [progress, setProgress] = useState("");
@@ -79,7 +90,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
   useEffect(() => {
     const controller = new AbortController();
     importAbort.current = controller;
-    dialog.current?.showModal();
+    if (!embedded) dialog.current?.showModal();
     void request<SpriteSetupState>(base + "/settled", { signal: controller.signal })
       .then(async (value) => {
         if (controller.signal.aborted) return;
@@ -105,7 +116,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       controller.abort();
       importAbort.current?.abort();
     };
-  }, [base, importArtwork]);
+  }, [base, importArtwork, embedded]);
   async function perform(action: () => Promise<void>) {
     if (working.current) return;
     working.current = true;
@@ -231,6 +242,8 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
     <dialog
       className="villages-sprite-setup"
       ref={dialog}
+      open={embedded || undefined}
+      data-embedded={embedded || undefined}
       aria-label={`${name} sprite setup`}
       onCancel={(event) => {
         event.preventDefault();
@@ -240,6 +253,8 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       <style>{`
       .villages-sprite-setup{position:fixed;inset:0;margin:auto;height:90dvh;background:#111d31;color:#f2f4fb;border:1px solid #66758f;border-radius:14px;padding:0;width:min(780px,calc(100vw - 24px));max-height:90dvh;overflow:hidden;box-sizing:border-box;font-family:system-ui,sans-serif}
       .villages-sprite-setup[open]{display:flex;flex-direction:column}
+      .villages-sprite-setup[data-embedded]{position:static;inset:auto;margin:0;height:100%;max-height:100%;width:100%;border:0;border-radius:0;background:transparent}
+      .villages-sprite-setup[data-embedded] .sprite-gallery{grid-template-columns:repeat(3,minmax(0,1fr))}
       .villages-sprite-setup::backdrop{background:#080e19bd}
       .villages-sprite-setup header,.villages-sprite-setup footer{display:flex;gap:12px;justify-content:space-between;align-items:center;padding:16px;flex-wrap:wrap;flex-shrink:0}
       .villages-sprite-setup h2{margin:0;font-size:1.25rem}.villages-sprite-setup h3{margin:0;font-size:1rem}
@@ -281,7 +296,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
           ) : null}
         </div>
         <button disabled={busy} onClick={() => void perform(close)}>
-          Back
+          {embedded ? "Save & close" : "Back"}
         </button>
       </header>
       <main>
@@ -307,149 +322,183 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
                   <small>Choose a default sprite.</small>
                 </p>
               ) : null}
-              {data.folderSupport ? (
-                <>
-                  <label>
-                    Engine folder
-                    <select disabled={busy} value={folderId} onChange={(event) => setFolderId(event.target.value)}>
-                      <option value="">Choose a folder</option>
-                      {(["full-body", "expressions"] as const).map((category) => (
-                        <optgroup key={category} label={category === "full-body" ? "Full-body" : "Facial expressions"}>
-                          {(data.folders ?? [])
-                            .filter((folder) => folder.category === category)
-                            .slice()
-                            .reverse()
-                            .map((folder) => (
-                              <option key={folder.id} value={folder.id}>
-                                {folder.name} ({data.files.filter((file) => file.folderId === folder.id).length})
-                              </option>
-                            ))}
-                        </optgroup>
+              {embedded ? (
+                <div className="sprite-actions">
+                  <button aria-pressed={!showImport} onClick={() => setShowImport(false)}>
+                    Sprites
+                  </button>
+                  <button aria-pressed={showImport} onClick={() => setShowImport(true)}>
+                    Import
+                  </button>
+                </div>
+              ) : null}
+              <div hidden={embedded && !showImport}>
+                {data.folderSupport ? (
+                  <>
+                    <label>
+                      Engine folder
+                      <select disabled={busy} value={folderId} onChange={(event) => setFolderId(event.target.value)}>
+                        <option value="">Choose a folder</option>
+                        {(["full-body", "expressions"] as const).map((category) => (
+                          <optgroup
+                            key={category}
+                            label={category === "full-body" ? "Full-body" : "Facial expressions"}
+                          >
+                            {(data.folders ?? [])
+                              .filter((folder) => folder.category === category)
+                              .slice()
+                              .reverse()
+                              .map((folder) => (
+                                <option key={folder.id} value={folder.id}>
+                                  {folder.name} ({data.files.filter((file) => file.folderId === folder.id).length})
+                                </option>
+                              ))}
+                          </optgroup>
+                        ))}
+                        <option value="unfiled">
+                          Unfiled sprites ({data.files.filter((file) => file.folderId === null).length})
+                        </option>
+                      </select>
+                    </label>
+                    <div className="sprite-actions" role="group" aria-label="Import as">
+                      {(["front", "side", "unassigned"] as const).map((view) => (
+                        <button
+                          key={view}
+                          disabled={busy}
+                          aria-pressed={importView === view}
+                          onClick={() => setImportView(view)}
+                        >
+                          {view === "front" ? "Front" : view === "side" ? "Side" : "Unassigned"}
+                        </button>
                       ))}
-                      <option value="unfiled">
-                        Unfiled sprites ({data.files.filter((file) => file.folderId === null).length})
-                      </option>
-                    </select>
-                  </label>
-                  <div className="sprite-actions" role="group" aria-label="Import as">
-                    {(["front", "side", "unassigned"] as const).map((view) => (
                       <button
-                        key={view}
-                        disabled={busy}
-                        aria-pressed={importView === view}
-                        onClick={() => setImportView(view)}
+                        className="sprite-primary"
+                        disabled={busy || reloadRequired || !pendingFiles.length}
+                        onClick={() =>
+                          void perform(async () => {
+                            const saved = data.revision ? await save(data.useSprites) : data;
+                            if (saved)
+                              void importArtwork(new AbortController(), {
+                                folderId: folderId === "unfiled" ? null : folderId,
+                                view: importView,
+                                filenames: pendingFiles.map((file) => file.filename),
+                                revision: saved.revision,
+                              });
+                          })
+                        }
                       >
-                        {view === "front" ? "Front" : view === "side" ? "Side" : "Unassigned"}
+                        Import {pendingFiles.length} {pendingFiles.length === 1 ? "sprite" : "sprites"}
                       </button>
-                    ))}
-                    <button
-                      className="sprite-primary"
-                      disabled={busy || reloadRequired || !pendingFiles.length}
-                      onClick={() =>
-                        void perform(async () => {
-                          const saved = data.revision ? await save(data.useSprites) : data;
-                          if (saved)
-                            void importArtwork(new AbortController(), {
-                              folderId: folderId === "unfiled" ? null : folderId,
-                              view: importView,
-                              filenames: pendingFiles.map((file) => file.filename),
-                              revision: saved.revision,
-                            });
-                        })
-                      }
-                    >
-                      Import {pendingFiles.length} {pendingFiles.length === 1 ? "sprite" : "sprites"}
-                    </button>
-                    <button
-                      disabled={busy || reloadRequired}
-                      onClick={() =>
-                        void perform(async () => {
-                          if (data.revision) await save(data.useSprites);
-                          await reloadSavedSprites();
-                        })
-                      }
-                    >
-                      Refresh folders
-                    </button>
-                  </div>
-                  {folderId ? (
+                      <button
+                        disabled={busy || reloadRequired}
+                        onClick={() =>
+                          void perform(async () => {
+                            if (data.revision) await save(data.useSprites);
+                            await reloadSavedSprites();
+                          })
+                        }
+                      >
+                        Refresh folders
+                      </button>
+                    </div>
+                    {folderId ? (
+                      <p>
+                        <small>
+                          {folderFiles.length} {folderFiles.length === 1 ? "sprite" : "sprites"} ·{" "}
+                          {folderFiles.length - pendingFiles.length} already imported
+                        </small>
+                      </p>
+                    ) : null}
+                    {importView === "side" ? (
+                      <p>
+                        <small>Side views must face right.</small>
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
                     <p>
-                      <small>
-                        {folderFiles.length} {folderFiles.length === 1 ? "sprite" : "sprites"} ·{" "}
-                        {folderFiles.length - pendingFiles.length} already imported
-                      </small>
+                      <small>Use front views or side views facing right.</small>
                     </p>
-                  ) : null}
-                  {importView === "side" ? (
-                    <p>
-                      <small>Side views must face right.</small>
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <>
-                  <p>
-                    <small>Use front views or side views facing right.</small>
-                  </p>
-                  <div className="sprite-actions">
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void perform(async () => {
-                          await save(data.useSprites);
-                          void importArtwork();
-                        })
-                      }
-                    >
-                      Refresh sprites
-                    </button>
-                  </div>
-                </>
-              )}
+                    <div className="sprite-actions">
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          void perform(async () => {
+                            await save(data.useSprites);
+                            void importArtwork();
+                          })
+                        }
+                      >
+                        Refresh sprites
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               {data.libraryError ? <p role="alert">{data.libraryError}</p> : null}
               {!importing && !candidates.length ? (
                 <p>{data.files.length ? "No sprites imported yet." : "No character sprites available."}</p>
               ) : null}
               <>
-                <div className="sprite-gallery" aria-label="Sprites">
-                  {data.manager.artwork.map((art, index) => {
-                    const item = candidates.find((item) => item.artworkId === art.id)!;
-                    return (
-                      <div className="sprite-choice" key={art.id}>
-                        <button
-                          type="button"
-                          className="sprite-thumb"
-                          disabled={busy}
-                          aria-label={`Sprite ${index + 1}: ${item.name || "Needs assignment"}${complete(item) ? " · Prepared" : ""}`}
-                          aria-pressed={art.id === activeArtwork}
-                          onClick={(event) => {
-                            activeButton.current = event.currentTarget;
-                            setActiveArtwork(art.id);
-                            setFraming("");
-                          }}
-                        >
-                          {complete(item) ? (
-                            <span className="sprite-prepared" aria-hidden="true">
-                              ✓
-                            </span>
-                          ) : null}
-                          <img src={art.rendered.url} alt="" loading="lazy" />
-                          <span>{item.name || art.name}</span>
-                          <small>
-                            {data.errors[art.id] ? "Retry · " : ""}
-                            {!item.included
-                              ? "Unassigned"
-                              : !complete(item)
-                                ? "Incomplete"
-                                : item.view === "front"
-                                  ? "Front"
-                                  : "Side"}
-                            {defaultItem?.artworkId === art.id ? " · Default" : ""}
-                          </small>
-                        </button>
-                      </div>
-                    );
-                  })}
+                <div hidden={embedded && showImport}>
+                  <div className="sprite-gallery" aria-label="Sprites">
+                    {data.manager.artwork.map((art, index) => {
+                      if (embedded && Math.floor(index / 3) !== galleryPage) return null;
+                      const item = candidates.find((item) => item.artworkId === art.id)!;
+                      return (
+                        <div className="sprite-choice" key={art.id}>
+                          <button
+                            type="button"
+                            className="sprite-thumb"
+                            disabled={busy}
+                            aria-label={`Sprite ${index + 1}: ${item.name || "Needs assignment"}${complete(item) ? " · Prepared" : ""}`}
+                            aria-pressed={art.id === activeArtwork}
+                            onClick={(event) => {
+                              activeButton.current = event.currentTarget;
+                              setActiveArtwork(art.id);
+                              setFraming("");
+                            }}
+                          >
+                            {complete(item) ? (
+                              <span className="sprite-prepared" aria-hidden="true">
+                                ✓
+                              </span>
+                            ) : null}
+                            <img src={art.rendered.url} alt="" loading="lazy" />
+                            <span>{item.name || art.name}</span>
+                            <small>
+                              {data.errors[art.id] ? "Retry · " : ""}
+                              {!item.included
+                                ? "Unassigned"
+                                : !complete(item)
+                                  ? "Incomplete"
+                                  : item.view === "front"
+                                    ? "Front"
+                                    : "Side"}
+                              {defaultItem?.artworkId === art.id ? " · Default" : ""}
+                            </small>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {embedded && data.manager.artwork.length > 3 ? (
+                    <nav className="sprite-actions" aria-label="Sprite pages">
+                      <button disabled={galleryPage === 0} onClick={() => setGalleryPage(galleryPage - 1)}>
+                        Previous
+                      </button>
+                      <span>
+                        {galleryPage + 1} / {Math.ceil(data.manager.artwork.length / 3)}
+                      </span>
+                      <button
+                        disabled={(galleryPage + 1) * 3 >= data.manager.artwork.length}
+                        onClick={() => setGalleryPage(galleryPage + 1)}
+                      >
+                        Next
+                      </button>
+                    </nav>
+                  ) : null}
                 </div>
               </>
               {Object.entries(data.errors)
@@ -465,7 +514,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
       </main>
       <footer>
         <button disabled={busy} onClick={() => void perform(() => finish(false))}>
-          Add without sprites
+          {embedded ? "Use portrait" : "Add without sprites"}
         </button>
         <button
           className="sprite-primary"
@@ -474,7 +523,7 @@ export function SpriteSetupDialog({ characterId, name, onClose, onDone, existing
         >
           {candidates.length && !included.length
             ? "Keep artwork"
-            : existing
+            : existing || embedded
               ? "Use sprites"
               : "Add villager with sprites"}
         </button>

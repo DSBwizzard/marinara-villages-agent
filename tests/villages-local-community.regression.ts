@@ -1,4 +1,8 @@
 import {
+  foundingCircumstanceText,
+  foundingCircumstanceFromText,
+} from "../packages/villages/src/shared/helpers/founding-circumstance.js";
+import {
   communityVenueEligible,
   designateCommunityVenue,
 } from "../packages/villages/src/server/domain/rules/community-venue.js";
@@ -426,7 +430,7 @@ assert.throws(
 {
   const state = world();
   state.worldRules = "No magic.";
-  const summary = "海辺の共同生活を始める人々が不足した交通手段を工夫している。".repeat(12);
+  const summary = "海辺の共同生活を始める人々が不足した交通手段を工夫している。".repeat(65);
   const situations = readFoundingCircumstances(
     [
       { scope: "village", summary, venueId: "", zoneId: "" },
@@ -452,6 +456,8 @@ assert.throws(
     assert.deepEqual(Object.keys(record.knowers).sort(), actors.map((actor) => actor.id).sort());
   const restarted = coerceVillageState(state);
   assert.equal(restarted.narrative!.situations[1].scope, "zone");
+  assert.ok(summary.length > 1200);
+  assert.equal(restarted.narrative!.situations[0].summary, summary);
   const grant = admitNarrative(restarted, "2026-11-02T13:00:00.000Z", "resolve-start", "world", {
     venueId: "community",
     zoneId: "common:base",
@@ -1120,4 +1126,18 @@ console.log(
     false,
     "Retained source history does not bypass current physical validation",
   );
+}
+
+{
+  const legacy = [
+    { scope: "zone" as const, summary: "A closed road.", venueId: "community", zoneId: "common:base" },
+    { scope: "village" as const, summary: "A festival.", venueId: "", zoneId: "" },
+  ];
+  const original = structuredClone(legacy);
+  assert.equal(foundingCircumstanceText(legacy), "A closed road.\n\nA festival.");
+  assert.deepEqual(legacy, original, "Displaying an old draft retains its exact scope and source");
+  assert.deepEqual(foundingCircumstanceFromText("Edited. Another sentence."), [
+    { scope: "village", summary: "Edited. Another sentence.", venueId: "", zoneId: "" },
+  ]);
+  assert.deepEqual(foundingCircumstanceFromText("  "), []);
 }

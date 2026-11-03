@@ -43,6 +43,7 @@ export async function verifyFoundingLayout(group) {
   await withBrowser(browser, async () => {
     const viewports = [
       { width: 2550, height: 1072, fontSize: 16, count: 3, housing: "separate" },
+      { width: 1280, height: 584, fontSize: 16, count: 3, housing: "shared" },
       { width: 1366, height: 768, fontSize: 16, count: 3, housing: "separate" },
       { width: 1440, height: 650, fontSize: 16, count: 1, housing: "shared" },
       { width: 1917, height: 600, fontSize: 20, count: 3, housing: "custom" },
@@ -188,7 +189,30 @@ export async function verifyFoundingLayout(group) {
         await page.addScriptTag({ content: foundingBundle });
         const root = page.locator(".villages-forging-v2"),
           button = (name) => root.getByRole("button", { name, exact: true });
+        const frame = await root.boundingBox();
+        const sheet = page.locator(".villages-quick-dialog");
+        const showVenue = async (id) => {
+          const previous = root.getByRole("button", { name: "Previous Venues page", exact: true });
+          for (let attempt = 0; attempt < 6 && (await previous.count()) > 0 && (await previous.isEnabled()); attempt++)
+            await previous.click();
+          for (
+            let attempt = 0;
+            attempt < 6 && !(await root.locator('[data-venue-id="' + id + '"]').isVisible());
+            attempt++
+          )
+            await root.getByRole("button", { name: "Next Venues page", exact: true }).click();
+        };
+        const editVenue = async (id, tab = "Venue") => {
+          await showVenue(id);
+          await root
+            .locator('[data-venue-id="' + id + '"]')
+            .getByRole("button", { name: /^Edit / })
+            .click();
+          await sheet.getByRole("button", { name: tab, exact: true }).click();
+        };
+        const closeVenue = () => sheet.getByRole("button", { name: "Close Venue details", exact: true }).click();
         const bounds = async (phase) => {
+          assert.deepEqual(await root.boundingBox(), frame, "Founding frame stays the same size across pages");
           assert.equal(
             await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
             true,
@@ -210,10 +234,17 @@ export async function verifyFoundingLayout(group) {
           }
           if (phase === "review") {
             assert.equal(
-              await root.evaluate((element) => getComputedStyle(element).overflowY),
+              await root.locator(".villages-forging-body").evaluate((element) => getComputedStyle(element).overflowY),
               "auto",
               "Review remains scrollable",
             );
+            const next = root.getByRole("button", { name: "Next Review Venues page", exact: true });
+            for (
+              let attempt = 0;
+              attempt < 6 && !(await root.locator("details").filter({ hasText: "Community Courtyard" }).count());
+              attempt++
+            )
+              await next.click();
             const community = root.locator("details").filter({ hasText: "Community Courtyard" });
             await community.locator("summary").click();
             await community
@@ -242,8 +273,17 @@ export async function verifyFoundingLayout(group) {
         await root
           .getByLabel("Local area", { exact: true })
           .fill("An oceanfront expanse between the cliffs and river.");
-        await root.getByLabel("Standing rules", { exact: true }).fill("The sun never sets.");
+        await root.getByLabel("World rules", { exact: true }).fill("The sun never sets.");
         await expect(root.getByLabel("Historical backstory", { exact: true })).toHaveCount(0);
+        await button("Circumstances").click();
+        const circumstance = root.getByRole("textbox", { name: "Starting circumstances", exact: true });
+        await expect(circumstance).toHaveCount(1);
+        await circumstance.fill("The ferries are delayed. A festival starts tonight.");
+        const box = await circumstance.boundingBox(),
+          controls = await root.getByRole("group", { name: "Village context", exact: true }).boundingBox();
+        assert.ok(box.y - controls.y - controls.height < 80, "Circumstances starts directly below its controls");
+        await button("World rules").click();
+        await expect(root.getByLabel("Village Timezone", { exact: true })).toHaveCount(0);
         await bounds("setting");
         await button("Continue to People").click();
         await expect(root).toHaveAttribute("data-step", "1");
@@ -251,12 +291,15 @@ export async function verifyFoundingLayout(group) {
           await button("+ Add villager").click();
           const picker = page.getByRole("dialog", { name: "Choose founding villagers", exact: true });
           await picker.getByRole("button", { name: person.name + " · Add", exact: true }).click();
-          await page
-            .getByRole("dialog", { name: person.name + " sprite setup", exact: true })
-            .getByRole("button", { name: "Add without sprites", exact: true })
-            .click();
         }
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
+        const resident = root.locator(".villages-selected-villager").first();
+        await resident.getByRole("button", { name: "Sprites", exact: true }).click();
+        const spritePane = page.getByRole("dialog", { name: characters[0].name + " sprite setup", exact: true });
+        await expect(spritePane).toHaveAttribute("data-embedded", "true");
+        await expect(button("Continue to Venues and Map")).toBeDisabled();
+        await spritePane.getByRole("button", { name: "Use portrait", exact: true }).click();
+        await expect(button("Continue to Venues and Map")).toBeEnabled();
         await bounds("people");
         await button("Continue to Venues and Map").click();
         await expect(root).toHaveAttribute("data-step", "2");
@@ -265,34 +308,23 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
         const home = root.locator('[data-venue-id="founding-home:player"]');
+        await editVenue("founding-home:player", "People");
         for (const person of characters.slice(0, view.count))
-          await home.getByRole("checkbox", { name: person.name, exact: true }).check();
-        await expect
-          .poll(() =>
-            page.evaluate(
-              () => window.featureController.setupVenues.find((row) => row.occupancy.playerHome)?.residentIds.length,
-            ),
-          )
-          .toBe(view.count);
-        await expect
-          .poll(() =>
-            page.evaluate(
-              () =>
-                window.featureController.setupVenues.filter(
-                  (row) => row.occupancy.playerHome || row.residentIds?.length,
-                ).length,
-            ),
-          )
-          .toBe(1);
-        await expect(home.getByRole("checkbox", { name: "You", exact: true })).toBeChecked();
+          await sheet.getByRole("checkbox", { name: person.name, exact: true }).check();
+        await expect(sheet.getByRole("checkbox", { name: "You", exact: true })).toBeChecked();
+        await closeVenue();
         if (view.housing !== "shared") {
-          for (const person of characters.slice(0, view.count))
-            await root
-              .locator('[data-venue-id="founding-home:' + person.id + '"]')
-              .getByRole("checkbox", { name: person.name, exact: true })
-              .check();
+          for (const person of characters.slice(0, view.count)) {
+            await editVenue("founding-home:" + person.id, "People");
+            await sheet.getByRole("checkbox", { name: person.name, exact: true }).check();
+            await closeVenue();
+          }
         }
-        if (view.housing === "custom") await home.getByRole("checkbox", { name: "Finn", exact: true }).check();
+        if (view.housing === "custom") {
+          await editVenue("founding-home:player", "People");
+          await sheet.getByRole("checkbox", { name: "Finn", exact: true }).check();
+          await closeVenue();
+        }
         const expectedHomes = view.housing === "shared" ? 1 : view.housing === "custom" ? view.count : view.count + 1;
         await expect
           .poll(() =>
@@ -306,6 +338,7 @@ export async function verifyFoundingLayout(group) {
           .toBe(expectedHomes);
         assert.equal(suggestions, 0, "Assigning homes never generates suggestions");
         assert.equal(generatedImages, 0, "The simple map requires no model call");
+        await showVenue("founding-community");
         await expect(
           root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
         ).toBeVisible();
@@ -325,42 +358,45 @@ export async function verifyFoundingLayout(group) {
               ),
             )
             .toBe(expectedHomes);
-          await expect(home.getByRole("checkbox", { name: "You", exact: true })).toBeChecked();
+          await editVenue("founding-home:player", "People");
+          await expect(sheet.getByRole("checkbox", { name: "You", exact: true })).toBeChecked();
+          await closeVenue();
           await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
           await button("+ Add home").click();
-          const homeDetails = page.locator("dialog.villages-quick-dialog");
+          const homeDetails = page.locator(".villages-quick-dialog");
           await expect(homeDetails.getByLabel("Venue Name", { exact: true })).toHaveValue("New home");
-          await expect(homeDetails.locator("[data-layout-zone]")).toHaveCount(2);
+          await homeDetails.getByRole("button", { name: "Zones", exact: true }).click();
+          await expect(homeDetails.getByRole("combobox", { name: "Selected Zone", exact: true })).toContainText(
+            "Entrance",
+          );
           await homeDetails.getByRole("button", { name: "Done", exact: true }).click();
           const emptyHome = root.getByRole("region", { name: "New home", exact: true });
           await expect(emptyHome.getByText("Vacant home", { exact: true })).toBeVisible();
-          await emptyHome.getByRole("button", { name: "Remove New home", exact: true }).click();
+          await editVenue(await emptyHome.getAttribute("data-venue-id"));
+          await sheet.getByRole("button", { name: "Remove New home", exact: true }).click();
           await button("+ Add Venue").click();
-          const details = page.locator("dialog.villages-quick-dialog");
+          const details = page.locator(".villages-quick-dialog");
           await details.getByLabel("Venue Name", { exact: true }).fill("Public courtyard");
           await details.getByRole("button", { name: "Done", exact: true }).click();
           const courtyard = root.getByRole("region", { name: "Public courtyard", exact: true });
-          await courtyard.getByRole("button", { name: "Use as Community Venue", exact: true }).click();
+          await editVenue(await courtyard.getAttribute("data-venue-id"));
+          await sheet.getByRole("button", { name: "Use as Community Venue", exact: true }).click();
+          await closeVenue();
           await expect(courtyard.getByText("Community Venue", { exact: true })).toBeVisible();
           await expect(
             root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
           ).toHaveCount(0);
           await expect(courtyard.getByRole("checkbox")).toHaveCount(0);
-          await root
-            .locator('[data-venue-id="founding-community"]')
-            .getByRole("button", { name: "Use as Community Venue", exact: true })
-            .click();
-          await courtyard.getByRole("button", { name: "Edit Public courtyard", exact: true }).click();
-          await details.getByRole("button", { name: "Done", exact: true }).click();
-          await courtyard.getByRole("button", { name: "Remove Public courtyard", exact: true }).click();
+          await editVenue("founding-community");
+          await sheet.getByRole("button", { name: "Use as Community Venue", exact: true }).click();
+          await closeVenue();
+          await editVenue(await courtyard.getAttribute("data-venue-id"));
+          await sheet.getByRole("button", { name: "Remove Public courtyard", exact: true }).click();
           await expect(courtyard).toHaveCount(0);
           assert.equal(suggestions, 0, "Reload and designation changes make no model requests");
         }
-        await root
-          .locator('[data-venue-id="founding-community"]')
-          .getByRole("button", { name: /^Edit / })
-          .click();
-        const suggestionDetails = page.locator("dialog.villages-quick-dialog");
+        await editVenue("founding-community");
+        const suggestionDetails = page.locator(".villages-quick-dialog");
         await suggestionDetails.getByRole("button", { name: "Suggest details", exact: true }).click();
         await page
           .getByRole("dialog", { name: "Suggest details", exact: true })
@@ -398,13 +434,16 @@ export async function verifyFoundingLayout(group) {
         await bounds("venues");
         await button("Review village").click();
         await expect(root).toHaveAttribute("data-step", "3");
-        await expect(root.getByText("Standing rules: The sun never sets.", { exact: true })).toBeVisible();
-        await expect(root.getByRole("button", { name: "Community Courtyard", exact: true })).toBeVisible();
+        await expect(root.getByText("World rules: The sun never sets.", { exact: true })).toBeVisible();
+
         await bounds("review");
         await button("Found village").click();
         await expect.poll(() => payload).toBeTruthy();
         assert.equal(payload.communityVenueId, "founding-community");
         assert.equal(payload.worldRules, "The sun never sets.");
+        assert.deepEqual(payload.circumstances, [
+          { scope: "village", summary: "The ferries are delayed. A festival starts tonight.", venueId: "", zoneId: "" },
+        ]);
         assert.equal(Object.hasOwn(payload, "foundingHistory"), false);
         assert.equal(payload.venues.length, view.count + 2, "Reassignment preserves unoccupied places");
         const community = payload.venues.find((row) => row.id === payload.communityVenueId);

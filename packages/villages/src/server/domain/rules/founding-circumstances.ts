@@ -1,3 +1,4 @@
+import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import type { NarrativeSituation } from "../models/narrative-model.js";
 import type { VillageVenue, VillageState } from "../models/world.js";
 import { badRequest } from "./errors.js";
@@ -10,8 +11,12 @@ export function readFoundingCircumstances(value: unknown, venues: VillageVenue[]
   return value.map((raw, index) => {
     const row = asRecord(raw),
       summary = asTrimmedString(row.summary);
-    if (!summary || summary.length > 600 || !["village", "zone"].includes(String(row.scope)))
-      throw badRequest("Each starting circumstance needs a scope and up to 600 characters.");
+    if (
+      !summary ||
+      summary.length > FOUNDING_CIRCUMSTANCE_MAX_LENGTH ||
+      !["village", "zone"].includes(String(row.scope))
+    )
+      throw badRequest("Each starting circumstance needs a scope and up to 4000 characters.");
     const venueId = asTrimmedString(row.venueId),
       zoneId = asTrimmedString(row.zoneId);
     if (

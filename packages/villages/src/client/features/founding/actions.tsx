@@ -456,8 +456,6 @@ export function useFoundVillage(ports: {
   snapshot: VillageSnapshot;
   visualLoreDefault: boolean;
 }) {
-  const { setupTimeZone } = ports;
-
   const {
     draftSaveQueue,
     element,
@@ -533,7 +531,7 @@ export function useFoundVillage(ports: {
         method: "POST",
         body: JSON.stringify({
           name: setupName.trim(),
-          timeZone: setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
+          timeZone: snapshot.clock?.timeZone || snapshot.village.timeZone,
           worldName: setupWorldName,
           setting: setupSetting.trim(),
           worldRules: ports.setupContext.rules,
@@ -582,7 +580,6 @@ export function useFoundVillage(ports: {
     element,
     flushSetupDraft,
     setupName,
-    setupTimeZone,
     setupWorldName,
     setupSetting,
     ports.setupContext,

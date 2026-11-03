@@ -1,3 +1,4 @@
+import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
@@ -24,11 +25,11 @@ export function readFoundingDraftContext(value: unknown): {
           zoneId = asTrimmedString(item.zoneId);
         if (
           !summary ||
-          summary.length > 600 ||
+          summary.length > FOUNDING_CIRCUMSTANCE_MAX_LENGTH ||
           !["village", "zone"].includes(String(item.scope)) ||
           (item.scope === "zone" && (!venueId || !zoneId))
         )
-          throw badRequest("Each starting circumstance needs its scope and up to 600 characters.");
+          throw badRequest("Each starting circumstance needs its scope and up to 4000 characters.");
         return {
           scope: item.scope as FoundingCircumstance["scope"],
           summary,

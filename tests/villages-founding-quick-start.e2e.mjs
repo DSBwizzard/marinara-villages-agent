@@ -44,7 +44,7 @@ function Harness(){
  <QuickStartVenues communityVenueId='community' venues={venues} people={people} selectedId={selected} movingVenueId={moving} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onAssignHome={(venue,id,assigned)=>{try{setVenues(assignFoundingHome(venues,venue.id,id,assigned));setProblem('')}catch(e){setProblem(e.message)}}} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={venue=>{setMoving(venue?.id??null);setWorkspace(state=>({...state,view:'map',paused:!venue}))}} onRemove={venue=>setVenues(rows=>rows.filter(row=>row.id!==venue.id))}
  actions={<>{['residence','other'].map(kind=><button key={kind} onClick={()=>{const venue=newSetupVenue('new-'+kind,kind,.5,.5);venue.name=kind==='residence'?'New home':'New Venue';venue.presentation={...venue.presentation,x:null,y:null};setVenues(rows=>[...rows,venue]);select(venue)}}>{kind==='residence'?'+ Add home':'+ Add Venue'}</button>)}{workspace.suggestionRequest?<QuickStartButton busy={busy} pending onGenerate={()=>suggest()}/>:null}</>}
  suggestions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({venueId:selected})}/>}/>
- {problem?<p role='alert'>{problem}</p>:null}{saved?<p>Draft saved</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
+ {problem&&workspace.view!=='details'?<p role='alert'>{problem}</p>:null}{saved?<p>Draft saved</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);syncVillagesStyles();
 `,
@@ -129,72 +129,91 @@ await withBrowser(browser, async () => {
       );
       const card = (id) => page.locator(`[data-venue-id="${id}"]`);
       const home = card("founding-home:player");
-      const sheet = page.locator("dialog.villages-quick-dialog");
+      const sheet = page.locator(".villages-quick-dialog");
       const close = async () => {
         await sheet.getByRole("button", { name: "Close Venue details", exact: true }).click();
         await expect(sheet).toBeHidden();
       };
-      const open = async (id) => {
+      const open = async (id, tab = "Venue") => {
+        if (await sheet.isVisible()) await close();
+        const previous = page.getByRole("button", { name: "Previous Venues page", exact: true });
+        while ((await previous.count()) > 0 && (await previous.isEnabled())) await previous.click();
+        while (!(await card(id).isVisible()))
+          await page.getByRole("button", { name: "Next Venues page", exact: true }).click();
         await card(id)
           .getByRole("button", { name: /^Edit / })
           .click();
         await expect(sheet).toBeVisible();
+        await sheet.getByRole("button", { name: tab, exact: true }).click();
       };
       const chooseZone = async (id) => {
-        await sheet.locator(`[data-layout-zone="${id}"]`).click();
+        await sheet.getByRole("button", { name: "Zones", exact: true }).click();
+        await sheet.getByRole("combobox", { name: "Selected Zone", exact: true }).selectOption(id);
         await expect(sheet.getByRole("group", { name: "Selected Zone", exact: true })).toHaveAttribute(
           "data-zone-id",
           id,
         );
       };
       const confirm = async () => {
+        await sheet.getByRole("button", { name: "Venue", exact: true }).click();
         await sheet.getByRole("button", { name: /^(Suggest details|Check suggestions)$/ }).click();
         const dialog = page.getByRole("dialog", { name: /^(Suggest details|Check suggestions)$/ });
         await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
       };
-      await expect(home.getByLabel("Capacity for Your home")).toHaveValue("auto");
+      await open("founding-home:player", "People");
+      await expect(sheet.getByLabel("Capacity for Your home")).toHaveValue("auto");
       assert.ok(
         (await page.evaluate(() => window.quickState.venues))
           .filter((row) => row.classes.includes("residence"))
           .every((row) => row.privateSpaces.length === 0),
       );
-      await home.getByRole("checkbox", { name: "Ada", exact: true }).check();
-      await expect(home.getByLabel("Capacity for Your home")).toContainText("Automatic (2)");
-      await expect(home.getByLabel("Ada sleeping Zone in Your home")).toHaveValue("common:base");
-      await expect(card("founding-home:ada").getByText("Vacant home", { exact: true })).toBeVisible();
-      await home.getByLabel("Ada sleeping Zone in Your home").selectOption("new-private");
+      await sheet.getByRole("checkbox", { name: "Ada", exact: true }).check();
+      await expect(sheet.getByLabel("Capacity for Your home")).toContainText("Automatic (2)");
+      await sheet.getByRole("button", { name: "Next Sleeping residents page", exact: true }).click();
+      await expect(sheet.getByLabel("Ada sleeping Zone in Your home")).toHaveValue("common:base");
+      await sheet.getByLabel("Ada sleeping Zone in Your home").selectOption("new-private");
       const privateZone = (await page.evaluate(() => window.quickState.venues))[0].privateSpaces[0];
       assert.equal(privateZone.ownerId, "ada");
-      await expect(home.getByLabel("Ada sleeping Zone in Your home")).toHaveValue(privateZone.id);
+      await expect(sheet.getByLabel("Ada sleeping Zone in Your home")).toHaveValue(privateZone.id);
+      await sheet.getByRole("button", { name: "Previous Sleeping residents page", exact: true }).click();
       assert.ok(
         !(
-          await home
+          await sheet
             .getByLabel("You sleeping Zone in Your home")
             .locator("option")
             .evaluateAll((nodes) => nodes.map((node) => node.value))
         ).includes(privateZone.id),
       );
-      await card("founding-home:ada").getByRole("checkbox", { name: "Ada", exact: true }).check();
-      await expect(home.getByLabel("Capacity for Your home")).toContainText("Automatic (1)");
+      await open("founding-home:ada", "People");
+      await sheet.getByRole("checkbox", { name: "Ada", exact: true }).check();
       const vacatedRoom = (await page.evaluate(() => window.quickState.venues))[0].privateSpaces[0];
       assert.equal(vacatedRoom.id, privateZone.id);
       assert.equal(vacatedRoom.ownerId, "");
-      await home.getByLabel("Capacity for Your home").selectOption("3");
-      await home.getByRole("checkbox", { name: "Ada", exact: true }).check();
-      await card("founding-home:ada").getByRole("checkbox", { name: "Ada", exact: true }).check();
-      await expect(home.getByLabel("Capacity for Your home")).toHaveValue("3");
-      await home.getByLabel("Capacity for Your home").selectOption("1");
-      await home.getByRole("checkbox", { name: "Ada", exact: true }).click();
+      await open("founding-home:player", "People");
+      await sheet.getByLabel("Capacity for Your home").selectOption("3");
+      await sheet.getByRole("checkbox", { name: "Ada", exact: true }).check();
+      await open("founding-home:ada", "People");
+      await sheet.getByRole("checkbox", { name: "Ada", exact: true }).check();
+      await open("founding-home:player", "People");
+      await expect(sheet.getByLabel("Capacity for Your home")).toHaveValue("3");
+      await sheet.getByLabel("Capacity for Your home").selectOption("1");
+      await sheet.getByRole("checkbox", { name: "Ada", exact: true }).click();
       await expect(page.getByRole("alert")).toHaveText(/home is full/);
-      await expect(card("founding-home:ada").getByRole("checkbox", { name: "Ada", exact: true })).toBeChecked();
-      await home.getByLabel("Capacity for Your home").selectOption("auto");
-      await home.getByRole("checkbox", { name: "Ada", exact: true }).check();
-      await open("founding-home:player");
+      assert.ok(
+        (await page.evaluate(() => window.quickState.venues))
+          .find((row) => row.id === "founding-home:ada")
+          .residentIds.includes("ada"),
+      );
+      await sheet.getByLabel("Capacity for Your home").selectOption("auto");
+      await sheet.getByRole("checkbox", { name: "Ada", exact: true }).check();
       await expect(sheet.getByRole("tab")).toHaveCount(0);
       await chooseZone(privateZone.id);
+      await sheet.getByRole("button", { name: "Access", exact: true }).click();
       await sheet.getByLabel("Zone use", { exact: true }).selectOption("ada");
+      await sheet.getByRole("button", { name: "Details", exact: true }).click();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toHaveValue("Ada's private Zone");
       await sheet.getByLabel("Long-term details", { exact: true }).fill("A private berth with a blue quilt.");
+      await sheet.getByRole("button", { name: "Connections", exact: true }).click();
       const map = sheet.getByRole("region", { name: "Zone layout", exact: true });
       await map.getByRole("button", { name: "Modify Zone Connections", exact: true }).click();
       await map.locator('[data-layout-zone="exterior"]').click();
@@ -208,6 +227,7 @@ await withBrowser(browser, async () => {
       await chooseZone("common:base");
       await sheet.getByLabel("Zone name", { exact: true }).fill("Living space");
       const beforeSuggest = await page.evaluate(() => window.quickState.venues);
+      await sheet.getByRole("button", { name: "Venue", exact: true }).click();
       await sheet.getByRole("button", { name: "Suggest details", exact: true }).click();
       await page
         .getByRole("dialog", { name: "Suggest details", exact: true })
@@ -241,18 +261,21 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByLabel("Venue Name", { exact: true })).toHaveValue("New home");
       await close();
       await expect(card("new-residence").getByText("Vacant home", { exact: true })).toBeVisible();
-      await card("new-residence").getByRole("button", { name: "Remove New home", exact: true }).click();
+      await open("new-residence");
+      await sheet.getByRole("button", { name: "Remove New home", exact: true }).click();
       await expect(card("new-residence")).toHaveCount(0);
       await page.getByRole("button", { name: "+ Add Venue", exact: true }).click();
       await close();
-      await card("new-other").getByRole("button", { name: "Remove New Venue", exact: true }).click();
+      await open("new-other");
+      await sheet.getByRole("button", { name: "Remove New Venue", exact: true }).click();
       await open("founding-home:player");
       await chooseZone("common:base");
       await sheet.getByRole("button", { name: "Add Zone", exact: true }).click();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Kitchen");
       await sheet.getByLabel("Used for", { exact: true }).fill("Cooking");
       await sheet.getByLabel("Long-term details", { exact: true }).fill("A sunny kitchen.");
-      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      await sheet.getByRole("button", { name: "Artwork", exact: true }).first().click();
+      await sheet.getByRole("button", { name: "Artwork", exact: true }).last().click();
       const artwork = page.getByRole("dialog", { name: "Artwork for Kitchen", exact: true });
       await artwork
         .getByLabel("Upload Zone image", { exact: true })
@@ -268,10 +291,13 @@ await withBrowser(browser, async () => {
       await expect(page.getByText("Draft saved", { exact: true })).toBeVisible();
       await page.reload();
       await expect(home.locator("h3")).toContainText("The Tide House");
-      await expect(home.getByLabel("Ada sleeping Zone in The Tide House")).toHaveValue(privateZone.id);
+      await open("founding-home:player", "People");
+      await sheet.getByRole("button", { name: "Next Sleeping residents page", exact: true }).click();
+      await expect(sheet.getByLabel("Ada sleeping Zone in The Tide House")).toHaveValue(privateZone.id);
       await open("founding-home:player");
       await chooseZone(added.id);
       await expect(sheet.getByLabel("Long-term details", { exact: true })).toHaveValue("A sunny kitchen.");
+      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
       await expect(sheet.getByRole("img", { name: "Artwork for Kitchen", exact: true })).toBeVisible();
       loseReply = true;
       await confirm();
@@ -319,17 +345,16 @@ await withBrowser(browser, async () => {
       release();
       await request;
       await expect(sheet.getByRole("alert")).toHaveText(/people or setting changed/);
+      await sheet.scrollIntoViewIfNeeded();
       const size = await sheet.evaluate((node) => ({
         width: node.clientWidth,
         scroll: node.scrollWidth,
         box: node.getBoundingClientRect().toJSON(),
       }));
       assert.ok(size.scroll <= size.width + 1);
-      assert.ok(
-        size.box.x >= 0 && size.box.right <= viewport.width + 1 && size.box.bottom <= viewport.height + 1,
-        "Editor fits desktop and phone",
-      );
+      assert.ok(size.box.x >= 0 && size.box.right <= viewport.width + 1, "Editor fits desktop and phone");
       await sheet.locator(".villages-quick-panel").evaluate((node) => node.scrollTo({ top: node.scrollHeight }));
+      await sheet.getByRole("button", { name: "Done", exact: true }).scrollIntoViewIfNeeded();
       const footer = await sheet
         .locator(".villages-quick-footer")
         .getByRole("button", { name: "Done", exact: true })

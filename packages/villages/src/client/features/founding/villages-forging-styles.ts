@@ -121,15 +121,15 @@ export const VILLAGES_FORGING_STYLES = `
  .villages-forging-body[data-step="1"] .marinara-capability-villages-founding-roster-grid { grid-auto-rows:minmax(3.25rem,auto); }
 }
 
-/* Header and navigation belong to the document flow, including with an on-screen keyboard. */
-.villages-forging-v2 { display:block; overflow:auto; overscroll-behavior:contain; }
+/* Header and footer retain their space while the active pane changes. */
+.villages-forging-v2 { overscroll-behavior:contain; }
 .villages-forging-v2 .villages-forging-heading { display:flex; align-items:center; gap:.65rem; padding:.35rem .75rem; min-height:36px; }
 .villages-forging-v2 .villages-forging-heading h1 { font-size:.8rem; font-weight:400; white-space:nowrap; }
 .villages-forging-v2 .villages-forging-steps { display:flex; flex-wrap:wrap; min-width:0; max-width:100%; list-style:none; margin:0; padding:0; gap:.3rem; }
 .villages-forging-steps li { display:flex; align-items:center; gap:.3rem; padding:.2rem .35rem; border-radius:.5rem; font-size:.75rem; }
 .villages-forging-steps li[data-active=true] { background:#6650cf; color:#fff; }
 @media(max-width:704px) { .villages-forging-v2 .villages-forging-heading { flex-wrap:wrap; } .villages-forging-steps { flex-wrap:wrap; } }
-.villages-forging-v2 .villages-forging-body { overflow:visible; flex:none; }
+.villages-forging-v2 .villages-forging-body { flex:1; min-height:0; }
 .villages-forging-v2 .villages-forging-footer { position:static; display:flex; margin:0; }
 .villages-forging-v2 .villages-forging-heading { position:static; width:auto; height:auto; overflow:visible; clip-path:none; border:0; }
 .villages-founding-field { min-width:0; margin:.75rem 0; }
@@ -442,4 +442,48 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-lorebook-action:focus-visible { outline:3px solid #c1acff; outline-offset:2px; }
 .villages-lorebook-option input:focus-visible { outline:2px solid #c1acff; outline-offset:3px; }
 @media(prefers-reduced-motion:reduce) { .villages-lorebook-card .villages-lorebook-action,.villages-founding-dialog .villages-lorebook-option { transition:none; } }
+
+/* Each step fits the Engine content area; only the active pane can scroll. */
+.villages-forging-v2 [hidden] { display:none!important; }
+.villages-forging-body { overflow:hidden; padding:.75rem 1rem; }
+.villages-forging-body>div:not([hidden]),.villages-place-panels,.villages-people-columns,.villages-founding-places,.villages-quick-start { height:100%; min-height:0; }
+.villages-place-panels,.villages-people-columns { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; align-items:stretch; }
+.villages-place-panels>.villages-forging-card,.villages-people-columns>.villages-forging-card { height:100%; overflow:auto; margin:0; }
+.villages-founding-tabs { display:flex; flex-wrap:wrap; gap:.4rem; align-items:start; flex:none; }
+.villages-founding-context { margin-top:.75rem; }
+.villages-place-options { display:block; }
+.villages-place-options .villages-founding-field { margin-top:0; }
+.villages-place-options textarea { width:100%; }
+.villages-founding-sprites { padding:0; }
+.villages-founding-sprites>h3,.villages-founding-sprites>p { margin:1rem; }
+.villages-founding-pagination { display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-top:auto; padding-top:.5rem; flex:none; }
+.villages-quick-start { grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); align-items:stretch; }
+.villages-quick-venue-list,.villages-quick-map-panel,.villages-forging-v2 .villages-quick-dialog { min-height:0; height:100%; margin:0; overflow:auto; position:static; }
+.villages-quick-venue-list { display:flex; flex-direction:column; gap:.4rem; }
+.villages-quick-venue-list h2 { font-size:1.1rem; }
+.villages-quick-venue-card { padding:.4rem .6rem; margin:0; }
+.villages-quick-venue-card h3 { margin:0; }
+.villages-quick-household { font-size:.8rem; margin:.1rem 0!important; }
+.villages-quick-map-panel { display:flex; flex-direction:column; }
+.villages-quick-map-panel .villages-quick-map { flex:1; min-height:10rem; height:auto; }
+.villages-forging-v2 .villages-quick-dialog { display:flex; flex-direction:column; gap:.5rem; width:100%; max-width:100%; padding:.75rem; border-radius:.8rem; }
+.villages-quick-zone-editor { display:block; margin:.75rem 0; }
+.villages-quick-zone-editor .villages-zone-map-canvas { height:200px; }
+.villages-quick-zone-picker { display:flex; align-items:end; gap:.5rem; }
+.villages-quick-zone-picker label { flex:1; }
+.villages-quick-dialog .villages-quick-zone-appearance { display:block; }
+.villages-quick-dialog .villages-quick-zone-appearance textarea { width:100%; height:110px; }
+.villages-quick-dialog .villages-quick-zone-image { width:100%; height:150px; }
+.villages-quick-footer { display:flex; gap:.4rem; flex-wrap:wrap; padding-top:.5rem; border-top:1px solid #43547d; }
+.villages-forging-body[data-step="3"] { overflow:auto; }
+@media(max-width:727px) {
+ .villages-forging-body { overflow:auto; }
+ .villages-place-panels,.villages-people-columns,.villages-quick-start { grid-template-columns:minmax(0,1fr); height:auto; }
+ .villages-forging-body>div:not([hidden]),.villages-founding-places { height:auto; }
+ .villages-place-panels>.villages-forging-card,.villages-people-columns>.villages-forging-card { height:auto; min-height:0; }
+ .villages-people-columns>.villages-founding-sprites:has(.villages-sprite-setup) { height:500px; }
+ .villages-quick-venue-list,.villages-quick-map-panel,.villages-forging-v2 .villages-quick-dialog { height:auto; max-height:none; }
+ .villages-quick-map-panel .villages-quick-map { height:300px; flex:none; }
+ .villages-quick-panel { overflow:visible; }
+}
 `;
