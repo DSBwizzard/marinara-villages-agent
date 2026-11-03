@@ -14,6 +14,7 @@ type Props = {
   existing?: boolean;
   preserveSelection?: boolean;
   onBusyChange?(busy: boolean): void;
+  selectedRevision?: number;
 };
 const complete = (item: SpriteSetupAssignment) => item.included && Boolean(item.name.trim());
 export function SpriteSetupDialog(props: Props) {

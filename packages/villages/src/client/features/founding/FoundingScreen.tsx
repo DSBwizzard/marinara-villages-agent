@@ -425,7 +425,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     characterId={activeSpriteId}
                     name={wizardVillagers.find((person) => person.id === activeSpriteId)?.name ?? "Resident"}
                     portrait={portraits[activeSpriteId]}
-                    preserveSelection={setupSpriteRevisions[activeSpriteId] !== undefined}
+                    selectedRevision={setupSpriteRevisions[activeSpriteId]}
                     onClose={() => setSpriteId(null)}
                     onDone={spriteSaved}
                     onBusyChange={spriteBusyChanged}

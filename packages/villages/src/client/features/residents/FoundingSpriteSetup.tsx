@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpriteSetupState, SpriteView } from "../../../shared/contracts/sprites.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import type { Portrait } from "../../shared/types.js";
 import { AvatarFace } from "./ResidentPanels.js";
 import { FOUNDING_SPRITE_STYLES } from "./founding-sprite-styles.js";
@@ -20,10 +20,17 @@ type Props = {
   portrait?: Portrait;
   onDone(revision?: number): void | Promise<void>;
   onBusyChange?(busy: boolean): void;
-  preserveSelection?: boolean;
+  selectedRevision?: number;
 };
+const choiceKey = (value: Pick<SpriteSetupState, "useSprites" | "defaultArtworkId" | "assignments" | "manager">) =>
+  JSON.stringify([
+    value.useSprites,
+    value.defaultArtworkId,
+    value.assignments.map((item) => [item.artworkId, item.name.trim(), item.view, item.included, item.approved]),
+    value.manager,
+  ]);
 
-export function FoundingSpriteSetup({ characterId, name, portrait, onDone, onBusyChange, preserveSelection }: Props) {
+export function FoundingSpriteSetup({ characterId, name, portrait, onDone, onBusyChange, selectedRevision }: Props) {
   const base = `/characters/${encodeURIComponent(characterId)}/sprites/setup`;
   const [data, setData] = useState<SpriteSetupState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,15 +47,33 @@ export function FoundingSpriteSetup({ characterId, name, portrait, onDone, onBus
   const destination = useRef<HTMLDivElement>(null);
   const working = useRef(false);
   const dragged = useRef("");
-  const selected = useRef(!!preserveSelection);
+  const acknowledged = useRef(selectedRevision);
+  const pendingSave = useRef<{ revision: number; choice: string } | null>(null);
 
   const receive = useCallback(
     async (value: SpriteSetupState, select = true) => {
       // A reusable character setup is not the current founding draft's choice.
-      if (!select && !selected.current) {
-        setData({ ...value, useSprites: false });
+      if (
+        pendingSave.current &&
+        (value.revision !== pendingSave.current.revision + 1 || choiceKey(value) !== pendingSave.current.choice)
+      ) {
+        setData(value);
+        setError("Sprite setup changed. Choose Portrait or Sprites.");
         setReloadRequired(false);
-        return true;
+        return false;
+      }
+      if (!select && !pendingSave.current) {
+        if (acknowledged.current === undefined) {
+          setData({ ...value, useSprites: false });
+          setReloadRequired(false);
+          return true;
+        }
+        if (value.revision !== acknowledged.current) {
+          setData(value);
+          setError("Sprite setup changed. Choose Portrait or Sprites.");
+          setReloadRequired(false);
+          return false;
+        }
       }
       setData(value);
       const included = value.assignments.filter((item) => item.included);
@@ -63,7 +88,8 @@ export function FoundingSpriteSetup({ characterId, name, portrait, onDone, onBus
         return false;
       }
       await onDone(value.revision);
-      selected.current = true;
+      acknowledged.current = value.revision;
+      pendingSave.current = null;
       setReloadRequired(false);
       setSaved(true);
       return true;
@@ -133,21 +159,29 @@ export function FoundingSpriteSetup({ characterId, name, portrait, onDone, onBus
 
   async function save(next: SpriteSetupState) {
     const included = next.assignments.filter((item) => item.included && item.name.trim());
-    selected.current = true;
+    const choice = {
+      assignments: next.assignments.map((item) => ({
+        ...item,
+        name: item.name.trim(),
+        approved: item.included && Boolean(item.name.trim()),
+      })),
+      defaultArtworkId: included.some((item) => item.artworkId === next.defaultArtworkId)
+        ? next.defaultArtworkId
+        : (included[0]?.artworkId ?? ""),
+      useSprites: next.useSprites,
+    };
+    pendingSave.current = { revision: next.revision, choice: choiceKey({ ...next, ...choice }) };
     const value = await request<SpriteSetupState>(base + "/save", {
       method: "POST",
       body: JSON.stringify({
         revision: next.revision,
-        assignments: next.assignments.map((item) => ({
-          ...item,
-          approved: item.included && Boolean(item.name.trim()),
-        })),
-        defaultArtworkId: included.some((item) => item.artworkId === next.defaultArtworkId)
-          ? next.defaultArtworkId
-          : (included[0]?.artworkId ?? ""),
-        useSprites: next.useSprites,
+        ...choice,
         validateForUse: true,
       }),
+    }).catch((cause) => {
+      if (cause instanceof VillageApiError && cause.status >= 400 && cause.status < 500 && cause.status !== 408)
+        pendingSave.current = null;
+      throw cause;
     });
     return receive(value);
   }

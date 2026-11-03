@@ -109,7 +109,9 @@ await withBrowser(browser, async () => {
         imports = [];
       let holdSave = false,
         releaseSave,
-        loseSave = false;
+        loseSave = false,
+        conflictSave = false,
+        unknownConflict = false;
       await page.route("**/api/villages**", async (route) => {
         const path = new URL(route.request().url()).pathname;
         const method = route.request().method();
@@ -142,6 +144,26 @@ await withBrowser(browser, async () => {
             return send(states[id]);
           }
           assert.equal(action, "save");
+          if (unknownConflict) {
+            unknownConflict = false;
+            states[id].revision++;
+            states[id].useSprites = !body.useSprites;
+            return fulfill(route, {
+              status: 503,
+              contentType: "application/json",
+              body: JSON.stringify({ error: "The save response was lost." }),
+            });
+          }
+          if (conflictSave) {
+            conflictSave = false;
+            states[id].revision++;
+            states[id].useSprites = true;
+            return fulfill(route, {
+              status: 409,
+              contentType: "application/json",
+              body: JSON.stringify({ error: "Sprite setup changed." }),
+            });
+          }
           assert.equal(body.validateForUse, true);
           assert.equal(new Set(body.assignments.map((item) => item.artworkId)).size, body.assignments.length);
           assert(body.assignments.every((item) => item.approved === (item.included && Boolean(item.name.trim()))));
@@ -318,7 +340,52 @@ await withBrowser(browser, async () => {
         "true",
       );
       assert.equal(await pane.getByRole("button", { name: /save/i }).count(), 0, "There is no manual save action");
+      const chosenRevision = states.aqua.revision;
+      states.aqua.useSprites = true;
+      states.aqua.revision++;
+      const beforeConflict = writes.length;
+      await root.getByRole("button", { name: "Professor Mari", exact: true }).click();
+      await expect(next).toBeEnabled();
+      await root.getByRole("button", { name: "Aqua", exact: true }).click();
+      await expect(pane.getByRole("alert")).toHaveText(/Sprite setup changed/);
+      await expect(next).toBeDisabled();
+      assert.equal(writes.length, beforeConflict);
+      assert.equal(
+        await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua),
+        chosenRevision,
+        "An unrelated newer setup is not adopted by a read",
+      );
+      await pane.getByRole("button", { name: "Use Portrait", exact: true }).click();
+      await expect(next).toBeEnabled();
       // Older setup sessions could retain an included, unnamed image.
+      conflictSave = true;
+      const beforeRefusal = states.aqua.revision;
+      await pane.getByRole("button", { name: "Use Portrait", exact: true }).click();
+      await expect(pane.getByRole("alert")).toHaveText(/Sprite setup changed/);
+      await pane.getByRole("button", { name: "Reload sprites", exact: true }).click();
+      await expect(pane.getByRole("alert")).toHaveText(/Choose Portrait or Sprites/);
+      await expect(next).toBeDisabled();
+      assert.equal(
+        await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua),
+        beforeRefusal,
+        "A refused save does not authorize adoption of another writer's revision",
+      );
+      await pane.getByRole("button", { name: "Use Portrait", exact: true }).click();
+      await expect(next).toBeEnabled();
+      unknownConflict = true;
+      const beforeUnknown = states.aqua.revision;
+      await pane.getByRole("button", { name: "Use Portrait", exact: true }).click();
+      await expect(pane.getByRole("alert")).toHaveText(/save response was lost/);
+      await pane.getByRole("button", { name: "Reload sprites", exact: true }).click();
+      await expect(pane.getByRole("alert")).toHaveText(/Choose Portrait or Sprites/);
+      await expect(next).toBeDisabled();
+      assert.equal(
+        await page.evaluate(() => window.featureController.setupSpriteRevisions.aqua),
+        beforeUnknown,
+        "An uncertain response cannot adopt another writer's different choice",
+      );
+      await pane.getByRole("button", { name: "Use Portrait", exact: true }).click();
+      await expect(next).toBeEnabled();
       const incomplete = artwork(files[2]);
       states.aqua.manager.artwork.push(incomplete);
       states.aqua.assignments.push({
@@ -329,7 +396,6 @@ await withBrowser(browser, async () => {
         view: "front",
       });
       states.aqua.useSprites = true;
-      states.aqua.revision++;
       await root.getByRole("button", { name: "Professor Mari", exact: true }).click();
       await expect(next).toBeEnabled();
       await root.getByRole("button", { name: "Aqua", exact: true }).click();
