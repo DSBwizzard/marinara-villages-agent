@@ -86,7 +86,7 @@ await withBrowser(browser, async () => {
       await expect(zone).toHaveCount(0);
       await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-" + width + ".png" });
-      await page.getByRole("button", { name: "Save & exit", exact: true }).click();
+      await page.getByRole("button", { name: "Exit", exact: true }).click();
       await page.getByRole("button", { name: "Resume founding", exact: true }).click();
       await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
     });
