@@ -1,3 +1,5 @@
+import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { captureResidentActivity } from "../packages/villages/src/server/domain/rules/world-context-copy.js";
 import { socialContextState } from "../packages/villages/src/server/domain/rules/social-context.js";
@@ -78,7 +80,7 @@ function fixture(): VillageVenue {
     ownerId,
     seen: false,
   });
-  const result: VillageVenue = {
+  const result: VillageVenue = venueFixture({
     id: "home",
     name: "Jim's home",
     venueType: "Home",
@@ -103,7 +105,7 @@ function fixture(): VillageVenue {
       zone("office", "jim"),
       zone("mara-bedroom", "mara"),
     ],
-  };
+  });
   initializeVenueAccess(result);
   result.access!.managerIds = ["jim"];
   return result;
@@ -1397,6 +1399,8 @@ async function main() {
     destination.residentIds = [];
     destination.occupancy.residentCharacterId = null;
     destination.zones = destination.zones!.filter((zone) => ["exterior", "living", "bedroom"].includes(zone.id));
+    for (const zone of destination.zones)
+      zone.connectedTo = zone.connectedTo?.filter((id) => destination.zones!.some((other) => other.id === id));
     const vacant = destination.zones.find((zone) => zone.id === "bedroom")!;
     vacant.ownerId = undefined;
     vacant.access!.managerIds = null;
@@ -1405,17 +1409,9 @@ async function main() {
     destination.access!.managerIds = ["player"];
     destination.destinations = {};
     moveWorld.venues.push(destination);
-    moveWorld.residences = [
-      {
-        characterId: "jim",
-        venueId: "home",
-        proposedVenueId: "new-home",
-        proposedPrivateZoneId: "bedroom",
-        status: "moving",
-        villagerDecision: "approved",
-        completesAt: stamp,
-      },
-    ] as any;
+    const proposedMove = residenceProposal(moveWorld, "jim", destination, "player", stamp, "bedroom", "access-move");
+    proposedMove.agreement!.approvals = Object.fromEntries(proposedMove.agreement!.requiredIds.map((id) => [id, true]));
+    moveWorld.residences = [{ ...proposedMove, status: "moving", completesAt: stamp }];
     records.delete("villages-active-venue");
     records.set("villages-village", { id: "villages-village", kind: "village", data: moveWorld, revision: 200 });
     await completeVillageResidence("jim", true, new Date(), false);

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -38,7 +39,15 @@ function fixture() {
     seed: "time-world",
     foundedAt: new Date(start - day).toISOString(),
     timeZone: "America/Los_Angeles",
-    venues: [{ id: "square", name: "Square", classes: ["community"], description: "A quiet square" }],
+    venues: [
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
+        id: "square",
+        name: "Square",
+        classes: ["community"],
+        description: "A quiet square",
+      }),
+    ],
     villagers: [
       {
         characterId: "a",
@@ -312,47 +321,6 @@ function learn(state: VillageState, text: string, sceneId?: string) {
     "This Scene's own social evidence advances its captured perspective",
   );
   assert.equal(known.edges[relationshipKey("a", "player")]!.stance, "Said here");
-}
-
-{
-  const { state, scene } = fixture();
-  state.opening = {
-    id: "opening",
-    version: 2,
-    stage: "project",
-    projectId: "opening-project",
-    reveals: [],
-    residentIds: ["a"],
-    proposals: [],
-    declinedIds: [],
-    outcome: "",
-    communityVenueId: "square",
-    gatheringSceneId: "gathering",
-  };
-  scene.continuity = captureSceneContinuity(state, scene, start);
-  state.opening.stage = "first-use";
-  assert.equal(
-    semanticContext(scene, state, "hello", false, false, sceneContinuityView(state, scene)).opening!.stage,
-    "project",
-    "background completion cannot advance an old Scene's opening context",
-  );
-  const legacy = JSON.parse(JSON.stringify(scene));
-  delete legacy.continuity.facts.opening;
-  const restoredLegacy = coerceSession(legacy);
-  assert.equal(restoredLegacy.continuity!.facts.opening, undefined);
-  assert.equal(
-    sceneContinuityView(state, restoredLegacy).opening,
-    undefined,
-    "Missing captured opening context cannot import future background guidance",
-  );
-  state.opening.reveals.push({
-    residentId: "a",
-    sceneId: scene.id,
-    submissionId: "pitch",
-    lineId: "spoken",
-    quote: "Our idea",
-  });
-  assert.equal(sceneContinuityView(state, scene).opening!.reveals.length, 1, "own spoken pitch remains established");
 }
 
 console.log("PASS persistent Scene time, exact context, expiry holds, restart safety, live authority and privacy");

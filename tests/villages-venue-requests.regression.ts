@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { normalizeVillageSnapshot } from "../packages/villages/src/client/shared/villages-snapshot-normalization.ts";
 import {
@@ -10,7 +11,7 @@ import {
   readResidentPlanningProposal,
   type ResidentPlanningContext,
 } from "../packages/villages/src/server/domain/rules/resident-planning.js";
-import { addVillageVenue } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { assertCanAddVillageVenue } from "../packages/villages/src/server/domain/rules/venue-capacity.js";
 import {
   readConversationVenueRequest,
   readVenueRequestCore,
@@ -33,7 +34,8 @@ const at = "2026-09-22T12:00:00.000Z";
 const core = { name: "The Glasshouse", classes: ["community"] as ["community"] };
 const venue = (name: string): VillageVenue => {
   const draft = venueRequestDraft({ ...core, name });
-  return {
+  return venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: `draft-${name}`,
     name: draft.name,
     classes: draft.classes,
@@ -43,7 +45,7 @@ const venue = (name: string): VillageVenue => {
     occupancy: draft.occupancy,
     capabilities: draft.capabilities,
     state: draft.state,
-  };
+  });
 };
 const state = defaultVillageState();
 state.setupAt = state.foundedAt = at;
@@ -187,8 +189,8 @@ competing.villagers.push({
   wishes: [],
 } as VillageVillager);
 queueVillageVenueRequest(competing, core, "rosa", "chat", "chat-competing", at);
-addVillageVenue(competing, venue(core.name));
-assert.equal(competing.venues.length, 1, "direct creation adds an ordinary map venue");
+competing.venues.push(venue(core.name));
+assert.equal(competing.venues.length, 1, "An independently completed Project adds an ordinary map Venue");
 applyVillageVenueDecision(
   competing,
   competing.pendingDecisions[0]!.id,
@@ -201,8 +203,8 @@ assert.equal(competing.pendingDecisions[0]?.status, "approved", "acceptance crea
 assert.equal(competing.projects[0]?.status, "planning", "Start rechecks the live name and location");
 
 const full = defaultVillageState();
-full.venues = Array.from({ length: 48 }, (_, index) => venue(`Place ${index}`));
-assert.throws(() => addVillageVenue(full, venue("One more")), /no room/u);
+full.venues = Array.from({ length: 16 }, (_, index) => venue(`Place ${index}`));
+assert.throws(() => assertCanAddVillageVenue(full, ["community"]), /maximum 16/u);
 
 const drafts = defaultVillageState();
 drafts.setupAt = drafts.foundedAt = at;

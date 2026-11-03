@@ -40,6 +40,7 @@ export async function requestFoundingSuggestions(
     sourceKey: ports.setupBeginningSourceKey,
     quickStart: !!options?.quickStart,
     venueId: options?.venueId,
+    ...(!options?.quickStart && options?.venueId ? { sourceInputs: JSON.stringify(input) } : {}),
   };
   // Recovery must use the original merge mode and target, regardless of which button was tapped.
   if (options) {
@@ -84,6 +85,10 @@ export async function requestFoundingSuggestions(
           throw new Error(
             "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
           );
+        if (pending.sourceInputs !== undefined && pending.sourceInputs !== JSON.stringify(input))
+          throw new Error(
+            "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.",
+          );
         return receipt.result;
       }
       if (poll >= 60) throw new Error("Suggestions are still being prepared.");
@@ -105,8 +110,6 @@ export async function requestFoundingSuggestions(
         : error instanceof Error
           ? error.message
           : "Suggestion status is unavailable.";
-    throw new Error(
-      `${detail} Use ${pending.quickStart ? "Check Quick Start" : "Check suggestions"} to retrieve this attempt without generating again.`,
-    );
+    throw new Error(`${detail} Use Check suggestions to retrieve this attempt without generating again.`);
   }
 }

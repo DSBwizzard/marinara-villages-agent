@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -17,7 +18,7 @@ const now = new Date(),
   dateKey = agendaDateKey(now),
   weekday = now.toLocaleDateString("en-US", { weekday: "long" });
 function venue(id: string, classes: VillageVenue["classes"] = ["community"]): VillageVenue {
-  return {
+  return venueFixture({
     id,
     name: id,
     classes,
@@ -36,7 +37,7 @@ function venue(id: string, classes: VillageVenue["classes"] = ["community"]): Vi
       recent: null,
       updatedAt: stamp,
     },
-  };
+  });
 }
 function villager(id: string, venueId: string, zoneId: string, activity = "Visiting"): VillageVillager {
   const block = {
@@ -86,8 +87,9 @@ const state = defaultVillageState();
 state.seed = "social-fixture";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
-const house = venue("house", ["residence", "workplace"]);
+let house = venue("house", ["residence", "workplace"]);
 house.residentIds = ["messenger", "alex"];
+house.residenceCapacity = 2;
 house.workerIds = ["alex"];
 house.layoutVersion = 1;
 house.zones = [
@@ -103,6 +105,7 @@ house.zones = [
     ownerId: "alex",
   },
 ];
+house = venueFixture(house);
 state.venues = [house];
 state.villagers = [villager("messenger", "house", "common"), villager("alex", "house", "office")];
 const saved = coerceVillageState(state);

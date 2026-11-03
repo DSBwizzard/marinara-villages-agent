@@ -6,7 +6,10 @@ import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
 export type SetupMapSource = "existing" | "simple" | "generate" | "upload";
 
-export type SetupVenueDraft = VillageVenue;
+export type SetupVenueDraft = VillageVenue & {
+  /** null follows the household; absent retains an existing draft's capacity. */
+  foundingCapacity?: number | null;
+};
 
 export type PersonaPreview = {
   id: string;

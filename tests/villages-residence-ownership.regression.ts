@@ -1,3 +1,5 @@
+import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -7,7 +9,7 @@ import {
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { MAX_VENUE_DESCRIPTION_LENGTH } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   createResidences,
@@ -37,7 +39,13 @@ function fixture(name: string) {
     } as any,
   ];
   const destination = venueDraft(
-    { id: "destination", name: `${name} home`, description: "A small home", classes: ["residence"] },
+    venueFixture({
+      residentIds: [null].filter((id) => typeof id === "string" && !!id),
+      id: "destination",
+      name: `${name} home`,
+      description: "A small home",
+      classes: ["residence"],
+    }),
     null,
   );
   state.venues = [destination];
@@ -143,6 +151,16 @@ function fixture(name: string) {
     },
   };
   const service = createResidences(ports);
+  const decide = service.decideVillageResidence;
+  service.decideVillageResidence = (id, approved, actor, operationId, approverId, scope) =>
+    decide(
+      id,
+      approved,
+      actor,
+      operationId,
+      approverId,
+      scope ?? state.residences.find((row) => row.characterId === id)?.agreement?.scope,
+    );
   assert.deepEqual(calls, [], "Construction starts no storage, preparation or model work.");
   return {
     state,
@@ -174,7 +192,10 @@ await a.service.proposeVillageResidence("same", "destination");
 await b.service.proposeVillageResidence("same", "destination");
 assert.equal(a.state.residences[0]!.status, "pending");
 assert.equal(b.state.residences[0]!.status, "pending");
-await assert.rejects(a.service.decideVillageResidence("same", true, "player"), /requester cannot approve/);
+await assert.rejects(
+  a.service.decideVillageResidence("same", true, "player", undefined, undefined, "stale-scope"),
+  /reviewed move/,
+);
 await a.service.decideVillageResidence("same", true, "villager");
 assert.equal(a.state.residences[0]!.status, "moving");
 assert.equal(b.state.residences[0]!.status, "pending");
@@ -210,7 +231,7 @@ changed.retryWith((state) => {
   state.venues[0]!.residentIds = ["other"];
   state.venues[0]!.occupancy.residentCharacterId = "other";
 });
-await assert.rejects(changed.service.proposeVillageResidence("same", "destination"), /available bed/);
+await assert.rejects(changed.service.proposeVillageResidence("same", "destination"), /unreserved resident place/);
 assert.equal(
   changed.state.residences.length,
   0,
@@ -219,18 +240,17 @@ assert.equal(
 assert(!changed.calls.includes("snapshot"));
 const postponed = fixture("Postponed"),
   attemptClock = new Date("2026-10-06T12:00:00Z");
-postponed.state.residences = [
-  {
-    characterId: "same",
-    venueId: "",
-    proposedVenueId: "destination",
-    status: "moving",
-    requestedAt: "2026-10-05T12:00:00Z",
-    requestedBy: "player",
-    villagerDecision: "approved",
-    completesAt: "2026-10-06T11:00:00Z",
-  },
-];
+const proposed = residenceProposal(
+  postponed.state,
+  "same",
+  postponed.state.venues[0],
+  "player",
+  "2026-10-05T12:00:00Z",
+  "",
+  "postponed-move",
+);
+proposed.agreement!.approvals = Object.fromEntries(proposed.agreement!.requiredIds.map((id) => [id, true]));
+postponed.state.residences = [{ ...proposed, status: "moving", completesAt: "2026-10-06T11:00:00Z" }];
 postponed.retryWith((state) => {
   state.residences[0]!.completesAt = "2026-10-07T12:00:00Z";
 });
@@ -270,22 +290,20 @@ const neutralRoom = {
   image: { id: "neutral", ref: "global-gallery:neutral", url: "https://example.test/neutral.png" },
 };
 roomMove.destination.layoutVersion = 1;
-roomMove.destination.zones = [neutralRoom];
-roomMove.destination.privateSpaces = [{ ...neutralRoom, ownerId: "" }];
-roomMove.state.residences = [
-  {
-    characterId: "same",
-    venueId: "",
-    proposedVenueId: "destination",
-    proposedPrivateZoneId: "vacant",
-    status: "moving",
-    requestedAt: "2026-10-05T12:00:00Z",
-    requestedBy: "player",
-    villagerDecision: "approved",
-  },
-];
+Object.assign(roomMove.destination, venueFixture({ ...roomMove.destination, zones: [neutralRoom] }));
+const roomProposal = residenceProposal(
+  roomMove.state,
+  "same",
+  roomMove.destination,
+  "player",
+  "2026-10-05T12:00:00Z",
+  "vacant",
+  "room-move",
+);
+roomProposal.agreement!.approvals = Object.fromEntries(roomProposal.agreement!.requiredIds.map((id) => [id, true]));
+roomMove.state.residences = [{ ...roomProposal, status: "moving" }];
 await roomMove.service.completeVillageResidence("same", true, attemptClock, false);
-const occupiedRoom = roomMove.state.venues[0].zones![0];
+const occupiedRoom = roomMove.state.venues[0].zones!.find((zone) => zone.id === "vacant")!;
 assert.equal(occupiedRoom.ownerId, "same");
 assert.equal(occupiedRoom.roomSpecification, "A garden-facing window");
 assert.equal(occupiedRoom.seen, true);

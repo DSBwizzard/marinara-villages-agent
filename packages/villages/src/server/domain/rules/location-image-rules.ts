@@ -1,3 +1,4 @@
+import { currentVillageCircumstances } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { imagePromptId } from "./image-generation-rules.js";
 import { venueZones } from "./venue-zones.js";
@@ -51,15 +52,19 @@ export function buildLocationPrompt(
     venue.layoutVersion === 1
       ? `Physical layout: ${JSON.stringify(venueZones(venue).map((zone) => ({ kind: zone.kind, role: zone.venueClass })))}. Do not invent absent or adjoining interiors, or reveal private contents outside this depicted area.`
       : "",
-    venue.occupancy.residentCharacterId && !building ? "This venue is also a villager's residence." : "",
+    venue.residentIds?.length && !building ? "This venue is also a villager's residence." : "",
     form ? `Venue form: ${form}.` : "",
     approvedDescription
       ? `Approved description of this ${outside ? "venue (show exterior cues only)" : "space"}: ${approvedDescription}.`
       : "",
     setting.length > 0 ? `Village setting and theme: ${setting}.` : "",
-    village.worldFacts.length ? `Current world facts: ${village.worldFacts.join("; ")}.` : "",
+    village.worldRules ? `Standing world rules: ${village.worldRules}` : "",
+    currentVillageCircumstances(village).length
+      ? `Current circumstances: ${currentVillageCircumstances(village).join("; ")}.`
+      : "",
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
+    "Current Venue and Zone records govern physical truth; lore and starting descriptions cannot undo changed physical conditions.",
     `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
     `Honor these facts and do not invent conflicting architecture, technology or geography. ${village.sceneryArtStyle ? "Background scenery" : "Painted background art"} for a story: no people, no animals, no text, no lettering, no watermark.`,
   ]

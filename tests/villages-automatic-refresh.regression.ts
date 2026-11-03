@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { clientImplementation } from "./client-source.js";
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
@@ -277,7 +278,9 @@ async function main() {
         },
       ] as any;
       state.venues = [
-        {
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
           id: "square",
           name: "Village Square",
           category: "public",
@@ -285,7 +288,7 @@ async function main() {
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
           capabilities: [],
           state: { condition: "", furniture: [], publicFacts: [], updatedAt: "" },
-        },
+        }),
       ];
     });
 
@@ -410,32 +413,42 @@ async function main() {
       ];
       state.residences = [];
       state.venues = [
-        {
+        venueFixture({
           ...state.venues[0]!,
           id: "rosa-home",
           classes: ["residence"],
           baseClasses: ["residence"],
           zones: undefined,
           spaces: undefined,
-          residentIds: undefined,
-          name: "",
+          residentIds: ["housing-resident"],
+          name: "Rosa home",
+          privateSpaces: [
+            {
+              id: "private:housing-resident",
+              venueClass: "residence",
+              ownerId: "housing-resident",
+              name: "Bedroom",
+              purpose: "Rest",
+              description: "An existing bedroom",
+            },
+          ],
           description: "Rosa's little house.",
           occupancy: { playerHome: false, residentCharacterId: "housing-resident", homeKind: "small-home" },
           presentation: { image: null, x: 0.2, y: 0.2 },
-        },
-        {
+        }),
+        venueFixture({
           ...state.venues[0]!,
           id: "empty-venue",
           classes: ["residence"],
           baseClasses: ["residence"],
           zones: undefined,
           spaces: undefined,
-          residentIds: undefined,
+          residentIds: [],
           name: "The bakery",
           description: "A small bakery.",
           occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
           presentation: { image: null, x: 0.6, y: 0.6 },
-        },
+        }),
       ];
     });
     await assert.rejects(
@@ -443,10 +456,24 @@ async function main() {
       /Project, natural gameplay, or REPAIR/u,
     );
     await proposeVillageResidence("housing-resident", "empty-venue");
-    await decideVillageResidence("housing-resident", false, "villager");
+    await decideVillageResidence(
+      "housing-resident",
+      false,
+      "villager",
+      undefined,
+      undefined,
+      (await readVillageState()).residences[0].agreement!.scope,
+    );
     assert.equal((await readVillageState()).residences.length, 0, "the villager can decline the player's request");
     await proposeVillageResidence("housing-resident", "empty-venue");
-    await decideVillageResidence("housing-resident", true, "villager");
+    await decideVillageResidence(
+      "housing-resident",
+      true,
+      "villager",
+      undefined,
+      undefined,
+      (await readVillageState()).residences[0].agreement!.scope,
+    );
     const moving = await readVillageState();
     assert.equal(moving.residences[0]?.status, "moving");
     assert.equal(moving.venues[0]?.occupancy.residentCharacterId, "housing-resident");
@@ -491,7 +518,14 @@ async function main() {
       "a move into a public venue remains in the home projection",
     );
     await proposeVillageResidence("housing-resident", "rosa-home", "villager");
-    await decideVillageResidence("housing-resident", true, "player");
+    await decideVillageResidence(
+      "housing-resident",
+      true,
+      "player",
+      undefined,
+      undefined,
+      (await readVillageState()).residences[0].agreement!.scope,
+    );
     const dueAt = Date.parse((await readVillageState()).residences[0]!.completesAt!);
     await reconcileVillage({ now: new Date(dueAt + 1_000) });
     assert.equal(

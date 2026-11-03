@@ -9,7 +9,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { draftNewVenueProject } from "../packages/villages/src/server/features/projects/project-lifecycle.js";
 import { createVenueRequests } from "../packages/villages/src/server/features/venues/venue-request-service.js";
 import {

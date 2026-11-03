@@ -49,9 +49,6 @@ export type SceneAttendance = {
   occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
-  openingProcessedAt?: string;
-  openingContext?: { stage: string; projectId: string; proposalFingerprint?: string; gatheringComplete?: true };
-  openingSignal?: import("../rules/opening-project.js").OpeningSignal;
   residentActionReceipt?: import("../rules/resident-actions.js").ResidentActionReceipt;
   speechCapture?: { version: 3; status: "captured" | "silent" };
   effectFailures?: Partial<
@@ -99,7 +96,14 @@ export type VenueSubmission = {
     zoneId: string;
     segment: number;
   };
-  residenceSignal?: { kind: "request" | "decision"; characterId: string; venueId: string; approved?: boolean };
+  residenceSignal?: {
+    kind: "request" | "decision";
+    characterId: string;
+    venueId: string;
+    approved?: boolean;
+    approverId?: string;
+    agreementScope?: string;
+  };
   venueRequestSignal?: {
     characterId: string;
     name: string;
@@ -160,8 +164,6 @@ export type VenueScene = {
   /** Private captured writing context; never part of a client projection. */
   continuity?: import("../rules/scene-continuity.js").SceneContinuity;
   openingGatheringId?: string;
-  openingReader?: boolean;
-  openingIntroductionResidentId?: string;
   semanticVersion?: 2;
   semanticIntent?: import("./semantic-model.js").SemanticIntent;
   version: 3;

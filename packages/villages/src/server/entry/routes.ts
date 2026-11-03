@@ -33,11 +33,7 @@ import {
   registerUsageRoutes,
   registerVillageSettingsRoutes,
 } from "../features/settings/routes.js";
-import {
-  registerVenueAccessRoutes,
-  registerVenueCreationRoutes,
-  registerVenueManagementRoutes,
-} from "../features/venues/routes.js";
+import { registerVenueAccessRoutes, registerVenueManagementRoutes } from "../features/venues/routes.js";
 import {
   registerHistoryRoutes,
   registerSnapshotCatalogRoutes,
@@ -106,7 +102,6 @@ export async function villagesRoutes(engine: FastifyInstance) {
   registerConnectionRoutes(surface);
   registerFoundingRoutes(surface);
   registerVenueImageRoutes(surface);
-  registerVenueCreationRoutes(surface);
   registerProjectRoutes(surface);
   registerVenueManagementRoutes(surface);
   registerWorldMaintenanceRoutes(surface);

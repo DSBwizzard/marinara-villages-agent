@@ -131,6 +131,30 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                 tabIndex={-1}
               >
                 <span>{`${name} → ${target}`}</span>
+                {entry.agreement ? (
+                  <span>
+                    Sleeping Zone:{" "}
+                    {snapshot.settings.venues
+                      .find((venue) => venue.id === entry.proposedVenueId)
+                      ?.zones?.find((zone) => zone.id === entry.agreement?.sleepZoneId)?.name ??
+                      entry.agreement.sleepZoneId}
+                    . Waiting for{" "}
+                    {entry.agreement.requiredIds
+                      .filter((id) => !entry.agreement!.approvals[id])
+                      .map((id) => (id === "player" ? "you" : nameOfCharacter(id)))
+                      .join(", ") || "final confirmation"}
+                    .
+                  </span>
+                ) : null}
+                {entry.holdReason ? <p role="status">{entry.holdReason}</p> : null}
+                {entry.status === "pending" ? (
+                  <button type="button" disabled={busy} onClick={() => void decideResidenceMove(entry, "review")}>
+                    Review changed move
+                  </button>
+                ) : null}
+                <button type="button" disabled={busy} onClick={() => void decideResidenceMove(entry, false)}>
+                  Cancel move request
+                </button>
                 {ports.openPlace && snapshot.settings.venues.find((venue) => venue.id === entry.proposedVenueId) ? (
                   <button
                     type="button"

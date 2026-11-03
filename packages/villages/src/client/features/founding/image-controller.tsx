@@ -28,7 +28,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly setupMapRequestRef: FoundingState["setupMapRequestRef"];
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
-  readonly setupWorldFacts: FoundingState["setupWorldFacts"];
+  readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly updateSetupMapRequest: (value: import("../../../shared/contracts/village").SetupMapRequest) => void;
 }) {
@@ -48,7 +48,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
     setupMapPrompt,
     setupMapRequestRef,
     setupSetting,
-    setupWorldFacts,
+    setupContext,
     snapshot,
     updateSetupMapRequest,
   } = ports;
@@ -91,9 +91,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
           useVisualLore: mapVisualLore,
-          scenarioImprint: snapshot?.isFounded
-            ? { origin: "", worldFacts: setupWorldFacts, openingConditions: [], visualCues: [] }
-            : null,
+          worldRules: setupContext.rules,
         }),
       });
       updateSetupMapRequest({
@@ -122,7 +120,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
     setupMapPrompt,
     snapshot?.settings?.townMapLayoutPrompt,
     snapshot?.settings?.townMapNegativePrompt,
-    snapshot?.isFounded,
     setupMapNegativePrompt,
     setupWorldName,
     setupLorebookDraft,
@@ -130,7 +127,7 @@ export function useFoundingGenerateSetupTownMap(ports: {
     sceneryStyle,
     sceneryStyleProfileId,
     mapVisualLore,
-    setupWorldFacts,
+    setupContext,
   ]);
 }
 export function createFoundingSetupDraftRow() {
@@ -150,8 +147,9 @@ export function createFoundingSetupDraftRow() {
         purpose: "purpose" in area ? area.purpose : "",
         venueClass: area.venueClass,
       })),
-      venueClass: venue.classes?.includes("community") ? "community" : "residence",
-      residentCharacterId: venue.occupancy.residentCharacterId ?? "",
+      venueClass: venue.classes?.[0] ?? "other",
+      residentIds: venue.residentIds ?? [],
+      playerHome: venue.occupancy.playerHome,
     };
   };
 }
@@ -182,7 +180,7 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
-  readonly setupWorldFacts: FoundingState["setupWorldFacts"];
+  readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly visualLoreDefault: FoundingState["visualLoreDefault"];
   readonly withSetupImage: (
@@ -216,8 +214,7 @@ export function createFoundingGenerateSetupImage(ports: {
       setupName,
       setupSetting,
       setupVenuesRef,
-      setupWorldFacts,
-      snapshot,
+      setupContext,
       withSetupImage,
     } = ports;
 
@@ -269,14 +266,11 @@ export function createFoundingGenerateSetupImage(ports: {
           zoneName: selectedArea?.name,
           zonePurpose: selectedArea?.purpose,
           zoneAppearance: selectedArea?.description,
-          privateOwnerId:
-            area === "private"
-              ? (selectedArea?.ownerId ?? (venue.occupancy.playerHome ? "player" : venue.occupancy.residentCharacterId))
-              : undefined,
+          privateOwnerId: area === "private" ? selectedArea?.ownerId : undefined,
           privateDescription: description,
-          residentAdmission: venue.occupancy.residentCharacterId
-            ? selectedResidentAdmissions[venue.occupancy.residentCharacterId]
-            : undefined,
+          foundingResidentAdmissions: Object.fromEntries(
+            (venue.residentIds ?? []).map((id) => [id, selectedResidentAdmissions[id]]),
+          ),
           playerPersonaId: personaDraft,
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
@@ -284,9 +278,7 @@ export function createFoundingGenerateSetupImage(ports: {
           useVisualLore: true,
           villageName: setupName,
           setting: setupSetting,
-          foundingDetails: "",
-          scenarioImprint: snapshot?.isFounded ? snapshot.settings.scenarioImprint : null,
-          worldFacts: snapshot?.isFounded ? setupWorldFacts : [],
+          context: setupContext,
           selectedLorebookIds: setupLorebookDraft,
           loreTokenBudget: setupLoreTokenBudgetDraft,
         }),

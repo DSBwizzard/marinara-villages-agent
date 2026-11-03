@@ -1,3 +1,4 @@
+import { residenceProposal } from "../packages/villages/src/server/domain/rules/residence-agreement.js";
 import assert from "node:assert/strict";
 import { configureVillageClock, villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
@@ -61,6 +62,19 @@ async function fixture() {
       requestedBy: "player",
       villagerDecision: "approved",
     },
+  ];
+  const move = residenceProposal(
+    state,
+    "a",
+    state.venues.find((v) => v.id === "home-b")!,
+    "player",
+    state.simulatedThrough,
+    "",
+    "catchup-move",
+  );
+  move.agreement!.approvals = Object.fromEntries(move.agreement!.requiredIds.map((id) => [id, true]));
+  state.residences = [
+    { ...move, status: "moving", approvedAt: state.simulatedThrough, completesAt: new Date(start + day).toISOString() },
   ];
   state.memories = addMemory(state.memories, { text: "Yesterday’s weather", audience: ["player", "a"] });
   state.relationshipContext = defaultRelationshipState(state.seed);

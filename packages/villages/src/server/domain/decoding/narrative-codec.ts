@@ -30,6 +30,12 @@ export function readNarrativeState(value: unknown): NarrativeState | undefined {
     string(r.title, 160);
     string(r.summary);
     if (!["active", "resolved"].includes(r.status)) fail();
+    if (
+      !["village", "zone"].includes(r.scope) ||
+      (r.scope === "village" && array(r.targets).length !== 0) ||
+      (r.scope === "zone" && !array(r.targets).length)
+    )
+      fail();
     time(r.updatedAt);
     array(r.targets).forEach(target);
   };

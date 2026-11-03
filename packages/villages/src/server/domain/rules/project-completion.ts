@@ -14,6 +14,7 @@ import { validateConnections } from "./space-connections.js";
 import { readBaseVenueLayout, validateLayoutZones } from "./venue-layout.js";
 import { defaultVenueSpace } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
+import { initializeVenueAccess } from "./venue-access.js";
 import { readVenueImageContext } from "./village-projections.js";
 
 /** Only the saved committed design is applied; the lifecycle stages this transaction. */
@@ -48,7 +49,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
     const change = effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds);
     if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
       throw conflict("The Venue design changed. Cancel this Project and plan the current layout.");
-    validateRenovationDesign(state, venue, change);
+    validateRenovationDesign(state, venue, change, new Date(at));
     const old = venueZones(venue);
     const drafts = change.zones ?? old.filter((zone) => zone.kind !== "exterior");
     const retired = old.filter((zone) => zone.kind !== "exterior" && !drafts.some((draft) => draft.id === zone.id));
@@ -109,6 +110,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
     );
   }
   venue.layoutVersion = 1;
+  initializeVenueAccess(venue);
   venue.spaces = venue.zones!.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
   venue.privateSpaces = venue
     .zones!.filter((zone) => zone.kind === "private-residence")

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -15,7 +16,7 @@ const world = coerceVillageState({
   ...defaultVillageState(),
   seed: "location-regression",
   venues: [
-    {
+    venueFixture({
       id: "nook",
       name: "Booth Nook",
       classes: ["residence"],
@@ -47,7 +48,7 @@ const world = coerceVillageState({
           connectedTo: ["bar"],
         },
       ],
-    },
+    }),
   ],
 });
 const venue = world.venues[0];

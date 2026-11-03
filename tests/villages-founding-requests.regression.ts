@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -123,7 +124,14 @@ const state = coerceVillageState({
       },
     },
   ],
-  venues: [{ id: "hall", name: "Hall" }],
+  venues: [
+    venueFixture({
+      id: "hall",
+      name: "Hall",
+      presentation: { mapId: "", image: null, x: null, y: null },
+      occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+    }),
+  ],
 });
 const before = foundingTaskRevision(state, "a", "routine");
 state.venues[0].zones![0].description = "Changed exterior.";
@@ -238,6 +246,6 @@ assert.equal(
   undefined,
 );
 
-const freshOpening = foundingRequestMessages({ ...context, openingVersion: 2, playerAgencyVersion: 1 }, "opening");
+const freshOpening = foundingRequestMessages({ ...context, playerAgencyVersion: 1 }, "routine");
 assert.doesNotMatch(freshOpening[0].content as string, /oversees major changes/);
-assert.match(freshOpening[0].content as string, /renovation/);
+assert.match(freshOpening[0].content as string, /explicit choice/);

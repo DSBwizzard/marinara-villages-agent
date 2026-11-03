@@ -1,11 +1,9 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import type { CompactFoundingContext } from "./compact-founding-rules.js";
-import { openingRenovationChoices } from "./opening-renovation.js";
+
 import { renderPlayerBackgroundContext } from "./player-background.js";
 import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
 import { ROUTINE_CONTRACT } from "./routine-contract.js";
-export const OPENING_IDEA_FORMAT_VERSION = 2;
-export const OPENING_PROPOSAL_INSTRUCTIONS = `Prepare this resident's own substantial Project idea grounded in identity, founding history, setting, lore and existing places. Produce a distinct new playable Venue without duplicating a supplied Venue. A place may already exist in lore: preserve its history and working condition. situation is the broad concern/interest they can mention without pitching the solution. provenance gives supporting setting facts. work describes substantial construction, conversion or installation fitting 24 elapsed real hours. Small furnishings, shelves, decoration and coordination alone do not qualify as Projects. Never invent defects, lost access, ownership, supplies, promises or consent to justify work. A willing resident lead and necessary consent are required; supplies and objects have no mechanical effect. firstUse describes an observable intended use, never a prescribed event. Preserve nonhuman identities. All fields must suit a public pitch without secrets, private motives or undisclosed personal history. This unspoken idea is separate from a Wish or commitment.`;
 function routineInstructions(ingredients: boolean): string {
   return `Return JSON only: {routine:string,palette:[{activity:string,venue:integer,zoneId?:string,flexible:boolean,essential:boolean,duration:number,parts:number[]${ingredients ? ",weekdays?:number[]" : ""}}],${ingredients ? "" : "days:number[][],"}rhythm:[{startMinute:number,endMinute:number,activity:integer}]}.
 Write a routine summary and ${ROUTINE_CONTRACT.minActivities}–${ROUTINE_CONTRACT.maxActivities} ordinary activities independent of Wishes. Activity text is 1–${ROUTINE_CONTRACT.maxActivityCharacters} characters, following "Right now you are". Venue 0 is home; other numbers and Zone IDs must come from places. duration is a finite number of minutes from ${ROUTINE_CONTRACT.minMinutes} to ${ROUTINE_CONTRACT.maxMinutes} inclusive; parts uses 0–3 for six-hour dayparts. Only free time is flexible. Essential means rest, necessary care or established explicit commitments. Ordinary work is replaceable by Projects, not essential by default.
@@ -38,7 +36,7 @@ export function foundingIdentity(card: Record<string, unknown>): Record<string, 
 }
 export function foundingRequestMessages(
   context: CompactFoundingContext,
-  task: "routine" | "wish" | "opening",
+  task: "routine" | "wish",
   known: unknown[] = [],
 ): CapabilityLanguageModelMessage[] {
   const identity = foundingIdentity(context.card);
@@ -60,7 +58,6 @@ export function foundingRequestMessages(
         .map((zone) => ({ id: zone.id, name: zone.name })),
     })),
     lore: context.lore,
-    ...(task === "opening" ? { renovationTargets: openingRenovationChoices(context.venues) } : {}),
     ...(task === "wish"
       ? {
           wishes: context.wishes,
@@ -87,10 +84,7 @@ export function foundingRequestMessages(
           ? context.contractVersion === 2
             ? ROUTINE_INGREDIENT_INSTRUCTIONS
             : ROUTINE_INSTRUCTIONS
-          : task === "opening"
-            ? 'Return JSON only: {openingProposal:{kind:"new-venue|renovation",renovation?:{venueId:string,spaceId:string,title:string,description:string},name:string,description:string,situation:string,venueClass:"workplace|community|other",established:boolean,provenance:string,work:string,firstUse:string}}. All text fields are nonempty strings, never arrays. name is at most 100 characters; description, provenance and work at most 1000 each; situation and firstUse at most 500 each. kind and renovation belong inside openingProposal. Choose one kind. For renovation copy an exact supplied venueId and spaceId, and describe a physical change to that public Zone; for new-venue omit renovation. Preserve occupants, ownership and access. Approval creates a planning draft; only the player starts work. Every Project takes 24 elapsed real hours. ' +
-              OPENING_PROPOSAL_INSTRUCTIONS
-            : WISH_INSTRUCTIONS) +
+          : WISH_INSTRUCTIONS) +
         "\n" +
         RESIDENT_CONTINUITY_RULE +
         influence +

@@ -1,4 +1,3 @@
-import { legacyContactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   VillageState,
@@ -9,7 +8,7 @@ import type {
 } from "../models/world.js";
 import { conflict } from "./errors.js";
 import { evaluateZoneAccess, mayInvite, zoneManagers } from "./venue-access.js";
-import { defaultVenueSpace, venueResidentIds, venueSpaces } from "./venue-model.js";
+import { venueResidentIds } from "./venue-model.js";
 
 export const ZONE_KINDS: readonly VillageZoneKind[] = [
   "exterior",
@@ -22,47 +21,8 @@ export const ZONE_KINDS: readonly VillageZoneKind[] = [
 export function effectiveVenueClasses(venue: VillageVenue): VillageVenueClass[] {
   return venue.classes ?? ["other"];
 }
-/** Legacy fields remain write adapters; zones are the saved scene identities. */
-export function legacyVenueZones(venue: VillageVenue): VillageVenueZone[] {
-  return [
-    {
-      ...defaultVenueSpace(venue.classes?.[0] ?? "other"),
-      id: "exterior",
-      name: "Exterior",
-      kind: "exterior",
-      description: venue.description,
-      image: venue.presentation?.image ?? null,
-      state: venue.exteriorState ?? defaultVenueSpace("other").state,
-      seen: true,
-    },
-    ...venueSpaces({
-      ...venue,
-      presentation: venue.presentation ?? { mapId: "", image: null, x: null, y: null },
-      state: { revision: 0, updatedAt: "", recent: null },
-    }).map((space) => ({
-      ...space,
-      name: "Common Space",
-      kind: space.venueClass === "residence" ? ("shared-residence" as const) : ("public" as const),
-      seen:
-        space.venueClass === "residence"
-          ? !!(venue.playerSeenShared || venue.occupancy.playerHome)
-          : !!venue.playerSeenPublic,
-    })),
-    ...(venue.privateSpaces ?? [])
-      .filter(
-        (space) =>
-          venueResidentIds(venue).includes(space.ownerId) || (space.ownerId === "player" && venue.occupancy.playerHome),
-      )
-      .map((space) => ({
-        ...space,
-        name: space.ownerId === "player" ? "Your personal space" : "Private space",
-        kind: "private-residence" as const,
-        seen: space.ownerId === "player" || !!venue.playerSeenPrivateIds?.includes(space.ownerId),
-      })),
-  ];
-}
 export function venueZones(venue: VillageVenue): VillageVenueZone[] {
-  return venue.zones ?? legacyVenueZones(venue);
+  return venue.zones ?? [];
 }
 export function resolveVenueZone(venue: VillageVenue, zoneId: string): VillageVenueZone | undefined {
   return venueZones(venue).find((zone) => zone.id === zoneId);
@@ -203,7 +163,9 @@ export function chooseAgendaZone(
   const designated = eligible.find((zone) => zone.id === assigned);
   if (designated) return designated;
   if (venue.access && destinations)
-    return eligible.find((zone) => zone.kind === "exterior") ?? legacyVenueZones(venue)[0]!;
+    return (
+      eligible.find((zone) => zone.kind === "exterior") ?? venueZones(venue).find((zone) => zone.kind === "exterior")!
+    );
   const preferred = /sleep|bed|dress|wash|private|personal|journal/i.test(activity)
     ? "private-residence"
     : /breakfast|supper|meal|eat|home|house|tidy/i.test(activity)
@@ -216,7 +178,7 @@ export function chooseAgendaZone(
     (preferred === "private-residence" ? eligible.find((zone) => zone.kind === "shared-residence") : undefined) ??
     eligible.find((zone) => zone.kind === "public") ??
     eligible.find((zone) => zone.kind === "exterior") ??
-    legacyVenueZones(venue)[0]!
+    venueZones(venue).find((zone) => zone.kind === "exterior")!
   );
 }
 export function venueInZone(venue: VillageVenue, zoneId: string): VillageVenue {
@@ -254,57 +216,7 @@ export function synchronizeVenueZones(venue: VillageVenue, previous?: VillageVen
           );
       }
   }
-  let zones = venue.zones ?? legacyVenueZones(venue);
-  if (
-    venue.layoutVersion !== 1 &&
-    venue.occupancy.playerHome &&
-    !zones.some((zone) => zone.kind === "private-residence" && zone.ownerId === "player")
-  )
-    zones.push({
-      ...defaultVenueSpace("residence"),
-      id: "private:player",
-      name: "Your personal space",
-      kind: "private-residence",
-      ownerId: "player",
-      seen: true,
-      purpose: "Personal space",
-    });
-  if (
-    venue.layoutVersion !== 1 &&
-    effectiveVenueClasses(venue).includes("workplace") &&
-    !zones.some((zone) => zone.kind === "staff")
-  ) {
-    let id = "staff";
-    for (let suffix = 1; zones.some((zone) => zone.id === id); suffix++) id = "staff:default:" + suffix;
-    zones.push({
-      ...defaultVenueSpace("workplace"),
-      id,
-      name: "Private work area",
-      kind: "staff",
-      purpose: "Restricted work area appropriate to the venue form",
-      seen: false,
-      preparation: { status: "pending", error: "" },
-      controllerIds: [],
-      ownerId: undefined,
-      initialImageAttemptedAt: "",
-    });
-  }
-  zones = zones.filter(
-    (zone) =>
-      zone.kind !== "private-residence" ||
-      (venue.layoutVersion === 1 && !zone.ownerId) ||
-      venueResidentIds(venue).includes(zone.ownerId ?? "") ||
-      (zone.ownerId === "player" && venue.occupancy.playerHome),
-  );
-  // Legacy occupancy adapters can provision a previously implicit personal/staff area.
-  // Materialize that existing legacy behavior only; authored layoutVersion=1 maps are never inferred.
-  if (venue.layoutVersion !== 1 && zones.some((zone) => zone.connectedTo !== undefined)) {
-    const ids = new Set(zones.map((zone) => zone.id));
-    for (const zone of zones) {
-      if (zone.connectedTo === undefined) zone.connectedTo = legacyContactNeighborIds(zones, zone.id);
-      else zone.connectedTo = zone.connectedTo.filter((id) => ids.has(id));
-    }
-  }
+  const zones = venue.zones ?? [];
   venue.zones = zones;
   venue.classes = effectiveVenueClasses(venue);
   const exterior = zones.find((zone) => zone.kind === "exterior");

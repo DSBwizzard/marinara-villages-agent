@@ -46,6 +46,10 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 
 function draft(layout: string, role = "residence", owner = "a") {
   return {
+    residentIds: [role !== "residence" || layout === "exterior" || owner === "player" ? null : owner || null].filter(
+      (id) => typeof id === "string" && !!id,
+    ),
+    residenceCapacity: 1,
     id: "venue:" + layout + ":" + role + ":" + owner,
     layoutVersion: 1,
     layout,
@@ -55,7 +59,7 @@ function draft(layout: string, role = "residence", owner = "a") {
     description: "An approachable spot under a tree.",
     presentation: { image: null, x: 0.2, y: 0.3 },
     occupancy: {
-      playerHome: owner === "player",
+      playerHome: role === "residence" && layout !== "exterior" && owner === "player",
       residentCharacterId: owner === "player" ? null : owner || null,
       homeKind: null,
     },
@@ -79,6 +83,7 @@ function draft(layout: string, role = "residence", owner = "a") {
               name: "Private Space",
               purpose: "A sleeping chamber occupying the selected interior",
               controllerIds: role === "other" || role === "community" ? ["a"] : [],
+              description: "A private interior.",
             },
           ]
         : [],
@@ -107,8 +112,11 @@ for (const layout of ["exterior", "common", "private", "both"]) {
     }
   }
 }
-assert.throws(() => parsePlace({ ...draft("common"), layout: undefined }, true), /Choose the venue layout/);
-assert.throws(() => parsePlace({ ...draft("exterior"), layoutVersion: undefined }, true), /Choose the venue layout/);
+assert.throws(() => parsePlace({ ...draft("common"), layout: undefined }, true), /venue layout|explicit Venue layout/);
+assert.throws(
+  () => parsePlace({ ...draft("exterior"), layoutVersion: undefined }, true),
+  /venue layout|explicit Venue layout/,
+);
 assert.throws(() => parsePlace({ ...draft("both"), spaces: [] }, true), /matching its selected layout/);
 assert.throws(
   () =>
@@ -197,8 +205,11 @@ assertResidencePrivateDestination(state, vacant, "b", "personal");
 assert.throws(() => assertResidencePrivateDestination(state, privateOnly, "b", "personal"), /no longer vacant/);
 const legacy = structuredClone(privateOnly);
 delete legacy.layoutVersion;
-const preserved = coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, venues: [legacy] }).venues[0]!;
-assert.equal(preserved.zones!.find((zone) => zone.id === "personal")!.description, privateOnly.zones![1]!.description);
+assert.throws(
+  () => coerceVillageState({ ...defaultVillageState(), venues: [legacy] }),
+  /fresh-format/,
+  "Incomplete old layouts are rejected without repair",
+);
 const records = new Map<string, any>();
 records.set("villages-village", { id: "villages-village", kind: "village", data: state, revision: 1 });
 const release = configureVillagesRuntime({
@@ -291,7 +302,14 @@ async function finish(id: string, body: any = {}) {
 async function main() {
   try {
     await proposeVillageResidence("b", vacant.id, "player", "", "personal");
-    await decideVillageResidence("b", true, "villager");
+    await decideVillageResidence(
+      "b",
+      true,
+      "villager",
+      undefined,
+      undefined,
+      (await readVillageState()).residences.find((move) => move.characterId === "b")!.agreement!.scope,
+    );
     await completeVillageResidence("b", true, new Date(), false);
     let current = await readVillageState({ memories: true });
     let destination = current.venues.find((venue) => venue.id === vacant.id)!;
@@ -299,8 +317,19 @@ async function main() {
     assert.equal(destination.zones!.length, 2, "move assigns the existing physical area without adding rooms");
     // Move to an exterior-only home; archive personal history while leaving its room vacant.
     const outside = current.venues.find((venue) => venue.id === initial.venues[1]!.id)!;
-    await proposeVillageResidence("a", outside.id, "player", "", "");
-    await decideVillageResidence("a", true, "villager");
+    await assert.rejects(proposeVillageResidence("a", outside.id, "player", "", ""), /sleeping Zone/);
+    const nextHome = place("common", "residence", "");
+    nextHome.id = "new-home";
+    await mutateVillageState((state) => state.venues.push(nextHome));
+    await proposeVillageResidence("a", nextHome.id, "player", "", "");
+    await decideVillageResidence(
+      "a",
+      true,
+      "villager",
+      undefined,
+      undefined,
+      (await readVillageState()).residences.find((move) => move.characterId === "a")!.agreement!.scope,
+    );
     await completeVillageResidence("a", true, new Date(), false);
     current = await readVillageState({ memories: true });
     const old = current.venues.find((venue) => venue.id === privateOnly.id)!;
@@ -392,7 +421,7 @@ async function main() {
           name: "Sleeping nook",
           kind: "private-residence",
           venueClass: "residence",
-          ownerId: "a",
+          ownerId: "",
           description: "",
           purpose: "A partitioned sleeping area",
         },
@@ -403,6 +432,22 @@ async function main() {
       (project) => project.kind === "renovation" && project.lifecycle?.phase !== "complete",
     )!;
     await finish(project.id);
+    await mutateVillageState((state) => {
+      const room = state.venues.find((v) => v.id === outside.id)!.zones!.find((z) => z.id === "private:nook")!;
+      room.preparation = { status: "ready" };
+      room.description = "A prepared sleeping nook";
+    });
+    await proposeVillageResidence("a", outside.id, "player", "", "private:nook");
+    await decideVillageResidence(
+      "a",
+      true,
+      "villager",
+      undefined,
+      undefined,
+      (await readVillageState()).residences.find((move) => move.characterId === "a")!.agreement!.scope,
+    );
+    await completeVillageResidence("a", true, new Date(), false);
+
     current = await readVillageState({ memories: true });
     assert.equal(
       current.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === "private:nook")!
@@ -411,12 +456,20 @@ async function main() {
     );
     await assert.rejects(
       createRenovationProject(outside.id, { title: "Occupied nook", detail: "Remove the occupied room", zones: [] }),
-      /Move residents/,
+      /Move residents|sleeping destination/,
     );
-    // Simulate the completed departure already covered by the move assertions above.
+    // Author a completed departure; relocation and consent are exercised above.
     await mutateVillageState((record) => {
-      delete record.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === "private:nook")!
-        .ownerId;
+      const empty = record.venues.find((v) => v.id === outside.id)!;
+      empty.residentIds = [];
+      empty.occupancy.residentCharacterId = null;
+      empty.destinations = {};
+      empty.access!.managerIds = ["player"];
+      const room = empty.zones!.find((z) => z.id === "private:nook")!;
+      delete room.ownerId;
+      room.access!.managerIds = null;
+      room.access!.memberIds = [];
+      record.residences = record.residences.filter((move) => move.characterId !== "a");
     });
     await createRenovationProject(outside.id, {
       title: "Remove nook",
@@ -495,7 +548,13 @@ async function main() {
       current.venues.find((venue) => venue.id === privateOnly.id)!.zones![1]!.description,
       /Fixed hammock hooks/,
     );
-    await assert.rejects(movePlayerToResidence(outside.id, chamber.id), /shared Residence/);
+    await movePlayerToResidence(outside.id, chamber.id);
+    assert.equal(
+      (await readVillageState()).venues.find((v) => v.id === outside.id)!.zones!.find((z) => z.id === chamber.id)!
+        .ownerId,
+      "player",
+    );
+    await movePlayerToResidence(privateOnly.id, "personal");
     current = await readVillageState({ memories: true });
     assert.equal(
       current.venues.find((venue) => venue.id === outside.id)!.zones!.find((zone) => zone.id === chamber.id)!.ownerId,
@@ -519,7 +578,7 @@ async function main() {
         .find((venue) => venue.id === outside.id)!
         .archivedZones!.some((entry) => entry.zone.id === chamber.id),
     );
-    await assert.rejects(proposeVillageResidence("b", outside.id, "player", "", chamber.id), /no longer vacant/);
+    await assert.rejects(proposeVillageResidence("b", outside.id, "player", "", chamber.id), /available sleeping Zone/);
     for (const layout of ["exterior", "common", "private", "both"]) {
       await createNewVenueProject({
         name: "New " + layout,

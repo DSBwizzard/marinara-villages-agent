@@ -20,6 +20,17 @@ export function environmentObservations(
     .filter((row) => row.venueId === venueId && row.zoneId === zoneId)
     .map(({ id, revision, observation, restriction, remedy }) => ({ id, revision, observation, restriction, remedy }));
 }
+
+export function environmentCircumstances(narrative: NarrativeState | undefined, venueId: string, zoneId: string) {
+  return (narrative?.situations ?? [])
+    .filter(
+      (row) =>
+        row.status === "active" &&
+        (row.scope === "village" ||
+          row.targets.some((target) => target.venueId === venueId && target.zoneId === zoneId)),
+    )
+    .map(({ id, scope, revision, summary }) => ({ id, scope, revision, summary }));
+}
 export function ordinaryUseRestricted(
   narrative: NarrativeState | undefined,
   at: string,

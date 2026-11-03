@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -273,7 +274,7 @@ assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
 for (const source of ["decisions", "system"] as const) {
   const invitation = fixture(source);
   invitation.world.venues = [
-    {
+    venueFixture({
       id: "same-place",
       name: "Ada's home",
       classes: ["residence"],
@@ -292,7 +293,7 @@ for (const source of ["decisions", "system"] as const) {
           ownerId: "ada",
         },
       ],
-    },
+    }),
   ] as any;
   invitation.interpretation({
     checks: [

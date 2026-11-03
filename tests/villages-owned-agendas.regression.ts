@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
@@ -500,14 +501,15 @@ async function main() {
       (await readVillageState({ memories: true })).villagers[0]!.agenda!.scheduleInfluenceSnapshot!.available,
       false,
     );
-    const safeVenue = {
+    const safeVenue = venueFixture({
+      residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id: "library",
       name: "Library",
       classes: ["other"],
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       state: { revision: 0, updatedAt: "", recent: null },
       presentation: { image: null, x: 0.2, y: 0.2 },
-    };
+    });
     const access = coerceVillageState({
       ...defaultVillageState(),
 

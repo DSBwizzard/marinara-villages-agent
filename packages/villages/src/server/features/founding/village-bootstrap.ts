@@ -13,18 +13,6 @@ export async function draftVillageVenueDescriptions(
   return binding.get().draftVillageVenueDescriptions(...args);
 }
 
-export async function proposeVillage(
-  ...args: Parameters<VillageBootstrapService["proposeVillage"]>
-): ReturnType<VillageBootstrapService["proposeVillage"]> {
-  return binding.get().proposeVillage(...args);
-}
-
-export async function proposePublicVenueNames(
-  ...args: Parameters<VillageBootstrapService["proposePublicVenueNames"]>
-): ReturnType<VillageBootstrapService["proposePublicVenueNames"]> {
-  return binding.get().proposePublicVenueNames(...args);
-}
-
 export async function interpretSocialSource(
   ...args: Parameters<VillageBootstrapService["interpretSocialSource"]>
 ): ReturnType<VillageBootstrapService["interpretSocialSource"]> {

@@ -1,7 +1,9 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { fixture, renovation } from "./fixtures/villages-projects.fixture.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { readProjectPlan } from "../packages/villages/src/server/domain/rules/project-completion.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 const f = fixture(),
@@ -38,7 +40,8 @@ assert.throws(
   () => readProjectPlan({ ...plan, spaces: [...publicZones, { ...publicZones[0], id: "seventh" }] }, target),
   /six Zones/,
 );
-const founding = {
+const founding = venueFixture({
+  residentIds: [null].filter((id) => typeof id === "string" && !!id),
   id: "founding",
   name: "Garden Pavilion",
   classes: ["community"],
@@ -50,7 +53,7 @@ const founding = {
   layout: "common",
   spaces: [...publicZones, ...publicZones.map((zone) => ({ ...zone, id: "extra-" + zone.id }))],
   privateSpaces: [],
-};
+});
 assert.equal(parsePlace(founding, true).zones!.filter((zone) => zone.id !== "exterior").length, 6);
 assert.throws(
   () => parsePlace({ ...founding, spaces: [...founding.spaces, { ...publicZones[0], id: "seventh" }] }, true),
@@ -67,6 +70,8 @@ saved.venues[0].zones = [
   saved.venues[0].zones![0],
   ...zones.map((zone) => ({ ...defaultVenueSpace("community"), ...zone })),
 ] as any;
+saved.venues[0].zones![0].connectedTo = zones.map((zone) => zone.id);
+initializeVenueAccess(saved.venues[0]);
 assert.equal(coerceVillageState(saved).venues[0].zones!.length, 7, "Entrance is extra");
 saved.venues[0].zones!.push({ ...saved.venues[0].zones![1], id: "seventh" });
 assert.throws(() => coerceVillageState(saved), /six Zones/);

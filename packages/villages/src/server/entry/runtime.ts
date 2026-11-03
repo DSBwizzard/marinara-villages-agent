@@ -104,21 +104,13 @@ import { reconcileRelationships } from "../domain/rules/relationship-rules.js";
 import { projectSocialActivities, reconcileSocialPlans } from "../domain/rules/social-rules.js";
 import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wish-progress-rules.js";
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
-import {
-  configureCompactFounding,
-  proposeCompactFounding,
-  proposeOpeningIdea,
-} from "../features/founding/founding-compact.js";
+import { configureCompactFounding, proposeCompactFounding } from "../features/founding/founding-compact.js";
 import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
-import {
-  configureFoundingDrafts,
-  seedFoundingVenueDetails,
-  suggestStartingVenues,
-} from "../features/founding/founding-drafts.js";
+import { configureFoundingDrafts, suggestStartingVenues } from "../features/founding/founding-drafts.js";
 import { createFoundingProgress } from "../features/founding/founding-progress-service.js";
 import { configureFoundingProgress, reportFoundingProgress } from "../features/founding/founding-progress.js";
 import { createFoundingSetup } from "../features/founding/founding-setup-service.js";
-import { configureFoundingSetup, runVillageBootstrap } from "../features/founding/founding-setup.js";
+import { configureFoundingSetup } from "../features/founding/founding-setup.js";
 import { createFoundingSuggestions } from "../features/founding/founding-suggestions-service.js";
 import { configureFoundingSuggestions } from "../features/founding/founding-suggestions.js";
 import { createFoundingPreparation } from "../features/founding/preparation-service.js";
@@ -128,8 +120,6 @@ import {
   configureVillageBootstrap,
   draftVillageVenueDescriptions,
   interpretSocialSource,
-  proposePublicVenueNames,
-  proposeVillage,
 } from "../features/founding/village-bootstrap.js";
 import { createModelCompletions } from "../features/generation/completion-service.js";
 import { createInterpretationDiagnostics } from "../features/generation/interpretation-diagnostics-service.js";
@@ -534,9 +524,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       villagesLanguageModels,
       villagesConnectionIdFor,
       completeWithRoom,
-      backgroundCalls: background.backgroundCalls,
-      villagesDebugAgentsEnabled,
-      villagesLogger,
     }),
   );
   const releaseFoundingDrafts = configureFoundingDrafts(
@@ -981,8 +968,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       queueStartingTies: startingTies.queue,
       queueMicrotask,
       readVillageLore,
-      proposeVillage,
-      proposePublicVenueNames,
       draftVillageVenueDescriptions,
     }),
   );
@@ -995,8 +980,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState,
       buildVillageSnapshot,
       readLinkedPersona,
-      runVillageBootstrap,
-      villagesLogger,
     }),
   );
   const releaseVenueCommands = configureVenueCommands(
@@ -1212,7 +1195,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFounding = configureFoundingPreparation(
     createFoundingPreparation({
-      proposeOpeningIdea,
       backgroundJobSnapshot,
       readFoundingResidentContext,
       queueFoundingWish,
@@ -1220,7 +1202,6 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState: mutateVillageMemoryState,
       buildVillageSnapshot,
       villagesLogger,
-      seedFoundingVenueDetails,
       reportFoundingProgress,
       preparePrivateSpaces,
       backgroundWorkSummaries,

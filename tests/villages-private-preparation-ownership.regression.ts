@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
@@ -39,7 +40,7 @@ function world(name: string) {
     backgroundPace: "off",
     villagers: [],
     venues: [
-      {
+      venueFixture({
         id: "same-venue",
         name: "Office",
         form: "Station",
@@ -60,7 +61,7 @@ function world(name: string) {
             preparation: { status: "pending" },
           },
         ],
-      },
+      }),
     ],
   });
 }

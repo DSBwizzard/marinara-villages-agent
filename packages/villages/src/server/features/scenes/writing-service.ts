@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { openingSceneDirection } from "../../domain/rules/opening-project.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
@@ -20,12 +21,7 @@ import {
   venueAdditionalWritingGuidance,
   venueWritingDirection,
 } from "../../domain/rules/narration-style.js";
-import {
-  IncompleteOpeningGathering,
-  IncompleteOpeningPitch,
-  openingSceneDirection,
-  readOpeningSignal,
-} from "../../domain/rules/opening-project.js";
+
 import { renderPlayerBackgroundWritingContext } from "../../domain/rules/player-background.js";
 import {
   assertRecoveredSpeechPrivacy,
@@ -92,12 +88,17 @@ import {
   readContactMoves,
   readContactRelay,
 } from "../../domain/rules/venue-contact.js";
-import { hasVenueClass, venueInArea, venueResidentIds } from "../../domain/rules/venue-model.js";
+import {
+  hasVenueClass,
+  venueInArea,
+  venueAssignedCount,
+  venueCapacity,
+  venueResidentIds,
+} from "../../domain/rules/venue-model.js";
 import type { MovementIntent } from "../../domain/rules/venue-movement.js";
 import { readVenueRequestCore } from "../../domain/rules/venue-requests.js";
-import { venueFoundingBackground } from "../../domain/rules/venue-scene-context.js";
 import { applyVenueSceneChange, readVenueSceneChange } from "../../domain/rules/venue-scene-state.js";
-import { environmentObservations } from "../../domain/rules/narrative-environment.js";
+import { environmentObservations, environmentCircumstances } from "../../domain/rules/narrative-environment.js";
 import type { NarrativeAdmission } from "../../domain/models/narrative-model.js";
 import { provisionalSceneNarrative, type SceneNarrativeSource } from "../../domain/rules/scene-narrative-effects.js";
 import { SCENE_DEVELOPMENT_WRITING } from "../../domain/rules/narrative-prompts.js";
@@ -325,7 +326,8 @@ export function createSceneWriting({
         : venueInArea(storedPlace, session.area, session.spaceClass, session.privateOwnerId)
       : undefined;
     const pendingMoves = village.residences.filter(
-      (residence) => residence.status === "pending" && audience.includes(residence.characterId),
+      (residence) =>
+        residence.status !== "current" && (residence.agreement?.requiredIds ?? []).some((id) => audience.includes(id)),
     );
     const loreStarted = performance.now();
     let loreInspection: LoreInspection | undefined;
@@ -450,7 +452,7 @@ export function createSceneWriting({
       direction: blocksFor([
         VENUE_SCENE_WRITING_FOUNDATION,
         venueOperationInput()?.sceneBoundaryVersion === 1 ? SCENE_OUTCOME_BOUNDARY : "",
-        openingSceneDirection(village, session, session.semanticVersion !== 2),
+        openingSceneDirection(village, session),
         venueWritingDirection(village.narrationStyle, player.name),
         venueAdditionalWritingGuidance(village.narrationStyle),
         mode === "greet"
@@ -467,7 +469,7 @@ export function createSceneWriting({
       circumstances: blocksFor([
         `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
         village.narrative
-          ? `Captured effective weather: ${moment.weather}. Locally perceivable environmental circumstances: ${JSON.stringify(environmentObservations(village.narrative, moment.instant, session.placeId, session.zoneId ?? "exterior"))}. These are outward circumstances, never proof everyone previously knew them. Ordinary-use restrictions permit only legally authorized inspection/corrective work and safe egress; do not invent consent, supplies, completed repairs or reopen on a promise. Actual supported physical repairs may clear matching conditions; all other restrictions remain.`
+          ? `Captured active circumstances (narrator context; knowledge stays witness-bound): ${JSON.stringify(environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior"))}. Captured effective weather: ${moment.weather}. Locally perceivable environmental circumstances: ${JSON.stringify(environmentObservations(village.narrative, moment.instant, session.placeId, session.zoneId ?? "exterior"))}. These are outward circumstances, never proof everyone previously knew them. Ordinary-use restrictions permit only legally authorized inspection/corrective work and safe egress; do not invent consent, supplies, completed repairs or reopen on a promise. Actual supported physical repairs may clear matching conditions; all other restrictions remain.`
           : "",
         `Authoritative encounter calendar: ${JSON.stringify(capturedSceneCalendar(session, village.timeZone || moment.timeZone))}. Calendar answers and relative dates use this captured date, weekday and local time. Earlier dialogue cannot override it. ${session.liveSceneVersion === 1 ? "Time passes between exchanges, without inventing player activity or consent." : "Real time between replies is not fictional waiting."}`,
         `The player is ${player.name}. ${player.description}`,
@@ -504,11 +506,10 @@ export function createSceneWriting({
         place?.constructionStatus === "worksite"
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
           : "",
-        accessManagementPrompt(village, audience, session.placeId),
+        capabilities.management ? accessManagementPrompt(village, audience, session.placeId) : "",
         session.contactGeneration?.actorIds
           ? `Only selected residents ${JSON.stringify(audience)} may speak, act or receive invented reactions. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
           : "",
-        venueFoundingBackground(village),
         `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} ${session.liveSceneVersion === 1 ? "Attendance, activities and time are admitted for this exchange only. Schedules can change them between exchanges. Never reintroduce an absent speaker or give new arrivals knowledge of earlier dialogue. Current physical facts supersede old narration." : "Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed."}`,
         session.liveSceneVersion === 1
           ? "Continue in the admitted current situation. Earlier dialogue belongs to its recorded time and witnesses. After a break, do not invent what the player said, did, felt or agreed to during the gap. No automatic greeting or conversation occurred merely because another resident arrived. Do not advance the Village into the future."
@@ -555,10 +556,13 @@ export function createSceneWriting({
                 .join("; ") || "none"
             }.`
           : "",
-        pendingMoves.some((move) => move.requestedBy === "player")
+        pendingMoves.length > 0
           ? `Pending player requests to move: ${pendingMoves
-              .filter((move) => move.requestedBy === "player")
-              .map((move) => `${move.characterId} to ${move.proposedVenueId}`)
+
+              .map(
+                (move) =>
+                  `${move.characterId} to ${move.proposedVenueId}, sleeping in ${move.agreement?.sleepZoneId}; required household ${move.agreement?.householdIds.join(", ")}; existing approvals ${JSON.stringify(move.agreement?.approvals)}`,
+              )
               .join("; ")}.`
           : "",
         actionOutcome
@@ -707,7 +711,7 @@ export function createSceneWriting({
       audience,
       active,
       pendingMoves: authority.residences.filter(
-        (row) => row.status === "pending" && audience.includes(row.characterId),
+        (row) => row.status !== "current" && (row.agreement?.requiredIds ?? []).some((id) => audience.includes(id)),
       ),
       storedPlace: village.venues.find((row) => row.id === session.placeId),
       place: (() => {
@@ -1082,18 +1086,6 @@ export function createSceneWriting({
         throw error;
       }
     }
-    if (
-      session.openingReader &&
-      !session.activeIds.every((id) =>
-        parsed.lines.some((line) => line.kind === "dialogue" && line.speakerId === id && line.content.trim()),
-      )
-    ) {
-      await rejectVenueCompletion(
-        { model: model.model, connectionId: model.connectionId, reason: "incomplete-gathering" },
-        { stages: ["writing-completion:" + requestKey] },
-      );
-      throw new Error("The gathering is incomplete. Retry the opening to replace it.");
-    }
     const semanticResult = semantic
       ? await semantic
           .exchange(
@@ -1106,11 +1098,7 @@ export function createSceneWriting({
             narrativeVersion ? (narrativeGrant ?? null) : undefined,
           )
           .catch(async (error: unknown) => {
-            if (
-              error instanceof IncompleteOpeningPitch ||
-              error instanceof IncompleteOpeningGathering ||
-              error instanceof UnsupportedPlayerAgency
-            )
+            if (error instanceof UnsupportedPlayerAgency)
               await rejectVenueCompletion(
                 {
                   model: model.model,
@@ -1143,7 +1131,6 @@ export function createSceneWriting({
         "relationshipChanges",
         "wishChanges",
         "projectSpeech",
-        "openingSignal",
         "roomEvents",
         "invitation",
         "residenceRequest",
@@ -1351,7 +1338,11 @@ export function createSceneWriting({
         invitationScope === "shared" ||
         /\b(my|mine|your)\s+(private\s+)?(room|bedroom|space|quarters)|private space\b/u.test(invitationQuote);
       const pendingDecision = decision
-        ? pendingMoves.find((move) => move.characterId === decision.speakerId && move.requestedBy === "player")
+        ? pendingMoves.find(
+            (move) =>
+              move.characterId === decision.entry.characterId &&
+              (move.agreement?.requiredIds ?? []).includes(decision.speakerId),
+          )
         : null;
       const narrativeSource: SceneNarrativeSource | undefined = narrativeGrant
         ? {
@@ -1453,12 +1444,6 @@ export function createSceneWriting({
         ),
         interpretationRouting: raw?.interpretationRouting as unknown,
         roomEvents: raw?.roomEvents as unknown,
-        openingContext: (semanticResult
-          ? semanticResult.effects.openingContext
-          : village.opening
-            ? { stage: village.opening.stage, projectId: village.opening.projectId }
-            : undefined) as import("../../domain/models/scene-model.js").VenueSubmission["openingContext"],
-        openingSignal: readOpeningSignal(raw?.openingSignal),
         projectContexts,
         contactIntent:
           !explicitSceneActions() && !session.contactGeneration && (mode === "chat" || mode === "ask")
@@ -1499,7 +1484,7 @@ export function createSceneWriting({
               venue.id === requestedVenueId &&
               hasVenueClass(venue, "residence") &&
               venue.constructionStatus !== "worksite" &&
-              venueResidentIds(venue).every((id) => id === request!.speakerId),
+              venueAssignedCount(venue) < venueCapacity(venue),
           )
             ? { kind: "request" as const, characterId: request!.speakerId, venueId: requestedVenueId }
             : (semanticResult || mode === "chat" || mode === "ask") &&
@@ -1507,7 +1492,9 @@ export function createSceneWriting({
                 typeof decision!.entry.approved === "boolean"
               ? {
                   kind: "decision" as const,
-                  characterId: decision!.speakerId,
+                  characterId: pendingDecision.characterId,
+                  approverId: decision!.speakerId,
+                  agreementScope: pendingDecision.agreement?.scope,
                   venueId: pendingDecision.proposedVenueId,
                   approved: decision!.entry.approved === true,
                 }

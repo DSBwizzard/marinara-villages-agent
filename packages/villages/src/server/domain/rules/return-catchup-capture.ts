@@ -14,7 +14,7 @@ export function captureReturnContext(state: VillageState, at: Date): ReturnCatch
       name: state.name,
       setting: state.setting,
       worldName: state.worldName,
-      worldFacts: state.worldFacts,
+      worldRules: state.worldRules,
       narrative: state.narrative,
       narrativeConsequence: state.narrativeConsequence,
       eventAttempts: state.eventAttempts,

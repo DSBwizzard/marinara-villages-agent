@@ -26,24 +26,38 @@ export const SETUP_MAX_VILLAGER_COUNT = 3;
 
 export function newSetupVenue(
   id: string,
-  venueClass: "residence" | "community",
+  venueClass: "residence" | "community" | "workplace" | "other",
   x: number,
   y: number,
   playerHome = false,
   index = 1,
 ): SetupVenueDraft {
-  const name = venueClass === "community" ? "Community Place" : playerHome ? "Your residence" : `Residence ${index}`;
+  const name =
+    venueClass === "community"
+      ? "Meeting place"
+      : venueClass !== "residence"
+        ? "New Venue"
+        : playerHome
+          ? "Your residence"
+          : `Residence ${index}`;
   const venue: SetupVenueDraft = {
     id,
     name,
-    form: venueClass === "community" ? "Community place" : "Residence",
+    form:
+      venueClass === "residence" ? "Residence" : venueClass === "community" ? "Community place" : "Existing structure",
     classes: [venueClass],
     layoutVersion: 1,
     spaces: [],
     residenceCapacity: 1,
+    ...(venueClass === "residence" ? { foundingCapacity: null } : {}),
     residentIds: [],
 
-    description: venueClass === "community" ? "A place where the community gathers." : "A residence in the Village.",
+    description:
+      venueClass === "residence"
+        ? "A residence in the Village."
+        : venueClass === "community"
+          ? "A place where the community gathers."
+          : "An existing place in the community.",
     category: venueClass === "community" ? "public-center" : "",
     presentation: { mapId: "", image: null, x, y },
     occupancy: { playerHome, residentCharacterId: null, homeKind: null },
@@ -52,9 +66,9 @@ export function newSetupVenue(
   };
   return {
     ...venue,
-    layout: venueClass === "community" ? "common" : "both",
-    spaces: [startingZone(venue, false)],
-    privateSpaces: venueClass === "community" ? [] : [startingZone(venue, true)],
+    layout: "common",
+    spaces: [{ ...startingZone(venue, false), ...(venueClass === "residence" ? { access: undefined } : {}) }],
+    privateSpaces: [],
   };
 }
 

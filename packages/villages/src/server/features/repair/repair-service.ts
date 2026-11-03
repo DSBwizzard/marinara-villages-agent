@@ -1,3 +1,4 @@
+import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
 import { createDepartureHistory, validateDepartureHistory } from "../../adapters/storage/departure-history.js";
@@ -1410,8 +1411,8 @@ export function createRepairService(ports: RepairPorts) {
     const summarize = (world: VillageState) => [
       { label: "Village", value: world.name },
       { label: "Setting", value: world.setting },
-      { label: "World facts", value: world.worldFacts.join("\n") },
-      { label: "Starting history", value: world.scenarioImprint?.origin ?? world.foundingDetails },
+      { label: "Current circumstances", value: currentVillageCircumstances(world).join("\n") },
+      { label: "Standing rules", value: world.worldRules },
       { label: "Residents", value: world.villagers.map((p) => p.cardSnapshot.name).join(", ") },
       { label: "Memories", value: String(world.memories.records.length) },
       { label: "Places", value: world.venues.map((v) => v.name).join(", ") },

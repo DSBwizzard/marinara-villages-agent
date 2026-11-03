@@ -1,4 +1,3 @@
-import { foundingDraftDescription } from "./draft-model.js";
 import { savedFoundingStep } from "./founding-steps.js";
 import { messageFrom } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
@@ -7,7 +6,6 @@ import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingState } from "./useFoundingState.js";
 import { readDeviceDraft, removeDeviceDraft, saveDeviceDraft } from "../../shared/device-drafts.js";
-import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
 import { useCallback, useEffect } from "react";
 
 export function useFoundingPersistSetupDraft(ports: {
@@ -146,7 +144,7 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupSuggestionsKey: FoundingState["setSetupSuggestionsKey"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setSetupWorkspace: FoundingState["setSetupWorkspace"];
-  readonly setSetupWorldFacts: FoundingState["setSetupWorldFacts"];
+  readonly setSetupContext: FoundingState["setSetupContext"];
   readonly setupEditorAuthoredOriginal: FoundingState["setupEditorAuthoredOriginal"];
   readonly setupEditorOriginal: FoundingState["setupEditorOriginal"];
   readonly setupEditorZoneOriginal: FoundingState["setupEditorZoneOriginal"];
@@ -198,7 +196,7 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupSuggestionsKey,
       setSetupVenues,
       setSetupWorkspace,
-      setSetupWorldFacts,
+      setSetupContext,
       setupEditorAuthoredOriginal,
       setupEditorOriginal,
       setupEditorZoneOriginal,
@@ -208,33 +206,37 @@ export function createFoundingRestoreSetupDraft(ports: {
     } = ports;
 
     if (
+      data.version !== 2 ||
+      !data.context ||
+      !Array.isArray(data.context.circumstances) ||
+      !data.workspace ||
+      !data.workspace.inactive ||
+      !data.zoneDrafts ||
       !Array.isArray(data.venues) ||
       !Array.isArray(data.roster) ||
       data.roster.length > 3 ||
-      data.venues.length > 5 ||
+      data.venues.length > 16 ||
       data.venues.some((row) => !row.id || !row.presentation || !row.occupancy || typeof row.description !== "string")
     ) {
       setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
       return;
     }
-    const legacySimpleMap = data.mapSource === "none";
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");
     setSetupWorldName(data.worldName ?? "");
-    setSetupSetting(foundingDraftDescription(data));
+    setSetupSetting(data.setting);
     setSetupPlayerBackground(data.playerBackground ?? "");
-    setSetupWorldFacts(data.worldFacts);
-    const inactive = { ...data.workspace?.inactive };
-    for (const [id, saved] of Object.entries(data.zoneDrafts ?? {})) {
-      inactive[id] = {
-        ...(saved.common ? { common: [saved.common] } : {}),
-        ...(saved.personal ? { private: [saved.personal] } : {}),
-        ...inactive[id],
-      };
-    }
+    setSetupContext({
+      rules: data.context.rules,
+      circumstances: data.context.circumstances,
+      communityVenueId: data.context.communityVenueId,
+      ...((data.workspace.suggestionRequest || data.mapRequest) && Object.hasOwn(data.context, "households")
+        ? { households: data.context.households }
+        : {}),
+    });
     setSetupVenues(data.venues);
-    setupZoneDrafts.current = data.zoneDrafts ?? {};
+    setupZoneDrafts.current = data.zoneDrafts;
     setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);
     setSetupResidentAdmissions(data.residentAdmissions ?? {});
@@ -246,14 +248,14 @@ export function createFoundingRestoreSetupDraft(ports: {
     setPersonalizeHomes(data.personalizeHomes);
     setVisualLoreDefault(data.visualLoreDefault);
     setMapVisualLore(data.mapVisualLore);
-    setSetupMapSource(data.mapSource === "none" ? (data.mapImage ? data.mapImageSource : "generate") : data.mapSource);
+    setSetupMapSource(data.mapSource);
     setSetupMapImage(data.mapImage);
     setSetupMapImageSource(data.mapImageSource);
     setSetupMapGeneratedKey(data.mapGeneratedKey);
     setSetupMapSize(data.mapSize);
     setSetupMapPrompt(data.mapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapReviewed(legacySimpleMap ? false : data.mapReviewed);
+    setSetupMapReviewed(data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");
     const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
     updateSetupMapRequest(mapRequest);
@@ -263,14 +265,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSelectedSetupVenueId(data.selectedVenueId);
     setMovingSetupVenueId(data.movingVenueId);
     setSetupEditorOpen(false);
-    setSetupWorkspace({
-      ...(data.workspace ?? {
-        ...emptyFoundingWorkspace(),
-        view: data.editorOpen ? "details" : "map",
-        paused: !!data.editorOpen,
-      }),
-      inactive,
-    });
+    setSetupWorkspace(data.workspace);
     setupEditorOriginal.current = data.editorOriginal;
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;

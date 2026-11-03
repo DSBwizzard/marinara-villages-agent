@@ -1,7 +1,7 @@
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { ResidentPlanningOpportunity, VillageState } from "../models/world.js";
 import { agendaBlocksFor } from "./agenda-week.js";
-import { openingPresence } from "./opening-presence.js";
+
 import { planRoutineDays } from "./resident-agenda.js";
 import { localDateKey } from "./resident-planning.js";
 import { hashString } from "./village-clock.js";
@@ -37,12 +37,7 @@ export function returnCatchupOpportunities(
   const residents = (residentsEligible ? captured.villagers : []).filter((resident) => {
     const joined = Date.parse(resident.addedAt),
       card = Date.parse(resident.cardSnapshot.capturedAt);
-    const eligible =
-      Number.isFinite(joined) &&
-      joined <= start &&
-      Number.isFinite(card) &&
-      card <= start &&
-      !openingPresence(captured, resident.characterId);
+    const eligible = Number.isFinite(joined) && joined <= start && Number.isFinite(card) && card <= start;
     if (!eligible) omissions.add("Some residents lacked departure-time identity or were held by the opening.");
     return eligible;
   });

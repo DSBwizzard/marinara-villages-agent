@@ -190,11 +190,6 @@ export function useProjectsController({
     action,
     create,
     save,
-    openingAction: async (action: "accept" | "decline" | "skip", residentId?: string) => {
-      const next = await run("/projects/opening", { action, residentId, openingId: snapshot?.opening?.id });
-      if (next?.opening?.projectId) setSelectedId(next.opening.projectId);
-      return next;
-    },
     startRenovation: (venue: VillageVenue) => {
       setSelectedId("");
       setDraftType("renovation");

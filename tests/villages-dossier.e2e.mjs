@@ -67,8 +67,7 @@ await withBrowser(browser, async () => {
         body: '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="180"><text x="20" y="120" font-size="100" font-style="italic">Mara</text></svg>',
       }),
     );
-    // Legacy worlds may use the single-resident occupancy field.
-    village.settings.venues[0].occupancy.residentCharacterId = "mara";
+    village.settings.venues[0].residentIds = ["mara"];
     village.settings.venues[1].workerIds = ["mara"];
     village.settings.venues[2].workerIds = ["mara"];
     village.villagers[0].place = { id: "mill" };
@@ -638,7 +637,7 @@ await withBrowser(browser, async () => {
     await expect(overview.getByText("Work · The Market", { exact: true })).toBeVisible();
     await expect(overview.getByText(/PRIVATE/)).toHaveCount(0);
     if (width === 1440) {
-      village.settings.venues[0].occupancy.residentCharacterId = null;
+      village.settings.venues[0].residentIds = [];
       village.settings.venues[1].residentIds = ["mara"];
       village.settings.venues[1].name = "New Harbour";
       village.settings.venues[2].workerIds = [];
@@ -647,7 +646,7 @@ await withBrowser(browser, async () => {
       await expect(overview.getByText("Work · New Harbour", { exact: true })).toBeVisible();
       await expect(overview.getByText("Home · The Mill", { exact: true })).toHaveCount(0);
       await expect(overview.getByText("Work · The Market", { exact: true })).toHaveCount(0);
-      village.settings.venues[0].occupancy.residentCharacterId = "mara";
+      village.settings.venues[0].residentIds = ["mara"];
       village.settings.venues[1].residentIds = [];
       village.settings.venues[1].name = "The Harbour";
       village.settings.venues[2].workerIds = ["mara"];

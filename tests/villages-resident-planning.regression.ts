@@ -22,7 +22,7 @@ import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/r
 import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { VILLAGE_ACTIVITY_POLICY } from "../packages/villages/src/shared/helpers/activity-policy.js";
 import { nextEventAttemptAt } from "../packages/villages/src/server/domain/rules/event-attempts.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { venueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { createResidentPlanning } from "../packages/villages/src/server/features/residents/resident-planning-service.js";
 import { createBackgroundWork } from "../packages/villages/src/server/jobs/background-service.js";

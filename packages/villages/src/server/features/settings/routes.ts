@@ -1,3 +1,4 @@
+import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { FastifyInstance } from "fastify";
 import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.js";
 import { listVillageLorebooks, readVillageLore } from "../../adapters/engine/lorebooks.js";
@@ -7,7 +8,7 @@ import { readRuntimeDebug, saveRuntimeDebug, readLoreInspections } from "../../a
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
 import { readVillageAuthority } from "../world/village-store.js";
-import { setVillageHomeBuildingNames, setVillageVenues } from "../venues/services.js";
+import { setVillageHomeBuildingNames } from "../venues/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageConnectionSettings, saveVillageConnections } from "./connections.js";
 import { readInterpretationSettings, saveInterpretationSettings } from "./interpretation-settings.js";
@@ -26,7 +27,6 @@ import {
   setVillagePlayer,
   setVillagePromptKnowledge,
   setVillageSendOnEnter,
-  setVillageSetting,
   setVillageSpriteCardFlipEnabled,
   setVillageSpriteVariantsEnabled,
   setVillageWorldName,
@@ -158,7 +158,7 @@ export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
       let report: LoreInspection | undefined;
       await readVillageLore(
         state.selectedLorebookIds,
-        [state.setting, state.worldName, ...state.worldFacts].join("\n"),
+        [state.setting, state.worldName, ...currentVillageCircumstances(state)].join("\n"),
         undefined,
         state.loreTokenBudget,
         {
@@ -230,6 +230,10 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
   }>("/settings", { bodyLimit: SETTINGS_BODY_LIMIT }, async (request, reply) => {
     try {
       const body = request.body ?? {};
+      if (body.venues !== undefined || body.setting !== undefined)
+        throw badRequest(
+          "Use Founding to define the starting community, Projects for physical changes, or REPAIR to correct saved facts.",
+        );
       if (body.townMapImage !== undefined || body.townMapView !== undefined)
         throw conflict("Edit the village map in World Configuration.");
       let snapshot = await buildVillageSnapshot();
@@ -254,7 +258,10 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
         snapshot = await setVillagePlayer({ personaId: body.playerPersonaId });
       }
       if (body.worldName !== undefined) snapshot = await setVillageWorldName(body.worldName);
-      if (body.setting !== undefined) snapshot = await setVillageSetting(body.setting);
+      if (body.setting !== undefined)
+        throw badRequest(
+          "Use REPAIR to correct the local geography. Physical changes belong to gameplay and Projects.",
+        );
       if (body.backgroundPace !== undefined || body.storyPace !== undefined)
         snapshot = await setVillageBackgroundPace(body.backgroundPace ?? body.storyPace);
       if (body.narrativeConsequence !== undefined)
@@ -267,12 +274,6 @@ export function registerVillageSettingsRoutes(engine: FastifyInstance) {
       if (body.characterSpeechColors !== undefined)
         snapshot = await setVillageCharacterSpeechColors(body.characterSpeechColors);
       if (body.homeBuildingNames !== undefined) snapshot = await setVillageHomeBuildingNames(body.homeBuildingNames);
-      // Every place in the village in one list, the houses included: what the
-      // panel edits and what the map places are the same records, so there is
-      // one way in rather than a list of names and a list of pins that each
-      // describe half a place.
-      if (body.venues !== undefined)
-        snapshot = await setVillageVenues(body.venues, body.venueScope === "homes" ? "homes" : "all");
       return snapshot;
     } catch (error) {
       return fail(reply, error, "saving the village settings");

@@ -8,7 +8,9 @@ export type VenueRequestsPagePorts = {
   readonly busy: boolean;
   readonly generateRequestDescription: (entry: VenueRequest, draft: VenueRequest["venueDraft"]) => Promise<void>;
   readonly completeResidenceMove: (entry: { characterId: string }) => Promise<void>;
-  readonly decideResidenceMove: (entry: { characterId: string }, approved: boolean) => Promise<void>;
+  readonly decideResidenceMove: ReturnType<
+    typeof import("./request-commands.js").useVenueRequestCommands
+  >["decideResidenceMove"];
   readonly decideVenueRequest: (entry: VenueRequest, approved: boolean) => Promise<void>;
   readonly nameOfCharacter: (characterId: string | null) => string;
   readonly requestEdits: Record<string, VenueRequest["venueDraft"]>;

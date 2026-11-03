@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
@@ -73,7 +74,8 @@ world.villagers = people.map(({ id, name }) => ({
   ingestSchedule: false,
 })) as typeof world.villagers;
 world.venues = [
-  {
+  venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: "harbour",
     name: "The Harbour Terrace",
     classes: ["other"],
@@ -102,9 +104,24 @@ world.venues = [
         kind: "public",
         connectedTo: ["terrace", "bedroom"],
       },
-      { ...defaultVenueSpace("other"), id: "bedroom", name: "Bedroom", kind: "restricted", connectedTo: ["kitchen"] },
+      {
+        ...defaultVenueSpace("other"),
+        id: "bedroom",
+        name: "Bedroom",
+        kind: "restricted",
+        connectedTo: ["kitchen"],
+        access: {
+          mode: "permission-required",
+          managerIds: ["distant"],
+          memberIds: ["distant"],
+          memberRoles: [],
+          inviterIds: [],
+          visitorHours: "always",
+          accompanied: false,
+        },
+      },
     ],
-  },
+  }),
 ] as typeof world.venues;
 const village = coerceVillageState(world);
 const scene = coerceSession({
@@ -418,6 +435,19 @@ async function turn(
     ...effects,
     segments,
   };
+  const currentScene = await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+  assert.equal(currentScene.statusCode, 200, currentScene.body);
+  if (id === "current-distant-call") {
+    assert.equal(
+      state().sceneAttendance.occupants.find((person) => person.characterId === "distant").zoneId,
+      "bedroom",
+    );
+    assert.equal(
+      state().accompanying?.some((person) => person.characterId === "distant") ?? false,
+      false,
+      "A legally present distant speaker has not exited to Entrance",
+    );
+  }
   const expectedCalls = state().semanticVersion === 2 ? 2 : 1;
   const payload = {
     sessionId: scene.id,
@@ -425,7 +455,7 @@ async function turn(
     mode: "chat",
     targetId: "",
     message,
-    expectedSceneRevision: state().sceneRevision,
+    expectedSceneRevision: currentScene.json().session.sceneRevision,
     ...extra,
   };
   const before = modelCalls;
@@ -1279,6 +1309,7 @@ try {
   const canonicalVenue = records.get("villages-village").data.venues[0];
   initializeVenueAccess(canonicalVenue);
   canonicalVenue.access.managerIds = ["aqua"];
+  canonicalVenue.zones.find((zone) => zone.id === "bedroom").access.inviterIds = ["aqua"];
   {
     const retained = clone(records),
       oldIntent = semanticIntentAnswer,
@@ -1355,12 +1386,20 @@ try {
         records.clear();
         for (const [id, row] of clone(retained)) records.set(id, row);
         const legacyVenue = records.get("villages-village").data.venues[0];
-        delete legacyVenue.access;
-        legacyVenue.classes = ["residence"];
+        legacyVenue.classes = ["residence", "other"];
         legacyVenue.residentIds = ["aqua"];
         const legacyRoom = legacyVenue.zones.find((zone: any) => zone.id === "kitchen");
         legacyRoom.kind = "shared-residence";
         legacyRoom.venueClass = "residence";
+        legacyRoom.access = {
+          mode: "permission-required",
+          managerIds: ["aqua"],
+          memberIds: ["aqua"],
+          memberRoles: ["residents"],
+          inviterIds: [],
+          visitorHours: "always",
+          accompanied: false,
+        };
         const quote = timing === "now" ? "Come into the kitchen." : "Visit the kitchen tomorrow.";
         const check = {
           id: "retained-invitation",
@@ -1391,6 +1430,7 @@ try {
           invitationSignal: {
             residentId: "aqua",
             venueId: "harbour",
+            accessRevision: legacyVenue.access.revision,
             zoneId: "kitchen",
             zoneLabel: "Kitchen",
             scope: "shared",
@@ -1454,20 +1494,12 @@ try {
         });
         assert.equal(replay.statusCode, 200, replay.body);
         assert.equal(modelCalls, beforeReplay, "Retained complete greeting applies without dispatch");
-        assert.equal(
-          state().entryOffers?.some((offer: any) => offer.zoneId === "kitchen") ?? false,
-          source === "system" && timing === "now",
-        );
-        assert.equal(
-          state().zoneGrants?.some((grant: any) => grant.zoneId === "kitchen") ?? false,
-          source === "system" && timing === "now",
-        );
-        assert.equal(
-          records
-            .get("villages-village")
-            .data.venues[0].playerInvitations?.some((invite: any) => invite.quote === quote) ?? false,
-          source === "system" && timing === "later",
-        );
+        const spoken = state().lines.find((line) => line.content === quote);
+        const grant = records
+          .get("villages-village")
+          .data.venues[0].access.permissions.find((permission) => permission.sourceLineIds.includes(spoken.id));
+        assert.equal(!!grant, source === "system", "Only retained System authority grants canonical invitation");
+        if (grant) assert.equal(grant.sceneId, timing === "now" ? scene.id : null);
       }
     records.clear();
     for (const [id, row] of retained) records.set(id, row);

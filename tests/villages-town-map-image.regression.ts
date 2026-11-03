@@ -21,17 +21,9 @@ async function main() {
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
   const { DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } =
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
-  const {
-    TOWN_MAP_EXPECTED_HEIGHT,
-    TOWN_MAP_EXPECTED_WIDTH,
-    MAX_TOWN_MAP_IMAGE_LENGTH,
-    villageCurrentSetting,
-    villageFoundingSetting,
-    villageRelevantOrigin,
-  } = await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
-  const { defaultVillageState, coerceVillageState } = await import(
-    pathToFileURL(join(services, "domain/decoding/village-codec.ts")).href
-  );
+  const { TOWN_MAP_EXPECTED_HEIGHT, TOWN_MAP_EXPECTED_WIDTH, MAX_TOWN_MAP_IMAGE_LENGTH, villageCurrentSetting } =
+    await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
+  const { defaultVillageState } = await import(pathToFileURL(join(services, "domain/decoding/village-codec.ts")).href);
   const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 
   for (const [width, height] of [
@@ -59,70 +51,13 @@ async function main() {
   assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1440);
   assert.equal(MAX_TOWN_MAP_IMAGE_LENGTH, 8_000_000);
   const founded = {
-    setting: "Misty cliffs",
-    worldFacts: ["The cliffs shelter seabirds"],
-    foundingReason: "rebuild",
-    foundingDetails: "Survivors gathered after the flood in the early days.",
-    foundingGuidance: "Favor quiet solidarity.",
-    scenarioImprint: {
-      origin: "Survivors founded the village after a flood.",
-      worldFacts: ["The cliffs shelter seabirds"],
-      openingConditions: ["The old footbridge needs repair"],
-      visualCues: ["Reused timber"],
-    },
-  };
-  assert.match(villageCurrentSetting(founded), /^Misty cliffs\n/);
-  assert.match(villageCurrentSetting(founded), /Current world facts:\n- The cliffs shelter seabirds/);
-  assert.doesNotMatch(villageCurrentSetting(founded), /early days|flood|footbridge|solidarity/);
-  assert.match(
-    villageFoundingSetting(founded),
-    /Starting conditions \(at founding only\): The old footbridge needs repair/,
-  );
-  assert.match(villageFoundingSetting(founded), /Shared starting circumstances.*Survivors gathered after the flood/);
-  assert.match(villageFoundingSetting(founded), /Founding visual cues: Reused timber/);
-  assert.doesNotMatch(villageFoundingSetting(founded), /quiet solidarity|Player-authored creative preferences/);
-  const openBeginning = {
-    ...founded,
-    foundingReason: "none",
-    foundingDetails: "Friends gather with tools to build a new home.",
-    foundingGuidance: "",
-    scenarioImprint: { origin: "", worldFacts: [], openingConditions: ["A temporary camp"], visualCues: [] },
-  };
-  assert.match(villageFoundingSetting(openBeginning), /Shared starting circumstances.*Friends gather with tools/);
-  assert.doesNotMatch(villageCurrentSetting(openBeginning), /temporary camp|Friends gather/);
-  const freshBeginning = {
-    setting: "A fishing village above the sea",
-    worldFacts: [],
-    foundingReason: "none",
-    foundingDetails: "On Day 1, storm-damaged boats reach the cove.",
-    foundingGuidance: "",
-    scenarioImprint: null,
-  };
-  assert.match(villageFoundingSetting(freshBeginning), /Shared starting circumstances.*storm-damaged boats/);
-  assert.doesNotMatch(villageFoundingSetting(freshBeginning), /Earlier background/);
-  assert.doesNotMatch(villageCurrentSetting(freshBeginning), /storm-damaged/);
-  assert.match(villageRelevantOrigin(freshBeginning, "How did this village begin?"), /storm-damaged boats/);
-  assert.equal(villageRelevantOrigin(founded, "What is for dinner?"), "");
-  assert.match(
-    villageRelevantOrigin(founded, "Who founded this village?"),
-    /Survivors founded the village after a flood/,
-  );
-  assert.equal(
-    villageRelevantOrigin({ setting: "Misty cliffs", foundingReason: "none", foundingDetails: "" }, "history"),
-    "",
-  );
-  const legacy = coerceVillageState({
     ...defaultVillageState(),
-
-    wishSystemVersion: 3,
     setting: "Misty cliffs",
-    foundingReason: "rebuild",
-    foundingDetails: "After the flood",
-  });
-  assert.equal(legacy.scenarioImprint, null);
-  assert.deepEqual(legacy.worldFacts, []);
-  assert.match(villageCurrentSetting(legacy), /^Misty cliffs\n/);
-  assert.match(villageRelevantOrigin(legacy, "Tell me the village history"), /After the flood/);
+    worldRules: "The sun never sets",
+  };
+  assert.match(villageCurrentSetting(founded), /Misty cliffs/);
+  assert.match(villageCurrentSetting(founded), /Standing world rules.*The sun never sets/s);
+  assert.doesNotMatch(villageCurrentSetting(founded), /Survivors gathered/);
   assert.deepEqual(defaultVillageState().maps, []);
   assert.match(
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
@@ -172,8 +107,8 @@ async function main() {
     assert.match(prompt, /Map details take priority over conflicting Village description/);
     assert.ok(prompt.includes("Village description: A harbor town with canals"));
   }
-  const imprintMap = buildTownMapPrompt(undefined, "Misty cliffs", "", founded.scenarioImprint);
-  assert.match(imprintMap, /Reused timber/);
+  const imprintMap = buildTownMapPrompt(undefined, "Misty cliffs", "", "Restored timber");
+  assert.match(imprintMap, /Restored timber/);
   assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, labels/);
   assert.match(
     DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
@@ -266,7 +201,13 @@ async function main() {
       loreTokenBudget: 0,
       connectionId: "fixture-image",
     };
-    const expectedPrompt = buildTownMapPrompt(input.structure, input.setting, "", null, input.sceneryArtStyle.trim());
+    const expectedPrompt = buildTownMapPrompt(
+      input.structure,
+      input.setting,
+      "",
+      undefined,
+      input.sceneryArtStyle.trim(),
+    );
     assert.ok(expectedPrompt.length > 3000 && expectedPrompt.length <= 4000);
     await assert.rejects(
       generateVillageTownMap({ ...input, structure: "x".repeat(1500), sceneryArtStyle: "s".repeat(600) }),
@@ -364,7 +305,7 @@ async function main() {
     releaseRuntime();
   }
   const client = await clientImplementation();
-  for (const step of ["People", "Place", "Venues", "Review"]) {
+  for (const step of ["Setting", "People", "Venues and Map", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/maps/generate"'));

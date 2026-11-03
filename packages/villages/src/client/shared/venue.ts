@@ -1,22 +1,16 @@
 import type { VenueClass, VillageVenue } from "../../shared/contracts/village.js";
 
-export function isHouse(place: Pick<VillageVenue, "occupancy" | "classes">): boolean {
-  return (
-    place.classes?.includes("residence") ??
-    (place.occupancy.playerHome || place.occupancy.residentCharacterId !== null || place.occupancy.homeKind !== null)
-  );
+export function isHouse(place: Pick<VillageVenue, "classes">): boolean {
+  return place.classes?.includes("residence") ?? false;
 }
 export function venueClassesFor(place: VillageVenue): VenueClass[] {
-  return place.classes?.length ? place.classes : isHouse(place) ? ["residence"] : ["other"];
+  return place.classes?.length ? place.classes : ["other"];
 }
 export function venueCapacityFor(place: VillageVenue): number {
   return Math.min(4, place.residenceCapacity ?? 1);
 }
 export function venueAssignedCountFor(place: VillageVenue): number {
-  return (
-    (place.residentIds?.length ?? Number(Boolean(place.occupancy.residentCharacterId))) +
-    Number(place.occupancy.playerHome)
-  );
+  return (place.residentIds?.length ?? 0) + Number(place.occupancy.playerHome);
 }
 export function venueSpaceFor(
   place: VillageVenue,

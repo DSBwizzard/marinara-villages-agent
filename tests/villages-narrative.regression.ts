@@ -4,7 +4,7 @@ import {
   defaultVillageState,
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import {
   synchronizeVenueZones,
   venueZones,
@@ -88,6 +88,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     severity: "gentle",
     occurrence: "Wind loosens the hall sign.",
     situation: {
+      scope: "zone",
       id: null,
       expectedRevision: 0,
       title: "Loose sign",

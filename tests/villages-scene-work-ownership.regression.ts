@@ -10,7 +10,7 @@ import { createExchangeProcessing } from "../packages/villages/src/server/domain
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
@@ -794,7 +794,10 @@ console.log(
 {
   let worldWrites = 0;
   const pending = commandFixture("Pending access", ({ scene, world, stamp }) => {
-    const home = venueDraft({ name: "Home", description: "A small home", classes: ["residence"] }, null);
+    const home = venueDraft(
+      { name: "Home", description: "A small home", classes: ["residence"], residentIds: ["ada"] },
+      null,
+    );
     home.id = scene.placeId;
     home.residentIds = ["ada"];
     world.venues = [home];
@@ -832,8 +835,8 @@ console.log(
     assert.equal(worldWrites, 0);
     assert(pending.scene.pendingRoomQuestions?.some((question) => question.includes("lacks validated")));
     assert.equal(pending.world.venues[0].playerInvitations?.length ?? 0, 0);
-    await effects.recordSpokenInvitation(pending.scene, { ...invitation, interpretationVersion: 1 });
-    assert.equal(pending.world.venues[0].playerInvitations?.length, 1, "validated saved invitations still replay");
+    await effects.recordSpokenInvitation(pending.scene, { ...invitation, interpretationVersion: 1, accessRevision: 0 });
+    assert.equal(pending.world.venues[0].access!.permissions.length, 1, "validated saved invitations still replay");
     const before = worldWrites;
     await effects.applySavedAccessEvents(pending.scene, {
       ...pending.scene.submissions[0],

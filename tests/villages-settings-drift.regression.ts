@@ -4,7 +4,7 @@ import type { VillageSettings } from "../packages/villages/src/shared/contracts/
 import type { VillageVenueZone } from "../packages/villages/src/server/domain/models/world.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -96,11 +96,6 @@ const publicFields = [
   "characterSpeechColors",
   "defaultHomeBuilding",
   "defaultPromptKnowledge",
-  "foundingDetails",
-  "foundingDetailsMaxLength",
-  "foundingGuidance",
-  "foundingGuidanceMaxLength",
-  "foundingReason",
   "homeBuildingNames",
   "homeBuildings",
   "loreTokenBudget",
@@ -120,7 +115,8 @@ const publicFields = [
   "playerPersonaName",
   "promptBoxMaxLength",
   "promptKnowledge",
-  "scenarioImprint",
+  "communityVenueId",
+  "circumstances",
   "sceneryArtStyle",
   "sceneryStyleProfileId",
   "selectedLorebookIds",
@@ -151,7 +147,7 @@ const publicFields = [
   "venues",
   "villageGalleryFolderName",
   "villageNameMaxLength",
-  "worldFacts",
+  "worldRules",
   "worldName",
 ] satisfies (keyof VillageSettings)[];
 
@@ -173,7 +169,7 @@ try {
   const initial = await request("GET");
   assert.equal(initial.worldName, "");
   assert.equal(initial.playerBackground, "");
-  assert.equal(initial.scenarioImprint, null);
+  assert.equal(initial.communityVenueId, "");
   assert.equal(initial.sceneryStyleProfileId, null);
   assert.equal(initial.narrativeConsequence, "gentle");
   assert.equal(initial.playerPersonaName, "Robin Hale");
@@ -211,12 +207,7 @@ try {
   assert.equal(legacy.playerPersonaMissing, true);
 
   state.playerBackground = "A cartographer";
-  state.scenarioImprint = {
-    origin: "Arrived by boat",
-    worldFacts: ["An island"],
-    openingConditions: ["A storm"],
-    visualCues: ["A lighthouse"],
-  };
+  state.worldRules = "Standing rules";
   visible.preparation = { status: "failed", error: "Drawing unavailable", claimId: "PRIVATE-FAILED-CLAIM", attempt: 3 };
   const updated = await request("PATCH", {
     worldName: "Harbor",
@@ -237,7 +228,7 @@ try {
   assert.equal(updated.personalizeVenueImagesByDefault, false);
   assert.equal(updated.useVisualLoreByDefault, false);
   assert.equal(updated.playerBackground, "A cartographer");
-  assert.deepEqual(updated.scenarioImprint, state.scenarioImprint);
+  assert.equal(updated.worldRules, state.worldRules);
   assert.deepEqual(
     updated.venues[0].zones!.find((zone) => zone.id === "public")!.preparation,
     { status: "failed", error: "Drawing unavailable" },

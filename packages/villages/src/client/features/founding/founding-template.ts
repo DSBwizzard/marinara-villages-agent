@@ -12,22 +12,28 @@ export type InactiveFoundingZones = {
 
 export function startingZone(venue: VillageVenue, personal: boolean) {
   const community = venue.category === "public-center";
-  const role = community ? "community" : "residence";
-  const ownerId = personal ? (venue.occupancy.playerHome ? "player" : (venue.occupancy.residentCharacterId ?? "")) : "";
+  const role = venue.classes?.[0] ?? (community ? "community" : "residence");
+  const ownerId = personal ? (venue.occupancy.playerHome ? "player" : (venue.residentIds?.[0] ?? "")) : "";
   return {
     ...personalSpaceDraft(),
     id: personal ? "private:base" : "common:base",
     name: personal ? "Private Space" : "Common Space",
-    purpose: personal ? "Rest and personal activities" : community ? "Community gatherings" : "Everyday activities",
+    purpose: personal
+      ? "Rest and personal activities"
+      : community
+        ? "Community gatherings"
+        : role === "residence"
+          ? "Daily life and sleeping"
+          : "Everyday activities",
     description: personal
-      ? venue.occupancy.playerHome
-        ? "A private space for rest."
-        : ""
+      ? "A private space for rest."
       : community
         ? "A shared space for the community."
-        : "A shared space in the residence.",
+        : role === "residence"
+          ? "A shared space in the residence."
+          : "A shared space in this Venue.",
     ownerId,
-    venueClass: role as "community" | "residence",
+    venueClass: role,
     access: {
       ...draftZonePolicy(venue, { ownerId, venueClass: role }, personal),
       ...(personal && community ? { managerIds: ["player"], memberIds: ["player"] } : {}),
@@ -49,9 +55,7 @@ export function addFoundingZone(venue: VillageVenue, personal: boolean, id: stri
   const added = {
     ...startingZone(venue, personal),
     id,
-    name: "New Zone",
-    purpose: "",
-    description: "",
+    name: personal ? "Private Zone" : "New Zone",
     connectedTo: ["exterior"],
   };
   const spaces = personal ? common : [...common, added];

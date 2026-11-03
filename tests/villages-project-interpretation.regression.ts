@@ -128,7 +128,7 @@ home.zones!.push({
   connectedTo: ["common"],
 });
 f.state().venues.push(home);
-const change = readRenovationChange(f.state(), home, { detail: "Room for another resident.", capacity: 3 });
+const change = readRenovationChange(f.state(), home, { detail: "Room for another resident.", capacity: 3 }, new Date());
 assert.equal(change.zones!.find((zone) => zone.id === "bedroom")!.description, "");
 assert.equal(change.zones!.find((zone) => zone.id === "bedroom")!.roomSpecification, undefined);
 assert.equal(change.zones!.find((zone) => zone.id === "bedroom")!.preserveDescription, true);

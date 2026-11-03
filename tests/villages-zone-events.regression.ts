@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -27,7 +28,8 @@ const world = defaultVillageState();
 world.seed = "zone-events";
 world.foundedAt = world.setupAt = at;
 world.venues = [
-  {
+  venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: "house",
     name: "House",
     classes: ["other"],
@@ -36,7 +38,7 @@ world.venues = [
       { ...defaultVenueSpace("other"), id: "hall", kind: "public", name: "Hall", connectedTo: ["exterior", "bedroom"] },
       { ...defaultVenueSpace("other"), id: "bedroom", kind: "restricted", name: "Bedroom", connectedTo: ["hall"] },
     ],
-  },
+  }),
 ] as typeof world.venues;
 world.villagers = ["local", "near", "far"].map((id) => ({
   characterId: id,

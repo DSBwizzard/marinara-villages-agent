@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { withSettingsOwners, settingsJobId } from "./fixtures/villages-settings-owner.fixture.js";
@@ -108,7 +109,15 @@ const state = coerceVillageState({
   wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",
-  venues: [{ id: "park", name: "Park", classes: ["community"], form: "Park" }],
+  venues: [
+    venueFixture({
+      residentIds: [null].filter((id) => typeof id === "string" && !!id),
+      id: "park",
+      name: "Park",
+      classes: ["community"],
+      form: "Park",
+    }),
+  ],
   villagers: [
     {
       characterId: "a",

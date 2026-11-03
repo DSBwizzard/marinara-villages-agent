@@ -5,8 +5,6 @@ import type { SetupVenueDraft } from "../../shared/types.js";
 
 import type { FoundingState } from "./useFoundingState.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
-import { personalSpaceDraft } from "./villages-founding-editor";
-import { draftZonePolicy } from "./villages-founding-zones";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { quickStartIdentity, quickStartTemplates, replaceQuickStartVenue } from "./quick-start-drafts.js";
@@ -38,14 +36,15 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupName?: FoundingState["setupName"];
-  readonly setupWorldFacts?: FoundingState["setupWorldFacts"];
+  readonly setupContext?: FoundingState["setupContext"];
 
   readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
   readonly setupVenues: FoundingState["setupVenues"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
 }) {
   return async (options?: { quickStart?: boolean; venueId?: string }) => {
-    options ??= {};
+    const pending = ports.setupWorkspace?.suggestionRequest;
+    options = pending ? { quickStart: pending.quickStart, venueId: pending.venueId } : (options ?? {});
     const {
       personaDraft,
       selectedResidentAdmissions,
@@ -70,35 +69,47 @@ export function createFoundingSuggestSetupVenues(ports: {
     setupSuggestionsClaim.current = true;
     const replacing = !!options.quickStart;
     const identity = quickStartIdentity(setupVenues);
-    const source = replacing ? JSON.stringify([setupBeginningSourceKey, identity]) : setupBeginningSourceKey;
+    const source = replacing
+      ? JSON.stringify([setupBeginningSourceKey, identity])
+      : options.venueId
+        ? JSON.stringify([setupBeginningSourceKey, options.venueId])
+        : setupBeginningSourceKey;
     const rows = replacing ? quickStartTemplates(setupVenues) : setupVenues;
     setSetupSuggestionsBusy(true);
     setSetupProblem("");
     try {
-      const result = await requestFoundingSuggestions({ ...ports, setupBeginningSourceKey: source }, options, {
-        setting: setupSetting,
-        worldName: ports.setupWorldName,
-        ...(options?.quickStart ? { mode: "quick-start", targetVenueId: options.venueId } : {}),
-        villageName: ports.setupName,
-        worldFacts: ports.setupWorldFacts,
-        scenarioImprint: null,
-        foundingDetails: "",
-        playerPersonaId: personaDraft,
-        selectedLorebookIds: setupLorebookDraft,
-        loreTokenBudget: setupLoreTokenBudgetDraft,
-        foundingResidentAdmissions: selectedResidentAdmissions,
-        venues: rows.map((row) => ({
+      const requestRows = (rows: typeof setupVenues) =>
+        rows.map((row) => ({
           id: row.id,
           name: replacing ? "" : row.name,
           form: replacing ? "" : row.form,
           description: replacing ? "" : row.description,
           spaceDescription: replacing ? "" : (row.spaces?.[0]?.description ?? ""),
-          venueClass: row.category === "public-center" ? "community" : "residence",
-          residentCharacterId: row.occupancy.residentCharacterId ?? "",
-        })),
-      });
+          venueClass: row.classes?.[0] ?? "other",
+          residentIds: row.residentIds ?? [],
+          playerHome: row.occupancy.playerHome,
+        }));
+      const input = {
+        setting: setupSetting,
+        worldName: ports.setupWorldName,
+        ...(options.quickStart ? { mode: "quick-start" } : {}),
+        targetVenueId: options.venueId,
+        villageName: ports.setupName,
+        context: ports.setupContext,
+        communityVenueId: ports.setupContext?.communityVenueId,
+        playerPersonaId: personaDraft,
+        selectedLorebookIds: setupLorebookDraft,
+        loreTokenBudget: setupLoreTokenBudgetDraft,
+        foundingResidentAdmissions: selectedResidentAdmissions,
+        venues: requestRows(rows),
+      };
+      const result = await requestFoundingSuggestions({ ...ports, setupBeginningSourceKey: source }, options, input);
+
       if (
         setupBeginningSourceKeyRef.current !== setupBeginningSourceKey ||
+        (!replacing &&
+          !!options.venueId &&
+          JSON.stringify(input.venues) !== JSON.stringify(requestRows(setupVenuesRef.current))) ||
         (replacing && quickStartIdentity(setupVenuesRef.current) !== identity) ||
         (!replacing && rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id)))
       )
@@ -108,11 +119,11 @@ export function createFoundingSuggestSetupVenues(ports: {
       if (replacing) {
         if (!options.quickStart || options.venueId)
           throw new Error(
-            "The older suggestion attempt was checked. Press Quick Start again to generate all template Venues.",
+            "The older suggestion attempt was checked. Use Suggest Venues again to generate all template Venues.",
           );
         const next = rows.map((row) => {
           const proposal = result.venues.find((item) => item.id === row.id);
-          if (!proposal) throw new Error("Quick Start did not return every template Venue. Your draft is unchanged.");
+          if (!proposal) throw new Error("Suggestions did not return every template Venue. Your draft is unchanged.");
           return replaceQuickStartVenue(row, proposal);
         });
         setSetupVenues(arrangeQuickStartVenues(next, true));
@@ -123,96 +134,32 @@ export function createFoundingSuggestSetupVenues(ports: {
           paused: false,
           sections: {},
           zones: {},
-          inactive: undefined,
+          inactive: {},
         }));
         setSetupSuggestionsKey(setupBeginningSourceKey);
         return;
       }
-      if (options.quickStart) throw new Error("Use Quick Start to confirm replacing Venue drafts.");
-      setSetupVenues((currentRows) => {
-        const nextRows = currentRows.map((row) => {
+      if (options.quickStart) throw new Error("Use Suggest Venues to confirm replacing Venue drafts.");
+      setSetupVenues((currentRows) =>
+        currentRows.map((row) => {
+          if (options.venueId && row.id !== options.venueId) return row;
           const proposal = result.venues.find((item) => item.id === row.id);
           const before = rows.find((item) => item.id === row.id);
           if (
             !proposal ||
             !before ||
             setupImageTargetRef.current?.venueId === row.id ||
-            JSON.stringify(row.occupancy) !== JSON.stringify(before.occupancy)
+            quickStartIdentity([row]) !== quickStartIdentity([before])
           )
             return row;
           const changed: SetupVenueDraft = { ...row };
+          // Explicit selected-Venue suggestions change text only; room and access records remain authoritative.
           for (const key of ["name", "venueType", "form", "description"] as const)
-            if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
+            if ((options.venueId || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
-          const layoutEdited = ["layout", "spaces", "privateSpaces"].some((key) =>
-            setupAuthoredFieldsRef.current[row.id]?.includes(key),
-          );
-          if (
-            !layoutEdited &&
-            ![...(row.spaces ?? []), ...(row.privateSpaces ?? [])].some(
-              (zone) => zone.image || !["common:base", "private:base"].includes(zone.id),
-            ) &&
-            JSON.stringify(row.spaces) === JSON.stringify(before.spaces) &&
-            JSON.stringify(row.privateSpaces) === JSON.stringify(before.privateSpaces) &&
-            row.layout === before.layout
-          ) {
-            const role = row.category === "public-center" ? "community" : "residence";
-            changed.layout = proposal.layout;
-            changed.spaces =
-              proposal.layout === "common" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "common:base",
-                      connectedTo:
-                        row.spaces?.find((zone) => zone.id === "common:base")?.connectedTo ??
-                        proposal.connections
-                          ?.filter((edge) => edge.includes("common:base"))
-                          .map((edge) => (edge[0] === "common:base" ? edge[1] : edge[0])),
-                      ownerId: "",
-                      venueClass: role,
-                      name: proposal.commonName,
-                      purpose:
-                        proposal.commonPurpose ||
-                        (role === "residence" ? "Everyday home activities" : "Community gatherings"),
-                      access: draftZonePolicy(row, { venueClass: role }),
-                      description: proposal.commonDescription,
-                    },
-                  ]
-                : [];
-            changed.privateSpaces =
-              proposal.layout === "private" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "private:base",
-                      connectedTo:
-                        row.privateSpaces?.find((zone) => zone.id === "private:base")?.connectedTo ??
-                        proposal.connections
-                          ?.filter((edge) => edge.includes("private:base"))
-                          .map((edge) => (edge[0] === "private:base" ? edge[1] : edge[0])),
-                      venueClass: role,
-                      ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
-                      name: proposal.privateName,
-                      purpose: proposal.privatePurpose,
-                      description: row.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
-                      access: draftZonePolicy(
-                        row,
-                        {
-                          venueClass: role,
-                          ownerId: row.occupancy.playerHome ? "player" : row.occupancy.residentCharacterId || "",
-                        },
-                        true,
-                      ),
-                      controllerIds: role === "community" ? ["player"] : undefined,
-                    },
-                  ]
-                : [];
-          }
           return changed;
-        });
-        return nextRows;
-      });
+        }),
+      );
       if (!options?.venueId) setSetupSuggestionsKey(source);
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
@@ -288,11 +235,11 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 4 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep || step === 4) {
+    if (step > setupStep || step === 3) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
@@ -318,7 +265,7 @@ export function createFoundingGotoSetupStep(ports: {
         connectionSetupProblem ||
         (step >= 2 ? peopleProblem : "") ||
         (step >= 3 ? mapProblem : "") ||
-        (step >= 4 ? setupBlocker(step === 4) : "");
+        (step >= 3 ? setupBlocker(step === 3) : "");
       if (problem) {
         if (placeProblem || problem === connectionSetupProblem) setSetupStep(0);
         else if (step >= 2 && peopleProblem) setSetupStep(1);
@@ -328,7 +275,7 @@ export function createFoundingGotoSetupStep(ports: {
       }
     }
     setSetupProblem("");
-    if (step === 4) setSetupMapReviewed(true);
+    if (step === 3) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();

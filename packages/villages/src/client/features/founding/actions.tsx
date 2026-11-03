@@ -1,4 +1,3 @@
-import { useConfirmation } from "../../shared/confirmation.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import {
   MAP_UPLOAD_FALLBACK,
@@ -11,7 +10,7 @@ import type { SetupMapRequest, VillageSnapshot, VillageVenue } from "../../../sh
 import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH, ELEMENT_TAG } from "../../shared/constants.js";
-import { destinationPlaces, freshRowKey, measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
+import { measureImage, readFileAsDataUrl } from "../../shared/presentation.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
 import { defaultView } from "../exploration/MapStage.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
@@ -32,50 +31,6 @@ export function useUpdateSetupMapRequest(ports: {
     },
     [setSetupMapRequest, setupMapRequestRef],
   );
-}
-
-export function useSuggestPlaces(ports: {
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setSettingsError: React.Dispatch<SetStateAction<string>>;
-  setVenuesDraft: React.Dispatch<SetStateAction<VillageVenue[]>>;
-  snapshot: VillageSnapshot;
-}) {
-  const confirmVillages = useConfirmation(ports.snapshot?.settings.maps?.[0]?.id);
-  const { setBusy, setSettingsError, setVenuesDraft, snapshot } = ports;
-  return useCallback(async () => {
-    if (
-      snapshot &&
-      destinationPlaces(snapshot.settings.venues).length > 0 &&
-      !(await confirmVillages(
-        "Replace the current places with new suggestions? This removes places you created or approved.",
-      ))
-    )
-      return;
-    setBusy(true);
-    setSettingsError("");
-    try {
-      const next = await request<{ places: Array<{ name: string }> }>("/bootstrap", {
-        method: "POST",
-      });
-      // Suggestions stay in the editor until each description has been reviewed and saved.
-      setVenuesDraft(
-        next.places.map((place): VillageVenue => ({
-          id: freshRowKey(),
-          name: place.name,
-          description: "",
-          category: "public",
-          presentation: { mapId: "", image: null, x: null, y: null },
-          occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-          capabilities: [],
-          state: { revision: 0, updatedAt: "", recent: null },
-        })),
-      );
-    } catch (cause) {
-      setSettingsError(messageFrom(cause, "The village did not suggest any places."));
-    } finally {
-      setBusy(false);
-    }
-  }, [confirmVillages, setBusy, setSettingsError, setVenuesDraft, snapshot]);
 }
 
 export function usePickSetupTownMap(ports: {
@@ -177,8 +132,7 @@ export function usePlaceSetupPin(ports: {
       const rows = setupVenuesRef.current;
       const target = draggedVenueId
         ? rows.find((row) => row.id === draggedVenueId)
-        : (rows.find((row) => row.id === movingSetupVenueId) ??
-          rows.find((row) => row.presentation.x === null || row.presentation.y === null));
+        : rows.find((row) => row.id === movingSetupVenueId);
       if (!target || setupEditorOpen || (setupWorkspace.paused && !movingSetupVenueId && !draggedVenueId)) return;
       if (!setupMapSrc || setupMapBusy) {
         setSetupPlacementError("Wait for the selected map before moving Venues.");
@@ -192,8 +146,7 @@ export function usePlaceSetupPin(ports: {
         row.id === target.id ? { ...row, presentation: { ...row.presentation, x, y } } : row,
       );
       setSetupVenues(next);
-      if (draggedVenueId || (movingSetupVenueId && target.presentation.x !== null && target.presentation.y !== null))
-        setSetupWorkspace((state) => ({ ...state, paused: true }));
+      setSetupWorkspace((state) => ({ ...state, paused: true }));
       setMovingSetupVenueId(null);
       setSetupPlacementError("");
       setSetupMapReviewed(false);
@@ -304,7 +257,7 @@ export function useOpenSetup(ports: {
   setSetupStep: React.Dispatch<SetStateAction<number>>;
   setSetupVenues: React.Dispatch<SetStateAction<VillageVenue[]>>;
   setSetupWorkspace: React.Dispatch<SetStateAction<FoundingWorkspaceState>>;
-  setSetupWorldFacts: React.Dispatch<SetStateAction<string[]>>;
+  setSetupContext: React.Dispatch<SetStateAction<import("./draft-model.js").FoundingContext>>;
   setVisualLoreDefault: React.Dispatch<SetStateAction<boolean>>;
   updateSetupMapRequest: (value: SetupMapRequest | null) => void;
 }) {
@@ -351,7 +304,7 @@ export function useOpenSetup(ports: {
     setSetupStep,
     setSetupVenues,
     setSetupWorkspace,
-    setSetupWorldFacts,
+    setSetupContext,
     setVisualLoreDefault,
     updateSetupMapRequest,
   } = ports;
@@ -376,7 +329,11 @@ export function useOpenSetup(ports: {
       setSetupSetting(fresh ? "" : (village?.village.setting ?? ""));
       setSetupPlayerBackground(fresh ? "" : (village?.settings.playerBackground ?? ""));
       if (fresh) setSetupResidentAdmissions({});
-      setSetupWorldFacts(fresh ? [] : (village?.settings.worldFacts ?? []));
+      setSetupContext({
+        rules: "",
+        circumstances: [],
+        communityVenueId: "founding-community",
+      });
       const foundingPlaces =
         fresh || !village
           ? []
@@ -384,11 +341,7 @@ export function useOpenSetup(ports: {
               (venue) => venue.classes?.includes("residence") || venue.category === "public-center",
             );
       setSetupVenues(foundingPlaces);
-      setSetupFoundingVillagerIds(
-        foundingPlaces.flatMap((venue) =>
-          venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [],
-        ),
-      );
+      setSetupFoundingVillagerIds(foundingPlaces.flatMap((venue) => venue.residentIds ?? []));
       setSetupEditorOpen(false);
       setSceneryStyle("");
       setSceneryStyleProfileId("");
@@ -458,7 +411,7 @@ export function useOpenSetup(ports: {
       setSetupStep,
       setSetupVenues,
       setSetupWorkspace,
-      setSetupWorldFacts,
+      setSetupContext,
       setSetupWorldName,
       setVisualLoreDefault,
       updateSetupMapRequest,
@@ -467,6 +420,7 @@ export function useOpenSetup(ports: {
 }
 
 export function useFoundVillage(ports: {
+  setupContext: import("./draft-model.js").FoundingContext;
   draftSaveQueue: React.RefObject<Promise<void>>;
   element: HTMLElement;
   flushSetupDraft: () => Promise<void>;
@@ -565,7 +519,7 @@ export function useFoundVillage(ports: {
               ? "exterior-description"
               : "interior-description";
         setSelectedSetupVenueId(incomplete.id);
-        setSetupStep(3);
+        setSetupStep(2);
         window.setTimeout(() => element.querySelector<HTMLElement>(`#${ELEMENT_TAG}-setup-${field}`)?.focus(), 0);
       }
       setSetupProblem(blocker);
@@ -582,11 +536,10 @@ export function useFoundVillage(ports: {
           timeZone: setupTimeZone || snapshot.clock?.timeZone || snapshot.village.timeZone,
           worldName: setupWorldName,
           setting: setupSetting.trim(),
-          foundingReason: "none",
-          foundingDetails: "",
+          worldRules: ports.setupContext.rules,
+          communityVenueId: ports.setupContext.communityVenueId,
           playerBackground: setupPlayerBackground,
-          scenarioImprint: null,
-          worldFacts: [],
+          circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),
           selectedLorebookIds: setupLorebookDraft,
           personalizeVenueImagesByDefault: personalizeHomes,
           useVisualLoreByDefault: visualLoreDefault,
@@ -632,6 +585,7 @@ export function useFoundVillage(ports: {
     setupTimeZone,
     setupWorldName,
     setupSetting,
+    ports.setupContext,
     setupPlayerBackground,
     setupLorebookDraft,
     personalizeHomes,

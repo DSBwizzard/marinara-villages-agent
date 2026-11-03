@@ -5,7 +5,7 @@ import { SpaceConnections } from "../../shared/SpaceConnections.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
-import { OpeningProjects } from "./OpeningProjects.js";
+
 import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
 import { ProjectZones } from "./ProjectZones.js";
 import { projectStyles } from "./project-styles.js";
@@ -60,7 +60,7 @@ export function ProjectsPanel({
   const [selectedTabs, setTabs] = useState<Record<string, Tab>>({});
   const [selectedZones, setZones] = useState<Record<string, string>>({});
   const [detailPages, setDetailPages] = useState<Record<string, string>>({});
-  const [indexView, setIndexView] = useState<"projects" | "history" | "opening">("projects");
+  const [indexView, setIndexView] = useState<"projects" | "history">("projects");
   const [mobileSection, setMobileSection] = useState<"drafts" | "slot1" | "slot2">("drafts");
   const [draftPage, setDraftPage] = useState(0);
   const [historyPage, setHistoryPage] = useState(0);
@@ -181,7 +181,6 @@ export function ProjectsPanel({
   const currentDraftPage = Math.min(draftPage, pages - 1);
   const historyPages = Math.max(1, Math.ceil(history.length / pageSize));
   const currentHistoryPage = Math.min(historyPage, historyPages - 1);
-  const openingAvailable = snapshot.opening?.version === 2 && !["complete", "ended"].includes(snapshot.opening.stage);
   return (
     <div className={P + "-project-desk"}>
       <style>{projectStyles}</style>
@@ -205,11 +204,6 @@ export function ProjectsPanel({
           <>
             <div className="vp-index-tools">
               <div className="vp-actions">
-                {openingAvailable ? (
-                  <button type="button" onClick={() => setIndexView("opening")}>
-                    Opening proposals
-                  </button>
-                ) : null}
                 {history.length ? (
                   <button type="button" onClick={() => setIndexView("history")}>
                     History
@@ -336,15 +330,7 @@ export function ProjectsPanel({
             <button type="button" onClick={() => setIndexView("projects")}>
               ‹ Projects
             </button>
-            {indexView === "opening" && openingAvailable ? (
-              <OpeningProjects
-                snapshot={snapshot}
-                busy={draft.busy}
-                decide={c.openingAction}
-                onPeople={onPeople}
-                pageSize={mobile ? 2 : 4}
-              />
-            ) : null}
+
             {indexView === "history" ? (
               <section className="vp-panel">
                 <h2>History</h2>

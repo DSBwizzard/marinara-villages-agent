@@ -3,6 +3,7 @@ import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { createVillagesClientId } from "../../shared/request-id.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
 import { playerDisplayName } from "../../shared/presentation.js";
 import { venueAssignedCountFor, venueCapacityFor, venueClassesFor } from "../../shared/venue.js";
@@ -40,6 +41,56 @@ function VenueName({ place, controller }: { place: VillageVenue; controller: Ven
       >
         Save name
       </button>
+    </section>
+  );
+}
+
+function CommunityVenueControl({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const current = controller.snapshot.settings.venues.find(
+    (venue) => venue.id === controller.snapshot.settings.communityVenueId,
+  );
+  if (place.id === current?.id)
+    return (
+      <section className={`${ELEMENT_TAG}-venue-section`}>
+        <h2>Community Venue</h2>
+        <p>
+          Public and unowned, with no bans or opening hours. Designate another Venue before changing its use or control.
+        </p>
+      </section>
+    );
+  if (!place.accessView?.canDesignateCommunity || !current?.accessView || !controller.snapshot.isFounded) return null;
+  return (
+    <section className={`${ELEMENT_TAG}-venue-section`}>
+      <h2>Community Venue</h2>
+      <p>Make this the unowned public meeting place, replacing {current.name}.</p>
+      <button
+        type="button"
+        className={`${ELEMENT_TAG}-button`}
+        disabled={busy || controller.venueEditBusy}
+        onClick={async () => {
+          setBusy(true);
+          setError("");
+          try {
+            await controller.changeVenueAccess(place.id, {
+              action: "community-venue",
+              operationId: createVillagesClientId(),
+              zoneId: null,
+              expectedRevision: place.accessView!.revision,
+              previousVenueId: current.id,
+              previousRevision: current.accessView!.revision,
+            });
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : "The Community Venue could not be changed.");
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        {busy ? "Saving…" : "Use as Community Venue"}
+      </button>
+      {error ? <p role="alert">{error}</p> : null}
     </section>
   );
 }
@@ -344,26 +395,26 @@ function AssignedVillagers({
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-button`}
-                disabled={venueAssignedCountFor(place) > 0}
+                disabled={venueAssignedCountFor(place) >= venueCapacityFor(place)}
                 onClick={() => setHousing((open) => !open)}
                 aria-expanded={housing}
               >
                 Move here
               </button>
-              {venueAssignedCountFor(place) > 0 ? <p>Moving into a shared Residence is not available yet.</p> : null}
-              {housing && venueAssignedCountFor(place) === 0 ? (
+              {housing && venueAssignedCountFor(place) < venueCapacityFor(place) ? (
                 <div className={`${ELEMENT_TAG}-venue-section`}>
                   <label className={`${ELEMENT_TAG}-label`}>
-                    Your destination Private Space
+                    Your sleeping Zone
                     <select
                       value={playerMovePrivateZoneId}
                       onChange={(event) => setPlayerMovePrivateZoneId(event.target.value)}
                     >
-                      <option value="">No Private Space</option>
+                      <option value="">Choose shared sleeping space automatically</option>
                       {place.zones
                         ?.filter(
                           (zone) =>
-                            zone.kind === "private-residence" &&
+                            zone.venueClass === "residence" &&
+                            zone.kind !== "exterior" &&
                             !zone.ownerId &&
                             !zone.closed &&
                             !snapshot.residences.some(
@@ -571,6 +622,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           {place.presentation.image ? <img src={place.presentation.image.url} alt="" /> : null}
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>
+            {snapshot.settings.communityVenueId === place.id ? <p>Community Venue</p> : null}
             {place.form ? <p className={`${ELEMENT_TAG}-subtitle`}>{place.form}</p> : null}
           </div>
           {room && room.status !== "closed" ? (
@@ -731,6 +783,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
           {venueSection === "manage" ? (
             <section aria-label="Manage this venue">
               <VenueName place={place} controller={controller} />
+              <CommunityVenueControl key={`community:${place.id}`} place={place} controller={controller} />
               <section className={`${ELEMENT_TAG}-venue-section`}>
                 <h2>Layout & renovations</h2>
                 <p>Changes to physical form, Zones, capacity or use require a Project.</p>

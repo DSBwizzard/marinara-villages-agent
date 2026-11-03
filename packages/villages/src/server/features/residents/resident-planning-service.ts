@@ -1,6 +1,7 @@
+import { residenceProposal } from "../../domain/rules/residence-agreement.js";
 import { copySocialWishes, immutableSocialWishes } from "../../domain/rules/social-wishes.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
-import { environmentObservations } from "../../domain/rules/narrative-environment.js";
+import { environmentObservations, environmentCircumstances } from "../../domain/rules/narrative-environment.js";
 import { createHash } from "node:crypto";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
 import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
@@ -33,7 +34,7 @@ import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { recallMemories } from "../../domain/rules/memory-recall.js";
 import { addRoutineIdea } from "../../domain/rules/owned-routine.js";
 import { assertPersonalLetter, hasPersonalLetterAction } from "../../domain/rules/personal-letter.js";
-import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
+import { currentVillageCircumstances, villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { relationshipWritingPrompt } from "../../domain/rules/relationship-presentation.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
@@ -151,12 +152,13 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       setting: villageCurrentSetting(village),
       playerBackground: village.playerBackground,
       playerPersonaName: village.playerPersonaName,
-      worldFacts: village.worldFacts,
+      worldFacts: currentVillageCircumstances(village),
       moment,
       ...(village.narrative
         ? {
             environment: {
               weather: moment.weather,
+              circumstances: environmentCircumstances(village.narrative, opportunity.venueId, opportunity.zoneId ?? ""),
               conditions: environmentObservations(
                 village.narrative,
                 moment.instant,
@@ -321,12 +323,17 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
       setting: villageCurrentSetting(historical),
       playerBackground: historical.playerBackground,
       playerPersonaName: historical.playerPersonaName,
-      worldFacts: historical.worldFacts,
+      worldFacts: currentVillageCircumstances(historical),
       moment,
       ...(historical.narrative
         ? {
             environment: {
               weather: moment.weather,
+              circumstances: environmentCircumstances(
+                historical.narrative,
+                opportunity.venueId,
+                opportunity.zoneId ?? "",
+              ),
               conditions: environmentObservations(
                 historical.narrative,
                 moment.instant,
@@ -701,16 +708,20 @@ export function createResidentPlanning(ports: ResidentPlanningPorts) {
           )
         )
           continue;
-        const next: VillageResidence = {
-          proposedPrivateZoneId: "",
-          venueId: state.venues.find((v) => venueResidentIds(v).includes(request.characterId))?.id ?? "",
-          characterId: request.characterId,
-          status: "pending",
-          proposedVenueId: venue.id,
-          requestedAt: input.now,
-          requestedBy: "villager",
-          villagerDecision: "pending",
-        };
+        let next: VillageResidence;
+        try {
+          next = residenceProposal(
+            state,
+            request.characterId,
+            venue,
+            "villager",
+            input.now,
+            "",
+            opportunity.id + ":" + request.characterId,
+          );
+        } catch {
+          continue;
+        }
         const index = state.residences.findIndex((r) => r.characterId === request.characterId);
         if (index < 0) state.residences.push(next);
         else state.residences[index] = next;

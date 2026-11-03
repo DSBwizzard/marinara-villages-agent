@@ -44,20 +44,6 @@ async function checkMapPlacement(width, activeScene = false) {
     snapshot.foundingPreparation = { status: "ready", canPlay: true };
     snapshot.sceneVenue = { sceneId: session.id, venue: structuredClone(snapshot.settings.venues[0]) };
     snapshot.sceneVenue.venue.zones[1].name = "Captured workshop";
-    snapshot.opening = {
-      id: "opening",
-      version: 2,
-      stage: "project",
-      projectId: "canvas",
-      communityVenueId: "mill",
-      residentIds: ["mara"],
-      heardIds: ["mara"],
-      declinedIds: [],
-      gatheringSceneId: "",
-      action: "Choose the design, agreements and lead",
-      outcome: "",
-      proposals: [],
-    };
   }
   const originalSession = structuredClone(session);
   const originalVenue = structuredClone(snapshot.sceneVenue);
@@ -97,9 +83,6 @@ async function checkMapPlacement(width, activeScene = false) {
     await page.getByRole("tab", { name: "Location", exact: true }).click();
   };
   if (activeScene) {
-    await expect(
-      page.getByRole("button", { name: "Choose the design, agreements and lead", exact: true }),
-    ).toBeVisible();
     const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
     await composer.fill("An unsent Scene draft.");
     await composer.evaluate((node) => {

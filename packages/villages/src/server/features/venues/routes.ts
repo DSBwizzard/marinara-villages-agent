@@ -12,7 +12,6 @@ import {
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import {
   changeVenueAccess,
-  createVillageVenue,
   deleteVillageVenue,
   previewVillageVenueDeletion,
   updateVillageVenue,
@@ -59,16 +58,6 @@ export function registerVenueAccessRoutes(engine: FastifyInstance) {
       }
     },
   );
-}
-export function registerVenueCreationRoutes(engine: FastifyInstance) {
-  const app = engine;
-  app.post<{ Body: unknown }>("/locations/venue", async (request, reply) => {
-    try {
-      return await createVillageVenue(request.body);
-    } catch (error) {
-      return fail(reply, error, "creating a place");
-    }
-  });
 }
 export function registerVenueManagementRoutes(engine: FastifyInstance) {
   const app = engine;
@@ -154,20 +143,33 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Body: { characterId?: unknown } }>("/residences/approvals", async (request, reply) => {
-    try {
-      return await approveVillageResidence(request.body?.characterId);
-    } catch (error) {
-      return fail(reply, error, "approving a residence");
-    }
-  });
-  app.post<{ Body: { characterId?: unknown } }>("/residences/denials", async (request, reply) => {
-    try {
-      return await decideVillageResidence(request.body?.characterId, false, "player");
-    } catch (error) {
-      return fail(reply, error, "denying a residence change");
-    }
-  });
+  app.post<{ Body: { characterId?: unknown; expectedScope?: string } }>(
+    "/residences/approvals",
+    async (request, reply) => {
+      try {
+        return await approveVillageResidence(request.body?.characterId, request.body?.expectedScope);
+      } catch (error) {
+        return fail(reply, error, "approving a residence");
+      }
+    },
+  );
+  app.post<{ Body: { characterId?: unknown; expectedScope?: string } }>(
+    "/residences/denials",
+    async (request, reply) => {
+      try {
+        return await decideVillageResidence(
+          request.body?.characterId,
+          false,
+          "player",
+          undefined,
+          undefined,
+          request.body?.expectedScope,
+        );
+      } catch (error) {
+        return fail(reply, error, "denying a residence change");
+      }
+    },
+  );
   app.post<{ Body: { characterId?: unknown } }>("/residences/debug/complete-now", async (request, reply) => {
     try {
       return await completeVillageResidence(request.body?.characterId, true);

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { coerceInterpretationSettings } from "../packages/villages/src/server/domain/rules/interpretation-policy.js";
 import { fingerprint } from "../packages/villages/src/server/domain/rules/interpretation-rules.js";
@@ -14,7 +15,7 @@ import {
 import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 const stamp = "2026-10-18T12:00:00.000Z";
-const house: any = {
+const house: any = venueFixture({
   id: "house",
   name: "House",
   classes: ["community", "workplace"],
@@ -40,7 +41,7 @@ const house: any = {
     { ...defaultVenueSpace("workplace"), id: "workshop", name: "Workshop", kind: "public", seen: true },
     { ...defaultVenueSpace("workplace", "SECRET OFFICE DETAILS"), id: "office", name: "Secret Office", kind: "staff" },
   ],
-};
+});
 
 assert.deepEqual(coerceInterpretationSettings(null), { decisionsEnabled: false });
 assert.deepEqual(

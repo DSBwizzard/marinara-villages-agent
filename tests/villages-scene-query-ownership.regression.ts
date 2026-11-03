@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import assert from "node:assert/strict";
 import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
@@ -90,7 +91,14 @@ function fixture(name: string) {
     seed: name,
     foundedAt: stamp,
     venues: [
-      { id: "venue", name, classes: ["residence"], occupancy: 1, residentIds: ["mara"], description: "A residence." },
+      venueFixture({
+        id: "venue",
+        name,
+        classes: ["residence"],
+        occupancy: 1,
+        residentIds: ["mara"],
+        description: "A residence.",
+      }),
     ],
   });
   const sessions = new Map<string, VenueScene>(),

@@ -35,7 +35,7 @@ export function readVillageRoot(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 13) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 14) throw new Error("Unsupported Village format. Start a fresh Village.");
   departureHistoryOwner(raw);
   worldWishOwners(raw);
   capturedWorldOwners(raw);
@@ -146,7 +146,7 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 13, "invalid Village mutation format");
+            memoryRequire(state.version === 14, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",

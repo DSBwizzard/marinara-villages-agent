@@ -34,16 +34,16 @@ Model requests use your configured providers and may cost money, including durin
 ## Your first Village
 
 1. Open **Home → Villages** after your test installation has restarted.
-2. In **Place**, describe your setting and choose **System**, **Narration**, and any **Images** connection.
+2. In **Setting**, describe the local area, optional standing rules and starting circumstances. Select lorebooks for world history and references, and choose **System**, **Narration**, and any **Images** connection.
 3. Choose your Persona and starting residents in **People**.
-4. Add a map, prepare the homes and community Venue, then review and found the Village.
+4. In **Venues and Map**, assign people directly to homes, review the designated Community Venue and add any other existing places. Review the starting state and found the Village.
 5. Open a Venue from the map, choose **Visit**, and use **Say / Do** to begin interacting.
 
 The [player guide](packages/villages/README.md) walks through setup, Scenes, relationships, Projects, artwork, and recovery.
 
 ## Saved worlds and test updates
 
-The current prototype requires a fresh **Village save format 13** and uses **Scene format 3**. No older Village conversion is provided. Keep older worlds with their matching runtime, and arrange independent fresh storage before testing an incompatible build. Installing a package does not reset a world.
+The current prototype requires a fresh **Village save format 14** and uses **Scene format 3**. No older Village conversion is provided. Keep older worlds with their matching runtime, and arrange independent fresh storage before testing an incompatible build. Installing a package does not reset a world.
 
 ## Development and contributions
 

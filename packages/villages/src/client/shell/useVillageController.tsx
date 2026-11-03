@@ -27,7 +27,6 @@ import {
   usePickSetupTownMap,
   usePlaceSetupPin,
   useRetryPreparation,
-  useSuggestPlaces,
   useUpdateSetupMapRequest,
 } from "../features/founding/actions.js";
 import {
@@ -47,7 +46,6 @@ import {
   useFoundingImageContext,
   useFoundingMapReceipt,
   useFoundingPreparationPolling,
-  useFoundingRosterReconciliation,
   useFoundingSelectedResidentContexts,
   useFoundingSetupBlocker,
   useFoundingSetupDraftData,
@@ -481,7 +479,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const retrySetupSaving = createFoundingRetrySetupSaving({ ...founding, persistSetupDraft, setupDraftData });
 
   // Roster changes reconcile only the required graph; existing authored Venues survive.
-  useFoundingRosterReconciliation({ ...founding, catalog, screen, snapshot });
 
   const suggestionSignal = useActivitySignal(visible && screen === "setup");
   const suggestSetupVenues = createFoundingSuggestSetupVenues({
@@ -863,14 +860,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const saveBackgroundPace = useSaveBackgroundPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
   const saveSendOnEnter = useSaveSendOnEnter({ setBusy, setSettingsError, setSnapshot, snapshot });
-
-  /**
-   * Ask the model for places again. Deliberately a separate button from Save:
-   * the call is slow and can fail on its own, and its result replaces the
-   * venue editor wholesale, which is a decision the player should make
-   * explicitly rather than have happen on every save.
-   */
-  const suggestPlaces = useSuggestPlaces({ setBusy, setSettingsError, setVenuesDraft, snapshot });
 
   // ── Town map ───────────────────────────────────────────────────────────────
   useFoundingMapReceipt({ ...founding, visible, screen, updateSetupMapRequest });
@@ -1505,7 +1494,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setSetupStep: founding.setSetupStep,
     setSetupVenues: founding.setSetupVenues,
     setSetupWorkspace: founding.setSetupWorkspace,
-    setSetupWorldFacts: founding.setSetupWorldFacts,
+    setSetupContext: founding.setSetupContext,
     setSiteProjectId,
     setSnapshot,
     setSpriteManagerId,
@@ -1561,7 +1550,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupVenueBusy: founding.setupVenueBusy,
     setupVenues: founding.setupVenues,
     setupWorkspace: founding.setupWorkspace,
-    setupWorldFacts: founding.setupWorldFacts,
+    setupContext: founding.setupContext,
     siteProjectId,
     snapshot,
     spriteLeaveGuard,
@@ -1569,7 +1558,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     spriteProfileScroll,
     standingAt,
     startOver,
-    suggestPlaces,
     suggestSetupVenues,
     townMapImage,
     updateSetupMapRequest,

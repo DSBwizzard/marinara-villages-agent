@@ -4,13 +4,7 @@ import { requestFoundingSuggestions, readFoundingSuggestions } from "./founding-
 import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town-map-generation.js";
 
 import { resetVenueSessions } from "../scenes/archive.js";
-import { buildVillageSnapshot } from "../world/snapshot.js";
-import {
-  draftVenueDescriptions,
-  runVillageSetup,
-  suggestFoundingPlaces,
-  suggestFoundingVenueNames,
-} from "./founding-setup.js";
+import { draftVenueDescriptions, runVillageSetup } from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, suggestStartingVenues, uploadFoundingVenueImage } from "./founding-drafts.js";
 import type { FastifyInstance } from "fastify";
@@ -25,13 +19,11 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       name?: unknown;
       timeZone?: unknown;
       setting?: unknown;
-      foundingReason?: unknown;
+      worldRules?: unknown;
       worldName?: unknown;
-      foundingDetails?: unknown;
-      foundingGuidance?: unknown;
+      communityVenueId?: unknown;
       playerBackground?: unknown;
-      scenarioImprint?: unknown;
-      worldFacts?: unknown;
+      circumstances?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
       sceneryStyleProfileId?: unknown;
@@ -55,13 +47,11 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
         name: body.name,
         timeZone: body.timeZone,
         setting: body.setting,
-        foundingReason: body.foundingReason,
+        worldRules: body.worldRules,
         worldName: body.worldName,
-        foundingDetails: body.foundingDetails,
-        foundingGuidance: body.foundingGuidance,
+        communityVenueId: body.communityVenueId,
         playerBackground: body.playerBackground,
-        scenarioImprint: body.scenarioImprint,
-        worldFacts: body.worldFacts,
+        circumstances: body.circumstances,
         selectedLorebookIds: body.selectedLorebookIds,
         sceneryArtStyle: body.sceneryArtStyle,
         sceneryStyleProfileId: body.sceneryStyleProfileId,
@@ -109,7 +99,6 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
-      scenarioImprint?: unknown;
       actionId?: unknown;
       targetId?: unknown;
       sourceKey?: unknown;
@@ -139,32 +128,6 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return fail(reply, error, "resetting the village");
     }
   });
-  app.post("/bootstrap", async (_request, reply) => {
-    try {
-      const snapshot = await buildVillageSnapshot();
-      return await suggestFoundingPlaces(
-        snapshot.settings.setting,
-        snapshot.settings.selectedLorebookIds,
-        snapshot.settings.loreTokenBudget,
-      );
-    } catch (error) {
-      return fail(reply, error, "suggesting places");
-    }
-  });
-  app.post<{ Body: { setting?: unknown; selectedLorebookIds?: unknown; loreTokenBudget?: unknown } }>(
-    "/setup/public-venue/names/suggest",
-    async (request, reply) => {
-      try {
-        return await suggestFoundingVenueNames(
-          request.body?.setting,
-          request.body?.selectedLorebookIds,
-          request.body?.loreTokenBudget,
-        );
-      } catch (error) {
-        return fail(reply, error, "suggesting public venue names");
-      }
-    },
-  );
   app.post<{ Body: unknown }>("/locations/venue/descriptions/draft", async (request, reply) => {
     try {
       return await draftVenueDescriptions(request.body);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import { synchronizeVenueZones } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { ensureNarrative, admitNarrative } from "../packages/villages/src/server/domain/rules/narrative-development.js";
 import {
@@ -89,7 +89,14 @@ function development(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   return {
     severity: "gentle",
     occurrence: "A gust loosens the hall sign.",
-    situation: { id: null, expectedRevision: 0, title: "Loose sign", summary: "A sign rattles.", status: "active" },
+    situation: {
+      scope: "zone",
+      id: null,
+      expectedRevision: 0,
+      title: "Loose sign",
+      summary: "A sign rattles.",
+      status: "active",
+    },
     physical: [
       {
         venueId: target.venueId,

@@ -9,6 +9,7 @@ import type {
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { badRequest, conflict, VillagesRequestError } from "./errors.js";
 import { z } from "zod";
+import { communityVenueEligible } from "./community-venue.js";
 
 const id = z.string().trim().min(1).max(200);
 const ids = z
@@ -84,6 +85,14 @@ const stateSchema = z.object({
 });
 const base = { operationId: id, expectedRevision: z.number().int().nonnegative(), zoneId: id.nullable() };
 const commandSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      ...base,
+      action: z.literal("community-venue"),
+      previousVenueId: id,
+      previousRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
   z.object({ ...base, action: z.literal("recover-managers"), managerIds: ids }).strict(),
   z
     .object({
@@ -161,7 +170,7 @@ export function initializeVenueAccess(venue: VillageVenue): void {
   venue.access ??= {
     version: 1,
     revision: 0,
-    managerIds: venue.occupancy.playerHome ? ["player"] : [...(venue.residentIds ?? [])],
+    managerIds: [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])],
     visitorHours: null,
     permissions: [],
     bans: [],
@@ -347,11 +356,17 @@ export function evaluateZoneAccess(
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
     return restricted
-      ? result(
-          false,
-          "unavailable",
-          "Ordinary use is restricted. A controller can authorize inspection or corrective work.",
-        )
+      ? !zoneManagers(venue, zone).length
+        ? result(
+            true,
+            "public",
+            "Ordinary use is restricted. Public access permits inspection and corrective work only.",
+          )
+        : result(
+            false,
+            "unavailable",
+            "Ordinary use is restricted. A controller can authorize inspection or corrective work.",
+          )
       : result(true, "public", "Public during visitor hours.");
   if (eligible.some((grant) => grant.accompaniedBy || policy.accompanied))
     return result(false, "accompaniment-required", "Your named escort must be here with you.");
@@ -382,6 +397,7 @@ export function applyAccessCommand(
   at: string,
   knownActors: string[],
   sourceLineIds: string[] = [],
+  communityVenueId?: string,
 ): void {
   const ledger = venue.access;
   if (!ledger) throw conflict("This legacy Venue uses its existing access rules.");
@@ -397,6 +413,13 @@ export function applyAccessCommand(
   }
   if (command.expectedRevision !== ledger.revision)
     throw conflict("Access changed since you opened this panel. Reload before trying again.");
+  if (
+    venue.id === communityVenueId &&
+    ["recover-managers", "venue-policy", "zone-policy", "ban", "refuse-entry", "leave-now"].includes(command.action)
+  )
+    throw conflict(
+      "Designate another Community Venue before restricting or taking control of this neutral public place.",
+    );
   const zone = venue.zones?.find((row) => row.id === command.zoneId);
   if (command.zoneId !== null && (!zone || zone.kind === "exterior"))
     throw badRequest("Entrance is always Unrestricted; choose another Zone.");
@@ -409,6 +432,8 @@ export function applyAccessCommand(
       throw badRequest("Choose people who belong to this Village.");
   };
   switch (command.action) {
+    case "community-venue":
+      throw badRequest("Community designation requires the current Village state.");
     case "recover-managers": {
       const currentManagers = zone ? zoneManagers(venue, zone) : ledger.managerIds;
       if (
@@ -660,13 +685,14 @@ export function settleStandingAccess(
     };
   }
 }
-export function projectVenueAccess(venue: VillageVenue, actor: string) {
+export function projectVenueAccess(venue: VillageVenue, actor: string, communityVenueId?: string) {
   if (!venue.access) return undefined;
-  const canManage = managesAccess(venue, null, actor);
+  const canManage = venue.id !== communityVenueId && managesAccess(venue, null, actor);
   return {
     revision: venue.access.revision,
+    canDesignateCommunity: actor === "player" && venue.id !== communityVenueId && communityVenueEligible(venue, true),
     canManage,
-    canRecover: actor === "player" && !venue.access.managerIds.length,
+    canRecover: venue.id !== communityVenueId && actor === "player" && !venue.access.managerIds.length,
     ...(canManage
       ? {
           managerIds: venue.access.managerIds,

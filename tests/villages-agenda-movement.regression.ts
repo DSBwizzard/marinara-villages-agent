@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -27,7 +28,9 @@ import { captureSceneAttendance } from "../packages/villages/src/server/domain/r
 import { villagerPlaceView } from "../packages/villages/src/server/domain/rules/village-projections.js";
 
 function place(id: string, residentCharacterId: string | null = null): VillageVenue {
-  return {
+  return venueFixture({
+    residentIds: [residentCharacterId].filter((id) => typeof id === "string" && !!id),
+    classes: false || residentCharacterId ? ["residence"] : ["other"],
     id,
     name: id,
     category: "",
@@ -35,7 +38,7 @@ function place(id: string, residentCharacterId: string | null = null): VillageVe
     occupancy: { playerHome: false, residentCharacterId, homeKind: residentCharacterId ? "cottage" : null },
     capabilities: [],
     state: { revision: 0, recent: null, updatedAt: "" },
-  } as VillageVenue;
+  }) as VillageVenue;
 }
 
 const venues = [place("home", "r1"), place("square"), place("garden")];

@@ -810,7 +810,6 @@ async function main() {
     "features/scenes/writing-service.ts",
     "features/founding/village-bootstrap.ts",
     "features/founding/village-bootstrap-service.ts",
-    "domain/rules/village-bootstrap-rules.ts",
     "domain/rules/native-remap.ts",
     "features/residents/wishes/service.ts",
     "features/world/village.ts",

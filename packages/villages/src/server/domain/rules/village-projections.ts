@@ -1,4 +1,3 @@
-import { openingPresence } from "./opening-presence.js";
 import type { VillagePlaceView, VillagePlayerIdentity, VillageState, VillageVillager } from "../models/world.js";
 import { agendaAt } from "./agenda-plan.js";
 import { badRequest, conflict } from "./errors.js";
@@ -67,18 +66,6 @@ function preferredVillagerPlace(
   }).minuteOfDay,
   at = new Date(),
 ): VillagePlaceView | null {
-  const staged = openingPresence(village, villager.characterId);
-  if (staged) {
-    const venue = village.venues.find((row) => row.id === staged.venueId)!;
-    return {
-      id: venue.id,
-      name: venue.name,
-      image: venue.presentation.image,
-      kind: "home",
-      zoneId: staged.zoneId,
-      zoneName: "Entrance",
-    };
-  }
   const agenda = agendaAt(villager.agenda, minuteOfDay, at, villager.ingestSchedule !== false);
   const venueId = agenda?.venueId ?? "";
   // A translation can name a place that has since been deleted from the village,

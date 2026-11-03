@@ -1,3 +1,4 @@
+import { assertResidenceAgreement } from "./residence-agreement.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { asRecord } from "./coerce.js";
@@ -149,7 +150,7 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
   if (residence.kind) {
     const person = current.villagers.find((row) => row.characterId === residence.characterId);
     const prior = current.residences.find((row) => row.characterId === residence.characterId);
-    if (!person) return true;
+    if (!person && residence.characterId !== "player") return true;
     if (residence.kind === "request") {
       const destination = current.venues.find((row) => row.id === residence.venueId);
       const reserved = current.residences.filter(
@@ -162,7 +163,6 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
         !destination ||
         !hasVenueClass(destination, "residence") ||
         destination.constructionStatus === "worksite" ||
-        venueResidentIds(destination).length > 0 ||
         (prior && ["moving", "pending"].includes(prior.status)) ||
         venueAssignedCount(destination) + reserved >= venueCapacity(destination)
       )
@@ -173,14 +173,18 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
         return true;
       }
     } else {
-      if (!prior || prior.status !== "pending" || prior.requestedBy === "villager" || !prior.proposedVenueId)
-        return true;
-      const destination = current.venues.find((row) => row.id === prior.proposedVenueId);
       if (
-        residence.approved === true &&
-        (!destination || venueResidentIds(destination).some((id) => id !== person.characterId))
+        !prior ||
+        prior.status === "current" ||
+        residence.agreementScope !== prior.agreement?.scope ||
+        !(prior.agreement?.requiredIds ?? []).includes(String(residence.approverId))
       )
         return true;
+      try {
+        if (residence.approved === true) assertResidenceAgreement(current, prior, false);
+      } catch {
+        return true;
+      }
     }
   }
   return false;

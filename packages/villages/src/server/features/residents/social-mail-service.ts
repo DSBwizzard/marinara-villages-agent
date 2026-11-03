@@ -1,3 +1,4 @@
+import { villageCurrentSetting } from "../../domain/rules/prompt-preset.js";
 import { z } from "zod";
 import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import type { MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
@@ -139,7 +140,8 @@ function admission(village: VillageState, residentId: string): VillageState {
     timeZone: village.timeZone,
     setting: village.setting,
     worldName: village.worldName,
-    worldFacts: village.worldFacts,
+    worldRules: village.worldRules,
+    narrative: village.narrative,
     playerName: village.playerName,
     playerPersonaName: village.playerPersonaName,
     playerBackground: village.playerBackground,
@@ -276,8 +278,7 @@ export function createSocialMail(ports: SocialMailPorts) {
                   {
                     role: "user",
                     content: JSON.stringify({
-                      setting: state.setting,
-                      worldFacts: state.worldFacts,
+                      setting: villageCurrentSetting(state),
                       playerName: state.playerPersonaName || state.playerName,
                       character: resident.cardSnapshot,
                       admission: resident.admission,

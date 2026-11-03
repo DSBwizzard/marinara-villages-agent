@@ -44,9 +44,6 @@ export function setVillageName(...args: Parameters<VillageSettings["setVillageNa
 export function setVillagePlayer(...args: Parameters<VillageSettings["setVillagePlayer"]>) {
   return villageSettings().setVillagePlayer(...args);
 }
-export function setVillageSetting(...args: Parameters<VillageSettings["setVillageSetting"]>) {
-  return villageSettings().setVillageSetting(...args);
-}
 export function setScenerySettings(...args: Parameters<VillageSettings["setScenerySettings"]>) {
   return villageSettings().setScenerySettings(...args);
 }

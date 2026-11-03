@@ -1,8 +1,6 @@
 import { ELEMENT_TAG as P } from "../../shared/constants.js";
-import { openingProjectsStyles } from "./OpeningProjects.js";
-export const projectStyles =
-  openingProjectsStyles +
-  `
+
+export const projectStyles = `
 .${P}-root.${P}-project-root{display:block;padding:0;overflow:auto;gap:0}
 ${P} .${P}-project-desk{--bp-ink:#d9edf2;--bp-muted:#adcfdd;--bp-line:#75a9bf;--bp-panel:#0c4c74;--primary:#d9edf2;position:relative;isolation:isolate;overflow:clip;min-height:100%;padding:clamp(.6rem,2vh,1.2rem);color:var(--bp-ink);background:repeating-linear-gradient(2deg,transparent 0 17px,#644b3338 18px 20px),#805d3f;font-family:Georgia,"Times New Roman",serif;box-sizing:border-box}
 .${P}-project-desk::before,.${P}-project-desk::after{content:"";position:absolute;z-index:-1;pointer-events:none;width:24%;height:32%;background:#e7d9b7}

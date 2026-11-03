@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -162,26 +162,6 @@ async function main() {
   assert.equal(loreOnly.bootstrapCalls, 0, "saving Lorebooks does not bootstrap an empty world");
   assert.equal(loreOnly.personaReads, 0, "saving Lorebooks does not resolve or replace the Persona");
 
-  const bootstrap = fixture("Bootstrap");
-  bootstrap.state.venues = [venueDraft({ name: "Home", description: "Residence", classes: ["residence"] }, null)];
-  bootstrap.retryWith((state) => {
-    state.venues.push(hall());
-  });
-  await bootstrap.service.setVillageSetting("First setting");
-  assert.equal(bootstrap.bootstrapCalls, 0, "a losing empty-destination attempt cannot trigger a paid proposal");
-  bootstrap.retryWith((state) => {
-    state.venues = [];
-  });
-  await bootstrap.service.setVillageSetting("Second setting");
-  assert.equal(bootstrap.bootstrapCalls, 1, "the final successful attempt determines eligibility");
-  bootstrap.failBootstrap();
-  await bootstrap.service.setVillageSetting("Third setting");
-  assert.equal(bootstrap.state.setting, "Third setting");
-  assert.deepEqual(bootstrap.warnings, ["Error: provider unavailable"]);
-  assert.equal(bootstrap.bootstrapCalls, 2, "failed proposal is not automatically repeated");
-  await bootstrap.service.setVillageSetting("");
-  assert.equal(bootstrap.bootstrapCalls, 2);
-
   const scopeA = createActivationScope(),
     scopeB = createActivationScope();
   const gate = deferred(),
@@ -260,7 +240,6 @@ async function main() {
       payload: {
         name: "Routed name",
         promptKnowledge: "Known",
-        setting: "New setting",
         backgroundPace: "balanced",
         sendOnEnter: true,
         characterSpeechColors: true,
@@ -269,12 +248,11 @@ async function main() {
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().village.name, "Routed name");
     assert.equal(routed.state.promptKnowledge, "Known");
-    assert.equal(routed.state.setting, "New setting");
     assert.equal(routed.state.sendOnEnter, true);
     assert.equal(routed.bootstrapCalls, 0);
     assert.deepEqual(
       routed.events.filter((event) => event === "mutate" || event === "snapshot"),
-      Array.from({ length: 6 }, () => ["mutate", "snapshot"]).flat(),
+      Array.from({ length: 5 }, () => ["mutate", "snapshot"]).flat(),
     );
     const rejected = await app.inject({ method: "PATCH", url: "/settings", payload: { sendOnEnter: "true" } });
     assert.equal(rejected.statusCode, 400);

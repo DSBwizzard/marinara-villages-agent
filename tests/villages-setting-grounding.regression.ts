@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -12,11 +13,7 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { DEFAULT_PLAYER_BACKGROUND } from "../packages/villages/src/server/domain/rules/player-background.js";
-import {
-  villageCurrentSetting,
-  villageFoundingSetting,
-  villageRelevantOrigin,
-} from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { villageCurrentSetting } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
 import { buildTownMapPrompt } from "../packages/villages/src/server/domain/rules/town-map-image-rules.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
@@ -125,25 +122,18 @@ async function main() {
         wishSystemVersion: 3,
         name,
         setting,
-        foundingReason: "custom",
-        foundingDetails: circumstances,
         setupAt: "2026-10-01T12:00:00Z",
         playerBackground: DEFAULT_PLAYER_BACKGROUND,
       });
       const before = JSON.stringify(state);
       const current = villageCurrentSetting(state);
-      const founding = villageFoundingSetting(state);
       const map = buildTownMapPrompt(undefined, setting);
-      for (const prompt of [current, founding, map, sceneryPrompt(["Entrance of " + home], ["Setting: " + current])]) {
+      for (const prompt of [current, map, sceneryPrompt(["Entrance of " + home], ["Setting: " + current])]) {
         assert.ok(prompt.includes(setting), name + ": authored setting is retained");
         assert.ok(prompt.includes(VILLAGE_SHARED_SETTING_RULE), name + ": shared setting framing is supplied");
         assert.doesNotMatch(prompt, /a small (fictional )?village|The village begins on Day 1|natural clearings/);
       }
-      assert.ok(founding.includes(circumstances), "preparation sees the shared circumstances");
       assert.equal(current.includes(circumstances), false, "starting circumstances are not a recurring script");
-      assert.ok(villageRelevantOrigin(state, "Why are we staying here?").includes(circumstances));
-      assert.equal(villageRelevantOrigin(state, "What is for dinner?"), "");
-      assert.equal(villageRelevantOrigin(state, "What is for dinner here?"), "");
       const dialogue = await currentScenePrompt(state, card, "chat", "Why are we here?");
       assert.ok(dialogue.includes(setting));
       assert.ok(dialogue.includes(VILLAGE_SHARED_SETTING_RULE));
@@ -174,11 +164,11 @@ async function main() {
       const result = await proposeCompactFounding(
         {
           village: name,
-          setting: founding,
+          setting: current,
           home,
           card,
           venues: [],
-          lore: [],
+          lore: [circumstances],
           wishes: [],
           activeWishes: [],
           schedule: null,
@@ -189,7 +179,6 @@ async function main() {
       assert.equal(Object.hasOwn(result, "wishes"), false);
       assert.ok(captured.includes(setting));
       assert.ok(captured.includes(circumstances));
-      assert.match(captured, /Starting play does not mean this place has just been established/);
       assert.equal(JSON.stringify(state), before, "prompt assembly does not rewrite saved facts or history");
       if (name === "Denny's") {
         assert.match(current, /ongoing zombie outbreak/);
@@ -198,34 +187,32 @@ async function main() {
         assert.match(events, /ongoing zombie outbreak/);
       }
     }
-    // Maximum authored world context must not truncate the separate starting circumstances.
+    // World history comes from the supplied lore, independently of current physical context.
     const full = {
       setting: "x".repeat(2000),
-      foundingReason: "custom",
-      foundingDetails: "We share the rent.",
       foundingGuidance: "RETIRED_DIRECTION_SENTINEL",
     };
     await proposeCompactFounding(
       {
         village: "Long context",
-        setting: villageFoundingSetting(full),
+        setting: villageCurrentSetting(full),
         home: "Room",
         card,
         venues: [],
-        lore: [],
+        lore: ["HISTORY_FROM_LOREBOOK"],
         wishes: [],
         activeWishes: [],
         schedule: null,
       },
       async () => {},
     );
-    assert.ok(captured.includes(full.foundingDetails));
+    assert.ok(captured.includes("HISTORY_FROM_LOREBOOK"));
     assert.doesNotMatch(captured, /RETIRED_DIRECTION_SENTINEL|Player-authored creative preferences/);
     const map = buildTownMapPrompt("No water or decorative buildings.", scenarios[4][1]);
     assert.match(map, /Map details take priority over conflicting Village description/);
     assert.match(map, /Map details: No water or decorative buildings/);
     assert.throws(
-      () => buildTownMapPrompt(undefined, "x".repeat(2000), "", null, "s".repeat(600)),
+      () => buildTownMapPrompt(undefined, "x".repeat(4000), "", undefined, "s".repeat(600)),
       /characters over.*no image request was made/,
       "individually valid maximum inputs share a final allowance",
     );
@@ -240,7 +227,8 @@ async function main() {
       setupAt: "2026-10-01T12:00:00Z",
       setting: "An abandoned farm. " + "Fields and trees. ".repeat(40) + "The farmhouse roof leaks.",
       venues: [
-        {
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
           id: "common-room",
           name: "Farmhouse",
           form: "Farmhouse",
@@ -248,7 +236,7 @@ async function main() {
           description: "A farmhouse with a leaking roof",
           spaces: [common],
           playerSeenPublic: true,
-        },
+        }),
       ],
     });
     const farmhouse = farm.venues[0]!;
@@ -319,11 +307,9 @@ async function main() {
       wishSystemVersion: 3,
       setupAt: "2025-01-01T00:00:00Z",
       setting: "Old harbor",
-      foundingDetails: "On Day 1 we arrived.",
       promptKnowledge: "My custom prompt",
       playerBackground: "I arrived to help the harbor.",
     });
-    assert.equal(legacy.foundingDetails, "On Day 1 we arrived.");
     assert.equal(legacy.promptKnowledge, "My custom prompt");
     assert.equal(legacy.playerBackground, "I arrived to help the harbor.");
     assert.equal(

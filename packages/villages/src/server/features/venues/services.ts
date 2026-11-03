@@ -16,10 +16,6 @@ export function venueCommands(): VenueCommands {
 export function imageTarget(...args: Parameters<VenueCommands["imageTarget"]>) {
   return venueCommands().imageTarget(...args);
 }
-
-export function setVillageVenues(...args: Parameters<VenueCommands["setVillageVenues"]>) {
-  return venueCommands().setVillageVenues(...args);
-}
 export function setVillageVenueImage(...args: Parameters<VenueCommands["setVillageVenueImage"]>) {
   return venueCommands().setVillageVenueImage(...args);
 }
@@ -31,9 +27,6 @@ export function setVillageHomeBuildingNames(...args: Parameters<VenueCommands["s
 }
 export function previewVillageVenueDeletion(...args: Parameters<VenueCommands["previewVillageVenueDeletion"]>) {
   return venueCommands().previewVillageVenueDeletion(...args);
-}
-export function createVillageVenue(...args: Parameters<VenueCommands["createVillageVenue"]>) {
-  return venueCommands().createVillageVenue(...args);
 }
 export function changeVenueAccess(...args: Parameters<VenueCommands["changeVenueAccess"]>) {
   return venueCommands().changeVenueAccess(...args);

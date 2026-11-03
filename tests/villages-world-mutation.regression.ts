@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
@@ -51,7 +52,8 @@ assert.equal(fresh.noticeSequence, 2);
 assert.equal(fresh.foundedAt, "2026-10-06T12:02:00.000Z");
 
 function venue(index: number): VillageVenue {
-  return {
+  return venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: `venue-${index}`,
     name: `Venue ${index}`,
     classes: ["residence"],
@@ -62,7 +64,7 @@ function venue(index: number): VillageVenue {
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
     state: { condition: "standing", furniture: [], publicFacts: [], updatedAt: "" },
-  };
+  });
 }
 const oversizedSave = {
   ...defaultVillageState(),

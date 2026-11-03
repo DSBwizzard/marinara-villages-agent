@@ -72,6 +72,7 @@ await m.mutate((state) => {
   const venue = state.venues[0];
   venue.classes = ["residence"];
   venue.residentIds = ["a"];
+  venue.destinations = { a: { home: venue.zones![1].id, sleep: "private" } };
   venue.zones![1].kind = "shared-residence";
   venue.zones![1].venueClass = "residence";
   venue.zones!.push({
@@ -81,6 +82,15 @@ await m.mutate((state) => {
     name: "Private room",
     purpose: "Sleeping",
     connectedTo: ["exterior"],
+    access: {
+      mode: "permission-required",
+      managerIds: ["a"],
+      memberIds: ["a"],
+      memberRoles: [],
+      inviterIds: [],
+      visitorHours: "always",
+      accompanied: false,
+    },
   });
 });
 const capacity = await renovation(m, { capacity: 3 });
@@ -88,6 +98,7 @@ await m.agree(capacity);
 await m.service.startProjectConstruction(capacity, m.body(capacity), now);
 await m.mutate((state) => {
   state.venues[0].residentIds = ["a", "b"];
+  state.venues[0].destinations = { a: { home: "common", sleep: "common" }, b: { home: "common", sleep: "common" } };
   state.venues[0].zones!.find((z) => z.id === "private")!.ownerId = "b";
   reconcileProjectLifecycles(state, new Date(now.getTime() + 3600000));
 });

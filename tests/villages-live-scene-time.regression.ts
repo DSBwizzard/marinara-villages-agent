@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
@@ -37,8 +38,20 @@ function fixture(live = true) {
     foundedAt: "2026-11-01T00:00:00Z",
     timeZone: "UTC",
     venues: [
-      { id: "garden", name: "Garden", classes: ["community"], description: "Garden benches" },
-      { id: "work", name: "Café", classes: ["workplace"], description: "A café" },
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
+        id: "garden",
+        name: "Garden",
+        classes: ["community"],
+        description: "Garden benches",
+      }),
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
+        id: "work",
+        name: "Café",
+        classes: ["workplace"],
+        description: "A café",
+      }),
     ],
     villagers: ["Maya", "Jimmy"].map((name) => ({
       characterId: name.toLowerCase(),

@@ -356,92 +356,45 @@ export function isTownMapImage(value: string): boolean {
 export const TOWN_MAP_EXPECTED_WIDTH = 2560;
 export const TOWN_MAP_EXPECTED_HEIGHT = 1440;
 
+export function currentVillageCircumstances(
+  village: {
+    narrative?: import("../models/narrative-model.js").NarrativeState;
+  },
+  venueId = "",
+  zoneId = "",
+): string[] {
+  return (village.narrative?.situations ?? [])
+    .filter(
+      (row) =>
+        row.status === "active" &&
+        (row.scope === "village" ||
+          (!!zoneId && row.targets.some((target) => target.venueId === venueId && target.zoneId === zoneId))),
+    )
+    .map((row) => row.summary);
+}
+
 export function villageCurrentSetting(village: {
   setting: string;
-  worldFacts?: readonly string[];
+  worldRules?: string;
+  narrative?: import("../models/narrative-model.js").NarrativeState;
   worldName?: string;
 }): string {
-  const facts = village.worldFacts?.filter(Boolean) ?? [];
+  const facts = currentVillageCircumstances(village);
   return [
-    village.setting.trim(),
+    village.setting.trim()
+      ? `Local geography and boundary (not a Venue's current physical account): ${village.setting.trim()}`
+      : "",
+    village.worldRules?.trim() ? `Standing world rules: ${village.worldRules.trim()}` : "",
     VILLAGE_SHARED_SETTING_RULE,
+    "Current Venue and Zone records govern physical truth. Lore books are reference material; outdated descriptions cannot undo physical progress. Narrator context does not grant anyone knowledge, witnesses or consent.",
     RESIDENT_CONTINUITY_RULE,
     village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
-    facts.length ? `Current world facts:\n${facts.map((fact) => `- ${fact}`).join("\n")}` : "",
+    facts.length
+      ? `Active Village-wide circumstances (context, not automatic knowledge of later developments):\n${facts.map((fact) => `- ${fact}`).join("\n")}`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
-}
-
-/** This context is used only while preparing the first village, never as a recurring plot instruction. */
-export function villageFoundingSetting(village: {
-  setting: string;
-  worldFacts?: readonly string[];
-  foundingReason: string;
-  foundingDetails: string;
-  foundingGuidance?: string;
-  scenarioImprint?: {
-    origin: string;
-    openingConditions: readonly string[];
-    visualCues: readonly string[];
-  } | null;
-}): string {
-  const imprint = village.scenarioImprint;
-  const origin = imprint?.origin.trim() ?? "";
-  return [
-    villageCurrentSetting(village),
-    origin ? `Earlier backstory (past, not a standing condition): ${origin}` : "",
-    village.foundingDetails.trim()
-      ? `Shared starting circumstances (use during founding only): ${village.foundingDetails.trim()}`
-      : "",
-    imprint?.openingConditions.length
-      ? `Starting conditions (at founding only): ${imprint.openingConditions.join("; ")}`
-      : "",
-    imprint?.visualCues.length ? `Founding visual cues: ${imprint.visualCues.join("; ")}` : "",
-    "Use starting circumstances selectively where they fit this person or place. The resident's card, assigned living space, and verified current facts take precedence. Do not invent shared relationships, player actions, completed events, or a first-day script. Starting play does not mean this place has just been established. Ongoing world conditions remain current setting context; do not expire them merely because setup ends.",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** Historical context is recalled only for a question about origins or a distinctive founding detail. */
-export function villageRelevantOrigin(
-  village: { foundingReason: string; foundingDetails: string; scenarioImprint?: { origin: string } | null },
-  query: string,
-): string {
-  const origin = village.scenarioImprint?.origin.trim() || village.foundingDetails.trim();
-  if (!origin) return "";
-  const q = query.toLowerCase();
-  const asksHistory =
-    /\b(found|founded|founding|origin|history|begin|began|beginning|started|settled|first came)\b/u.test(q) ||
-    /\bwhy\b.{0,80}\b(here|together|came|arrived|living|staying)\b/u.test(q) ||
-    /\bhow did\b.{0,80}\b(here|together|came|arrived|meet|met)\b/u.test(q) ||
-    /\bwhat\b.{0,40}\b(brings?|brought|led)\b.{0,40}\b(here|together)\b/u.test(q);
-  const asksPurpose =
-    /\b(vision|purpose|base\s*camp|resort|future|plans?|planning|build|building|develop|development)\b|\bwhat (?:are|were|did) we\b|\bwhy (?:are|were|did|we)\b/u.test(
-      q,
-    );
-  const ordinaryWords = new Set([
-    "village",
-    "people",
-    "their",
-    "there",
-    "before",
-    "became",
-    "within",
-    "around",
-    "through",
-    "settled",
-    "started",
-  ]);
-  const queryWords = new Set(q.match(/[a-z]{6,}/gu) ?? []);
-  const distinctive = [...new Set(origin.toLowerCase().match(/[a-z]{6,}/gu) ?? [])].some(
-    (word) => !ordinaryWords.has(word) && queryWords.has(word),
-  );
-  if (!asksHistory && !asksPurpose && !distinctive) return "";
-  return village.scenarioImprint?.origin
-    ? `Earlier backstory: ${origin} Current verified world and venue state takes precedence.`
-    : `Original shared starting circumstances (history, not a description of today): ${origin} This is shared backstory for their purpose, not an instruction that all residents share one ambition or personality. Current verified world and venue state takes precedence.`;
 }
 
 /**

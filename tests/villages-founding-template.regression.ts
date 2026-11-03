@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
 import { chooseAgendaZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
-import { includeFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
+import {
+  includeFoundingZone,
+  startingZone,
+} from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/domain/rules/founding-draft-rules.js";
@@ -10,6 +13,8 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 
 const residence = newSetupVenue("home", "residence", 0.2, 0.3, true);
+residence.layout = "both";
+residence.privateSpaces = [startingZone(residence, true)];
 residence.form = "Cottage";
 residence.description = "Stone doorway";
 residence.spaces![0] = { ...residence.spaces![0], name: "Living room", purpose: "Meals", description: "A low table" };
@@ -80,7 +85,11 @@ community.spaces![0] = {
   description: "Trees and benches",
 };
 const parsedPark = parsePlace(community, true);
-assert.deepEqual(parsedPark.access?.managerIds, []);
+assert.deepEqual(
+  parsedPark.access?.managerIds,
+  ["player"],
+  "unselected infrastructure is player-managed; Community designation is validated separately",
+);
 assert.equal(parsedPark.zones?.find((zone) => zone.id === "common:base")?.access?.mode, "public");
 assert.doesNotThrow(() => parsePlace({ ...community, layout: "exterior", spaces: [], privateSpaces: [] }, true));
 const restricted = parsePlace(
@@ -162,7 +171,12 @@ assert.equal(
     .privateDescription,
   "Hammock",
 );
-const npc = parsePlace({ ...residence, occupancy: { playerHome: false, residentCharacterId: "npc" } }, true);
+const npc = parsePlace({
+  ...residence,
+  residentIds: ["npc"],
+  privateSpaces: residence.privateSpaces!.map((room) => ({ ...room, ownerId: "npc", access: undefined })),
+  occupancy: { playerHome: false, residentCharacterId: null },
+});
 const world = defaultVillageState();
 world.venues = [npc as (typeof world.venues)[number]];
 const settings = villageSettings(

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import assert from "node:assert/strict";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
@@ -19,7 +20,7 @@ async function main() {
     backgroundPace: "off",
     villagers: [],
     venues: [
-      {
+      venueFixture({
         id: "venue",
         name: "Test",
         layoutVersion: 1,
@@ -36,10 +37,10 @@ async function main() {
             preparation: { status: "pending" },
           },
         ],
-      },
+      }),
     ],
   });
-  const zone = world.venues[0].zones![0];
+  const zone = world.venues[0].zones!.find((zone) => zone.id === "space")!;
   const original = structuredClone(zone);
   const records = new Map<string, any>();
   let failDiagnostics = false;

@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -184,7 +185,7 @@ const home = coerceVillageState({
 
   venues: [
     parsePlace(
-      {
+      venueFixture({
         id: "home",
         layoutVersion: 1,
         layout: "private",
@@ -194,8 +195,9 @@ const home = coerceVillageState({
         description: "A cabin",
         occupancy: { playerHome: false, residentCharacterId: "same", homeKind: null },
         residentIds: ["same"],
-        workerIds: ["same", "other"],
+        workerIds: [],
         spaces: [],
+        zones: undefined,
         privateSpaces: [
           {
             ...defaultVenueSpace("residence", "Secret writing"),
@@ -206,7 +208,7 @@ const home = coerceVillageState({
             purpose: "Rest",
           },
         ],
-      },
+      }),
       true,
     ),
   ],

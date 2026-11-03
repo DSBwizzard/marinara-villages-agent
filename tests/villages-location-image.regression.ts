@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
 import { sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
@@ -204,7 +205,15 @@ async function main() {
       ...defaultVillageState(),
 
       wishSystemVersion: 3,
-      venues: [{ id: "mill", name: "the mill pond", form: "where the grain is ground" }],
+      venues: [
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
+          id: "mill",
+          name: "the mill pond",
+          form: "where the grain is ground",
+        }),
+      ],
     }).venues[0]!,
     moment,
   );
@@ -218,7 +227,16 @@ async function main() {
       ...defaultVillageState(),
 
       wishSystemVersion: 3,
-      venues: [{ id: "mill", name: "the mill pond", form: "grain", description: "A timbered room" }],
+      venues: [
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
+          id: "mill",
+          name: "the mill pond",
+          form: "grain",
+          description: "A timbered room",
+        }),
+      ],
     }).venues[0]!,
     moment,
     "",
@@ -243,7 +261,15 @@ async function main() {
         ...defaultVillageState(),
 
         wishSystemVersion: 3,
-        venues: [{ id: "mill", name: "the mill pond", form: "" }],
+        venues: [
+          venueFixture({
+            residentIds: [null].filter((id) => typeof id === "string" && !!id),
+            classes: false || null ? ["residence"] : ["other"],
+            id: "mill",
+            name: "the mill pond",
+            form: "",
+          }),
+        ],
       }).venues[0]!,
       moment,
       "The mill walls are red brick",
@@ -257,15 +283,24 @@ async function main() {
 
       wishSystemVersion: 3,
       setting,
-      foundingDetails: "Built beside the ridge",
-      venues: [{ id: "square", name: "market square", form: "trade" }],
+      venues: [
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
+          id: "square",
+          name: "market square",
+          form: "trade",
+        }),
+      ],
     }),
     coerceVillageState({
       ...defaultVillageState(),
 
       wishSystemVersion: 3,
       venues: [
-        {
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           form: "a stone watermill",
@@ -283,7 +318,7 @@ async function main() {
               state: { revision: 0, updatedAt: "", recent: null },
             },
           ],
-        },
+        }),
       ],
     }).venues[0]!,
     moment,
@@ -306,7 +341,7 @@ async function main() {
 
       wishSystemVersion: 3,
       venues: [
-        {
+        venueFixture({
           id: "home",
           name: "Bob's home",
           form: "a brick cottage",
@@ -324,7 +359,7 @@ async function main() {
               state: { revision: 0, updatedAt: "", recent: null },
             },
           ],
-        },
+        }),
       ],
     }).venues[0]!,
     moment,
@@ -338,7 +373,15 @@ async function main() {
         ...defaultVillageState(),
 
         wishSystemVersion: 3,
-        venues: [{ id: "mill", name: "the mill pond", form: "   " }],
+        venues: [
+          venueFixture({
+            residentIds: [null].filter((id) => typeof id === "string" && !!id),
+            classes: false || null ? ["residence"] : ["other"],
+            id: "mill",
+            name: "the mill pond",
+            form: "   ",
+          }),
+        ],
       }).venues[0]!,
       moment,
     ).includes("—"),
@@ -356,7 +399,15 @@ async function main() {
       ...defaultVillageState(),
 
       wishSystemVersion: 3,
-      venues: [{ id: "mill", name: "the mill pond", form: "" }],
+      venues: [
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
+          id: "mill",
+          name: "the mill pond",
+          form: "",
+        }),
+      ],
     }).venues[0]!,
     moment,
   );
@@ -377,7 +428,15 @@ async function main() {
       ...defaultVillageState(),
 
       wishSystemVersion: 3,
-      venues: [{ id: "mill", name: "the mill pond", presentation: { image } }],
+      venues: [
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
+          id: "mill",
+          name: "the mill pond",
+          presentation: { image },
+        }),
+      ],
     }).venues;
 
   assert.deepEqual(venuesWith(picture)[0]!.presentation.image, picture, "a well-formed reference survives the store");
@@ -417,192 +476,37 @@ async function main() {
   );
   assert.ok(isGlobalGalleryRef(picture.ref) && GLOBAL_GALLERY_REF_PREFIX === "global-gallery:");
   assert.ok(MAX_VENUE_IMAGE_ID_LENGTH > 0 && MAX_VENUE_IMAGE_URL_LENGTH > 0);
-  // A place with no name is still not a place, picture or no picture.
-  assert.deepEqual(
-    coerceVillageState({
-      ...defaultVillageState(),
-
-      wishSystemVersion: 3,
-      venues: [{ name: "  ", presentation: { image: picture } }],
-    }).venues,
-    [],
-  );
-
-  // ── What a stored place is allowed to be ──────────────────────────────────
-  // The village holds ONE list of places. Some of them are houses and some are
-  // somewhere a villager can be sent, and which is which is asked in one place
-  // rather than decided here — see `isHousePlace`. What is pinned below is the
-  // consequence: a place that says it is a house may have no NAME, because the
-  // village has no name for one, while a place that says nothing else and has no
-  // name is not a place at all — its name is the whole of what the translation
-  // list can say about it.
-  const placesOf = (entries: unknown[]) =>
-    coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, venues: entries }).venues;
-  const house = (id: string, characterId: string | null, extra: Record<string, unknown> = {}) => ({
-    id,
-    name: "",
-    form: "",
-    occupancy: { playerHome: false, residentCharacterId: characterId, homeKind: "small-home" },
-    ...extra,
-  });
-
-  assert.deepEqual(
-    Object.keys(placesOf([house("bram-house", "character-bram")])[0]!).sort(),
-    [
-      "access",
-      "archivedPrivateSpaces",
-      "archivedZones",
-      "buildProjectId",
-      "capabilities",
-      "category",
-      "classes",
-      "constructionStatus",
-      "description",
-      "destinations",
-      "exteriorState",
-      "form",
-      "id",
-      "imageContext",
-      "layoutVersion",
-      "name",
-      "occupancy",
-      "playerInvitations",
-      "playerSeenPrivateIds",
-      "playerSeenPublic",
-      "playerSeenShared",
-      "presentation",
-      "privateSpaces",
-      "residenceCapacity",
-      "residentIds",
-      "spaces",
-      "state",
-      "usedInvitationIds",
-      "venueType",
-      "workerIds",
-      "zones",
-    ],
-    "a stored place has normalized presentation, occupancy, capabilities, and state fields",
-  );
-  assert.deepEqual(
-    placesOf([house("bram-house", "character-bram")]).map((place) => place.id),
-    ["bram-house"],
-    "a place with no name is kept when somebody lives in it, because the village knows 'Bram's house' — a sentence " +
-      "about Bram, not a name for a building",
-  );
-  assert.deepEqual(
-    placesOf([house("empty-house", null)]).map((place) => place.id),
-    ["empty-house"],
-    "and an empty one is still a house: the wizard asks for four houses on the map and the player may fill them in " +
-      "later, so a roof nobody has moved into yet must not become a destination",
-  );
-  assert.deepEqual(
-    placesOf([
-      house("player-house", null, { occupancy: { playerHome: true, residentCharacterId: null, homeKind: null } }),
-    ]).map((place) => place.id),
-    ["player-house"],
-    "and the player's own home is nameless and may have no building either — it is their house whether or not the " +
-      "village has decided what it looks like",
-  );
-  assert.deepEqual(
-    placesOf([{ id: "nameless", name: "   ", form: "", occupancy: {} }]),
-    [],
-    "while the same nameless place with nothing saying it is a house is dropped rather than kept as a blank row in " +
-      "the player's editor",
-  );
-  assert.equal(
-    placesOf([
-      house("player-house", "character-bram", {
-        occupancy: { playerHome: true, residentCharacterId: "character-bram", homeKind: "small-home" },
-      }),
-    ])[0]!.occupancy.residentCharacterId,
-    null,
-    "and the player's home holds nobody: an occupant written against it is an accident, and a resident parked there " +
-      "would never be found in the place they actually live",
-  );
-
-  // ── The two rules no single place can check for itself ────────────────────
-  // Only one place is the player's, and a character lives in one place at a
-  // time. Both are enforced on the way IN rather than trusted, because a
-  // duplicate makes every reader of the list disagree about who lives where, and
-  // the disagreement is silent — it only shows up as somebody standing in the
-  // wrong room.
-  assert.deepEqual(
-    placesOf([
-      house("first", null, { occupancy: { playerHome: true, residentCharacterId: null, homeKind: "small-home" } }),
-      house("second", null, { occupancy: { playerHome: true, residentCharacterId: null, homeKind: "small-home" } }),
-    ]).map((place) => place.id),
-    ["first"],
-    "only one place is the player's, and it is the one the village wrote first rather than a guess at which was meant",
-  );
-  assert.deepEqual(
-    placesOf([house("bram-house", "character-bram"), house("bram-again", "character-bram")]).map((place) => place.id),
-    ["bram-house"],
-    "a character lives in one place at a time, and the duplicate is dropped rather than merged because which one the " +
-      "player meant cannot be guessed from here",
-  );
-  assert.deepEqual(
-    placesOf([house("bram-house", "character-bram"), house("bram-house", "character-rosa")]).map((place) => place.id),
-    ["bram-house"],
-    "and a place is one place, so a second entry wearing the first one's id does not become a second pin",
-  );
-  assert.deepEqual(
-    placesOf([
-      house("player-house", "character-bram", {
-        occupancy: { playerHome: true, residentCharacterId: "character-bram", homeKind: "small-home" },
-      }),
-      house("bram-house", "character-bram"),
-    ]).map((place) => [place.id, place.occupancy.residentCharacterId]),
-    [
-      ["player-house", null],
-      ["bram-house", "character-bram"],
-    ],
-    "and the occupant discarded from the player's home is not counted as having been placed, so the house they " +
-      "really live in is still kept",
-  );
-
-  // ── Where a place stands ──────────────────────────────────────────────────
-  // A position is read as a whole or not at all, because half a position is not
-  // one: a place with an x and no y cannot be drawn, and keeping the x would let
-  // a later write put the pin on the left edge believing the village had meant
-  // it. Nothing is clamped either, for the same reason — a coordinate outside
-  // the picture reads as "no position", which costs the player a pin rather than
-  // moving it somewhere they never put it.
+  const placesOf = (entries: unknown[]) => coerceVillageState({ ...defaultVillageState(), venues: entries }).venues;
+  const house = (id: string, residentIds: string[] = [], playerHome = false) =>
+    venueFixture({
+      id,
+      name: id,
+      classes: ["residence"],
+      residentIds,
+      occupancy: { playerHome, residentCharacterId: null, homeKind: null },
+    });
+  assert.throws(() => placesOf([{ name: "", presentation: { image: picture } }]), /fresh-format/);
+  const shared = placesOf([house("shared", ["bram"], true)])[0];
+  assert.deepEqual(shared.residentIds, ["bram"]);
+  assert.equal(shared.occupancy.playerHome, true, "Player and residents may share a home");
+  assert.throws(() => placesOf([house("one", [], true), house("two", [], true)]), /two homes/);
+  assert.throws(() => placesOf([house("one", ["bram"]), house("two", ["bram"])]), /two homes/);
+  assert.throws(() => placesOf([house("one"), house("one")]), /distinct valid identities/);
   const spot = (x: unknown, y: unknown) =>
-    placesOf([{ id: "mill", name: "the mill", form: "", presentation: { x, y } }])[0]!;
+    placesOf([venueFixture({ id: "mill", name: "Mill", presentation: { image: null, x, y } as any })])[0];
   assert.deepEqual([spot(0.25, 0.5).presentation.x, spot(0.25, 0.5).presentation.y], [0.25, 0.5]);
-  assert.deepEqual(
-    [spot(0, 1).presentation.x, spot(0, 1).presentation.y],
-    [0, 1],
-    "and the corners are inside the picture, at both ends",
-  );
+  assert.deepEqual([spot(0, 1).presentation.x, spot(0, 1).presentation.y], [0, 1]);
   for (const [x, y] of [
     [0.25, null],
     [null, 0.5],
     [1.2, 0.5],
     [0.5, -0.1],
-    [Number.NaN, 0.5],
-    ["0.5", 0.5],
-  ] as const) {
-    assert.deepEqual(
-      [spot(x, y).presentation.x, spot(x, y).presentation.y],
-      [null, null],
-      `${JSON.stringify(x)},${JSON.stringify(y)} is not a position, and half of one is not a position either`,
-    );
-  }
-
-  // The cap counts the houses, because this is the list that holds them; the
-  // translator's smaller budget is applied where it belongs — see `remapVenues`.
-  assert.equal(
-    placesOf(
-      Array.from({ length: MAX_PLACES + 6 }, (_, index) => ({
-        id: `place-${index}`,
-        name: `place ${index}`,
-        form: "",
-      })),
-    ).length,
-    MAX_PLACES,
-    "a village holds MAX_PLACES places, houses included",
-  );
+    [NaN, 0.5],
+    [".5", 0.5],
+  ])
+    assert.deepEqual([spot(x, y).presentation.x, spot(x, y).presentation.y], [null, null]);
+  assert.equal(placesOf(Array.from({ length: MAX_PLACES }, (_, i) => house("place-" + i))).length, MAX_PLACES);
+  assert.throws(() => placesOf(Array.from({ length: MAX_PLACES + 1 }, (_, i) => house("place-" + i))), /Village limit/);
 
   // ── Where the Engine is ───────────────────────────────────────────────────
   // Read from the environment because that is where the truth is: the package
@@ -844,11 +748,13 @@ async function main() {
     name: "Ashcroft",
     townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
     setting: settingText,
-    foundingReason: "pioneer",
-    foundingDetails: "The group arrives at the riverside and opens the first shared path.",
+    communityVenueId: "village-square",
+    circumstances: [],
+    worldRules: "",
     playerPersonaId: "persona-robin",
     venues: [
-      {
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "player-home",
         layoutVersion: 1,
         layout: "both",
@@ -876,8 +782,9 @@ async function main() {
         ],
         presentation: { x: 0.2, y: 0.3 },
         occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
-      },
-      {
+      }),
+      venueFixture({
+        residentIds: ["character-millie"].filter((id) => typeof id === "string" && !!id),
         id: "millie-home",
         layoutVersion: 1,
         layout: "both",
@@ -887,6 +794,7 @@ async function main() {
             venueClass: "residence",
             name: "Private Space",
             purpose: "Personal space",
+            description: "An existing sleeping nook",
             ownerId: "character-millie",
           },
         ],
@@ -904,8 +812,9 @@ async function main() {
         ],
         presentation: { x: 0.4, y: 0.5 },
         occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
-      },
-      {
+      }),
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "village-square",
         layoutVersion: 1,
         layout: "common",
@@ -922,23 +831,29 @@ async function main() {
           },
         ],
         category: "public-center",
+        access: {
+          version: 1,
+          revision: 0,
+          managerIds: [],
+          visitorHours: null,
+          permissions: [],
+          bans: [],
+          exceptions: [],
+          changes: [],
+          visitDenials: [],
+          receipts: {},
+        },
         presentation: { x: 0.6, y: 0.7 },
         occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      },
+      }),
     ],
   });
   assert.equal(founded.statusCode, 200, founded.body);
-  let preparation = (await readVillageState()).foundingPreparation;
-  for (let attempt = 0; attempt < 30 && preparation?.status !== "failed"; attempt++) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    preparation = (await readVillageState()).foundingPreparation;
-  }
   assert.equal(
-    preparation?.venueDetailsSeeded,
-    false,
-    "failed detail seeding cannot claim a successful required receipt",
+    (await readVillageState()).venues[0]?.state.recent,
+    null,
+    "Founding preserves reviewed physical details",
   );
-  assert.equal((await readVillageState()).venues[0]?.state.recent, null, "seed failure leaves recent context empty");
   assert.equal(
     founded.json().settings.venues.filter((venue: any) => venue.classes.includes("community")).length,
     1,
@@ -960,36 +875,40 @@ async function main() {
   const added = await patch("/api/villages/settings", {
     venues: [
       ...founded.json().settings.venues,
-      {
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
+        classes: false || null ? ["residence"] : ["other"],
         id: "mill",
         name: "the mill pond",
         form: "where the grain is ground",
         description: "A stone mill beside shallow water.",
-      },
-      {
+      }),
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
+        classes: false || null ? ["residence"] : ["other"],
         id: "ridge",
         name: "the ridge path",
         form: "A path along the ridge",
         description: "A narrow path over the ridge.",
-      },
+      }),
     ],
   });
-  assert.equal(added.statusCode, 409, "finished buildings must use Projects");
+  assert.equal(added.statusCode, 400, "finished buildings must use Projects");
   await mutateVillageState((state) => {
     state.venues.push(
       ...placesOf([
-        {
+        venueFixture({
           id: "mill",
           name: "the mill pond",
           form: "where the grain is ground",
           description: "A stone mill beside shallow water.",
-        },
-        {
+        }),
+        venueFixture({
           id: "ridge",
           name: "the ridge path",
           form: "A path along the ridge",
           description: "A narrow path over the ridge.",
-        },
+        }),
       ]),
     );
   });
@@ -1239,7 +1158,6 @@ async function main() {
     "features/world/village-store.ts",
     "features/founding/village-bootstrap.ts",
     "features/founding/village-bootstrap-service.ts",
-    "domain/rules/village-bootstrap-rules.ts",
     "domain/rules/village-clock.ts",
     "jobs/village-refresh-scheduler.ts",
     "domain/rules/native-remap.ts",
@@ -1292,7 +1210,6 @@ async function main() {
   const foundingImageInput = {
     villageName: "Ashcroft",
     setting: "A cliffside village above the sea.",
-    foundingDetails: "On Day 1, a storm damages several boats.",
     selectedLorebookIds: [],
   };
   const beforeInvalidImage = draws().length;
@@ -1468,7 +1385,9 @@ async function mediaConnectionOwnership() {
         selectedLorebookIds: ["visual"],
         useVisualLoreByDefault: true,
         venues: [
-          {
+          venueFixture({
+            residentIds: [null].filter((id) => typeof id === "string" && !!id),
+            classes: false || null ? ["residence"] : ["other"],
             id: "equal-venue",
             name: `${label} place`,
             layoutVersion: 1,
@@ -1484,7 +1403,7 @@ async function mediaConnectionOwnership() {
                 controllerIds: ["player"],
               },
             ],
-          },
+          }),
         ],
       });
       type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;

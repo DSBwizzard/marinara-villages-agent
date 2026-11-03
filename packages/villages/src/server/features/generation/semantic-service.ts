@@ -14,13 +14,7 @@ import { asRecord } from "../../domain/rules/coerce.js";
 import { badGateway, conflict, UnsupportedPlayerAgency } from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
-import {
-  IncompleteOpeningGathering,
-  IncompleteOpeningPitch,
-  openingGatheringQuoteMatches,
-  openingProposalFingerprint,
-  readOpeningSignal,
-} from "../../domain/rules/opening-project.js";
+
 import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import {
   reconcileResidentActions,
@@ -182,7 +176,7 @@ function exchangeInstruction(
       ? 'intent:{status:"resolved|unresolved",reason,instructions:"",action:null,movement:null,timeline:[{kind:"speech|thought|action|movement|context",text:"exact input span"}]},'
       : "") +
     (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
-    "consistent:true,reason,playerAgencyViolation:null,presentation:[],authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,openingSignal:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
+    "consistent:true,reason,playerAgencyViolation:null,presentation:[],authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
     (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
     "}. Return exactly one JSON object. " +
     'Use input.presentation to interpret visible acting in the completed draft, in this same response: presentation:[{segment:zero-based draft index,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}]. Choose only listed expression IDs matching the visible emotion; preserve prior expression when unchanged or use the listed default when uncertain. Interpret attention from the actual addressee or narrated look; screen placement is handled by code. Omit uncertain cues. Artwork labels select images only and establish no story events, action, knowledge, attendance, consent or effects. An action pose such as eating or waving fits only when already occurring in the draft. Cues are visual only: never alter speech targets, hearing or physical positions. ' +
@@ -198,12 +192,11 @@ function exchangeInstruction(
     (context.preservation
       ? "Only the player's Conclude ends this Scene; never return sceneEnded. "
       : "Ending an in-person visit is sceneEnded:{source} with exact resident farewell speech, or omit the event when unsupported. ") +
-    "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,approved}, venueRequest:{source,name,classes}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
+    "events independently discovers villager moves [{characterId,zoneId,segment:narration index}] subject to access rules. Presence is occupancy, not housing residency or permission. Player travel is exclusive to the explicit Move action; return playerMoves:[] in conversational events. Never move the player through invitations or accompaniment. Other events: departures/contactEnd [{source:speech index}], residenceRequest:{source,venueId}, residenceDecision:{source,characterId,approved}, venueRequest:{source,name,classes}. Omit absent singleton events. Movement is an actual completed change of Zone with legal route, never intended/hypothetical movement. Walking toward a doorway, gathering beside it, stopping at its threshold, agreement and future speech are not completed crossings. Cite the exact narration segment that completes passage through the boundary, not an earlier approach; later entry cannot backdate movement or witnesses. Code derives witnesses AFTER these moves; never infer observers from the proposed heardBy. Each knower must witness support and context under the resulting timeline. " +
     (actionContractV2
       ? ""
       : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
-    'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Opening pitches are reported in openingSignal, not projectSpeech. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. ' +
-    'When context.opening.gathering is present, return gatheringContributions:[{residentId,quote}] with one row per founder whose spoken interest and idea are both explained in this reply, and openingSignal:null. Cite exact player-heard dialogue by that founder. Missing explanations must be omitted; no narration, private thought or merely hello counts. The gathering uses only gatheringContributions; it cannot record an individual introduction or first use. Otherwise, when context.opening is present, return openingSignal:null or {kind:"pitch|first-use",residentId,segment,playerQuote}. A pitch requires context.opening.proposal. When context.opening.requiredPitch is true, a complete pitch is required in this opening reply: its idea, purpose and practical work must all be spoken. A pitch must be actual player-heard dialogue by the supplied proposal resident explaining that exact named proposal, purpose and work; never an invented commitment or private thought. A first-use requires context.opening.firstUse and actual current player participation plus player-heard response depicting that use. Entering, greetings, promises and hypothetical descriptions do not count. For openingSignal, segment is the numeric index from evidence draft:N of one supporting player-heard response segment; for a pitch choose dialogue by that resident naming the supplied proposal. Judge completeness from the FULL reply, including a pitch spread across several speech segments, then cite one supporting segment. Do not return quote, join speech, summarize it or insert ellipses; code copies the exact saved segment. For first-use, playerQuote must be an exact current player input substring. Omit venueRequest for the supplied opening pitch. ' +
+    'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. ' +
     (actionContractV2
       ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
       : LIVE_MEMORY_INSTRUCTION
@@ -769,80 +762,6 @@ export function createSemanticService(ports: SemanticPorts) {
             lines,
             raw.action,
           );
-        if (savedInput.context.opening) {
-          const opening = savedInput.context.opening;
-          const signalRequired = Boolean(opening.proposal || opening.firstUse);
-          if (raw.openingSignal === undefined && signalRequired)
-            throw badGateway("System opening interpretation is incomplete. The draft is preserved.");
-          // Gathering contributions are independent of individual introductions.
-          // Discard an inapplicable single signal without losing a complete gathering.
-          const rawSignal = asRecord(raw.openingSignal);
-          const indexed = Object.hasOwn(rawSignal, "segment");
-          const segment =
-            typeof rawSignal.segment === "number" && Number.isInteger(rawSignal.segment)
-              ? savedInput.evidence[rawSignal.segment]
-              : undefined;
-          // Older frozen checks still return exact quotes. New checks cite saved evidence directly.
-          const citedEvidence = indexed ? (segment ? [segment] : []) : savedInput.evidence;
-          const signal = opening.gathering
-            ? null
-            : readOpeningSignal(indexed ? { ...rawSignal, quote: segment?.content } : raw.openingSignal);
-          if (
-            !opening.gathering &&
-            raw.openingSignal !== null &&
-            raw.openingSignal !== undefined &&
-            (!signal ||
-              !citedEvidence.some(
-                (line) =>
-                  line.playerHeard &&
-                  line.content.includes(signal.quote) &&
-                  (signal.kind !== "pitch" ||
-                    (line.speakerId === signal.residentId && line.kind === "dialogue" && !line.soundOnly)),
-              ) ||
-              (signal.kind === "pitch" && (!opening.proposal || opening.proposal.residentId !== signal.residentId)) ||
-              (signal.kind === "first-use" &&
-                (!opening.firstUse || !signal.playerQuote || !savedInput.message.includes(signal.playerQuote))))
-          )
-            throw badGateway(
-              "The AI check returned details that do not match the opening dialogue. Your draft is saved. Retry the failed request to check it again.",
-            );
-          if (opening.requiredPitch && signal?.kind !== "pitch") throw new IncompleteOpeningPitch();
-          let gatheringComplete = false;
-          if (opening.gathering) {
-            if (!Array.isArray(raw.gatheringContributions))
-              throw badGateway(
-                "The gathering check did not identify the foundersâ€™ ideas. The draft is preserved. Retry the check.",
-              );
-            const contributions = raw.gatheringContributions.map(asRecord);
-            const contributors = new Set<string>();
-            for (const contribution of contributions) {
-              const { residentId, quote } = contribution;
-              if (
-                typeof residentId !== "string" ||
-                !opening.gathering.some((idea) => idea.residentId === residentId) ||
-                contributors.has(residentId) ||
-                typeof quote !== "string" ||
-                !quote.trim() ||
-                !openingGatheringQuoteMatches(savedInput.evidence, residentId, quote)
-              )
-                throw badGateway(
-                  "The gathering check could not match a founderâ€™s idea to their spoken dialogue. The draft is preserved. Retry the check.",
-                );
-              contributors.add(residentId);
-            }
-            if (contributors.size !== opening.gathering.length) throw new IncompleteOpeningGathering();
-            gatheringComplete = true;
-          }
-          effects.openingSignal = signal;
-          effects.openingContext = {
-            stage: opening.stage,
-            projectId: opening.projectId,
-            ...(gatheringComplete ? { gatheringComplete: true } : {}),
-            ...(combined && signal?.kind === "pitch" && opening.proposal
-              ? { proposalFingerprint: openingProposalFingerprint(opening.proposal) }
-              : {}),
-          };
-        }
         if (reconciliation)
           effects.residentActionReceipt = {
             ...reconciliation.receipt,
@@ -854,11 +773,6 @@ export function createSemanticService(ports: SemanticPorts) {
         )
           throw badGateway("System physical outcome lacks a completed, cited action.");
         const immediate = semanticImmediate(raw.events, lines);
-        if (
-          savedInput.context.opening?.requiredPitch &&
-          [...(immediate.contactMoves as unknown[]), ...(immediate.departures as unknown[])].length > 0
-        )
-          throw new IncompleteOpeningPitch();
         Object.assign(effects, immediate);
         effects.placeUpdate = raw.action ?? null;
         effects.memoryContexts = {

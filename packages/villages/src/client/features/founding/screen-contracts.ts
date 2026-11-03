@@ -102,7 +102,7 @@ export type FoundingScreenController = {
   readonly setSetupShowIssues: FoundingState["setSetupShowIssues"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setSetupWorkspace: FoundingState["setSetupWorkspace"];
-  readonly setSetupWorldFacts: FoundingState["setSetupWorldFacts"];
+  readonly setSetupContext: FoundingState["setSetupContext"];
   readonly settingsError: string;
   readonly setupBeginningSourceKey: string;
   readonly setupEditorOpen: FoundingState["setupEditorOpen"];
@@ -139,7 +139,7 @@ export type FoundingScreenController = {
   readonly setupVenueBusy: FoundingState["setupVenueBusy"];
   readonly setupVenues: FoundingState["setupVenues"];
   readonly setupWorkspace: FoundingState["setupWorkspace"];
-  readonly setupWorldFacts: FoundingState["setupWorldFacts"];
+  readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly suggestSetupVenues: ReturnType<typeof createFoundingSuggestSetupVenues>;
   readonly updateSetupMapRequest: ReturnType<typeof useUpdateSetupMapRequest>;

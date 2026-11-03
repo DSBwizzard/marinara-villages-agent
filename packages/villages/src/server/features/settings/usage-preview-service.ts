@@ -88,9 +88,9 @@ export function createUsagePreview({
     let languageRequests = bootstrap ? 1 : 0,
       imageRequests = 0;
     if (action === "founding" && original.foundingPreparation && original.foundingPreparation.status !== "ready")
-      languageRequests =
-        (original.foundingPreparation.venueDetailsSeeded ? 0 : 1) +
-        privatePreparationRooms(original).filter(({ zone }) => zone.preparation?.status !== "ready").length;
+      languageRequests = privatePreparationRooms(original).filter(
+        ({ zone }) => zone.preparation?.status !== "ready",
+      ).length;
     const active = (kind: string, id: string) =>
       jobs.find(
         (j) =>

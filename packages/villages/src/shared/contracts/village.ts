@@ -5,11 +5,26 @@ import type { VillagesWalkBeat } from "./scene-beat.js";
 
 /** Client-visible wire data. Private saved-world and Scene records stay on the server. */
 
-export type ScenarioImprint = {
-  origin: string;
-  worldFacts: string[];
-  openingConditions: string[];
-  visualCues: string[];
+export type VillageCircumstance = {
+  scope: "village" | "zone";
+  id: string;
+  revision: number;
+  title: string;
+  summary: string;
+  status: "active" | "resolved";
+  targets: { venueId: string; zoneId: string }[];
+  updatedAt: string;
+};
+
+export type FoundingCircumstance = { scope: "village" | "zone"; summary: string; venueId: string; zoneId: string };
+
+export type ResidenceAgreement = {
+  requestId: string;
+  requiredIds: string[];
+  scope: string;
+  householdIds: string[];
+  sleepZoneId: string;
+  approvals: Record<string, boolean>;
 };
 
 export type VillageVillagerView = {
@@ -149,6 +164,8 @@ export type VillageSnapshot = {
   venueRequests: VenueRequest[];
   projects: BuildProject[];
   residences: {
+    agreement?: ResidenceAgreement;
+    holdReason?: string;
     characterId: string;
     venueId: string;
     proposedVenueId: string;
@@ -174,7 +191,6 @@ export type VillageSnapshot = {
     retryActions?: string[];
     selectedTasks?: string[];
     currentTask?: "routine" | "wish";
-    venueDetailsSeeded?: boolean;
     currentId: string;
     error: string;
     phase?: "venues" | "private-spaces" | "residents";
@@ -533,13 +549,11 @@ export type VillageSettings = {
   playerPersonaMissing: boolean;
   setting: string;
   settingMaxLength: number;
-  foundingReason: string;
+  worldRules: string;
+  communityVenueId: string;
   worldName: string | null;
-  foundingDetails: string;
-  foundingGuidance: string;
   playerBackground: PlayerBackground | null;
-  scenarioImprint: ScenarioImprint | null;
-  worldFacts: string[];
+  circumstances: VillageCircumstance[];
   selectedLorebookIds: string[];
   sceneryArtStyle: string;
   sceneryStyleProfileId: string | null;
@@ -549,8 +563,6 @@ export type VillageSettings = {
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;
-  foundingDetailsMaxLength: number;
-  foundingGuidanceMaxLength: number;
   townMapLayoutPrompt: string;
   townMapNegativePrompt: string;
   /**
@@ -797,8 +809,6 @@ export type SceneView = {
   capturedContext?: true;
   playerName?: string;
   /** An existing handoff needs return/recovery controls; private context stays server-side. */
-  openingReader?: boolean;
-  openingIntroductionResidentId?: string;
   semanticVersion?: 2;
   connectionMap?: { id: string; connectedTo?: string[] }[];
   attentionClarification?: { id: string; message: string; question: string; choices: { id: string; label: string }[] };

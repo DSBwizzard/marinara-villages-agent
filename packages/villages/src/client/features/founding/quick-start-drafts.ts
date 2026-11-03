@@ -1,4 +1,5 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { SetupVenueDraft } from "../../shared/types.js";
 import { newSetupVenue } from "./FoundingPanels.js";
 import { startingZone } from "./founding-template.js";
 
@@ -25,26 +26,28 @@ export function quickStartIdentity(venues: readonly VillageVenue[]): string {
       venue.id,
       venue.category === "public-center",
       venue.occupancy.playerHome,
-      venue.occupancy.residentCharacterId,
+      venue.residentIds,
     ]),
   );
 }
 
 /** Fresh template inputs deliberately exclude the current Venue's authored content. */
-export function quickStartTemplates(venues: readonly VillageVenue[]): VillageVenue[] {
+export function quickStartTemplates(venues: readonly SetupVenueDraft[]): SetupVenueDraft[] {
   return venues.map((previous, index) => {
-    const residence = previous.category !== "public-center";
+    const residence = previous.classes?.includes("residence") ?? false;
     const venue = newSetupVenue(
       previous.id,
-      residence ? "residence" : "community",
+      previous.classes?.[0] ?? "other",
       0.5,
       0.5,
       residence && previous.occupancy.playerHome,
       index,
     );
-    venue.occupancy.residentCharacterId =
-      residence && !venue.occupancy.playerHome ? previous.occupancy.residentCharacterId : null;
-    venue.residentIds = venue.occupancy.residentCharacterId ? [venue.occupancy.residentCharacterId] : [];
+    venue.category = previous.category;
+    venue.residentIds = previous.residentIds ?? [];
+    venue.residenceCapacity = previous.residenceCapacity;
+    venue.foundingCapacity = previous.foundingCapacity;
+    venue.classes = previous.classes;
     venue.spaces = [startingZone(venue, false)];
     venue.privateSpaces = residence ? [startingZone(venue, true)] : [];
     return venue;
@@ -53,7 +56,7 @@ export function quickStartTemplates(venues: readonly VillageVenue[]): VillageVen
 
 /** Confirmation authorizes complete replacement; no field-level edit detection is used. */
 export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVenueSuggestion): VillageVenue {
-  const residence = venue.category !== "public-center";
+  const residence = venue.classes?.includes("residence") ?? false;
   const links = (id: string) =>
     proposal.connections?.filter((edge) => edge.includes(id)).map((edge) => (edge[0] === id ? edge[1] : edge[0]));
   return {
@@ -62,24 +65,27 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
     venueType: proposal.venueType,
     form: proposal.form,
     description: proposal.description,
-    layout: residence ? "both" : "common",
-    spaces: [
-      {
-        ...startingZone(venue, false),
-        name: proposal.commonName,
-        purpose: proposal.commonPurpose || (residence ? "Everyday activities" : "Community gatherings"),
-        description: proposal.commonDescription,
-        connectedTo: links("common:base") ?? (residence ? ["exterior", "private:base"] : ["exterior"]),
-      },
-    ],
-    privateSpaces: residence
+    layout: proposal.layout,
+    spaces: ["common", "both"].includes(proposal.layout)
+      ? [
+          {
+            ...startingZone(venue, false),
+            name: proposal.commonName,
+            purpose: proposal.commonPurpose || (residence ? "Everyday activities" : "Community gatherings"),
+            description: proposal.commonDescription,
+            connectedTo:
+              links("common:base") ?? (proposal.layout === "both" ? ["exterior", "private:base"] : ["exterior"]),
+          },
+        ]
+      : [],
+    privateSpaces: ["private", "both"].includes(proposal.layout)
       ? [
           {
             ...startingZone(venue, true),
             name: proposal.privateName,
             purpose: proposal.privatePurpose,
             description: proposal.privateDescription ?? "",
-            connectedTo: links("private:base") ?? ["common:base"],
+            connectedTo: links("private:base") ?? [proposal.layout === "private" ? "exterior" : "common:base"],
           },
         ]
       : [],

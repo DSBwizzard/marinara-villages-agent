@@ -1,3 +1,7 @@
+import { initializeVenueAccess } from "./venue-access.js";
+import { applyConnectionEdits } from "../../../shared/helpers/zone-contact.js";
+import { accessibleVenueRoute } from "./venue-path.js";
+import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type {
   VillageState,
   VillageVenue,
@@ -15,8 +19,14 @@ import { readConnectionIds } from "./space-connections.js";
 import { boundText } from "./prompt-preset.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import { readPlaceDescription } from "./zone-continuity.js";
+import { assertCommunityVenueUse } from "./community-venue.js";
 
-export function readRenovationChange(state: VillageState, venue: VillageVenue, value: unknown): VillageProjectChange {
+export function readRenovationChange(
+  state: VillageState,
+  venue: VillageVenue,
+  value: unknown,
+  at: Date,
+): VillageProjectChange {
   const row = asRecord(value);
   if (row.form !== undefined && (typeof row.form !== "string" || row.form.length > MAX_PHYSICAL_DESIGN_LENGTH))
     throw badRequest("Physical form must be at most 2000 characters.");
@@ -83,7 +93,7 @@ export function readRenovationChange(state: VillageState, venue: VillageVenue, v
       : {}),
   };
   if (!change.detail) throw badRequest("Describe the physical change.");
-  validateRenovationDesign(state, venue, change);
+  validateRenovationDesign(state, venue, change, at);
   return change;
 }
 export function effectiveRenovationChange(
@@ -98,7 +108,12 @@ export function effectiveRenovationChange(
     ),
   };
 }
-export function validateRenovationDesign(state: VillageState, venue: VillageVenue, change: VillageProjectChange): void {
+export function validateRenovationDesign(
+  state: VillageState,
+  venue: VillageVenue,
+  change: VillageProjectChange,
+  at: Date,
+): void {
   const classes = change.classes ?? venue.classes ?? ["other"];
   if (!validVenueClasses(classes)) throw conflict("Choose one or two Venue Classes.");
   const residents = venueResidentIds(venue).length + Number(venue.occupancy.playerHome);
@@ -113,6 +128,45 @@ export function validateRenovationDesign(state: VillageState, venue: VillageVenu
       throw conflict("Move residents before removing or transferring their rooms.");
   }
   validateLayoutZones(venue, zones, classes, state);
+  const proposed = structuredClone(venue);
+  proposed.classes = classes;
+  proposed.zones = applyConnectionEdits(
+    [
+      proposed.zones!.find((zone) => zone.kind === "exterior")!,
+      ...zones.map((draft) => {
+        const previous = proposed.zones!.find((zone) => zone.id === draft.id);
+        return { ...defaultVenueSpace(draft.venueClass), ...previous, ...draft, access: previous?.access };
+      }),
+    ],
+    zones,
+  );
+  initializeVenueAccess(proposed);
+  assertCommunityVenueUse(state, proposed);
+  for (const actor of [...venueResidentIds(venue), ...(venue.occupancy.playerHome ? ["player"] : [])]) {
+    for (const role of ["home", "sleep"] as const) {
+      const id = venue.destinations?.[actor]?.[role];
+      if (!id && role === "home") continue;
+      const zone = proposed.zones.find((zone) => zone.id === id);
+      // Check the permanent layout and access independently of temporary damage or construction.
+      if (
+        !zone ||
+        zone.kind === "exterior" ||
+        zone.venueClass !== "residence" ||
+        (zone.ownerId && zone.ownerId !== actor) ||
+        !accessibleVenueRoute(
+          { projects: [], relationshipContext: state.relationshipContext },
+          proposed,
+          actor,
+          zone.id,
+          new ZonedDate(at, state.timeZone),
+          true,
+        )
+      )
+        throw conflict(
+          "Keep every household member's home and sleeping destination accessible. Choose another destination before removing or converting its Zone.",
+        );
+    }
+  }
 }
 export function plannedVenue(project: VillageProject): VillageVenue {
   const draft = project.venueDraft!;
@@ -124,7 +178,7 @@ export function plannedVenue(project: VillageProject): VillageVenue {
     connectedTo: [],
     seen: true,
   };
-  return {
+  const venue: VillageVenue = {
     id: "site:" + project.id,
     name: draft.name,
     classes: draft.classes,
@@ -150,4 +204,6 @@ export function plannedVenue(project: VillageProject): VillageVenue {
       updatedAt: project.updatedAt,
     },
   };
+  initializeVenueAccess(venue);
+  return venue;
 }

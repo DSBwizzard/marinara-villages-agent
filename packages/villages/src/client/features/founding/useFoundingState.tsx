@@ -34,7 +34,11 @@ export function useFoundingState() {
     DEFAULT_PLAYER_BACKGROUND,
   );
 
-  const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
+  const [setupContext, setSetupContext] = useState<import("./draft-model.js").FoundingContext>({
+    rules: "",
+    circumstances: [],
+    communityVenueId: "founding-community",
+  });
 
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
 
@@ -168,8 +172,8 @@ export function useFoundingState() {
     setupPlayerBackground,
     setSetupPlayerBackground,
 
-    setupWorldFacts,
-    setSetupWorldFacts,
+    setupContext,
+    setSetupContext,
     setupVenues,
     setSetupVenues,
     setupSpriteRevisions,

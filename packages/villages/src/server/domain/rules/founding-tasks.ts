@@ -23,16 +23,24 @@ export function foundingReadyForPlay(
   );
 }
 
-export function foundingTaskRevision(state: VillageState, id: string, kind: FoundingTaskKind): string {
+export function foundingTaskRevision(
+  state: VillageState,
+  id: string,
+  kind: FoundingTaskKind,
+  capturedContext?: unknown,
+): string {
   const resident = state.villagers.find((row) => row.characterId === id);
+  const captured = asRecord(asRecord(capturedContext).circumstances);
   return backgroundRevision([
     1,
     state.seed,
     kind,
     kind === "routine" ? state.opening?.id : null,
     agendaRevision(state, id),
-    state.foundingDetails,
-    state.scenarioImprint,
+    // Already admitted work retains its original source ingredient; new requests do not author it.
+    ...(Object.hasOwn(captured, "details") ? [captured.details] : []),
+    state.worldRules,
+    state.narrative?.situations,
     state.playerBackground,
     state.playerPersonaName,
     foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
@@ -43,7 +51,13 @@ export function foundingTaskRevision(state: VillageState, id: string, kind: Foun
 }
 export const foundingSlot = (kind: FoundingTaskKind, id: string) =>
   "villages-background-" + backgroundRevision([kind === "routine" ? "agenda" : "wish", id]);
-export function ownsFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): boolean {
+export function ownsFoundingTask(
+  state: VillageState,
+  id: string,
+  kind: FoundingTaskKind,
+  revision: string,
+  capturedContext?: unknown,
+): boolean {
   const marker = state.foundingPreparation,
     task = marker?.tasks?.[id]?.[kind];
   return (
@@ -52,7 +66,7 @@ export function ownsFoundingTask(state: VillageState, id: string, kind: Founding
     marker.status !== "ready" &&
     task.status !== "completed" &&
     task.revision === revision &&
-    foundingTaskRevision(state, id, kind) === revision
+    foundingTaskRevision(state, id, kind, capturedContext) === revision
   );
 }
 export function completeFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): void {

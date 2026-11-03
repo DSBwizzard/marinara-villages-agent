@@ -27,7 +27,7 @@ const effectOwners = new WeakMap<object, EffectOwner>();
 export function worldWishOwners(raw: unknown) {
   memoryObject(raw);
   memoryRequire(
-    raw.version === 13 && typeof raw.seed === "string" && typeof raw.setupAt === "string",
+    raw.version === 14 && typeof raw.seed === "string" && typeof raw.setupAt === "string",
     "unsupported Village Wish ownership; start a fresh Village",
   );
   const scope = { seed: raw.seed, setupAt: raw.setupAt },

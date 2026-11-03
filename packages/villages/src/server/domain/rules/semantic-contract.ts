@@ -1,6 +1,7 @@
+import { currentVillageCircumstances } from "./prompt-preset.js";
 import { createHash } from "node:crypto";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
-import { environmentObservations } from "./narrative-environment.js";
+import { environmentObservations, environmentCircumstances } from "./narrative-environment.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -8,7 +9,7 @@ import { accessManagementPrompt } from "./access-speech.js";
 import { asRecord } from "./coerce.js";
 import { badGateway } from "./errors.js";
 import { memoryTerms } from "./memory-protection.js";
-import { openingSemanticContext } from "./opening-context.js";
+
 import { projectSpeechContexts, projectSpeechPrompt } from "./project-interpretation.js";
 import { capturedSceneCalendar } from "./scene-halt.js";
 import { sharedLoreHistory } from "./scene-writing-history.js";
@@ -113,7 +114,6 @@ export function semanticContext(
           },
         }
       : {}),
-    opening: openingSemanticContext(state, scene),
     worldSeed: state.seed,
     setting: state.setting,
     worldName: state.worldName,
@@ -122,7 +122,7 @@ export function semanticContext(
       tokenBudget: compact ? Math.min(state.loreTokenBudget ?? 1200, 1200) : state.loreTokenBudget,
       recent: sharedLoreHistory(scene, history, actors),
     },
-    worldFacts: state.worldFacts,
+    worldFacts: currentVillageCircumstances(state),
     sceneId: scene.id,
     possibleMemoryEffects: scene.operation?.input.submissionId
       ? {
@@ -188,6 +188,7 @@ export function semanticContext(
                   revision: zone.state.revision,
                   ...(state.narrative
                     ? {
+                        circumstances: environmentCircumstances(state.narrative, venue!.id, zone.id),
                         conditions: environmentObservations(
                           state.narrative,
                           scene.continuity?.capturedAt ?? scene.startedAt,

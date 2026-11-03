@@ -1,3 +1,4 @@
+import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
 import { calendarDate, copyDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
@@ -17,14 +18,14 @@ import {
   foundingTaskRevision,
   ownsFoundingTask,
 } from "../../domain/rules/founding-tasks.js";
-import { openingPresence } from "../../domain/rules/opening-presence.js";
+
 import {
   deriveInfluence,
   INFLUENCE_CATEGORIES,
   influenceSettings,
   validateRoutineDay,
 } from "../../domain/rules/owned-routine.js";
-import { remapVenues } from "../../domain/rules/prompt-preset.js";
+import { currentVillageCircumstances, remapVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
@@ -109,7 +110,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       ...(villager.identityDescription && !villager.identityDescription.initialGenerationComplete
         ? { identityDescriptionRevision: villager.identityDescription.revision }
         : {}),
-      openingVersion: village.opening?.version,
       playerAgencyVersion: 1 as const,
       semanticVersion: 2 as const,
       card: effectiveCard,
@@ -117,9 +117,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       sourceRevision: foundingTaskRevision(village, characterId, "routine"),
       contractVersion: 2 as const,
       circumstances: {
-        worldFacts: village.worldFacts,
-        details: village.foundingDetails,
-        imprint: village.scenarioImprint,
+        worldFacts: currentVillageCircumstances(village),
+        worldRules: village.worldRules,
       },
       playerBackground: village.playerBackground,
       playerPersonaName: village.playerPersonaName,
@@ -131,7 +130,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         .filter(Boolean)
         .join("\n"),
       home: (() => {
-        const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
+        const home = village.venues.find((venue) => venueResidentIds(venue).includes(characterId));
         return home ? [home.name, home.form, home.description].filter(Boolean).join("; ") : "";
       })(),
       wishes: villager.wishes,
@@ -236,7 +235,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     valid: (state, input) =>
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
       (input.foundingContract === 1
-        ? ownsFoundingTask(state, input.characterId, "routine", input.revision)
+        ? ownsFoundingTask(state, input.characterId, "routine", input.revision, input.context)
         : agendaRevision(state, input.characterId) === input.revision),
     apply: (state, input, result) => {
       const resident = state.villagers.find((row) => row.characterId === input.characterId);
@@ -373,10 +372,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       missing: false,
       weekUnreadable: !snapshot.cardsReadable,
       addedAt: resident.addedAt,
-      agenda:
-        openingPresence(village, resident.characterId) && resident.agenda
-          ? { ...resident.agenda, routineSummary: openingPresence(village, resident.characterId)!.activity }
-          : resident.agenda,
+      agenda: resident.agenda,
       ingestSchedule: resident.scheduleInfluence?.enabled === true,
       scheduleInfluence: influenceSettings(resident.scheduleInfluence),
       nativeSchedule: weeks.has(resident.characterId) ? { weekStart: "", days: {} } : null,
@@ -385,11 +381,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           const date = calendarDate(now, now.getFullYear(), now.getMonth(), now.getDate() + offset, 12);
           return [
             VILLAGE_WEEKDAYS[(date.getDay() + 6) % 7]!,
-            openingPresence(village, resident.characterId)
-              ? [{ startMinute: 0, endMinute: 1440, ...openingPresence(village, resident.characterId)! }]
-              : resident.agenda
-                ? agendaBlocksFor(resident.agenda, false, date)
-                : [],
+            resident.agenda ? agendaBlocksFor(resident.agenda, false, date) : [],
           ];
         }),
       ),

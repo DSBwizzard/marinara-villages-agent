@@ -1,7 +1,7 @@
 import { badRequest } from "./errors.js";
 import { MAX_SETTING_LENGTH } from "./prompt-preset.js";
 import { VILLAGE_SHARED_SETTING_RULE } from "./narrative-grounding.js";
-import { coerceScenarioImprint } from "./scenario-rules.js";
+
 import { readSceneryStyle } from "./scenery-context.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
 
@@ -21,7 +21,7 @@ export function buildTownMapPrompt(
   structure: unknown,
   setting: unknown,
   lore: string | readonly string[] = "",
-  scenarioImprint?: unknown,
+  worldRules?: unknown,
   style = "",
 ): string {
   const rules = DEFAULT_TOWN_MAP_LAYOUT_PROMPT;
@@ -30,14 +30,15 @@ export function buildTownMapPrompt(
       ? ""
       : readRequiredText(structure, "Map details", MAX_TOWN_MAP_GENERATION_PROMPT_LENGTH);
   const world = readRequiredText(setting, "Village description", MAX_SETTING_LENGTH);
-  const imprint = coerceScenarioImprint(scenarioImprint);
+  if (worldRules !== undefined && (typeof worldRules !== "string" || worldRules.length > 4096))
+    throw badRequest("Standing rules must be text of at most 4,096 characters.");
   const prompt = [
     rules,
     VILLAGE_SHARED_SETTING_RULE,
     "Map details take priority over conflicting Village description, reviewed context, lore and default scenery-content guidance. Follow Map details for what to include, arrange or omit; follow the Village description for anything Map details leave unspecified. Preserve overhead navigation and spatial readability.",
     "Village description: " + world,
     layout ? "Map details: " + layout : "",
-    ...(imprint?.worldFacts ?? []).map((fact) => "Reviewed world fact: " + fact),
+    worldRules ? "Standing world rules: " + worldRules : "",
     style
       ? "Art style for this scenery: " + readSceneryStyle(style)
       : "Illustrated overhead scenery with clear spatial organization.",
@@ -51,7 +52,6 @@ export function buildTownMapPrompt(
         " characters over the 4,000-character allowance. Shorten the map details, setting or art style; no image request was made.",
     );
   const optional = [
-    ...(imprint?.visualCues ?? []).map((cue) => "Reviewed visual cue: " + cue),
     ...(Array.isArray(lore) ? lore : lore ? [lore] : []).map((entry) => "Compatible visual lore: " + entry),
   ];
   return fitMapContext(prompt, optional);
