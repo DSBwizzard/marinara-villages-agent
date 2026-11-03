@@ -354,7 +354,7 @@ function harness() {
 }
 const originalFetch = globalThis.fetch;
 try {
-  for (const edit of ["map", "zone"] as const) {
+  for (const edit of ["map", "zone", "remove", "setting"] as const) {
     let venues = [structuredClone(home)],
       workspace = emptyFoundingWorkspace(),
       saved: any,
@@ -362,6 +362,7 @@ try {
       problem = "",
       posts = 0,
       gets = 0;
+    let setting = "A coastal community";
     const claim = { current: false },
       reference = { current: venues };
     const setRows = (update: any) => {
@@ -369,8 +370,9 @@ try {
       reference.current = venues;
     };
     const setWorkspace = (update: any) => (workspace = typeof update === "function" ? update(workspace) : update);
-    const controller = () =>
+    const controller = (signal?: AbortSignal) =>
       createFoundingSuggestSetupVenues({
+        signal,
         setupWorkspace: workspace,
         setSetupWorkspace: setWorkspace,
         setupDraftData: { venues, workspace } as any,
@@ -393,7 +395,7 @@ try {
         setupImageTargetRef: { current: null },
         setupLorebookDraft: [],
         setupLoreTokenBudgetDraft: 1600,
-        setupSetting: "A coastal community",
+        setupSetting: setting,
         setupSuggestionsClaim: claim,
       });
     globalThis.fetch = async (_url, init) => {
@@ -418,18 +420,26 @@ try {
         error: "",
       });
     };
+    const cancelled = new AbortController();
+    cancelled.abort();
+    await controller(cancelled.signal)({ venueId: home.id, fullVenue: true, draftEntranceImage: true });
+    assert.equal(problem, "", "An already cancelled observer is not a generation error");
+    assert.equal(posts, 0);
+    assert.equal(workspace.suggestionRequest, undefined);
     await controller()({ venueId: home.id, fullVenue: true, draftEntranceImage: true });
-    assert.match(problem, /Check suggestions/);
+    assert.match(problem, /Reconnecting/);
     workspace = structuredClone(saved.workspace);
     if (edit === "map")
       setRows(venues.map((row) => ({ ...row, presentation: { ...row.presentation, x: 0.87, y: 0.62 } })));
-    else
+    else if (edit === "zone")
       setRows(
         venues.map((row) => ({
           ...row,
           spaces: row.spaces!.map((zone) => ({ ...zone, description: "An edit made after admission." })),
         })),
       );
+    else if (edit === "remove") setRows([]);
+    else setting = "";
     const before = structuredClone(venues);
     await controller()({ venueId: "another-venue", fullVenue: false, draftEntranceImage: false });
     assert.deepEqual([posts, gets], [1, 1], "Reload recovery only reads the original attempt");

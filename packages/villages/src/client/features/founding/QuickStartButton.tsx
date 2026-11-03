@@ -5,23 +5,25 @@ export function QuickStartButton({
   busy,
   disabled,
   pending,
+  failed,
   onGenerate,
 }: {
   busy: boolean;
   disabled?: boolean;
   pending: boolean;
+  failed?: boolean;
   onGenerate(draftEntranceImage?: boolean): void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const [draftEntranceImage, setDraftEntranceImage] = useState(false);
   return (
     <>
-      <button type="button" disabled={busy || disabled} onClick={() => setConfirming(true)}>
-        {busy ? "Suggesting…" : pending ? "Check suggestions" : "Suggest details"}
+      <button type="button" disabled={busy || disabled || pending} onClick={() => setConfirming(true)}>
+        {busy ? "Preparing…" : pending ? "Recovering…" : failed ? "Retry" : "Suggest details"}
       </button>
       {confirming ? (
         <FoundingDialog
-          title={pending ? "Check suggestions" : "Suggest details"}
+          title={failed ? "Retry" : "Suggest details"}
           compact
           showCloseButton={false}
           onClose={() => setConfirming(false)}

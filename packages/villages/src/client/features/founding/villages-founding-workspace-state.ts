@@ -10,6 +10,7 @@ export type FoundingWorkspaceState = {
     sourceInputs?: string;
     fullVenue?: boolean;
     draftEntranceImage?: boolean;
+    failure?: string;
   };
 
   view: "map" | "details";

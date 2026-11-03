@@ -115,7 +115,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupName,
     setupPlacementError,
     setupPlayerBackground,
-    setupProblem,
+    setupProblem: currentSetupProblem,
     setupWorldName,
     setSetupWorldName,
     setupSetting,
@@ -132,6 +132,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     updateSetupMapRequest,
     uploadSetupImage,
   } = controller;
+  const setupProblem = currentSetupProblem || setupWorkspace.suggestionRequest?.failure || "";
   const [contextView, setContextView] = useState("World rules");
   const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
@@ -568,8 +569,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     {setupWorkspace.suggestionRequest ? (
                       <QuickStartButton
                         busy={busy || setupSuggestionsBusy}
-                        pending
-                        onGenerate={() => void suggestSetupVenues()}
+                        pending={!setupWorkspace.suggestionRequest.failure}
+                        failed={!!setupWorkspace.suggestionRequest.failure}
+                        onGenerate={(draftEntranceImage) =>
+                          void suggestSetupVenues({ ...setupWorkspace.suggestionRequest, draftEntranceImage })
+                        }
                       />
                     ) : null}
                   </>
@@ -758,7 +762,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   <QuickStartButton
                     busy={busy || setupSuggestionsBusy}
                     disabled={setupVenueBusy}
-                    pending={!!setupWorkspace.suggestionRequest}
+                    pending={!!setupWorkspace.suggestionRequest && !setupWorkspace.suggestionRequest.failure}
+                    failed={
+                      !!setupWorkspace.suggestionRequest?.failure &&
+                      setupWorkspace.suggestionRequest.venueId === selectedSetupVenueId
+                    }
                     onGenerate={(draftEntranceImage) =>
                       void suggestSetupVenues({
                         venueId: selectedSetupVenueId ?? undefined,

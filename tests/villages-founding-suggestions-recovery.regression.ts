@@ -166,10 +166,10 @@ try {
   };
   await assert.rejects(
     requestFoundingSuggestions(clientPorts, { quickStart: true, venueId: "home" }, {}),
-    /Check suggestions/,
+    /Reconnecting/,
   );
   assert.equal(workspace.suggestionRequest?.id, "synthetic-request-id");
-  // Reload restores the saved ID. Tapping a different mode's control only GETs that attempt.
+  // Reload restores the saved ID. Automatic recovery only GETs that attempt.
   workspace = persisted.workspace;
   clientPorts.setupWorkspace = workspace;
   const restoredOptions: any = {};
@@ -204,11 +204,54 @@ try {
   };
   await assert.rejects(
     requestFoundingSuggestions({ ...clientPorts, setupWorkspace: workspace, signal: observation.signal }, {}, {}),
-    /Check suggestions/,
+    { name: "AbortError" },
   );
   assert.equal(workspace.suggestionRequest?.id, "waiting");
   assert.equal(requests.length, beforeCancelled + 1);
   assert(requests.at(-1)!.startsWith("GET"), "hidden-view cancellation never resubmits generation");
+  // A failed status read is not a failed generation and cannot enable Retry.
+  clientPorts.setupWorkspace = workspace;
+  globalThis.fetch = async () => Response.json({ error: "Status temporarily unavailable" }, { status: 503 });
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Reconnecting/);
+  assert.equal(workspace.suggestionRequest?.failure, undefined);
+  globalThis.fetch = async () => Response.json({ error: "Status access denied" }, { status: 403 });
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Reconnecting/);
+  assert.equal(workspace.suggestionRequest?.failure, undefined, "A GET refusal cannot authorize a new attempt");
+  globalThis.fetch = async () => Response.json({ error: "Saved attempt not found" }, { status: 404 });
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Reconnecting/);
+  assert.equal(workspace.suggestionRequest?.id, "waiting");
+  assert.equal(workspace.suggestionRequest?.failure, undefined, "Missing status is not proof generation failed");
+  globalThis.fetch = async () =>
+    Response.json({ id: "waiting", sourceKey: "setting-1", status: "complete", result: null, error: "" });
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Reconnecting/);
+  assert.equal(workspace.suggestionRequest?.failure, undefined, "An unreadable result cannot authorize Retry");
+  // Only a terminal receipt enables an explicit fresh attempt.
+  globalThis.fetch = async () =>
+    Response.json({ id: "waiting", sourceKey: "setting-1", status: "failed", result: null, error: "Invalid draft" });
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Invalid draft/);
+  assert.equal(workspace.suggestionRequest?.failure, "Invalid draft");
+  clientPorts.setupWorkspace = workspace;
+  clientPorts.persistSetupDraft = async (data: any) => {
+    persisted = structuredClone(data);
+  };
+  let retried = 0;
+  globalThis.fetch = async (_url, init) => {
+    assert.equal(init?.method, "POST");
+    retried++;
+    assert.equal(persisted.workspace.suggestionRequest.failure, undefined);
+    const input = JSON.parse(String(init?.body));
+    assert.notEqual(input.actionId, "waiting");
+    return Response.json({
+      id: input.actionId,
+      sourceKey: input.sourceKey,
+      status: "complete",
+      result: { venues: [] },
+      error: "",
+    });
+  };
+  await requestFoundingSuggestions(clientPorts, {}, {});
+  assert.equal(retried, 1);
+  assert.equal(workspace.suggestionRequest, undefined);
   lost = false;
 } finally {
   globalThis.fetch = originalFetch;

@@ -39,7 +39,7 @@ export async function requestFoundingSuggestions(
   // Older embedders without a persisted founding workspace retain the synchronous API.
   if (!setupWorkspace || !setSetupWorkspace || !persistSetupDraft || !setupDraftData)
     return request<Result>("/setup/venues/suggest", { method: "POST", body: JSON.stringify(input) });
-  const existing = setupWorkspace.suggestionRequest;
+  const existing = setupWorkspace.suggestionRequest?.failure ? undefined : setupWorkspace.suggestionRequest;
   const pending = existing ?? {
     id: createVillagesClientId(),
     sourceKey: ports.setupBeginningSourceKey,
@@ -64,6 +64,12 @@ export async function requestFoundingSuggestions(
     setSetupWorkspace((state) =>
       state.suggestionRequest?.id === pending.id ? { ...state, suggestionRequest: undefined } : state,
     );
+  const failed = (message: string) =>
+    setSetupWorkspace((state) =>
+      state.suggestionRequest?.id === pending.id
+        ? { ...state, suggestionRequest: { ...pending, failure: message } }
+        : state,
+    );
   if (!existing) {
     const workspace = { ...setupWorkspace, suggestionRequest: pending };
     // Fail closed if device-local persistence is unavailable: no model request has left yet.
@@ -76,24 +82,29 @@ export async function requestFoundingSuggestions(
     }
   }
   let terminal = false;
+  let admitting = !existing;
   try {
     let receipt = existing
-      ? await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`)
+      ? await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`, { signal })
       : await request<Receipt>("/setup/venues/suggest", {
           method: "POST",
+          signal,
           body: JSON.stringify({ ...input, actionId: pending.id, sourceKey: pending.sourceKey }),
         });
+    admitting = false;
     for (let poll = 0; ; poll++) {
       signal?.throwIfAborted();
       if (receipt.id !== pending.id || receipt.sourceKey !== pending.sourceKey)
-        throw new Error("The saved suggestion attempt does not match this draft. Check suggestions again.");
-      if (receipt.status !== "running") {
+        throw new Error("The saved suggestion attempt does not match this draft.");
+      if (receipt.status === "failed" || receipt.status === "interrupted") {
+        terminal = true;
+        const message = receipt.error || "Suggestions stopped without a saved result.";
+        failed(message);
+        throw new Error(message);
+      }
+      if (receipt.status === "complete" && receipt.result) {
         terminal = true;
         clear();
-        if (receipt.status !== "complete" || !receipt.result)
-          throw new Error(
-            receipt.error || "Suggestions stopped without a saved result. Generate again only when you choose.",
-          );
         if (receipt.sourceKey !== ports.setupBeginningSourceKey)
           throw new Error(
             "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
@@ -104,6 +115,7 @@ export async function requestFoundingSuggestions(
           );
         return receipt.result;
       }
+      if (receipt.status !== "running") throw new Error("Suggestion status is unavailable.");
       if (poll >= 60) throw new Error("Suggestions are still being prepared.");
       signal?.throwIfAborted();
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
@@ -111,9 +123,10 @@ export async function requestFoundingSuggestions(
       receipt = await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`, { signal });
     }
   } catch (error) {
+    if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
     // A definite refusal permits a new explicit attempt; connection loss keeps the ID for GET recovery.
-    if (error instanceof VillageApiError && error.status >= 400 && error.status < 500) {
-      clear();
+    if (admitting && error instanceof VillageApiError && error.status >= 400 && error.status < 500) {
+      failed(error.message);
       terminal = true;
     }
     if (terminal) throw error;
@@ -123,6 +136,6 @@ export async function requestFoundingSuggestions(
         : error instanceof Error
           ? error.message
           : "Suggestion status is unavailable.";
-    throw new Error(`${detail} Use Check suggestions to retrieve this attempt without generating again.`);
+    throw new Error(`${detail} Reconnecting…`);
   }
 }

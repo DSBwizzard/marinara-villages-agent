@@ -46,8 +46,9 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupVenues: FoundingState["setupVenues"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
 }) {
-  return async (options?: FoundingSuggestionOptions) => {
-    const pending = ports.setupWorkspace?.suggestionRequest;
+  return async (options?: FoundingSuggestionOptions, signal = ports.signal) => {
+    const request = ports.setupWorkspace?.suggestionRequest;
+    const pending = request?.failure ? undefined : request;
     options = pending
       ? {
           quickStart: pending.quickStart,
@@ -75,7 +76,7 @@ export function createFoundingSuggestSetupVenues(ports: {
       setupVenuesRef,
     } = ports;
 
-    if (setupSuggestionsClaim.current || !setupSetting.trim()) return;
+    if (setupSuggestionsClaim.current || (!pending && !setupSetting.trim())) return;
     setupSuggestionsClaim.current = true;
     const replacing = !!options.quickStart;
     const identity = quickStartIdentity(setupVenues);
@@ -100,7 +101,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           playerHome: row.occupancy.playerHome,
         }));
       const target = options.fullVenue ? rows.find((row) => row.id === options.venueId) : undefined;
-      if (options.fullVenue && !target) throw new Error("Choose the Venue to draft.");
+      if (options.fullVenue && !target && !pending) throw new Error("Choose the Venue to draft.");
       const targetSource = target ? foundingVenueDraftSource(target) : undefined;
       const newZoneIds = target
         ? pending?.sourceInputs
@@ -134,7 +135,11 @@ export function createFoundingSuggestSetupVenues(ports: {
         foundingResidentAdmissions: selectedResidentAdmissions,
         venues: requestRows(rows),
       };
-      const result = await requestFoundingSuggestions({ ...ports, setupBeginningSourceKey: source }, options, input);
+      const result = await requestFoundingSuggestions(
+        { ...ports, signal, setupBeginningSourceKey: source },
+        options,
+        input,
+      );
       const currentTarget = targetSource ? setupVenuesRef.current.find((row) => row.id === targetSource.id) : undefined;
 
       if (
@@ -206,7 +211,8 @@ export function createFoundingSuggestSetupVenues(ports: {
       if (result.imageError) setSetupProblem(result.imageError);
       if (!options?.venueId) setSetupSuggestionsKey(source);
     } catch (cause) {
-      setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
+      if (!signal?.aborted && !(cause instanceof Error && cause.name === "AbortError"))
+        setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
     } finally {
       setupSuggestionsClaim.current = false;
       setSetupSuggestionsBusy(false);

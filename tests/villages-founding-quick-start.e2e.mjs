@@ -21,19 +21,24 @@ import {assignFoundingHome,reconcileFoundingRoster} from './packages/villages/sr
 import {createFoundingSuggestSetupVenues} from './packages/villages/src/client/features/founding/setup-controller.js';
 import {usePatchSetupVenue} from './packages/villages/src/client/features/founding/actions.js';
 import {arrangeQuickStartVenues} from './packages/villages/src/client/features/founding/quick-start-placement.js';
+import {useActivitySignal,useVisibleInterval} from './packages/villages/src/client/shared/activity.js';
 import {saveDeviceDraft,readDeviceDraft} from './packages/villages/src/client/shared/device-drafts.js';
 function Harness(){
  const people=[{id:'ada',name:'Ada'},{id:'bryn',name:'Bryn'}];
  const [venues,setVenues]=useState(()=>arrangeQuickStartVenues(reconcileFoundingRoster([],[{id:'player',name:'Your'},...people],['player','ada','bryn'],'community')));
  const [workspace,setWorkspace]=useState(emptyFoundingWorkspace),[selected,setSelected]=useState(null),[moving,setMoving]=useState(null);
  const [busy,setBusy]=useState(false),[key,setKey]=useState(''),[problem,setProblem]=useState(''),[source,setSource]=useState('coast');
+ const [visible,setVisible]=useState(true);
+ const signal=useActivitySignal(visible);
  const [authored,setAuthored]=useState({}),[saved,setSaved]=useState(false);
  const authoredRef=useRef(authored),rowsRef=useRef(venues),sourceRef=useRef(source),claim=useRef(false),image=useRef(null),revision=useRef(0);
  useEffect(()=>{authoredRef.current=authored;rowsRef.current=venues;sourceRef.current=source},[authored,venues,source]);
  useEffect(()=>{readDeviceDraft('page-three').then(draft=>{if(draft){revision.current=draft.revision;setVenues(draft.data.venues);setWorkspace({...draft.data.workspace,view:'map',paused:true});setAuthored(draft.data.authored);setKey(draft.data.suggestionsKey)}})},[]);
  const persist=async data=>{const result=await saveDeviceDraft('page-three',data,revision.current);revision.current=result.revision;setSaved(true)};
  const data={venues,workspace,authored,suggestionsKey:key};
- const suggest=createFoundingSuggestSetupVenues({setupWorkspace:workspace,setSetupWorkspace:setWorkspace,setupDraftData:data,persistSetupDraft:persist,personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:[],setupLoreTokenBudgetDraft:1600,setupSetting:'An oceanfront community',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[],communityVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
+ const suggest=createFoundingSuggestSetupVenues({signal,setupWorkspace:workspace,setSetupWorkspace:setWorkspace,setupDraftData:data,persistSetupDraft:persist,personaDraft:'driver',selectedResidentAdmissions:{},setSetupProblem:setProblem,setSetupSuggestionsBusy:setBusy,setSetupSuggestionsKey:setKey,setSetupVenues:setVenues,setupAuthoredFieldsRef:authoredRef,setupBeginningSourceKey:source,setupBeginningSourceKeyRef:sourceRef,setupImageTargetRef:image,setupLorebookDraft:[],setupLoreTokenBudgetDraft:1600,setupSetting:'An oceanfront community',setupName:'Tidebreak',setupContext:{rules:'',circumstances:[],communityVenueId:'community'},setupSuggestionsClaim:claim,setupVenues:venues,setupVenuesRef:rowsRef});
+ useVisibleInterval(signal=>{if(workspace.suggestionRequest&&!workspace.suggestionRequest.failure)return suggest(undefined,signal)},workspace.suggestionRequest&&!workspace.suggestionRequest.failure?2000:null,visible);
+ window.setFoundingVisible=setVisible;
  const patch=usePatchSetupVenue({setSetupAuthoredFields:setAuthored,setSetupVenues:setVenues});
  const select=venue=>{setSelected(venue.id);setMoving(null);setWorkspace(state=>({...state,view:'details',paused:true}))};
  const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
@@ -42,8 +47,8 @@ function Harness(){
  window.changeContext=()=>setSource('changed setting');
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
  <QuickStartVenues communityVenueId='community' venues={venues} people={people} selectedId={selected} movingVenueId={moving} state={workspace} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onState={setWorkspace} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onAssignHome={(venue,id,assigned)=>{try{setVenues(assignFoundingHome(venues,venue.id,id,assigned));setProblem('')}catch(e){setProblem(e.message)}}} onGenerateImage={()=>{}} onUploadImage={upload} onArrange={()=>setVenues(rows=>arrangeQuickStartVenues(rows,true))} onMove={venue=>{setMoving(venue?.id??null);setWorkspace(state=>({...state,view:'map',paused:!venue}))}} onRemove={venue=>setVenues(rows=>rows.filter(row=>row.id!==venue.id))}
- actions={<>{['residence','other'].map(kind=><button key={kind} onClick={()=>{const venue=newSetupVenue('new-'+kind,kind,.5,.5);venue.name=kind==='residence'?'New home':'New Venue';venue.presentation={...venue.presentation,x:null,y:null};setVenues(rows=>[...rows,venue]);select(venue)}}>{kind==='residence'?'+ Add home':'+ Add Venue'}</button>)}{workspace.suggestionRequest?<QuickStartButton busy={busy} pending onGenerate={()=>suggest()}/>:null}</>}
- suggestions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest} onGenerate={()=>suggest({venueId:selected})}/>}/>
+ actions={<>{['residence','other'].map(kind=><button key={kind} onClick={()=>{const venue=newSetupVenue('new-'+kind,kind,.5,.5);venue.name=kind==='residence'?'New home':'New Venue';venue.presentation={...venue.presentation,x:null,y:null};setVenues(rows=>[...rows,venue]);select(venue)}}>{kind==='residence'?'+ Add home':'+ Add Venue'}</button>)}{workspace.suggestionRequest?<QuickStartButton busy={busy} pending={!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest.failure} onGenerate={()=>suggest({...workspace.suggestionRequest})}/>:null}</>}
+ suggestions={<QuickStartButton busy={busy} pending={!!workspace.suggestionRequest&&!workspace.suggestionRequest.failure} failed={!!workspace.suggestionRequest?.failure&&workspace.suggestionRequest.venueId===selected} onGenerate={()=>suggest({venueId:selected})}/>}/>
  {problem&&workspace.view!=='details'?<p role='alert'>{problem}</p>:null}{saved?<p>Draft saved</p>:null}</main><footer className='villages-forging-footer'><button onClick={()=>persist(data)}>Save draft</button></footer></div></>;
 }
 createRoot(document.getElementById('root')).render(<Harness/>);syncVillagesStyles();
@@ -71,6 +76,7 @@ await withBrowser(browser, async () => {
       let count = 0,
         loseReply = false,
         hold = false,
+        failReply = false,
         release,
         savedReceipt,
         lastInput;
@@ -105,6 +111,10 @@ await withBrowser(browser, async () => {
           },
           error: "",
         };
+        if (failReply) {
+          failReply = false;
+          savedReceipt = { ...savedReceipt, status: "failed", result: null, error: "Invalid synthetic draft" };
+        }
         if (hold)
           await new Promise((resolve) => {
             release = resolve;
@@ -156,8 +166,8 @@ await withBrowser(browser, async () => {
       };
       const confirm = async () => {
         await sheet.getByRole("button", { name: "Venue", exact: true }).click();
-        await sheet.getByRole("button", { name: /^(Suggest details|Check suggestions)$/ }).click();
-        const dialog = page.getByRole("dialog", { name: /^(Suggest details|Check suggestions)$/ });
+        await sheet.getByRole("button", { name: /^(Suggest details|Retry)$/ }).click();
+        const dialog = page.getByRole("dialog", { name: /^(Suggest details|Retry)$/ });
         await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
       };
       await open("founding-home:player", "People");
@@ -308,21 +318,20 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByRole("button", { name: "Artwork for Entrance", exact: true })).toBeVisible();
       loseReply = true;
       await confirm();
-      await expect(sheet.getByRole("button", { name: "Check suggestions", exact: true })).toBeEnabled();
+      await expect(sheet.getByRole("button", { name: "Recovering…", exact: true })).toBeDisabled();
+      await expect(sheet.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
       assert.equal(count, 2);
       await close();
       await page.reload();
-      await expect(page.getByRole("button", { name: "Check suggestions", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Recovering…", exact: true })).toBeDisabled();
       await open("founding-home:player");
-      await confirm();
       await expect(sheet.getByRole("button", { name: "Suggest details", exact: true })).toBeEnabled();
       assert.equal(count, 2, "Lost reply recovery uses GET only");
       loseReply = true;
       await confirm();
-      await expect(sheet.getByRole("button", { name: "Check suggestions", exact: true })).toBeEnabled();
+      await expect(sheet.getByRole("button", { name: "Recovering…", exact: true })).toBeDisabled();
       await sheet.getByLabel("Venue Name", { exact: true }).fill("My revised home");
       const edited = await page.evaluate(() => window.quickState.venues);
-      await confirm();
       await expect(sheet.getByRole("alert")).toHaveText(/Founding choices changed/);
       assert.equal(count, 3);
       assert.deepEqual(
@@ -332,10 +341,9 @@ await withBrowser(browser, async () => {
       );
       loseReply = true;
       await confirm();
-      await expect(sheet.getByRole("button", { name: "Check suggestions", exact: true })).toBeEnabled();
+      await expect(sheet.getByRole("button", { name: "Recovering…", exact: true })).toBeDisabled();
       await page.evaluate(() => window.reassign());
       const reassigned = await page.evaluate(() => window.quickState.venues);
-      await confirm();
       await expect(sheet.getByRole("alert")).toHaveText(/Founding choices changed/);
       assert.equal(count, 4);
       assert.deepEqual(
@@ -343,14 +351,38 @@ await withBrowser(browser, async () => {
         reassigned,
         "A stale receipt cannot rebind to changed residents",
       );
+      failReply = true;
+      await confirm();
+      await expect(sheet.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
+      await expect(sheet.getByRole("alert")).toHaveText("Invalid synthetic draft");
+      const failedCount = count;
+      await page.waitForTimeout(2500);
+      assert.equal(count, failedCount, "A confirmed failure never retries itself");
+      await confirm();
+      await expect(sheet.getByRole("button", { name: "Suggest details", exact: true })).toBeEnabled();
+      assert.equal(count, failedCount + 1, "Only explicit Retry starts another generation");
       hold = true;
       release = undefined;
       const request = confirm();
       await expect.poll(() => typeof release).toBe("function");
+      await page.evaluate(() => window.setFoundingVisible(false));
+      await request;
+      hold = false;
+      await expect(sheet.getByRole("button", { name: "Recovering…", exact: true })).toBeDisabled();
+      await expect(sheet.getByRole("alert")).toHaveCount(0);
+      const interruptedCount = count;
+      await page.evaluate(() => window.setFoundingVisible(true));
+      await expect(sheet.getByRole("button", { name: "Suggest details", exact: true })).toBeEnabled();
+      assert.equal(count, interruptedCount, "Returning to Founding only retrieves the saved attempt");
+      release();
+      hold = true;
+      release = undefined;
+      const changedRequest = confirm();
+      await expect.poll(() => typeof release).toBe("function");
       await page.evaluate(() => window.changeContext());
       hold = false;
       release();
-      await request;
+      await changedRequest;
       await expect(sheet.getByRole("alert")).toHaveText(/people or setting changed/);
       await sheet.scrollIntoViewIfNeeded();
       const size = await sheet.evaluate((node) => ({
