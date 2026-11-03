@@ -40,6 +40,7 @@ export async function requestFoundingSuggestions(
     sourceKey: ports.setupBeginningSourceKey,
     quickStart: !!options?.quickStart,
     venueId: options?.venueId,
+    ...(!options?.quickStart && options?.venueId ? { sourceInputs: JSON.stringify(input) } : {}),
   };
   // Recovery must use the original merge mode and target, regardless of which button was tapped.
   if (options) {
@@ -83,6 +84,10 @@ export async function requestFoundingSuggestions(
         if (receipt.sourceKey !== ports.setupBeginningSourceKey)
           throw new Error(
             "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
+          );
+        if (pending.sourceInputs !== undefined && pending.sourceInputs !== JSON.stringify(input))
+          throw new Error(
+            "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.",
           );
         return receipt.result;
       }

@@ -132,8 +132,7 @@ export function usePlaceSetupPin(ports: {
       const rows = setupVenuesRef.current;
       const target = draggedVenueId
         ? rows.find((row) => row.id === draggedVenueId)
-        : (rows.find((row) => row.id === movingSetupVenueId) ??
-          rows.find((row) => row.presentation.x === null || row.presentation.y === null));
+        : rows.find((row) => row.id === movingSetupVenueId);
       if (!target || setupEditorOpen || (setupWorkspace.paused && !movingSetupVenueId && !draggedVenueId)) return;
       if (!setupMapSrc || setupMapBusy) {
         setSetupPlacementError("Wait for the selected map before moving Venues.");
@@ -147,8 +146,7 @@ export function usePlaceSetupPin(ports: {
         row.id === target.id ? { ...row, presentation: { ...row.presentation, x, y } } : row,
       );
       setSetupVenues(next);
-      if (draggedVenueId || (movingSetupVenueId && target.presentation.x !== null && target.presentation.y !== null))
-        setSetupWorkspace((state) => ({ ...state, paused: true }));
+      setSetupWorkspace((state) => ({ ...state, paused: true }));
       setMovingSetupVenueId(null);
       setSetupPlacementError("");
       setSetupMapReviewed(false);

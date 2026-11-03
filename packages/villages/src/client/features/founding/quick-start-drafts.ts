@@ -1,4 +1,5 @@
 import type { VillageVenue } from "../../../shared/contracts/village.js";
+import type { SetupVenueDraft } from "../../shared/types.js";
 import { newSetupVenue } from "./FoundingPanels.js";
 import { startingZone } from "./founding-template.js";
 
@@ -31,7 +32,7 @@ export function quickStartIdentity(venues: readonly VillageVenue[]): string {
 }
 
 /** Fresh template inputs deliberately exclude the current Venue's authored content. */
-export function quickStartTemplates(venues: readonly VillageVenue[]): VillageVenue[] {
+export function quickStartTemplates(venues: readonly SetupVenueDraft[]): SetupVenueDraft[] {
   return venues.map((previous, index) => {
     const residence = previous.classes?.includes("residence") ?? false;
     const venue = newSetupVenue(
@@ -45,6 +46,7 @@ export function quickStartTemplates(venues: readonly VillageVenue[]): VillageVen
     venue.category = previous.category;
     venue.residentIds = previous.residentIds ?? [];
     venue.residenceCapacity = previous.residenceCapacity;
+    venue.foundingCapacity = previous.foundingCapacity;
     venue.classes = previous.classes;
     venue.spaces = [startingZone(venue, false)];
     venue.privateSpaces = residence ? [startingZone(venue, true)] : [];

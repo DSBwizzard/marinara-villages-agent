@@ -107,37 +107,39 @@ export async function verifyFoundingLayout(group) {
             assert.equal(body.communityVenueId, "founding-community");
             assert.equal(body.context.rules, "The sun never sets.");
             const result = {
-              venues: body.venues.map((row) => {
-                const shared = row.residentIds.length + Number(row.playerHome) > 1;
-                const layout = row.venueClass === "residence" && !shared ? "both" : "common";
-                return {
-                  id: row.id,
-                  name:
-                    row.venueClass === "residence"
-                      ? shared
-                        ? "Household home"
-                        : row.playerHome
-                          ? "Your home"
-                          : (row.residentIds[0] ?? row.id) + " home"
-                      : "Community Courtyard",
-                  form: row.venueClass === "residence" ? "A coastal home" : "An open courtyard",
-                  description: "A sheltered approach beside the coast.",
-                  layout,
-                  commonName: "Common room",
-                  commonPurpose: "Conversation and rest",
-                  commonDescription: "A comfortable common space.",
-                  privateName: layout === "both" ? "Bedroom" : "",
-                  privatePurpose: layout === "both" ? "Rest" : "",
-                  privateDescription: layout === "both" ? "A quiet sleeping space." : "",
-                  connections:
-                    layout === "both"
-                      ? [
-                          ["exterior", "common:base"],
-                          ["common:base", "private:base"],
-                        ]
-                      : [["exterior", "common:base"]],
-                };
-              }),
+              venues: body.venues
+                .filter((row) => row.id === body.targetVenueId)
+                .map((row) => {
+                  const shared = row.residentIds.length + Number(row.playerHome) > 1;
+                  const layout = row.venueClass === "residence" && !shared ? "both" : "common";
+                  return {
+                    id: row.id,
+                    name:
+                      row.venueClass === "residence"
+                        ? shared
+                          ? "Household home"
+                          : row.playerHome
+                            ? "Your home"
+                            : (row.residentIds[0] ?? row.id) + " home"
+                        : "Community Courtyard",
+                    form: row.venueClass === "residence" ? "A coastal home" : "An open courtyard",
+                    description: "A sheltered approach beside the coast.",
+                    layout,
+                    commonName: "Common room",
+                    commonPurpose: "Conversation and rest",
+                    commonDescription: "A comfortable common space.",
+                    privateName: layout === "both" ? "Bedroom" : "",
+                    privatePurpose: layout === "both" ? "Rest" : "",
+                    privateDescription: layout === "both" ? "A quiet sleeping space." : "",
+                    connections:
+                      layout === "both"
+                        ? [
+                            ["exterior", "common:base"],
+                            ["common:base", "private:base"],
+                          ]
+                        : [["exterior", "common:base"]],
+                  };
+                }),
             };
             return send(
               body.actionId
@@ -325,6 +327,14 @@ export async function verifyFoundingLayout(group) {
             .toBe(expectedHomes);
           await expect(home.getByRole("checkbox", { name: "You", exact: true })).toBeChecked();
           await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
+          await button("+ Add home").click();
+          const homeDetails = page.locator("dialog.villages-quick-dialog");
+          await expect(homeDetails.getByLabel("Venue Name", { exact: true })).toHaveValue("New home");
+          await expect(homeDetails.locator("[data-layout-zone]")).toHaveCount(2);
+          await homeDetails.getByRole("button", { name: "Done", exact: true }).click();
+          const emptyHome = root.getByRole("region", { name: "New home", exact: true });
+          await expect(emptyHome.getByText("Vacant home", { exact: true })).toBeVisible();
+          await emptyHome.getByRole("button", { name: "Remove New home", exact: true }).click();
           await button("+ Add Venue").click();
           const details = page.locator("dialog.villages-quick-dialog");
           await details.getByLabel("Venue Name", { exact: true }).fill("Public courtyard");
@@ -341,27 +351,43 @@ export async function verifyFoundingLayout(group) {
             .getByRole("button", { name: "Use as Community Venue", exact: true })
             .click();
           await courtyard.getByRole("button", { name: "Edit Public courtyard", exact: true }).click();
-          await details.getByRole("button", { name: "Remove Venue", exact: true }).click();
+          await details.getByRole("button", { name: "Done", exact: true }).click();
+          await courtyard.getByRole("button", { name: "Remove Public courtyard", exact: true }).click();
           await expect(courtyard).toHaveCount(0);
           assert.equal(suggestions, 0, "Reload and designation changes make no model requests");
         }
-        await button("Suggest Venues").click();
+        await root
+          .locator('[data-venue-id="founding-community"]')
+          .getByRole("button", { name: /^Edit / })
+          .click();
+        const suggestionDetails = page.locator("dialog.villages-quick-dialog");
+        await suggestionDetails.getByRole("button", { name: "Suggest details", exact: true }).click();
         await page
-          .getByRole("dialog", { name: "Suggest Venues", exact: true })
+          .getByRole("dialog", { name: "Suggest details", exact: true })
           .getByRole("button", { name: "Cancel", exact: true })
           .click();
         assert.equal(suggestions, 0, "Cancel makes no model request");
-        await button("Suggest Venues").click();
+        await suggestionDetails.getByRole("button", { name: "Suggest details", exact: true }).click();
         await page
-          .getByRole("dialog", { name: "Suggest Venues", exact: true })
+          .getByRole("dialog", { name: "Suggest details", exact: true })
           .getByRole("button", { name: "Confirm", exact: true })
           .click();
         await expect.poll(() => suggestions).toBe(1);
         await expect
           .poll(() =>
-            page.evaluate(() => window.featureController.setupVenues.every((row) => row.name !== "Community Venue")),
+            page.evaluate(
+              () =>
+                window.featureController.setupVenues.find((row) => row.id === "founding-community").name ===
+                "Community Courtyard",
+            ),
           )
           .toBe(true);
+        await suggestionDetails.getByRole("button", { name: "Done", exact: true }).click();
+        assert.equal(
+          await page.evaluate(() => window.featureController.setupWorkspace.paused),
+          true,
+          "Closing details does not start map placement",
+        );
         await root.getByRole("button", { name: "Arrange automatically", exact: true }).click();
         if (view.width > 1000) {
           const options = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();

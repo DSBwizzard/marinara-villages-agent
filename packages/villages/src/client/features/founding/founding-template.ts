@@ -18,7 +18,13 @@ export function startingZone(venue: VillageVenue, personal: boolean) {
     ...personalSpaceDraft(),
     id: personal ? "private:base" : "common:base",
     name: personal ? "Private Space" : "Common Space",
-    purpose: personal ? "Rest and personal activities" : community ? "Community gatherings" : "Everyday activities",
+    purpose: personal
+      ? "Rest and personal activities"
+      : community
+        ? "Community gatherings"
+        : role === "residence"
+          ? "Daily life and sleeping"
+          : "Everyday activities",
     description: personal
       ? "A private space for rest."
       : community
@@ -49,9 +55,7 @@ export function addFoundingZone(venue: VillageVenue, personal: boolean, id: stri
   const added = {
     ...startingZone(venue, personal),
     id,
-    name: "New Zone",
-    purpose: "",
-    description: "",
+    name: personal ? "Private Zone" : "New Zone",
     connectedTo: ["exterior"],
   };
   const spaces = personal ? common : [...common, added];

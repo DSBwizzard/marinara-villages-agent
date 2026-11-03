@@ -93,10 +93,13 @@ assert.deepEqual(foundingVenueIssues([complete]), []);
 assert.doesNotThrow(() => parsePlace(complete, true));
 for (const personal of [false, true]) {
   const added = addFoundingZone(complete, personal, "zone:new");
-  assert.match(foundingZoneProblem(added), /describe what it is used for/);
+  assert.equal(foundingZoneProblem(added), "", "New Zones have usable, editable defaults");
   const zone = (personal ? added.privateSpaces! : added.spaces!).at(-1)!;
-  assert.equal(zone.purpose, "");
-  assert.equal(zone.description, "");
+  assert.ok(zone.purpose);
+  assert.ok(zone.description);
+  assert.doesNotThrow(() => parsePlace(added, true));
+  zone.purpose = "";
+  assert.match(foundingZoneProblem(added), /describe what it is used for/);
   assert.throws(() => parsePlace(added, true), /name and purpose/);
   zone.purpose = "Authored purpose";
   zone.description = "Authored appearance";
@@ -281,11 +284,19 @@ await assert.rejects(
 );
 await assert.rejects(service.suggestStartingVenues({ ...request, mode: "automatic" }), /valid Venue suggestion mode/);
 assert.equal(calls, 2, "invalid requests never reach the model");
+const scoped = await service.suggestStartingVenues({ ...request, mode: undefined, targetVenueId: "buster" });
+assert.deepEqual(
+  scoped.venues.map((venue) => venue.id),
+  ["buster"],
+  "Ordinary selected-Venue details require one response row",
+);
+assert.match(system, /keeps all existing Zones/);
+const beforeInvalidModel = calls;
 replyState.override = {
   venues: suggestions.map((row) => (row.id === "buster" ? { ...row, layout: "exterior" } : row)),
 };
 await assert.rejects(service.suggestStartingVenues(request), /Common or Private/);
-assert.equal(calls, 3, "invalid model output is rejected without an automatic paid retry");
+assert.equal(calls, beforeInvalidModel + 1, "invalid model output is rejected without an automatic paid retry");
 
 {
   replyState.override = undefined;

@@ -9,7 +9,10 @@ import {
   foundingLayoutProblem,
   removeFoundingZone,
 } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
-import { includeFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
+import {
+  includeFoundingZone,
+  startingZone,
+} from "../packages/villages/src/client/features/founding/founding-template.js";
 import {
   readZoneLayout,
   resolveZoneLayout,
@@ -139,6 +142,8 @@ assert.equal(
   "Removed structural IDs are pruned without discarding remaining positions",
 );
 const home = newSetupVenue("home", "residence", 0.2, 0.3, true);
+home.layout = "both";
+home.privateSpaces = [startingZone(home, true)];
 home.form = "Cottage";
 home.description = "A stone approach";
 home.spaces![0].description = "A shared room";
@@ -172,6 +177,8 @@ assert.deepEqual(
 );
 assert.doesNotThrow(() => parsePlace(removed, true), "Removing a moved Zone prunes positions and incoming links");
 const legacy = newSetupVenue("legacy", "residence", 0.2, 0.3, true);
+legacy.layout = "both";
+legacy.privateSpaces = [startingZone(legacy, true)];
 const removedHub = removeFoundingZone(legacy, legacy.spaces![0].id);
 assert.deepEqual(removedHub.privateSpaces![0].connectedTo, [], "Deleting a legacy hub does not invent a new passage");
 assert.equal(foundingLayoutProblem(removedHub), "Cannot save Venue layout: Unreachable Zones.");

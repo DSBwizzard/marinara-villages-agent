@@ -160,7 +160,7 @@ export const clientFeatureInterfaces = Object.freeze({
   "exploration/villages-exploration.tsx": ["ExplorationSheet", "ExplorationTab"],
   "founding/FoundingPanels.tsx": ["VillageLorebookPicker", "LoreTokenBudgetField"],
   "founding/villages-founding-editor.tsx": ["SceneryStyleFields", "venueHasCommon", "VenueLayoutFields"],
-  "founding/villages-founding-zones.tsx": ["FoundingZoneFields", "foundingZoneProblem", "draftZonePolicy"],
+  "founding/villages-founding-zones.tsx": ["foundingZoneProblem", "draftZonePolicy"],
   "founding/villages-player-background.tsx": ["PlayerBackgroundSummary"],
   "residents/ResidentPanels.tsx": ["AvatarFace", "readAvatarCrop"],
   "residents/SpriteSetupDialog.tsx": ["SpriteSetupDialog"],

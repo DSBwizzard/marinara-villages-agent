@@ -197,12 +197,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
       name: catalog?.find((person) => person.id === id)?.name ?? nameOfCharacter(id) ?? "Unavailable character",
     }));
     const placed = setupVenues.filter((venue) => venue.presentation.x !== null && venue.presentation.y !== null).length;
-    const nextPin =
-      setupVenues.find((venue) => venue.id === movingSetupVenueId) ??
-      setupVenues.find((venue) => venue.id === selectedSetupVenueId) ??
-      (setupWorkspace.paused
-        ? undefined
-        : setupVenues.find((venue) => venue.presentation.x === null || venue.presentation.y === null));
+    const nextPin = setupWorkspace.paused ? undefined : setupVenues.find((venue) => venue.id === movingSetupVenueId);
     const setupIssues = foundingVenueIssues(setupVenues, false);
     const openIssue = (issue: FoundingIssue) => {
       setSelectedSetupVenueId(issue.venueId);
@@ -245,8 +240,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               onSelect: interactive
                 ? () => {
                     setSelectedSetupVenueId(pin.id);
-                    setMovingSetupVenueId(pin.id);
-                    setSetupWorkspace((state) => ({ ...state, paused: false, view: "map" }));
+                    setMovingSetupVenueId(null);
+                    setSetupWorkspace((state) => ({ ...state, paused: true, view: "map" }));
                   }
                 : pin.onSelect,
             }))}
@@ -572,28 +567,33 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 venues={setupVenues}
                 actions={
                   <>
-                    <button
-                      type="button"
-                      disabled={busy || setupSuggestionsBusy || setupVenueBusy || setupVenues.length >= 16}
-                      onClick={() => {
-                        const venue = newSetupVenue(freshRowKey(), "other", 0.5, 0.5);
-                        venue.presentation = { ...venue.presentation, x: null, y: null };
-                        setSetupVenues((rows) => (rows.length < 16 ? [...rows, venue] : rows));
-                        setSelectedSetupVenueId(venue.id);
-                        setSetupFocusIssue(null);
-                        setMovingSetupVenueId(null);
-                        setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
-                        setSetupMapReviewed(false);
-                      }}
-                    >
-                      + Add Venue
-                    </button>
-                    <QuickStartButton
-                      busy={busy || setupSuggestionsBusy || setupMapBusy}
-                      disabled={setupVenueBusy || !setupVenues.length}
-                      pending={!!setupWorkspace.suggestionRequest}
-                      onGenerate={() => void suggestSetupVenues({ quickStart: true })}
-                    />
+                    {(["residence", "other"] as const).map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        disabled={busy || setupSuggestionsBusy || setupVenueBusy || setupVenues.length >= 16}
+                        onClick={() => {
+                          const venue = newSetupVenue(freshRowKey(), kind, 0.5, 0.5);
+                          if (kind === "residence") venue.name = "New home";
+                          venue.presentation = { ...venue.presentation, x: null, y: null };
+                          setSetupVenues((rows) => (rows.length < 16 ? [...rows, venue] : rows));
+                          setSelectedSetupVenueId(venue.id);
+                          setSetupFocusIssue(null);
+                          setMovingSetupVenueId(null);
+                          setSetupWorkspace((state) => ({ ...state, paused: true, view: "details" }));
+                          setSetupMapReviewed(false);
+                        }}
+                      >
+                        {kind === "residence" ? "+ Add home" : "+ Add Venue"}
+                      </button>
+                    ))}
+                    {setupWorkspace.suggestionRequest ? (
+                      <QuickStartButton
+                        busy={busy || setupSuggestionsBusy}
+                        pending
+                        onGenerate={() => void suggestSetupVenues()}
+                      />
+                    ) : null}
                   </>
                 }
                 mapArtwork={
@@ -749,14 +749,18 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   </>
                 }
                 onAssignHome={(venue, actorId, assigned) => {
-                  setSetupVenues((rows) => assignFoundingHome(rows, venue.id, actorId, assigned));
-                  setSetupContext((context) => ({
-                    rules: context.rules,
-                    circumstances: context.circumstances,
-                    communityVenueId: context.communityVenueId,
-                  }));
-                  setSetupMapReviewed(false);
-                  setSetupProblem("");
+                  try {
+                    setSetupVenues(assignFoundingHome(setupVenues, venue.id, actorId, assigned));
+                    setSetupContext((context) => ({
+                      rules: context.rules,
+                      circumstances: context.circumstances,
+                      communityVenueId: context.communityVenueId,
+                    }));
+                    setSetupMapReviewed(false);
+                    setSetupProblem("");
+                  } catch (error) {
+                    setSetupProblem(error instanceof Error ? error.message : "Check this home's capacity.");
+                  }
                 }}
                 onCommunityVenue={(venue) => {
                   setSetupContext((context) => ({ ...context, communityVenueId: venue.id }));
@@ -771,6 +775,15 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 }}
                 people={wizardVillagers}
                 selectedId={selectedSetupVenueId}
+                movingVenueId={movingSetupVenueId}
+                suggestions={
+                  <QuickStartButton
+                    busy={busy || setupSuggestionsBusy}
+                    disabled={setupVenueBusy}
+                    pending={!!setupWorkspace.suggestionRequest}
+                    onGenerate={() => void suggestSetupVenues({ venueId: selectedSetupVenueId ?? undefined })}
+                  />
+                }
                 state={setupWorkspace}
                 busy={setupSuggestionsBusy}
                 imageBusy={setupVenueBusy || setupSuggestionsBusy}

@@ -5,8 +5,6 @@ import type { SetupVenueDraft } from "../../shared/types.js";
 
 import type { FoundingState } from "./useFoundingState.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
-import { personalSpaceDraft } from "./villages-founding-editor";
-import { draftZonePolicy } from "./villages-founding-zones";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { quickStartIdentity, quickStartTemplates, replaceQuickStartVenue } from "./quick-start-drafts.js";
@@ -45,7 +43,8 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
 }) {
   return async (options?: { quickStart?: boolean; venueId?: string }) => {
-    options ??= {};
+    const pending = ports.setupWorkspace?.suggestionRequest;
+    options = pending ? { quickStart: pending.quickStart, venueId: pending.venueId } : (options ?? {});
     const {
       personaDraft,
       selectedResidentAdmissions,
@@ -70,23 +69,17 @@ export function createFoundingSuggestSetupVenues(ports: {
     setupSuggestionsClaim.current = true;
     const replacing = !!options.quickStart;
     const identity = quickStartIdentity(setupVenues);
-    const source = replacing ? JSON.stringify([setupBeginningSourceKey, identity]) : setupBeginningSourceKey;
+    const source = replacing
+      ? JSON.stringify([setupBeginningSourceKey, identity])
+      : options.venueId
+        ? JSON.stringify([setupBeginningSourceKey, options.venueId])
+        : setupBeginningSourceKey;
     const rows = replacing ? quickStartTemplates(setupVenues) : setupVenues;
     setSetupSuggestionsBusy(true);
     setSetupProblem("");
     try {
-      const result = await requestFoundingSuggestions({ ...ports, setupBeginningSourceKey: source }, options, {
-        setting: setupSetting,
-        worldName: ports.setupWorldName,
-        ...(options?.quickStart ? { mode: "quick-start", targetVenueId: options.venueId } : {}),
-        villageName: ports.setupName,
-        context: ports.setupContext,
-        communityVenueId: ports.setupContext?.communityVenueId,
-        playerPersonaId: personaDraft,
-        selectedLorebookIds: setupLorebookDraft,
-        loreTokenBudget: setupLoreTokenBudgetDraft,
-        foundingResidentAdmissions: selectedResidentAdmissions,
-        venues: rows.map((row) => ({
+      const requestRows = (rows: typeof setupVenues) =>
+        rows.map((row) => ({
           id: row.id,
           name: replacing ? "" : row.name,
           form: replacing ? "" : row.form,
@@ -95,10 +88,28 @@ export function createFoundingSuggestSetupVenues(ports: {
           venueClass: row.classes?.[0] ?? "other",
           residentIds: row.residentIds ?? [],
           playerHome: row.occupancy.playerHome,
-        })),
-      });
+        }));
+      const input = {
+        setting: setupSetting,
+        worldName: ports.setupWorldName,
+        ...(options.quickStart ? { mode: "quick-start" } : {}),
+        targetVenueId: options.venueId,
+        villageName: ports.setupName,
+        context: ports.setupContext,
+        communityVenueId: ports.setupContext?.communityVenueId,
+        playerPersonaId: personaDraft,
+        selectedLorebookIds: setupLorebookDraft,
+        loreTokenBudget: setupLoreTokenBudgetDraft,
+        foundingResidentAdmissions: selectedResidentAdmissions,
+        venues: requestRows(rows),
+      };
+      const result = await requestFoundingSuggestions({ ...ports, setupBeginningSourceKey: source }, options, input);
+
       if (
         setupBeginningSourceKeyRef.current !== setupBeginningSourceKey ||
+        (!replacing &&
+          !!options.venueId &&
+          JSON.stringify(input.venues) !== JSON.stringify(requestRows(setupVenuesRef.current))) ||
         (replacing && quickStartIdentity(setupVenuesRef.current) !== identity) ||
         (!replacing && rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id)))
       )
@@ -129,90 +140,26 @@ export function createFoundingSuggestSetupVenues(ports: {
         return;
       }
       if (options.quickStart) throw new Error("Use Suggest Venues to confirm replacing Venue drafts.");
-      setSetupVenues((currentRows) => {
-        const nextRows = currentRows.map((row) => {
+      setSetupVenues((currentRows) =>
+        currentRows.map((row) => {
+          if (options.venueId && row.id !== options.venueId) return row;
           const proposal = result.venues.find((item) => item.id === row.id);
           const before = rows.find((item) => item.id === row.id);
           if (
             !proposal ||
             !before ||
             setupImageTargetRef.current?.venueId === row.id ||
-            JSON.stringify(row.occupancy) !== JSON.stringify(before.occupancy)
+            quickStartIdentity([row]) !== quickStartIdentity([before])
           )
             return row;
           const changed: SetupVenueDraft = { ...row };
+          // Explicit selected-Venue suggestions change text only; room and access records remain authoritative.
           for (const key of ["name", "venueType", "form", "description"] as const)
-            if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
+            if ((options.venueId || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
-          const layoutEdited = ["layout", "spaces", "privateSpaces"].some((key) =>
-            setupAuthoredFieldsRef.current[row.id]?.includes(key),
-          );
-          if (
-            !layoutEdited &&
-            ![...(row.spaces ?? []), ...(row.privateSpaces ?? [])].some(
-              (zone) => zone.image || !["common:base", "private:base"].includes(zone.id),
-            ) &&
-            JSON.stringify(row.spaces) === JSON.stringify(before.spaces) &&
-            JSON.stringify(row.privateSpaces) === JSON.stringify(before.privateSpaces) &&
-            row.layout === before.layout
-          ) {
-            const role = row.classes?.[0] ?? "other";
-            changed.layout = proposal.layout;
-            changed.spaces =
-              proposal.layout === "common" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "common:base",
-                      connectedTo:
-                        row.spaces?.find((zone) => zone.id === "common:base")?.connectedTo ??
-                        proposal.connections
-                          ?.filter((edge) => edge.includes("common:base"))
-                          .map((edge) => (edge[0] === "common:base" ? edge[1] : edge[0])),
-                      ownerId: "",
-                      venueClass: role,
-                      name: proposal.commonName,
-                      purpose:
-                        proposal.commonPurpose ||
-                        (role === "residence" ? "Everyday home activities" : "Community gatherings"),
-                      access: draftZonePolicy(row, { venueClass: role }),
-                      description: proposal.commonDescription,
-                    },
-                  ]
-                : [];
-            changed.privateSpaces =
-              proposal.layout === "private" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "private:base",
-                      connectedTo:
-                        row.privateSpaces?.find((zone) => zone.id === "private:base")?.connectedTo ??
-                        proposal.connections
-                          ?.filter((edge) => edge.includes("private:base"))
-                          .map((edge) => (edge[0] === "private:base" ? edge[1] : edge[0])),
-                      venueClass: role,
-                      ownerId: row.occupancy.playerHome ? "player" : (row.residentIds?.[0] ?? ""),
-                      name: proposal.privateName,
-                      purpose: proposal.privatePurpose,
-                      description: proposal.privateDescription ?? "",
-                      access: draftZonePolicy(
-                        row,
-                        {
-                          venueClass: role,
-                          ownerId: row.occupancy.playerHome ? "player" : row.residentIds?.[0] || "",
-                        },
-                        true,
-                      ),
-                      controllerIds: role === "community" ? ["player"] : undefined,
-                    },
-                  ]
-                : [];
-          }
           return changed;
-        });
-        return nextRows;
-      });
+        }),
+      );
       if (!options?.venueId) setSetupSuggestionsKey(source);
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));

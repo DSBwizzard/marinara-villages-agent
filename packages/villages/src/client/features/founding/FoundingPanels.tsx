@@ -49,6 +49,7 @@ export function newSetupVenue(
     layoutVersion: 1,
     spaces: [],
     residenceCapacity: 1,
+    ...(venueClass === "residence" ? { foundingCapacity: null } : {}),
     residentIds: [],
 
     description:
@@ -65,9 +66,9 @@ export function newSetupVenue(
   };
   return {
     ...venue,
-    layout: venueClass === "residence" ? "both" : "common",
-    spaces: [startingZone(venue, false)],
-    privateSpaces: venueClass === "residence" ? [startingZone(venue, true)] : [],
+    layout: "common",
+    spaces: [{ ...startingZone(venue, false), ...(venueClass === "residence" ? { access: undefined } : {}) }],
+    privateSpaces: [],
   };
 }
 

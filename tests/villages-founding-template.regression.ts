@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
 import { chooseAgendaZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
-import { includeFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
+import {
+  includeFoundingZone,
+  startingZone,
+} from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/domain/rules/founding-draft-rules.js";
@@ -10,6 +13,8 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 
 const residence = newSetupVenue("home", "residence", 0.2, 0.3, true);
+residence.layout = "both";
+residence.privateSpaces = [startingZone(residence, true)];
 residence.form = "Cottage";
 residence.description = "Stone doorway";
 residence.spaces![0] = { ...residence.spaces![0], name: "Living room", purpose: "Meals", description: "A low table" };

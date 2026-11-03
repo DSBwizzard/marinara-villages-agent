@@ -91,7 +91,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
         "Assign homes for one to three residents and choose a separate Community Venue before suggestions.",
       );
     const targetId = asTrimmedString(input.targetVenueId);
-    if (targetId && (!quickStart || !rows.some((row) => row.id === targetId)))
+    if (targetId && !rows.some((row) => row.id === targetId))
       throw badRequest("Choose a required starting Venue to regenerate.");
     const requestedRows = targetId ? rows.filter((row) => row.id === targetId) : rows;
     const worldRules = asTrimmedString(context.rules);
@@ -136,6 +136,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
             "A Residence can take literally any physical form supported by the context: a dumpster, apartment, house, train car, stolen hearse, or something else. Fit its spaces to that form; spaces need not be separate rooms. Respect a supplied nonempty physical form when suggesting its spaces.",
             "Suggest a specific, setting-appropriate name for every Venue, replacing generic or existing names. Supplied names are context, not fixed choices.",
             "Preserve supplied ids and resident assignments. Do not place map pins, infer image coordinates, establish relationships, or invent completed actions, mandatory crises, or community culture.",
+            ...(targetId && !quickStart
+              ? [
+                  "The player requested details for one existing Venue. Preserve its current condition and supplied physical facts. The player keeps all existing Zones, access rules, residents, sleeping assignments and map placement; your suggested layout is not applied.",
+                ]
+              : []),
             "Exterior is outside each Venue boundary: its entrance and approach, including an indoor corridor if appropriate. Residences require Common, Private, or both; never Exterior only. The initial Community Place requires Common only, is unowned and open to everyone, and has no workers or workplace capabilities.",
             ...(quickStart
               ? [

@@ -11,6 +11,7 @@ import {
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
+import { startingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import {
   assignFoundingHome,
   reconcileFoundingRoster,
@@ -56,7 +57,11 @@ function drafts(assignments: Record<string, string> = {}) {
     rows = assignFoundingHome(rows, `founding-home:${home}`, actor, true);
   return rows
     .filter((venue) => !venue.classes?.includes("residence") || venue.occupancy.playerHome || venue.residentIds?.length)
-    .map((venue, index) => ({ ...venue, presentation: { ...venue.presentation, x: 0.1 + index * 0.15, y: 0.5 } }));
+    .map((venue, index) => ({
+      ...venue,
+      ...(venue.classes?.includes("residence") ? { layout: "both", privateSpaces: [startingZone(venue, true)] } : {}),
+      presentation: { ...venue.presentation, x: 0.1 + index * 0.15, y: 0.5 },
+    }));
 }
 function world(groups: Record<string, string> = {}) {
   const state = defaultVillageState();
@@ -102,6 +107,9 @@ for (const [groups, count] of [
     "community",
   );
   const original = structuredClone(rows.find((row) => row.id === "founding-home:player")!);
+  const privateHome = rows.find((row) => row.id === "founding-home:a")!;
+  privateHome.privateSpaces = [startingZone(privateHome, true)];
+  privateHome.layout = "both";
   const privateOwner = rows.find((row) => row.id === "founding-home:a")!.privateSpaces![0].ownerId;
   rows = assignFoundingHome(rows, "founding-home:a", "player", true);
   rows = assignFoundingHome(rows, original.id, "player", true);
@@ -743,6 +751,8 @@ console.log(
   );
   const home = initial.find((row) => row.residentIds?.includes("a"))!;
   home.name = "Ada's authored home";
+  home.privateSpaces = [startingZone(home, true)];
+  home.layout = "both";
   home.privateSpaces![0].description = "A keepsake on a shelf";
   const regrouped = assignFoundingHome(initial, "founding-home:player", "a", true);
   const retained = regrouped.find((row) => row.id === home.id)!;
@@ -829,6 +839,7 @@ console.log(
     ),
     home = initial.find((row) => row.residentIds?.includes("b"))!;
   home.residenceCapacity = 4;
+  home.foundingCapacity = 4;
   assert.equal(
     assignFoundingHome(initial, "founding-home:player", "b", true).find((row) => row.id === home.id)?.residenceCapacity,
     4,
