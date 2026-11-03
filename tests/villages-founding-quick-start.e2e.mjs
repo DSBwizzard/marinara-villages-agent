@@ -147,7 +147,8 @@ await withBrowser(browser, async () => {
       const open = async (id, tab = "Venue") => {
         if (await sheet.isVisible()) await close();
         const previous = page.getByRole("button", { name: "Previous Venues page", exact: true });
-        while ((await previous.count()) > 0 && (await previous.isEnabled())) await previous.click();
+        while (!(await card(id).isVisible()) && (await previous.count()) > 0 && (await previous.isEnabled()))
+          await previous.click();
         while (!(await card(id).isVisible()))
           await page.getByRole("button", { name: "Next Venues page", exact: true }).click();
         await card(id)

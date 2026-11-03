@@ -52,7 +52,7 @@ export function parsePlace(value: unknown): VillageVenue {
   if (!id || !name || name.length > MAX_VENUE_NAME_LENGTH)
     throw badRequest("Every Venue needs a unique ID and a name of at most 60 characters.");
   if (!form || form.length > MAX_PHYSICAL_DESIGN_LENGTH)
-    throw badRequest("Describe each Venue's physical form within the allowed length.");
+    throw badRequest("Describe what each Venue looks like in at most 2,000 characters.");
   const description = readPlaceDescription(row.description).trim();
   if (!description) throw badRequest("Describe each Venue's Entrance before founding.");
   if (!validVenueClasses(row.classes)) throw badRequest("Choose one or two Venue Classes.");

@@ -435,7 +435,7 @@ export function useFoundingSetupBlocker(ports: {
             foundingZoneProblem(venue),
         )
       )
-        return "Complete each Venue's physical form and each Zone's name, use and long-term details on Venues.";
+        return "Describe what each Venue looks like and complete each Zone's name, use and long-term details on Venues.";
       const occupants = villagerHomes.flatMap((home) => home.residentIds ?? []);
       if (new Set(occupants).size !== occupants.length) return "A villager can only live in one house.";
       if (

@@ -508,13 +508,17 @@ export function QuickStartVenues({
                     />
                     {fieldError("name")}
                   </label>
-                  <label>
-                    Physical Form
-                    <input
+                  <label className="villages-quick-venue-description">
+                    What does this place look like?
+                    <textarea
                       autoComplete="off"
-                      aria-label="Physical Form"
+                      aria-label="What does this place look like?"
                       {...errorProps("form")}
                       maxLength={2000}
+                      rows={4}
+                      placeholder={
+                        "A two-story timber house with a slate roof\nA converted school bus\nA beautiful park with winding paths and a pond\nA dark cave"
+                      }
                       value={selected.form ?? ""}
                       onChange={(event) => patch({ ...selected, form: event.target.value })}
                     />
