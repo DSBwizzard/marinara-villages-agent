@@ -83,28 +83,15 @@ await withBrowser(browser, async () => {
       await page.reload();
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
       const zone = page.getByRole("combobox", { name: "Village Timezone" });
-      await expect(zone).toHaveValue("America/Los_Angeles");
-      await zone.selectOption("Europe/London");
-      await expect(zone).toHaveValue("Europe/London");
+      await expect(zone).toHaveCount(0);
+      await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
       await page.screenshot({ path: ".build-tmp/clock-visual/founding-" + width + ".png" });
-      await expect
-        .poll(async () =>
-          page.evaluate(
-            () =>
-              new Promise((resolve, reject) => {
-                const open = indexedDB.open("villages-drafts-v4", 1);
-                open.onsuccess = () => {
-                  const req = open.result.transaction("drafts").objectStore("drafts").get("/api/villages");
-                  req.onsuccess = () => resolve(req.result?.data?.timeZone);
-                  req.onerror = () => reject(req.error);
-                };
-              }),
-          ),
-        )
-        .toBe("Europe/London");
+      await page.getByRole("button", { name: "Save & exit", exact: true }).click();
+      await page.getByRole("button", { name: "Resume founding", exact: true }).click();
+      await expect(page.getByText("Engine time · America/Los_Angeles", { exact: true })).toBeVisible();
     });
     assert.deepEqual(errors, []);
     await context.close();
   }
-  console.log("Desktop/mobile nonblocking server clock and fixed founding timezone defaults passed.");
+  console.log("Desktop/mobile nonblocking server clock and automatic Engine founding timezone passed.");
 });

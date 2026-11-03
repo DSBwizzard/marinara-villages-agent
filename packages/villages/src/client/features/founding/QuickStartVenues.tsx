@@ -542,6 +542,7 @@ export function QuickStartVenues({
                 <label>
                   Entrance appearance
                   <textarea
+                    autoComplete="off"
                     disabled={busy || imageBusy}
                     aria-label="Entrance appearance"
                     value={selected.description}
