@@ -102,7 +102,7 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     village.worldRules,
     village.worldName,
     currentVillageCircumstances(village, venue.id, zoneId),
-    (venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault) ? village.selectedLorebookIds : [],
+    village.selectedLorebookIds,
     personality && ownerId === "player" ? [village.playerPersonaId, village.playerName, village.playerDescription] : [],
     personality
       ? village.villagers

@@ -18,7 +18,6 @@ function initialSnapshot() {
     loreTokenBudget: 1600,
     sceneryArtStyle: "Saved scenery",
     personalizeVenueImagesByDefault: true,
-    useVisualLoreByDefault: true,
   });
   return snapshot;
 }
@@ -37,18 +36,18 @@ const bundle = await build({
       const [snapshot,setSnapshot]=useState(window.initialSnapshot);
       const [screen,setScreen]=useState('home'); const [menuPage,setMenuPage]=useState('index');
       const [sceneryStyle,setSceneryStyle]=useState(''); const [sceneryStyleProfileId,setSceneryStyleProfileId]=useState(null); const [personalizeHomes,setPersonalizeHomes]=useState(true);
-      const [visualLoreDefault,setVisualLoreDefault]=useState(true); const [venuesDraft,setVenuesDraft]=useState([]);
+      const [venuesDraft,setVenuesDraft]=useState([]);
       const [busy,setBusy]=useState(false); const [personas,setPersonas]=useState([]);
       const unused=()=>{};
-      const session=useSettingsDraftSession({...settings,snapshot,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft});
+      const session=useSettingsDraftSession({...settings,snapshot,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVenuesDraft});
       const loadPersonas=useLoadPersonas({setError:unused,setPersonaDraft:settings.setPersonaDraft,setPersonas});
       const open=useScenesOpenMenu({snapshot,screen,menuPage,setScreen,setMenuPage,openSettings:session.openSettings,
         loadCatalog:async()=>{},loadLorebooks:async()=>{},loadPersonas,debugDiscardEnabled:false,loadProgressDebug:async()=>{},setFocusedRequestId:unused,
         setSiteProjectId:unused,setSettingsError:settings.setSettingsError});
-      const save=useSaveSettings({...settings,visualLoreDefault,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
-      window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft};
+      const save=useSaveSettings({...settings,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
+      window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVenuesDraft};
       return <pre id='state'>{JSON.stringify({knowledge:settings.knowledgeDraft,persona:settings.personaDraft,lore:settings.lorebookDraft,
-        budget:settings.loreTokenBudgetDraft,setting:settings.settingDraft,scenery:sceneryStyle,personalizeHomes,visualLoreDefault,
+        budget:settings.loreTokenBudgetDraft,setting:settings.settingDraft,scenery:sceneryStyle,personalizeHomes,
         venues:venuesDraft,founded:snapshot.isFounded,screen,menuPage,busy,error:settings.settingsError,personas:personas.length})}</pre>;
     }
     const root=createRoot(document.getElementById('root'));
@@ -115,7 +114,6 @@ async function checkHooks(width) {
     h.settings.setLorebookDraft(["edited-book"]);
     h.setSceneryStyle("Retained scenery");
     h.setPersonalizeHomes(false);
-    h.setVisualLoreDefault(false);
     h.setVenuesDraft((current) =>
       current.map((venue, index) => (index ? venue : { ...venue, name: "Retained Venue draft" })),
     );
@@ -130,7 +128,6 @@ async function checkHooks(width) {
   assert.deepEqual((await state()).lore, ["edited-book"]);
   assert.equal((await state()).scenery, "Retained scenery");
   assert.equal((await state()).personalizeHomes, false);
-  assert.equal((await state()).visualLoreDefault, false);
   assert.equal((await state()).venues[0].name, "Retained Venue draft");
   assert.equal(requests.length, 0, "navigation and editing never save automatically");
 
@@ -157,11 +154,9 @@ async function checkHooks(width) {
   assert.deepEqual(requests[0].request().postDataJSON(), {
     selectedLorebookIds: ["edited-book"],
     loreTokenBudget: 2200,
-    useVisualLoreByDefault: false,
   });
   await call(() => {
     window.settingsHarness.settings.setKnowledgeDraft("Newer edit during save");
-    window.settingsHarness.setVisualLoreDefault(true);
   });
   const saved = structuredClone(changed);
   Object.assign(saved.settings, {
@@ -169,7 +164,6 @@ async function checkHooks(width) {
     playerPersonaId: "",
     selectedLorebookIds: ["canonical-book"],
     loreTokenBudget: 2300,
-    useVisualLoreByDefault: false,
   });
   await respond(0, saved);
   assert.equal(
@@ -179,7 +173,6 @@ async function checkHooks(width) {
   );
   assert.deepEqual((await state()).lore, ["canonical-book"]);
   assert.equal((await state()).budget, 2300);
-  assert.equal((await state()).visualLoreDefault, true, "a newer image preference survives an in-flight save");
   await open("index");
   await open("village");
   assert.equal((await state()).knowledge, "Newer edit during save");
@@ -473,8 +466,7 @@ async function checkPackage(width) {
   await expect(loreBudget).toHaveValue("");
   await expect(loreBudget).toHaveAttribute("placeholder", "1600");
   const imageLore = page.getByLabel("Use selected lorebooks when generating images", { exact: true });
-  await expect(imageLore).toBeChecked();
-  await imageLore.uncheck();
+  await expect(imageLore).toHaveCount(0);
   await page.getByLabel("Village world", { exact: true }).fill("A new world name");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect.poll(() => worldSaves.length).toBe(1);
@@ -487,11 +479,11 @@ async function checkPackage(width) {
   await page.getByRole("button", { name: "Save settings", exact: true }).click();
   await expect.poll(() => loreSaves.length).toBe(1);
   await expect(page.getByLabel("Village world", { exact: true })).toBeDisabled();
-  assert.equal(loreSaves[0].request().postDataJSON().useVisualLoreByDefault, false);
+  assert.equal(Object.hasOwn(loreSaves[0].request().postDataJSON(), "useVisualLoreByDefault"), false);
   const loreSaved = structuredClone(snapshot);
   Object.assign(loreSaved.settings, loreSaves[0].request().postDataJSON());
   await fulfill(loreSaves[0], { status: 200, contentType: "application/json", body: JSON.stringify(loreSaved) });
-  await expect(imageLore).not.toBeChecked();
+  await expect(imageLore).toHaveCount(0);
   Object.assign(snapshot.settings, loreSaved.settings);
 
   await expect(page.getByRole("checkbox", { name: "Character chat colors", exact: true })).toHaveCount(0);

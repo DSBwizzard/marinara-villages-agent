@@ -11,6 +11,8 @@ import { createHash } from "node:crypto";
 import { openingSceneDirection } from "../../domain/rules/opening-project.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import { inspectedLoreUse, villageLoreContext } from "../../domain/rules/lore-context.js";
+import { mergeLoreUse } from "../../../shared/helpers/lore.js";
 import { admissionLoreContext, sharedWorldContext } from "../../../shared/helpers/resident-admission.js";
 import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -351,7 +353,7 @@ export function createSceneWriting({
         : readVillageLore(
             village.selectedLorebookIds,
             [
-              villageCurrentSetting(village),
+              villageLoreContext(village),
               session.placeName,
               admissionLoreContext(
                 village.worldName,
@@ -384,6 +386,7 @@ export function createSceneWriting({
         return value;
       });
     const [lore, model] = await Promise.all([lorePromise, modelPromise]);
+    const narrationLore = inspectedLoreUse(loreInspection, "Narration");
     signal?.throwIfAborted();
     if (!captured) optionalKnowledge.push({ text: fitWishWritingContext(model, wishWritingActors), optional: "wish" });
     const projectContexts =
@@ -416,20 +419,24 @@ export function createSceneWriting({
             text: line.content.slice(0, 500),
           })),
         );
-    const blocksFor = (parts: string[]): VenueWritingBlock[] =>
-      parts.map((text) => ({
-        text,
-        optional:
-          (text === earlierContext ? "history" : undefined) ??
-          optionalKnowledge.find((block) => block.text === text)?.optional ??
-          (/^(Recent scene history:|Earlier Scene recap:)/u.test(text)
-            ? "history"
-            : /^(Shared village memories:|Only .* knows:)/u.test(text)
-              ? "memory"
-              : text.startsWith("Relevant world lore:")
-                ? "lore"
-                : undefined),
-      }));
+    const blocksFor = (parts: (string | VenueWritingBlock)[]): VenueWritingBlock[] =>
+      parts.map((part) =>
+        typeof part !== "string"
+          ? part
+          : {
+              text: part,
+              optional:
+                (part === earlierContext ? "history" : undefined) ??
+                optionalKnowledge.find((block) => block.text === part)?.optional ??
+                (/^(Recent scene history:|Earlier Scene recap:)/u.test(part)
+                  ? "history"
+                  : /^(Shared village memories:|Only .* knows:)/u.test(part)
+                    ? "memory"
+                    : part.startsWith("Relevant world lore:")
+                      ? "lore"
+                      : undefined),
+            },
+      );
     const capabilities = readSceneWritingCapabilities(venueOperationInput()?.writingCapabilities);
     const responseContract = () =>
       [
@@ -593,7 +600,11 @@ export function createSceneWriting({
         `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
       ]),
       conversation: blocksFor([
-        ...lore.map((entry) => `Relevant world lore: ${entry}`),
+        ...lore.map((entry, index) => ({
+          text: `Relevant world lore: ${entry}`,
+          optional: "lore" as const,
+          lore: narrationLore[index],
+        })),
         ...optionalKnowledge.map((block) => block.text),
         `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
         "",
@@ -885,7 +896,7 @@ export function createSceneWriting({
           throw badGateway("The replacement context does not fit. Your input is saved.");
         return correction;
       });
-      fitted = { ...corrected, loreEntries: fitted.loreEntries };
+      fitted = { ...corrected, loreEntries: fitted.loreEntries, lore: fitted.lore };
     }
     if (loreInspection) runtimeDebug("lore inspection", loreInspection);
     {
@@ -1476,6 +1487,7 @@ export function createSceneWriting({
       }
       return {
         ...parsed,
+        lore: mergeLoreUse(fitted.lore, semanticResult?.lore),
         ...(narrativeSource ? { narrativeSource } : {}),
         effectFailures,
         speechCapture: captureSources
@@ -1765,6 +1777,7 @@ export function createSceneWriting({
   }
 
   type SceneReply = Awaited<ReturnType<typeof generateOnce>> & {
+    lore?: import("../../../shared/contracts/lore.js").LoreUse[];
     roomInterpretation?: InterpretationBatch | null;
     narrativeSource?: SceneNarrativeSource;
   };

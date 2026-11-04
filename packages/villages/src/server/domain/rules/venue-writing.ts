@@ -2,6 +2,9 @@ import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } 
 import type { VillagerCard } from "../models/catalog-model.js";
 import { badRequest } from "./errors.js";
 import { renderResidentAdmission } from "./resident-admission.js";
+import type { LoreUse } from "../../../shared/contracts/lore.js";
+import { mergeLoreUse } from "../../../shared/helpers/lore.js";
+import { LORE_REFERENCE_RULE } from "./lore-context.js";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(
@@ -33,7 +36,7 @@ export function venueCardProfile(
 export const EVENT_MEMORY_GUIDANCE =
   "Record what was said or done in this encounter, with its context. A pause, reserved delivery, temporary uncertainty, or the narrator's interpretation is not a stable personality trait. Preserve explicit preferences and commitments without generalizing a moment into who the character is.";
 
-export type VenueWritingBlock = { text: string; optional?: "wish" | "history" | "memory" | "lore" };
+export type VenueWritingBlock = { text: string; optional?: "wish" | "history" | "memory" | "lore"; lore?: LoreUse };
 
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
@@ -72,10 +75,22 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
     {
       role: "system",
       content: blocks
+        .filter((block) => block.optional !== "lore")
         .map((block) => block.text)
         .filter(Boolean)
+        .concat(LORE_REFERENCE_RULE)
         .join("\n\n"),
     },
+    ...(blocks.some((block) => block.optional === "lore")
+      ? [
+          {
+            role: "user" as const,
+            content: JSON.stringify({
+              lorebookReferences: blocks.filter((block) => block.optional === "lore").map((block) => block.text),
+            }),
+          },
+        ]
+      : []),
     { role: "user", content: input },
   ] satisfies CapabilityLanguageModelMessage[];
 }
@@ -94,7 +109,11 @@ export function fitVenueWritingMessages(
     const messages = assembleVenueWritingMessages(kept, input);
     const fitted = model.fitContext(messages, { maxTokens });
     if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
-      return { ...fitted, loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text) };
+      return {
+        ...fitted,
+        loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text),
+        lore: mergeLoreUse(kept.flatMap((block) => (block.lore ? [block.lore] : []))),
+      };
     const optional =
       ["wish", "history", "memory", "lore"]
         .map((kind) =>

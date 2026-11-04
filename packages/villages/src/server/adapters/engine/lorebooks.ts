@@ -122,7 +122,12 @@ export async function readVillageLore(
             )
           )
             throw new Error("Invalid entry.");
-          return { ...entry, bookId: id, folderEnabled: folderEnabled(entry.folderId, folderMap) };
+          return {
+            ...entry,
+            bookId: id,
+            bookName: byId.get(id)!.name,
+            folderEnabled: folderEnabled(entry.folderId, folderMap),
+          };
         }),
       );
     }
@@ -144,30 +149,49 @@ export async function readVillageLore(
   }
 }
 
-/** Image prompts need visual cues, not a complete world-info entry. */
-export async function readVillageVisualLore(
+/** The same selector, packed as whole entries for an image prompt. */
+export async function readVillageImageLore(
   ids: readonly string[],
   context: string,
   maxLength = 360,
   tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
+  inspect?: (report: LoreInspection) => void,
 ): Promise<string> {
-  return (await readVillageVisualLoreEntries(ids, context, maxLength, tokenBudget)).join("; ");
+  return (await readVillageImageLoreEntries(ids, context, maxLength, tokenBudget, inspect)).join("; ");
 }
 
-/** Complete visual entries, allowing each caller to fit them independently. */
-export async function readVillageVisualLoreEntries(
+/** Complete entries, allowing each image caller to fit them independently. */
+export async function readVillageImageLoreEntries(
   ids: readonly string[],
   context: string,
   maxLength = 360,
   tokenBudget = DEFAULT_LORE_TOKEN_BUDGET,
+  inspect?: (report: LoreInspection) => void,
 ): Promise<string[]> {
-  const entries = await readVillageLore(ids, context, undefined, tokenBudget);
+  let report: LoreInspection | undefined;
+  const entries = await readVillageLore(ids, context, undefined, tokenBudget, {
+    inspect: (value) => {
+      report = value;
+    },
+  });
   const selected: string[] = [];
+  const retained: boolean[] = [];
   let length = 0;
   for (const entry of entries) {
-    if (length + entry.length + (selected.length ? 2 : 0) > maxLength) continue;
+    const fits = length + entry.length + (selected.length ? 2 : 0) <= maxLength;
+    retained.push(fits);
+    if (!fits) continue;
     selected.push(entry);
     length += entry.length + (selected.length > 1 ? 2 : 0);
+  }
+  if (report) {
+    let index = 0;
+    inspect?.({
+      ...report,
+      entries: report.entries.map((entry) =>
+        entry.status === "included" && !retained[index++] ? { ...entry, status: "context-limit" } : entry,
+      ),
+    });
   }
   return selected;
 }

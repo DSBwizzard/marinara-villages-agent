@@ -1632,7 +1632,12 @@ async function mediaConnectionOwnership() {
       if (operation === "map")
         assert.deepEqual(
           result.value,
-          { image: TINY_PNG, width: 1, height: 1 },
+          {
+            image: TINY_PNG,
+            width: 1,
+            height: 1,
+            lore: [{ id: "paint", bookId: "visual", bookName: "Visual", name: "Color", targets: ["Image"] }],
+          },
           "inspection returns A's generated image with actual dimensions",
         );
       if (operation === "location" && variant === "ordinary")

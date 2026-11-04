@@ -104,7 +104,6 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
   readonly setDraftReady: FoundingState["setDraftReady"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
-  readonly setMapVisualLore: FoundingState["setMapVisualLore"];
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setPersonalizeHomes: FoundingState["setPersonalizeHomes"];
@@ -149,7 +148,6 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setupEditorOriginal: FoundingState["setupEditorOriginal"];
   readonly setupEditorZoneOriginal: FoundingState["setupEditorZoneOriginal"];
   readonly setupZoneDrafts: FoundingState["setupZoneDrafts"];
-  readonly setVisualLoreDefault: FoundingState["setVisualLoreDefault"];
   readonly updateSetupMapRequest: (value: import("../../../shared/contracts/village").SetupMapRequest) => void;
 }) {
   return (data: SetupDraftData) => {
@@ -159,7 +157,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       loadPersonas,
       setDraftReady,
       setDraftSaveError,
-      setMapVisualLore,
       setMovingSetupVenueId,
       setPersonaDraft,
       setPersonalizeHomes,
@@ -201,7 +198,6 @@ export function createFoundingRestoreSetupDraft(ports: {
       setupEditorOriginal,
       setupEditorZoneOriginal,
       setupZoneDrafts,
-      setVisualLoreDefault,
       updateSetupMapRequest,
     } = ports;
 
@@ -246,8 +242,6 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSceneryStyle(data.artStyle);
     setSceneryStyleProfileId(data.styleProfileId ?? null);
     setPersonalizeHomes(data.personalizeHomes);
-    setVisualLoreDefault(data.visualLoreDefault);
-    setMapVisualLore(data.mapVisualLore);
     setSetupMapSource(data.mapSource);
     setSetupMapImage(data.mapImage);
     setSetupMapImageSource(data.mapImageSource);

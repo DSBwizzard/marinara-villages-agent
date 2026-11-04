@@ -6,6 +6,8 @@ import { retainPrivateDiagnostic } from "../adapters/observability/private-diagn
 import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import type { readVillageLore } from "../adapters/engine/lorebooks.js";
+import { inspectedLoreUse, loreText, villageLoreContext } from "../domain/rules/lore-context.js";
+import type { LoreInspection } from "../../shared/contracts/lore.js";
 import type { villagesLogger } from "../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../adapters/models/language-models.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../domain/models/world.js";
@@ -191,13 +193,31 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
               backstory: card.backstory.slice(0, 300),
             })),
         };
+        let inspection: LoreInspection | undefined;
         const lore = await readVillageLore(
           village.selectedLorebookIds,
-          [village.setting, village.worldName, ...currentVillageCircumstances(village), JSON.stringify(room)].join(
-            "\n",
+          loreText(
+            villageLoreContext(village),
+            room.name,
+            room.purpose,
+            room.form,
+            room.exterior,
+            room.commonArea,
+            room.authoredDescription,
+            room.roomSpecification,
+            room.layout.map((area) => area.name),
+            village.villagers
+              .filter((person) => owners.includes(person.characterId))
+              .flatMap((person) => [person.admission?.homeworld, person.admission?.startingSituation]),
+            room.characters.flatMap((person) => [person.name, person.personality, person.summary, person.backstory]),
           ),
           signal,
           Math.min(village.loreTokenBudget, 256),
+          {
+            inspect: (report) => {
+              inspection = report;
+            },
+          },
         );
         await progress("resolving", { loreEntryCount: lore.length });
         const model = await villagesLanguageModels().resolveForRequest({
@@ -360,7 +380,14 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             target.picture = { ...target.picture, base: target.picture?.base ?? target.image, dirty: true };
           target.description = asTrimmedString(generated.description);
           target.state = { ...target.state, revision: target.state.revision + 1, updatedAt: new Date().toISOString() };
-          target.preparation = { status: "ready", attempt };
+          target.preparation = {
+            status: "ready",
+            attempt,
+            lore:
+              JSON.stringify(fitted.messages) === JSON.stringify(messages)
+                ? inspectedLoreUse(inspection, "Private space")
+                : [],
+          };
         });
         if (stale) throw new Error("The space changed during preparation. Retry deliberately.");
       } catch (cause) {

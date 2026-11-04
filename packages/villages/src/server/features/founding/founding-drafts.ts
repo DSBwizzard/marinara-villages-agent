@@ -5,6 +5,10 @@ export function configureFoundingDrafts(service: FoundingDraftsService): () => v
   return binding.configure(bindActivationService(service));
 }
 
+export function readFoundingImageLore(...args: Parameters<FoundingDraftsService["readFoundingImageLore"]>) {
+  return binding.get().readFoundingImageLore(...args);
+}
+
 export async function suggestStartingVenues(
   ...args: Parameters<FoundingDraftsService["suggestStartingVenues"]>
 ): ReturnType<FoundingDraftsService["suggestStartingVenues"]> {

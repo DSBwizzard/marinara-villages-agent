@@ -19,19 +19,19 @@ import {useSpriteVisualSettings} from './packages/villages/src/client/features/s
 function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
  [archive,setArchiveVersion]=useState(0),
- [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false),[visualLoreDefault,setVisualLoreDefault]=useState(true);
+ [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false);
  const ports={...settings,snapshot,setSnapshot,setBusy,setArchiveVersion,
-  sceneryStyle,sceneryStyleProfileId,personalizeHomes,visualLoreDefault,acceptSavedSettings:()=>{window.acks++}};
+  sceneryStyle,sceneryStyleProfileId,personalizeHomes,acceptSavedSettings:()=>{window.acks++}};
  const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),visual=useSpriteVisualSettings(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports);
  const commands={save,scenery,flip:()=>visual.save('spriteCardFlipEnabled',window.flipValue??true),variants:()=>visual.save('spriteVariantsEnabled',false),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>visual.save('characterSpeechColors',false)};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},
-  editScenery:()=>{setSceneryStyle('Newer scenery');setPersonalizeHomes(true);setVisualLoreDefault(false)},
+  editScenery:()=>{setSceneryStyle('Newer scenery');setPersonalizeHomes(true)},
   retain:kind=>{window.old=commands[kind]},old:()=>launch(window.old),
   reset:()=>{setSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});setBusy(true)},
   resetDone:()=>setBusy(false),refound:()=>{setSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B',sendOnEnter:true,characterSpeechColors:false}})},
   hydrate:()=>setSnapshot(current=>({...current,isFounded:true})),
-  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError,flipDraft:visual.draft.spriteCardFlipEnabled??null,flipError:visual.error,flipSaving:visual.saving,colorsDraft:visual.draft.characterSpeechColors,archive,sceneryStyle,personalizeHomes,visualLoreDefault,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
+  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError,flipDraft:visual.draft.spriteCardFlipEnabled??null,flipError:visual.error,flipSaving:visual.saving,colorsDraft:visual.draft.characterSpeechColors,archive,sceneryStyle,personalizeHomes,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
  return <pre id='state'>{JSON.stringify(window.h.read())}</pre>;
 }window.pending=[];window.acks=0;
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
@@ -102,7 +102,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     };
   }
   const payloads = {
-    save: { selectedLorebookIds: [], loreTokenBudget: 1600, useVisualLoreByDefault: true },
+    save: { selectedLorebookIds: [], loreTokenBudget: 1600 },
     scenery: {
       sceneryStyleProfileId: null,
       sceneryArtStyle: " Exact scenery A ",
@@ -221,7 +221,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         const after = await f.state();
         assert.equal(after.sceneryStyle, "Newer scenery");
         assert.equal(after.personalizeHomes, true);
-        assert.equal(after.visualLoreDefault, false);
+
         assert.equal(await f.page.evaluate(() => window.acks), 0);
         await f.finish();
       }

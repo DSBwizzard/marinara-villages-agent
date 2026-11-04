@@ -95,10 +95,8 @@ export type MenuScreenController = {
   readonly setSettingsError: SettingsState["setSettingsError"];
   readonly setSiteProjectId: ProjectsState["setSiteProjectId"];
   readonly setSnapshot: React.Dispatch<React.SetStateAction<import("../../shared/contracts/village").VillageSnapshot>>;
-  readonly setVisualLoreDefault: FoundingState["setVisualLoreDefault"];
   readonly settingsError: SettingsState["settingsError"];
   readonly siteProjectId: ProjectsState["siteProjectId"];
   readonly snapshot: import("../../shared/contracts/village").VillageSnapshot;
   readonly startOver: ReturnType<typeof useFoundingStartOver>;
-  readonly visualLoreDefault: FoundingState["visualLoreDefault"];
 };

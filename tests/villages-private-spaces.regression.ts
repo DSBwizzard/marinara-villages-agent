@@ -529,7 +529,7 @@ async function privateInteriorLifecycle() {
       return structuredClone(village);
     },
     assertVenueImageAccess: async () => {},
-    readVillageVisualLore: async () => "",
+    readVillageImageLore: async () => "",
     generateVillageImage: async (input: any) => {
       draws++;
       assert.ok(input.prompt.length <= 8000);

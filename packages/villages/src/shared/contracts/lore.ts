@@ -7,6 +7,7 @@ export type LoreInspection = {
     id: string;
     bookId: string;
     name: string;
+    bookName?: string;
     match: "current" | "recent" | "setting" | "constant" | "none";
     status:
       | "included"
@@ -22,3 +23,6 @@ export type LoreInspection = {
   omittedDiagnostics: number;
 };
 export type LoreDiagnostic = LoreInspection & { at: string; operationId?: string };
+
+/** Prompt provenance only; never entry bodies, matching text, or character knowledge. */
+export type LoreUse = { id: string; bookId: string; name: string; bookName?: string; targets: string[] };

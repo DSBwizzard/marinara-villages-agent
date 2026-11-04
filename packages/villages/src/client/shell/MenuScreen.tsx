@@ -70,12 +70,10 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
     setScreen,
     setSiteProjectId,
     setSnapshot,
-    setVisualLoreDefault,
     settingsError,
     siteProjectId,
     snapshot,
     startOver,
-    visualLoreDefault,
   } = controller;
   const [localDrafts, setLocalDrafts] = useState<Partial<Record<"world" | "map", NonNullable<LocalDraftStatus>>>>({});
   const reportLocalDraftStatus = useCallback<ReportLocalDraftStatus>((key, status) => {
@@ -273,10 +271,8 @@ export function MenuScreen({ controller }: { controller: MenuScreenController })
               setPersonalizeHomes,
               setSceneryStyle,
               setSceneryStyleProfileId,
-              setVisualLoreDefault,
               settingsError,
               snapshot,
-              visualLoreDefault,
             })
           ) : (
             // The four panels that used to be stacked beside the map. They are

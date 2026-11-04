@@ -4,6 +4,7 @@ import { z } from "zod";
 import { readVillageState, mutateVillageState } from "../world/village-store.js";
 import { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import { readVillageLore } from "../../adapters/engine/lorebooks.js";
+import { villageLoreContext } from "../../domain/rules/lore-context.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { completeWithRoom } from "../generation/model-requests.js";
@@ -152,7 +153,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
   if (!operation) {
     const lore = await readVillageLore(
       world.selectedLorebookIds,
-      `${villageCurrentSetting(world)}\n${input.intent}\n${priorPlace?.location.name ?? ""}`,
+      `${villageLoreContext(world)}\n${input.intent}\n${priorPlace?.location.name ?? ""}`,
       undefined,
       world.loreTokenBudget,
     );

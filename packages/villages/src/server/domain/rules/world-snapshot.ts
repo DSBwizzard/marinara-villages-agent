@@ -14,6 +14,7 @@ import type {
 } from "../models/world.js";
 import { agendaBlocksFor } from "./agenda-week.js";
 import { MAX_LORE_TOKEN_BUDGET, MIN_LORE_TOKEN_BUDGET } from "./lore-policy.js";
+import { readLoreUse } from "../../../shared/helpers/lore.js";
 import {
   DEFAULT_HOME_BUILDING,
   homeBuildingOptions,
@@ -161,6 +162,20 @@ export function villageSettings(
 ): VillageSettingsView {
   return {
     promptKnowledge: village.promptKnowledge,
+    foundingLore: [
+      ...village.villagers.flatMap((resident) =>
+        (["routine", "wish"] as const).map((kind) => ({
+          label: `${resident.cardSnapshot.name} · ${kind === "routine" ? "Personal routine" : "Initial Wish"}`,
+          entries: readLoreUse(village.foundingPreparation?.tasks?.[resident.characterId]?.[kind]?.lore),
+        })),
+      ),
+      { label: "Starting history", entries: readLoreUse(village.semanticStartingTies?.lore) },
+      ...village.venues.flatMap((venue) =>
+        (venue.zones ?? [])
+          .filter((zone) => zone.preparation?.status === "ready")
+          .map((zone) => ({ label: `${venue.name} · ${zone.name}`, entries: readLoreUse(zone.preparation?.lore) })),
+      ),
+    ].filter((row) => row.entries.length),
     defaultPromptKnowledge: VILLAGES_DEFAULT_KNOWLEDGE,
     promptBoxMaxLength: VILLAGES_PROMPT_BOX_MAX_LENGTH,
     macros: VILLAGE_PRESET_MACROS,
@@ -190,7 +205,6 @@ export function villageSettings(
     sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,
     automaticZonePictures: village.automaticZonePictures !== false,
     personalizeVenueImagesByDefault: village.personalizeVenueImagesByDefault,
-    useVisualLoreByDefault: village.useVisualLoreByDefault,
     loreTokenBudget: village.loreTokenBudget,
     loreTokenBudgetMin: MIN_LORE_TOKEN_BUDGET,
     loreTokenBudgetMax: MAX_LORE_TOKEN_BUDGET,

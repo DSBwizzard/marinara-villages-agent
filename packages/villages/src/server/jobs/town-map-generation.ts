@@ -2,6 +2,9 @@ import { bindActivationService, createActivationBinding } from "../adapters/engi
 import type { TownMapGenerationService } from "./town-map-service.js";
 
 export type { TownMapGeneration } from "./town-map-service.js";
+export function generatedMapLore(...args: Parameters<TownMapGenerationService["generatedMapLore"]>) {
+  return generationBinding.get().generatedMapLore(...args);
+}
 const generationBinding = createActivationBinding<TownMapGenerationService>(
   "Villages map generation is not configured.",
 );

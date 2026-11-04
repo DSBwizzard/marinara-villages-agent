@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { LoreChip } from "../../shared/LoreChip.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 
 export function QuickStartZoneArtwork({
@@ -22,6 +23,7 @@ export function QuickStartZoneArtwork({
       <header className="villages-quick-art-header">
         <h4>Artwork</h4>
         <div className="villages-quick-art-actions">
+          <LoreChip entries={image?.lore} label={name} />
           <button type="button" disabled={busy} onClick={onGenerate}>
             Generate artwork
           </button>

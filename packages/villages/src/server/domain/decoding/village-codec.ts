@@ -1,4 +1,5 @@
 import { readResidenceAgreement } from "../rules/residence-agreement.js";
+import { readLoreUse } from "../../../shared/helpers/lore.js";
 import { emptyPlaceRegistry, readPlaceRegistry } from "../rules/places.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
@@ -669,6 +670,9 @@ function coerceVenue(value: unknown): VillageVenue | null {
       preparation: ["pending", "ready", "failed"].includes(String(asRecord(row.preparation).status))
         ? {
             status: asRecord(row.preparation).status as "pending" | "ready" | "failed",
+            ...(asRecord(row.preparation).lore !== undefined
+              ? { lore: readLoreUse(asRecord(row.preparation).lore) }
+              : {}),
             ...(asRecord(row.preparation).mode === "renovation" ? { mode: "renovation" as const } : {}),
             error: boundText(asRecord(row.preparation).error, 300),
             ...(asTrimmedString(asRecord(row.preparation).claimId)
@@ -828,6 +832,7 @@ function coerceVenueImage(value: unknown): VillageVenueImage | null {
     ref,
     url,
     id: asTrimmedString(raw.id) || ref.slice(GLOBAL_GALLERY_REF_PREFIX.length),
+    ...(raw.lore !== undefined ? { lore: readLoreUse(raw.lore) } : {}),
   };
 }
 function coerceVenues(value: unknown): VillageVenue[] {

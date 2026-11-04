@@ -67,7 +67,7 @@ function fixture() {
     },
     uploadVillageGalleryImage: async () => image("render-" + calls.length),
     assertVenueImageAccess: async () => {},
-    readVillageVisualLore: async () => "",
+    readVillageImageLore: async () => "",
     buildVillageSnapshot: async () => ({
       settings: villageSettings(state, { name: "Player", description: "", personaId: "", missing: false }, null),
     }),

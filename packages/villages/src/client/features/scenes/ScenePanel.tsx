@@ -20,6 +20,7 @@ import type {
 import { createStagingCursor, stagingPresentation } from "../../../shared/helpers/scene-staging.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
+import { LoreChip } from "../../shared/LoreChip.js";
 import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
 import type { Portrait, PortraitMap, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
 import { AvatarFace } from "../residents/ResidentPanels.js";
@@ -1034,6 +1035,7 @@ export function RoomPanel({
         </p>
       ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
+        <LoreChip key={`${room.id}:${room.latestTurn?.id ?? ""}`} entries={room.lore} label="Latest exchange" />
         <SceneInformationChip
           items={isSceneTurnOutcomeMessage(ruling) ? [{ id: "held-turn", title: "Information", message: ruling }] : []}
           open={informationOpen}

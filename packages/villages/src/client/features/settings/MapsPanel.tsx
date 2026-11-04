@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LoreChip } from "../../shared/LoreChip.js";
 import type { TownMapView, VillageMap, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
@@ -10,6 +11,7 @@ import { defaultView, MapStage, TOWN_MAP_FITS } from "../exploration/MapStage.js
 import type { ReportLocalDraftStatus } from "./local-draft-status.js";
 
 type Draft = {
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   id: string;
   name: string;
   details: string;
@@ -25,7 +27,12 @@ type Draft = {
 type Receipt = {
   status: "running" | "complete" | "failed" | "interrupted";
   error: string;
-  result: { image: string; width: number; height: number } | null;
+  result: {
+    image: string;
+    width: number;
+    height: number;
+    lore?: import("../../../shared/contracts/lore.js").LoreUse[];
+  } | null;
 };
 
 export function MapsPanel({
@@ -53,6 +60,7 @@ export function MapsPanel({
           <img src={map.artwork.url} alt="" loading="lazy" />
           <span>
             <strong>{map.name}</strong>
+            <LoreChip entries={map.artwork.lore} label={map.name} />
             <small>
               {snapshot.settings.venues.filter((venue) => venue.presentation.mapId === map.id).length} Venues
             </small>
@@ -185,7 +193,7 @@ function MapEditor({
       );
       if (!current()) return;
       if (receipt.status === "complete" && receipt.result) {
-        const next = { ...candidate, ...receipt.result, phase: "" as const };
+        const next = { ...candidate, lore: undefined, ...receipt.result, phase: "" as const };
         await persist(next);
         if (current()) {
           setDraft(next);
@@ -237,7 +245,6 @@ function MapEditor({
         sceneryStyleProfileId: snapshot.settings.sceneryStyleProfileId,
         selectedLorebookIds: snapshot.settings.selectedLorebookIds,
         loreTokenBudget: snapshot.settings.loreTokenBudget,
-        useVisualLore: snapshot.settings.useVisualLoreByDefault,
       };
       await request<Receipt>("/maps/generate", {
         method: "POST",
@@ -265,7 +272,15 @@ function MapEditor({
         size = await measureImage(image);
       const problem = townMapImageProblem(size);
       if (problem) throw new Error(problem);
-      const next = { ...draft, image, ...size, view: defaultView("cover"), requestId: "", phase: "" as const };
+      const next = {
+        ...draft,
+        image,
+        lore: undefined,
+        ...size,
+        view: defaultView("cover"),
+        requestId: "",
+        phase: "" as const,
+      };
       await persist(next);
       if (alive.current) setDraft(next);
     } catch (cause) {
@@ -340,6 +355,7 @@ function MapEditor({
         >
           Generate artwork
         </button>
+        <LoreChip entries={draft.image ? draft.lore : map?.artwork.lore} label="Map artwork" />
         <label className={P + "-button"}>
           Upload image
           <input

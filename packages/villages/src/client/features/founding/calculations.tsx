@@ -32,8 +32,6 @@ export function calculateSetupBeginningSourceKey(ports: {
   setupSetting: string;
   setupName?: string;
   setupContext?: import("./draft-model.js").FoundingContext;
-
-  visualLoreDefault: boolean;
 }) {
   const {
     personaDraft,
@@ -45,7 +43,6 @@ export function calculateSetupBeginningSourceKey(ports: {
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
     setupSetting,
-    visualLoreDefault,
   } = ports;
   return JSON.stringify({
     name: ports.setupName,
@@ -59,7 +56,6 @@ export function calculateSetupBeginningSourceKey(ports: {
     artStyle: sceneryStyle,
     styleProfileId: sceneryStyleProfileId,
     personalityDefault: personalizeHomes,
-    visualLoreDefault,
   });
 }
 export function calculateSetupImageContextKey(ports: {
@@ -69,7 +65,6 @@ export function calculateSetupImageContextKey(ports: {
 
   setupName: string;
   setupContext: import("./draft-model.js").FoundingContext;
-  visualLoreDefault: boolean;
 }) {
   const {
     personaDraft,
@@ -78,7 +73,6 @@ export function calculateSetupImageContextKey(ports: {
 
     setupName,
     setupContext,
-    visualLoreDefault,
   } = ports;
   return JSON.stringify({
     source: setupBeginningSourceKey,
@@ -86,11 +80,9 @@ export function calculateSetupImageContextKey(ports: {
     context: setupContext,
     persona: personaDraft,
     personalizeHomes,
-    visualLoreDefault,
   });
 }
 export function calculateSetupMapGenerationKey(ports: {
-  mapVisualLore: boolean;
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
   setupLorebookDraft: string[];
@@ -103,7 +95,6 @@ export function calculateSetupMapGenerationKey(ports: {
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
   const {
-    mapVisualLore,
     sceneryStyle,
     sceneryStyleProfileId,
     setupLorebookDraft,
@@ -121,7 +112,6 @@ export function calculateSetupMapGenerationKey(ports: {
     loreBudget: setupLoreTokenBudgetDraft,
     artStyle: sceneryStyle,
     styleProfileId: sceneryStyleProfileId,
-    useVisualLore: mapVisualLore,
     structure: setupMapPrompt,
     negative: setupMapNegativePrompt,
   });

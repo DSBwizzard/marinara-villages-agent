@@ -44,8 +44,6 @@ export type VillageSettingsPagePorts = {
   readonly setPersonalizeHomes: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSceneryStyle: React.Dispatch<React.SetStateAction<string>>;
   readonly setSceneryStyleProfileId: React.Dispatch<React.SetStateAction<string | null>>;
-  readonly setVisualLoreDefault: React.Dispatch<React.SetStateAction<boolean>>;
   readonly settingsError: string;
   readonly snapshot: VillageSnapshot | null;
-  readonly visualLoreDefault: boolean;
 };

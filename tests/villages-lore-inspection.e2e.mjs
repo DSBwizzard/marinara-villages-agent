@@ -11,7 +11,11 @@ const bundle = await build({
   stdin: {
     contents: `import {createRoot} from 'react-dom/client';
       import {VillagesRuntimeDebug} from './packages/villages/src/client/features/settings/RuntimeDebug.js';
-      createRoot(document.getElementById('root')).render(<VillagesRuntimeDebug/>);`,
+      import {LoreChip,FoundingLore} from './packages/villages/src/client/shared/LoreChip.js';
+      import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
+      const entries=[{id:'guild',bookId:'world',bookName:'Village customs',name:'Silver Guild',targets:['Narration','System']},{id:'calendar',bookId:'world',bookName:'Village customs',name:'Calendar',targets:['Narration']}];
+      const tag=document.createElement('marinara-capability-villages');document.body.appendChild(tag);syncVillagesStyles();
+      createRoot(document.getElementById('root')).render(<><VillagesRuntimeDebug/><section aria-label='Scene sources'><LoreChip entries={entries} label='Latest exchange'/></section><FoundingLore records={[{label:'Elias · Personal routine',entries}]}/></>);`,
     resolveDir: process.cwd(),
     loader: "tsx",
   },
@@ -103,6 +107,35 @@ await withBrowser(browser, async () => {
       assert(
         calls.every(([, path]) => /\/debug\/(runtime|lore)$/.test(path)),
         "Inspection has no generation endpoint",
+      );
+      const chip = page
+        .getByRole("region", { name: "Scene sources" })
+        .getByRole("button", { name: "2 Lorebook entries · Latest exchange", exact: true });
+      await chip.click();
+      const details = page.getByRole("dialog", { name: "Lorebooks", exact: true });
+      await expect(details).toBeVisible();
+      await expect(details).toContainText("Village customs");
+      await expect(details).toContainText("Narration");
+      await expect(details).toContainText("System");
+      await expect(details.locator("li")).toHaveCount(2);
+      await page.keyboard.press("Escape");
+      await expect(details).toHaveCount(0);
+      await expect(chip).toBeFocused();
+      await page.getByText("Founding Lorebooks", { exact: true }).click();
+      await page.getByRole("button", { name: "2 Lorebook entries · Elias · Personal routine", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Lorebooks", exact: true })).toContainText(
+        "Elias · Personal routine",
+      );
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+      if (process.env.VILLAGES_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `lore-chip-${width}.png`),
+          fullPage: true,
+        });
+      await page.keyboard.press("Escape");
+      assert(
+        calls.every(([, path]) => /\/debug\/(runtime|lore)$/.test(path)),
+        "Opening saved chips needs neither logging nor generation calls",
       );
       await page.close();
     });

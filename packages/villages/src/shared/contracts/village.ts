@@ -357,6 +357,7 @@ type PresetMacro = {
  * village is still showing.
  */
 export type VillageVenueImage = {
+  lore?: import("./lore.js").LoreUse[];
   /** `global-gallery:<id>` — the reference the Engine's own deletion guard reads. */
   ref: string;
   /** Where it is served from, so a row can draw it without asking anything first. */
@@ -531,6 +532,7 @@ export type TownMapView = {
  * `/narration`. The knowledge box below remains separate from writing style.
  */
 export type VillageSettings = {
+  foundingLore?: { label: string; entries: import("./lore.js").LoreUse[] }[];
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
@@ -562,7 +564,6 @@ export type VillageSettings = {
   sceneryStyleProfileId: string | null;
   automaticZonePictures: boolean;
   personalizeVenueImagesByDefault: boolean;
-  useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;
@@ -807,6 +808,7 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  lore?: import("./lore.js").LoreUse[];
   liveSceneVersion?: 1;
   currentTime?: string;
   capturedContext?: true;
@@ -1175,7 +1177,7 @@ export type SetupMapReceipt = {
   startedAt: string;
   status: "running" | "complete" | "failed" | "interrupted";
   error: string;
-  result: { image: string; width: number; height: number } | null;
+  result: { image: string; width: number; height: number; lore?: import("./lore.js").LoreUse[] } | null;
 };
 
 /**

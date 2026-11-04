@@ -1,6 +1,7 @@
 /** Preparation receipts contain no prompts, replies or private Wish contents. */
 export type FoundingTaskKind = "routine" | "wish";
 export type FoundingTask = {
+  lore?: import("./lore.js").LoreUse[];
   contract: 1;
   revision: string;
   jobId: string;

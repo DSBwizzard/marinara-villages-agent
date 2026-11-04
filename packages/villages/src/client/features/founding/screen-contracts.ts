@@ -52,7 +52,6 @@ export type FoundingScreenController = {
   readonly gotoSetupStep: ReturnType<typeof createFoundingGotoSetupStep>;
   readonly lorebooks: import("../../../shared/contracts/village").VillageLorebookOption[];
   readonly lorebooksError: string;
-  readonly mapVisualLore: FoundingState["mapVisualLore"];
   readonly movingSetupVenueId: FoundingState["movingSetupVenueId"];
   readonly nameOfCharacter: (characterId: string | null) => string;
   readonly patchSetupVenue: ReturnType<typeof usePatchSetupVenue>;
@@ -69,7 +68,6 @@ export type FoundingScreenController = {
   readonly selectedResidentAdmissions: ReturnType<typeof useFoundingSelectedResidentContexts>;
   readonly selectedSetupVenueId: FoundingState["selectedSetupVenueId"];
   readonly setConnectionSetupProblem: FoundingState["setConnectionSetupProblem"];
-  readonly setMapVisualLore: FoundingState["setMapVisualLore"];
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setPersonaDraft: React.Dispatch<React.SetStateAction<string>>;
   readonly setSceneryStyle: FoundingState["setSceneryStyle"];

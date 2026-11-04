@@ -225,7 +225,7 @@ const service = createFoundingDrafts({
   completeWithRoom: async (_model, messages) => {
     calls++;
     system = String(messages[0].content);
-    input = JSON.parse(String(messages[1].content));
+    input = JSON.parse(String(messages.at(-1)!.content));
     return {
       content:
         replyState.content ??
@@ -261,7 +261,7 @@ assert.match(system, /single-person Residence/);
 assert.match(system, /dumpster.*train car.*stolen hearse/);
 assert.match(system, /Sleeps in a stolen hearse/);
 assert.match(system, /discarded shelters/);
-assert.match(system, /old market/);
+assert.doesNotMatch(system, /old market/, "Lorebook data is separate from instructions");
 assert.equal(input.worldRules, request.context.rules);
 assert.deepEqual(input.currentCircumstances, ["The railway is abandoned"]);
 assert.equal(input.villageName, "Tidebreak");

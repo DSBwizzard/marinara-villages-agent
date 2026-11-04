@@ -4,6 +4,7 @@ import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-e
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { requireHost } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import { createFoundingArtworkSources } from "../packages/villages/src/server/features/founding/founding-artwork.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   configureTownMapGeneration,
@@ -21,6 +22,7 @@ function deferred() {
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const attempt = (id = "shared-map-attempt") => ({ actionId: id, sourceKey: "fixture-inputs", targetId: "target-map" });
+const lore = [{ id: "harbor", bookId: "coast", bookName: "Coastal history", name: "Harbor", targets: ["Image"] }];
 function fixture(label: string) {
   const records = new Map<string, any>();
   const generated: string[] = [];
@@ -66,7 +68,7 @@ function fixture(label: string) {
       );
       generated.push(String(input.actionId));
       await gate.promise;
-      return { image: label, width: 1536, height: 1024 };
+      return { image: label, width: 1536, height: 1024, lore };
     },
   };
   return {
@@ -126,6 +128,10 @@ async function independentFactories() {
     const completeB = await untilComplete(() => serviceB.readTownMapGeneration(requestB.id, "target-map"));
     assert.equal(completeB.status, "complete");
     assert.equal(completeB.result?.image, "image-B", "A cleanup cannot fence B's save");
+    const reloaded = createTownMapGeneration(b.ports);
+    assert.deepEqual(await reloaded.generatedMapLore("target-map", "image-B"), lore);
+    assert.deepEqual(await reloaded.generatedMapLore("target-map", "uploaded-image"), []);
+    assert.deepEqual(await reloaded.generatedMapLore("different-target", "image-B"), []);
     a.gate.resolve();
     await tick();
     const interruptedA = await serviceA.readTownMapGeneration(requestA.id, "target-map");
@@ -261,6 +267,13 @@ async function scopedDispatch() {
   }
 }
 async function main() {
+  const storage = fixture("artwork");
+  const sources = () => createFoundingArtworkSources(() => storage.documents, storage.ports.mutateDocument);
+  const image = { id: "image-1", ref: "global-gallery:image-1", url: "/image-1.png", lore };
+  await sources().remember(image);
+  assert.deepEqual(await sources().read([image]), { "image-1": lore }, "Founding sources survive service restart");
+  assert.deepEqual(await sources().read([{ ...image, ref: "global-gallery:replacement" }]), {});
+  assert.deepEqual(await sources().read([{ ...image, url: "/replacement.png" }]), {});
   await independentFactories();
   await restartedServiceCleanup();
   await scopedDispatch();

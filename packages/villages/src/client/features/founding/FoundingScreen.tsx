@@ -23,6 +23,7 @@ import {
   VillageLorebookPicker,
 } from "./FoundingPanels.js";
 import { QuickStartButton } from "./QuickStartButton.js";
+import { LoreChip } from "../../shared/LoreChip.js";
 import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { useFoundingKeyboardOverlay } from "./useFoundingKeyboardOverlay.js";
@@ -93,6 +94,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
     setupMapRequest,
     setupMapShape,
     setupMapSource,
+    setupMapImageSource,
     setupMapSrc,
     setupName,
     setupPlacementError,
@@ -351,6 +353,10 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             ))}
           </ol>
           <h1>Forging the Village</h1>
+          <LoreChip entries={setupWorkspace.lore} label="Starting Venues" />
+          {setupMapImageSource === "generate" ? (
+            <LoreChip entries={setupWorkspace.mapLore} label="Map artwork" />
+          ) : null}
           {setupStep === 0 ? (
             <button
               type="button"

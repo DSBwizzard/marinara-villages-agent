@@ -49,6 +49,7 @@ export type SceneAttendance = {
   occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   npcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   placeDiscoveries?: unknown[];
   establishmentProgress?: unknown[];

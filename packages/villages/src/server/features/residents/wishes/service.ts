@@ -63,7 +63,7 @@ export function createWishes(ports: Ports) {
       retryActionId: state.foundingPreparation?.retryActions?.at(-1),
       input: {
         characterId,
-        context,
+        context: { ...context, loreUse: context.loreUse?.map((entry) => ({ ...entry, targets: ["Initial Wish"] })) },
         revision,
         capturedAt: resident.cardSnapshot.capturedAt,
         now: villageNow().toISOString(),
@@ -111,6 +111,8 @@ export function createWishes(ports: Ports) {
         (r) => r.characterId === input.characterId && r.cardSnapshot.capturedAt === input.capturedAt,
       ),
     apply(state, input, result: VillageWish | null) {
+      const task = state.foundingPreparation?.tasks?.[input.characterId]?.wish;
+      if (task?.revision === input.revision) task.lore = input.context.loreUse;
       const resident = state.villagers.find((r) => r.characterId === input.characterId)!;
       if (result && !resident.wishes.some((w) => w.id === result.id)) resident.wishes.push(result);
       completeFoundingTask(state, input.characterId, "wish", input.revision);

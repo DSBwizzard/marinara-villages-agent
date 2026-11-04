@@ -1,5 +1,6 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import type { CompactFoundingContext } from "./compact-founding-rules.js";
+import { LORE_REFERENCE_RULE } from "./lore-context.js";
 
 import { renderPlayerBackgroundContext } from "./player-background.js";
 import { RESIDENT_CONTINUITY_RULE } from "./resident-admission.js";
@@ -87,6 +88,8 @@ export function foundingRequestMessages(
           : WISH_INSTRUCTIONS) +
         "\n" +
         RESIDENT_CONTINUITY_RULE +
+        " " +
+        LORE_REFERENCE_RULE +
         influence +
         description +
         "\n" +

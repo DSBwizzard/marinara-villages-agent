@@ -1337,7 +1337,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     lorebooks: founding.lorebooks,
     lorebooksError: founding.lorebooksError,
     mailboxOpen: scenes.mailboxOpen,
-    mapVisualLore: founding.mapVisualLore,
     memoryLibrary,
     menuPage,
     menuSection,
@@ -1442,7 +1441,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setLoreTokenBudgetDraft,
     setLorebookDraft,
     setMailboxOpen: scenes.setMailboxOpen,
-    setMapVisualLore: founding.setMapVisualLore,
     setMemoryLibrary,
     setMenuPage,
     setMovePrivateZoneId,
@@ -1515,7 +1513,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setVenueProposalDraft,
     setVenueSearch,
     setVenueZoneKey,
-    setVisualLoreDefault: founding.setVisualLoreDefault,
     settingDraft,
     settingsError,
     setupBeginningSourceKey,
@@ -1596,6 +1593,5 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     venueSearch,
     venueZoneKey,
     venuesDraft,
-    visualLoreDefault: founding.visualLoreDefault,
   };
 }

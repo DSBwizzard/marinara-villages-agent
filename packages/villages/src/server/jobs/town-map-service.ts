@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readLoreUse } from "../../shared/helpers/lore.js";
 import { VILLAGES_PACKAGE_ID } from "../adapters/engine/runtime-host.js";
 import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara-engine/shared";
 import type { DocumentSlot, createDocumentMutator } from "../adapters/storage/document-store.js";
@@ -167,6 +168,10 @@ export function createTownMapGeneration(ports: TownMapGenerationPorts) {
     });
   }
 
-  return { startTownMapGeneration, requestTownMapGeneration, readTownMapGeneration };
+  async function generatedMapLore(targetId: string, image: string) {
+    const saved = await read(targetId);
+    return saved?.status === "complete" && saved.result?.image === image ? readLoreUse(saved.result.lore) : [];
+  }
+  return { startTownMapGeneration, requestTownMapGeneration, readTownMapGeneration, generatedMapLore };
 }
 export type TownMapGenerationService = ReturnType<typeof createTownMapGeneration>;

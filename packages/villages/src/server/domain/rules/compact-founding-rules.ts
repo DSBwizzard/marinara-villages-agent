@@ -39,6 +39,7 @@ type PaletteEntry = {
 };
 
 export type CompactFoundingContext = {
+  loreUse?: import("../../../shared/contracts/lore.js").LoreUse[];
   identityDescriptionRevision?: string;
   playerAgencyVersion?: 1;
   sourceRevision?: string;
