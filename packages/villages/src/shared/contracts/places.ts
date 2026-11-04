@@ -29,20 +29,6 @@ export type PlaceOperationView = {
   error?: string;
 };
 
-export type NpcIdentity = {
-  id: string;
-  revision: number;
-  name: string;
-  label: string;
-  characterization: string;
-  facts: string[];
-  associations: { placeId: string; role: string }[];
-  availability: string;
-  disabled: boolean;
-  source: string;
-  updatedAt: string;
-};
-
 export type Establishment = {
   goal: string;
   physical: boolean;

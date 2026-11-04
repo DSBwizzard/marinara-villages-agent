@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { NpcIdentity, PlaceSummary } from "../../../shared/contracts/places.js";
-import type { PlaceRegistry, WorldPlace } from "../models/places.js";
+import type { PlaceSummary } from "../../../shared/contracts/places.js";
+import type { NpcIdentity, PlaceRegistry, WorldPlace } from "../models/places.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import { badRequest } from "./errors.js";

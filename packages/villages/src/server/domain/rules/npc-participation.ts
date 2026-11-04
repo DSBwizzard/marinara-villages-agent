@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { NpcIdentity } from "../../../shared/contracts/places.js";
+import type { NpcIdentity } from "../models/places.js";
 import type { VenueScene, VenueReplyLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
 import { badGateway } from "./errors.js";

@@ -1,5 +1,18 @@
-import type { NpcIdentity } from "../../../shared/contracts/places.js";
 import type { VillageVenue } from "./world.js";
+
+export type NpcIdentity = {
+  id: string;
+  revision: number;
+  name: string;
+  label: string;
+  characterization: string;
+  facts: string[];
+  associations: { placeId: string; role: string }[];
+  availability: string;
+  disabled: boolean;
+  source: string;
+  updatedAt: string;
+};
 
 export type WorldPlace = {
   id: string;
