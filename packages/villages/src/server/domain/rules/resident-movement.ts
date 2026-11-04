@@ -1,5 +1,6 @@
 import type { VenueReplyLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
+import { findLocation, NPC_PREFIX } from "./places.js";
 import { badGateway } from "./errors.js";
 import { contactNeighbors, contactPath, contactPosition, type ContactMove } from "./venue-contact.js";
 import { venueZones } from "./venue-zones.js";
@@ -20,7 +21,7 @@ export function residentMovementUnavailable(
 ): boolean {
   const invalid = () => badGateway("System movement request interpretation is incomplete. Your draft is preserved.");
   if (!Array.isArray(value) || value.length > 8) throw invalid();
-  const venue = state.venues.find((row) => row.id === scene.placeId);
+  const venue = findLocation(state, scene.placeId);
   if (!venue) throw invalid();
   const zones = venueZones(sceneLayoutVenue(venue, scene));
   const residents = sceneResidentIds(scene);
@@ -56,7 +57,14 @@ export function residentMovementUnavailable(
     const allowed =
       ids.length === 1
         ? options.destinations[0]?.zoneIds.includes(zoneId)
-        : options.groups.some((group) => group.characterIds.length === ids.length && group.zoneIds.includes(zoneId));
+        : options.groups.some((group) => group.characterIds.length === ids.length && group.zoneIds.includes(zoneId)) ||
+          options.cohorts.some(
+            (cohort) =>
+              cohort.zoneId === zoneId &&
+              cohort.canCrossTogether &&
+              cohort.characterIds.length === ids.length &&
+              ids.every((id) => cohort.characterIds.includes(id)),
+          );
     if (!allowed) return true;
   }
   return false;
@@ -77,7 +85,7 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
   venue = sceneLayoutVenue(venue, scene);
   const zones = venueZones(venue);
   const occupancy = new Map<string, number>();
-  for (const id of sceneResidentIds(scene)) {
+  for (const id of sceneResidentIds(scene).filter((id) => !id.startsWith(NPC_PREFIX))) {
     const position = contactPosition(scene, id);
     if (position) occupancy.set(position, (occupancy.get(position) ?? 0) + 1);
   }
@@ -101,7 +109,9 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
           {
             zoneId: zone.id,
             characterIds: members.map((row) => row.characterId),
-            canCrossTogether: members.every((row) => row.zoneIds.includes(zone.id)) && fits(zone.id, members.length),
+            canCrossTogether:
+              members.every((row) => row.zoneIds.includes(zone.id)) &&
+              fits(zone.id, members.filter((row) => !row.characterId.startsWith(NPC_PREFIX)).length),
           },
         ];
   });
@@ -112,14 +122,19 @@ export function residentMovementOptions(state: VillageState, venue: VillageVenue
       const members = routes.filter((_, index) => mask & (1 << index));
       if (members.length < 2) continue;
       const zoneIds = members[0]!.zoneIds.filter(
-        (zoneId) => members.every((member) => member.zoneIds.includes(zoneId)) && fits(zoneId, members.length),
+        (zoneId) =>
+          members.every((member) => member.zoneIds.includes(zoneId)) &&
+          fits(zoneId, members.filter((row) => !row.characterId.startsWith(NPC_PREFIX)).length),
       );
       if (zoneIds.length) groups.push({ characterIds: members.map((row) => row.characterId), zoneIds });
     }
   return {
     zones: knownZones.map((zone) => ({ id: zone.id, name: zone.name, connectedTo: zone.connectedTo })),
     cohorts,
-    destinations: routes.map((row) => ({ ...row, zoneIds: row.zoneIds.filter((zoneId) => fits(zoneId, 1)) })),
+    destinations: routes.map((row) => ({
+      ...row,
+      zoneIds: row.zoneIds.filter((zoneId) => fits(zoneId, row.characterId.startsWith(NPC_PREFIX) ? 0 : 1)),
+    })),
     groups,
   };
 }
@@ -132,8 +147,8 @@ export function assertSceneMovementCapacity(scene: VenueScene, moves: readonly C
     for (const move of moves.filter((row) => (row.segment ?? Infinity) === segment))
       positions.set(move.characterId, move.zoneId);
     const counts = new Map<string, number>();
-    for (const position of positions.values()) {
-      if (!position) continue;
+    for (const [id, position] of positions) {
+      if (!position || id.startsWith(NPC_PREFIX)) continue;
       counts.set(position, (counts.get(position) ?? 0) + 1);
       if (counts.get(position)! > MAX_ZONE_VILLAGERS)
         throw badGateway("The reply would overcrowd a Zone. Your draft is preserved.");
@@ -213,7 +228,8 @@ export function applyResidentMovementTimeline(
     for (const move of crossing) positions.set(move.characterId, move.zoneId);
     const local = localIds();
     if (crossing.length) line.physicalIdsAfter = local;
-    if (local.length > 4) throw badGateway("The reply would overcrowd this Zone. Your draft is preserved.");
+    if (local.filter((id) => !id.startsWith(NPC_PREFIX)).length > 4)
+      throw badGateway("The reply would overcrowd this Zone. Your draft is preserved.");
     const remote = positions.get(line.speakerId) !== origin;
     if (line.kind === "narration") {
       // Acoustic witnesses already distinguish visual movement from noise-only receipts.

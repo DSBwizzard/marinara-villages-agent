@@ -42,6 +42,8 @@ ${P} .${P}-project-board{position:relative;box-sizing:border-box;max-width:90rem
 .${P}-project-board .vp-drawing figcaption{margin-top:1rem;font-size:1rem}
 .${P}-project-board label{display:block;color:var(--bp-muted);font-size:.8rem;text-transform:uppercase;font-weight:600;letter-spacing:.02em;margin:0 0 1rem}
 .${P}-project-board input,.${P}-project-board textarea,.${P}-project-board select{display:block;width:100%;min-height:44px;border:0;border-bottom:1px solid var(--bp-line);border-radius:0;padding:.5rem .1rem;margin:.2rem 0 0;background:transparent;color:var(--bp-ink);font:400 1.05rem/1.4 Georgia,"Times New Roman",serif;box-shadow:none}
+.${P}-project-board input[type=checkbox]{display:inline-block;width:1.1rem;height:1.1rem;min-height:0;margin:0;padding:0;flex:0 0 auto}
+.${P}-project-board label:has(input[type=checkbox]){display:flex;align-items:center;gap:.5rem}
 .${P}-project-board textarea{resize:vertical;min-height:5rem}
 .${P}-project-board select option{background:#0c4c74;color:var(--bp-ink)}
 .${P}-project-board input:disabled,.${P}-project-board textarea:disabled{opacity:.85}

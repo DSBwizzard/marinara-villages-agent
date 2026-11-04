@@ -453,6 +453,10 @@
     },
     {
       "method": "post",
+      "path": "/projects/:projectId/complete"
+    },
+    {
+      "method": "post",
       "path": "/projects/:projectId/resume"
     },
     {
@@ -485,7 +489,35 @@
     },
     {
       "method": "post",
+      "path": "/projects/establishments/:placeId"
+    },
+    {
+      "method": "post",
       "path": "/projects/renovations/:venueId"
+    },
+    {
+      "method": "post",
+      "path": "/places/:id/position"
+    },
+    {
+      "method": "get",
+      "path": "/places"
+    },
+    {
+      "method": "post",
+      "path": "/places/explore"
+    },
+    {
+      "method": "get",
+      "path": "/places/requests/:id"
+    },
+    {
+      "method": "get",
+      "path": "/places/:id"
+    },
+    {
+      "method": "post",
+      "path": "/places/:id/prepare"
     },
     {
       "method": "post",

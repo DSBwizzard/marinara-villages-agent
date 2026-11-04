@@ -264,9 +264,23 @@ export function villageSettings(
         };
         return {
           ...zone,
+          ...(venue.discovered && !zone.seen
+            ? {
+                description: "",
+                roomSpecification: undefined,
+                purpose: "",
+                image: null,
+                pictureRetryAvailable: false,
+                pictureUpdateAvailable: false,
+                pictureProblem: undefined,
+                pictureUpdating: false,
+                preparation: undefined,
+              }
+            : {}),
           state: {
-            ...zone.state,
-            recent: recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null,
+            ...(venue.discovered && !zone.seen ? { revision: 0, updatedAt: "", recent: null } : zone.state),
+            recent:
+              (!venue.discovered || zone.seen) && recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null,
           },
           closed: zoneClosed(village, venue, zone),
         };

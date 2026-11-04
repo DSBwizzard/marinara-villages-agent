@@ -49,6 +49,9 @@ export type SceneAttendance = {
   occupants: (VenueParticipant & { zoneId: string })[];
 };
 export type VenueSubmission = {
+  npcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
+  placeDiscoveries?: unknown[];
+  establishmentProgress?: unknown[];
   residentActionReceipt?: import("../rules/resident-actions.js").ResidentActionReceipt;
   speechCapture?: { version: 3; status: "captured" | "silent" };
   effectFailures?: Partial<
@@ -161,6 +164,8 @@ export type VenueRecordEvent = {
   detail?: string;
 };
 export type VenueScene = {
+  /** Provisional writer cast, validated before publication; never persisted as Scene authority. */
+  pendingNpcAdmissions?: import("../rules/npc-participation.js").NpcAdmission[];
   /** Private captured writing context; never part of a client projection. */
   continuity?: import("../rules/scene-continuity.js").SceneContinuity;
   openingGatheringId?: string;

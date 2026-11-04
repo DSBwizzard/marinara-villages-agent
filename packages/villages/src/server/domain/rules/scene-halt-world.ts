@@ -1,3 +1,4 @@
+import { findLocation } from "./places.js";
 import { assertResidenceAgreement } from "./residence-agreement.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
@@ -27,8 +28,8 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
       return true;
     }
   }
-  const liveVenue = current.venues.find((row) => row.id === scene.placeId);
-  const oldVenue = captured.venues.find((row) => row.id === scene.placeId);
+  const liveVenue = findLocation(current, scene.placeId);
+  const oldVenue = findLocation(captured, scene.placeId);
   const created = new Set<string>();
   for (const value of Array.isArray(reply.wishChanges) ? reply.wishChanges : []) {
     const row = asRecord(value);
@@ -89,6 +90,7 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
       const copy = {
         ...current,
         venues: structuredClone(current.venues),
+        worldPlaces: structuredClone(current.worldPlaces),
         narrative: structuredClone(current.narrative),
       };
       applyVenueSceneChange(
@@ -123,7 +125,7 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
     const result = asRecord(value);
     if (["none", "refuse", "dismiss", "unresolved"].includes(String(result.outcome))) continue;
     const facts = asRecord(asRecord(Array.isArray(batch.checks) ? batch.checks[i] : null).facts);
-    const venue = current.venues.find((row) => row.id === facts.venueId);
+    const venue = findLocation(current, facts.venueId);
     const zone = venue && resolveVenueZone(venue, String(facts.zoneId));
     if (!venue || !zone || zoneClosed(current, venue, zone) || !canInviteToZone(venue, zone, String(facts.actorId)))
       return true;
@@ -133,7 +135,7 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
   const relationship = asRecord(reply.relationshipChanges);
   for (const value of Array.isArray(relationship.permissions) ? relationship.permissions : []) {
     const row = asRecord(value);
-    const venue = current.venues.find((venue) => venue.id === row.venueId);
+    const venue = findLocation(current, row.venueId);
     const zone = venue && resolveVenueZone(venue, String(row.zoneId));
     if (
       !venue ||
@@ -143,7 +145,7 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
         : zoneClosed(current, venue, zone) || !canInviteToZone(venue, zone, String(row.controllerId)))
     )
       return true;
-    const old = captured.venues.find((v) => v.id === venue.id);
+    const old = findLocation(captured, venue.id);
     if (old?.access?.revision !== venue.access?.revision) return true;
   }
   const residence = asRecord(reply.residenceSignal);

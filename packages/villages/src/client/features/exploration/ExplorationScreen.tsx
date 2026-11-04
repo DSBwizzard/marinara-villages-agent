@@ -7,6 +7,8 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
 import { useEffect, useState } from "react";
+import { PlacesDirectory } from "./PlacesDirectory.js";
+import type { PlaceDetail, PlaceDirectory, PlaceSummary } from "../../../shared/contracts/places.js";
 
 type MarkerDraft = {
   mapId: string;
@@ -56,6 +58,32 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     venueExplorationActions,
   } = controller;
   const [focusSearch, setFocusSearch] = useState(false);
+  const [discoveryOpen, setDiscoveryOpen] = useState(false),
+    [discoveryId, setDiscoveryId] = useState("");
+  const [showPlaces, setShowPlaces] = useState(false),
+    [placeMarkers, setPlaceMarkers] = useState<PlaceSummary[]>([]);
+  const [bounds, setBounds] = useState("0,0,1,1"),
+    [placingPlace, setPlacingPlace] = useState<PlaceSummary | null>(null);
+  useEffect(() => {
+    if (!showPlaces || !selectedMap) {
+      setPlaceMarkers([]);
+      return;
+    }
+    let current = true;
+    const timer = setTimeout(() => {
+      void request<PlaceDirectory>("/places?" + new URLSearchParams({ mapId: selectedMap.id, bounds, limit: "100" }))
+        .then((page) => {
+          if (current) setPlaceMarkers(page.items);
+        })
+        .catch((cause) => {
+          if (current) setError(messageFrom(cause, "Could not read Place markers."));
+        });
+    }, 150);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [showPlaces, selectedMap, bounds, setError]);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraft | null>(null);
   const [markerError, setMarkerError] = useState("");
   const [hasSavedMarkers, setHasSavedMarkers] = useState(false);
@@ -275,6 +303,33 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         </span>
       </div>
       <div className={ELEMENT_TAG + "-maps-toolbar"}>
+        <button
+          type="button"
+          disabled={busy || !!markerDraft || !!placingProjectId}
+          onClick={() => {
+            setDiscoveryId("");
+            setDiscoveryOpen(true);
+          }}
+        >
+          Discover Places
+        </button>
+        <label>
+          <input
+            autoComplete="off"
+            type="checkbox"
+            checked={showPlaces}
+            onChange={(event) => setShowPlaces(event.target.checked)}
+          />
+          Places layer
+        </label>
+        {placingPlace ? (
+          <>
+            <span>Choose a map position for {placingPlace.name}.</span>
+            <button type="button" onClick={() => setPlacingPlace(null)}>
+              Cancel placement
+            </button>
+          </>
+        ) : null}
         <button type="button" disabled={busy || !!markerDraft} onClick={() => setShowAllMaps(true)}>
           All maps
         </button>
@@ -389,11 +444,52 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 key={selectedMap?.id}
                 src={townMapImage || null}
                 alt={`A map of ${selectedMap?.name ?? snapshot?.village.name ?? "the village"}.`}
-                pins={pins}
-                placing={(!!placingProjectId || !!markerDraft?.selected) && !busy}
+                pins={[
+                  ...pins,
+                  ...(!markerDraft && showPlaces
+                    ? placeMarkers
+                        .filter((place) => place.x !== null && place.y !== null)
+                        .map((place) => ({
+                          id: place.id,
+                          x: place.x!,
+                          y: place.y!,
+                          text: place.name,
+                          tone: "venue" as const,
+                          onSelect: () => {
+                            setDiscoveryId(place.id);
+                            setDiscoveryOpen(true);
+                          },
+                        }))
+                    : []),
+                ]}
+                placing={(!!placingProjectId || !!placingPlace || !!markerDraft?.selected) && !busy}
                 view={savedTownMapView}
                 shape={savedTownMapShape}
                 onPlace={(x, y) => {
+                  if (placingPlace && !busy) {
+                    const place = placingPlace;
+                    setBusy(true);
+                    setError("");
+                    void request<PlaceDetail>("/places/" + encodeURIComponent(place.id) + "/position", {
+                      method: "POST",
+                      body: JSON.stringify({
+                        requestId: createVillagesClientId(),
+                        expectedRevision: place.revision,
+                        expectedMapRevision: selectedMap?.revision,
+                        mapId: selectedMap?.id,
+                        x,
+                        y,
+                      }),
+                    })
+                      .then(() => request<VillageSnapshot>("/"))
+                      .then((next) => {
+                        setSnapshot(next);
+                        setPlacingPlace(null);
+                      })
+                      .catch((cause) => setError(messageFrom(cause, "Could not place this location.")))
+                      .finally(() => setBusy(false));
+                    return;
+                  }
                   if (markerDraft?.selected && !busy) {
                     moveMarker(markerDraft.selected, x, y);
                     return;
@@ -432,6 +528,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 exploration
                 navigationView={navigationView}
                 onNavigationView={setNavigationView}
+                onViewportBounds={setBounds}
                 keyboardPlacementId={markerDraft?.selected}
                 onNudgePin={
                   markerDraft && !busy
@@ -476,6 +573,33 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         )}
       </div>
       {mobile && !placingProjectId && !markerDraft ? navigation : null}
+      {discoveryOpen && selectedMap ? (
+        <PlacesDirectory
+          key={snapshot.worldScope + ":" + selectedMap.id}
+          snapshot={snapshot}
+          mapId={selectedMap.id}
+          selectedId={discoveryId}
+          sceneActive={!!room && room.status !== "closed"}
+          onClose={() => setDiscoveryOpen(false)}
+          onVisit={(place) => {
+            setDiscoveryOpen(false);
+            venueExplorationActions(place)
+              .find((action) => action.label === "Visit")
+              ?.onSelect();
+          }}
+          onPlace={(place) => {
+            setDiscoveryOpen(false);
+            setPlacingPlace(place);
+            setShowAllMaps(false);
+          }}
+          onProject={(next, id) => {
+            setSnapshot(next);
+            setDiscoveryOpen(false);
+            setFocusedProjectId(id);
+            openMenu("projects");
+          }}
+        />
+      ) : null}
     </div>
   );
 }

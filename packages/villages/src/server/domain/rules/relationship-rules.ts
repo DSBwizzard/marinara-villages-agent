@@ -7,6 +7,7 @@ import type {
 } from "../models/relationship-types.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
+import { findLocation } from "./places.js";
 import { asRecord } from "./coerce.js";
 import { immutableMemoryValue } from "./memory-integrity.js";
 import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
@@ -330,7 +331,7 @@ export function applyRelationshipReview(
   }
   for (const permission of review.permissions) {
     if (state.applied[permission.id]) continue;
-    const venue = village.venues.find((place) => place.id === permission.venueId),
+    const venue = findLocation(village, permission.venueId),
       zone = venue && resolveVenueZone(venue, permission.zoneId);
     if (
       !venue ||
@@ -442,7 +443,7 @@ export function applyRelationshipReview(
   // Conversational disclosures are written only through screened memoryChanges.
   for (const permission of review.permissions) {
     if (state.applied[permission.id]) continue;
-    const venue = village.venues.find((place) => place.id === permission.venueId);
+    const venue = findLocation(village, permission.venueId);
     const zone = venue && resolveVenueZone(venue, permission.zoneId);
     if (
       !venue ||

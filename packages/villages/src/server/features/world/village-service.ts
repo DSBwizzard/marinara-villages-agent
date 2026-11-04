@@ -179,7 +179,8 @@ export function createWorldCoordination({
           world.projects.some(
             (project) =>
               project.status === "working" &&
-              Date.parse(project.lifecycle?.workOrder?.completesAt ?? "") <= now.getTime(),
+              ((project.kind === "establishment" && project.establishment?.physical) ||
+                Date.parse(project.lifecycle?.workOrder?.completesAt ?? "") <= now.getTime()),
           ),
       },
     );

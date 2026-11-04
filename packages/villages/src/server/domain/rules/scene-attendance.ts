@@ -1,3 +1,4 @@
+import { findLocation } from "./places.js";
 import { captureSceneLayout } from "./scene-layout.js";
 import type { SceneAttendance, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillagePlaceView } from "../models/world.js";
@@ -59,7 +60,7 @@ export function captureSceneAttendance(
   now: Date,
   positions?: ReadonlyMap<string, VillagePlaceView>,
 ): SceneAttendance {
-  const venue = village.venues.find((entry) => entry.id === placeId)!;
+  const venue = findLocation(village, placeId)!;
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
     environment: village.narrative,
@@ -139,8 +140,9 @@ export function accessExits(session: VenueScene, village: VillageState, venue: V
             target &&
             target.id !== from &&
             (actor === "player" ||
+              actor.startsWith("npc:") ||
               Object.entries(positions).filter(
-                ([id, position]) => id !== "player" && id !== actor && position === target.id,
+                ([id, position]) => id !== "player" && !id.startsWith("npc:") && id !== actor && position === target.id,
               ).length < MAX_ZONE_VILLAGERS) &&
             evaluateZoneAccess(venue, target, actor, {
               ...context,

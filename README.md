@@ -43,7 +43,7 @@ The [player guide](packages/villages/README.md) walks through setup, Scenes, rel
 
 ## Saved worlds and test updates
 
-The current prototype requires a fresh **Village save format 14** and uses **Scene format 3**. No older Village conversion is provided. Keep older worlds with their matching runtime, and arrange independent fresh storage before testing an incompatible build. Installing a package does not reset a world.
+The current prototype requires a fresh **Village save format 15** and uses **Scene format 3**. No older Village conversion is provided. Keep older worlds with their matching runtime, and arrange independent fresh storage before testing an incompatible build. Installing a package does not reset a world.
 
 ## Development and contributions
 

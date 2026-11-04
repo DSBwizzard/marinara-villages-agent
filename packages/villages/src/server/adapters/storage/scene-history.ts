@@ -108,10 +108,7 @@ export async function readActiveSceneOwner(documents: Pick<CapabilityDocumentSto
 function storedContinuity(raw: unknown, scene: Record<string, any>) {
   if (raw === undefined) return undefined;
   memoryObject(raw, ["version", "seed", "setupAt", "capturedAt", "receiptIds", "facts", "relationshipHead"]);
-  memoryObject(
-    raw.facts,
-    sceneContinuityFields.filter((key) => key !== "relationshipContext"),
-  );
+  memoryObject(raw.facts, [...sceneContinuityFields.filter((key) => key !== "relationshipContext"), "worldPlaces"]);
   memoryRequire(
     raw.version === 3 &&
       typeof raw.seed === "string" &&

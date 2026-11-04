@@ -280,7 +280,13 @@ try {
     /participant identity/,
   );
   const world = { ...defaultVillageState(), seed: "seed", setupAt: at };
-  const { memories: _memories, memoryScenes: _scenes, memoryReceipts: _receipts, ...facts } = world;
+  const {
+    memories: _memories,
+    memoryScenes: _scenes,
+    memoryReceipts: _receipts,
+    worldPlaces: _places,
+    ...facts
+  } = world;
   await f.documents.create({
     id: "villages-village",
     packageId: "villages",

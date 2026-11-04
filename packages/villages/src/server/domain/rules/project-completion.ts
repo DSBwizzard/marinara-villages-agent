@@ -16,12 +16,15 @@ import { defaultVenueSpace } from "./venue-model.js";
 import { venueZones } from "./venue-zones.js";
 import { initializeVenueAccess } from "./venue-access.js";
 import { readVenueImageContext } from "./village-projections.js";
+import { findLocation } from "./places.js";
+import { promotePlace, establishmentControllers } from "./establishment.js";
 
 /** Only the saved committed design is applied; the lifecycle stages this transaction. */
 export function completeProject(state: VillageState, project: VillageProject, at: string): void {
   const flow = project.lifecycle!;
-  const venue = state.venues.find((entry) => entry.id === project.venueId);
+  const venue = findLocation(state, project.venueId);
   if (!venue) throw conflict("The Project site is missing.");
+  const controllers = project.kind === "establishment" ? establishmentControllers(state, project) : undefined;
   if (project.kind === "new-venue") {
     if (!project.plan) throw conflict("The committed design is missing.");
     const plan = readProjectPlan(project.plan, venue);
@@ -45,7 +48,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
     venue.presentation.image = plan.exteriorImage;
     venue.residenceCapacity = plan.capacity;
     venue.constructionStatus = "complete";
-  } else {
+  } else if (project.kind !== "establishment" || project.establishment?.physical) {
     const change = effectiveRenovationChange(venue, flow.change!, flow.changedZoneIds);
     if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
       throw conflict("The Venue design changed. Cancel this Project and plan the current layout.");
@@ -116,6 +119,7 @@ export function completeProject(state: VillageState, project: VillageProject, at
     .zones!.filter((zone) => zone.kind === "private-residence")
     .map((zone) => ({ ...zone, ownerId: zone.ownerId ?? "" }));
   venue.state.updatedAt = at;
+  if (project.kind === "establishment") promotePlace(state, project, controllers);
   flow.phase = "complete";
   flow.completedAt = at;
   flow.blockedReason = "";

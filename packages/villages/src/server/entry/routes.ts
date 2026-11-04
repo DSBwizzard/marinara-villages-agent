@@ -17,6 +17,7 @@ import {
   registerVenueImageRoutes,
 } from "../features/media/routes.js";
 import { registerProjectRoutes } from "../features/projects/routes.js";
+import { registerPlaceRoutes } from "../features/places/routes.js";
 import { registerRepairRoutes } from "../features/repair/routes.js";
 import {
   registerAgendaRoutes,
@@ -103,6 +104,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
   registerFoundingRoutes(surface);
   registerVenueImageRoutes(surface);
   registerProjectRoutes(surface);
+  registerPlaceRoutes(surface);
   registerVenueManagementRoutes(surface);
   registerWorldMaintenanceRoutes(surface);
   registerBackgroundRoutes(surface);

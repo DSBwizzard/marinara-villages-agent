@@ -211,6 +211,12 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
           !(privateHearing && ["heardBy", "heardPlayerBy"].includes(key)) &&
           ![
             "developmentChanges",
+            "npcAdmissions",
+            "pendingNpcAdmissions",
+            "npcIntroductions",
+            "placeDiscoveries",
+            "establishmentProgress",
+            "worldPlaces",
             "continuity",
             "sceneFacts",
             "semanticReady",

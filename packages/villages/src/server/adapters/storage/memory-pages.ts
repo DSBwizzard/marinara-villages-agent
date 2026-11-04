@@ -17,12 +17,21 @@ export type HistoryPageTree = Tree;
 export type HistoryPageRef = Ref;
 type Scene = { header: unknown; before: Tree; effects: Tree };
 export type MemoryPageLayout = {
+  places: Tree;
+  npcs: Tree;
+  placeReceipts: Tree;
+  placeOperations: Tree;
   records: Tree;
   scenes: Tree;
   receipts: Tree;
   sceneValues: Map<string, Scene>;
 };
 export type MemoryPageManifest = {
+  places: Ref | null;
+  npcs: Ref | null;
+  placeReceipts: Ref | null;
+  placeOperations: Ref | null;
+  placeRevision: number;
   format: 2;
   revision: number;
   records: Ref | null;
@@ -115,6 +124,10 @@ export function createHistoryPageWriter(world: string) {
 export function encodeMemoryPages(value: MemoryPayload, world: string, previous?: MemoryPageLayout) {
   const writer = createHistoryPageWriter(world);
   const { tree, pages } = writer;
+  const places = tree(entries(value.worldPlaces.places), previous?.places);
+  const npcs = tree(entries(value.worldPlaces.npcs), previous?.npcs);
+  const placeReceipts = tree(entries(value.worldPlaces.receipts), previous?.placeReceipts);
+  const placeOperations = tree(entries(value.worldPlaces.operations), previous?.placeOperations);
   const records = tree(
     value.memories.records.map((r) => [r.id, r]),
     previous?.records,
@@ -134,6 +147,11 @@ export function encodeMemoryPages(value: MemoryPayload, world: string, previous?
   const scenes = tree(sceneRows, previous?.scenes),
     receipts = tree(entries(value.memoryReceipts), previous?.receipts);
   const manifest: MemoryPageManifest = {
+    places: places.root,
+    npcs: npcs.root,
+    placeReceipts: placeReceipts.root,
+    placeOperations: placeOperations.root,
+    placeRevision: value.worldPlaces.revision,
     format: 2,
     revision: value.memories.revision,
     records: records.root,
@@ -143,7 +161,7 @@ export function encodeMemoryPages(value: MemoryPayload, world: string, previous?
   return {
     manifest,
     pages,
-    layout: { records, scenes, receipts, sceneValues },
+    layout: { records, scenes, receipts, sceneValues, places, npcs, placeReceipts, placeOperations },
     serializedBytes: writer.serializedBytes,
   };
 }
@@ -386,13 +404,28 @@ export function createHistoryPageReader(world: string) {
 }
 
 function* memoryPageDecoder(raw: unknown, world: string) {
-  memoryObject(raw, ["format", "revision", "records", "scenes", "receipts"]);
+  memoryObject(raw, [
+    "format",
+    "revision",
+    "records",
+    "scenes",
+    "receipts",
+    "places",
+    "npcs",
+    "placeReceipts",
+    "placeOperations",
+    "placeRevision",
+  ]);
   memoryRequire(
     raw.format === 2 && Number.isSafeInteger(raw.revision) && raw.revision >= 0,
     "invalid history directory",
   );
   const reader = createHistoryPageReader(world);
   const { tree, rows } = reader;
+  const places = yield* tree(raw.places),
+    npcs = yield* tree(raw.npcs),
+    placeReceipts = yield* tree(raw.placeReceipts);
+  const placeOperations = yield* tree(raw.placeOperations);
   const records = yield* tree(raw.records),
     scenes = yield* tree(raw.scenes),
     receipts = yield* tree(raw.receipts);
@@ -416,11 +449,27 @@ function* memoryPageDecoder(raw: unknown, world: string) {
   );
   return {
     value: {
+      worldPlaces: {
+        revision: raw.placeRevision,
+        places: Object.fromEntries(rows(places)),
+        npcs: Object.fromEntries(rows(npcs)),
+        receipts: Object.fromEntries(rows(placeReceipts)),
+        operations: Object.fromEntries(rows(placeOperations)),
+      },
       memories: { format: 1, revision: raw.revision, records: recordsRows.map(([, row]) => row) },
       memoryScenes,
       memoryReceipts: Object.fromEntries(rows(receipts)),
     } as MemoryPayload,
-    layout: { records, scenes, receipts, sceneValues } as MemoryPageLayout,
+    layout: {
+      records,
+      scenes,
+      receipts,
+      sceneValues,
+      places,
+      npcs,
+      placeReceipts,
+      placeOperations,
+    } as MemoryPageLayout,
     pageIds: reader.pageIds,
   };
 }
@@ -520,12 +569,23 @@ export function createMemoryPageTracer(get: (id: string) => Promise<MemoryPageDa
     }
   }
   async function trace(raw: unknown, world: string) {
-    memoryObject(raw, ["format", "revision", "records", "scenes", "receipts"]);
+    memoryObject(raw, [
+      "format",
+      "revision",
+      "records",
+      "scenes",
+      "receipts",
+      "places",
+      "npcs",
+      "placeReceipts",
+      "placeOperations",
+      "placeRevision",
+    ]);
     memoryRequire(
       raw.format === 2 && Number.isSafeInteger(raw.revision) && raw.revision >= 0,
       "invalid history directory",
     );
-    for (const value of [raw.records, raw.receipts]) {
+    for (const value of [raw.records, raw.receipts, raw.places, raw.npcs, raw.placeReceipts, raw.placeOperations]) {
       const ref = readRef(value, world);
       if (ref) await walk(ref, world);
     }

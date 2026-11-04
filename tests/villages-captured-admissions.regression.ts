@@ -335,7 +335,7 @@ assert.deepEqual(
 }
 
 const world = {
-  version: 14,
+  version: 15,
   ...scope,
   socialOutbox: [
     { seed: scope.seed, admitted: frame(), relationshipHead: original, opportunity: { actorIds: ["ada"] } },
@@ -656,18 +656,18 @@ for (const change of [
       relationshipSnapshot: undefined,
     };
     const unknownWorld = await withRepairWork(() =>
-      store.prepareWorld({ version: 14, ...scope, socialOutbox: [unknownSource] }, none),
+      store.prepareWorld({ version: 15, ...scope, socialOutbox: [unknownSource] }, none),
     );
     const unknownEntry = await store.readSocialEntry(unknownWorld.socialOutbox[0], scope.seed);
     assert.equal(unknownEntry.relationshipSnapshot, undefined);
     const republishedUnknown = await withRepairWork(() =>
       store.prepareWorld(
         {
-          version: 14,
+          version: 15,
           ...scope,
           socialOutbox: [copySocialOutboxEntry(unknownEntry)],
         },
-        capturedWorldOwners({ version: 14, ...scope, ...unknownWorld }),
+        capturedWorldOwners({ version: 15, ...scope, ...unknownWorld }),
       ),
     );
     assert.equal(
@@ -712,7 +712,7 @@ for (const change of [
     const outboxes = await withRepairWork(() =>
       store.prepareWorld(
         {
-          version: 14,
+          version: 15,
           ...scope,
           socialOutbox: [socialInput.entry],
           socialMailOutbox: [{ input: mailInput }],
@@ -720,7 +720,7 @@ for (const change of [
         none,
       ),
     );
-    assert.equal(capturedWorldOwners({ version: 14, ...scope, ...outboxes }).wishes.length, 2);
+    assert.equal(capturedWorldOwners({ version: 15, ...scope, ...outboxes }).wishes.length, 2);
     for (const action of ["prepare", "read"] as const) {
       let resume!: () => void, started!: () => void;
       const held = new Promise<void>((resolve) => {
@@ -814,7 +814,7 @@ for (const change of [
       relationshipSnapshot: social,
     };
     const outboxes = await withRepairWork(() =>
-      store.prepareWorld({ version: 14, ...scope, socialOutbox: [source] }, { wishes: [], relationships: [] }),
+      store.prepareWorld({ version: 15, ...scope, socialOutbox: [source] }, { wishes: [], relationships: [] }),
     );
     world.socialOutbox = Array.from({ length: 9 }, (_, index) => ({
       ...structuredClone(outboxes.socialOutbox[0]),

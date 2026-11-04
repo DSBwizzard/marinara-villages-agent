@@ -1,3 +1,4 @@
+import { findLocation, sceneActorIds } from "../../domain/rules/places.js";
 import { applyLiveMemories } from "../../domain/rules/live-memory-application.js";
 import { semanticContinued, semanticContinuationKey } from "../../domain/rules/semantic-continuity.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
@@ -192,12 +193,9 @@ export function createLiveMemory(ports: LiveMemoryPorts) {
       );
       if (fresh.rejections.length) throw new Error("Social authority changed before settlement.");
       for (const permission of fresh.review.permissions) {
-        const venue = authority.venues.find((row) => row.id === permission.venueId);
+        const venue = findLocation(authority, permission.venueId);
         if (venue?.access) {
-          settleStandingAccess(venue, permission, turn.at, [
-            "player",
-            ...authority.villagers.map((person) => person.characterId),
-          ]);
+          settleStandingAccess(venue, permission, turn.at, ["player", ...sceneActorIds(authority)]);
           if (!venue.access.receipts[permission.id] || venue.access.receipts[permission.id]?.outcome === "rejected")
             throw new Error("Standing permission needs recovery before this source can be published.");
           authority.exchangeReceipts[permission.id] ??= {

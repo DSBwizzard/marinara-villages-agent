@@ -22,6 +22,10 @@ import { approvalScope, projectDesignKey, matchesProjectDesign } from "../../dom
 import { assertCanAddVillageVenue } from "../../domain/rules/venue-capacity.js";
 import { validVenueClasses } from "../../domain/rules/venue-model.js";
 import { assertMapRevision, villageMap } from "../../domain/rules/village-maps.js";
+import { draftEstablishmentProject } from "./project-drafts.js";
+import { establishmentDraft, establishmentScope, establishmentChange } from "../../domain/rules/establishment.js";
+import { findLocation } from "../../domain/rules/places.js";
+import { completeProject } from "../../domain/rules/project-completion.js";
 
 export interface ProjectLifecyclePorts {
   mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
@@ -44,30 +48,37 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     if (!requestId || requestId.length > 200 || !Number.isInteger(row.expectedRevision))
       throw badRequest("Refresh the Project and try again.");
     const fingerprint = JSON.stringify([kind, row]);
-    await mutateVillageState((state) => {
-      const project = projectFor(state, id),
-        flow = project.lifecycle;
-      if (flow.commandReceipts[requestId]) {
-        if (flow.commandReceipts[requestId] !== fingerprint) throw conflict("This request ID was already used.");
-        return;
-      }
-      if (flow.revision !== row.expectedRevision) throw conflict("The Project design changed. Refresh and try again.");
-      apply(state, project, row);
-      projectFor(state, id).lifecycle.commandReceipts[requestId] = fingerprint;
-    });
+    await mutateVillageState(
+      (state) => {
+        const project = projectFor(state, id),
+          flow = project.lifecycle;
+        if (flow.commandReceipts[requestId]) {
+          if (flow.commandReceipts[requestId] !== fingerprint) throw conflict("This request ID was already used.");
+          return;
+        }
+        if (flow.revision !== row.expectedRevision)
+          throw conflict("The Project design changed. Refresh and try again.");
+        apply(state, project, row);
+        projectFor(state, id).lifecycle.commandReceipts[requestId] = fingerprint;
+      },
+      { memories: true },
+    );
   }
   function planning(project: VillageProject) {
     if (project.status !== "planning") throw conflict("Revise the design before starting work.");
   }
   function renew(state: VillageState, project: VillageProject) {
     const flow = project.lifecycle!;
-    const venue = state.venues.find((venue) => venue.id === project.venueId);
+    const venue = findLocation(state, project.venueId);
     if (venue && flow.change) {
       missingProjectAgreements(state, project);
       flow.approvals = flow.approvals.filter(
         (row) =>
           flow.affectedIds.includes(row.residentId) &&
-          row.scope === approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds),
+          row.scope ===
+            (project.kind === "establishment"
+              ? establishmentScope(project)
+              : approvalScope(venue, flow.change!, row.residentId, flow.changedZoneIds)),
       );
     }
     flow.candidates = flow.candidates.filter((row) => matchesProjectDesign(row.scope, project));
@@ -104,6 +115,25 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       const project = draftRenovationProject(state, venueId, row, "project:" + requestId);
       project.lifecycle!.commandReceipts[requestId] = fingerprint;
     });
+  }
+  async function createEstablishmentProject(venueId: string, value: unknown) {
+    const row = asRecord(value),
+      requestId = asTrimmedString(row.requestId);
+    if (!requestId || requestId.length > 200) throw badRequest("A request ID is required.");
+    await mutateVillageState(
+      (state) => {
+        const fingerprint = JSON.stringify(["create-establishment", venueId, row]);
+        const prior = state.projects.find((project) => project.id === "project:" + requestId);
+        if (prior) {
+          if (prior.lifecycle?.commandReceipts[requestId] !== fingerprint)
+            throw conflict("This request ID was already used.");
+          return;
+        }
+        const project = draftEstablishmentProject(state, venueId, row, "project:" + requestId);
+        project.lifecycle!.commandReceipts[requestId] = fingerprint;
+      },
+      { memories: true },
+    );
   }
   async function saveProjectPlan(id: string, value: unknown) {
     await command(id, value, "plan", (state, project, row) => {
@@ -157,10 +187,20 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
   async function reviseRenovationProject(id: string, value: unknown) {
     await command(id, value, "revise", (state, project, row) => {
       planning(project);
-      const venue = state.venues.find((venue) => venue.id === project.venueId);
-      if (project.kind !== "renovation" || !venue) throw conflict("Choose a finished Venue.");
-      project.lifecycle.change = readRenovationChange(state, venue, row, villageNow());
-      project.lifecycle.changedZoneIds = changedZoneIds(venue, project.lifecycle.change);
+      const venue = findLocation(state, project.venueId);
+      if (project.kind === "new-venue" || !venue) throw conflict("Choose an existing location.");
+      if (project.kind === "establishment") {
+        project.establishment = establishmentDraft(row.establishment);
+        if (!project.establishment.physical) {
+          row = { classes: row.classes ?? venue.classes, detail: project.establishment.goal };
+        }
+      }
+      project.lifecycle.change =
+        project.kind === "establishment"
+          ? establishmentChange(state, venue, row, project.establishment!, villageNow())
+          : readRenovationChange(state, venue, row, villageNow());
+      project.lifecycle.changedZoneIds =
+        project.establishment && !project.establishment.physical ? [] : changedZoneIds(venue, project.lifecycle.change);
       project.lifecycle.baseDesignHash = venueDesignHash(
         venue,
         project.lifecycle.changedZoneIds,
@@ -196,24 +236,41 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     if (project.status !== (resume ? "paused" : "planning"))
       throw conflict(resume ? "This Project is not paused." : "This Project has already started.");
     const lead = asTrimmedString(row.residentId) || flow.builderId;
+    const social = project.kind === "establishment" && !project.establishment?.physical;
     if (
-      !state.villagers.some((resident) => resident.characterId === lead) ||
-      !flow.candidates.some(
-        (candidate) => candidate.residentId === lead && matchesProjectDesign(candidate.scope, project),
-      )
+      !social &&
+      (!state.villagers.some((resident) => resident.characterId === lead) ||
+        !flow.candidates.some(
+          (candidate) => candidate.residentId === lead && matchesProjectDesign(candidate.scope, project),
+        ))
     )
       throw conflict("Choose a willing resident lead for this design.");
     const others = state.projects.filter(
       (other) => other.id !== project.id && ["working", "paused"].includes(other.status),
     );
     if (!resume && others.length >= 2) throw conflict("Two Projects are already active.");
-    if (others.some((other) => other.lifecycle?.builderId === lead))
+    if (!social && others.some((other) => other.lifecycle?.builderId === lead))
       throw conflict("This resident already leads an active Project.");
     if (others.some((other) => other.venueId && other.venueId === project.venueId))
       throw conflict("This Venue already has an active Project.");
     if (missingProjectAgreements(state, project).length) throw conflict("Obtain the necessary agreements first.");
-    if (project.kind === "renovation") {
-      const venue = state.venues.find((venue) => venue.id === project.venueId)!;
+    if (project.kind === "establishment") {
+      const place = state.worldPlaces.places[project.venueId];
+      if (!place || place.disabled || !place.prepared || place.report)
+        throw conflict("Visit and verify this Place first.");
+      if (place.location.presentation.x === null || place.location.presentation.y === null)
+        throw conflict("Choose a map position first.");
+      if (!resume) assertCanAddVillageVenue(state, flow.change?.classes, project.id);
+      if (social) {
+        project.status = flow.phase = "working";
+        project.updatedAt = now.toISOString();
+        return;
+      }
+      if (project.establishment!.objectives.some((row) => !row.met))
+        throw conflict("Resolve the establishment objectives before physical work.");
+    }
+    if (project.kind !== "new-venue") {
+      const venue = findLocation(state, project.venueId)!;
       if (flow.baseDesignHash !== venueDesignHash(venue, flow.changedZoneIds, flow.change))
         throw conflict(
           resume
@@ -293,10 +350,17 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
       projectAgendaReservations(state);
     });
   }
+  async function completeEstablishmentProject(id: string, value: unknown) {
+    await command(id, value, "complete", (state, project) => {
+      if (project.kind !== "establishment" || project.establishment?.physical || project.status !== "working")
+        throw conflict("Start the social establishment Project before completing it.");
+      completeProject(state, project, villageNow().toISOString());
+    });
+  }
   async function debugCompleteProjectConstruction(id: string, value: unknown) {
     if (!ports.villagesDebugAgentsEnabled()) throw conflict("Project debug actions are unavailable.");
     await command(id, value, "debug-complete", (state, project) => {
-      if (project.status !== "working") throw conflict("Start the Project first.");
+      if (project.status !== "working" || !project.lifecycle.workOrder) throw conflict("Start physical work first.");
       project.lifecycle.workOrder!.completesAt = villageNow().toISOString();
       finishConstruction(state, project, villageNow().toISOString());
     });
@@ -308,6 +372,8 @@ export function createProjectLifecycle(ports: ProjectLifecyclePorts) {
     });
   }
   return {
+    createEstablishmentProject,
+    completeEstablishmentProject,
     createNewVenueProject,
     createRenovationProject,
     saveProjectPlan,

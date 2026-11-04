@@ -1,3 +1,4 @@
+import { findLocation, capturePlaceContext } from "./places.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageWish } from "../models/world.js";
 import { replaySceneRelationships, coerceRelationshipState } from "./relationship-rules.js";
@@ -78,7 +79,10 @@ export type SceneContinuity = {
   setupAt: string;
   capturedAt: string;
   receiptIds: string[];
-  facts: Pick<VillageState, (typeof sceneContinuityFields)[number]> & { foundingHistory?: string };
+  facts: Pick<VillageState, (typeof sceneContinuityFields)[number]> & {
+    foundingHistory?: string;
+    worldPlaces?: VillageState["worldPlaces"];
+  };
 };
 /** Captured relationship history is immutable; copying other facts must not duplicate it. */
 export function cloneSceneFacts(facts: SceneContinuity["facts"]): SceneContinuity["facts"] {
@@ -156,7 +160,15 @@ export function captureSceneContinuity(state: VillageState, scene: VenueScene, n
   ).toISOString();
   if (scene.liveSceneVersion !== 1) reserveMemoryScene(state, scene.id, capturedAt);
   const facts = cloneSceneFacts(
-    Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])) as SceneContinuity["facts"],
+    Object.fromEntries(sceneContinuityFields.map((key) => [key, state[key]])) as Pick<
+      VillageState,
+      (typeof sceneContinuityFields)[number]
+    >,
+  );
+  facts.worldPlaces = capturePlaceContext(
+    state,
+    scene.placeId,
+    (scene.participants ?? []).map((person) => person.characterId),
   );
   return {
     version: 3,
@@ -255,7 +267,7 @@ export function sceneContinuityView(current: VillageState, scene: VenueScene, in
     const event = physical.get(`venue-chat:${scene.id}:${turn.id}`);
     extendSceneNarrative(view, current, scene, turn);
     const change = event?.actionReceipt;
-    const venue = view.venues.find((row) => row.id === scene.placeId);
+    const venue = findLocation(view, scene.placeId);
     if (!change || !venue) continue;
     venue.zones ??= structuredClone(venueZones(venue));
     const zoneId =

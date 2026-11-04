@@ -110,7 +110,7 @@ export function projectDesignKey(project: VillageProject): string {
   const plan = project.plan;
   return JSON.stringify([
     project.kind,
-    project.kind === "renovation" ? project.venueId : "",
+    project.kind !== "new-venue" ? project.venueId : "",
     project.venueDraft?.classes,
     project.venueDraft?.description,
     project.venueDraft?.position,
@@ -125,6 +125,14 @@ export function projectDesignKey(project: VillageProject): string {
         ]
       : null,
     project.lifecycle?.change,
+    project.establishment
+      ? [
+          project.establishment.goal,
+          project.establishment.physical,
+          project.establishment.zoneIds,
+          project.establishment.objectives.map((row) => [row.id, row.text]),
+        ]
+      : null,
   ]);
 }
 export function matchesProjectDesign(scope: string, project: VillageProject): boolean {

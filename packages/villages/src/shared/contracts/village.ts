@@ -218,8 +218,11 @@ export type VenueRequest = {
 };
 
 export type BuildProject = {
+  actorNames?: Record<string, string>;
   id: string;
-  kind: "new-venue" | "renovation";
+  kind: "new-venue" | "renovation" | "establishment";
+  establishment?: import("./places.js").Establishment;
+  place?: VillageVenue;
   title: string;
   venueId: string;
   updatedAt: string;

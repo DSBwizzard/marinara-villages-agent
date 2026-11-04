@@ -570,6 +570,7 @@ export type VillagePrivateSpace = VillageVenueSpace & {
 
 /** Physical state belongs to its Zones. */
 export type VillageVenue = {
+  discovered?: boolean;
   zoneLayout?: import("../../../shared/helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
   access?: import("../../../shared/helpers/venue-access.js").VenueAccessState;
@@ -798,6 +799,8 @@ export type VillageProjectLifecycle = {
 };
 
 export type VillageProject = {
+  establishment?: import("../../../shared/contracts/places.js").Establishment;
+  place?: VillageVenue;
   plan?: {
     capacity: number;
     form: string;
@@ -824,7 +827,7 @@ export type VillageProject = {
   progress: number;
   status: VillageProjectPhase;
   updatedAt: string;
-  kind: "new-venue" | "renovation";
+  kind: "new-venue" | "renovation" | "establishment";
   venueDraft?: {
     name: string;
     classes: VillageVenueClass[];
@@ -904,6 +907,7 @@ export type ReturnCatchupCapture = {
 };
 
 export type VillageState = {
+  worldPlaces: import("./places.js").PlaceRegistry;
   narrative?: import("./narrative-model.js").NarrativeState;
   narrativeConsequence?: import("../../../shared/contracts/village.js").VillageNarrativeConsequence;
   memories: import("./memories.js").MemoryCollection;
@@ -939,7 +943,7 @@ export type VillageState = {
   socialOutbox?: import("./social-outbox-model.js").WorldSocialOutboxEntry[];
   backgroundReceipts: Record<string, string>;
   /** Private expiry holds owned by unfinished Scenes or their retained final effects. */
-  version: 14;
+  version: 15;
   /** Shared evidence engine used by Wishes. */
   progressEngineVersion: 1;
   name: string;
