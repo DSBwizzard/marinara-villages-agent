@@ -1,3 +1,4 @@
+import { sceneActorIds } from "../../domain/rules/places.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
 import type { VillageSnapshot, VillageState, VillageVenueClass, VillageVenueImage } from "../../domain/models/world.js";
@@ -30,7 +31,7 @@ export type VillageVenueDeletionDependencies = {
 export interface VenueCommandPorts {
   withSceneNavigation<T>(operation: () => Promise<T>): Promise<T>;
   readVillageState(): Promise<VillageState>;
-  mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
+  mutateVillageState: typeof import("../world/village-store.js").mutateVillageState;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
   sceneQueries(): {
     activeVenueSession(): Promise<Pick<VenueScene, "id" | "placeId" | "zoneId" | "zoneGrants"> | null>;
@@ -205,23 +206,26 @@ export function createVenueCommands({
       command.sceneId = scene.id;
     }
     if (command.action === "invite" && scene?.placeId === venueId) command.sceneId = scene.id;
-    await mutateVillageState((state) => {
-      const venue = state.venues.find((row) => row.id === venueId);
-      if (!venue) throw notFound("That Venue is no longer here.");
-      if (command.action === "community-venue") {
-        designateCommunityVenue(state, venue, command, villageNow().toISOString());
-        return;
-      }
-      applyAccessCommand(
-        venue,
-        command,
-        "player",
-        villageNow().toISOString(),
-        ["player", ...state.villagers.map((person) => person.characterId)],
-        [],
-        state.communityVenueId,
-      );
-    });
+    await mutateVillageState(
+      (state) => {
+        const venue = state.venues.find((row) => row.id === venueId);
+        if (!venue) throw notFound("That Venue is no longer here.");
+        if (command.action === "community-venue") {
+          designateCommunityVenue(state, venue, command, villageNow().toISOString());
+          return;
+        }
+        applyAccessCommand(
+          venue,
+          command,
+          "player",
+          villageNow().toISOString(),
+          ["player", ...sceneActorIds(state)],
+          [],
+          state.communityVenueId,
+        );
+      },
+      { memories: true },
+    );
     await activeVenueSession(); // Reconcile recorded exits before returning the next snapshot.
     return buildVillageSnapshot();
   }

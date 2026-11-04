@@ -72,7 +72,7 @@ Routine application preserves Wishes; initial Wish application preserves the sch
 
 The existing preparation retry route accepts a resident/task target, expected attempt and action ID. Batch retries skip completed work and include untouched pending tasks. Repeated action IDs reuse the same admission. Reads and startup never authorize new founding requests. Interrupted work waits for explicit retry; already saved results can apply locally.
 
-Village format 14 requires a fresh world. Legacy combined Routine/Wish responses are not adopted or converted. Current task results and unknown-billing evidence retain the ordinary explicit-retry lifecycle.
+Village format 15 requires a fresh world. Legacy combined Routine/Wish responses are not adopted or converted. Current task results and unknown-billing evidence retain the ordinary explicit-retry lifecycle.
 
 Provider-free coverage includes founding-preparation, founding-requests, compact-founding, social-wishes, founding-preparation browser and founding-jobs-packaged regressions. This establishes contracts and recovery behavior, not real-provider latency or output quality.
 

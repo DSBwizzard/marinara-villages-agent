@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { VillageVenue, VillageZoneDraft } from "../../../shared/contracts/village.js";
 export type ProjectWorkspace = {
+  establishment?: import("../../../shared/contracts/places.js").Establishment;
   revision: number | undefined;
   venue: VillageVenue | null;
   zones: VillageZoneDraft[];

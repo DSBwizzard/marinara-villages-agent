@@ -1,3 +1,4 @@
+import { findLocation } from "./places.js";
 import { asRecord } from "./coerce.js";
 import { conflict } from "./errors.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
@@ -16,6 +17,7 @@ export function sceneAccessState(state: VillageState, scene: VenueScene): Villag
     return {
       ...state,
       venues: facts.venues,
+      worldPlaces: facts.worldPlaces ?? state.worldPlaces,
       projects: facts.projects,
       narrative: facts.narrative,
       relationshipContext: facts.relationshipContext,
@@ -46,6 +48,7 @@ export function sceneAccessState(state: VillageState, scene: VenueScene): Villag
     ? {
         ...state,
         venues: facts.venues,
+        worldPlaces: facts.worldPlaces ?? state.worldPlaces,
         projects: facts.projects,
         narrative,
         relationshipContext: sceneRelationshipView(state.relationshipContext, scene),
@@ -55,7 +58,7 @@ export function sceneAccessState(state: VillageState, scene: VenueScene): Villag
 
 /** Scene layout and authority follow its captured world and witnessed developments. */
 export function sceneLayoutVenue(venue: VillageVenue, scene?: VenueScene): VillageVenue {
-  venue = scene?.continuity?.facts.venues.find((row) => row.id === venue.id) ?? venue;
+  venue = findLocation(scene?.continuity?.facts, venue.id) ?? venue;
   const layout = scene?.sceneAttendance?.layout;
   // Already admitted pre-v5 work keeps its purchased type-inferred routing contract.
   if (scene?.operation?.kind === "turn" && ![5, 6].includes(Number(scene.operation.input.interactionScopeVersion)))

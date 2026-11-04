@@ -91,6 +91,8 @@ export const EXPLORATION_STYLES = `
   .${P}-home-full[data-mobile="false"] .${P}-explore-nav button { padding:0 7px; font-size:12px; }
 }
 .${P}-maps-toolbar { display:flex; flex:none; align-items:center; gap:8px; padding:4px 12px; border-bottom:1px solid var(--explore-border); background:var(--explore-panel); }
+.${P}-maps-toolbar label { display:flex; align-items:center; gap:4px; min-height:44px; white-space:nowrap; }
+.${P}-maps-toolbar input[type=checkbox] { width:1.1rem; height:1.1rem; min-height:0; margin:0; }
 .${P}-maps-toolbar button,.${P}-maps-overview button { min-height:44px; border:1px solid var(--explore-border); border-radius:7px; padding:8px 12px; background:var(--explore-surface); color:var(--explore-text); font:inherit; cursor:pointer; }
 .${P}-maps-overview { flex:1; min-width:0; overflow:auto; padding:16px; }
 .${P}-maps-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
@@ -112,7 +114,8 @@ export const EXPLORATION_STYLES = `
 .${P}-maps-editor input[type=file] { display:block; max-width:100%; }
 .${P}-maps-editor .${P}-stage { width:100%!important; max-height:55vh; }
 @container (max-width:500px) {
-  .${P}-maps-toolbar { padding:4px 8px; gap:4px; flex-wrap:wrap; }
+  .${P}-maps-toolbar { padding:4px 8px; gap:4px; overflow-x:auto; }
+  .${P}-maps-toolbar>* { flex-shrink:0; white-space:nowrap; }
   .${P}-maps-saved-row { flex-wrap:wrap; }
   .${P}-maps-saved-row img { width:72px; height:52px; }
 }

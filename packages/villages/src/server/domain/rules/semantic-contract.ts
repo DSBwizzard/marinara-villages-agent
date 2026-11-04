@@ -1,3 +1,5 @@
+import { findLocation } from "./places.js";
+import { findNpc, npcProfile } from "./places.js";
 import { currentVillageCircumstances } from "./prompt-preset.js";
 import { createHash } from "node:crypto";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
@@ -30,7 +32,9 @@ export const SEMANTIC_OPERATION_BUDGET = {
 export const semanticNarrationCore = (raw: Record<string, unknown>) =>
   Object.fromEntries(
     Object.entries(raw).filter(([key]) =>
-      ["segments", "lines", "heardPlayerBy", "playerSpeechCapture", "residentActions"].includes(key),
+      ["segments", "lines", "heardPlayerBy", "playerSpeechCapture", "residentActions", "npcIntroductions"].includes(
+        key,
+      ),
     ),
   );
 export const semanticHash = (value: unknown): string =>
@@ -50,6 +54,7 @@ export function semanticSocialContext(
 ) {
   const actors = semanticActors(scene);
   return {
+    npcIntroductions: scene.pendingNpcAdmissions ?? [],
     capturedAndScene: socialContextState(presentation.relationshipContext, actors, query),
     live: socialContextState(authority.relationshipContext, actors, query),
     liveAt: new Date().toISOString(),
@@ -74,7 +79,7 @@ export function semanticContext(
   const authority = state;
   state = presentation;
   const actors = semanticActors(scene);
-  const venue = state.venues.find((row) => row.id === scene.placeId);
+  const venue = findLocation(state, scene.placeId);
   const layout = venue && sceneLayoutVenue(venue, scene);
   const { receipts: _receipts, changes: _changes, ...accessRules } = venue?.access ?? {};
   const memory = sceneMemoryContext(authority, ["player", ...actors], query, narration);
@@ -135,38 +140,54 @@ export function semanticContext(
     revision: scene.sceneRevision,
     social: semanticSocialContext(scene, authority, query, state),
     zoneId: scene.zoneId,
-    actors: state.villagers
-      .filter((row) => actors.includes(row.characterId))
-      .map((row) => ({
-        id: row.characterId,
-        name: row.cardSnapshot.name,
-        character: compact
-          ? {
-              description: row.cardSnapshot.description,
-              personality: row.cardSnapshot.personality,
-              backstory: row.cardSnapshot.backstory,
-            }
-          : row.cardSnapshot,
-        admission: row.admission,
-        // shortcut: keep all open Wishes whole; narrow them only if measured open-ledger size blocks play.
-        wishes: (row.wishes ?? [])
-          .filter(
-            (wish) =>
-              !compact ||
-              wish.status === "open" ||
-              wishQuery.includes(wish.id) ||
-              memoryTerms(
-                [
-                  wish.wish,
-                  wish.reason,
-                  wish.approach,
-                  ...wish.conditions.map((condition) => condition.quote),
-                  ...wish.history.map((event) => event.text),
-                ].join("\n"),
-              ).some((term) => wishTerms.has(term)),
-          )
-          .map((wish) => ({ ...wish })),
-      })),
+    actors: [
+      ...state.villagers
+        .filter((row) => actors.includes(row.characterId))
+        .map((row) => ({
+          id: row.characterId,
+          name: row.cardSnapshot.name,
+          character: compact
+            ? {
+                description: row.cardSnapshot.description,
+                personality: row.cardSnapshot.personality,
+                backstory: row.cardSnapshot.backstory,
+              }
+            : row.cardSnapshot,
+          admission: row.admission,
+          // shortcut: keep all open Wishes whole; narrow them only if measured open-ledger size blocks play.
+          wishes: (row.wishes ?? [])
+            .filter(
+              (wish) =>
+                !compact ||
+                wish.status === "open" ||
+                wishQuery.includes(wish.id) ||
+                memoryTerms(
+                  [
+                    wish.wish,
+                    wish.reason,
+                    wish.approach,
+                    ...wish.conditions.map((condition) => condition.quote),
+                    ...wish.history.map((event) => event.text),
+                  ].join("\n"),
+                ).some((term) => wishTerms.has(term)),
+            )
+            .map((wish) => ({ ...wish })),
+        })),
+      ...actors.flatMap((id) => {
+        const npc = findNpc(state, id);
+        return npc
+          ? [
+              {
+                id,
+                name: npc.label || npc.name,
+                character: { description: npcProfile(npc), personality: npc.characterization, backstory: "" },
+                admission: undefined,
+                wishes: [],
+              },
+            ]
+          : [];
+      }),
+    ],
     zones: layout
       ? venueZones(layout)
           .filter(
@@ -203,7 +224,11 @@ export function semanticContext(
           }))
       : [],
     access: compact && venue?.access ? accessRules : venue?.access,
-    accessManagement: accessManagementPrompt(state, actors),
+    accessManagement: accessManagementPrompt(
+      state,
+      actors,
+      state.venues.some((venue) => venue.id === scene.placeId) ? undefined : scene.placeId,
+    ),
     referenceActors: state.villagers.map(({ characterId, cardSnapshot }) => ({
       id: characterId,
       name: cardSnapshot.name,
@@ -309,7 +334,14 @@ export function readSemanticEffects(raw: unknown, hash: string): Record<string, 
   const row = asRecord(raw);
   if (row.sourceHash !== hash) throw new Error("System interpretation cited a different exchange.");
   const result: Record<string, unknown> = {};
-  for (const key of ["memoryChanges", "wishChanges", "projectSpeech"])
+  for (const key of [
+    "memoryChanges",
+    "wishChanges",
+    "projectSpeech",
+    "npcAdmissions",
+    "placeDiscoveries",
+    "establishmentProgress",
+  ])
     if (Array.isArray(row[key]) && row[key].length <= 16) result[key] = row[key];
   const social = asRecord(row.relationshipChanges);
   if (["changes", "permissions", "disclosures"].every((key) => Array.isArray(social[key]) && social[key].length <= 16))

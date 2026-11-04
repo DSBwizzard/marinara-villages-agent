@@ -74,7 +74,9 @@ In **DEBUG Settings**, enabling **Verbose runtime logging** also enables **Loreb
 - **People:** Browse residents and open their profiles.
 - **More:** Open the Village's other pages and settings.
 
-A **Venue** is a place, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In founding or the Venue's **Zones** page, drag the Zones to arrange them without overlap. Managers can choose their connections; drawing distance changes neither movement nor sound. Browse a Venue to see what is known about it, then choose **Visit** to enter.
+A **Place** is a discovered or introduced location in the world. Visit it and move through its Zones for Scenes before it joins the village simulation. **Discover Places** supports explicit exploration, search and first-visit preparation. The optional Places map layer starts off; unplaced Places remain visitable. [Places and establishment](../../docs/places.md) explains discovery, supporting characters and promotion.
+
+A **Venue** is an established village location, such as a home or café. A **Zone** is one of its spaces, such as the kitchen or bedroom. Each Venue has an Entrance plus up to six Zones. In founding or the Venue's **Zones** page, drag the Zones to arrange them without overlap. Managers can choose their connections; drawing distance changes neither movement nor sound. Browse a Venue to see what is known about it, then choose **Visit** to enter.
 
 In Places, Zone positions and connections remain a draft until you leave Zones or switch Venues. A valid layout starts saving in the background as you navigate away. Every Zone must have a path to Entrance; if the draft is disconnected, Keep editing returns to it and Discard and leave restores the entire saved layout. Temporary disconnections remain visible while editing. Selecting another Zone keeps the draft. A failed save retains the draft and displays its error when you return to Zones; leaving again retries saving. Refreshing or closing the browser discards edits that have not been saved.
 
@@ -161,7 +163,7 @@ Opening REPAIR and applying ordinary corrections preserve your unfinished Scene,
 
 The Wishes notebook retains only what your Persona learned, with timestamps for its recorded entries. **Follow** controls Wish notices without changing what the resident wants. Inspect exposes private retained state separately. There are no hidden progress percentages, expiry rolls or active-Wish slot caps. Housing and other larger ambitions are deferred. See [Social Wishes](../../docs/wishes.md).
 
-This build requires a fresh format-14 Village. Older worlds and setup records remain stored and are rejected without conversion.
+This build requires a fresh format-15 Village. Older worlds and setup records remain stored and are rejected without conversion.
 
 **Projects** create new Venues or renovate existing ones. Use the Project board to review the design, Zones, people, site, and progress. You can keep up to six drafts while deciding which Projects to start. Saving a draft and starting work are separate steps:
 
@@ -240,6 +242,6 @@ In **General Settings**, choose your connections. **Writing Settings** control p
 
 **Send on Enter** defaults Off. Normally, Enter adds a newline. When enabled, Enter sends and Shift+Enter adds a newline.
 
-Progress saves as you play, and refresh restores it. The current test build uses **Village format 14** and **Scene format 3**. Older worlds, setup records, Scenes and checkpoints require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
+Progress saves as you play, and refresh restores it. The current test build uses **Village format 15** and **Scene format 3**. Older worlds, setup records, Scenes and checkpoints require their matching runtime. Arrange independent fresh test storage before trying an incompatible build. Installation does not reset existing storage or delete an incompatible world.
 
 Installed package files remain on the Marinara server, but model-driven play still needs a working connection to your configured provider. Before changing or removing a test installation, arrange a backup and confirm how to keep its world with the server operator. **Reset the village and start over** is a separate destructive action.

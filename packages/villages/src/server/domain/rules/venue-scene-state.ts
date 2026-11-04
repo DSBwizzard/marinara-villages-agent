@@ -1,3 +1,5 @@
+import { findLocation } from "./places.js";
+import { sceneActorIds, placeRegistry } from "./places.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueEvent } from "../models/world.js";
 import type { PlaceAfter, PlaceEvidence, PlaceUpdate } from "../../../shared/contracts/place-continuity.js";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -53,7 +55,7 @@ export function applyVenueSceneChange(
   evidence?: PlaceEvidence,
   admittedConditions?: import("../models/narrative-model.js").NarrativeCondition[],
 ): PlaceAfter {
-  const venue = state.venues.find((place) => place.id === placeId);
+  const venue = findLocation(state, placeId);
   if (!venue) throw conflict("That place is no longer in the Village.");
   const zone = resolveVenueZone(venue, zoneId || legacyZoneId(venue, area, spaceClass, privateOwnerId));
   if (!zone || zoneClosed(state, venue, zone) || venue.constructionStatus === "worksite")
@@ -89,6 +91,8 @@ export function applyVenueSceneChange(
   )
     throw conflict("The corrective work names a condition outside its captured source.");
   const enduring = after.description !== zone.description;
+  if (enduring && placeRegistry(state)?.places[placeId])
+    throw conflict("Establish this Place as a Venue before making enduring changes.");
   if (
     !enduring &&
     change.conditionClears?.some((clear) =>
@@ -101,11 +105,7 @@ export function applyVenueSceneChange(
   const controllers = enduring ? zoneControllerIds(venue, zone) : [];
   if (enduring && (zone.kind === "staff" || zone.kind === "restricted") && !controllers.length)
     throw conflict("This Zone has no current authority for the change.");
-  assertPlaceAuthority(
-    evidence,
-    controllers,
-    state.villagers.map((person) => person.characterId),
-  );
+  assertPlaceAuthority(evidence, controllers, sceneActorIds(state));
   if (enduring && change.appearanceChanged === true) {
     zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
   }

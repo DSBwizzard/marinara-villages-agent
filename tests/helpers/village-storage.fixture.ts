@@ -70,7 +70,7 @@ function authorAdmissionFixture(rows: Map<string, any>, raw: any, mail = false):
   return {
     ...facts,
     admissionFormat: 1,
-    villagers: authorWorldWishFixture(rows, { ...facts, version: 14 }).villagers,
+    villagers: authorWorldWishFixture(rows, { ...facts, version: 15 }).villagers,
     ...(mail || Object.hasOwn(raw, "relationshipContext")
       ? {
           relationshipHead: relationshipContext ? authorRelationshipFixture(rows, relationshipContext, raw).head : null,
@@ -164,7 +164,7 @@ function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Map<str
   const digest = (v: string) => createHash("sha256").update(v).digest("hex");
   const strip = (raw: Record<string, any>) =>
     Object.fromEntries(
-      Object.entries(raw).filter(([k]) => !["memories", "memoryScenes", "memoryReceipts"].includes(k)),
+      Object.entries(raw).filter(([k]) => !["memories", "memoryScenes", "memoryReceipts", "worldPlaces"].includes(k)),
     );
   async function ensure(data: unknown) {
     const heads = [
@@ -221,17 +221,23 @@ function createFixtureDocuments(store: CapabilityDocumentStore, virtual: Map<str
       if (!row || id !== "villages-village") return row;
       const metadata = { ...row, id: row.id ?? id, packageId: row.packageId ?? pkg, kind: row.kind ?? "village" };
       const raw = row.data as Record<string, any>;
-      if (raw?.version !== 14) return metadata;
+      if (raw?.version !== 15) return metadata;
       if (Object.hasOwn(raw, "memoryHead"))
         return { ...metadata, data: authorDepartureFixture(virtual, { ...strip(raw), memoryHead: raw.memoryHead }) };
       if (!raw.memories) return metadata;
       const state = coerceVillageState(raw),
-        value = { memories: state.memories, memoryScenes: state.memoryScenes, memoryReceipts: state.memoryReceipts };
+        value = {
+          memories: state.memories,
+          memoryScenes: state.memoryScenes,
+          memoryReceipts: state.memoryReceipts,
+          worldPlaces: state.worldPlaces,
+        };
       const empty =
         !value.memories.records.length &&
         !value.memories.revision &&
         !Object.keys(value.memoryScenes).length &&
-        !Object.keys(value.memoryReceipts).length;
+        !Object.keys(value.memoryReceipts).length &&
+        !value.worldPlaces.revision;
       let head = null;
       if (!empty) {
         const world = digest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32),
@@ -393,7 +399,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
       scope = { seed: context.seed, setupAt: context.setupAt ?? world?.setupAt ?? "" },
       { relationshipContext, ...facts } = context.facts,
       head = relationshipContext ? authorRelationshipFixture(rows, relationshipContext, scope).head : null;
-    const villagers = authorWorldWishFixture(rows, { version: 14, ...facts, ...scope }).villagers;
+    const villagers = authorWorldWishFixture(rows, { version: 15, ...facts, ...scope }).villagers;
     scene.continuity = { ...context, ...scope, facts: { ...facts, villagers }, relationshipHead: head };
   }
   if (scene.operation?.snapshot)
@@ -471,7 +477,7 @@ export function authorSceneFixture(rows: Map<string, any>, raw: any, world?: { s
 }
 export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
   raw = authorWorldWishFixture(rows, raw);
-  if (raw?.version === 14)
+  if (raw?.version === 15)
     raw = {
       ...raw,
       ...(raw.socialOutbox
@@ -487,7 +493,7 @@ export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
         : {}),
     };
   const capture = raw?.returnCatchup?.capture;
-  if (raw?.version !== 14 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
+  if (raw?.version !== 15 || !capture || Object.hasOwn(capture.world, "relationshipHead")) return raw;
   const { relationshipContext, ...world } = capture.world;
   const relationshipHead = relationshipContext
     ? authorRelationshipFixture(rows, relationshipContext, world).head
@@ -498,7 +504,7 @@ export function authorDepartureFixture(rows: Map<string, any>, raw: any): any {
   };
 }
 export function authorWorldWishFixture(rows: Map<string, any>, raw: any): any {
-  if (raw?.version !== 14) return raw;
+  if (raw?.version !== 15) return raw;
   const residents = (world: any) =>
     (world.villagers ?? []).map((row: any) => {
       if (Object.hasOwn(row, "wishHead")) return row;
@@ -652,7 +658,7 @@ export function storedVillage(rows: Map<string, any>) {
   return fixtureVillageState(rows.get("villages-village")?.data, rows);
 }
 export function fixtureVillageState(raw: any, rows?: Map<string, any>) {
-  if (raw?.version === 14) {
+  if (raw?.version === 15) {
     const admission = (value: any): any => {
       if (value?.admissionFormat !== 1) return value;
       const { admissionFormat: _format, relationshipHead, ...facts } = value;

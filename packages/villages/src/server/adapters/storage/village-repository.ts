@@ -22,7 +22,7 @@ import { capturedPublicationOwners } from "./captured-admission-owners.js";
 import { createCapturedAdmissions } from "./captured-admission-store.js";
 type CapabilityDocumentRecord = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 const VILLAGE_DOC_ID = "villages-village";
-const historyFields = ["memories", "memoryScenes", "memoryReceipts"] as const;
+const historyFields = ["memories", "memoryScenes", "memoryReceipts", "worldPlaces"] as const;
 export function readVillageRoot(record: CapabilityDocumentRecord | null) {
   if (!record) return null;
   memoryRequire(
@@ -35,7 +35,7 @@ export function readVillageRoot(record: CapabilityDocumentRecord | null) {
   );
   const raw = record.data;
   memoryObject(raw);
-  if (raw.version !== 14) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (raw.version !== 15) throw new Error("Unsupported Village format. Start a fresh Village.");
   departureHistoryOwner(raw);
   worldWishOwners(raw);
   capturedWorldOwners(raw);
@@ -146,7 +146,7 @@ export function createVillageRepository(
             const changed = await update(state);
             assertVenueOwnership();
             if (changed === false) return;
-            memoryRequire(state.version === 14, "invalid Village mutation format");
+            memoryRequire(state.version === 15, "invalid Village mutation format");
             memoryRequire(
               loaded || identity === JSON.stringify([state.seed, state.setupAt]),
               "world reset requires Memories",

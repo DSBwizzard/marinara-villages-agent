@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { createEstablishmentProject, completeEstablishmentProject } from "./project-lifecycle.js";
 import { villagesDebugAgentsEnabled } from "../../adapters/engine/runtime-host.js";
 import { fail, readVenueId } from "../../adapters/http/route-support.js";
 import { notFound } from "../../domain/rules/errors.js";
@@ -47,6 +48,7 @@ export function registerProjectRoutes(engine: FastifyInstance) {
   projectAction("place", placeNewVenueProject);
   projectAction("builder", lockProjectBuilder);
   projectAction("start", startProjectConstruction);
+  projectAction("complete", completeEstablishmentProject);
   projectAction("resume", resumeProject);
   projectAction("cancel", cancelProject);
   projectAction("debug-complete", debugCompleteProjectConstruction);
@@ -76,6 +78,17 @@ export function registerProjectRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading Progress Engine diagnostics");
     }
   });
+  app.post<{ Params: { placeId: string }; Body: unknown }>(
+    "/projects/establishments/:placeId",
+    async (request, reply) => {
+      try {
+        await createEstablishmentProject(readVenueId(request.params.placeId), request.body);
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "establishing a Place");
+      }
+    },
+  );
   app.post<{ Params: { venueId: string }; Body: unknown }>("/projects/renovations/:venueId", async (request, reply) => {
     try {
       await createRenovationProject(readVenueId(request.params.venueId), request.body);

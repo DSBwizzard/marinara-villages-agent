@@ -1,4 +1,5 @@
 import { readResidenceAgreement } from "../rules/residence-agreement.js";
+import { emptyPlaceRegistry, readPlaceRegistry } from "../rules/places.js";
 import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
 import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
 import {
@@ -11,6 +12,7 @@ import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
 import { cloneReturnCapture, copyExchangeReceipts } from "../rules/world-context-copy.js";
+import { readEstablishment } from "../rules/establishment.js";
 import type {
   VillageAgenda,
   VillageBackgroundPace,
@@ -96,7 +98,8 @@ import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 14,
+    worldPlaces: emptyPlaceRegistry(),
+    version: 15,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
     memoryReceipts: {},
@@ -562,6 +565,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
     name,
     form: boundText(raw.form, MAX_PHYSICAL_DESIGN_LENGTH),
     classes,
+    discovered: raw.discovered === true,
     layoutVersion: 1,
     spaces,
     residenceCapacity:
@@ -1004,7 +1008,7 @@ function coerceProjects(value: unknown): VillageProject[] {
     if (
       !asTrimmedString(raw.id) ||
       !asTrimmedString(raw.title) ||
-      !["new-venue", "renovation"].includes(String(raw.kind)) ||
+      !["new-venue", "renovation", "establishment"].includes(String(raw.kind)) ||
       !["planning", "working", "paused", "complete", "cancelled"].includes(String(raw.status)) ||
       flow.phase !== raw.status ||
       !Number.isInteger(flow.revision) ||
@@ -1049,14 +1053,19 @@ function coerceProjects(value: unknown): VillageProject[] {
         Number(order.remainingMs) < 0)
     )
       throw new Error("Invalid Project deadline.");
-    if (["working", "paused"].includes(String(raw.status)) && !order) throw new Error("Missing Project deadline.");
+    if (
+      ["working", "paused"].includes(String(raw.status)) &&
+      !order &&
+      !(raw.kind === "establishment" && asRecord(raw.establishment).physical === false)
+    )
+      throw new Error("Missing Project deadline.");
     const position = asRecord(draft.position);
     if (raw.kind === "new-venue" && (!validVenueClasses(draft.classes) || !asTrimmedString(draft.name)))
       throw new Error("Invalid Project Venue.");
     const change = asRecord(flow.change),
       zones = flow.change === null ? undefined : coerceZoneDrafts(change.zones);
     if (
-      raw.kind === "renovation" &&
+      ["renovation", "establishment"].includes(String(raw.kind)) &&
       (!validVenueClasses(change.classes) ||
         (change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
         (change.exteriorDescription !== undefined &&
@@ -1080,6 +1089,7 @@ function coerceProjects(value: unknown): VillageProject[] {
       id: String(raw.id),
       title: String(raw.title),
       kind: raw.kind as VillageProject["kind"],
+      ...(raw.kind === "establishment" ? { establishment: readEstablishment(raw.establishment) } : {}),
       venueId: asTrimmedString(raw.venueId),
       participantIds: asStringArray(raw.participantIds),
       status: raw.status as VillageProject["status"],
@@ -1430,7 +1440,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (value != null && raw.version !== 14) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null && raw.version !== 15) throw new Error("Unsupported Village format. Start a fresh Village.");
   if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
   if (raw.foundedAt && raw.socialContractVersion !== 2)
     throw new Error(
@@ -1473,7 +1483,8 @@ export function coerceVillageState(value: unknown): VillageState {
     }
   }
   const state: VillageState = {
-    version: 14,
+    worldPlaces: readPlaceRegistry(raw.worldPlaces),
+    version: 15,
     memories,
     memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(

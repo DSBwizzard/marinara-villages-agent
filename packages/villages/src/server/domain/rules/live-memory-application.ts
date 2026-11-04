@@ -1,4 +1,5 @@
 import type { VillageState } from "../models/world.js";
+import { sceneActorIds } from "./places.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { DomainProcessing } from "../models/exchange-model.js";
 import type { LiveEvidenceContext } from "../models/memory-model.js";
@@ -65,7 +66,7 @@ export function applyLiveMemories(
           lines,
           playerLineId: saved.playerLineId,
           replyLineIds: saved.replyLineIds,
-          residentIds: state.villagers.map((row) => row.characterId),
+          residentIds: sceneActorIds(state),
         });
         proposal = bound.proposal;
         if (

@@ -281,6 +281,15 @@ const model = {
       return {
         content: JSON.stringify({
           ...response,
+          ...(packet.input.context?.social?.npcIntroductions?.length
+            ? {
+                npcAdmissions: packet.input.context.social.npcIntroductions.map((row: any) => ({
+                  id: row.npc.id,
+                  segment: row.segment,
+                  approved: true,
+                })),
+              }
+            : {}),
           sourceHash: packet.sourceHash,
           ...(packet.input.residentActions
             ? {
@@ -2545,6 +2554,150 @@ try {
   const beforeConcludeRead = modelCalls;
   await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
   assert.equal(modelCalls, beforeConcludeRead, "Reading the concluded Scene performs no paid recovery");
+  // A transient Place uses the same packaged Scene, standing permission and snapshot publication.
+  {
+    const { establishPlace } = await import("../packages/villages/src/server/domain/rules/place-discovery.js");
+    const placedWorld = fixtureVillageState(records.get("villages-village").data, records);
+    const site = establishPlace(
+      placedWorld,
+      {
+        name: "The Lantern",
+        description: "A cafe beside the harbour.",
+        controllers: ["alice"],
+        people: [{ ref: "alice", name: "Alice", characterization: "An attentive proprietor." }],
+        zones: [
+          { id: "room", name: "Dining room", kind: "public", description: "Tables by a window." },
+          {
+            id: "kitchen",
+            name: "Kitchen",
+            kind: "restricted",
+            description: "A private kitchen.",
+            controllers: ["alice"],
+          },
+        ],
+      },
+      "place:lantern",
+      "map",
+      "authored",
+      now,
+      true,
+    );
+    const owner = "npc:place:lantern:alice";
+    const root = records.get("villages-village");
+    root.data = placedWorld;
+    root.revision++;
+    const placeScene = coerceSession({
+      ...clone(scene),
+      id: "place-standing",
+      placeId: site.id,
+      placeName: site.location.name,
+      zoneId: "room",
+      liveSceneVersion: 1,
+      semanticVersion: 2,
+      sceneRevision: 0,
+      status: "active",
+      activeIds: [owner],
+      participants: [{ characterId: owner, name: "Alice", doing: "Hosting" }],
+      sceneAttendance: {
+        capturedAt: now,
+        layout: captureSceneLayout(site.location),
+        occupants: [{ characterId: owner, name: "Alice", doing: "Hosting", zoneId: "room" }],
+      },
+      lines: [],
+      submissions: [],
+    });
+    placeScene.continuity = captureSceneContinuity(placedWorld, placeScene, Date.parse(now));
+    records.set("villages-venue-visit-" + placeScene.id, {
+      id: "villages-venue-visit-" + placeScene.id,
+      packageId: "villages",
+      kind: "venue-visit",
+      revision: 1,
+      data: authorSceneFixture(records, placeScene, placedWorld),
+    });
+    records.get("villages-active-venue").data = { sessionId: placeScene.id, placeId: site.id };
+    const oldId = scene.id;
+    scene.id = placeScene.id;
+    semanticIntentAnswer = {
+      status: "resolved",
+      instructions: "Wait quietly.",
+      action: null,
+      movement: null,
+      timeline: [{ kind: "action", text: "*waits*" }],
+    };
+    semanticExchangeAnswer = {
+      consistent: true,
+      authority: { physical: false, access: false, projects: false, standing: true, social: false },
+      action: null,
+      access: [
+        {
+          actorId: owner,
+          visitorId: "player",
+          venueId: site.id,
+          zoneId: "kitchen",
+          outcome: "invite-now",
+          duration: "standing",
+          conditions: [],
+          accompanies: false,
+          evidence: [0],
+        },
+      ],
+      events: { moves: [], departures: [], contactEnd: [] },
+      memoryChanges: [],
+      relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+      wishChanges: [],
+      projectSpeech: [],
+    };
+    await turn("place-standing-grant", "*waits*", [{ speakerId: owner, text: "You may always use my kitchen." }]);
+    assert.equal(state().submissions.at(-1).semanticReady, true, "A Place proprietor's standing grant publishes");
+    const savedWorld = fixtureVillageState(records.get("villages-village").data, records);
+    assert(
+      savedWorld.worldPlaces.places[site.id].location.access.permissions.some(
+        (permission: any) => permission.issuerId === owner && permission.zoneId === "kitchen" && !permission.revoked,
+      ),
+    );
+    const projected = await app.inject({ method: "GET", url: "/api/villages/" });
+    assert.equal(projected.statusCode, 200, projected.body);
+    assert.equal(projected.json().sceneVenue.venue.id, site.id);
+    semanticExchangeAnswer = {
+      consistent: true,
+      authority: { physical: false, access: false, projects: false, standing: false, social: false },
+      action: null,
+      access: [],
+      events: { moves: [], departures: [], contactEnd: [] },
+      memoryChanges: [],
+      relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+      wishChanges: [],
+      projectSpeech: [],
+    };
+    await turn(
+      "place-introduction",
+      "*waits*",
+      [
+        { kind: "narration", text: "A traveler named Jo steps into the dining room." },
+        { speakerId: "new:jo", text: "Good afternoon." },
+      ],
+      {},
+      { npcIntroductions: [{ ref: "new:jo", name: "Jo", characterization: "A friendly traveler.", segment: 0 }] },
+    );
+    const introduced = state().submissions.at(-1).npcAdmissions[0].npc.id;
+    assert.equal(state().submissions.at(-1).semanticReady, true);
+    assert(state().activeIds.includes(introduced));
+    assert(fixtureVillageState(records.get("villages-village").data, records).worldPlaces.npcs[introduced]);
+    assert(
+      !state()
+        .lines.find((line: any) => line.content === "You may always use my kitchen.")
+        .heardBy.includes(introduced),
+      "The newcomer did not hear the prior permission",
+    );
+    const movement = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/zone",
+      payload: { sessionId: scene.id, zoneId: "kitchen", expectedSceneRevision: state().sceneRevision },
+    });
+    assert.equal(movement.statusCode, 200, movement.body);
+    assert.equal(movement.json().session.zoneId, "kitchen", "The same Scene can use the granted Place permission");
+    scene.id = oldId;
+  }
   console.log(
     "Archive-identical HTTP acceptance: current System generation, private sound/history, exactly-once recovery, held domains, continuity and Wish settlement passed with synthetic providers.",
   );

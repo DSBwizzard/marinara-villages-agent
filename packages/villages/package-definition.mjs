@@ -5,7 +5,7 @@ const description = "A text-first shared-life sim in any setting that reconstruc
 // Authoritative Villages package metadata; generated payloads are built from this definition.
 export const villagesDefinition = {
   id: "villages",
-  version: "0.7.3",
+  version: "0.8.0",
   minEngineVersion: "2.5.0",
   maxEngineExclusive: "4.0.0",
   name: "Villages",

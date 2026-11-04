@@ -1,4 +1,5 @@
 import { calendarAt, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { findLocation } from "./places.js";
 import type { ProjectFocus } from "../models/agenda-reservation.js";
 import type { VillageAgenda, VillageProject, VillageState } from "../models/world.js";
 import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
@@ -120,7 +121,7 @@ function planningAgenda(state: VillageState, residentId: string, projectId: stri
 function focusAvailability(state: VillageState, project: VillageProject): (at: Date) => boolean {
   const lead = project.lifecycle!.builderId;
   const agenda = planningAgenda(state, lead, project.id);
-  const venue = state.venues.find((item) => item.id === project.venueId);
+  const venue = findLocation(state, project.venueId);
   const zone = venue && venueZones(venue).find((item) => item.kind === "exterior");
   if (!venue || !zone || zoneClosed(state, venue, zone)) throw conflict("The Project site is unavailable.");
   const rest = new Set(

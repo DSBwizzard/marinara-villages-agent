@@ -7,6 +7,9 @@ import { validateProjectSpeech } from "../../domain/rules/project-interpretation
 import { sceneEvidencePerception } from "../../domain/rules/scene-evidence-perception.js";
 import type { SceneQueries } from "../scenes/services.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
+import { projectSpeakerAtTurn } from "../../domain/rules/project-scene-evidence.js";
+import { findLocation, findNpc } from "../../domain/rules/places.js";
+import { establishmentControllers, establishmentScope } from "../../domain/rules/establishment.js";
 
 export interface ProjectEvidencePorts {
   readVillageState(): Promise<VillageState>;
@@ -60,8 +63,9 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
         !turn.projectContexts.some((context) => context.projectId === projectId && context.revision === flow.revision)
       )
         return;
-      if (!state.villagers.some((resident) => resident.characterId === speakerId))
-        throw conflict("This resident no longer lives here.");
+      const resident = state.villagers.some((resident) => resident.characterId === speakerId);
+      if (!resident && !findNpc(state, speakerId)) throw conflict("This person is unavailable.");
+      if (!resident && proposal.kind === "builder") throw conflict("Only Villagers can lead physical work.");
       if (proposal.kind === "withdrawal") {
         flow.approvals = flow.approvals.filter((row) => row.residentId !== speakerId);
         flow.candidates = flow.candidates.filter((row) => row.residentId !== speakerId);
@@ -70,11 +74,15 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
       } else {
         if (!["planning", "paused"].includes(project.status)) return;
         if (proposal.kind === "approval") {
-          const venue = state.venues.find((venue) => venue.id === project.venueId);
+          const venue = findLocation(state, project.venueId);
           if (
             !venue ||
             !flow.change ||
-            !renovationAffectedIds(venue, flow.change, flow.changedZoneIds).includes(speakerId)
+            !(
+              project.kind === "establishment"
+                ? establishmentControllers(state, project)
+                : renovationAffectedIds(venue, flow.change, flow.changedZoneIds)
+            ).includes(speakerId)
           )
             throw conflict("This resident cannot approve this change.");
           flow.approvals = flow.approvals.filter((row) => row.residentId !== speakerId);
@@ -82,7 +90,10 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
             residentId: speakerId,
             source: "conversation",
             evidenceId: proofId,
-            scope: approvalScope(venue, flow.change, speakerId, flow.changedZoneIds),
+            scope:
+              project.kind === "establishment"
+                ? establishmentScope(project)
+                : approvalScope(venue, flow.change, speakerId, flow.changedZoneIds),
             at: turn.at,
           });
         } else {
@@ -146,7 +157,7 @@ export function createProjectEvidence({ readVillageState, mutateVillageState, sc
           if ((submission.mode !== "chat" && submission.mode !== "ask") || !submission.at) return [];
           const lines = visit.lines.filter((line) =>
             submission.replyLineIds?.length
-              ? submission.replyLineIds.includes(line.id) && submission.activeIdsAtTurn?.includes(line.speakerId)
+              ? submission.replyLineIds.includes(line.id) && projectSpeakerAtTurn(submission, line)
               : line.at === submission.at && visit.participants.some((person) => person.characterId === line.speakerId),
           );
           return lines

@@ -172,6 +172,7 @@ function fixture(label: string) {
     delete native.memories;
     delete native.memoryScenes;
     delete native.memoryReceipts;
+    delete native.worldPlaces;
     records.set("villages-village", {
       id: "villages-village",
       packageId: "villages",

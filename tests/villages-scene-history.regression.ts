@@ -83,7 +83,8 @@ for (const count of [1000, 10_000, 25_000]) {
       },
     });
     // Native roots omit unloaded history keys rather than saving undefined placeholders.
-    for (const field of ["memories", "memoryScenes", "memoryReceipts"]) delete rows.get("villages-village").data[field];
+    for (const field of ["memories", "memoryScenes", "memoryReceipts", "worldPlaces"])
+      delete rows.get("villages-village").data[field];
     const key = relationshipKey("ada", "player");
     await social.mutateRelationships(world.seed, (state) => {
       const edge = (state.edges[key] = { ...neutralRelationship("ada", "player"), connection: "Frozen connection" });

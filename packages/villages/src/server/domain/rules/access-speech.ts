@@ -1,3 +1,5 @@
+import { sceneActorIds } from "./places.js";
+import { findLocation } from "./places.js";
 import type { InterpretationCheck } from "../models/interpretation-check-model.js";
 import type { VenueLine } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -22,12 +24,12 @@ export function accessManagementChecks(
       )
     )
       return [];
-    const venue = village.venues.find((venue) => venue.id === row.venueId);
+    const venue = findLocation(village, row.venueId);
     if (!venue?.access || typeof row.actorId !== "string" || row.actorId === "player") return [];
     const recoverZone =
       candidate.action === "recover-managers" &&
       venue.zones?.find((zone) => zone.id === candidate.zoneId && zone.kind !== "exterior");
-    const knownActors = ["player", ...village.villagers.map((person) => person.characterId)];
+    const knownActors = ["player", ...sceneActorIds(village)];
     if (
       candidate.action === "recover-managers"
         ? !recoverZone ||
@@ -110,7 +112,8 @@ export function accessManagementChecks(
 
 /** Server-only writing context contains authority and policy, never hidden physical contents or positions. */
 export function accessManagementPrompt(village: VillageState, actors: string[], venueId?: string): string {
-  const scopes = village.venues
+  const locations = venueId ? [findLocation(village, venueId)].filter((venue) => !!venue) : village.venues;
+  const scopes = locations
     .filter((venue) => venue.access && (!venueId || venue.id === venueId))
     .flatMap((venue) =>
       actors
@@ -138,9 +141,7 @@ export function accessManagementPrompt(village: VillageState, actors: string[], 
                         ?.filter(
                           (zone) =>
                             zone.kind !== "exterior" &&
-                            !zoneManagers(venue, zone).some((id) =>
-                              ["player", ...village.villagers.map((person) => person.characterId)].includes(id),
-                            ),
+                            !zoneManagers(venue, zone).some((id) => ["player", ...sceneActorIds(village)].includes(id)),
                         )
                         .map((zone) => ({ id: zone.id, name: zone.name })) ?? [],
                   }

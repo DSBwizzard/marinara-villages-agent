@@ -588,7 +588,12 @@ await runCase("retained-storage/partial-preparation", async () => {
   const f = await fixture(),
     root = f.rows.get("villages-village"),
     world = memoryDigest(JSON.stringify([root.data.seed, root.data.setupAt])).slice(0, 32);
-  const value = { memories: realisticMemoryHistory(100), memoryScenes: {}, memoryReceipts: {} };
+  const value = {
+    memories: realisticMemoryHistory(100),
+    memoryScenes: {},
+    memoryReceipts: {},
+    worldPlaces: defaultVillageState().worldPlaces,
+  };
   const encoded = encodeMemoryPages(value, world),
     candidate = {
       id: `villages-memory-${world}-${randomUUID()}`,
@@ -622,7 +627,12 @@ await runCase("retained-storage/shared-pages", async () => {
   const world = "a".repeat(32),
     pages = new Map<string, any>(),
     manifests: unknown[] = [];
-  let value = { memories: realisticMemoryHistory(1000), memoryScenes: {}, memoryReceipts: {} };
+  let value = {
+    memories: realisticMemoryHistory(1000),
+    memoryScenes: {},
+    memoryReceipts: {},
+    worldPlaces: defaultVillageState().worldPlaces,
+  };
   let layout;
   for (let i = 0; i < 40; i++) {
     const encoded = encodeMemoryPages(value, world, layout);

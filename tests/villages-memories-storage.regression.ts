@@ -124,14 +124,14 @@ for (const count of [1000, 10000, 25000])
       initial = await seed(f, count),
       root = f.root();
     assert.ok(Buffer.byteLength(JSON.stringify(root.data)) < 10000, "World storage stays small as history grows.");
-    for (const field of ["memories", "memoryScenes", "memoryReceipts"])
+    for (const field of ["memories", "memoryScenes", "memoryReceipts", "worldPlaces"])
       assert.equal(Object.hasOwn(root.data, field), false);
     assert.equal(root.data.exchangeReceipts.physical.reason, "global-gallery:physical-owner");
     const head = root.data.memoryHead.id;
     f.reads.length = 0;
     f.resetIo();
     const ordinary = await f.repository.readAuthority();
-    for (const field of ["memories", "memoryScenes", "memoryReceipts"] as const)
+    for (const field of ["memories", "memoryScenes", "memoryReceipts", "worldPlaces"] as const)
       assert.throws(() => ordinary[field], /not loaded/);
     await f.repository.mutateAuthority((s) => {
       s.name = "Current world";
@@ -564,7 +564,7 @@ await runCase("memories-storage/missing-page", async () => {
   const page = [...f.records.values()].find((r) => r.kind === "memory-page");
   f.records.delete(page.id);
   await assert.rejects(f.restart().readAuthority({ memories: true }), /history page is missing/);
-  assert.equal(f.root().data.version, 14, "Unreadable committed data is retained without reset or conversion.");
+  assert.equal(f.root().data.version, 15, "Unreadable committed data is retained without reset or conversion.");
   f.root().data.version = 7;
   await assert.rejects(f.restart().readAuthority(), /Unsupported Village format/);
 });

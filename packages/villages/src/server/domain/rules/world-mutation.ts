@@ -1,4 +1,5 @@
 import type { VillageState, VillageVenue } from "../models/world.js";
+import { placeRegistry, sceneActorIds } from "./places.js";
 import { projectAgendaReservations } from "./project-focus.js";
 
 import { refreshProjectAgreements } from "./project-lifecycle-rules.js";
@@ -62,7 +63,19 @@ export function normalizeVillageMutation(
     synchronizeVenueZones(venue, previousVenues.get(venue.id));
     if (!previousVenues.has(venue.id) && state.venues.some((entry) => entry.access)) initializeVenueAccess(venue);
     else if (venue.access) initializeVenueAccess(venue);
-    reconcileVenueAccess(venue, ["player", ...state.villagers.map((person) => person.characterId)]);
+    const previousNpcRights = [
+      ...(previousVenues.get(venue.id)?.access?.managerIds ?? []),
+      ...(previousVenues.get(venue.id)?.zones ?? []).flatMap((zone) => [
+        ...(zone.access?.managerIds ?? []),
+        ...(zone.access?.memberIds ?? []),
+        ...(zone.access?.inviterIds ?? []),
+      ]),
+    ].filter((id) => id.startsWith("npc:"));
+    reconcileVenueAccess(venue, [
+      "player",
+      ...sceneActorIds(state),
+      ...(!placeRegistry(state) ? previousNpcRights : []),
+    ]);
     const previous = previousVenues.get(venue.id);
     const semanticAccess = (entry: VillageVenue) =>
       JSON.stringify({
@@ -95,6 +108,8 @@ export function normalizeVillageMutation(
       });
     }
   }
+  for (const place of Object.values(placeRegistry(state)?.places ?? {}))
+    reconcileVenueAccess(place.location, ["player", ...sceneActorIds(state)]);
   refreshProjectAgreements(state);
   projectAgendaReservations(state);
   if (state.foundedAt.length === 0) state.foundedAt = sources.now().toISOString();

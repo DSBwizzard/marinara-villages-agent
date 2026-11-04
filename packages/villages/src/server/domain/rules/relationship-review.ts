@@ -1,3 +1,4 @@
+import { findLocation, sceneActorIds, NPC_PREFIX } from "./places.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type {
@@ -66,7 +67,7 @@ export function parseRelationshipReview(
     result = emptyRelationshipReview();
   if (!Array.isArray(raw.changes) || !Array.isArray(raw.permissions) || !Array.isArray(raw.disclosures))
     throw new Error("The social interpretation is incomplete.");
-  const ids = new Set(["player", ...village.villagers.map((person) => person.characterId)]);
+  const ids = new Set(["player", ...sceneActorIds(village)]);
   const byId = new Map(lines.map((line) => [line.id, line]));
   const evidenceFor = (row: Record<string, unknown>, actorId: string) => {
     if (!Array.isArray(row.lineIds) || !row.lineIds.length) throw new Error("Social evidence is missing.");
@@ -84,7 +85,13 @@ export function parseRelationshipReview(
     const row = asRecord(value),
       fromId = actor(row.fromId),
       toId = actor(row.toId, true);
-    if (fromId === toId || !Number.isInteger(row.expectedRevision) || Number(row.expectedRevision) < 0)
+    if (
+      fromId.startsWith(NPC_PREFIX) ||
+      toId.startsWith(NPC_PREFIX) ||
+      fromId === toId ||
+      !Number.isInteger(row.expectedRevision) ||
+      Number(row.expectedRevision) < 0
+    )
       throw new Error("Invalid social pair or revision.");
     const evidence = evidenceFor(row, fromId),
       lineIds = evidence.map((line) => line.id).sort();
@@ -162,7 +169,7 @@ export function parseRelationshipReview(
     const row = asRecord(value),
       controllerId = actor(row.controllerId, true),
       visitorId = actor(row.visitorId, true);
-    const venue = village.venues.find((place) => place.id === row.venueId),
+    const venue = findLocation(village, row.venueId),
       zone = venue && resolveVenueZone(venue, String(row.zoneId));
     if (
       controllerId === visitorId ||
