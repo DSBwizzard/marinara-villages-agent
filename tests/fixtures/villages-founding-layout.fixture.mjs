@@ -83,6 +83,7 @@ export async function verifyFoundingLayout(group) {
           generatedImages = 0,
           generationImage,
           mapReceipt;
+        const artRequests = [];
         const sprites = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname,
@@ -107,6 +108,7 @@ export async function verifyFoundingLayout(group) {
           if (path.endsWith("/maps/generate")) {
             generatedImages++;
             const body = route.request().postDataJSON();
+            artRequests.push({ target: "map", ...body });
             mapReceipt = {
               id: body.actionId,
               sourceKey: body.sourceKey,
@@ -194,6 +196,11 @@ export async function verifyFoundingLayout(group) {
             payload = route.request().postDataJSON();
             return send(snapshot);
           }
+          if (path.endsWith("/setup/venue-image/generate")) {
+            generatedImages++;
+            artRequests.push({ target: "venue", ...route.request().postDataJSON() });
+            return send({ id: "zone-art", ref: "global-gallery:zone-art", url: generationImage });
+          }
           if (path.includes("/generate")) generatedImages++;
           if (path.endsWith("/personas")) return send({ personas });
           if (path.endsWith("/personas/ada"))
@@ -204,7 +211,8 @@ export async function verifyFoundingLayout(group) {
             return send({ systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" });
           if (path.endsWith("/catalog")) return send({ characters });
           if (path.endsWith("/lorebooks")) return send({ books: [] });
-          if (path.endsWith("/image-style-profiles")) return send({ defaultProfileId: "", profiles: [] });
+          if (path.endsWith("/image-style-profiles"))
+            return send({ defaultProfileId: "fixture-ink", profiles: [{ id: "fixture-ink", name: "Ink" }] });
           return send(snapshot);
         });
         await page.route("**/api/connections", (route) =>
@@ -516,6 +524,43 @@ export async function verifyFoundingLayout(group) {
           await page.screenshot({
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "zone-editing-" + view.width + ".png"),
           });
+        const nameBox = sheet.getByLabel("Venue Name", { exact: true });
+        const appearanceBox = sheet.getByLabel("Appearance", { exact: true });
+        const decoration = (locator) =>
+          locator.evaluate((node) => {
+            const style = getComputedStyle(node);
+            return [style.backgroundColor, style.borderTopColor];
+          });
+        assert.deepEqual(
+          await decoration(nameBox),
+          await decoration(appearanceBox),
+          "Venue name retains the standard input box while unfocused",
+        );
+        await button("Art settings").click();
+        const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
+        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("fixture-ink");
+        await expect
+          .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
+          .toBe("fixture-ink");
+        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("@custom");
+        await artSettings
+          .getByLabel("Scenery style description", { exact: true })
+          .fill("Watercolor with muted teal and warm amber.");
+        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
+        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
+          });
+        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(artSettings).toHaveCount(0);
+        assert.equal(generatedImages, 0, "Changing art settings never generates an image");
+        assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
+        await button("Art settings").click();
+        await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
+          "Watercolor with muted teal and warm amber.",
+        );
+        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
         const image = await page.evaluate(() => {
           const canvas = document.createElement("canvas");
           canvas.width = 1536;
@@ -527,12 +572,27 @@ export async function verifyFoundingLayout(group) {
         });
         generationImage = "data:image/png;base64," + image;
         if (view.width === 1366) {
+          await sheet
+            .getByRole("region", { name: "Zone artwork", exact: true })
+            .getByRole("button", { name: "Generate artwork", exact: true })
+            .click();
+          await expect(sheet.getByRole("img", { name: "Artwork for Common Space", exact: true })).toBeVisible();
           await root
             .getByRole("region", { name: "Village map", exact: true })
             .getByRole("button", { name: "Generate artwork", exact: true })
             .click();
           await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
-          assert.equal(generatedImages, 1, "Direct generation selects its recovered artwork without a source selector");
+          assert.equal(generatedImages, 2, "Zone and map generate only after explicit clicks");
+          assert.deepEqual(
+            artRequests.map((row) => [row.target, row.sceneryStyleProfileId, row.sceneryArtStyle]),
+            [
+              ["venue", null, "Watercolor with muted teal and warm amber."],
+              ["map", null, "Watercolor with muted teal and warm amber."],
+            ],
+            "Map and Venue requests use the same selected art style",
+          );
+          assert.equal(artRequests[1].structure, "A circular Village around a central pond.");
+          assert.equal(artRequests[1].negative, "neon colors");
         } else
           await root
             .getByLabel("Upload map image", { exact: true })
@@ -545,6 +605,21 @@ export async function verifyFoundingLayout(group) {
           await page.addScriptTag({ content: foundingBundle });
           await page.getByRole("button", { name: "Resume founding", exact: true }).click();
           await expect(root).toHaveAttribute("data-step", "2");
+          await expect
+            .poll(() =>
+              page.evaluate(() => [
+                window.featureController.sceneryStyleProfileId,
+                window.featureController.sceneryStyle,
+                window.featureController.setupMapPrompt,
+                window.featureController.setupMapNegativePrompt,
+              ]),
+            )
+            .toEqual([
+              null,
+              "Watercolor with muted teal and warm amber.",
+              "A circular Village around a central pond.",
+              "neon colors",
+            ]);
           assert.deepEqual(
             await page.evaluate(
               () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
@@ -620,7 +695,7 @@ export async function verifyFoundingLayout(group) {
             .map((row) => row.id)
             .sort(),
         );
-        assert.equal(generatedImages, Number(view.width === 1366));
+        assert.equal(generatedImages, 2 * Number(view.width === 1366));
         assert.equal(suggestions, 1);
         await context.close();
       });

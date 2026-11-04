@@ -8,6 +8,7 @@ import { defaultView, MapStage } from "../exploration/MapStage.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
 import { SpriteSetupDialog } from "../residents/SpriteSetupDialog.js";
 import { FoundingPagination } from "./FoundingPagination.js";
+import { FoundingDialog } from "./FoundingDialog.js";
 import {
   FOUNDING_CIRCUMSTANCE_MAX_LENGTH,
   foundingCircumstanceText,
@@ -26,7 +27,7 @@ import { QuickStartVenues } from "./QuickStartVenues.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
 import { useFoundingKeyboardOverlay } from "./useFoundingKeyboardOverlay.js";
 import type { FoundingScreenController } from "./screen-contracts.js";
-import { venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
+import { SceneryStyleFields, venueHasCommon, venueHasPrivate } from "./villages-founding-editor";
 import { type FoundingIssue, foundingVenueIssues } from "./villages-founding-workspace-state";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 const PLACE_ERRORS = {
@@ -115,6 +116,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   } = controller;
   const setupProblem = currentSetupProblem || setupWorkspace.suggestionRequest?.failure || "";
   const [contextView, setContextView] = useState("World rules");
+  const [artSettingsOpen, setArtSettingsOpen] = useState(false);
   const [spriteId, setSpriteId] = useState<string | null>(null);
   const [reviewPage, setReviewPage] = useState(0);
   const availableSpriteIds = setupFoundingVillagerIds.filter((id) => catalog?.some((person) => person.id === id));
@@ -342,7 +344,57 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             ))}
           </ol>
           <h1>Forging the Village</h1>
+          {setupStep === 2 ? (
+            <button
+              type="button"
+              className="villages-founding-art-settings-button"
+              disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
+              onClick={() => setArtSettingsOpen(true)}
+            >
+              Art settings
+            </button>
+          ) : null}
         </header>
+        {setupStep === 2 && artSettingsOpen ? (
+          <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
+            <div className="villages-founding-editor-body">
+              <p>One style for the Village map and all Venue images. Changes apply to new generations.</p>
+              <SceneryStyleFields
+                value={controller.sceneryStyle}
+                profileId={controller.sceneryStyleProfileId}
+                onChange={controller.setSceneryStyle}
+                onProfileChange={controller.setSceneryStyleProfileId}
+              />
+              <label>
+                Map details
+                <textarea
+                  autoComplete="off"
+                  aria-label="Map details"
+                  maxLength={1500}
+                  rows={3}
+                  value={setupMapPrompt}
+                  onChange={(event) => controller.setSetupMapPrompt(event.target.value)}
+                />
+              </label>
+              <label>
+                Exclude from map
+                <textarea
+                  autoComplete="off"
+                  aria-label="Exclude from map"
+                  maxLength={1500}
+                  rows={2}
+                  value={controller.setupMapNegativePrompt}
+                  onChange={(event) => controller.setSetupMapNegativePrompt(event.target.value)}
+                />
+              </label>
+            </div>
+            <footer>
+              <button type="button" onClick={() => setArtSettingsOpen(false)}>
+                Done
+              </button>
+            </footer>
+          </FoundingDialog>
+        ) : null}
         <main className="villages-forging-body" data-step={setupStep}>
           <div hidden={setupStep !== 1}>
             <div className="villages-forging-columns villages-people-columns">
