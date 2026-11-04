@@ -5,28 +5,35 @@ export function QuickStartButton({
   busy,
   disabled,
   pending,
+  failed,
   onGenerate,
 }: {
   busy: boolean;
   disabled?: boolean;
   pending: boolean;
+  failed?: boolean;
   onGenerate(): void;
 }) {
   const [confirming, setConfirming] = useState(false);
   return (
     <>
-      <button type="button" disabled={busy || disabled} onClick={() => setConfirming(true)}>
-        {busy ? "Suggesting…" : pending ? "Check suggestions" : "Suggest details"}
+      <button type="button" disabled={busy || disabled || pending} onClick={() => setConfirming(true)}>
+        {busy ? "Preparing…" : pending ? "Recovering…" : failed ? "Retry" : "Suggest"}
       </button>
       {confirming ? (
         <FoundingDialog
-          title={pending ? "Check suggestions" : "Suggest details"}
+          title={failed ? "Retry" : "Suggest"}
           compact
           showCloseButton={false}
           onClose={() => setConfirming(false)}
         >
           {!pending ? (
-            <p>Suggest this Venue’s name, form and Entrance description. Keep its Zones, residents and map position.</p>
+            <>
+              <p>
+                Replace all starting Venue names, descriptions, Zones and artwork with AI-written Residences and a
+                Community Venue. Images can be added in each Zone afterwards.
+              </p>
+            </>
           ) : null}
           <footer>
             <button type="button" onClick={() => setConfirming(false)}>
@@ -41,7 +48,7 @@ export function QuickStartButton({
                 onGenerate();
               }}
             >
-              Confirm
+              Replace and suggest
             </button>
           </footer>
         </FoundingDialog>

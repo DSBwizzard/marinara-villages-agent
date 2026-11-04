@@ -309,7 +309,6 @@ async function main() {
     assert.ok(client.includes(`"${step}"`));
   }
   assert.ok(client.includes('"/maps/generate"'));
-  assert.ok(client.includes("More options"));
   assert.equal(client.includes("setupMapOptions"), false);
   assert.equal(client.includes("Fit entire map"), false);
   assert.ok(client.includes("mobile={mobile}"));

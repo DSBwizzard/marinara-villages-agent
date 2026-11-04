@@ -88,6 +88,17 @@ const service = createSpriteSetup({
   },
 } as unknown as SpriteSetupPorts);
 
+const emptyDraft = await service.read("empty-character");
+const awaitingFirstSprite = await service.save("empty-character", {
+  ...emptyDraft,
+  useSprites: true,
+  validateForUse: true,
+});
+assert.deepEqual(
+  (await service.preparedManager("empty-character", awaitingFirstSprite.revision))!.assignments,
+  [],
+  "Sprite mode can await its first explicit assignment without inventing a default",
+);
 let draft = await service.prepare("bupkis");
 assert.equal(draft.manager.artwork.length, 2, "only Engine full-body images enter setup");
 assert.deepEqual(

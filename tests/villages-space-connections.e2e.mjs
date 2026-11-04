@@ -50,10 +50,13 @@ await withBrowser(browser, async () => {
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const links = page.getByRole("group", { name: "Connections between spaces" });
     const map = page.getByRole("region", { name: "Zone layout", exact: true });
-    await expect(map.locator("svg line")).toHaveCount(2);
+    await expect(map).toHaveCount(0);
     const before = await page.evaluate(() => window.venue.privateSpaces.map((s) => s.connectedTo));
     await page.getByRole("button", { name: "Change access" }).click();
     assert.deepEqual(await page.evaluate(() => window.venue.privateSpaces.map((s) => s.connectedTo)), before);
+    await expect(map.getByRole("button", { name: "Modify Zone Connections", exact: true })).toHaveCount(0);
+    await page.getByRole("button", { name: "Edit layout", exact: true }).click();
+    await expect(map.locator("svg line")).toHaveCount(2);
     await map.getByRole("button", { name: "Modify Zone Connections", exact: true }).click();
     await map.locator('[data-layout-zone="exterior"]').click();
     await map.locator('[data-layout-zone="kitchen"]').click();
@@ -77,8 +80,12 @@ await withBrowser(browser, async () => {
     await expect(map.locator("svg line")).toHaveCount(2);
     const saved = await page.evaluate(() => JSON.stringify(window.venue));
     await page.evaluate(() => window.remount());
-    await expect(map.locator("svg line")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Edit layout", exact: true })).toBeVisible();
+    await expect(map).toHaveCount(0);
+    await expect(map.getByRole("button", { name: "Modify Zone Connections", exact: true })).toHaveCount(0);
     assert.equal(await page.evaluate(() => JSON.stringify(window.venue)), saved);
+    await page.getByRole("button", { name: "Edit layout", exact: true }).click();
+    await expect(map.locator("svg line")).toHaveCount(2);
     assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "editor fits width " + width);
     await page.getByRole("button", { name: "Edit Upgrade connections" }).click();
     await expect(links.getByRole("button", { name: "Remove connection Exterior to Kitchen" })).toBeDisabled();

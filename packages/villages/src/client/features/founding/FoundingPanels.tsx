@@ -10,9 +10,8 @@ import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { Portrait, PortraitMap, SetupVenueDraft } from "../../shared/types.js";
 import { AvatarFace, readAvatarCrop } from "../residents/ResidentPanels.js";
-import { SpriteSetupDialog } from "../residents/SpriteSetupDialog.js";
 import { startingZone } from "./founding-template.js";
-import { type ReactNode, useId, useState } from "react";
+import { useId, useState } from "react";
 
 /**
  * The founding wizard, in order. One list so the step strip and the screens it
@@ -237,27 +236,24 @@ export function FoundingPersonaSelector({
 }
 
 export function FoundingVillagerPicker({
-  onSpritePrepared,
-  spriteRevisions,
+  onEditSprites,
+  activeId,
   catalog,
   portraits,
   selectedIds,
   onChange,
   disabled,
-  renderBackstory,
 }: {
   catalog: CatalogEntry[] | null;
   portraits: PortraitMap;
   selectedIds: string[];
   onChange(ids: string[]): void;
   disabled: boolean;
-  renderBackstory?(id: string, name: string): ReactNode;
-  onSpritePrepared?(id: string, revision?: number): void;
-  spriteRevisions?: Record<string, number>;
+  onEditSprites(id: string): void;
+  activeId?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [spriteCharacter, setSpriteCharacter] = useState<{ id: string; name: string } | null>(null);
   const selected = selectedIds.map(
     (id) =>
       catalog?.find((person) => person.id === id) ?? {
@@ -277,42 +273,24 @@ export function FoundingVillagerPicker({
   };
   return (
     <section className={ELEMENT_TAG + "-founding-roster"} aria-label="Founding villagers">
-      {spriteCharacter ? (
-        <SpriteSetupDialog
-          characterId={spriteCharacter.id}
-          name={spriteCharacter.name}
-          preserveSelection={spriteRevisions?.[spriteCharacter.id] !== undefined}
-          portrait={portraits[spriteCharacter.id]}
-          onClose={(revision) => {
-            if (revision !== undefined && spriteRevisions?.[spriteCharacter.id] !== undefined)
-              onSpritePrepared?.(spriteCharacter.id, revision);
-            setSpriteCharacter(null);
-          }}
-          onDone={(revision) => {
-            onSpritePrepared?.(spriteCharacter.id, revision);
-            if (!selectedIds.includes(spriteCharacter.id)) onChange([...selectedIds, spriteCharacter.id]);
-            setSpriteCharacter(null);
-          }}
-        />
-      ) : null}
       <div className="villages-people-selected">
         {selected.map((person) => (
-          <div className="villages-selected-villager" key={person.id}>
-            <AvatarFace
-              portrait={portraits[person.id]}
-              name={person.name}
-              className={ELEMENT_TAG + "-identity-card-face"}
-              glyph="person"
-            />
-            <strong className="villages-selected-name">{person.name}</strong>
-            {renderBackstory?.(person.id, person.name)}
+          <div className="villages-selected-villager" key={person.id} data-selected={activeId === person.id}>
             <button
               type="button"
-              className="villages-selected-sprites"
+              className="villages-selected-resident"
               disabled={disabled}
-              onClick={() => setSpriteCharacter({ id: person.id, name: person.name })}
+              aria-label={person.name}
+              aria-pressed={activeId === person.id}
+              onClick={() => onEditSprites(person.id)}
             >
-              Sprites
+              <AvatarFace
+                portrait={portraits[person.id]}
+                name={person.name}
+                className={ELEMENT_TAG + "-identity-card-face"}
+                glyph="person"
+              />
+              <strong className="villages-selected-name">{person.name}</strong>
             </button>
             <button
               type="button"
@@ -374,7 +352,7 @@ export function FoundingVillagerPicker({
                   if (selectedIds.includes(person.id)) toggle(person.id);
                   else {
                     setOpen(false);
-                    setSpriteCharacter({ id: person.id, name: person.name });
+                    toggle(person.id);
                   }
                 }}
               />

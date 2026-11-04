@@ -3,21 +3,8 @@ import type { SetupVenueDraft } from "../../shared/types.js";
 import { newSetupVenue } from "./FoundingPanels.js";
 import { startingZone } from "./founding-template.js";
 
-export type StartingVenueSuggestion = {
-  id: string;
-  name: string;
-  form: string;
-  venueType?: string;
-  description: string;
-  layout: "exterior" | "common" | "private" | "both";
-  connections?: [string, string][];
-  commonName: string;
-  commonPurpose?: string;
-  commonDescription: string;
-  privateName: string;
-  privatePurpose: string;
-  privateDescription?: string;
-};
+export type { FoundingVenueSuggestion as StartingVenueSuggestion } from "../../../shared/contracts/founding.js";
+import type { FoundingVenueSuggestion as StartingVenueSuggestion } from "../../../shared/contracts/founding.js";
 
 /** Bind recovered templates to their intended owners, independently of editable content. */
 export function quickStartIdentity(venues: readonly VillageVenue[]): string {
@@ -90,4 +77,21 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
         ]
       : [],
   };
+}
+
+/** Only an explicit replacement creates the simplified starting set. */
+export function separateFoundingTemplates(residentIds: readonly string[], communityId: string): SetupVenueDraft[] {
+  const used = new Set([communityId]);
+  return quickStartTemplates([
+    ...["player", ...residentIds].map((actor, index) => {
+      let id = `founding-home:${actor}`;
+      while (used.has(id)) id += ":home";
+      used.add(id);
+      return {
+        ...newSetupVenue(id, "residence", 0.5, 0.5, actor === "player", index),
+        residentIds: actor === "player" ? [] : [actor],
+      };
+    }),
+    newSetupVenue(communityId, "community", 0.5, 0.5),
+  ]);
 }

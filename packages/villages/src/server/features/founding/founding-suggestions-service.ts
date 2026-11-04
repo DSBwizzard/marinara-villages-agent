@@ -4,12 +4,11 @@ import type { CapabilityDocumentStore, CapabilityRuntimeLogger } from "@marinara
 import type { DocumentSlot, createDocumentMutator } from "../../adapters/storage/document-store.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest, notFound, safeFailureMessage } from "../../domain/rules/errors.js";
-import type { suggestStartingVenues } from "./founding-drafts.js";
+import type { suggestStartingVenues, generateFoundingVenueImage } from "./founding-drafts.js";
 
 const DOCUMENT = "villages-founding-suggestions";
 // Reloads can briefly overlap in one host. A live owner cannot be declared interrupted by its successor.
 const liveOwners = new WeakMap<CapabilityDocumentStore, Set<string>>();
-type SuggestionInput = Parameters<typeof suggestStartingVenues>[0];
 export type FoundingSuggestions = {
   id: string;
   sourceKey: string;
@@ -17,6 +16,7 @@ export type FoundingSuggestions = {
   status: "running" | "complete" | "failed" | "interrupted";
   error: string;
   result: Awaited<ReturnType<typeof suggestStartingVenues>> | null;
+  imageRequested?: boolean;
 };
 type State = { request: FoundingSuggestions | null; retiredIds: string[] };
 const slot: DocumentSlot<State> = {
@@ -39,6 +39,7 @@ export interface FoundingSuggestionsPorts {
   villagesDocuments(): CapabilityDocumentStore;
   mutateDocument: ReturnType<typeof createDocumentMutator>;
   suggestStartingVenues: typeof suggestStartingVenues;
+  generateFoundingVenueImage?: typeof generateFoundingVenueImage;
   villagesLogger(): CapabilityRuntimeLogger;
 }
 /** Each application owns its admission queue and the lifetime of its suggestion attempts. */
@@ -73,6 +74,11 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
     if (request?.status !== "running" || activeId === request.id || owners!.has(request.id)) return request;
     await mutateDocument(DOCUMENT, slot, (state) => {
       if (state.request?.id !== request.id || state.request.status !== "running") return false;
+      if (state.request.imageRequested && state.request.result) {
+        state.request.status = "complete";
+        request = state.request;
+        return;
+      }
       state.request.status = "interrupted";
       state.request.error =
         "The Venue suggestion request stopped before its result was saved. This attempt may have been billed. Generate again only when you choose.";
@@ -87,6 +93,10 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
     const input = asRecord(value);
     const id = actionId(input.actionId);
     const sourceKey = asTrimmedString(input.sourceKey);
+    if (input.draftEntranceImage !== undefined && typeof input.draftEntranceImage !== "boolean")
+      throw badRequest("Choose whether to draft the Entrance image.");
+    if (input.draftEntranceImage && (input.mode !== "draft-venue" || !ports.generateFoundingVenueImage))
+      throw badRequest("Entrance artwork requires a complete saved Venue draft.");
     if (!sourceKey || sourceKey.length > 20_000)
       throw badRequest("The Venue suggestion request inputs are missing or too long.");
     return serialized(async () => {
@@ -133,15 +143,62 @@ export function createFoundingSuggestions(ports: FoundingSuggestionsPorts) {
         return request;
       }
       activeId = id;
-      void generate(id, structuredClone(input) as SuggestionInput, token);
+      void generate(id, structuredClone(input), token);
       return request;
     });
   }
-  async function generate(id: string, input: SuggestionInput, token: number): Promise<void> {
+  async function generate(id: string, input: Record<string, unknown>, token: number): Promise<void> {
     let result: FoundingSuggestions["result"] = null;
     let error = "";
     try {
       result = await suggestStartingVenues(input);
+      if (input.draftEntranceImage === true) {
+        if (!enabled || token !== lifecycle || activeId !== id) {
+          owners!.delete(id);
+          return;
+        }
+        result.imageError =
+          "The Entrance image attempt was interrupted and may have been billed. The Venue draft is kept; request artwork again only when ready.";
+        await mutateDocument(DOCUMENT, slot, (state) => {
+          if (!enabled || token !== lifecycle || state.request?.id !== id || state.request.status !== "running")
+            throw badRequest("The Venue drafting attempt stopped before Entrance artwork.");
+          state.request.result = structuredClone(result);
+          state.request.imageRequested = true;
+        });
+        // A durable text result and image claim precede dispatch; recovery only reads them.
+        if (!enabled || token !== lifecycle || activeId !== id) {
+          owners!.delete(id);
+          return;
+        }
+        const plan = result.venues.find((venue) => venue.id === input.targetVenueId)!;
+        const source = asRecord(input.targetVenue);
+        try {
+          result.entranceImage = await ports.generateFoundingVenueImage!({
+            ...input,
+            foundingResidentAdmissions: Object.fromEntries(
+              (Array.isArray(source.residentIds) ? source.residentIds : []).map((id) => [
+                id,
+                asRecord(input.foundingResidentAdmissions)[id],
+              ]),
+            ),
+            area: "exterior",
+            zoneName: "Entrance",
+            zonePurpose: "Arrival and approach",
+            venue: {
+              ...source,
+              ...plan,
+              venueClass: Array.isArray(source.classes) ? source.classes[0] : "other",
+              playerHome: asRecord(source.occupancy).playerHome,
+              spaceDescription: plan.commonDescription,
+            },
+            useAssignedVillagerContext: true,
+            useVisualLore: true,
+          });
+          delete result.imageError;
+        } catch (cause) {
+          result.imageError = "The Venue draft is ready, but Entrance artwork failed: " + safeFailureMessage(cause);
+        }
+      }
     } catch (cause) {
       error = safeFailureMessage(cause);
     }

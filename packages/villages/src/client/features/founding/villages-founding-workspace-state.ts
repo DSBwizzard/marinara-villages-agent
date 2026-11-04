@@ -2,7 +2,18 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
-  suggestionRequest?: { id: string; sourceKey: string; quickStart: boolean; venueId?: string; sourceInputs?: string };
+  suggestionRequest?: {
+    id: string;
+    sourceKey: string;
+    quickStart: boolean;
+    separateHomes?: boolean;
+    sourceVenues?: string;
+    venueId?: string;
+    sourceInputs?: string;
+    fullVenue?: boolean;
+    draftEntranceImage?: boolean;
+    failure?: string;
+  };
 
   view: "map" | "details";
   paused: boolean;
@@ -42,7 +53,7 @@ export function foundingVenueIssues(venues: readonly VillageVenue[], existing = 
     if (!existing && (venue.presentation.x === null || venue.presentation.y === null))
       add("placement", "Place this Venue on the map.");
     if (!venue.name.trim()) add("name", "Add a Venue name.");
-    if (!venue.form?.trim()) add("form", "Add its physical form.");
+    if (!venue.form?.trim()) add("form", "Describe what this place looks like.");
     if (!venue.description.trim()) add("description", "Describe the Exterior.", "exterior");
     if (!existing && venue.layoutVersion === 1 && !venue.layout) add("layout", "Choose the Venue’s Zones.");
     if (
