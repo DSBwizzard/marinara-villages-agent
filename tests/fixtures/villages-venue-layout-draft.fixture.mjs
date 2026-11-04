@@ -83,6 +83,13 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await page.evaluate((seed) => (window.seed = seed), seed);
     await page.addScriptTag({ content: bundle.outputFiles[0].text });
     const read = () => page.evaluate(() => window.h.read());
+    const entranceX = async () => {
+      const state = await read();
+      return (
+        state.layouts[state.venueId]?.change.positions ??
+        state.snapshot.settings.venues.find((row) => row.id === state.venueId).zoneLayout
+      ).exterior.x;
+    };
     const tile = () => page.locator('[data-layout-zone="exterior"]');
     const reply = async (index, { fail = false, committed = false } = {}) => {
       const { body, route } = requests[index];
@@ -135,12 +142,12 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
     await expect(dialog).toContainText("Some Zones cannot be reached.");
     await dialog.getByRole("button", { name: "Keep editing", exact: true }).click();
-    await expect(tile()).toHaveAttribute("style", /left: 2%;/);
+    await expect.poll(entranceX).toBe(2);
     assert.equal(requests.length, 0);
     await leave();
     await dialog.getByRole("button", { name: "Discard and leave", exact: true }).click();
     await back();
-    await expect(tile()).toHaveAttribute("style", /left: 0%;/);
+    await expect.poll(entranceX).toBe(0);
     await expect(map.locator("svg line")).toHaveCount(2);
     assert.equal(requests.length, 0, "discard restores all saved positions and links without writing");
     await modify();
@@ -163,7 +170,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect(page.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
     assert.equal((await read()).snapshot.settings.name, "Newer name");
     await page.getByRole("button", { name: "Zones", exact: true }).click();
-    await expect(tile()).toHaveAttribute("style", /left: 1%;/);
+    await expect.poll(entranceX).toBe(1);
     await expect(map.locator("svg line")).toHaveCount(3);
     await tile().press("ArrowRight");
     await leave();
@@ -172,7 +179,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await reply(1, { fail: true });
     await back();
     await expect(page.getByRole("alert")).toContainText("Layout unavailable");
-    await expect(tile()).toHaveAttribute("style", /left: 2%;/);
+    await expect.poll(entranceX).toBe(2);
     await leave();
     await expect.poll(() => requests.length).toBe(3);
     await reply(2);
@@ -181,7 +188,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
     await expect(page.getByRole("button", { name: "Return to Places" })).toBeVisible();
     await back();
-    await expect(tile()).toHaveAttribute("style", /left: 2%;/);
+    await expect.poll(entranceX).toBe(2);
     await tile().press("ArrowRight");
     await leave();
     await expect.poll(() => requests.length).toBe(5);
@@ -202,7 +209,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
       "discard after lost committed response reads actual saved layout without duplicate PUT",
     );
     await back();
-    await expect(tile()).toHaveAttribute("style", /left: 3%;/);
+    await expect.poll(entranceX).toBe(3);
     await expect(map.locator("svg line")).toHaveCount(3);
     await tile().press("ArrowRight");
     await page.evaluate(() => window.h.scene({ id: "scene", status: "active", placeId: "b", zoneId: "exterior" }));
@@ -227,7 +234,7 @@ createRoot(document.getElementById('root')).render(<StrictMode><ConfirmationProv
     await reply(6);
     await expect.poll(async () => Object.keys((await read()).layouts).length).toBe(0);
     await back();
-    await expect(tile()).toHaveAttribute("style", /left: 0%;/);
+    await expect.poll(entranceX).toBe(0);
     assert.deepEqual(dialogs, []);
     assert.deepEqual(errors, []);
     await context.close();

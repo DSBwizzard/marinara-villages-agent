@@ -1,3 +1,4 @@
+import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import type { NarrativeState } from "../models/narrative-model.js";
 import { badGateway } from "../rules/errors.js";
 import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
@@ -28,7 +29,7 @@ export function readNarrativeState(value: unknown): NarrativeState | undefined {
     string(r.id, 600);
     number(r.revision);
     string(r.title, 160);
-    string(r.summary);
+    string(r.summary, FOUNDING_CIRCUMSTANCE_MAX_LENGTH);
     if (!["active", "resolved"].includes(r.status)) fail();
     if (
       !["village", "zone"].includes(r.scope) ||

@@ -1,6 +1,6 @@
 import { contactNeighborIds, type ConnectedSpace } from "./zone-contact.js";
 
-/** Logical rectangles match the rendered percentage boxes at every viewport width. */
+/** Logical rectangles reserve non-overlapping hit areas for saved Zone positions. */
 export const ZONE_TILE = { width: 32, height: 14 } as const;
 export type ZonePosition = { x: number; y: number };
 export type ZoneLayout = Record<string, ZonePosition>;

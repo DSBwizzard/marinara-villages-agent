@@ -1,5 +1,5 @@
 import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
-import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
+import { type DOMAttributes, type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 const P = "marinara-capability-villages";
 
@@ -152,11 +152,15 @@ export function ExplorationMarkers({
   picture,
   frame,
   onNudge,
+  offset,
+  pinInteractions,
 }: {
   pins: ExplorationPin[];
   picture: MobileMapBox;
   frame: MobileMapSize;
   onNudge?(id: string, dx: number, dy: number): void;
+  offset?: { id: string; x: number; y: number } | null;
+  pinInteractions?(pin: ExplorationPin): DOMAttributes<HTMLButtonElement>;
 }) {
   return (
     <>
@@ -167,7 +171,14 @@ export function ExplorationMarkers({
           const top = picture.top + pin.y * picture.height;
           if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
           return (
-            <span key={pin.id} className={P + "-explore-anchor"} style={{ left, top }}>
+            <span
+              key={pin.id}
+              className={P + "-explore-anchor"}
+              style={{
+                left: left + (offset?.id === pin.id ? offset.x : 0),
+                top: top + (offset?.id === pin.id ? offset.y : 0),
+              }}
+            >
               <button
                 type="button"
                 className={P + "-pin " + P + "-explore-marker"}
@@ -195,6 +206,7 @@ export function ExplorationMarkers({
                   event.stopPropagation();
                   pin.onSelect?.();
                 }}
+                {...pinInteractions?.(pin)}
               >
                 <span className={P + "-map-point"} aria-hidden="true" />
                 <span className={P + "-map-label"}>{pin.text}</span>

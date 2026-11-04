@@ -7,12 +7,13 @@ import { newSetupVenue } from "../packages/villages/src/client/features/founding
 import { calculateSetupBeginningSourceKey } from "../packages/villages/src/client/features/founding/calculations.js";
 import {
   quickStartTemplates,
+  separateFoundingTemplates,
   replaceQuickStartVenue,
 } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
 import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingZoneProblem } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
-import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { parsePlace, parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { extractFoundingVenueReply } from "../packages/villages/src/server/domain/rules/founding-venue-reply.js";
 
 const rows = [
@@ -515,4 +516,62 @@ console.log(
     /sixteen/,
   );
   assert.equal(paid, 0, "Capacity rejects before any generation");
+}
+
+{
+  const separate = arrangeQuickStartVenues(
+    separateFoundingTemplates(["a", "b", "c"], "community").map((row) => ({
+      ...row,
+      layout: row.classes?.includes("residence") ? "both" : "common",
+    })),
+  );
+  const collision = separateFoundingTemplates(["a"], "founding-home:a");
+  assert.equal(
+    new Set(collision.map((row) => row.id)).size,
+    3,
+    "Legacy Community IDs never collide with replacement homes",
+  );
+  assert.equal(separate.length, 5);
+  const stored = parsePlaces(separate, new Set(["a", "b", "c"]), true, "community");
+  assert.ok(
+    stored
+      .filter((row) => row.id !== "community")
+      .every(
+        (row) =>
+          row.classes!.length === 1 &&
+          row.classes![0] === "residence" &&
+          row.residentIds!.length + Number(row.occupancy.playerHome) === 1,
+      ),
+  );
+  for (const invalid of [
+    [...separate, newSetupVenue("extra", "other", 0.5, 0.5)],
+    separate.map((row) =>
+      row.id === "founding-home:a" ? { ...row, residentIds: ["a", "b"], residenceCapacity: 2 } : row,
+    ),
+    separate.map((row) =>
+      row.id === "founding-home:a" ? { ...row, classes: ["residence", "workplace"], workerIds: ["a"] } : row,
+    ),
+    separate.map((row) => (row.id === "community" ? { ...row, classes: ["other"] } : row)),
+  ])
+    assert.throws(() => parsePlaces(invalid, new Set(["a", "b", "c"]), true, "community"));
+  const { calculateSetupMapSrc } = await import("../packages/villages/src/client/features/founding/calculations.js");
+  assert.equal(
+    calculateSetupMapSrc({
+      setupMapSource: "simple",
+      setupMapImage: "",
+      setupMapImageSource: "upload",
+      townMapImage: "",
+    }),
+    null,
+    "The grid placeholder never counts as submitted artwork",
+  );
+  assert.equal(
+    calculateSetupMapSrc({
+      setupMapSource: "upload",
+      setupMapImage: "uploaded",
+      setupMapImageSource: "upload",
+      townMapImage: "",
+    }),
+    "uploaded",
+  );
 }

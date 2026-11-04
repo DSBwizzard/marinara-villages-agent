@@ -8,8 +8,7 @@ import {
   reconcileFoundingHome,
   reconcileFoundingRoster,
 } from "../packages/villages/src/client/features/founding/founding-homes.js";
-import { parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
-import { ZonedDate } from "../packages/villages/src/shared/helpers/zoned-date.js";
+import { parsePlace, parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
 
 const actors = [
   { id: "player", name: "Your" },
@@ -89,15 +88,12 @@ rows[0] = assignFoundingPrivateZone(rows[0], "ada-room", "a");
 assert.equal(rows[0].destinations!.a.sleep, "ada-room");
 const restored = JSON.parse(JSON.stringify(rows));
 assert.equal(restored[0].foundingCapacity, null);
-const saved = parsePlaces(
-  restored.map((row: any, index: number) => ({
+assert.throws(() => parsePlaces(restored, new Set(["a", "b"]), true, "community"), /separate Residences/);
+const saved = restored.map((row: any, index: number) =>
+  parsePlace({
     ...row,
     presentation: { ...row.presentation, x: 0.1 + index * 0.2, y: 0.5 },
-  })),
-  new Set(["a", "b"]),
-  true,
-  "community",
-  new ZonedDate("2026-11-02T12:00:00Z", "UTC"),
+  }),
 );
 assert.equal(saved[0].destinations!.a.sleep, "ada-room");
 assert.equal(saved[0].residenceCapacity, 2);

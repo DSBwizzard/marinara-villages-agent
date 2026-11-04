@@ -146,7 +146,7 @@ import { useVenueRequestCommands } from "../features/venues/request-commands.js"
 import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
 import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
-import { useActivitySignal, useCapabilityVisibility } from "../shared/activity.js";
+import { useActivitySignal, useCapabilityVisibility, useVisibleInterval } from "../shared/activity.js";
 import { request } from "../shared/api.js";
 import {
   useInitialVillageLoad,
@@ -506,6 +506,14 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupBeginningSourceKeyRef,
     setupVenuesRef,
   });
+  useVisibleInterval(
+    (signal) => {
+      if (founding.setupWorkspace.suggestionRequest && !founding.setupWorkspace.suggestionRequest.failure)
+        return suggestSetupVenues(undefined, signal);
+    },
+    founding.setupWorkspace.suggestionRequest && !founding.setupWorkspace.suggestionRequest.failure ? 2000 : null,
+    visible && screen === "setup",
+  );
 
   /** Whether the panel is framing a picture: one just picked, or the saved one under revision. */
 
@@ -950,7 +958,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const placeCount = calculatePlaceCount({ snapshot, venuesDraft });
 
-  const placeSetupPin = usePlaceSetupPin({ ...founding, setupMapSrc, setupVenuesRef });
+  const placeSetupPin = usePlaceSetupPin({ ...founding, setupVenuesRef });
 
   const patchSetupVenue = usePatchSetupVenue(founding);
 
