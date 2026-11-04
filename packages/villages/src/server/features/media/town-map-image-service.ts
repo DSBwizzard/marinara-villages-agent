@@ -1,7 +1,7 @@
 import type { inspectVillageImage } from "../../adapters/engine/image-files.js";
 import type { readVillageImageLoreEntries } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection, LoreUse } from "../../../shared/contracts/lore.js";
-import { fittedLoreUse } from "../../domain/rules/lore-context.js";
+import { fittedLoreUse, loreText } from "../../domain/rules/lore-context.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import {
   readLoreTokenBudget,
@@ -13,6 +13,7 @@ import {
   TOWN_MAP_EXPECTED_HEIGHT,
   TOWN_MAP_EXPECTED_WIDTH,
 } from "../../domain/rules/prompt-preset.js";
+import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT } from "../../domain/rules/town-map-prompts.js";
 
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import {
@@ -51,7 +52,11 @@ export function createTownMapImage(ports: TownMapImagePorts) {
     let inspection: LoreInspection | undefined;
     const lore = await readVillageImageLoreEntries(
       ids,
-      [input.setting, typeof input.worldRules === "string" ? input.worldRules : ""].filter(Boolean).join("\n"),
+      loreText(
+        input.setting,
+        input.worldRules,
+        input.structure === DEFAULT_TOWN_MAP_LAYOUT_PROMPT ? "" : input.structure,
+      ),
       900,
       budget,
       (report) => {

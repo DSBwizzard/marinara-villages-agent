@@ -11,7 +11,7 @@ import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gal
 import type { decodeVillageImageDataUrl } from "../../adapters/engine/image-files.js";
 import type { readVillageLore, readVillageImageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
-import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
+import { inspectedLoreUse, loreText } from "../../domain/rules/lore-context.js";
 import type { createFoundingArtworkSources } from "./founding-artwork.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { VillageVenueImage } from "../../domain/models/world.js";
@@ -380,7 +380,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     let imageInspection: LoreInspection | undefined;
     const lore = await readVillageImageLore(
       readSelectedLorebookIds(input.selectedLorebookIds ?? []),
-      `${setting}\n${row.name}\n${row.form}\n${areaDescription}\n${character}`,
+      loreText(setting, row.name, row.form, areaDescription, character, input.zoneName, input.zonePurpose),
       900,
       readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET),
       (report) => {

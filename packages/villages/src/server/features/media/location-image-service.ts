@@ -6,7 +6,7 @@ import type { readZonePictureReference } from "../../adapters/engine/zone-pictur
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
 import type { readVillageImageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
-import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
+import { inspectedLoreUse, loreText, villageLoreContext } from "../../domain/rules/lore-context.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { VillageSnapshot, VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
 import { conflict, notFound } from "../../domain/rules/errors.js";
@@ -119,11 +119,19 @@ export function createLocationImages(ports: LocationImagePorts) {
       now: villageNow(),
     });
     const exterior = targetZone.kind === "exterior";
-    const exteriorContext = [venue.name, venue.form, venue.description].join("\n");
     let inspection: LoreInspection | undefined;
     const lore = await readVillageImageLore(
       village.selectedLorebookIds,
-      `${village.name}\n${village.worldName}\n${village.setting}\n${currentVillageCircumstances(village).join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
+      loreText(
+        village.name,
+        villageLoreContext(village),
+        venue.name,
+        venue.form,
+        venue.description,
+        character,
+        targetZone.name,
+        targetZone.purpose,
+      ),
       900,
       village.loreTokenBudget,
       (report) => {
