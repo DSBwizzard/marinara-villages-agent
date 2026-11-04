@@ -11,6 +11,7 @@ export function ModalDialog({
   showCloseButton = true,
   headerContent,
   headerless = false,
+  className = "",
 }: {
   title: string;
   onClose(): void;
@@ -21,6 +22,7 @@ export function ModalDialog({
   showCloseButton?: boolean;
   headerContent?: ReactNode;
   headerless?: boolean;
+  className?: string;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -36,7 +38,7 @@ export function ModalDialog({
   return (
     <dialog
       ref={dialog}
-      className="villages-founding-dialog"
+      className={`villages-founding-dialog ${className}`.trim()}
       data-compact={compact || undefined}
       data-scroll-body={scrollBody || undefined}
       data-header-input={headerContent ? true : undefined}

@@ -1,5 +1,6 @@
 import { FoundingVenuePages } from "./FoundingVenuePages.js";
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { FoundingDialog } from "./FoundingDialog.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
@@ -26,6 +27,9 @@ export function QuickStartVenues({
   communityVenueId,
   actions,
   mapArtwork,
+  artSettings,
+  saveStatus,
+  onRetrySaving,
 }: {
   venues: SetupVenueDraft[];
   people: { id: string; name: string }[];
@@ -43,8 +47,11 @@ export function QuickStartVenues({
   communityVenueId?: string;
   actions?: ReactNode;
   mapArtwork?: ReactNode;
+  artSettings?: ReactNode;
+  saveStatus?: string;
+  onRetrySaving?(): void;
 }) {
-  const dialog = useRef<HTMLElement>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const zoneFields = useRef<HTMLFieldSetElement>(null);
   const zoneName = useRef<HTMLInputElement>(null);
   const fieldId = useId();
@@ -56,7 +63,7 @@ export function QuickStartVenues({
   ];
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
-  const open = !!selected;
+  const open = editorOpen && !!selected;
   const issues = foundingVenueIssues(venues, false);
   const actors = [{ id: "player", name: "You" }, ...people];
   const patch = (venue: SetupVenueDraft) => {
@@ -74,6 +81,18 @@ export function QuickStartVenues({
   useEffect(() => {
     if (zoneId !== "exterior" && !zone) setZoneId("exterior");
   }, [zoneId, zone]);
+  useEffect(() => {
+    if (focusIssue && focusIssue.field !== "placement") setEditorOpen(true);
+  }, [focusIssue]);
+  useEffect(() => {
+    if (!open || !focusIssue) return;
+    const frame = requestAnimationFrame(() => {
+      const target = zoneFields.current?.closest("dialog")?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      target?.focus();
+      target?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, focusIssue]);
   const zoneAccess = zone && selected ? (zone.access ?? draftZonePolicy(selected, zone, personal)) : undefined;
   const area = zoneId === "exterior" ? "exterior" : personal ? "private" : "interior";
   const artworkZone = zone;
@@ -141,6 +160,7 @@ export function QuickStartVenues({
                 type="button"
                 className="villages-quick-venue-card"
                 aria-label={venue.name || "Venue"}
+                aria-haspopup="dialog"
                 aria-pressed={selected?.id === venue.id}
                 data-venue-id={venue.id}
                 data-selected={selected?.id === venue.id}
@@ -148,36 +168,43 @@ export function QuickStartVenues({
                 style={
                   venue.presentation.image
                     ? {
-                        backgroundImage: `linear-gradient(90deg,#0c1830ed,#0c183044),url(${JSON.stringify(venue.presentation.image.url)})`,
+                        backgroundImage: `linear-gradient(0deg,#0c1830f2,transparent),url(${JSON.stringify(venue.presentation.image.url)})`,
                       }
                     : undefined
                 }
                 onClick={() => {
                   onSelect(venue);
-                  if (window.matchMedia("(max-width:727px)").matches)
-                    requestAnimationFrame(() => dialog.current?.scrollIntoView({ block: "start" }));
+                  setEditorOpen(true);
                 }}
               >
                 <span className="villages-quick-venue-title">
                   <strong>{venue.name || "Venue"}</strong>
                   <span className="villages-quick-venue-badge">{community ? "Community" : "Residence"}</span>
                 </span>
-                <span className="villages-quick-household" aria-hidden={!home || undefined}>
-                  {members.map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident").join(", ")}
+                <span className="villages-quick-household">
+                  {home
+                    ? members.map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident").join(", ")
+                    : "Everyone"}
                 </span>
               </button>
             );
           })}
         </FoundingVenuePages>
+        {!open && (saveError || problem) ? <p role="alert">{saveError || problem}</p> : null}
       </section>
-      <section
-        hidden={!open}
-        ref={dialog}
-        className="villages-forging-card villages-quick-dialog"
-        aria-label={selected ? `Edit ${selected.name || "Venue"}` : "Edit Venue"}
-      >
-        {selected ? (
-          <Fragment key={selected.id}>
+      {open && selected ? (
+        <FoundingDialog
+          title="Edit Venue"
+          className="villages-quick-dialog"
+          headerContent={
+            <>
+              <h3>Edit Venue</h3>
+              {artSettings}
+            </>
+          }
+          onClose={() => setEditorOpen(false)}
+        >
+          <div className="villages-quick-editor-body" key={selected.id}>
             <fieldset className="villages-quick-venue-header" disabled={busy || imageBusy}>
               <label>
                 Venue name
@@ -343,14 +370,25 @@ export function QuickStartVenues({
                 </div>
               </fieldset>
             </section>
-            {saveError || problem ? (
-              <footer className="villages-quick-footer">
-                <p role="alert">{saveError || problem}</p>
-              </footer>
+          </div>
+          <footer className="villages-quick-footer">
+            {saveError || problem ? <p role="alert">{saveError || problem}</p> : null}
+            {saveStatus ? (
+              <span role="status" className="villages-forging-saved">
+                {saveStatus}
+              </span>
             ) : null}
-          </Fragment>
-        ) : null}
-      </section>
+            {saveError && onRetrySaving ? (
+              <button type="button" onClick={onRetrySaving}>
+                Retry saving draft
+              </button>
+            ) : null}
+            <button type="button" className="villages-forging-primary" onClick={() => setEditorOpen(false)}>
+              Done
+            </button>
+          </footer>
+        </FoundingDialog>
+      ) : null}
       <section className="villages-forging-card villages-quick-map-panel" aria-label="Village map">
         <div className="villages-quick-map-toolbar">
           <h2>Village map</h2>

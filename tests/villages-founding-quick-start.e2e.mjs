@@ -150,7 +150,21 @@ await withBrowser(browser, async () => {
       await page.goto("http://page-three.test/");
       const sheet = page.locator(".villages-quick-dialog");
       const button = (name) => page.getByRole("button", { name, exact: true });
+      await expect(sheet).toHaveCount(0);
+      const first = page.locator('[data-venue-id="founding-home:player"]');
+      await first.click();
       await expect(sheet).toBeVisible();
+      await expect(sheet).toHaveAttribute("open", "");
+      await sheet.getByLabel("Appearance", { exact: true }).fill("A timber cottage");
+      await sheet.getByRole("button", { name: "Done", exact: true }).click();
+      await expect(sheet).toHaveCount(0);
+      await expect(first).toBeFocused();
+      await first.click();
+      await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A timber cottage");
+      await page.keyboard.press("Escape");
+      await expect(sheet).toHaveCount(0);
+      await expect(first).toBeFocused();
+      await first.click();
       assert.equal(calls, 0);
       await expect(button("+ Add home")).toHaveCount(0);
       await expect(button("+ Add Venue")).toHaveCount(0);
@@ -159,14 +173,12 @@ await withBrowser(browser, async () => {
       await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
       await expect(sheet.getByRole("switch")).toHaveCount(0);
-      const first = page.locator('[data-venue-id="founding-home:player"]');
-      await first.click();
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
       await expect(button("Edit layout")).toBeVisible();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Remove Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
-      await expect(zone("exterior")).toHaveAttribute("data-draggable", "false");
+      await expect(sheet.locator(".villages-zone-map")).toHaveCount(0);
       const originalVenues = await page.evaluate(() => window.quickState.venues);
       await button("Edit layout").click();
       await expect(button("Finish layout")).toBeVisible();
@@ -280,14 +292,14 @@ await withBrowser(browser, async () => {
       assert.ok((await compactCanvas.boundingBox()).height < 230, "Sparse graphs trim unused bottom space");
       await button("Add Zone").click();
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
-      const addedZone = await sheet
-        .getByRole("group", { name: "Selected Zone", exact: true })
-        .getAttribute("data-zone-id");
+      const addedZone = await sheet.locator(".villages-quick-selected-zone").getAttribute("data-zone-id");
+      await button("Finish layout").click();
       await sheet.getByLabel("Zone name", { exact: true }).fill("Reading nook");
       await sheet.getByLabel("Zone name", { exact: true }).press("Enter");
       await expect(sheet.getByRole("heading", { name: "Reading nook", exact: true })).toBeVisible();
       await button("Rename Zone").click();
       await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
+      await button("Edit layout").click();
       const beforeConnect = await page.evaluate(() => window.quickState.venues);
       await button("Modify Zone Connections").click();
       assert.deepEqual(
@@ -305,7 +317,7 @@ await withBrowser(browser, async () => {
           ),
         )
         .toBe(true);
-      await button("Done").click();
+      await sheet.locator(".villages-zone-map").getByRole("button", { name: "Done", exact: true }).click();
       await button("Remove Zone").click();
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
       await expect(zone("exterior")).toHaveAttribute("aria-pressed", "true");
@@ -315,7 +327,7 @@ await withBrowser(browser, async () => {
       await button("Finish layout").click();
       await expect(button("Add Zone")).toHaveCount(0);
       await expect(button("Modify Zone Connections")).toHaveCount(0);
-      await expect(zone("exterior")).toHaveAttribute("data-draggable", "false");
+      await expect(sheet.locator(".villages-zone-map")).toHaveCount(0);
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues),
         beforeFinish,
@@ -361,9 +373,11 @@ await withBrowser(browser, async () => {
       await expect.poll(() => first.evaluate((node) => node.style.backgroundImage)).toContain("data:image");
       await expect(first.locator("img")).toHaveCount(0);
       const confirm = async () => {
+        if (await sheet.count()) await sheet.getByRole("button", { name: "Done", exact: true }).click();
         await button(calls && receipt?.status === "failed" ? "Retry" : "Suggest").click();
         await page.getByRole("dialog").getByRole("button", { name: "Replace and suggest", exact: true }).click();
       };
+      await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await button("Suggest").click();
       await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
       assert.equal(calls, 0);
@@ -380,6 +394,7 @@ await withBrowser(browser, async () => {
             .every((row) => row.privateSpaces.length === 1 && Object.keys(row.destinations).length === 1),
         ),
       );
+      await first.click();
       await zone("private:base").click();
       await expect(access).toBeChecked();
       const personalBefore = await page.evaluate(() => window.quickState.venues[0]);

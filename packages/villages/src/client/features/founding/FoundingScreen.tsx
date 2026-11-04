@@ -148,6 +148,13 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   }, [setupStep, screen]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const mapUpload = useRef<HTMLInputElement>(null);
+  const draftStatus = draftSaveError
+    ? "Draft not saved"
+    : draftSaving
+      ? "Saving…"
+      : draftSavedAt
+        ? `Saved ${new Date(draftSavedAt).toLocaleTimeString()}`
+        : "Preparing draft storage…";
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);
   const cameraSource = useRef<string | null>(null);
   useEffect(() => {
@@ -592,6 +599,17 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             <div className="villages-founding-places">
               <QuickStartVenues
                 venues={setupVenues}
+                saveStatus={draftStatus}
+                onRetrySaving={() => void retrySetupSaving()}
+                artSettings={
+                  <button
+                    type="button"
+                    disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
+                    onClick={() => setArtSettingsOpen(true)}
+                  >
+                    Art settings
+                  </button>
+                }
                 actions={
                   <QuickStartButton
                     busy={busy || setupSuggestionsBusy}
@@ -828,13 +846,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             </button>
           ) : null}
           <span role="status" className="villages-forging-saved">
-            {draftSaveError
-              ? "Draft not saved"
-              : draftSaving
-                ? "Saving…"
-                : draftSavedAt
-                  ? `Saved ${new Date(draftSavedAt).toLocaleTimeString()}`
-                  : "Preparing draft storage…"}
+            {draftStatus}
           </span>
           <button
             type="button"
