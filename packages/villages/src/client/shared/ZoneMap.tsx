@@ -125,9 +125,10 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
             data-draggable={!!onPositions}
             className="villages-zone-map-tile"
             style={{
-              left: `${layout[zone.id].x}%`,
+              left: `${layout[zone.id].x + ZONE_TILE.width / 2}%`,
               top: `${layout[zone.id].y}%`,
-              width: `${ZONE_TILE.width}%`,
+              width: `min(${ZONE_TILE.width}%, 12rem)`,
+              transform: "translateX(-50%)",
               height: `${ZONE_TILE.height}%`,
             }}
             aria-pressed={connecting ? first === zone.id : selectedId === zone.id}

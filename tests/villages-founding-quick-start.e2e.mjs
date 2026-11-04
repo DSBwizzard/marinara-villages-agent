@@ -43,6 +43,9 @@ function Harness(){
  const select=venue=>{setSelected(venue.id);setMoving(null);setWorkspace(state=>({...state,view:'details',paused:true}))};
  const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
  window.quickState={venues,workspace,authored,suggestionsKey:key,problem,moving};
+ window.legacyPolicy=()=>setVenues(rows=>rows.map(row=>row.id!=='founding-home:player'?row:{...row,
+ access:{version:1,revision:0,managerIds:['player'],visitorHours:null,permissions:[],bans:[],exceptions:[],changes:[],visitDenials:[],receipts:{}},
+ spaces:row.spaces.map(zone=>zone.id!=='common:base'?zone:{...zone,access:{mode:'public',managerIds:null,memberIds:[],memberRoles:[],inviterIds:[],visitorHours:'inherit',accompanied:false}})}));
  window.editDuringRequest=()=>patch('founding-home:player',row=>({...row,form:'A newer manual description'}));
  return <><style>{VILLAGES_FORGING_STYLES}</style><div className='villages-forging-v2'><header className='villages-forging-heading'><h1>Founding Venues</h1></header><main className='villages-forging-body'>
  <QuickStartVenues communityVenueId='community' venues={venues} people={people} selectedId={selected} busy={busy} imageBusy={false} focusIssue={null} problem={problem} map={<p>Map preview</p>} onSelect={select} onPatch={venue=>patch(venue.id,()=>venue)} onGenerateImage={()=>{}} onUploadImage={upload}
@@ -151,26 +154,45 @@ await withBrowser(browser, async () => {
       await expect(button("+ Add home")).toHaveCount(0);
       await expect(button("+ Add Venue")).toHaveCount(0);
       await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
-      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeHidden();
+      await expect(sheet.getByRole("combobox")).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Zones", exact: true })).toHaveCount(0);
+      await expect(sheet.getByRole("button", { name: "Venue", exact: true })).toHaveCount(0);
+      await expect(sheet.getByRole("switch")).toHaveCount(0);
       const first = page.locator('[data-venue-id="founding-home:player"]');
       await first.click();
-      await expect(first).toHaveAttribute("aria-pressed", "true");
-      await sheet.getByRole("button", { name: "Zones", exact: true }).click();
-      const zones = sheet.getByRole("combobox", { name: "Selected Zone", exact: true });
-      await zones.selectOption("common:base");
-      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
+      await zone("common:base").click();
+      await page.evaluate(() => window.legacyPolicy());
+      const access = sheet.getByRole("switch", { name: "Restricted access", exact: true });
+      await expect(access).not.toBeChecked();
+      const preserved = await page.evaluate(() => window.quickState.venues[0]);
+      await access.check();
+      const expected = structuredClone(preserved);
+      expected.spaces[0].access.mode = "permission-required";
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues[0]),
+        expected,
+        "Access changes preserve manager-owned legacy sleeping destinations and all unrelated fields",
+      );
+      await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
+      expected.spaces[0].name = "Front Office";
+      await sheet.getByLabel("Appearance", { exact: true }).fill("A converted school bus");
+      expected.form = "A converted school bus";
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues[0]),
+        expected,
+        "Text edits preserve ownership, access and sleeping data",
+      );
       const upload = sheet.getByLabel("Upload Zone image", { exact: true });
       const file = { name: "zone.png", mimeType: "image/png", buffer: Buffer.from("fixture") };
       await upload.setInputFiles(file);
-      await expect(sheet.getByRole("img", { name: "Artwork for Common Space", exact: true })).toBeVisible();
-      await zones.selectOption("exterior");
-      await sheet.getByRole("button", { name: "Artwork", exact: true }).click();
+      await expect(sheet.getByRole("img", { name: "Artwork for Front Office", exact: true })).toBeVisible();
+      await zone("exterior").click();
+      await expect(access).toHaveCount(0);
       await expect(sheet.getByRole("img")).toHaveCount(0);
       await upload.setInputFiles(file);
       await expect.poll(() => first.evaluate((node) => node.style.backgroundImage)).toContain("data:image");
       await expect(first.locator("img")).toHaveCount(0);
-      await sheet.getByRole("button", { name: "Venue", exact: true }).click();
-      await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeHidden();
       const confirm = async () => {
         await button(calls && receipt?.status === "failed" ? "Retry" : "Suggest").click();
         await page.getByRole("dialog").getByRole("button", { name: "Replace and suggest", exact: true }).click();
@@ -191,6 +213,19 @@ await withBrowser(browser, async () => {
             .every((row) => row.privateSpaces.length === 1 && Object.keys(row.destinations).length === 1),
         ),
       );
+      await zone("private:base").click();
+      await expect(access).toBeChecked();
+      const personalBefore = await page.evaluate(() => window.quickState.venues[0]);
+      await access.uncheck();
+      const personalExpected = structuredClone(personalBefore);
+      personalExpected.privateSpaces[0].access.mode = "public";
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues[0]),
+        personalExpected,
+        "Making a personal Zone public keeps its owner and sleeping assignment",
+      );
+      await access.check();
+      assert.deepEqual(await page.evaluate(() => window.quickState.venues[0]), personalBefore);
       failReply = true;
       await confirm();
       await expect(button("Retry")).toBeVisible();

@@ -93,6 +93,18 @@ await withBrowser(browser, async () => {
     for (const width of [1366, 736, 390, 320]) {
       await f.page.setViewportSize({ width, height: 1000 });
       await assertNoOverlap(map);
+      const metrics = await map.locator("[data-layout-zone]").evaluateAll((nodes) =>
+        nodes.map((node) => ({
+          width: node.getBoundingClientRect().width,
+          height: node.getBoundingClientRect().height,
+          limit: parseFloat(getComputedStyle(document.documentElement).fontSize) * 12,
+        })),
+      );
+      assert.ok(
+        metrics.every((tile) => tile.width <= tile.limit + 1 && tile.height >= 44),
+        "Nodes stay compact with full-height touch targets",
+      );
+      assert.equal(f.requests.length, 1, "Resizing visual nodes never rewrites saved coordinates");
     }
     await f.finish();
   });

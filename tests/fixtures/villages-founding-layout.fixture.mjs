@@ -244,10 +244,9 @@ export async function verifyFoundingLayout(group) {
           )
             await root.getByRole("button", { name: "Next Venues page", exact: true }).click();
         };
-        const editVenue = async (id, tab = "Venue") => {
+        const editVenue = async (id) => {
           await showVenue(id);
           await root.locator('[data-venue-id="' + id + '"]').click();
-          await sheet.getByRole("button", { name: tab, exact: true }).click();
         };
 
         const bounds = async (phase) => {
@@ -489,9 +488,34 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("button", { name: "+ Add Venue", exact: true })).toHaveCount(0);
         await editVenue("founding-home:player");
         await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
-        await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeHidden();
-        await sheet.getByRole("button", { name: "Zones", exact: true }).click();
-        await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeVisible();
+        await expect(sheet.getByRole("group", { name: "Venue sections", exact: true })).toHaveCount(0);
+        await expect(sheet.getByRole("combobox")).toHaveCount(0);
+        await expect(sheet.getByRole("switch")).toHaveCount(0);
+        const common = sheet.locator('[data-layout-zone="common:base"]');
+        if (view.width === 390) await common.tap();
+        else await common.click();
+        await expect(sheet.getByRole("group", { name: "Selected Zone", exact: true })).toHaveAttribute(
+          "data-zone-id",
+          "common:base",
+        );
+        await expect(sheet.getByRole("switch", { name: "Restricted access", exact: true })).toBeVisible();
+        await expect(
+          sheet
+            .getByRole("region", { name: "Zone artwork", exact: true })
+            .getByRole("button", { name: "Generate artwork", exact: true }),
+        ).toBeVisible();
+        if (view.width === 2550) {
+          const name = await sheet.getByLabel("Venue Name", { exact: true }).boundingBox();
+          const appearance = await sheet.getByLabel("Appearance", { exact: true }).boundingBox();
+          const details = await sheet.getByRole("group", { name: "Selected Zone", exact: true }).boundingBox();
+          const artwork = await sheet.getByRole("region", { name: "Zone artwork", exact: true }).boundingBox();
+          assert.ok(name.x + name.width <= appearance.x, "Name and Appearance share the desktop header");
+          assert.ok(details.x + details.width <= artwork.x, "Zone details and artwork sit beside each other");
+        }
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "zone-editing-" + view.width + ".png"),
+          });
         const image = await page.evaluate(() => {
           const canvas = document.createElement("canvas");
           canvas.width = 1536;
@@ -503,7 +527,10 @@ export async function verifyFoundingLayout(group) {
         });
         generationImage = "data:image/png;base64," + image;
         if (view.width === 1366) {
-          await button("Generate artwork").click();
+          await root
+            .getByRole("region", { name: "Village map", exact: true })
+            .getByRole("button", { name: "Generate artwork", exact: true })
+            .click();
           await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
           assert.equal(generatedImages, 1, "Direct generation selects its recovered artwork without a source selector");
         } else
