@@ -354,6 +354,31 @@ export async function verifyFoundingLayout(group) {
         await expect(root.getByRole("region", { name: "Housing", exact: true })).toHaveCount(0);
         await expect(root.getByLabel("Community Venue", { exact: true })).toHaveCount(0);
         await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
+        const cards = await root.locator(".villages-quick-venue-card").evaluateAll((nodes) =>
+          nodes.map((node) => ({
+            height: node.getBoundingClientRect().height,
+            badgeTop:
+              node.querySelector(".villages-quick-venue-badge").getBoundingClientRect().top -
+              node.getBoundingClientRect().top,
+            badgeRight:
+              node.getBoundingClientRect().right -
+              node.querySelector(".villages-quick-venue-badge").getBoundingClientRect().right,
+          })),
+        );
+        assert.ok(
+          cards.every((card) => card.height >= 76),
+          "Taller Venue bars expose more artwork",
+        );
+        assert.ok(
+          cards.every(
+            (card) =>
+              Math.abs(card.badgeTop - cards[0].badgeTop) <= 1 && Math.abs(card.badgeRight - cards[0].badgeRight) <= 1,
+          ),
+          "Residence and Community badges share one alignment",
+        );
+        await expect(
+          root.locator('[data-venue-id="founding-community"]').getByText("Community", { exact: true }),
+        ).toHaveCount(1);
         const mapCanvas = root.locator(".villages-quick-map");
         const marker = mapCanvas.locator('[data-pin-id="founding-home:player"]');
         await marker.scrollIntoViewIfNeeded();
@@ -445,7 +470,14 @@ export async function verifyFoundingLayout(group) {
           await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
         }
         assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 2);
-        await expect(button("Review village")).toBeDisabled();
+        const mapWarning = root.getByText("Upload or generate a map image before continuing.", { exact: true });
+        await expect(mapWarning).toHaveCount(0);
+        await expect(button("Review village")).toBeEnabled();
+        await button("Review village").click();
+        await expect(root).toHaveAttribute("data-step", "2");
+        await expect(mapWarning).toBeVisible();
+        assert.deepEqual(await root.boundingBox(), frame, "Validation does not resize the Founding window");
+        assert.equal(await mapWarning.evaluate((node) => getComputedStyle(node).color), "rgb(255, 155, 165)");
         await expect(root.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
         await expect(root.getByRole("button", { name: "+ Add home", exact: true })).toHaveCount(0);
         await expect(root.getByRole("button", { name: "+ Add Venue", exact: true })).toHaveCount(0);
@@ -473,6 +505,7 @@ export async function verifyFoundingLayout(group) {
             .getByLabel("Upload map image", { exact: true })
             .setInputFiles({ name: "map.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") });
         await expect(button("Review village")).toBeEnabled();
+        await expect(mapWarning).toHaveCount(0);
         if (view.width === 1366) {
           await button("Exit").click();
           await page.reload();
@@ -512,11 +545,17 @@ export async function verifyFoundingLayout(group) {
               .every((row) => row.residentIds.length + Number(row.occupancy.playerHome) === 1),
           ),
         );
-        if (view.width > 1000) {
+        if (view.width > 1100) {
           const options = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
           const map = await root.getByRole("region", { name: "Village map", exact: true }).boundingBox();
-          assert.ok(map.x >= options.x + options.width, "Venue map sits beside actual Venue cards on desktop");
-          assert.ok(map.width >= options.width, "Playable map gets the larger column");
+          const editor = await sheet.boundingBox();
+          assert.ok(editor.x >= options.x + options.width, "The editor has its own middle column");
+          assert.ok(map.x >= editor.x + editor.width, "The map sits beside the editor");
+          assert.ok(editor.width > map.width, "Editing has priority over map width");
+          assert.ok(
+            Math.abs(editor.height - map.height) <= 1 && Math.abs(editor.height - options.height) <= 1,
+            "All three panels use the whole available height",
+          );
         }
         await bounds("venues");
         await button("Review village").click();

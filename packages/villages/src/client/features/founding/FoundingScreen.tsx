@@ -576,6 +576,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     </button>
                     <input
                       ref={mapUpload}
+                      autoComplete="off"
                       hidden
                       aria-label="Upload map image"
                       type="file"
@@ -792,7 +793,11 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
           >
             Exit
           </button>
-          {setupStep === 2 && !setupMapSrc ? <span role="status">Upload or generate a map to continue.</span> : null}
+          {setupStep === 2 && validatedFields.includes("map") && !setupMapSrc ? (
+            <span role="alert" className="villages-forging-map-warning">
+              Upload or generate a map image before continuing.
+            </span>
+          ) : null}
           <button
             type="button"
             className="villages-forging-primary"
@@ -803,7 +808,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
               setupSuggestionsBusy ||
               setupVenueBusy ||
               !!draftSaveError ||
-              (setupStep === 2 && (!setupMapSrc || setupMapBusy || !!setupMapRequest))
+              (setupStep === 2 && (setupMapBusy || !!setupMapRequest))
             }
             onClick={() => {
               if (spriteWorking.current) return;
@@ -815,6 +820,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                   "connections",
                   "place-name",
                   "place-setting",
+                  ...(setupStep === 2 ? ["map"] : []),
                   ...(setupStep >= 1
                     ? [
                         "persona",
@@ -825,6 +831,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                     : []),
                 ]),
               ]);
+              if (setupStep === 2 && !setupMapSrc) return;
               if (setupStep === 2 && setupIssues.length) {
                 setSetupShowIssues(true);
                 openIssue(setupIssues[0]);

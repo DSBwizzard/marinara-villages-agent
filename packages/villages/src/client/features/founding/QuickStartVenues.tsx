@@ -184,13 +184,11 @@ export function QuickStartVenues({
               >
                 <span className="villages-quick-venue-title">
                   <strong>{venue.name || "Venue"}</strong>
-                  <span className="villages-quick-venue-badge">{community ? "Community Venue" : "Residence"}</span>
+                  <span className="villages-quick-venue-badge">{community ? "Community" : "Residence"}</span>
                 </span>
-                {home ? (
-                  <span className="villages-quick-household">
-                    {members.map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident").join(", ")}
-                  </span>
-                ) : null}
+                <span className="villages-quick-household" aria-hidden={!home || undefined}>
+                  {members.map((id) => actors.find((actor) => actor.id === id)?.name ?? "Resident").join(", ")}
+                </span>
               </button>
             );
           })}
@@ -265,6 +263,7 @@ export function QuickStartVenues({
                 <label>
                   Zone
                   <select
+                    autoComplete="off"
                     aria-label="Selected Zone"
                     disabled={busy || imageBusy}
                     value={zoneId}
