@@ -9,7 +9,14 @@ import {
   scheduleSemanticSource,
   type RoutineProfile,
 } from "../packages/villages/src/server/domain/rules/owned-routine.js";
-import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  applyRelationshipReview,
+  defaultRelationshipState,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import {
+  emptyRelationshipReview,
+  parseRelationshipReview,
+} from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
 import { semanticContinuationKey } from "../packages/villages/src/server/domain/rules/semantic-continuity.js";
 import { semanticHash } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
@@ -409,9 +416,11 @@ await influence.queue("a");
 assert(scheduleJob);
 resident.scheduleInfluence!.categories.rhythm = true;
 assert.equal(influence.handler.valid(state, scheduleJob.input), false, "A superseded settings result cannot apply");
-for (const privateHistory of [false, true]) {
+for (const historyKind of ["culture", "private", "marriage"]) {
+  const privateHistory = historyKind === "private",
+    marriage = historyKind === "marriage";
   const world = defaultVillageState();
-  world.seed = "lore-history-" + privateHistory;
+  world.seed = "lore-history-" + historyKind;
   world.foundedAt = new Date().toISOString();
   world.selectedLorebookIds = ["world-book"];
   world.villagers = ["a", "b"].map((id) => ({
@@ -420,9 +429,11 @@ for (const privateHistory of [false, true]) {
     cardSnapshot: { id, name: id, description: "A member of the Tidewatch Guild.", sourceStatus: "available" },
   })) as any;
   world.relationshipContext = defaultRelationshipState(world.seed);
-  const reference = privateHistory
-    ? "Only a knows that b secretly left the guild."
-    : "Guild members greet strangers politely. Membership alone establishes no meeting.";
+  let reference = marriage
+    ? "a and b are married."
+    : privateHistory
+      ? "Only a knows that b secretly left the guild."
+      : "Guild members greet strangers politely. Membership alone establishes no meeting.";
   let job: any,
     capturedMessages: any,
     reads = 0;
@@ -488,7 +499,17 @@ for (const privateHistory of [false, true]) {
                   history: [{ text: reference, sourceIds: ["lore:0"], knownBy: ["a"] }],
                 },
               ]
-            : [],
+            : marriage
+              ? ["a", "b"].map((fromId) => ({
+                  fromId,
+                  toId: fromId === "a" ? "b" : "a",
+                  connection: "Married",
+                  stance: "Their spouse",
+                  expectations: [],
+                  concerns: [],
+                  history: [{ text: reference, sourceIds: ["lore:0"], knownBy: ["a", "b"] }],
+                }))
+              : [],
           conflicts: [],
         }),
       };
@@ -507,7 +528,7 @@ for (const privateHistory of [false, true]) {
   assert(capturedMessages[1].content.includes(reference));
   starting.handler.apply(world, job.input, result);
   await starting.applySaved();
-  assert.equal(Object.keys(world.relationshipContext.edges).length, privateHistory ? 1 : 0);
+  assert.equal(Object.keys(world.relationshipContext.edges).length, marriage ? 2 : privateHistory ? 1 : 0);
   assert.deepEqual(
     world.semanticStartingTies?.lore?.map((entry) => entry.bookName),
     ["Guild history"],
@@ -525,6 +546,68 @@ for (const privateHistory of [false, true]) {
       ["a"],
       "Starting history preserves asymmetric knowers without promoting b or the player",
     );
+  }
+  if (marriage) {
+    for (const edge of Object.values(world.relationshipContext.edges)) {
+      assert.equal(edge.connection, "Married");
+      assert.deepEqual(Object.values(edge.records)[0]!.knownBy, ["a", "b"]);
+    }
+    assert.equal(Object.keys(world.relationshipContext.grants).length, 0, "Authored marriage grants no access");
+    const line = {
+      id: "separation",
+      speakerId: "a",
+      role: "assistant" as const,
+      content: "Our marriage is over.",
+      heardBy: ["a", "b"],
+      playerHeard: false,
+    };
+    const after = { connection: "Separated", stance: "Former spouse", expectations: [], concerns: [], records: [] };
+    const review = parseRelationshipReview(
+      {
+        ...emptyRelationshipReview(),
+        changes: ["a", "b"].map((fromId) => ({
+          fromId,
+          toId: fromId === "a" ? "b" : "a",
+          expectedRevision: 1,
+          sceneAfter: after,
+          liveAfter: after,
+          reason: "Witnessed separation",
+          lineIds: [line.id],
+        })),
+      },
+      "separation",
+      [line],
+      world,
+    );
+    applyRelationshipReview(world.relationshipContext, review, world, "separation", new Date().toISOString());
+    const separated = structuredClone(world.relationshipContext);
+    await starting.applySaved();
+    await starting.queue();
+    assert.deepEqual(world.relationshipContext, separated, "Original marriage lore cannot replay over a separation");
+    assert.equal(reads, 1, "Played residents do not repeat starting-history retrieval");
+
+    reference = "a and b have reconciled and are married again.";
+    await starting.queue();
+    assert.equal(reads, 1, "Editing external lore alone does not reinitialize played residents");
+    assert.deepEqual(world.relationshipContext, separated);
+
+    world.villagers.push({
+      ...world.villagers[0]!,
+      characterId: "c",
+      cardSnapshot: { ...world.villagers[0]!.cardSnapshot, id: "c", name: "c" },
+    });
+    await starting.queue();
+    assert.equal(reads, 2, "A new resident retrieves the edited lore for their own starting history");
+    assert.equal(job.input.sources.find((source: any) => source.id === "lore:0").content, "Guild: " + reference);
+    starting.handler.apply(world, job.input, await starting.handler.generate(job.input));
+    await starting.applySaved();
+    assert.deepEqual(
+      world.relationshipContext.edges,
+      separated.edges,
+      "Even a new starting-history result proposing remarriage cannot overwrite established separation",
+    );
+    assert.deepEqual(world.relationshipContext.receipts, separated.receipts, "The played evidence remains intact");
+    assert(world.relationshipContext.reviewedActorIds.includes("c"));
   }
 }
 console.log(
