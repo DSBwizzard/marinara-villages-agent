@@ -86,6 +86,7 @@ export function FoundingConnections({
   if (readOnly)
     return (
       <ZoneMap
+        compact
         zones={zones}
         positions={venue.zoneLayout}
         selectedId={selectedZoneId}
@@ -95,6 +96,7 @@ export function FoundingConnections({
     );
   return (
     <ZoneMap
+      compact
       zones={zones}
       positions={venue.zoneLayout}
       selectedId={selectedZoneId}

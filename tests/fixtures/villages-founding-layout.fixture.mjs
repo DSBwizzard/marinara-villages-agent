@@ -518,6 +518,30 @@ export async function verifyFoundingLayout(group) {
           const details = await sheet.getByRole("group", { name: "Selected Zone", exact: true }).boundingBox();
           const artwork = await sheet.getByRole("region", { name: "Zone artwork", exact: true }).boundingBox();
           assert.ok(name.x + name.width <= appearance.x, "Name and Appearance share the desktop header");
+          assert.ok(
+            Math.abs(name.y - appearance.y) < 1 && Math.abs(name.height - appearance.height) < 1,
+            "Venue name and Appearance have aligned equal-sized boxes",
+          );
+          const nameStyle = await sheet
+            .getByLabel("Venue Name", { exact: true })
+            .evaluate((node) => getComputedStyle(node).fontSize);
+          const appearanceStyle = await sheet
+            .getByLabel("Appearance", { exact: true })
+            .evaluate((node) => getComputedStyle(node).fontSize);
+          assert.equal(nameStyle, appearanceStyle, "Venue header uses uniform type size");
+          const list = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
+          const editor = await sheet.boundingBox();
+          assert.ok(editor.width > list.width * 2, "The Venue editor reclaims space from the slimmer list");
+          const zoneName = await sheet.getByLabel("Zone name", { exact: true }).boundingBox();
+          const purpose = await sheet.getByLabel("Used for", { exact: true }).boundingBox();
+          assert.ok(
+            Math.abs(zoneName.y - purpose.y) < 1 && zoneName.x + zoneName.width <= purpose.x,
+            "Zone name and Used for share a row",
+          );
+          const scroll = await sheet
+            .locator(".villages-quick-panel")
+            .evaluate((node) => ({ height: node.clientHeight, content: node.scrollHeight }));
+          assert.ok(scroll.content <= scroll.height + 1, "The main desktop editor fits without scrolling");
           assert.ok(details.x + details.width <= artwork.x, "Zone details and artwork sit beside each other");
         }
         if (process.env.VILLAGES_SCREENSHOT_DIR)

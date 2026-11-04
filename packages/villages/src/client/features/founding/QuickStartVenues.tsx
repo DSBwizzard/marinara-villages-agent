@@ -178,7 +178,8 @@ export function QuickStartVenues({
         {selected ? (
           <Fragment key={selected.id}>
             <fieldset className="villages-quick-venue-header" disabled={busy || imageBusy}>
-              <label className="villages-quick-venue-name">
+              <label>
+                Venue name
                 <input
                   autoComplete="off"
                   aria-label="Venue Name"
@@ -224,7 +225,7 @@ export function QuickStartVenues({
                   disabled={busy || imageBusy}
                 >
                   {zone ? (
-                    <>
+                    <div className="villages-quick-zone-summary">
                       <label>
                         Zone name
                         <input
@@ -249,7 +250,7 @@ export function QuickStartVenues({
                         />
                         {fieldError("zone-purpose")}
                       </label>
-                    </>
+                    </div>
                   ) : (
                     <h3>Entrance</h3>
                   )}

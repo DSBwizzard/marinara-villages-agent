@@ -43,6 +43,7 @@ function Harness(){
  const select=venue=>{setSelected(venue.id);setMoving(null);setWorkspace(state=>({...state,view:'details',paused:true}))};
  const upload=(venue,area,file,id)=>{const image={id:'fixture',ref:'global-gallery:fixture',url:'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw=='};patch(venue.id,row=>area==='exterior'?{...row,presentation:{...row.presentation,image}}:{...row,[area==='private'?'privateSpaces':'spaces']:(row[area==='private'?'privateSpaces':'spaces']??[]).map(zone=>zone.id===id?{...zone,image}:zone)});};
  window.quickState={venues,workspace,authored,suggestionsKey:key,problem,moving};
+ window.replaceQuickVenues=setVenues;
  window.legacyPolicy=()=>setVenues(rows=>rows.map(row=>row.id!=='founding-home:player'?row:{...row,
  access:{version:1,revision:0,managerIds:['player'],visitorHours:null,permissions:[],bans:[],exceptions:[],changes:[],visitDenials:[],receipts:{}},
  spaces:row.spaces.map(zone=>zone.id!=='common:base'?zone:{...zone,access:{mode:'public',managerIds:null,memberIds:[],memberRoles:[],inviterIds:[],visitorHours:'inherit',accompanied:false}})}));
@@ -161,6 +162,109 @@ await withBrowser(browser, async () => {
       const first = page.locator('[data-venue-id="founding-home:player"]');
       await first.click();
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
+      const originalVenues = await page.evaluate(() => window.quickState.venues);
+      await page.evaluate(() =>
+        window.replaceQuickVenues((rows) =>
+          rows.map((row, index) =>
+            index
+              ? row
+              : {
+                  ...row,
+                  spaces: Array.from({ length: 6 }, (_, i) => ({
+                    ...row.spaces[0],
+                    id: i ? "compact:" + i : "common:base",
+                    name: "Room " + i,
+                    connectedTo: ["exterior"],
+                  })),
+                  zoneLayout: Object.fromEntries(
+                    ["exterior", "common:base", "compact:1", "compact:2", "compact:3", "compact:4", "compact:5"].map(
+                      (id, i) => [
+                        id,
+                        [
+                          { x: 0, y: 0 },
+                          { x: 0, y: 24 },
+                          { x: 68, y: 12 },
+                          { x: 68, y: 42 },
+                          { x: 0, y: 48 },
+                          { x: 0, y: 84 },
+                          { x: 68, y: 84 },
+                        ][i],
+                      ],
+                    ),
+                  ),
+                },
+          ),
+        ),
+      );
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(7);
+      const seededLayout = await page.evaluate(() => window.quickState.venues[0].zoneLayout);
+      const assertGraph = async () => {
+        const result = await sheet.locator(".villages-zone-map-canvas").evaluate((canvas) => {
+          const box = canvas.getBoundingClientRect(),
+            svg = canvas.querySelector("svg"),
+            matrix = svg.getScreenCTM();
+          const nodes = [...canvas.querySelectorAll("[data-layout-zone]")].map((node) => ({
+            id: node.dataset.layoutZone,
+            box: node.getBoundingClientRect().toJSON(),
+          }));
+          return {
+            canvas: box.toJSON(),
+            nodes,
+            lines: [...svg.querySelectorAll("line")].map((line) =>
+              [
+                new DOMPoint(line.x1.baseVal.value, line.y1.baseVal.value).matrixTransform(matrix),
+                new DOMPoint(line.x2.baseVal.value, line.y2.baseVal.value).matrixTransform(matrix),
+              ].map((p) => ({ x: p.x, y: p.y })),
+            ),
+          };
+        });
+        for (const node of result.nodes) {
+          const box = node.box;
+          assert.ok(box.height >= 44, "Compact nodes retain full touch targets");
+          assert.ok(
+            box.top >= result.canvas.top && box.bottom <= result.canvas.bottom,
+            "Low authored Zones stay inside the expanded canvas",
+          );
+          for (const other of result.nodes.filter((row) => row.id !== node.id))
+            assert.ok(
+              box.right <= other.box.left + 0.1 ||
+                other.box.right <= box.left + 0.1 ||
+                box.bottom <= other.box.top + 0.1 ||
+                other.box.bottom <= box.top + 0.1,
+              "Compact nodes do not overlap",
+            );
+        }
+        for (const endpoint of result.lines.flat())
+          assert.ok(
+            result.nodes.some(
+              ({ box }) =>
+                Math.abs(box.x + box.width / 2 - endpoint.x) < 2 && Math.abs(box.y + box.height / 2 - endpoint.y) < 2,
+            ),
+            "Connections reach visual node centers",
+          );
+      };
+      await assertGraph();
+      const compactCanvas = sheet.locator(".villages-zone-map-canvas");
+      assert.ok((await compactCanvas.boundingBox()).height > 310, "Seven low Zones expand the graph");
+      await page.setViewportSize({ width: viewport.width === 1366 ? 390 : 1366, height: 900 });
+      await assertGraph();
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues[0].zoneLayout),
+        seededLayout,
+        "Resizing never rewrites authored coordinates",
+      );
+      await page.setViewportSize(viewport);
+      await zone("compact:4").scrollIntoViewIfNeeded();
+      const low = await zone("compact:4").boundingBox();
+      await page.mouse.move(low.x + low.width / 2, low.y + low.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(low.x + low.width / 2, low.y + low.height / 2 + 6.4, { steps: 3 });
+      await page.mouse.up();
+      await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["compact:4"].y)).toBe(86);
+      await assertGraph();
+      await page.evaluate((rows) => window.replaceQuickVenues(rows), originalVenues);
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
+      assert.ok((await compactCanvas.boundingBox()).height < 230, "Sparse graphs trim unused bottom space");
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
       const access = sheet.getByRole("switch", { name: "Restricted access", exact: true });
