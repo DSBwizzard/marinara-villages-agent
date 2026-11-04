@@ -244,6 +244,7 @@ export async function packagedSceneServer() {
   return {
     app,
     stop,
+    model,
     calls: () => calls,
     records,
     scene: () => fixtureSceneState(records.get("villages-venue-visit-browser").data, records),

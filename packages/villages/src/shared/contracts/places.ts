@@ -18,7 +18,6 @@ export type PlaceRequest = {
   mapId: string;
   intent: string;
   expectedRevision?: number;
-  retryOfAttempt?: number;
 };
 export type PlaceOperationView = {
   id: string;
@@ -26,7 +25,6 @@ export type PlaceOperationView = {
   kind: "explore" | "prepare";
   status: "started" | "ready" | "failed";
   placeId: string;
-  error?: string;
 };
 
 export type Establishment = {

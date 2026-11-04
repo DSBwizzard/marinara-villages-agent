@@ -43,6 +43,7 @@ await withBrowser(browser, async () => {
       };
       let generations = 0;
       const bodies = [];
+      const explorations = [];
       await page.route("http://places.test/", (route) =>
         fulfill(route, {
           status: 200,
@@ -55,7 +56,10 @@ await withBrowser(browser, async () => {
           path = url.pathname.replace(/^.*\/api\/villages/, "");
         let value;
         if (path === "/places") value = { items: [place], nextCursor: null };
-        else if (path === "/places/place%3Alantern" || path === "/places/place:lantern") value = place;
+        else if (path === "/places/explore") {
+          explorations.push(route.request().postDataJSON());
+          value = { status: "failed", placeId: "" };
+        } else if (path === "/places/place%3Alantern" || path === "/places/place:lantern") value = place;
         else if (path.endsWith("/prepare")) {
           generations++;
           place.prepared = true;
@@ -74,6 +78,28 @@ await withBrowser(browser, async () => {
       await page.evaluate((value) => (window.snapshot = value), snapshot);
       await page.addScriptTag({ content: bundle.outputFiles[0].text });
       await expect(page.getByRole("dialog", { name: "Discover Places" })).toBeVisible();
+      const explore = page.getByRole("button", { name: "Explore", exact: true });
+      await explore.click();
+      await expect.poll(() => explorations.length).toBe(1);
+      await expect(explore).toBeEnabled();
+      await page.getByLabel("Explore", { exact: true }).fill("A duck");
+      await explore.click();
+      await expect.poll(() => explorations.length).toBe(2);
+      await expect(explore).toBeEnabled();
+      assert.deepEqual(
+        explorations.map((request) => request.intent),
+        ["", "A duck"],
+      );
+      await expect(page.getByRole("alert")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: /Retry request|Dismiss request|Resume saved request/ }),
+      ).toHaveCount(0);
+      assert.deepEqual(
+        await page.evaluate(() =>
+          Object.keys(sessionStorage).filter((key) => key.startsWith("villages-place-request:")),
+        ),
+        [],
+      );
       await page.getByRole("button", { name: "The Lantern", exact: true }).click();
       assert.equal(generations, 0, "Browsing makes no model request");
       await page.getByRole("button", { name: "Prepare and visit", exact: true }).click();

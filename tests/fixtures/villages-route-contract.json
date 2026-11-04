@@ -509,10 +509,6 @@
     },
     {
       "method": "get",
-      "path": "/places/requests/:id"
-    },
-    {
-      "method": "get",
       "path": "/places/:id"
     },
     {

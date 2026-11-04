@@ -12,7 +12,6 @@ import { ModalDialog } from "../../shared/ModalDialog.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { ClassChoices } from "../projects/ProjectDesign.js";
 
-type Pending = { path: string; body: PlaceRequest; operation?: PlaceOperationView };
 export function PlacesDirectory({
   snapshot,
   mapId,
@@ -47,14 +46,6 @@ export function PlacesDirectory({
     [classes, setClasses] = useState<VenueClass[]>(["community"]);
   const [scope, setScope] = useState<string[]>([]),
     [establish, setEstablish] = useState(false);
-  const key = "villages-place-request:" + snapshot.worldScope + ":" + mapId;
-  const [pending, setPending] = useState<Pending | null>(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem(key) ?? "null");
-    } catch {
-      return null;
-    }
-  });
   const alive = useRef(true),
     read = useRef(0);
   useEffect(
@@ -101,27 +92,16 @@ export function PlacesDirectory({
       clearTimeout(timer);
     };
   }, [mapId, query, cursor, refresh]);
-  const retain = (value: Pending | null) => {
-    if (value) sessionStorage.setItem(key, JSON.stringify(value));
-    else sessionStorage.removeItem(key);
-    if (alive.current) setPending(value);
-  };
-  const generate = async (saved: Pending, retry = false, visit = false) => {
+  const generate = async (path: string, body: PlaceRequest, visit = false) => {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      retain(saved);
-      const operation = await request<PlaceOperationView>(saved.path, {
+      const operation = await request<PlaceOperationView>(path, {
         method: "POST",
-        body: JSON.stringify({
-          ...saved.body,
-          ...(retry && saved.operation ? { retryOfAttempt: saved.operation.attempt } : {}),
-        }),
+        body: JSON.stringify(body),
       });
-      retain({ ...saved, operation });
       if (operation.status === "ready") {
-        retain(null);
         if (alive.current) {
           setRefresh((n) => n + 1);
           if (operation.placeId) {
@@ -143,16 +123,8 @@ export function PlacesDirectory({
           } else setError("No appropriate Place was found.");
         }
       }
-    } catch (cause) {
-      try {
-        const operation = await request<PlaceOperationView>(
-          "/places/requests/" + encodeURIComponent(saved.body.requestId),
-        );
-        retain({ ...saved, operation });
-      } catch {
-        /* The original request remains recoverable. */
-      }
-      if (alive.current) setError(messageFrom(cause, "The request did not complete."));
+    } catch {
+      // Exploration is optional; a failed attempt returns to idle without request management.
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -162,17 +134,14 @@ export function PlacesDirectory({
     if (detail.prepared) onVisit(detail.location);
     else
       void generate(
+        "/places/" + encodeURIComponent(detail.id) + "/prepare",
         {
-          path: "/places/" + encodeURIComponent(detail.id) + "/prepare",
-          body: {
-            worldScope: snapshot.worldScope,
-            requestId: createVillagesClientId(),
-            mapId,
-            expectedRevision: detail.revision,
-            intent: "Visit this Place",
-          },
+          worldScope: snapshot.worldScope,
+          requestId: createVillagesClientId(),
+          mapId,
+          expectedRevision: detail.revision,
+          intent: "Visit this Place",
         },
-        false,
         true,
       );
   };
@@ -234,9 +203,11 @@ export function PlacesDirectory({
           autoComplete="off"
           onSubmit={(event) => {
             event.preventDefault();
-            void generate({
-              path: "/places/explore",
-              body: { worldScope: snapshot.worldScope, requestId: createVillagesClientId(), mapId, intent },
+            void generate("/places/explore", {
+              worldScope: snapshot.worldScope,
+              requestId: createVillagesClientId(),
+              mapId,
+              intent,
             });
           }}
         >
@@ -250,19 +221,8 @@ export function PlacesDirectory({
               placeholder="What are you looking for?"
             />
           </label>
-          <button disabled={busy || !!pending}>Explore</button>
+          <button disabled={busy}>Explore</button>
         </form>
-        {pending ? (
-          <section aria-label="Saved Place request">
-            <p>{pending.operation?.error || "Saved exploration request"}</p>
-            <button disabled={busy} onClick={() => void generate(pending, pending.operation?.status === "failed")}>
-              {pending.operation?.status === "failed" ? "Retry request" : "Resume saved request"}
-            </button>
-            <button disabled={busy} onClick={() => retain(null)}>
-              Dismiss request
-            </button>
-          </section>
-        ) : null}
         <label>
           Search Places
           <input
@@ -299,7 +259,7 @@ export function PlacesDirectory({
             <h4>{detail.name}</h4>
             <p>{detail.description}</p>
             <div className="villages-places-actions">
-              <button disabled={busy || sceneActive || !!pending} onClick={visit}>
+              <button disabled={busy || sceneActive} onClick={visit}>
                 {detail.prepared ? "Visit" : "Prepare and visit"}
               </button>
               <button disabled={busy} onClick={() => onPlace(detail)}>
