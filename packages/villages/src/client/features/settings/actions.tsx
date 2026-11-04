@@ -8,7 +8,6 @@ export function useSaveSettings(ports: {
   knowledgeDraft: string;
   lorebookDraft: string[];
   loreTokenBudgetDraft: number;
-  visualLoreDefault: boolean;
   personaDraft: string;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setSettingsError: React.Dispatch<SetStateAction<string>>;
@@ -23,7 +22,6 @@ export function useSaveSettings(ports: {
     knowledgeDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
-    visualLoreDefault,
     personaDraft,
     setBusy,
     setSettingsError,
@@ -43,7 +41,6 @@ export function useSaveSettings(ports: {
         body: JSON.stringify({
           selectedLorebookIds: lorebookDraft,
           loreTokenBudget: loreTokenBudgetDraft,
-          useVisualLoreByDefault: visualLoreDefault,
         }),
       });
       if (!lifetime.owns(claim)) return;
@@ -54,7 +51,6 @@ export function useSaveSettings(ports: {
         settingDraft,
         lorebookDraft,
         loreTokenBudgetDraft,
-        visualLoreDefault,
       });
     } catch (cause) {
       if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "Those settings could not be saved."));
@@ -70,7 +66,6 @@ export function useSaveSettings(ports: {
     settingDraft,
     lorebookDraft,
     loreTokenBudgetDraft,
-    visualLoreDefault,
     setSnapshot,
     acceptSavedSettings,
   ]);

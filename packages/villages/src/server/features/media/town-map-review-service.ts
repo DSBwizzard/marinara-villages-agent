@@ -9,6 +9,7 @@ import { decodeVillageImageDataUrl } from "../../adapters/engine/image-files.js"
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
 
 export interface TownMapReviewPorts {
+  generatedMapLore?(targetId: string, image: string): Promise<import("../../../shared/contracts/lore.js").LoreUse[]>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
@@ -18,7 +19,7 @@ export interface TownMapReviewPorts {
 export function createTownMapReview(ports: TownMapReviewPorts) {
   const { readVillageState, mutateVillageState, buildVillageSnapshot, inspectVillageImage, uploadVillageGalleryImage } =
     ports;
-  async function prepareVillageMap(value: unknown): Promise<VillageMap> {
+  async function prepareVillageMap(value: unknown, generationTarget?: string): Promise<VillageMap> {
     const body = asRecord(value);
     const id = asTrimmedString(body.id);
     if (!/^[a-zA-Z0-9_-]{8,128}$/.test(id)) throw badRequest("A map ID is required.");
@@ -37,6 +38,8 @@ export function createTownMapReview(ports: TownMapReviewPorts) {
       prompt: "",
       ...size,
     });
+    const lore = await ports.generatedMapLore?.(generationTarget ?? id, decoded.dataUrl);
+    if (lore?.length) artwork.lore = lore;
     return { id, name, artwork, ...size, view: coerceTownMapView(body.view), revision: 1 };
   }
   async function createVillageMap(value: unknown): Promise<VillageSnapshot> {

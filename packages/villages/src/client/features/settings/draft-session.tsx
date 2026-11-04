@@ -11,7 +11,6 @@ export interface SettingsDraftValues {
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
   personalizeHomes: boolean;
-  visualLoreDefault: boolean;
   venuesDraft: VillageVenue[];
 }
 type Setters = {
@@ -21,7 +20,7 @@ type Setters = {
 };
 export type SavedSettingsDraft = Pick<
   SettingsDraftValues,
-  "knowledgeDraft" | "personaDraft" | "settingDraft" | "lorebookDraft" | "loreTokenBudgetDraft" | "visualLoreDefault"
+  "knowledgeDraft" | "personaDraft" | "settingDraft" | "lorebookDraft" | "loreTokenBudgetDraft"
 >;
 function savedValues(snapshot: NonNullable<VillageSnapshot>): SettingsDraftValues {
   return {
@@ -33,7 +32,6 @@ function savedValues(snapshot: NonNullable<VillageSnapshot>): SettingsDraftValue
     sceneryStyle: snapshot.settings.sceneryArtStyle ?? "",
     sceneryStyleProfileId: snapshot.settings.sceneryStyleProfileId ?? null,
     personalizeHomes: snapshot.settings.personalizeVenueImagesByDefault !== false,
-    visualLoreDefault: snapshot.settings.useVisualLoreByDefault !== false,
     venuesDraft: destinationPlaces(snapshot.settings.venues).map((venue) => ({ ...venue })),
   };
 }
@@ -63,7 +61,6 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
     seed("sceneryStyle", ports.setSceneryStyle);
     seed("sceneryStyleProfileId", ports.setSceneryStyleProfileId);
     seed("personalizeHomes", ports.setPersonalizeHomes);
-    seed("visualLoreDefault", ports.setVisualLoreDefault);
     seed("venuesDraft", ports.setVenuesDraft);
     baseline.current = next;
   }, [ports]);
@@ -81,7 +78,6 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
       accept("settingDraft", ports.setSettingDraft);
       accept("lorebookDraft", ports.setLorebookDraft);
       accept("loreTokenBudgetDraft", ports.setLoreTokenBudgetDraft);
-      accept("visualLoreDefault", ports.setVisualLoreDefault);
       // Other editable sections keep their own drafts and saving commands.
       baseline.current = baseline.current
         ? {
@@ -91,7 +87,6 @@ export function useSettingsDraftSession(ports: Setters & { snapshot: VillageSnap
             settingDraft: next.settingDraft,
             lorebookDraft: next.lorebookDraft,
             loreTokenBudgetDraft: next.loreTokenBudgetDraft,
-            visualLoreDefault: next.visualLoreDefault,
           }
         : next;
     },

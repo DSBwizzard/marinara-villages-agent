@@ -172,6 +172,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           "The people or setting changed while suggestions were prepared. Your existing draft is kept; request fresh suggestions when ready.",
         );
       if (replacing) {
+        ports.setSetupWorkspace?.((state) => ({ ...state, lore: result.lore }));
         if (!options.quickStart || options.venueId)
           throw new Error(
             "The older suggestion attempt was checked. Use Suggest Venues again to generate all template Venues.",
@@ -197,6 +198,7 @@ export function createFoundingSuggestSetupVenues(ports: {
         return;
       }
       if (options.quickStart) throw new Error("Use Suggest Venues to confirm replacing Venue drafts.");
+      ports.setSetupWorkspace?.((state) => ({ ...state, lore: result.lore }));
       if (options.fullVenue && !result.venues.find((row) => row.id === options.venueId)?.zones)
         throw new Error("The Venue draft has no complete Zone plan.");
       setSetupVenues((currentRows) =>

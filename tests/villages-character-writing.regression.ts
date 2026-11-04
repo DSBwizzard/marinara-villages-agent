@@ -248,7 +248,7 @@ async function run() {
     const removed: string[] = [];
     const budgetModel: any = {
       fitContext(messages: any, options: any) {
-        const text = messages[0].content;
+        const text = messages.map((message: { content: string }) => message.content).join("\n");
         removed.push(text);
         return {
           ...options,

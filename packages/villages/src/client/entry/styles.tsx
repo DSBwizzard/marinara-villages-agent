@@ -13,6 +13,21 @@ import { ELEMENT_TAG, STYLE_ID } from "../shared/constants.js";
 // shortcut: size containment needs a definite host height; revisit if Engine mounts into an auto-height box.
 const VILLAGES_STYLES = `
 
+.${ELEMENT_TAG}-lore-use-chip { display:inline-flex;align-items:center;justify-content:center;gap:.4rem;min-height:36px;padding:.35rem .65rem;border:1px solid var(--border);border-radius:1.5rem;background:var(--popover);color:var(--foreground);font:inherit;font-size:.75rem;cursor:pointer;white-space:nowrap; }
+.${ELEMENT_TAG}-lore-use-chip svg { width:16px;height:16px; }
+.${ELEMENT_TAG}-lore-dialog { width:min(25rem,calc(100% - 2rem));max-height:calc(100% - 2rem);box-sizing:border-box;padding:1rem;border:1px solid var(--border);border-radius:.75rem;background:var(--popover);color:var(--foreground);overflow:auto; }
+.${ELEMENT_TAG}-lore-dialog::backdrop { background:#0007; }
+.${ELEMENT_TAG}-lore-dialog header { display:flex;align-items:center;justify-content:space-between;gap:.5rem; }
+.${ELEMENT_TAG}-lore-dialog header h3 { margin:0;font-size:1rem; }
+.${ELEMENT_TAG}-lore-dialog header button { min-width:44px;min-height:44px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer; }
+.${ELEMENT_TAG}-lore-dialog ul { list-style:none;padding:0;margin:0; }
+.${ELEMENT_TAG}-lore-dialog li { border-top:1px solid var(--border);padding:.75rem 0;overflow-wrap:anywhere; }
+.${ELEMENT_TAG}-lore-book,.${ELEMENT_TAG}-lore-label { display:block;font-size:.75rem;color:var(--muted-foreground); }
+.${ELEMENT_TAG}-lore-targets { display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.4rem; }
+.${ELEMENT_TAG}-lore-targets span { padding:.1rem .4rem;border-radius:.3rem;background:var(--secondary);font-size:.75rem; }
+.${ELEMENT_TAG}-lore-task { display:flex;align-items:center;justify-content:space-between;gap:.75rem;padding:.5rem 0; }
+@media (pointer:coarse) { .${ELEMENT_TAG}-lore-use-chip { min-height:44px; } }
+
 .${ELEMENT_TAG}-root {
   --${ELEMENT_TAG}-pad: clamp(.625rem, 2cqw, 1.25rem);
   --${ELEMENT_TAG}-gap: clamp(.5rem, 1.4cqw, 1rem);

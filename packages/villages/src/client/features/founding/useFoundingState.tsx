@@ -62,10 +62,6 @@ export function useFoundingState() {
 
   const [personalizeHomes, setPersonalizeHomes] = useState(true);
 
-  const [visualLoreDefault, setVisualLoreDefault] = useState(true);
-
-  const [mapVisualLore, setMapVisualLore] = useState(true);
-
   const [selectedSetupVenueId, setSelectedSetupVenueId] = useState<string | null>(null);
 
   const [setupWorkspace, setSetupWorkspace] = useState(emptyFoundingWorkspace);
@@ -195,10 +191,6 @@ export function useFoundingState() {
     setSceneryStyleProfileId,
     personalizeHomes,
     setPersonalizeHomes,
-    visualLoreDefault,
-    setVisualLoreDefault,
-    mapVisualLore,
-    setMapVisualLore,
     selectedSetupVenueId,
     setSelectedSetupVenueId,
     setupWorkspace,

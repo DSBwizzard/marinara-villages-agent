@@ -2,6 +2,8 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
+  mapLore?: import("../../../shared/contracts/lore.js").LoreUse[];
   suggestionRequest?: {
     id: string;
     sourceKey: string;

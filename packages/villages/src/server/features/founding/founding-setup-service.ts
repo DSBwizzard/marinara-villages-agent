@@ -28,6 +28,7 @@ import { DEFAULT_SCENERY_STYLE, readSceneryStyle } from "../../domain/rules/scen
 import { assertVillageVenueCapacity } from "../../domain/rules/venue-capacity.js";
 import { validVenueClasses, venueResidentIds } from "../../domain/rules/venue-model.js";
 import { readBool } from "../../domain/rules/village-projections.js";
+import { loreText } from "../../domain/rules/lore-context.js";
 import { readHomeBuildingNames, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
 import { isVillageFounded } from "../../domain/rules/world-snapshot.js";
 import type { prepareVillageMap } from "../media/town-map-review.js";
@@ -36,6 +37,7 @@ import type { readLinkedPersona } from "../settings/personas.js";
 import type { draftVillageVenueDescriptions } from "./village-bootstrap.js";
 
 export interface FoundingSetupPorts {
+  readFoundingImageLore?: typeof import("./founding-drafts.js").readFoundingImageLore;
   peekVillageAuthority(): Promise<VillageState>;
   preparedSpriteManager?(
     id: string,
@@ -73,6 +75,7 @@ export function createFoundingSetup({
   queueMicrotask,
   readVillageLore,
   draftVillageVenueDescriptions,
+  readFoundingImageLore,
 }: FoundingSetupPorts) {
   async function runVillageSetup(input: {
     foundingCharacterIds?: unknown;
@@ -118,12 +121,15 @@ export function createFoundingSetup({
     const village = await readVillageState();
     const playerBackground = playerBackgroundForSetup(village.playerBackground, input.playerBackground, true);
     if (!input.townMapImage) throw badRequest("Generate or upload map artwork before founding.");
-    const townMap = await prepareVillageMap({
-      id: randomUUID(),
-      name,
-      image: input.townMapImage,
-      view: input.townMapView,
-    });
+    const townMap = await prepareVillageMap(
+      {
+        id: randomUUID(),
+        name,
+        image: input.townMapImage,
+        view: input.townMapView,
+      },
+      "founding-map",
+    );
     const connections = await readVillageConnectionSettings();
     await validateVillageSetupConnections(connections);
     // Resolved before anything is written, so a village is never founded holding a
@@ -137,6 +143,15 @@ export function createFoundingSetup({
     const privateControllers = places.flatMap(
       (place) => place.zones?.flatMap((zone) => zone.controllerIds ?? []) ?? [],
     );
+    const images = places
+      .flatMap((place) => [place.presentation.image, ...(place.zones ?? []).map((zone) => zone.image)])
+      .filter((image): image is NonNullable<typeof image> => !!image);
+    const imageSources = await readFoundingImageLore?.(images);
+    if (imageSources)
+      for (const image of images) {
+        const lore = imageSources.get(image);
+        if (lore?.length) image.lore = lore;
+      }
     const assignedResidents = new Set(places.flatMap((place) => place.residentIds));
     const circumstances = readFoundingCircumstances(input.circumstances, places, villageNow().toISOString());
     const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);
@@ -216,8 +231,6 @@ export function createFoundingSetup({
       else state.sceneryArtStyle = DEFAULT_SCENERY_STYLE;
       if (input.personalizeVenueImagesByDefault !== undefined)
         state.personalizeVenueImagesByDefault = readBool(input.personalizeVenueImagesByDefault);
-      if (input.useVisualLoreByDefault !== undefined)
-        state.useVisualLoreByDefault = readBool(input.useVisualLoreByDefault);
       state.homeBuildingNames = readHomeBuildingNames(input.homeBuildingNames ?? state.homeBuildingNames);
       state.setupAt ||= villageNow().toISOString();
       state.progressEngineVersion = 1;
@@ -301,7 +314,12 @@ export function createFoundingSetup({
     });
     const lore = await readVillageLore(
       ids,
-      [setting, ...venues.map((venue) => venue.name)].join("\n"),
+      loreText(
+        typeof input.setting === "string" ? input.setting : village.setting,
+        typeof input.worldRules === "string" ? input.worldRules : village.worldRules,
+        village.worldName,
+        venues.map((venue) => venue.name),
+      ),
       undefined,
       input.loreTokenBudget === undefined ? village.loreTokenBudget : readLoreTokenBudget(input.loreTokenBudget),
     );

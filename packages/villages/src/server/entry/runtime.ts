@@ -31,7 +31,7 @@ import { createSpriteFileRemoval } from "../adapters/engine/sprite-file-removal.
 import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/engine/global-gallery.js";
 import { decodeVillageImageDataUrl, inspectVillageImage } from "../adapters/engine/image-files.js";
 import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
-import { readVillageLore, readVillageVisualLore, readVillageVisualLoreEntries } from "../adapters/engine/lorebooks.js";
+import { readVillageLore, readVillageImageLore, readVillageImageLoreEntries } from "../adapters/engine/lorebooks.js";
 import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
 import { configureNativeSchedules, readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
 import {
@@ -106,8 +106,10 @@ import { bindWishProposals, WISH_PROPOSAL_INSTRUCTION } from "../domain/rules/wi
 import { createCompactFounding } from "../features/founding/founding-compact-service.js";
 import { configureCompactFounding, proposeCompactFounding } from "../features/founding/founding-compact.js";
 import { createFoundingDrafts } from "../features/founding/founding-drafts-service.js";
+import { createFoundingArtworkSources } from "../features/founding/founding-artwork.js";
 import {
   configureFoundingDrafts,
+  readFoundingImageLore,
   suggestStartingVenues,
   generateFoundingVenueImage,
 } from "../features/founding/founding-drafts.js";
@@ -333,7 +335,7 @@ import {
   privatePreparationRooms,
 } from "../jobs/private-space-preparation.js";
 import { createPrivateSpacePreparation } from "../jobs/private-space-service.js";
-import { configureTownMapGeneration } from "../jobs/town-map-generation.js";
+import { configureTownMapGeneration, generatedMapLore } from "../jobs/town-map-generation.js";
 import { createTownMapGeneration } from "../jobs/town-map-service.js";
 import { createVenueCoordinator } from "../jobs/venue-coordinator-service.js";
 import {
@@ -512,7 +514,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     }),
   );
   const releaseMapImages = configureTownMapImage(
-    createTownMapImage({ readVillageVisualLoreEntries, generateVillageImage, inspectVillageImage }),
+    createTownMapImage({ readVillageImageLoreEntries, generateVillageImage, inspectVillageImage }),
   );
   const releaseCompactFounding = configureCompactFounding(
     createCompactFounding({
@@ -532,10 +534,11 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFoundingDrafts = configureFoundingDrafts(
     createFoundingDrafts({
+      artworkSources: createFoundingArtworkSources(villagesDocuments, createDocumentMutator(villagesDocuments)),
       findVillagerCard,
       readLinkedPersona,
       readVillageLore,
-      readVillageVisualLore,
+      readVillageImageLore,
       villagesLanguageModels,
       villagesConnectionIdFor,
       completeWithRoom,
@@ -913,6 +916,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseTownMapReview = configureTownMapReview(
     createTownMapReview({
+      generatedMapLore,
       readVillageState,
       mutateVillageState,
       buildVillageSnapshot,
@@ -958,6 +962,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFoundingSetup = configureFoundingSetup(
     createFoundingSetup({
+      readFoundingImageLore,
       peekVillageAuthority,
       preparedSpriteManager,
       readVillageState,
@@ -1005,7 +1010,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       mutateVillageState,
       assertVenueImageAccess,
       setVillageVenueImage,
-      readVillageVisualLore,
+      readVillageImageLore,
       generateVillageImage,
       uploadVillageGalleryImage,
       decodeImageDataUrl,

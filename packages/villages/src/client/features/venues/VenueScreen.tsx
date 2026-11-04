@@ -1,5 +1,6 @@
 import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
+import { LoreChip } from "../../shared/LoreChip.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
@@ -250,6 +251,7 @@ function ZoneArtwork({
         )}
       </div>
       <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
+        <LoreChip entries={zone.image?.lore} label={`${place.name} · ${zone.name}`} />
         {zone.pictureRetryAvailable ? (
           <button
             type="button"

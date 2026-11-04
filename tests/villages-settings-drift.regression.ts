@@ -143,7 +143,7 @@ const publicFields = [
   "townMapZoomMax",
   "townMapZoomMin",
   "townMapZoomStep",
-  "useVisualLoreByDefault",
+  "foundingLore",
   "venues",
   "villageGalleryFolderName",
   "villageNameMaxLength",
@@ -175,7 +175,7 @@ try {
   assert.equal(initial.playerPersonaName, "Robin Hale");
   assert.equal(initial.townMapExpectedWidth, 2560);
   assert.equal(initial.townMapExpectedHeight, 1440);
-  for (const field of ["automaticZonePictures", "personalizeVenueImagesByDefault", "useVisualLoreByDefault"] as const)
+  for (const field of ["automaticZonePictures", "personalizeVenueImagesByDefault"] as const)
     assert.equal(typeof initial[field], "boolean", field);
   assert.equal(typeof initial.sceneryArtStyle, "string");
   const projected = initial.venues[0];
@@ -226,7 +226,7 @@ try {
   assert.equal(updated.sceneryStyleProfileId, "watercolor");
   assert.equal(updated.automaticZonePictures, false);
   assert.equal(updated.personalizeVenueImagesByDefault, false);
-  assert.equal(updated.useVisualLoreByDefault, false);
+  assert.equal(Object.hasOwn(updated, "useVisualLoreByDefault"), false, "Retired image Lorebook preference is ignored");
   assert.equal(updated.playerBackground, "A cartographer");
   assert.equal(updated.worldRules, state.worldRules);
   assert.deepEqual(

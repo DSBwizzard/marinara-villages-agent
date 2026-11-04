@@ -41,6 +41,7 @@ export type SemanticIntent = {
 
 /** Interpreter provenance is created by code, never accepted from Narration. */
 export type SemanticExchange = {
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   presentation?: import("../rules/sprite-expressions.js").SceneSpritePresentation;
   draftBoundaryViolation?: import("../rules/scene-halt.js").SceneBoundaryFinding;
   turnOutcome?: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;

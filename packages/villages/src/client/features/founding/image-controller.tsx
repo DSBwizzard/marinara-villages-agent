@@ -12,7 +12,6 @@ import { personalSpaceDraft } from "./villages-founding-editor";
 import { useCallback } from "react";
 
 export function useFoundingGenerateSetupTownMap(ports: {
-  readonly mapVisualLore: FoundingState["mapVisualLore"];
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
@@ -33,7 +32,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
   readonly updateSetupMapRequest: (value: import("../../../shared/contracts/village").SetupMapRequest) => void;
 }) {
   const {
-    mapVisualLore,
     persistSetupDraft,
     sceneryStyle,
     sceneryStyleProfileId,
@@ -90,7 +88,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
           loreTokenBudget: setupLoreTokenBudgetDraft,
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
-          useVisualLore: mapVisualLore,
           worldRules: setupContext.rules,
         }),
       });
@@ -126,7 +123,6 @@ export function useFoundingGenerateSetupTownMap(ports: {
     setupLoreTokenBudgetDraft,
     sceneryStyle,
     sceneryStyleProfileId,
-    mapVisualLore,
     setupContext,
   ]);
 }
@@ -182,7 +178,6 @@ export function createFoundingGenerateSetupImage(ports: {
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
   readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-  readonly visualLoreDefault: FoundingState["visualLoreDefault"];
   readonly withSetupImage: (
     venue: import("../../../shared/contracts/village").VillageVenue,
     area: "exterior" | "private" | "interior",
@@ -275,7 +270,6 @@ export function createFoundingGenerateSetupImage(ports: {
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
           useAssignedVillagerContext: true,
-          useVisualLore: true,
           villageName: setupName,
           setting: setupSetting,
           context: setupContext,

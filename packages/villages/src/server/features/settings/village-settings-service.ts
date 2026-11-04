@@ -179,8 +179,6 @@ export function createVillageSettings({
       if (value.sceneryArtStyle !== undefined) state.sceneryArtStyle = readSceneryStyle(value.sceneryArtStyle);
       if (value.personalizeVenueImagesByDefault !== undefined)
         state.personalizeVenueImagesByDefault = readBool(value.personalizeVenueImagesByDefault);
-      if (value.useVisualLoreByDefault !== undefined)
-        state.useVisualLoreByDefault = readBool(value.useVisualLoreByDefault);
     });
     return buildVillageSnapshot();
   }

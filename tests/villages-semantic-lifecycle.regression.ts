@@ -17,6 +17,7 @@ import { createLiveMemory } from "../packages/villages/src/server/features/resid
 import { createRelationshipSocial } from "../packages/villages/src/server/features/residents/relationship-social-service.js";
 import { createScheduleInfluence } from "../packages/villages/src/server/features/residents/schedule-influence-service.js";
 import { createStartingTies } from "../packages/villages/src/server/features/residents/starting-ties-service.js";
+import { projectRelationshipProfiles } from "../packages/villages/src/server/domain/rules/relationship-knowledge.js";
 
 const state = defaultVillageState();
 state.seed = "semantic-lifecycle";
@@ -408,6 +409,124 @@ await influence.queue("a");
 assert(scheduleJob);
 resident.scheduleInfluence!.categories.rhythm = true;
 assert.equal(influence.handler.valid(state, scheduleJob.input), false, "A superseded settings result cannot apply");
+for (const privateHistory of [false, true]) {
+  const world = defaultVillageState();
+  world.seed = "lore-history-" + privateHistory;
+  world.foundedAt = new Date().toISOString();
+  world.selectedLorebookIds = ["world-book"];
+  world.villagers = ["a", "b"].map((id) => ({
+    characterId: id,
+    wishes: [],
+    cardSnapshot: { id, name: id, description: "A member of the Tidewatch Guild.", sourceStatus: "available" },
+  })) as any;
+  world.relationshipContext = defaultRelationshipState(world.seed);
+  const reference = privateHistory
+    ? "Only a knows that b secretly left the guild."
+    : "Guild members greet strangers politely. Membership alone establishes no meeting.";
+  let job: any,
+    capturedMessages: any,
+    reads = 0;
+  const starting = createStartingTies({
+    readVillageState: async () => world,
+    mutateVillageState: async (update: any) => {
+      update(world);
+      return world;
+    },
+    mutateRelationships: async (_seed: any, update: any) => {
+      update(world.relationshipContext);
+      return world.relationshipContext;
+    },
+    queueBackgroundJob: async (value: any) => {
+      job = structuredClone(value);
+    },
+    settleBackgroundWork: async () => {},
+    readVillageLore: async (_ids: any, query: string, _signal: any, _budget: any, options: any) => {
+      reads++;
+      assert.match(query, /Tidewatch Guild/);
+      assert.doesNotMatch(query, /sourceStatus|selectedLorebookIds|playerId|description:/);
+      options.inspect({
+        purpose: "Starting history",
+        stage: "selection",
+        budget: 1600,
+        omittedDiagnostics: 0,
+        entries: [
+          {
+            id: "guild",
+            bookId: "world-book",
+            bookName: "Guild history",
+            name: "Guild",
+            status: "included",
+            match: "setting",
+          },
+        ],
+      });
+      return ["Guild: " + reference];
+    },
+    villagesConnectionIdFor: async () => "system",
+    villagesLanguageModels: () => ({
+      resolveForRequest: async () => ({
+        model: "fake",
+        connectionId: "system",
+        maxOutputTokens: 2400,
+        fitContext: (messages: any, options: any) => ({ messages, ...options }),
+      }),
+    }),
+    completeWithRoom: async (_model: any, messages: any) => {
+      capturedMessages = structuredClone(messages);
+      return {
+        finishReason: "stop",
+        content: JSON.stringify({
+          ties: privateHistory
+            ? [
+                {
+                  fromId: "a",
+                  toId: "b",
+                  connection: "Aware of b's departure",
+                  stance: "Keeps the history private",
+                  expectations: [],
+                  concerns: [],
+                  history: [{ text: reference, sourceIds: ["lore:0"], knownBy: ["a"] }],
+                },
+              ]
+            : [],
+          conflicts: [],
+        }),
+      };
+    },
+  } as any);
+  await starting.queue();
+  assert.equal(
+    Object.keys(world.relationshipContext.edges).length,
+    0,
+    "Selecting cultural lore alone creates no acquaintance",
+  );
+  assert.equal(job.input.sources.find((source: any) => source.id === "lore:0").content, "Guild: " + reference);
+  const result = await starting.handler.generate(job.input);
+  assert.equal(reads, 1, "Starting-history generation reuses the captured lore");
+  assert(!capturedMessages[0].content.includes(reference), "Authored lore cannot enter starting-history instructions");
+  assert(capturedMessages[1].content.includes(reference));
+  starting.handler.apply(world, job.input, result);
+  await starting.applySaved();
+  assert.equal(Object.keys(world.relationshipContext.edges).length, privateHistory ? 1 : 0);
+  assert.deepEqual(
+    world.semanticStartingTies?.lore?.map((entry) => entry.bookName),
+    ["Guild history"],
+  );
+  assert(
+    projectRelationshipProfiles(world.relationshipContext, world).every(
+      (profile) => !profile.learned.some((row) => row.text.includes(reference)),
+    ),
+    "Private authored history remains absent from the player's learned relationships",
+  );
+  if (privateHistory) {
+    const edge = Object.values(world.relationshipContext.edges)[0]!;
+    assert.deepEqual(
+      Object.values(edge.records)[0]!.knownBy,
+      ["a"],
+      "Starting history preserves asymmetric knowers without promoting b or the player",
+    );
+  }
+}
 console.log(
   "Semantic lifecycle: finite starting-tie recovery, edits, source fences, prepared routines and zero read-time dispatch passed with synthetic providers.",
 );

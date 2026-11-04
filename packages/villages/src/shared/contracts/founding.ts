@@ -26,6 +26,7 @@ export type FoundingVenueSuggestion = {
 };
 
 export type FoundingSuggestionsResult = {
+  lore?: import("./lore.js").LoreUse[];
   venues: FoundingVenueSuggestion[];
   entranceImage?: VillageVenueImage;
   imageError?: string;

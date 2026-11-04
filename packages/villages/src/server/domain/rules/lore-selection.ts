@@ -4,6 +4,7 @@ import { coerceLoreTokenBudget } from "./lore-policy.js";
 export type LoreEntry = {
   id: string;
   bookId: string;
+  bookName?: string;
   name: string;
   content: string;
   enabled: boolean;
@@ -49,6 +50,7 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
       id: entry.id,
       bookId: entry.bookId,
       name: entry.name,
+      ...(entry.bookName ? { bookName: entry.bookName } : {}),
       match: "none",
       status: "no-match",
     };

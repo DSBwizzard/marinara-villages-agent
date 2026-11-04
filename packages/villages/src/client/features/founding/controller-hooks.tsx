@@ -84,7 +84,6 @@ export function useFoundingAuthoredReference(ports: {
 }
 
 export function useFoundingSetupDraftData(ports: {
-  mapVisualLore: boolean;
   movingSetupVenueId: string;
   personaDraft: string;
   personalizeHomes: boolean;
@@ -128,10 +127,8 @@ export function useFoundingSetupDraftData(ports: {
   setupWorkspace: import("./villages-founding-workspace-state.js").FoundingWorkspaceState;
   setupContext: import("./draft-model.js").FoundingContext;
   setupZoneDrafts: React.RefObject<Record<string, AreaDraftCache["current"]>>;
-  visualLoreDefault: boolean;
 }) {
   const {
-    mapVisualLore,
     movingSetupVenueId,
     personaDraft,
     personalizeHomes,
@@ -175,7 +172,6 @@ export function useFoundingSetupDraftData(ports: {
     setupWorkspace,
     setupContext,
     setupZoneDrafts,
-    visualLoreDefault,
   } = ports;
   return useMemo(
     () => ({
@@ -199,8 +195,6 @@ export function useFoundingSetupDraftData(ports: {
       artStyle: sceneryStyle,
       styleProfileId: sceneryStyleProfileId,
       personalizeHomes,
-      visualLoreDefault,
-      mapVisualLore,
       mapSource: setupMapSource,
       mapImage: setupMapImage,
       mapImageSource: setupMapImageSource,
@@ -242,8 +236,6 @@ export function useFoundingSetupDraftData(ports: {
       sceneryStyle,
       sceneryStyleProfileId,
       personalizeHomes,
-      visualLoreDefault,
-      mapVisualLore,
       setupMapSource,
       setupMapImage,
       setupMapImageSource,
@@ -272,6 +264,9 @@ export function useFoundingSetupDraftData(ports: {
 }
 
 export function useFoundingMapReceipt(ports: {
+  setSetupWorkspace?: React.Dispatch<
+    React.SetStateAction<import("./villages-founding-workspace-state.js").FoundingWorkspaceState>
+  >;
   visible: boolean;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
   setSetupMapBusy: React.Dispatch<React.SetStateAction<boolean>>;
@@ -295,6 +290,7 @@ export function useFoundingMapReceipt(ports: {
     setSetupMapProblem,
     setSetupMapReviewed,
     setSetupMapSize,
+    setSetupWorkspace,
     setupMapRequest,
     updateSetupMapRequest,
   } = ports;
@@ -331,6 +327,7 @@ export function useFoundingMapReceipt(ports: {
         if (measured.width !== generated.width || measured.height !== generated.height)
           throw new Error("The generated map's reported dimensions do not match the image.");
         setSetupMapImage(generated.image);
+        setSetupWorkspace?.((state) => ({ ...state, mapLore: generated.lore }));
         setSetupMapImageSource("generate");
         setSetupMapSource("generate");
         setSetupMapGeneratedKey(receipt.sourceKey);
@@ -364,6 +361,7 @@ export function useFoundingMapReceipt(ports: {
     setSetupMapProblem,
     setSetupMapReviewed,
     setSetupMapSize,
+    setSetupWorkspace,
     setupMapRequest,
     updateSetupMapRequest,
     ports.visible,

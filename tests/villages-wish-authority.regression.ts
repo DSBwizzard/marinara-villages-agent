@@ -40,6 +40,15 @@ const change = (overrides: Partial<SocialWishChange> = {}): SocialWishChange => 
   reason: "A witnessed shared conversation.",
   ...overrides,
 });
+{
+  const world = wishWorld();
+  const lore = [{ id: "custom", bookId: "history", name: "Local custom", targets: ["Initial Wish"] }];
+  world.foundingPreparation = { status: "pending", tasks: { a: { wish: { revision: "request" } } } } as any;
+  const wishes = createWishes({} as any);
+  wishes.handler.apply(world, { characterId: "a", revision: "request", context: { loreUse: lore } }, null);
+  assert.deepEqual(world.foundingPreparation!.tasks!.a!.wish!.lore, lore, "No-Wish results retain included lore");
+  assert.equal(world.foundingPreparation!.tasks!.a!.wish!.status, "completed");
+}
 function source(world: ReturnType<typeof wishWorld>, changes: SocialWishChange[], id = "s:turn:one") {
   return {
     id,

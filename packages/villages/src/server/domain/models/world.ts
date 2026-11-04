@@ -465,6 +465,7 @@ export type VillageVillagerRefreshPreview = {
  * distinguishable from the picture itself without comparing URLs.
  */
 export type VillageVenueImage = {
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   /** `global-gallery:<id>` — the reference the Engine guards the file by. */
   ref: string;
   /** Where the tab fetches it from. The gallery's own URL. */
@@ -525,6 +526,7 @@ export type VillageVenueSpace = {
 
 export type VillageZoneKind = "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
 export type PrivateSpacePreparation = {
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   status: "pending" | "ready" | "failed";
   mode?: "renovation";
   error?: string;
@@ -928,6 +930,7 @@ export type VillageState = {
   semanticRequestReceipts?: Record<string, string>;
   semanticContinuations?: Record<string, import("./exchange-model.js").ExchangeDomain[]>;
   semanticStartingTies?: {
+    lore?: import("../../../shared/contracts/lore.js").LoreUse[];
     preparedAt?: string;
     sourceHash: string;
     stateHash?: string;

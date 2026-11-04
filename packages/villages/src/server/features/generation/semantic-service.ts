@@ -55,6 +55,7 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { WISH_PROPOSAL_INSTRUCTION } from "../../domain/rules/wish-progress-rules.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import { inspectedLoreUse, loreText, LORE_REFERENCE_RULE } from "../../domain/rules/lore-context.js";
 import {
   describeSpriteExpressions,
   sceneSpriteSelection,
@@ -82,7 +83,9 @@ const SYSTEM_BASE =
   "Also adjudicate supporting character proposals in context.npcIntroductions or context.social.npcIntroductions. Return npcAdmissions:[{id,segment,approved:true}] only when supplied source narration establishes this exact person's observable arrival, identity and availability in the current Zone. An association is not presence; a supplied availability restriction remains binding. Supporting characters have no Villager relationship graph, scores, Wishes, Agenda or job assignment; express personal continuity through their witnessed native Memories. Do not propose those mechanics for NPC IDs. No earlier witnesses. Reject an unsupported introduction with consistent:false. Optional placeDiscoveries:[{segment,existingId?,place:{name,description,form,report}}] records at most two concrete existing-location disclosures grounded in this exchange, never requests to build, guesses, hypothetical examples, convenient resources or new physical results. A reported location stays report:true. Do not disclose hidden places. Optional establishmentProgress:[{projectId,revision,objectiveId,segment,quote,met:true}] cites a witnessed outcome satisfying the exact pre-existing objective; a promise establishes a commitment only. Physical outcomes need authoritative action receipts. These effects share this System exchange; never request a separate judge. " +
   "Use ONLY supplied IDs and witnessed evidence. Distinguish statement, belief, plan, promise, attempt and completed deed. " +
   "No invented witnesses, consent, access or capabilities. Explicit game rules constrain outcomes; ordinary meaning does not require special phrases. " +
-  RESIDENT_CONTINUITY_RULE;
+  RESIDENT_CONTINUITY_RULE +
+  " " +
+  LORE_REFERENCE_RULE;
 const SYSTEM_RETRIEVAL =
   "Supplied history and memories are bounded local retrieval, never proof of absence. Ambiguous references require clarification or no update. Never request context expansion or infer a historical target from missing scope. Administrative memory constraints are not new character knowledge. ";
 const SYSTEM_CURRENT_SCENE =
@@ -311,7 +314,34 @@ export function createSemanticService(ports: SemanticPorts) {
           ports.readVillageLore && Array.isArray(selection.bookIds)
             ? await ports.readVillageLore(
                 selection.bookIds,
-                JSON.stringify([context.setting, context.worldName, identity.message, context.actors]),
+                loreText(
+                  context.setting,
+                  context.worldName,
+                  identity.message,
+                  Array.isArray(context.actors)
+                    ? context.actors.flatMap((value) => {
+                        const actor = asRecord(value),
+                          card = asRecord(actor.character),
+                          admission = asRecord(actor.admission);
+                        return [
+                          actor.name,
+                          card.name,
+                          card.summary,
+                          card.description,
+                          card.personality,
+                          card.backstory,
+                          admission.homeworld,
+                          admission.startingSituation,
+                          ...(Array.isArray(actor.wishes)
+                            ? actor.wishes.flatMap((value) => {
+                                const wish = asRecord(value);
+                                return [wish.wish, wish.reason, wish.approach];
+                              })
+                            : []),
+                        ];
+                      })
+                    : [],
+                ),
                 ports.venueOperationSignal(),
                 typeof selection.tokenBudget === "number" ? selection.tokenBudget : undefined,
                 {
@@ -466,7 +496,7 @@ export function createSemanticService(ports: SemanticPorts) {
         const result = validate(raw, effectiveHash, effectiveInput);
         const receipt = asRecord(asRecord(result).effects).residentActionReceipt;
         if (receipt) asRecord(receipt).systemResponse = answer.content;
-        return result;
+        return { ...result, lore: inspectedLoreUse(packet.loreInspection, "System") };
       } catch (error) {
         await ports.rejectVenueCompletion(
           { model: model.model, connectionId: model.connectionId, reason: "semantic-" + stage },

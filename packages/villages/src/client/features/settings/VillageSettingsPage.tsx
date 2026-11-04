@@ -2,6 +2,7 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { SpriteVisualSettings } from "./SpriteVisualSettings.js";
 import { MapsPanel } from "./MapsPanel.js";
 import { WorldNameSettings } from "./WorldNameSettings.js";
+import { FoundingLore } from "../../shared/LoreChip.js";
 
 import { LoreTokenBudgetField, VillageLorebookPicker } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
@@ -27,10 +28,8 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     setPersonalizeHomes,
     setSceneryStyle,
     setSceneryStyleProfileId,
-    setVisualLoreDefault,
     settingsError,
     snapshot,
-    visualLoreDefault,
   } = ports;
   return (
     <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
@@ -104,16 +103,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                   max={snapshot.settings.loreTokenBudgetMax ?? 3200}
                   disabled={busy}
                 />
-                <label className={`${ELEMENT_TAG}-row`}>
-                  <input
-                    autoComplete="off"
-                    type="checkbox"
-                    disabled={busy}
-                    checked={visualLoreDefault}
-                    onChange={(event) => setVisualLoreDefault(event.target.checked)}
-                  />
-                  Use selected lorebooks when generating images
-                </label>
+                <FoundingLore records={snapshot.settings.foundingLore} />
 
                 <div className={`${ELEMENT_TAG}-row`}>
                   <button

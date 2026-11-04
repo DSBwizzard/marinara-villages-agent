@@ -213,7 +213,6 @@ export function useOpenSetup(ports: {
   loadCatalog: (signal?: AbortSignal) => Promise<void>;
   loadLorebooks: (signal?: AbortSignal) => Promise<void>;
   loadPersonas: (signal?: AbortSignal) => Promise<void>;
-  setMapVisualLore: React.Dispatch<SetStateAction<boolean>>;
   setMovingSetupVenueId: React.Dispatch<SetStateAction<string>>;
   setPersonaDraft: React.Dispatch<SetStateAction<string>>;
   setPersonalizeHomes: React.Dispatch<SetStateAction<boolean>>;
@@ -255,14 +254,12 @@ export function useOpenSetup(ports: {
   setSetupVenues: React.Dispatch<SetStateAction<VillageVenue[]>>;
   setSetupWorkspace: React.Dispatch<SetStateAction<FoundingWorkspaceState>>;
   setSetupContext: React.Dispatch<SetStateAction<import("./draft-model.js").FoundingContext>>;
-  setVisualLoreDefault: React.Dispatch<SetStateAction<boolean>>;
   updateSetupMapRequest: (value: SetupMapRequest | null) => void;
 }) {
   const {
     loadCatalog,
     loadLorebooks,
     loadPersonas,
-    setMapVisualLore,
     setMovingSetupVenueId,
     setPersonaDraft,
     setPersonalizeHomes,
@@ -302,7 +299,6 @@ export function useOpenSetup(ports: {
     setSetupVenues,
     setSetupWorkspace,
     setSetupContext,
-    setVisualLoreDefault,
     updateSetupMapRequest,
   } = ports;
   return useCallback(
@@ -343,8 +339,6 @@ export function useOpenSetup(ports: {
       setSceneryStyle("");
       setSceneryStyleProfileId("");
       setPersonalizeHomes(village?.settings.personalizeVenueImagesByDefault !== false);
-      setVisualLoreDefault(village?.settings.useVisualLoreByDefault !== false);
-      setMapVisualLore(village?.settings.useVisualLoreByDefault !== false);
       setSelectedSetupVenueId(foundingPlaces[0]?.id ?? null);
       setMovingSetupVenueId(null);
       setSetupPlacementError("");
@@ -372,7 +366,6 @@ export function useOpenSetup(ports: {
       loadCatalog,
       loadLorebooks,
       loadPersonas,
-      setMapVisualLore,
       setMovingSetupVenueId,
       setPersonaDraft,
       setPersonalizeHomes,
@@ -410,7 +403,6 @@ export function useOpenSetup(ports: {
       setSetupWorkspace,
       setSetupContext,
       setSetupWorldName,
-      setVisualLoreDefault,
       updateSetupMapRequest,
     ],
   );
@@ -421,7 +413,6 @@ export function useFoundVillage(ports: {
   draftSaveQueue: React.RefObject<Promise<void>>;
   element: HTMLElement;
   flushSetupDraft: () => Promise<void>;
-  mapVisualLore: boolean;
   personaDraft: string;
   personalizeHomes: boolean;
   residentContextProblem: "" | "Check starting notes in People.";
@@ -451,13 +442,11 @@ export function useFoundVillage(ports: {
   setupSetting: string;
   setupVenues: VillageVenue[];
   snapshot: VillageSnapshot;
-  visualLoreDefault: boolean;
 }) {
   const {
     draftSaveQueue,
     element,
     flushSetupDraft,
-    mapVisualLore,
     personaDraft,
     personalizeHomes,
     residentContextProblem,
@@ -484,7 +473,6 @@ export function useFoundVillage(ports: {
     setupSetting,
     setupVenues,
     snapshot,
-    visualLoreDefault,
   } = ports;
   return useCallback(async () => {
     if (snapshot?.isFounded) {
@@ -537,10 +525,8 @@ export function useFoundVillage(ports: {
           circumstances: ports.setupContext.circumstances.filter((row) => row.summary.trim()),
           selectedLorebookIds: setupLorebookDraft,
           personalizeVenueImagesByDefault: personalizeHomes,
-          useVisualLoreByDefault: visualLoreDefault,
           sceneryArtStyle: sceneryStyle,
           sceneryStyleProfileId,
-          useVisualLore: mapVisualLore,
           loreTokenBudget: setupLoreTokenBudgetDraft,
           playerPersonaId: personaDraft,
           townMapImage: setupMapSrc ?? "",
@@ -583,10 +569,8 @@ export function useFoundVillage(ports: {
     setupPlayerBackground,
     setupLorebookDraft,
     personalizeHomes,
-    visualLoreDefault,
     sceneryStyle,
     sceneryStyleProfileId,
-    mapVisualLore,
     setupLoreTokenBudgetDraft,
     personaDraft,
     setupMapSrc,

@@ -14,6 +14,7 @@ import type { VenueActionResult } from "../models/venue-action-model.js";
 import type { WishProposal } from "../models/wish-check-model.js";
 import { asRecord, asString, asTrimmedString } from "../rules/coerce.js";
 import { conflict } from "../rules/errors.js";
+import { readLoreUse } from "../../../shared/helpers/lore.js";
 
 import { coerceProjectSpeech } from "../rules/project-interpretation.js";
 import { immutableRelationshipState } from "../rules/relationship-rules.js";
@@ -363,6 +364,7 @@ export function coerceSession(value: unknown): VenueScene {
             const row = asRecord(value);
             return {
               id: asTrimmedString(row.id),
+              ...(row.lore !== undefined ? { lore: readLoreUse(row.lore) } : {}),
               ...(row.zoneEventsVersion === 1 ? { zoneEventsVersion: 1 as const } : {}),
               ...(Array.isArray(row.wishProposals) ? { wishProposals: row.wishProposals as WishProposal[] } : {}),
               ...(row.wishAuthority !== undefined ? { wishAuthority: readWishAuthority(row.wishAuthority) } : {}),

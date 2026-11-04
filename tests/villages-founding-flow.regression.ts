@@ -743,7 +743,7 @@ async function foundingArchitecturePrompts() {
       }) as any,
     readLinkedPersona: async () => null,
     readVillageLore: unused,
-    readVillageVisualLore: async () => "",
+    readVillageImageLore: async () => "",
     villagesLanguageModels: unused,
     villagesConnectionIdFor: unused,
     completeWithRoom: unused,

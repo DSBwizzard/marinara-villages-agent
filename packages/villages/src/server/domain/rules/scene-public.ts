@@ -1,6 +1,7 @@
 import type { VenueRecordEvent, VenueScene } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { deriveVillageMoment } from "./village-clock.js";
+import { readLoreUse } from "../../../shared/helpers/lore.js";
 export function sceneTurnPublished(value: unknown) {
   const turn = asRecord(value);
   return asRecord(turn.semanticProvenance).version !== 2 || turn.semanticReady === true;
@@ -109,6 +110,7 @@ export function publicSceneAuthority(scene: VenueScene) {
   const { lines: _lines, submissions: _submissions, ...authority } = projected;
   return {
     ...authority,
+    lore: readLoreUse(scene.submissions.filter(sceneTurnPublished).at(-1)?.lore),
     ...(scene.liveSceneVersion === 1 && scene.continuity
       ? {
           currentTime: (() => {
@@ -287,19 +289,21 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
       )
       .map(([key, entry]) => [
         key,
-        key === "processing" && entry
-          ? {
-              version: 1,
-              domains: Object.fromEntries(
-                Object.entries(asRecord(asRecord(entry).domains)).map(([domain, result]) => [
-                  domain,
-                  { status: asRecord(result).status },
-                ]),
-              ),
-            }
-          : visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
-            ? entry.filter((id) => visible.has(id))
-            : publicSceneResponse(entry, visible, privateHearing),
+        key === "lore"
+          ? readLoreUse(entry)
+          : key === "processing" && entry
+            ? {
+                version: 1,
+                domains: Object.fromEntries(
+                  Object.entries(asRecord(asRecord(entry).domains)).map(([domain, result]) => [
+                    domain,
+                    { status: asRecord(result).status },
+                  ]),
+                ),
+              }
+            : visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
+              ? entry.filter((id) => visible.has(id))
+              : publicSceneResponse(entry, visible, privateHearing),
       ]),
   ) as T;
 }

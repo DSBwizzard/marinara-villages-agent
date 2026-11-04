@@ -6,6 +6,7 @@
  */
 export const serverFeatureInterfaces = Object.freeze({
   "founding/founding-compact.ts": ["proposeCompactFounding"],
+  "founding/founding-drafts.ts": ["readFoundingImageLore"],
   "founding/founding-progress.ts": ["reportFoundingProgress"],
   "founding/preparation.ts": [
     "prepareFoundedVillage",

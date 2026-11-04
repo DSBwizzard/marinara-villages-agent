@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readVillageLore, readVillageVisualLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
+import { readVillageLore, readVillageImageLore } from "../packages/villages/src/server/adapters/engine/lorebooks.js";
 import {
   coerceVillageState,
   defaultVillageState,
@@ -15,6 +15,18 @@ import { selectVillageLore, type LoreEntry } from "../packages/villages/src/serv
 import { sharedLoreHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
 import { fitVenueWritingMessages } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { createSemanticService } from "../packages/villages/src/server/features/generation/semantic-service.js";
+import {
+  fittedLoreUse,
+  inspectedLoreUse,
+  loreText,
+  villageLoreContext,
+} from "../packages/villages/src/server/domain/rules/lore-context.js";
+import { mergeLoreUse, readLoreUse } from "../packages/villages/src/shared/helpers/lore.js";
+import {
+  publicSceneAuthority,
+  publicSceneResponse,
+} from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 
 async function main() {
   assert.deepEqual(defaultVillageState().selectedLorebookIds, []);
@@ -143,7 +155,7 @@ async function main() {
     assert.equal((await readVillageLore(["world"], "A harbor village", undefined, 200)).length, 2);
     assert.equal((await readVillageLore(["world"], "A mountain village")).length, 1);
     assert.deepEqual(await readVillageLore(["world"], "harbor", undefined, 0), []);
-    assert.equal(await readVillageVisualLore(["world"], "harbor", 360, 0), "");
+    assert.equal(await readVillageImageLore(["world"], "harbor", 360, 0), "");
     entries.world[1]!.keys = ["harbor"];
     Object.assign(entries.world[1]!, {
       selective: true,
@@ -180,21 +192,33 @@ async function main() {
       (await readVillageLore(["world"], "harbor")).join(" ").includes("painted blue"),
       "the next call sees Engine edits",
     );
-    const visual = await readVillageVisualLore(["world"], "harbor", 60);
+    const visual = await readVillageImageLore(["world"], "harbor", 60);
+    let packedReport: any;
+    await readVillageImageLore(["world"], "harbor", 60, 1600, (report) => {
+      packedReport = report;
+    });
+    assert.deepEqual(
+      inspectedLoreUse(packedReport, "Image").map((entry) => entry.name),
+      ["Bridge"],
+      "Image provenance excludes entries lost to character packing",
+    );
     assert.ok(visual.length <= 60);
     assert.equal(
       visual,
       "Bridge: The bridge is painted blue now.",
       "relevant entries are complete and precede generic constants",
     );
-    assert.match(buildTownMapPrompt(undefined, "harbor village", visual), /Compatible visual lore/);
+    assert.ok(
+      buildTownMapPrompt(undefined, "harbor village", visual).includes(JSON.stringify(visual)),
+      "Maps retain the complete selected reference as data",
+    );
     assert.throws(() => buildTownMapPrompt(undefined, "x".repeat(2_000), "y".repeat(500)), /4,000-character allowance/);
     globalThis.fetch = async () => new Response(JSON.stringify({ secret: "private-book-title" }), { status: 503 });
     await assert.rejects(readVillageLore(["world"], "harbor"), (error: any) => {
       assert.doesNotMatch(error.message, /private-book-title|503/);
       return /Selected lorebooks are unavailable/.test(error.message);
     });
-    await assert.rejects(readVillageVisualLore(["world"], "harbor"), /Selected lorebooks are unavailable/);
+    await assert.rejects(readVillageImageLore(["world"], "harbor"), /Selected lorebooks are unavailable/);
     globalThis.fetch = async () => new Response("{}", { status: 200 });
     await assert.rejects(readVillageLore(["world"], "harbor"), /Selected lorebooks are unavailable/);
   } finally {
@@ -340,9 +364,9 @@ async function main() {
   const fit = fitVenueWritingMessages(
     {
       fitContext: (messages: any, options: any) => ({
-        messages: messages[0].content.includes("low-priority") ? [] : messages,
+        messages: JSON.stringify(messages).includes("low-priority") ? [] : messages,
         maxTokens: options.maxTokens,
-        trimmed: messages[0].content.includes("low-priority"),
+        trimmed: JSON.stringify(messages).includes("low-priority"),
         estimatedTokensBefore: 0,
         estimatedTokensAfter: 0,
       }),
@@ -353,6 +377,110 @@ async function main() {
   );
   assert.deepEqual(fit.loreEntries, ["topical"]);
   assert.match(fit.messages[0]!.content, /required/);
+  assert.doesNotMatch(fit.messages[0]!.content, /topical/);
+  assert.ok(
+    fit.messages.some((message) => message.role === "user" && message.content.includes("topical")),
+    "Lore reaches a data message without entering application instructions",
+  );
+  assert.equal(fit.messages.at(-1)!.content, "current input");
+
+  const cleanContext = villageLoreContext({
+    setting: "A harbor",
+    worldName: "Lorehaven",
+    worldRules: "Bright sunsets",
+    narrative: undefined,
+  });
+  assert.equal(cleanContext, "A harbor\nLorehaven\nBright sunsets");
+  assert.equal(
+    selectVillageLore([make("consent")], { setting: cleanContext }, 1600).selected.length,
+    0,
+    "Application instructions cannot activate a key",
+  );
+  assert.equal(loreText("quiet", { personality: "hidden property" }, ["harbor"]), "quiet\nharbor");
+  assert.equal(
+    selectVillageLore([make("secretguild")], { setting: "", recent: sharedLoreHistory(scene, lines, ["a", "b"]) }, 1600)
+      .selected.length,
+    0,
+    "A whisper heard only by a cannot retrieve shared reference text for b",
+  );
+  assert.equal(
+    selectVillageLore([make("secretguild")], { setting: "", recent: sharedLoreHistory(scene, lines, ["a"]) }, 1600)
+      .selected.length,
+    1,
+    "The same witnessed whisper remains eligible for its own audience",
+  );
+
+  const originalUse = { id: "same", bookId: "one", name: "Harbor", bookName: "World", targets: ["Narration"] };
+  const combined = mergeLoreUse(
+    [originalUse],
+    [
+      { ...originalUse, targets: ["System"] },
+      { ...originalUse, bookId: "two", targets: ["System"] },
+    ],
+  );
+  assert.equal(combined.length, 2, "Distinct books with identical entry IDs/names remain distinct");
+  assert.deepEqual(combined[0]!.targets, ["Narration", "System"]);
+  const safe = readLoreUse([
+    { ...originalUse, content: "private body", query: "private trigger", match: "private backstory" },
+  ]);
+  assert.deepEqual(safe, [originalUse]);
+  const inspection = {
+    purpose: "test",
+    stage: "selection" as const,
+    budget: 1600,
+    omittedDiagnostics: 0,
+    entries: ["one", "two"].map((bookId) => ({
+      id: "same",
+      bookId,
+      name: "Harbor",
+      status: "included" as const,
+      match: "setting" as const,
+    })),
+  };
+  assert.deepEqual(
+    fittedLoreUse(inspection, ["identical", "identical"], ["identical"], "Image").map((entry) => entry.bookId),
+    ["one"],
+    "Final image fitting counts actual occurrences, not substring matches",
+  );
+  const savedScene = coerceSession({
+    version: 3,
+    id: "lore",
+    sceneRevision: 1,
+    placeId: "harbor",
+    participants: [],
+    activeIds: [],
+    lines: [],
+    submissions: [{ id: "turn", message: "Hello", mode: "chat", lore: combined }],
+  });
+  assert.deepEqual(
+    coerceSession(JSON.parse(JSON.stringify(savedScene))).submissions[0]!.lore,
+    combined,
+    "Saved Scene provenance survives restart without Engine reads",
+  );
+  assert.deepEqual(publicSceneAuthority(savedScene).lore, combined);
+  const unpublished = {
+    ...savedScene,
+    submissions: [
+      ...savedScene.submissions,
+      {
+        ...savedScene.submissions[0]!,
+        id: "hidden",
+        semanticProvenance: { version: 2 },
+        semanticReady: false,
+        lore: [{ ...originalUse, name: "Unpublished secret" }],
+      },
+    ],
+  } as any;
+  assert.deepEqual(
+    publicSceneAuthority(unpublished).lore,
+    combined,
+    "Unpublished requests cannot replace the visible exchange chip",
+  );
+  assert.deepEqual(
+    (publicSceneResponse({ lore: [{ ...originalUse, content: "private body", query: "private trigger" }] }) as any)
+      .lore,
+    [originalUse],
+  );
 
   const checkpoints = new Map<string, any>(),
     sent: any[] = [],
@@ -448,7 +576,12 @@ async function main() {
   assert.equal(reports[0].entries.find((entry: any) => entry.id === "Low").status, "context-limit");
   unavailable = true;
   failSystem = false;
-  await exchange();
+  const replayed = await exchange();
+  assert.deepEqual(
+    replayed.lore?.map((entry) => entry.name),
+    ["High"],
+    "System provenance names only final-prompt entries",
+  );
   assert.equal(loreReads, 1, "System retry uses captured selection and final prompt during a lore outage");
   assert.deepEqual(sent[1], sent[0], "Optional lore fitting cannot vary the saved source hash on retry");
   const oldInputKey = [...checkpoints.keys()].find((key) => key.endsWith(":input"))!;

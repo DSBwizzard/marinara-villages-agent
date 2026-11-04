@@ -9,6 +9,7 @@ import { backgroundRevision } from "./background-revision.js";
 import { asRecord } from "./coerce.js";
 import { venueZones } from "./venue-zones.js";
 import { foundingIdentity } from "./founding-requests.js";
+import { readLoreUse } from "../../../shared/helpers/lore.js";
 
 export function foundingReadyForPlay(
   state: Pick<VillageState, "setupAt" | "venues" | "villagers" | "foundingPreparation">,
@@ -100,6 +101,7 @@ export function coerceFoundingTasks(value: unknown): FoundingResidentTasks {
               status: raw.status as FoundingTask["status"],
               attempt: Number.isInteger(raw.attempt) ? Math.max(0, Number(raw.attempt)) : 0,
               error: typeof raw.error === "string" ? raw.error.slice(0, 300) : "",
+              ...(raw.lore !== undefined ? { lore: readLoreUse(raw.lore) } : {}),
               ...(typeof raw.receipt === "string" ? { receipt: raw.receipt } : {}),
               ...(typeof raw.allowanceId === "string" ? { allowanceId: raw.allowanceId } : {}),
             };

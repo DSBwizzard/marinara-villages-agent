@@ -3,6 +3,8 @@ import { admissionLoreContext } from "../../../shared/helpers/resident-admission
 import { calendarDate, copyDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
 import type { readNativeScheduleSnapshot } from "../../adapters/engine/native-schedules.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
@@ -106,6 +108,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const native = villager.scheduleInfluence?.enabled
       ? await readNativeScheduleSnapshot(villageNow(), [characterId])
       : null;
+    let loreInspection: LoreInspection | undefined;
     const context = {
       ...(villager.identityDescription && !villager.identityDescription.initialGenerationComplete
         ? { identityDescriptionRevision: villager.identityDescription.revision }
@@ -148,6 +151,11 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         ].join("\n"),
         undefined,
         village.loreTokenBudget,
+        {
+          inspect: (report) => {
+            loreInspection = report;
+          },
+        },
       ),
       // The SENDABLE places: a wish is about something somebody does out in the
       // village, and "they would like to spend more time at home" is not a wish a
@@ -155,7 +163,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       // translation leaves them out — see `remapVenues`.
       venues: remapVenues(village.venues),
     };
-    return context;
+    return { ...context, loreUse: inspectedLoreUse(loreInspection, "Routine") };
   }
   async function queueVillagerAgenda(characterId: string, finite = true, origin?: "founding"): Promise<void> {
     let village = await readVillageState();
@@ -238,6 +246,8 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         ? ownsFoundingTask(state, input.characterId, "routine", input.revision, input.context)
         : agendaRevision(state, input.characterId) === input.revision),
     apply: (state, input, result) => {
+      const task = state.foundingPreparation?.tasks?.[input.characterId]?.routine;
+      if (input.foundingContract === 1 && task?.revision === input.revision) task.lore = input.context.loreUse;
       const resident = state.villagers.find((row) => row.characterId === input.characterId);
       if (resident)
         applyInitialIdentityDescription(
