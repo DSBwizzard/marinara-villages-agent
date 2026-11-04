@@ -460,3 +460,102 @@ console.log("Places: shared Zones, identity, scoped control, private projection 
     assert.ok(registry.npcs[jo.id]);
   }
 }
+
+{
+  const { sceneHaltWorldConflict } = await import("../packages/villages/src/server/domain/rules/scene-halt-world.js");
+  const { readNpc } = await import("../packages/villages/src/server/domain/rules/places.js");
+  const world = defaultVillageState();
+  world.seed = "arrival-action";
+  world.setupAt = world.foundedAt = "2026-11-03T12:00:00.000Z";
+  const cafe = establishPlace(
+    world,
+    {
+      name: "Cafe",
+      description: "A cafe",
+      controllers: ["host"],
+      people: [{ ref: "host", name: "Host", characterization: "The proprietor" }],
+    },
+    "place:cafe",
+    "map",
+    "test",
+    world.setupAt,
+    true,
+  );
+  const scene: any = {
+    id: "arrival",
+    villageSeed: world.seed,
+    placeId: cafe.id,
+    zoneId: "exterior",
+    area: "outside",
+    spaceClass: "other",
+    privateOwnerId: "",
+    startedAt: world.setupAt,
+    activeIds: [],
+    participants: [],
+    submissions: [],
+  };
+  const npc = readNpc({
+    id: "npc:new",
+    revision: 1,
+    name: "Newcomer",
+    label: "Newcomer",
+    characterization: "A visitor",
+    facts: [],
+    associations: [],
+    availability: "",
+    disabled: false,
+    source: "scene:arrival:turn:0",
+    updatedAt: world.setupAt,
+  });
+  assert.equal(
+    sceneHaltWorldConflict(scene, world, {
+      npcAdmissions: [{ npc, segment: 0, zoneId: "exterior", source: "The visitor arrives." }],
+      placeUpdate: {
+        narration: "The visitor sits down.",
+        expectedRevision: 0,
+        recent: { text: "A visitor is seated near the entrance." },
+      },
+      physicalContext: {
+        zoneId: "exterior",
+        actorIds: [npc.id],
+        witnessIds: [npc.id],
+        consentIds: [],
+        positions: { [npc.id]: "exterior", player: "exterior" },
+      },
+    }),
+    false,
+    "An approved arrival can perform ordinary temporary activity",
+  );
+  assert.equal(cafe.location.zones![0].state.recent, null, "Dry validation cannot write the temporary activity");
+  assert.equal(world.worldPlaces.npcs[npc.id], undefined, "Dry validation cannot register a supporting identity");
+  const actor = "npc:place:cafe:host";
+  const reply = {
+    roomInterpretation: {
+      checks: [
+        {
+          facts: {
+            actorId: actor,
+            venueId: cafe.id,
+            zoneId: null,
+            accessCommand: { action: "venue-policy", zoneId: null, expectedRevision: cafe.location.access!.revision },
+          },
+        },
+      ],
+      results: [{ outcome: "access-management" }],
+    },
+  };
+  assert.equal(sceneHaltWorldConflict(scene, world, reply), false, "Venue-wide authority does not require a Zone");
+}
+
+{
+  const { projectSpeakerAtTurn } =
+    await import("../packages/villages/src/server/domain/rules/project-scene-evidence.js");
+  const turn: any = {
+    activeIdsAtTurn: [],
+    replyLineIds: ["early", "arrival", "consent"],
+    npcAdmissions: [{ npc: sameNpc, segment: 1 }],
+  };
+  assert.equal(projectSpeakerAtTurn(turn, { id: "early", speakerId: sameNpc.id }), false);
+  assert.equal(projectSpeakerAtTurn(turn, { id: "consent", speakerId: sameNpc.id }), true);
+  assert.deepEqual(turn.activeIdsAtTurn, []);
+}

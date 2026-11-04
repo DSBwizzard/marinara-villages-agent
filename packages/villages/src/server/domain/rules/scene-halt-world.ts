@@ -1,4 +1,4 @@
-import { findLocation } from "./places.js";
+import { findLocation, readNpc } from "./places.js";
 import { assertResidenceAgreement } from "./residence-agreement.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
@@ -11,6 +11,7 @@ import { assertResidencePrivateDestination } from "./venue-layout.js";
 import { hasVenueClass, venueAssignedCount, venueCapacity, venueResidentIds } from "./venue-model.js";
 import { applyVenueSceneChange, type VenueSceneChange } from "./venue-scene-state.js";
 import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
+import { managesAccess } from "./venue-access.js";
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -19,6 +20,19 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
   if (scene.villageSeed && scene.villageSeed !== current.seed) return true;
   const reply = asRecord(value);
   let captured = sceneContinuityView(current, scene, false);
+  if (Array.isArray(reply.npcAdmissions) && reply.npcAdmissions.length) {
+    current = { ...current, worldPlaces: structuredClone(current.worldPlaces) };
+    captured = { ...captured, worldPlaces: structuredClone(captured.worldPlaces) };
+    try {
+      for (const admission of reply.npcAdmissions) {
+        const npc = readNpc(asRecord(admission).npc);
+        current.worldPlaces.npcs[npc.id] ??= npc;
+        captured.worldPlaces.npcs[npc.id] ??= structuredClone(npc);
+      }
+    } catch {
+      return true;
+    }
+  }
   if (reply.narrativeSource) {
     try {
       const source = reply.narrativeSource as SceneNarrativeSource;
@@ -127,9 +141,15 @@ export function sceneHaltWorldConflict(scene: VenueScene, current: VillageState,
     const facts = asRecord(asRecord(Array.isArray(batch.checks) ? batch.checks[i] : null).facts);
     const venue = findLocation(current, facts.venueId);
     const zone = venue && resolveVenueZone(venue, String(facts.zoneId));
-    if (!venue || !zone || zoneClosed(current, venue, zone) || !canInviteToZone(venue, zone, String(facts.actorId)))
-      return true;
     const command = asRecord(facts.accessCommand);
+    const management = String(result.outcome) === "access-management" || String(result.outcome) === "ban-venue";
+    if (
+      !venue ||
+      (management
+        ? !managesAccess(venue, typeof facts.zoneId === "string" ? facts.zoneId : null, String(facts.actorId))
+        : !zone || zoneClosed(current, venue, zone) || !canInviteToZone(venue, zone, String(facts.actorId)))
+    )
+      return true;
     if (command.expectedRevision !== undefined && command.expectedRevision !== venue.access?.revision) return true;
   }
   const relationship = asRecord(reply.relationshipChanges);
