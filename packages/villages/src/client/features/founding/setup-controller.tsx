@@ -1,3 +1,4 @@
+import { reconcileFoundingHome } from "./founding-homes.js";
 import { applyFoundingVenueDraft, foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
@@ -9,7 +10,12 @@ import type { FoundingState } from "./useFoundingState.js";
 import { removeDeviceDraft } from "../../shared/device-drafts.js";
 import { playerBackgroundProblem } from "./villages-player-background.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
-import { quickStartIdentity, quickStartTemplates, replaceQuickStartVenue } from "./quick-start-drafts.js";
+import {
+  quickStartIdentity,
+  quickStartTemplates,
+  separateFoundingTemplates,
+  replaceQuickStartVenue,
+} from "./quick-start-drafts.js";
 import { requestFoundingSuggestions, type FoundingSuggestionOptions } from "./suggestion-request.js";
 import { useCallback } from "react";
 
@@ -43,6 +49,7 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupContext?: FoundingState["setupContext"];
 
   readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
+  readonly setupFoundingVillagerIds?: string[];
   readonly setupVenues: FoundingState["setupVenues"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
 }) {
@@ -52,6 +59,7 @@ export function createFoundingSuggestSetupVenues(ports: {
     options = pending
       ? {
           quickStart: pending.quickStart,
+          separateHomes: pending.separateHomes,
           venueId: pending.venueId,
           ...(pending.fullVenue ? { fullVenue: true, draftEntranceImage: pending.draftEntranceImage } : {}),
         }
@@ -85,7 +93,13 @@ export function createFoundingSuggestSetupVenues(ports: {
       : options.venueId
         ? JSON.stringify([setupBeginningSourceKey, options.venueId])
         : setupBeginningSourceKey;
-    const rows = replacing ? quickStartTemplates(setupVenues) : setupVenues;
+    const roster = ports.setupFoundingVillagerIds ?? ports.setupDraftData?.roster ?? [];
+    const replacementSource = JSON.stringify(setupVenues);
+    const rows = options.separateHomes
+      ? separateFoundingTemplates(roster, ports.setupContext?.communityVenueId ?? "founding-community")
+      : replacing
+        ? quickStartTemplates(setupVenues)
+        : setupVenues;
     setSetupSuggestionsBusy(true);
     setSetupProblem("");
     try {
@@ -151,6 +165,7 @@ export function createFoundingSuggestSetupVenues(ports: {
           !!options.venueId &&
           JSON.stringify(input.venues) !== JSON.stringify(requestRows(setupVenuesRef.current))) ||
         (replacing && quickStartIdentity(setupVenuesRef.current) !== identity) ||
+        (options.separateHomes && JSON.stringify(setupVenuesRef.current) !== replacementSource) ||
         (!replacing && rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id)))
       )
         throw new Error(
@@ -166,7 +181,9 @@ export function createFoundingSuggestSetupVenues(ports: {
           if (!proposal) throw new Error("Suggestions did not return every template Venue. Your draft is unchanged.");
           return replaceQuickStartVenue(row, proposal);
         });
-        setSetupVenues(arrangeQuickStartVenues(next, true));
+        setSetupVenues(
+          arrangeQuickStartVenues(options.separateHomes ? next.map((row) => reconcileFoundingHome(row)) : next, true),
+        );
         ports.onQuickStartApplied?.();
         ports.setSetupWorkspace?.((state) => ({
           ...state,

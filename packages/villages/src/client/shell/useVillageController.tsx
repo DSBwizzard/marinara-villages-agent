@@ -958,7 +958,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    */
   const placeCount = calculatePlaceCount({ snapshot, venuesDraft });
 
-  const placeSetupPin = usePlaceSetupPin({ ...founding, setupMapSrc, setupVenuesRef });
+  const placeSetupPin = usePlaceSetupPin({ ...founding, setupVenuesRef });
 
   const patchSetupVenue = usePatchSetupVenue(founding);
 

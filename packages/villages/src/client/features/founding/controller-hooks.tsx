@@ -1,3 +1,4 @@
+import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import { FOUNDING_CIRCUMSTANCE_MAX_LENGTH } from "../../../shared/helpers/founding-circumstance.js";
 import type { AreaDraftCache } from "./villages-founding-editor.js";
 import { SETUP_STEPS } from "./founding-steps.js";
@@ -276,6 +277,7 @@ export function useFoundingMapReceipt(ports: {
   setSetupMapBusy: React.Dispatch<React.SetStateAction<boolean>>;
   setSetupMapGeneratedKey: React.Dispatch<React.SetStateAction<string>>;
   setSetupMapImage: React.Dispatch<React.SetStateAction<string>>;
+  setSetupMapSource: React.Dispatch<React.SetStateAction<import("../../shared/types.js").SetupMapSource>>;
   setSetupMapImageSource: React.Dispatch<React.SetStateAction<"generate" | "upload">>;
   setSetupMapProblem: React.Dispatch<React.SetStateAction<string>>;
   setSetupMapReviewed: React.Dispatch<React.SetStateAction<boolean>>;
@@ -289,6 +291,7 @@ export function useFoundingMapReceipt(ports: {
     setSetupMapGeneratedKey,
     setSetupMapImage,
     setSetupMapImageSource,
+    setSetupMapSource,
     setSetupMapProblem,
     setSetupMapReviewed,
     setSetupMapSize,
@@ -329,6 +332,7 @@ export function useFoundingMapReceipt(ports: {
           throw new Error("The generated map's reported dimensions do not match the image.");
         setSetupMapImage(generated.image);
         setSetupMapImageSource("generate");
+        setSetupMapSource("generate");
         setSetupMapGeneratedKey(receipt.sourceKey);
         setSetupMapSize(measured);
         setSetupMapReviewed(false);
@@ -356,6 +360,7 @@ export function useFoundingMapReceipt(ports: {
     setSetupMapGeneratedKey,
     setSetupMapImage,
     setSetupMapImageSource,
+    setSetupMapSource,
     setSetupMapProblem,
     setSetupMapReviewed,
     setSetupMapSize,
@@ -416,6 +421,8 @@ export function useFoundingSetupBlocker(ports: {
         return "Place every starting Venue.";
       if (!snapshot?.isFounded && !setupMapReviewed && !reviewingMap) return "Check the Venue positions on the map.";
 
+      const shapeProblem = foundingVenueShapeProblem(setupVenues, setupContext.communityVenueId);
+      if (!snapshot?.isFounded && shapeProblem) return shapeProblem;
       const residences = setupVenues.filter((venue) => venue.classes?.includes("residence"));
       const villagerHomes = residences;
       if (

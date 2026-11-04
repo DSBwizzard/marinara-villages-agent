@@ -6,6 +6,8 @@ export type FoundingWorkspaceState = {
     id: string;
     sourceKey: string;
     quickStart: boolean;
+    separateHomes?: boolean;
+    sourceVenues?: string;
     venueId?: string;
     sourceInputs?: string;
     fullVenue?: boolean;

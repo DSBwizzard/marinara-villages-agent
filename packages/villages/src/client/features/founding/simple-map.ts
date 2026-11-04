@@ -1,4 +1,4 @@
-/** A locally drawn starting map uses the same PNG contract as an uploaded map. */
+/** Display-only grid until map artwork is uploaded or generated. */
 let cached: string | undefined;
 
 export function simpleFoundingMap(): string {

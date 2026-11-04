@@ -105,7 +105,6 @@ export function usePlaceSetupPin(ports: {
   setSetupWorkspace: React.Dispatch<SetStateAction<FoundingWorkspaceState>>;
   setupEditorOpen: boolean;
   setupMapBusy: boolean;
-  setupMapSrc: string;
   setupVenuesRef: React.RefObject<VillageVenue[]>;
   setupWorkspace: FoundingWorkspaceState;
 }) {
@@ -118,7 +117,6 @@ export function usePlaceSetupPin(ports: {
     setSetupWorkspace,
     setupEditorOpen,
     setupMapBusy,
-    setupMapSrc,
     setupVenuesRef,
     setupWorkspace,
   } = ports;
@@ -134,7 +132,7 @@ export function usePlaceSetupPin(ports: {
         ? rows.find((row) => row.id === draggedVenueId)
         : rows.find((row) => row.id === movingSetupVenueId);
       if (!target || setupEditorOpen || (setupWorkspace.paused && !movingSetupVenueId && !draggedVenueId)) return;
-      if (!setupMapSrc || setupMapBusy) {
+      if (setupMapBusy) {
         setSetupPlacementError("Wait for the selected map before moving Venues.");
         return;
       }
@@ -156,7 +154,6 @@ export function usePlaceSetupPin(ports: {
       setupEditorOpen,
       setupWorkspace?.paused,
       movingSetupVenueId,
-      setupMapSrc,
       setupMapBusy,
       setSetupVenues,
       setSetupWorkspace,

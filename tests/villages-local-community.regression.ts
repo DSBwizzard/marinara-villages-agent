@@ -20,7 +20,7 @@ import {
   assignFoundingHome,
   reconcileFoundingRoster,
 } from "../packages/villages/src/client/features/founding/founding-homes.js";
-import { parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { parsePlace, parsePlaces } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import {
   readFoundingCircumstances,
   seedFoundingCircumstances,
@@ -67,12 +67,20 @@ function drafts(assignments: Record<string, string> = {}) {
       presentation: { ...venue.presentation, x: 0.1 + index * 0.15, y: 0.5 },
     }));
 }
+// Saved-world fixtures include post-founding Venues and shared homes.
+function restorePlaces(rows: ReturnType<typeof drafts>) {
+  return rows.map((row) => {
+    const venue = parsePlace(row);
+    if (venue.category === "public-center") venue.access!.managerIds = [];
+    return venue;
+  });
+}
 function world(groups: Record<string, string> = {}) {
   const state = defaultVillageState();
   state.setupAt = state.foundedAt = state.simulatedThrough = at;
   state.seed = "local-community";
   state.timeZone = "UTC";
-  state.venues = parsePlaces(drafts(groups), new Set(["a", "b", "c"]), true, "community", new ZonedDate(at, "UTC"));
+  state.venues = restorePlaces(drafts(groups));
   state.communityVenueId = "community";
   state.villagers = actors.slice(1).map((actor) => ({
     characterId: actor.id,
@@ -125,12 +133,8 @@ for (const [groups, count] of [
     privateOwner,
     "Reassigning a housemate never transfers another person's private room",
   );
-  const saved = parsePlaces(
+  const saved = restorePlaces(
     rows.map((row, i) => ({ ...row, presentation: { ...row.presentation, x: 0.1 + i * 0.15, y: 0.5 } })),
-    new Set(["a", "b", "c"]),
-    true,
-    "community",
-    new ZonedDate(at, "UTC"),
   );
   assert.equal(
     saved.find((row) => row.id === original.id)!.destinations!.player.sleep,
@@ -140,12 +144,8 @@ for (const [groups, count] of [
   const fresh = newSetupVenue("empty-home", "residence", 0.2, 0.7);
   fresh.name = "Empty cottage";
   rows = assignFoundingHome([...rows, fresh], fresh.id, "a", true);
-  const founded = parsePlaces(
+  const founded = restorePlaces(
     rows.map((row, i) => ({ ...row, presentation: { ...row.presentation, x: 0.1 + i * 0.1, y: 0.5 } })),
-    new Set(["a", "b", "c"]),
-    true,
-    "community",
-    new ZonedDate(at, "UTC"),
   );
   assert.equal(founded.find((row) => row.id === fresh.id)!.destinations!.a.sleep, "common:base");
   const withoutHome = assignFoundingHome(rows, fresh.id, "a", false);
@@ -166,13 +166,7 @@ for (const [groups, count] of [
   let live = world();
   const replacement = newSetupVenue("courtyard", "other", 0.3, 0.7);
   replacement.name = "Public courtyard";
-  live.venues = parsePlaces(
-    [...drafts(), replacement],
-    new Set(["a", "b", "c"]),
-    true,
-    "community",
-    new ZonedDate(at, "UTC"),
-  );
+  live.venues = restorePlaces([...drafts(), replacement]);
   const current = live.venues.find((row) => row.id === "community")!;
   const candidate = live.venues.find((row) => row.id === "courtyard")!;
   const commands = createVenueCommands({
@@ -398,7 +392,7 @@ assert.throws(
       true,
       "community",
     ),
-  /16/,
+  /four Residences/,
 );
 
 {
@@ -413,7 +407,7 @@ assert.throws(
     name: "Operating mall",
     description: "A tidy mall with open glass doors.",
   };
-  state.venues = parsePlaces([...drafts(), mall, second], new Set(["a", "b", "c"]), true, "community");
+  state.venues = restorePlaces([...drafts(), mall, second]);
   const first = state.venues.find((venue) => venue.id === mall.id)!;
   assert.deepEqual(first.access!.managerIds, ["player"]);
   first.zones!.find((zone) => zone.kind === "public")!.description =
@@ -765,15 +759,11 @@ console.log(
   assert.equal(retained.name, home.name);
   assert.equal(retained.privateSpaces![0].description, "A keepsake on a shelf");
   retained.presentation = { ...retained.presentation, x: 0.3, y: 0.2 };
-  const saved = parsePlaces(
+  const saved = restorePlaces(
     regrouped.map((row, i) => ({
       ...row,
       presentation: { ...row.presentation, x: 0.1 + i * 0.1, y: 0.5 },
     })),
-    new Set(["a", "b", "c"]),
-    true,
-    "community",
-    new ZonedDate(at, "UTC"),
   );
   const vacant = saved.find((row) => row.id === home.id)!;
   assert.equal(
@@ -883,13 +873,7 @@ console.log(
   });
   const replacement = newSetupVenue("replacement-common", "other", 0.3, 0.6);
   replacement.name = "Replacement square";
-  const parsed = parsePlaces(
-    [...drafts(), replacement],
-    new Set(["a", "b", "c"]),
-    true,
-    "community",
-    new ZonedDate(at, "UTC"),
-  ).find((row) => row.id === replacement.id)!;
+  const parsed = restorePlaces([...drafts(), replacement]).find((row) => row.id === replacement.id)!;
   await f.mutate((state) => {
     state.venues.push(parsed);
     const old = state.venues.find((row) => row.id === "community")!;

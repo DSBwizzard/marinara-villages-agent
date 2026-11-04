@@ -6,6 +6,7 @@ import type { FoundingState } from "./useFoundingState.js";
 
 export type FoundingSuggestionOptions = {
   quickStart?: boolean;
+  separateHomes?: boolean;
   venueId?: string;
   fullVenue?: boolean;
   draftEntranceImage?: boolean;
@@ -44,13 +45,18 @@ export async function requestFoundingSuggestions(
     id: createVillagesClientId(),
     sourceKey: ports.setupBeginningSourceKey,
     quickStart: !!options?.quickStart,
+    ...(options?.separateHomes ? { separateHomes: true, sourceVenues: JSON.stringify(setupDraftData.venues) } : {}),
     venueId: options?.venueId,
     ...(options?.fullVenue ? { fullVenue: true, draftEntranceImage: !!options.draftEntranceImage } : {}),
-    ...(!options?.quickStart && options?.venueId ? { sourceInputs: JSON.stringify(input) } : {}),
+    ...((!options?.quickStart && options?.venueId) || options?.separateHomes
+      ? { sourceInputs: JSON.stringify(input) }
+      : {}),
   };
   // Recovery must use the original merge mode and target, regardless of which button was tapped.
   if (options) {
     options.quickStart = pending.quickStart;
+    if (pending.separateHomes) options.separateHomes = true;
+    else delete options.separateHomes;
     options.venueId = pending.venueId;
     if (pending.fullVenue) {
       options.fullVenue = true;
@@ -109,7 +115,10 @@ export async function requestFoundingSuggestions(
           throw new Error(
             "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
           );
-        if (pending.sourceInputs !== undefined && pending.sourceInputs !== JSON.stringify(input))
+        if (
+          (pending.sourceInputs !== undefined && pending.sourceInputs !== JSON.stringify(input)) ||
+          (pending.sourceVenues !== undefined && pending.sourceVenues !== JSON.stringify(setupDraftData.venues))
+        )
           throw new Error(
             "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.",
           );

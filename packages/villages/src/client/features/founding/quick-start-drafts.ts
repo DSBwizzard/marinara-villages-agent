@@ -78,3 +78,20 @@ export function replaceQuickStartVenue(venue: VillageVenue, proposal: StartingVe
       : [],
   };
 }
+
+/** Only an explicit replacement creates the simplified starting set. */
+export function separateFoundingTemplates(residentIds: readonly string[], communityId: string): SetupVenueDraft[] {
+  const used = new Set([communityId]);
+  return quickStartTemplates([
+    ...["player", ...residentIds].map((actor, index) => {
+      let id = `founding-home:${actor}`;
+      while (used.has(id)) id += ":home";
+      used.add(id);
+      return {
+        ...newSetupVenue(id, "residence", 0.5, 0.5, actor === "player", index),
+        residentIds: actor === "player" ? [] : [actor],
+      };
+    }),
+    newSetupVenue(communityId, "community", 0.5, 0.5),
+  ]);
+}

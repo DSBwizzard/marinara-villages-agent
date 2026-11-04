@@ -80,7 +80,9 @@ export async function verifyFoundingLayout(group) {
         const page = await context.newPage();
         let payload,
           suggestions = 0,
-          generatedImages = 0;
+          generatedImages = 0,
+          generationImage,
+          mapReceipt;
         const sprites = {};
         await page.route("**/api/villages**", async (route) => {
           const path = new URL(route.request().url()).pathname,
@@ -102,12 +104,26 @@ export async function verifyFoundingLayout(group) {
               residentToken: "",
             });
           }
+          if (path.endsWith("/maps/generate")) {
+            generatedImages++;
+            const body = route.request().postDataJSON();
+            mapReceipt = {
+              id: body.actionId,
+              sourceKey: body.sourceKey,
+              startedAt: new Date().toISOString(),
+              status: "complete",
+              error: "",
+              result: { image: generationImage, width: 1536, height: 1024 },
+            };
+            return send({ ...mapReceipt, status: "running", result: null });
+          }
+          if (path.includes("/maps/generation/founding-map/")) return send(mapReceipt);
           if (path.endsWith("/setup/venues/suggest")) {
             suggestions++;
             const body = route.request().postDataJSON();
             assert.equal(body.communityVenueId, "founding-community");
-            assert.equal(body.mode, "draft-venue");
-            assert.equal(body.draftEntranceImage, view.width === 1366);
+            assert.equal(body.mode, "quick-start");
+            assert.equal(body.draftEntranceImage, undefined);
             assert.equal(body.context.rules, "The sun never sets.");
             const result = {
               ...(body.draftEntranceImage
@@ -120,7 +136,7 @@ export async function verifyFoundingLayout(group) {
                   }
                 : {}),
               venues: body.venues
-                .filter((row) => row.id === body.targetVenueId)
+                .filter((row) => !body.targetVenueId || row.id === body.targetVenueId)
                 .map((row) => {
                   const shared = row.residentIds.length + Number(row.playerHome) > 1;
                   const layout = row.venueClass === "residence" && !shared ? "both" : "common";
@@ -230,13 +246,10 @@ export async function verifyFoundingLayout(group) {
         };
         const editVenue = async (id, tab = "Venue") => {
           await showVenue(id);
-          await root
-            .locator('[data-venue-id="' + id + '"]')
-            .getByRole("button", { name: /^Edit / })
-            .click();
+          await root.locator('[data-venue-id="' + id + '"]').click();
           await sheet.getByRole("button", { name: tab, exact: true }).click();
         };
-        const closeVenue = () => sheet.getByRole("button", { name: "Close Venue details", exact: true }).click();
+
         const bounds = async (phase) => {
           assert.deepEqual(await root.boundingBox(), frame, "Founding frame stays the same size across pages");
           assert.equal(
@@ -367,7 +380,7 @@ export async function verifyFoundingLayout(group) {
           () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
         );
         assert.ok(afterDrag.y > beforeDrag.y);
-        await expect(sheet).toBeHidden();
+        await expect(sheet).toBeVisible();
         if (view.width >= 1000) {
           const frameBeforeBadDrop = await marker.boundingBox();
           await drag(-frameBeforeBadDrop.x - 100, 0);
@@ -415,54 +428,51 @@ export async function verifyFoundingLayout(group) {
             .toBeLessThan(view.count + 2);
           const nextPage = root.getByRole("button", { name: "Next Venues page", exact: true });
           await nextPage.click();
-          const fitting = await root.locator(".villages-quick-page-viewport").evaluate((view) => {
-            const box = view.getBoundingClientRect();
-            return [...view.querySelectorAll(".villages-quick-venue-card")]
-              .filter((row) => getComputedStyle(row).visibility !== "hidden")
-              .every((row) => {
-                const rect = row.getBoundingClientRect();
-                return rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1;
-              });
-          });
-          assert.ok(fitting, "Resized pages keep complete Venue rows inside the available height");
+          const fitting = () =>
+            root.locator(".villages-quick-page-viewport").evaluate((view) => {
+              const box = view.getBoundingClientRect();
+              return [...view.querySelectorAll(".villages-quick-venue-card")]
+                .filter((row) => getComputedStyle(row).visibility !== "hidden")
+                .every((row) => {
+                  const rect = row.getBoundingClientRect();
+                  return rect.top >= box.top - 1 && rect.bottom <= box.bottom + 1;
+                });
+            });
+          await expect
+            .poll(fitting, { message: "Resized pages keep complete Venue rows inside the available height" })
+            .toBe(true);
           await page.setViewportSize({ width: view.width, height: view.height });
           await expect(root.locator(".villages-quick-venue-card:visible")).toHaveCount(view.count + 2);
         }
-        const home = root.locator('[data-venue-id="founding-home:player"]');
-        await editVenue("founding-home:player", "People");
-        for (const person of characters.slice(0, view.count))
-          await sheet.getByRole("checkbox", { name: person.name, exact: true }).check();
-        await expect(sheet.getByRole("checkbox", { name: "You", exact: true })).toBeChecked();
-        await closeVenue();
-        if (view.housing !== "shared") {
-          for (const person of characters.slice(0, view.count)) {
-            await editVenue("founding-home:" + person.id, "People");
-            await sheet.getByRole("checkbox", { name: person.name, exact: true }).check();
-            await closeVenue();
-          }
-        }
-        if (view.housing === "custom") {
-          await editVenue("founding-home:player", "People");
-          await sheet.getByRole("checkbox", { name: "Finn", exact: true }).check();
-          await closeVenue();
-        }
-        const expectedHomes = view.housing === "shared" ? 1 : view.housing === "custom" ? view.count : view.count + 1;
-        await expect
-          .poll(() =>
-            page.evaluate(
-              () =>
-                window.featureController.setupVenues.filter(
-                  (row) => row.occupancy.playerHome || row.residentIds?.length,
-                ).length,
-            ),
-          )
-          .toBe(expectedHomes);
-        assert.equal(suggestions, 0, "Assigning homes never generates suggestions");
-        assert.equal(generatedImages, 0, "The simple map requires no model call");
-        await showVenue("founding-community");
-        await expect(
-          root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
-        ).toBeVisible();
+        assert.equal(await page.evaluate(() => window.featureController.setupVenues.length), view.count + 2);
+        await expect(button("Review village")).toBeDisabled();
+        await expect(root.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
+        await expect(root.getByRole("button", { name: "+ Add home", exact: true })).toHaveCount(0);
+        await expect(root.getByRole("button", { name: "+ Add Venue", exact: true })).toHaveCount(0);
+        await editVenue("founding-home:player");
+        await expect(sheet.getByRole("button", { name: "People", exact: true })).toHaveCount(0);
+        await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeHidden();
+        await sheet.getByRole("button", { name: "Zones", exact: true }).click();
+        await expect(sheet.getByRole("button", { name: "Artwork", exact: true })).toBeVisible();
+        const image = await page.evaluate(() => {
+          const canvas = document.createElement("canvas");
+          canvas.width = 1536;
+          canvas.height = 1024;
+          const context = canvas.getContext("2d");
+          context.fillStyle = "#7fba91";
+          context.fillRect(0, 0, 1536, 1024);
+          return canvas.toDataURL("image/png").split(",")[1];
+        });
+        generationImage = "data:image/png;base64," + image;
+        if (view.width === 1366) {
+          await button("Generate artwork").click();
+          await expect.poll(() => page.evaluate(() => window.featureController.setupMapSource)).toBe("generate");
+          assert.equal(generatedImages, 1, "Direct generation selects its recovered artwork without a source selector");
+        } else
+          await root
+            .getByLabel("Upload map image", { exact: true })
+            .setInputFiles({ name: "map.png", mimeType: "image/png", buffer: Buffer.from(image, "base64") });
+        await expect(button("Review village")).toBeEnabled();
         if (view.width === 1366) {
           await button("Exit").click();
           await page.reload();
@@ -474,101 +484,34 @@ export async function verifyFoundingLayout(group) {
               () => window.featureController.setupVenues.find((row) => row.id === "founding-home:player").presentation,
             ),
             draggedPosition,
-            "Dragged map positions survive save and resume",
           );
-          await expect
-            .poll(() =>
-              page.evaluate(
-                () =>
-                  window.featureController.setupVenues.filter(
-                    (row) => row.occupancy.playerHome || row.residentIds?.length,
-                  ).length,
-              ),
-            )
-            .toBe(expectedHomes);
-          await editVenue("founding-home:player", "People");
-          await expect(sheet.getByRole("checkbox", { name: "You", exact: true })).toBeChecked();
-          await closeVenue();
-          await expect(root.getByRole("combobox", { name: /household/i })).toHaveCount(0);
-          await button("+ Add home").click();
-          const homeDetails = page.locator(".villages-quick-dialog");
-          await expect(homeDetails.getByLabel("Venue Name", { exact: true })).toHaveValue("New home");
-          await homeDetails.getByRole("button", { name: "Zones", exact: true }).click();
-          await expect(homeDetails.getByRole("combobox", { name: "Selected Zone", exact: true })).toContainText(
-            "Entrance",
-          );
-          await homeDetails.getByRole("button", { name: "Done", exact: true }).click();
-          const emptyHome = root.getByRole("region", { name: "New home", exact: true });
-          await expect(emptyHome.getByText("Vacant home", { exact: true })).toBeVisible();
-          await editVenue(await emptyHome.getAttribute("data-venue-id"));
-          await sheet.getByRole("button", { name: "Remove New home", exact: true }).click();
-          await button("+ Add Venue").click();
-          const details = page.locator(".villages-quick-dialog");
-          await details.getByLabel("Venue Name", { exact: true }).fill("Public courtyard");
-          await details.getByRole("button", { name: "Done", exact: true }).click();
-          const courtyard = root.getByRole("region", { name: "Public courtyard", exact: true });
-          const courtyardId = await courtyard.getAttribute("data-venue-id");
-          await editVenue(courtyardId);
-          await sheet.getByRole("button", { name: "Use as Community Venue", exact: true }).click();
-          await closeVenue();
-          await expect(courtyard.getByText("Community Venue", { exact: true })).toBeVisible();
-          await expect(
-            root.locator('[data-venue-id="founding-community"]').getByText("Community Venue", { exact: true }),
-          ).toHaveCount(0);
-          await expect(courtyard.getByRole("checkbox")).toHaveCount(0);
-          await editVenue("founding-community");
-          await sheet.getByRole("button", { name: "Use as Community Venue", exact: true }).click();
-          await closeVenue();
-          await editVenue(courtyardId);
-          await sheet.getByRole("button", { name: "Remove Public courtyard", exact: true }).click();
-          await expect(root.locator('[data-venue-id="' + courtyardId + '"]')).toHaveCount(0);
-          assert.equal(suggestions, 0, "Reload and designation changes make no model requests");
         }
-        await editVenue("founding-community");
-        const suggestionDetails = page.locator(".villages-quick-dialog");
-        await suggestionDetails.getByRole("button", { name: "Suggest details", exact: true }).click();
+        await button("Suggest").click();
         await page
-          .getByRole("dialog", { name: "Suggest details", exact: true })
+          .getByRole("dialog", { name: "Suggest", exact: true })
           .getByRole("button", { name: "Cancel", exact: true })
           .click();
-        assert.equal(suggestions, 0, "Cancel makes no model request");
-        await suggestionDetails.getByRole("button", { name: "Suggest details", exact: true }).click();
-        const draftImage = page.getByRole("checkbox", { name: "Draft entrance image", exact: true });
-        await expect(draftImage).not.toBeChecked();
-        if (view.width === 1366) await draftImage.check();
+        assert.equal(suggestions, 0);
+        await button("Suggest").click();
         await page
-          .getByRole("dialog", { name: "Suggest details", exact: true })
-          .getByRole("button", { name: "Confirm", exact: true })
+          .getByRole("dialog", { name: "Suggest", exact: true })
+          .getByRole("button", { name: "Replace and suggest", exact: true })
           .click();
         await expect.poll(() => suggestions).toBe(1);
         await expect
           .poll(() =>
             page.evaluate(
-              () =>
-                window.featureController.setupVenues.find((row) => row.id === "founding-community").name ===
-                "Community Courtyard",
+              () => window.featureController.setupVenues.find((row) => row.id === "founding-community").name,
             ),
           )
-          .toBe(true);
-        await suggestionDetails.getByRole("button", { name: "Zones", exact: true }).click();
-        await suggestionDetails
-          .getByRole("combobox", { name: "Selected Zone", exact: true })
-          .selectOption("common:base");
-        await expect(suggestionDetails.getByRole("textbox", { name: "Long-term details", exact: true })).toHaveValue(
-          "Drafted visible Zone appearance.",
+          .toBe("Community Courtyard");
+        assert.ok(
+          await page.evaluate(() =>
+            window.featureController.setupVenues
+              .filter((row) => row.classes.includes("residence"))
+              .every((row) => row.residentIds.length + Number(row.occupancy.playerHome) === 1),
+          ),
         );
-        await suggestionDetails.getByRole("button", { name: "Venue", exact: true }).click();
-        if (view.width === 1366)
-          await expect(
-            suggestionDetails.getByRole("button", { name: "Artwork for Entrance", exact: true }).locator("img"),
-          ).toBeVisible();
-        await suggestionDetails.getByRole("button", { name: "Done", exact: true }).click();
-        assert.equal(
-          await page.evaluate(() => window.featureController.setupWorkspace.paused),
-          true,
-          "Closing details does not start map placement",
-        );
-        await root.getByRole("button", { name: "Arrange automatically", exact: true }).click();
         if (view.width > 1000) {
           const options = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
           const map = await root.getByRole("region", { name: "Village map", exact: true }).boundingBox();
@@ -589,7 +532,11 @@ export async function verifyFoundingLayout(group) {
           { scope: "village", summary: "The ferries are delayed. A festival starts tonight.", venueId: "", zoneId: "" },
         ]);
         assert.equal(Object.hasOwn(payload, "foundingHistory"), false);
-        assert.equal(payload.venues.length, view.count + 2, "Reassignment preserves unoccupied places");
+        assert.equal(
+          payload.venues.length,
+          view.count + 2,
+          "Founding contains only the selected homes and Community Venue",
+        );
         const community = payload.venues.find((row) => row.id === payload.communityVenueId);
         assert.equal(community.residentIds.length, 0);
         assert.equal(community.occupancy.playerHome, false);
@@ -601,7 +548,7 @@ export async function verifyFoundingLayout(group) {
             .map((row) => row.id)
             .sort(),
         );
-        assert.equal(generatedImages, 0);
+        assert.equal(generatedImages, Number(view.width === 1366));
         assert.equal(suggestions, 1);
         await context.close();
       });

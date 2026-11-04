@@ -178,6 +178,26 @@ try {
   assert.equal(workspace.suggestionRequest, undefined);
   assert.equal(requests.filter((line) => line.startsWith("POST")).length, 1);
   assert.ok(requests[1].startsWith("GET /api/villages/setup/venues/suggestions/"));
+  // New whole-setup requests persist their mode and refuse newer authored drafts after reload.
+  clientPorts.setupWorkspace = emptyFoundingWorkspace();
+  clientPorts.setupDraftData = { venues: [{ id: "authored", name: "Original" }] };
+  const beforeReplacement = requests.filter((line) => line.startsWith("POST")).length;
+  await assert.rejects(
+    requestFoundingSuggestions(clientPorts, { quickStart: true, separateHomes: true }, { mode: "quick-start" }),
+    /Reconnecting/,
+  );
+  assert.equal(persisted.workspace.suggestionRequest.separateHomes, true);
+  assert.equal(persisted.workspace.suggestionRequest.sourceVenues, JSON.stringify(clientPorts.setupDraftData.venues));
+  workspace = persisted.workspace;
+  clientPorts.setupWorkspace = workspace;
+  clientPorts.setupDraftData = { venues: [{ id: "authored", name: "Newer edit" }] };
+  await assert.rejects(requestFoundingSuggestions(clientPorts, {}, { mode: "quick-start" }), /choices changed/);
+  assert.equal(workspace.suggestionRequest, undefined);
+  assert.equal(
+    requests.filter((line) => line.startsWith("POST")).length,
+    beforeReplacement + 1,
+    "A stale recovered result never dispatches again",
+  );
   // Storage failure must not authorize dispatch.
   clientPorts.setupWorkspace = emptyFoundingWorkspace();
   clientPorts.persistSetupDraft = async () => {

@@ -12,18 +12,17 @@ export function QuickStartButton({
   disabled?: boolean;
   pending: boolean;
   failed?: boolean;
-  onGenerate(draftEntranceImage?: boolean): void;
+  onGenerate(): void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  const [draftEntranceImage, setDraftEntranceImage] = useState(false);
   return (
     <>
       <button type="button" disabled={busy || disabled || pending} onClick={() => setConfirming(true)}>
-        {busy ? "Preparing…" : pending ? "Recovering…" : failed ? "Retry" : "Suggest details"}
+        {busy ? "Preparing…" : pending ? "Recovering…" : failed ? "Retry" : "Suggest"}
       </button>
       {confirming ? (
         <FoundingDialog
-          title={failed ? "Retry" : "Suggest details"}
+          title={failed ? "Retry" : "Suggest"}
           compact
           showCloseButton={false}
           onClose={() => setConfirming(false)}
@@ -31,18 +30,9 @@ export function QuickStartButton({
           {!pending ? (
             <>
               <p>
-                Draft this Venue’s name, form, Zones, descriptions and connections. Keep its household, existing Zone
-                ownership and map position.
+                Replace all starting Venue names, descriptions, Zones and artwork with AI-written Residences and a
+                Community Venue. Images can be added in each Zone afterwards.
               </p>
-              <label>
-                <input
-                  autoComplete="off"
-                  type="checkbox"
-                  checked={draftEntranceImage}
-                  onChange={(event) => setDraftEntranceImage(event.target.checked)}
-                />
-                Draft entrance image
-              </label>
             </>
           ) : null}
           <footer>
@@ -55,10 +45,10 @@ export function QuickStartButton({
               disabled={busy || disabled}
               onClick={() => {
                 setConfirming(false);
-                onGenerate(draftEntranceImage);
+                onGenerate();
               }}
             >
-              Confirm
+              Replace and suggest
             </button>
           </footer>
         </FoundingDialog>

@@ -13,7 +13,13 @@ export function FoundingVenuePages({ children, selectedId }: { children: ReactNo
       list = rows.current!;
     const children = [...list.children] as HTMLElement[];
     const measure = () => {
-      const height = view.clientHeight;
+      const controls = view.nextElementSibling as HTMLElement;
+      const fullHeight =
+        view.clientHeight +
+        (controls.offsetHeight ? controls.offsetHeight + parseFloat(getComputedStyle(view.parentElement!).rowGap) : 0);
+      const last = children.at(-1);
+      // Pagination must release its own space when every row fits without it.
+      const height = last && last.offsetTop + last.offsetHeight <= fullHeight + 1 ? fullHeight : view.clientHeight;
       if (!height) return;
       list.style.setProperty("--venue-page-height", `${height}px`);
       const next = [{ start: 0, end: 0, top: 0 }];

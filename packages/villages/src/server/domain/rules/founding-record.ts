@@ -1,3 +1,4 @@
+import { foundingVenueShapeProblem } from "../../../shared/helpers/founding-venues.js";
 import type { VillageVenue, VillageVenueImage } from "../models/world.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { badRequest } from "./errors.js";
@@ -73,7 +74,9 @@ export function parsePlace(value: unknown): VillageVenue {
   if (workerIds.length && !row.classes.includes("workplace")) throw badRequest("Assigned workers need a Workplace.");
   if (row.layoutVersion !== 1) throw badRequest("Choose an explicit Venue layout before founding.");
   validateStartingVenue(row);
-  const zones = readBaseVenueLayout(row, row.classes, "", foundingImage, { founding: true });
+  const zones = readBaseVenueLayout(row, row.classes, "", foundingImage, {
+    founding: true,
+  });
   if (zones.some((zone) => zone.ownerId && !household.includes(zone.ownerId)))
     throw badRequest("Assign private rooms only to this household's members.");
   const presentation = asRecord(row.presentation),
@@ -100,7 +103,11 @@ export function parsePlace(value: unknown): VillageVenue {
     venueType: asTrimmedString(row.venueType).slice(0, 100),
     category: asTrimmedString(row.category).slice(0, 240),
     capabilities: [],
-    presentation: { mapId: asTrimmedString(presentation.mapId), image: foundingImage(presentation.image), ...position },
+    presentation: {
+      mapId: asTrimmedString(presentation.mapId),
+      image: foundingImage(presentation.image),
+      ...position,
+    },
     state: { revision: 0, recent: null, updatedAt: "" },
   };
   if (row.zoneLayout !== undefined) {
@@ -146,12 +153,15 @@ export function parsePlaces(
   at = new Date(),
 ): VillageVenue[] {
   if (!founding) throw badRequest("Establish starting Venues through Founding.");
-  if (!Array.isArray(value) || value.length > 16) throw badRequest("A Village holds at most 16 Venues.");
+  if (!Array.isArray(value) || value.length > 5)
+    throw badRequest("Founding supports at most four Residences and one Community Venue.");
   const venues = value.map(parsePlace),
     assigned = new Set<string>(),
     seen = new Set<string>(),
     names = new Set<string>();
   let playerHomes = 0;
+  const shapeProblem = foundingVenueShapeProblem(venues, communityVenueId);
+  if (shapeProblem) throw badRequest(shapeProblem);
   for (const venue of venues) {
     if (seen.has(venue.id) || names.has(venue.name.toLowerCase()))
       throw badRequest("Every Venue needs a distinct name and ID.");

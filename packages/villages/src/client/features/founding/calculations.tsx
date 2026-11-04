@@ -2,7 +2,6 @@ import type { AreaDraftCache } from "./villages-founding-editor.js";
 import { residentAdmissionProblems } from "../../../shared/helpers/resident-admission.js";
 import { placeSpot } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin } from "../../shared/types.js";
-import { simpleFoundingMap } from "./simple-map.js";
 
 export function calculateResidentContextProblem(ports: {
   selectedResidentAdmissions: {
@@ -154,7 +153,7 @@ export function calculateSetupMapSrc(ports: {
   return setupMapSource === "existing"
     ? townMapImage || null
     : setupMapSource === "simple"
-      ? simpleFoundingMap()
+      ? null
       : setupMapImageSource === setupMapSource
         ? setupMapImage || null
         : null;
