@@ -1,15 +1,11 @@
 import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   shouldSubmitVenueKey,
   sceneResend,
 } from "../packages/villages/src/client/features/scenes/villages-venue-send.ts";
 import { createVillagesClientId } from "../packages/villages/src/client/shared/request-id.js";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const ui = clientImplementation();
 const sendButton = ui.match(
   /className=\{`\$\{ELEMENT_TAG\}-chat-send`\}[\s\S]*?aria-label=\{busy \? "Sending" : "Send"\}/u,
@@ -55,8 +51,27 @@ for (const mode of ["chat", "leave", "contact"])
     { submissionId: "next" },
     "A failed completed interpretation cannot block a new Scene operation",
   );
+for (const mode of ["chat", "leave", "contact"])
+  assert.deepEqual(
+    sceneResend(
+      { ...saved, kind: "greet", status: "complete", error: "invalid-json", input: {} },
+      { message: "Hello", mode },
+      "next",
+    ),
+    { submissionId: "next" },
+    "A terminal failed opening cannot be treated as the player turn to resend",
+  );
+assert.throws(
+  () => sceneResend({ ...saved, kind: "greet", input: {} }, { message: "Hello", mode: "chat" }, "next"),
+  /Recover the saved request/,
+);
 assert.throws(() => sceneResend({ ...saved, status: "running" }, saved.input, "new"), /still responding/);
-assert.throws(() => sceneResend(saved, { ...saved.input, mode: "contact" }, "new"), /edits are preserved/);
+for (const mode of ["chat", "contact", "act", "fulfill", "leave"])
+  assert.deepEqual(sceneResend(saved, { message: "Edited", mode, targetId: "new-target" }, "new"), {
+    submissionId: "new",
+    retryOfAttemptId: "attempt",
+    replaceOfOperationId: "original",
+  });
 const interruptedMove = { ...saved, kind: "move", input: { zoneId: "common" } };
 assert.deepEqual(sceneResend(interruptedMove, { zoneId: "common" }, "new"), {
   submissionId: "original",

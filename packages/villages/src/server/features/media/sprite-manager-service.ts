@@ -21,8 +21,7 @@ export interface SpriteManagerPorts {
   decodeSpriteImage(image: string): Promise<SpritePixels>;
   villageEngineJson<T>(path: string, init?: { method?: string; body?: unknown; signal?: AbortSignal }): Promise<T>;
   readSpriteFile(url: string): Promise<Response>;
-  deleteVillageSpriteFile(assetId: string, expression: string): Promise<void>;
-  villagesLogger(): { warn(message: string): void };
+  saveSpriteFile<T>(assetId: string, expression: string, image: string, upload: () => Promise<T>): Promise<T>;
   writes: SpriteWrites;
 }
 
@@ -34,8 +33,7 @@ export function createSpriteManager({
   decodeSpriteImage,
   villageEngineJson,
   readSpriteFile,
-  deleteVillageSpriteFile,
-  villagesLogger,
+  saveSpriteFile,
   writes,
 }: SpriteManagerPorts) {
   const serialize = writes.serialize;
@@ -60,11 +58,13 @@ export function createSpriteManager({
     return { manager: await readSpriteManager(id), snapshot: await buildVillageSnapshot() };
   }
   async function saveImage(assetId: string, expression: string, image: string) {
-    const saved = asRecord(await villageEngineJson(`/api/sprites/${assetId}`, { body: { expression, image } }));
-    const filename = asString(saved.filename);
-    if (!/^[a-z0-9_-]{1,40}\.(png|jpeg|jpg|webp)$/.test(filename))
-      throw badRequest("Engine could not save a usable sprite file.");
-    return { filename, url: `/api/sprites/${assetId}/file/${filename}` };
+    return saveSpriteFile(assetId, expression, image, async () => {
+      const saved = asRecord(await villageEngineJson(`/api/sprites/${assetId}`, { body: { expression, image } }));
+      const filename = asString(saved.filename);
+      if (filename !== expression + "." + image.slice(11, image.indexOf(";")))
+        throw badRequest("Engine could not save a usable sprite file.");
+      return { filename, url: `/api/sprites/${assetId}/file/${filename}` };
+    });
   }
   async function readImage(url: string) {
     const response = await readSpriteFile(url);
@@ -136,7 +136,13 @@ export function createSpriteManager({
       const available = (Array.isArray(files) ? files : []).map(asRecord).flatMap((file) => {
         const filename = asString(file.filename);
         if (!isEngineSpriteFilename(filename)) return [];
-        return [{ filename, url: `/api/sprites/${encodeURIComponent(id)}/file/${encodeURIComponent(filename)}` }];
+        return [
+          {
+            filename,
+            label: asString(file.label).trim() || filename,
+            url: `/api/sprites/${encodeURIComponent(id)}/file/${encodeURIComponent(filename)}`,
+          },
+        ];
       });
       const items = available.map((file) => {
         const adopted = manager.artwork.find(
@@ -210,10 +216,8 @@ export function createSpriteManager({
         throw badRequest(
           "Artwork exceeds the safe margin. Reduce scale or adjust the crop and position before saving.",
         );
-      const name = asString(body.name).trim(),
-        useWhen = asString(body.useWhen).trim();
-      if (!name || name.length > 100 || useWhen.length > 1000)
-        throw badRequest("Choose an expression name of 1–100 characters and a description of at most 1000 characters.");
+      const name = asString(body.name).trim();
+      if (!name || name.length > 100) throw badRequest("Choose an expression name of 1–100 characters.");
       if (body.view !== "front" && body.view !== "side") throw badRequest("Choose front or side view.");
       const expressionId = asString(body.expressionId) || "e-" + randomUUID();
       if (body.expressionId && !manager.expressions.some((item) => item.id === expressionId))
@@ -232,8 +236,7 @@ export function createSpriteManager({
         const expression = next.expressions.find((item) => item.id === expressionId);
         if (expression) {
           expression.name = name;
-          expression.useWhen = useWhen;
-        } else next.expressions.push({ id: expressionId, name, useWhen });
+        } else next.expressions.push({ id: expressionId, name });
         next.assignments = next.assignments.filter(
           (item) => item.expressionId !== expressionId || item.view !== body.view,
         );
@@ -242,6 +245,25 @@ export function createSpriteManager({
       });
       return result(id);
     });
+  }
+
+  async function reframeArtwork(art: SpriteArtwork, frame: SpriteFrame): Promise<SpriteArtwork> {
+    const image = await readImage(art.source.url);
+    const bytes = decodeVillageImageDataUrl(image, { label: "sprite", maxBase64Length: 16_000_000 }).bytes;
+    if (digest(bytes) !== art.source.sha256) throw conflict("The saved original changed. Import the artwork again.");
+    let processed: ReturnType<typeof renderSpritePixels>;
+    try {
+      processed = renderSpritePixels(await decodeSpriteImage(image), frame);
+    } catch (error) {
+      throw badRequest(error instanceof Error ? error.message : "Check the artwork framing.");
+    }
+    if (processed.clipped) throw badRequest("Artwork exceeds the safe margin. Reduce its size or adjust its position.");
+    return {
+      ...art,
+      frame,
+      warnings: processed.warnings,
+      rendered: await saveImage(art.assetId, "r-" + randomUUID().replaceAll("-", ""), spritePng(processed.image)),
+    };
   }
   function setSpriteDefault(id: string, raw: unknown) {
     return serialize(id, async () => {
@@ -306,19 +328,14 @@ export function createSpriteManager({
         manager.assignments = manager.assignments.filter((item) => item.artworkId !== art.id);
         pruneSpriteExpressions(manager);
       });
-      // Delete only the original and derivative owned by this manager entry.
-      for (const filename of [art.source.filename, art.rendered.filename]) {
-        try {
-          await deleteVillageSpriteFile(art.assetId, filename.replace(/\.[^.]+$/, ""));
-        } catch {
-          villagesLogger().warn("A removed Sprite Manager file could not be deleted; its assignment is removed.");
-        }
-      }
       return result(id);
     });
   }
 
   return {
+    prepareArtwork,
+    reframeArtwork,
+    readImage,
     readSpriteManager,
     importSpriteArtwork,
     listSpriteLibrary,

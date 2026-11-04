@@ -15,11 +15,8 @@ export function venueDisplayZones(place: VillageVenue, room: SceneView) {
           description: place.form || place.description,
           image: place.presentation.image,
           state: place.exteriorState ?? {
-            condition: "",
-            items: [],
-            publicFacts: [],
-            features: [],
-            traces: [],
+            revision: 0,
+            recent: null,
             updatedAt: "",
           },
         },
@@ -39,8 +36,6 @@ export function venueDisplayZones(place: VillageVenue, room: SceneView) {
       ];
   return zones.map((zone) => {
     const exterior = zone.kind === "exterior";
-    const active = room?.status !== "closed" && room?.placeId === place.id && room.zoneId === zone.id;
-    const known = exterior || !!zone.seen || active || (zone.kind === "shared-residence" && place.occupancy.playerHome);
     const invited = place.playerInvitations?.some(
       (invitation) =>
         invitation.zoneId === zone.id ||
@@ -72,13 +67,10 @@ export function venueDisplayZones(place: VillageVenue, room: SceneView) {
             : "Currently unavailable";
     return {
       ...zone,
-      name: exterior ? "Exterior" : zone.name,
-      known,
+      name: exterior ? "Entrance" : zone.name,
       allowed,
       restricted,
       accessLabel,
-      image: known ? zone.image : null,
-      description: known ? zone.description : "",
       isPrivate: zone.kind === "private-residence",
     };
   });

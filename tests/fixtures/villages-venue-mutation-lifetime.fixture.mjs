@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
@@ -12,7 +13,8 @@ export async function verifyVenueMutationLifetimes(browser) {
       contents: `
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useSaveVenue,useRemoveVenue,useDecideVenueRequest} from './packages/villages/src/client/features/venues/actions.js';
-import {useSaveStoryPace,useSaveSettings} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveBackgroundPace,useSaveSettings} from './packages/villages/src/client/features/settings/actions.js';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
  const [snapshot,rawSnapshot]=useState(window.seed),[busy,rawBusy]=useState(false),[error,rawError]=useState(''),
  [venueEditDraft,rawEditor]=useState(window.draft),[venuesDraft,rawRows]=useState(window.initialRows),
@@ -22,8 +24,8 @@ function Harness(){
  setVenuesDraft=useCallback(v=>{window.calls.rows++;rawRows(v)},[]),setRequestEdits=useCallback(v=>{window.calls.edits++;rawEdits(v)},[]),
  openMenu=useCallback(v=>{window.calls.menu++;rawMenu(v)},[]);
  const ports={snapshot,setSnapshot,setBusy,setSettingsError,setVenueEditDraft,setVenuesDraft,requestEdits,setRequestEdits,openMenu};
- const save=useSaveVenue(ports),remove=useRemoveVenue(ports),decide=useDecideVenueRequest(ports),pace=useSaveStoryPace(ports),settings=useSaveSettings({...ports,
- knowledgeDraft:'',personaDraft:'',settingDraft:'',lorebookDraft:[],loreTokenBudgetDraft:1600,acceptSavedSettings:()=>window.acks++});
+ const save=useSaveVenue(ports),remove=useRemoveVenue(ports),decide=useDecideVenueRequest(ports),pace=useSaveBackgroundPace(ports),settings=useSaveSettings({...ports,
+ knowledgeDraft:'',personaDraft:'',settingDraft:'',lorebookDraft:[],loreTokenBudgetDraft:1600,visualLoreDefault:true,acceptSavedSettings:()=>window.acks++});
  const commands={save:()=>save(venueEditDraft),remove:()=>remove(window.targetId),approve:()=>decide(window.entry,true),deny:()=>decide(window.entry,false),pace:()=>pace('quiet'),settings};
  const launch=fn=>{window.pending.push(fn());return window.pending.length-1},run=kind=>launch(commands[kind]);
  const reset=()=>{rawSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});rawBusy(true)};
@@ -36,8 +38,7 @@ function Harness(){
  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error,editor:venueEditDraft,rows:venuesDraft.map(v=>({id:v.id,name:v.name})),edits:requestEdits,menu})};
  return <pre id='state'>{JSON.stringify(window.h.read())}</pre>;
 }window.pending=[];window.acks=0;window.confirms=[];window.calls={snapshot:0,busy:0,error:0,editor:0,rows:0,edits:0,menu:0};
-window.confirm=note=>{window.confirms.push(note);window.onConfirm();return window.acceptConfirm!==false};
-const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
+const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><ConfirmationProvider><Harness/></ConfirmationProvider></StrictMode>:<ConfirmationProvider><Harness/></ConfirmationProvider>);
 `,
     },
     bundle: true,
@@ -50,7 +51,6 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     residentCharacterIds: [],
     playerHome: false,
     workerCharacterIds: [],
-    pendingMailCount: 0,
     pendingResidenceCharacterIds: [],
     remapCount: 0,
     roomPresent: false,
@@ -58,6 +58,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
   };
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 900 } });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       requests = [],
       errors = [];
@@ -79,7 +80,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
     const initialRows = options.local ? [...seed.settings.venues, { ...draft, id: "local" }] : seed.settings.venues;
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-mutations.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
       requests.push({
@@ -117,7 +118,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
           snapshot.settings.venues = snapshot.settings.venues.filter((venue) => venue.id !== "venue / A");
         if (options.returned)
           snapshot.settings.venues.push({ ...draft, id: "returned", name: options.create ? "new café" : "Returned" });
-        await requests[index].route.fulfill({
+        await fulfill(requests[index].route, {
           status: options.fail ? 502 : 200,
           contentType: "application/json",
           body: JSON.stringify(
@@ -128,6 +129,26 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
                 : snapshot,
           ),
         });
+        const dependencies = { ...emptyDependencies, ...options.dependencies };
+        if (
+          requests[index].path.endsWith("/dependencies") &&
+          !options.fail &&
+          !dependencies.roomPresent &&
+          !dependencies.playerHome &&
+          !dependencies.residentCharacterIds.length &&
+          (await page.locator("#state").count()) &&
+          (await state()).setting === "A"
+        ) {
+          const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
+          await expect(dialog).toBeVisible();
+          const note = await dialog.locator("p").textContent();
+          const accept = await page.evaluate((note) => {
+            window.confirms.push(note);
+            window.onConfirm();
+            return window.acceptConfirm !== false;
+          }, note);
+          await dialog.getByRole("button", { name: accept ? "Continue" : "Cancel", exact: true }).click();
+        }
       },
       finish: async () => {
         assert.deepEqual(errors, []);
@@ -261,11 +282,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       }
       // Removal keeps the complete dependency blocker precedence and exact confirmation behavior.
       for (const [dependencies, expected] of [
-        [
-          { roomPresent: true, pendingMailCount: 2, playerHome: true },
-          "End the active Scene before deleting this Venue.",
-        ],
-        [{ pendingMailCount: 2, playerHome: true }, "Resolve pending Venue decisions before deleting this Venue."],
+        [{ roomPresent: true, playerHome: true }, "End the active Scene before deleting this Venue."],
         [{ playerHome: true }, "Move every resident, including yourself, before deleting this Residence."],
         [
           { residentCharacterIds: ["resident"] },

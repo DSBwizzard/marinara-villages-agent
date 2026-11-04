@@ -1,3 +1,9 @@
+import { currentVillageCircumstances } from "../domain/rules/prompt-preset.js";
+import { backgroundRevision } from "../domain/rules/background-revision.js";
+import type { mutateDocument } from "../adapters/storage/document-store.js";
+import { rejectedSyntaxError } from "../domain/rules/rejected-response.js";
+import { retainPrivateDiagnostic } from "../adapters/observability/private-diagnostics.js";
+import { responseDiagnostics } from "../domain/rules/response-diagnostics.js";
 import { withVillageClockWork } from "../adapters/time/clock-gate.js";
 import type { readVillageLore } from "../adapters/engine/lorebooks.js";
 import type { villagesLogger } from "../adapters/engine/runtime-host.js";
@@ -5,8 +11,8 @@ import type { villagesLanguageModels } from "../adapters/models/language-models.
 import type { VillageState, VillageVenue, VillageVenueZone } from "../domain/models/world.js";
 import { asRecord, asTrimmedString } from "../domain/rules/coerce.js";
 import { safeFailureMessage } from "../domain/rules/errors.js";
-import { extractJsonObject } from "../domain/rules/json-reply.js";
-import { renderResidentFoundingContext, RESIDENT_CONTINUITY_RULE } from "../domain/rules/resident-founding-context.js";
+import { extractModelJsonObject } from "../domain/rules/json-reply.js";
+import { renderResidentAdmission, RESIDENT_CONTINUITY_RULE } from "../domain/rules/resident-admission.js";
 import { venueZones, zoneControllerIds } from "../domain/rules/venue-zones.js";
 import type { reportFoundingProgress } from "../features/founding/founding-progress.js";
 import type { completeWithRoom } from "../features/generation/model-requests.js";
@@ -14,8 +20,22 @@ import type { villagesConnectionIdFor } from "../features/settings/connections.j
 import type { mutateVillageState, readVillageState } from "../features/world/village-store.js";
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
 import { randomUUID } from "node:crypto";
-export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZone): string {
-  return JSON.stringify([
+export function privatePreparationKey(venue: VillageVenue, zone: VillageVenueZone, village?: VillageState): string {
+  return backgroundRevision([
+    village && [
+      village.worldName,
+      village.setting,
+      currentVillageCircumstances(village),
+      village.selectedLorebookIds,
+      village.loreTokenBudget,
+      village.villagers
+        .filter((person) =>
+          (zone.kind === "private-residence" ? [zone.ownerId] : zoneControllerIds(venue, zone)).includes(
+            person.characterId,
+          ),
+        )
+        .map((person) => [person.cardSnapshot, person.admission]),
+    ],
     venue.venueType,
     venue.form,
     venue.layoutVersion,
@@ -42,7 +62,33 @@ export function privatePreparationRooms(village: Pick<VillageState, "venues">) {
       .map((zone) => ({ venue, zone })),
   );
 }
+function readPrivateReply(
+  completion: { content?: string | null; finishReason?: string | null },
+  venueId: string,
+  zoneId: string,
+) {
+  const raw = extractModelJsonObject(completion);
+  const entries = Array.isArray(raw?.rooms) ? raw.rooms.map(asRecord) : [];
+  const generated = entries[0];
+  const issues = !raw
+    ? ["invalid_json"]
+    : !Array.isArray(raw.rooms)
+      ? ["missing_rooms"]
+      : entries.length !== 1
+        ? ["room_count"]
+        : [
+            ...(generated.venueId !== venueId ? ["venue_id_mismatch"] : []),
+            ...(generated.id !== zoneId ? ["space_id_mismatch"] : []),
+            ...(!asTrimmedString(generated.description) ? ["missing_description"] : []),
+            ...(asTrimmedString(generated.description).length > 4000 ? ["description_too_long"] : []),
+          ];
+  if (["length", "max_tokens"].includes(completion.finishReason ?? "")) issues.unshift("truncated");
+
+  return { raw, generated, issues };
+}
+
 export interface PrivateSpacePreparationPorts {
+  mutateDocument: typeof mutateDocument;
   readVillageLore: typeof readVillageLore;
   villagesLogger: typeof villagesLogger;
   villagesLanguageModels: typeof villagesLanguageModels;
@@ -55,6 +101,7 @@ export interface PrivateSpacePreparationPorts {
 /** One application owns the durable private-space preparation sequence. */
 export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPorts) {
   const {
+    mutateDocument,
     readVillageLore,
     villagesLogger,
     villagesLanguageModels,
@@ -95,13 +142,12 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
       const next = privatePreparationRooms(village).find(({ zone }) => zone.preparation?.status === "pending");
       if (!next) return;
       const { venue, zone } = next;
-      const key = privatePreparationKey(venue, zone);
+      const key = privatePreparationKey(venue, zone, village);
       const claimId = randomUUID();
       const attempt = (zone.preparation?.attempt ?? 0) + 1;
       let claimed = false;
       let modelName = "System model";
       let outputLimit: number | undefined;
-      let finishReason = "unavailable";
       const progress = (stage: "lore" | "resolving" | "model" | "validating" | "saving", extra = {}) =>
         reportFoundingProgress(seed, {
           phase: "private-spaces",
@@ -132,16 +178,13 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             ? {
                 existingInterior: {
                   description: zone.description,
-                  condition: zone.state.condition,
-                  items: zone.state.items,
-                  facts: zone.state.publicFacts,
                 },
               }
             : {}),
           characters: village.villagers
             .filter((person) => owners.includes(person.characterId))
-            .map(({ cardSnapshot: card, foundingContext }) => ({
-              foundingBackground: renderResidentFoundingContext(card.name, foundingContext),
+            .map(({ cardSnapshot: card, admission }) => ({
+              admissionContext: renderResidentAdmission(card.name, admission),
               name: card.name,
               personality: card.personality.slice(0, 400),
               summary: card.summary.slice(0, 200),
@@ -150,40 +193,41 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         };
         const lore = await readVillageLore(
           village.selectedLorebookIds,
-          [village.setting, ...village.worldFacts, JSON.stringify(room)].join("\n"),
+          [village.setting, village.worldName, ...currentVillageCircumstances(village), JSON.stringify(room)].join(
+            "\n",
+          ),
           signal,
           Math.min(village.loreTokenBudget, 256),
-          true,
-          true,
         );
         await progress("resolving", { loreEntryCount: lore.length });
         const model = await villagesLanguageModels().resolveForRequest({
           connectionId: await villagesConnectionIdFor("system"),
         });
-        modelName = model.name || model.model || "System model";
+        modelName = model.model || model.name || "System model";
         const requested = Math.min(model.maxOutputTokens ?? 3000, 3000);
         const messages: CapabilityLanguageModelMessage[] = [
           {
             role: "system",
             content:
-              (room.characters.some((person) => person.foundingBackground) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
-              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled items and facts, removing only details contradicted by the approved work; do not reset the room or add unexplained possessions. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"at most 1000 characters","condition":"at most 240 characters","items":["ordinary item"],"facts":["grounded physical detail"]}]}. Return at most four items and four facts for initial preparation, or up to twenty-four of each when preserving an existingInterior, each at most 240 characters. Keep the complete reply concise.',
+              (room.characters.some((person) => person.admissionContext) ? RESIDENT_CONTINUITY_RULE + "\n" : "") +
+              'Define exactly the one saved private space in the input. Respect venue form, world facts, roomSpecification, selected lore and occupant personalities. A tent corner is valid; never assume a bedroom. Respect the saved layout, including a private-only interior or no Common Space. Never invent adjoining rooms, named people or exceptional possessions. Without occupants prepare a functional neutral interior. If existingInterior is supplied, apply the approved roomSpecification to that interior, preserving unrelated furnishings, damage and history. Return the complete reconciled description, removing only details contradicted by the approved work; preserve unrelated established details. For a Private work area derive a fitting short name (vault, office, staff room, storage, etc.). Return JSON only: {"rooms":[{"venueId":"exact input","id":"exact input","name":"short room name","description":"complete current physical account, at most 4000 characters"}]}. Keep the complete reply concise.',
           },
           {
             role: "user",
             content: JSON.stringify({
               setting: village.setting,
-              worldFacts: village.worldFacts,
+              worldName: village.worldName,
+              worldFacts: currentVillageCircumstances(village),
               rooms: [{ ...room, lore }],
             }),
           },
         ];
         const fitted = model.fitContext(messages, { maxTokens: requested });
         if (
-          room.characters.some((person) => person.foundingBackground) &&
+          room.characters.some((person) => person.admissionContext) &&
           JSON.stringify(fitted.messages) !== JSON.stringify(messages)
         )
-          throw new Error("The required resident background does not fit the System connection. No request was sent.");
+          throw new Error("The required resident backstory does not fit the System connection. No request was sent.");
         outputLimit = Math.min(fitted.maxTokens ?? requested, requested);
         signal?.throwIfAborted();
         await mutateVillageState((state) => {
@@ -196,7 +240,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             !current ||
             current.zone.preparation?.status !== "pending" ||
             current.zone.preparation.claimId ||
-            privatePreparationKey(current.venue, current.zone) !== key
+            privatePreparationKey(current.venue, current.zone, state) !== key
           )
             return;
           current.zone.preparation = {
@@ -211,6 +255,26 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         if (!claimed) return;
         await progress("model");
         const result = await completeWithRoom(model, fitted.messages, outputLimit, {
+          savedRequest: {
+            key: JSON.stringify([seed, venue.id, zone.id, key]),
+            retry: attempt > 1,
+            valid: (result) => readPrivateReply(result, venue.id, zone.id).issues.length === 0,
+            replayContent: (result) => {
+              const { generated, issues } = readPrivateReply(result, venue.id, zone.id);
+              if (issues.length) throw new Error("The space response could not be replayed.");
+              return JSON.stringify({
+                rooms: [
+                  {
+                    venueId: venue.id,
+                    id: zone.id,
+                    name: asTrimmedString(generated.name).slice(0, 100),
+                    description: asTrimmedString(generated.description),
+                  },
+                ],
+              });
+            },
+          },
+          responseFormat: { type: "json_object" },
           temperature: 0.7,
           reasoningEffort: "none",
           retryEmpty: false,
@@ -218,22 +282,52 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           debugMode: false,
           signal,
         });
-        finishReason = result.finishReason ?? "unknown";
         await progress("validating");
-        if (finishReason === "length")
-          throw new Error("Output was truncated. Check the System output limit and retry deliberately.");
-        const raw = extractJsonObject(result.content ?? "");
-        const entries = Array.isArray(raw?.rooms) ? raw.rooms.map(asRecord) : [];
-        const generated = entries[0];
-        if (
-          entries.length !== 1 ||
-          generated.venueId !== venue.id ||
-          generated.id !== zone.id ||
-          !asTrimmedString(generated.description)
-        )
-          throw new Error(
-            "No complete JSON for the requested space. Check the System connection and retry deliberately.",
-          );
+        const { raw, generated, issues } = readPrivateReply(result, venue.id, zone.id);
+        if (issues.length) {
+          const content = result.content ?? "";
+          const entry = {
+            ...responseDiagnostics(model, result, outputLimit, raw),
+            villageSeed: seed,
+            venueId: venue.id,
+            zoneId: zone.id,
+            claimId,
+            attempt,
+            capturedAt: new Date().toISOString(),
+            issues,
+            usage: result.usage
+              ? {
+                  promptTokens: result.usage.promptTokens,
+                  completionTokens: result.usage.completionTokens,
+                  completionReasoningTokens: result.usage.completionReasoningTokens,
+                }
+              : undefined,
+            content,
+            truncated: content.length > 24_000,
+            syntaxError: raw ? "" : rejectedSyntaxError(content),
+          };
+          try {
+            await retainPrivateDiagnostic(mutateDocument, "space", entry);
+          } catch {
+            try {
+              villagesLogger().warn("[villages] Could not retain private space-response diagnostics");
+            } catch {
+              /* Diagnostics cannot replace rejection. */
+            }
+          }
+          const problem = issues.includes("truncated")
+            ? "Space response was truncated."
+            : issues.includes("invalid_json")
+              ? "Space response was not valid JSON."
+              : issues.includes("missing_rooms")
+                ? "Space response omitted rooms."
+                : issues.includes("room_count")
+                  ? "Space response must contain exactly one room."
+                  : issues.includes("venue_id_mismatch") || issues.includes("space_id_mismatch")
+                    ? "Space response used the wrong IDs."
+                    : "Space response omitted its description.";
+          throw new Error(problem + " Retry preparation.");
+        }
         signal?.throwIfAborted();
         await progress("saving");
         let stale = false;
@@ -249,7 +343,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             current.zone.preparation.status !== "pending"
           )
             return;
-          if (privatePreparationKey(current.venue, current.zone) !== key) {
+          if (privatePreparationKey(current.venue, current.zone, state) !== key) {
             current.zone.preparation = {
               ...current.zone.preparation,
               status: "failed",
@@ -259,32 +353,13 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
             stale = true;
             return;
           }
-          const list = (field: string) =>
-            Array.isArray(generated[field])
-              ? (generated[field] as unknown[])
-                  .filter((item): item is string => typeof item === "string")
-                  .map((item) => item.trim().slice(0, 240))
-                  .filter(Boolean)
-                  .slice(0, zone.preparation?.mode === "renovation" ? 24 : 4)
-              : [];
           const target = current.zone;
           if (target.name === "Private work area")
             target.name = asTrimmedString(generated.name).slice(0, 100) || target.name;
-          if (target.roomSpecification !== undefined)
-            target.description = asTrimmedString(generated.description).slice(0, 1000);
-          else target.description ||= asTrimmedString(generated.description).slice(0, 1000);
-          target.state = {
-            ...target.state,
-            condition: asTrimmedString(generated.condition).slice(0, 240),
-            items:
-              target.preparation?.mode === "renovation"
-                ? list("items")
-                : venue.layoutVersion === 1
-                  ? [...new Set([...target.state.items, ...list("items")])]
-                  : list("items"),
-            publicFacts: list("facts"),
-            updatedAt: new Date().toISOString(),
-          };
+          if (target.description !== asTrimmedString(generated.description) && target.image)
+            target.picture = { ...target.picture, base: target.picture?.base ?? target.image, dirty: true };
+          target.description = asTrimmedString(generated.description);
+          target.state = { ...target.state, revision: target.state.revision + 1, updatedAt: new Date().toISOString() };
           target.preparation = { status: "ready", attempt };
         });
         if (stale) throw new Error("The space changed during preparation. Retry deliberately.");
@@ -292,11 +367,7 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         const detail = signal?.aborted
           ? "Preparation was interrupted. Retry deliberately; the previous request may have been charged."
           : safeFailureMessage(cause);
-        const error =
-          `${zone.name.slice(0, 80)} · ${modelName.slice(0, 60)} · limit ${outputLimit ?? "unavailable"} · finish ${finishReason}: ${detail}`.slice(
-            0,
-            300,
-          );
+        const error = `${zone.name.slice(0, 80)}: ${detail}`.slice(0, 300);
         await mutateVillageState((state) => {
           if (state.seed !== seed) return;
           const currentVenue = state.venues.find((entry) => entry.id === venue.id);
@@ -304,7 +375,9 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
           if (
             currentVenue &&
             target?.preparation?.status === "pending" &&
-            (claimed ? target.preparation.claimId === claimId : privatePreparationKey(currentVenue, target) === key)
+            (claimed
+              ? target.preparation.claimId === claimId
+              : privatePreparationKey(currentVenue, target, state) === key)
           )
             target.preparation = { ...target.preparation, status: "failed", attempt, error };
         });

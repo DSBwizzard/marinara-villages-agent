@@ -5,9 +5,7 @@ import { API_PATH } from "../../shared/constants.js";
 import type { useFoundingSetupDraftData } from "./controller-hooks.js";
 import type { SetupDraftData } from "./draft-model.js";
 import type { FoundingState } from "./useFoundingState.js";
-import { readFoundingDraft, removeFoundingDraft, saveFoundingDraft } from "./villages-founding-draft.js";
-import { emptyFoundingWorkspace } from "./villages-founding-workspace-state";
-import { resumeFoundingVenue } from "./founding-template.js";
+import { readDeviceDraft, removeDeviceDraft, saveDeviceDraft } from "../../shared/device-drafts.js";
 import { useCallback, useEffect } from "react";
 
 export function useFoundingPersistSetupDraft(ports: {
@@ -19,46 +17,58 @@ export function useFoundingPersistSetupDraft(ports: {
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setDraftSaving: FoundingState["setDraftSaving"];
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
 }) {
-  return useCallback((data: SetupDraftData) => {
-    const {
+  const {
+    draftBlocked,
+    draftRevision,
+    draftSaveQueue,
+    pendingDraftSaves,
+    setDraftSavedAt,
+    setDraftSaveError,
+    setDraftSaving,
+    setSavedSetupDraft,
+  } = ports;
+
+  return useCallback(
+    (data: SetupDraftData) => {
+      pendingDraftSaves.current += 1;
+      setDraftSaving(true);
+      const pending = draftSaveQueue.current.then(async () => {
+        if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open and retry saving.");
+        try {
+          const saved = await saveDeviceDraft(API_PATH, data, draftRevision.current);
+          draftRevision.current = saved.revision;
+          setSavedSetupDraft(saved);
+          setDraftSavedAt(saved.savedAt);
+          setDraftSaveError("");
+        } catch (cause) {
+          draftBlocked.current = true;
+          setDraftSaveError(messageFrom(cause, "Draft could not be saved. Keep this tab open."));
+          throw cause;
+        }
+      });
+      draftSaveQueue.current = pending.catch(() => undefined);
+      void pending
+        .finally(() => {
+          pendingDraftSaves.current -= 1;
+          if (!pendingDraftSaves.current) setDraftSaving(false);
+        })
+        .catch(() => undefined);
+      return pending;
+    },
+    [
       draftBlocked,
       draftRevision,
       draftSaveQueue,
       pendingDraftSaves,
-      setDraftSavedAt,
       setDraftSaveError,
+      setDraftSavedAt,
       setDraftSaving,
       setSavedSetupDraft,
-    } = ports;
-
-    pendingDraftSaves.current += 1;
-    setDraftSaving(true);
-    const pending = draftSaveQueue.current.then(async () => {
-      if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open and retry saving.");
-      try {
-        const saved = await saveFoundingDraft(API_PATH, data, draftRevision.current);
-        draftRevision.current = saved.revision;
-        setSavedSetupDraft(saved);
-        setDraftSavedAt(saved.savedAt);
-        setDraftSaveError("");
-      } catch (cause) {
-        draftBlocked.current = true;
-        setDraftSaveError(messageFrom(cause, "Draft could not be saved. Keep this tab open."));
-        throw cause;
-      }
-    });
-    draftSaveQueue.current = pending.catch(() => undefined);
-    void pending
-      .finally(() => {
-        pendingDraftSaves.current -= 1;
-        if (!pendingDraftSaves.current) setDraftSaving(false);
-      })
-      .catch(() => undefined);
-    return pending;
-  }, []);
+    ],
+  );
 }
 export function useFoundingDraftAutosave(ports: {
   readonly draftReady: FoundingState["draftReady"];
@@ -67,12 +77,12 @@ export function useFoundingDraftAutosave(ports: {
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  useEffect(() => {
-    const { draftReady, persistSetupDraft, screen, setupDraftData, snapshot } = ports;
+  const { draftReady, persistSetupDraft, screen, setupDraftData, snapshot } = ports;
 
+  useEffect(() => {
     if (draftReady && !snapshot?.isFounded && (screen === "setup" || screen === "resume"))
       void persistSetupDraft(setupDraftData).catch(() => undefined);
-  }, [ports.draftReady, ports.persistSetupDraft, ports.setupDraftData, ports.snapshot?.isFounded, ports.screen]);
+  }, [draftReady, persistSetupDraft, setupDraftData, snapshot?.isFounded, screen]);
 }
 export function useFoundingFlushSetupDraft(ports: {
   readonly draftBlocked: FoundingState["draftBlocked"];
@@ -80,13 +90,13 @@ export function useFoundingFlushSetupDraft(ports: {
   readonly persistSetupDraft: (data: import("./draft-model").SetupDraftData) => Promise<void>;
   readonly setupDraftData: ReturnType<typeof useFoundingSetupDraftData>;
 }) {
-  return useCallback(async () => {
-    const { draftBlocked, draftReady, persistSetupDraft, setupDraftData } = ports;
+  const { draftBlocked, draftReady, persistSetupDraft, setupDraftData } = ports;
 
+  return useCallback(async () => {
     if (!draftReady) throw new Error("Draft storage is unavailable. Retry saving before leaving or founding.");
     await persistSetupDraft(setupDraftData);
     if (draftBlocked.current) throw new Error("Draft saving needs attention. Keep this tab open.");
-  }, [ports.draftReady, ports.persistSetupDraft, ports.setupDraftData]);
+  }, [draftBlocked, draftReady, persistSetupDraft, setupDraftData]);
 }
 export function createFoundingRestoreSetupDraft(ports: {
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
@@ -106,10 +116,10 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSelectedSetupVenueId: FoundingState["setSelectedSetupVenueId"];
   readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
-  readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
+
+  readonly setSetupSpriteRevisions?: FoundingState["setSetupSpriteRevisions"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
-  readonly setSetupImprint: FoundingState["setSetupImprint"];
+
   readonly setSetupKeyboardSpot: FoundingState["setSetupKeyboardSpot"];
   readonly setSetupLorebookDraft: FoundingState["setSetupLorebookDraft"];
   readonly setSetupLoreTokenBudgetDraft: FoundingState["setSetupLoreTokenBudgetDraft"];
@@ -125,15 +135,16 @@ export function createFoundingRestoreSetupDraft(ports: {
   readonly setSetupMapSource: FoundingState["setSetupMapSource"];
   readonly setSetupName: FoundingState["setSetupName"];
   readonly setSetupTimeZone?: FoundingState["setSetupTimeZone"];
-  readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
+  readonly setSetupPlayerBackground: FoundingState["setSetupPlayerBackground"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
-  readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
+  readonly setSetupResidentAdmissions: FoundingState["setSetupResidentAdmissions"];
+  readonly setSetupWorldName: FoundingState["setSetupWorldName"];
   readonly setSetupSetting: FoundingState["setSetupSetting"];
   readonly setSetupStep: FoundingState["setSetupStep"];
   readonly setSetupSuggestionsKey: FoundingState["setSetupSuggestionsKey"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setSetupWorkspace: FoundingState["setSetupWorkspace"];
-  readonly setSetupWorldFacts: FoundingState["setSetupWorldFacts"];
+  readonly setSetupContext: FoundingState["setSetupContext"];
   readonly setupEditorAuthoredOriginal: FoundingState["setupEditorAuthoredOriginal"];
   readonly setupEditorOriginal: FoundingState["setupEditorOriginal"];
   readonly setupEditorZoneOriginal: FoundingState["setupEditorZoneOriginal"];
@@ -158,10 +169,10 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSelectedSetupVenueId,
       setSetupAuthoredFields,
       setSetupEditorOpen,
-      setSetupFoundingDetails,
-      setSetupFoundingReason,
+
+      setSetupSpriteRevisions,
       setSetupFoundingVillagerIds,
-      setSetupImprint,
+
       setSetupKeyboardSpot,
       setSetupLorebookDraft,
       setSetupLoreTokenBudgetDraft,
@@ -176,15 +187,16 @@ export function createFoundingRestoreSetupDraft(ports: {
       setSetupMapSize,
       setSetupMapSource,
       setSetupName,
-      setSetupPlayerRole,
+      setSetupPlayerBackground,
       setSetupProblem,
-      setSetupResidentContexts,
+      setSetupResidentAdmissions,
+      setSetupWorldName,
       setSetupSetting,
       setSetupStep,
       setSetupSuggestionsKey,
       setSetupVenues,
       setSetupWorkspace,
-      setSetupWorldFacts,
+      setSetupContext,
       setupEditorAuthoredOriginal,
       setupEditorOriginal,
       setupEditorZoneOriginal,
@@ -194,42 +206,40 @@ export function createFoundingRestoreSetupDraft(ports: {
     } = ports;
 
     if (
+      data.version !== 2 ||
+      !data.context ||
+      !Array.isArray(data.context.circumstances) ||
+      !data.workspace ||
+      !data.workspace.inactive ||
+      !data.zoneDrafts ||
       !Array.isArray(data.venues) ||
       !Array.isArray(data.roster) ||
       data.roster.length > 3 ||
-      data.venues.length > 5 ||
+      data.venues.length > 16 ||
       data.venues.some((row) => !row.id || !row.presentation || !row.occupancy || typeof row.description !== "string")
     ) {
       setDraftSaveError("This saved draft cannot be read. Start a new draft to continue.");
       return;
     }
-    const legacySimpleMap = data.mapSource === "none";
     setSetupStep(savedFoundingStep(data));
     setSetupName(data.name);
     ports.setSetupTimeZone?.(data.timeZone ?? "");
+    setSetupWorldName(data.worldName ?? "");
     setSetupSetting(data.setting);
-    setSetupFoundingReason(data.reason);
-    setSetupFoundingDetails(data.circumstances);
-    setSetupPlayerRole(data.role);
-    setSetupImprint(data.imprint);
-    setSetupWorldFacts(data.worldFacts);
-    const inactive = { ...data.workspace?.inactive };
-    for (const [id, saved] of Object.entries(data.zoneDrafts ?? {})) {
-      inactive[id] = {
-        ...(saved.common ? { common: [saved.common] } : {}),
-        ...(saved.personal ? { private: [saved.personal] } : {}),
-        ...inactive[id],
-      };
-    }
-    const venues = data.venues.map((venue) => {
-      const resumed = resumeFoundingVenue(venue, inactive[venue.id] ?? {});
-      inactive[venue.id] = resumed.inactive;
-      return resumed.venue;
+    setSetupPlayerBackground(data.playerBackground ?? "");
+    setSetupContext({
+      rules: data.context.rules,
+      circumstances: data.context.circumstances,
+      communityVenueId: data.context.communityVenueId,
+      ...((data.workspace.suggestionRequest || data.mapRequest) && Object.hasOwn(data.context, "households")
+        ? { households: data.context.households }
+        : {}),
     });
-    setSetupVenues(venues);
-    setupZoneDrafts.current = data.zoneDrafts ?? {};
+    setSetupVenues(data.venues);
+    setupZoneDrafts.current = data.zoneDrafts;
+    setSetupSpriteRevisions?.(data.spriteRevisions ?? {});
     setSetupFoundingVillagerIds(data.roster);
-    setSetupResidentContexts(data.residentContexts ?? {});
+    setSetupResidentAdmissions(data.residentAdmissions ?? {});
     setPersonaDraft(data.persona);
     setSetupLorebookDraft(data.lorebooks);
     setSetupLoreTokenBudgetDraft(data.loreBudget);
@@ -238,14 +248,14 @@ export function createFoundingRestoreSetupDraft(ports: {
     setPersonalizeHomes(data.personalizeHomes);
     setVisualLoreDefault(data.visualLoreDefault);
     setMapVisualLore(data.mapVisualLore);
-    setSetupMapSource(data.mapSource === "none" ? (data.mapImage ? data.mapImageSource : "generate") : data.mapSource);
+    setSetupMapSource(data.mapSource);
     setSetupMapImage(data.mapImage);
     setSetupMapImageSource(data.mapImageSource);
     setSetupMapGeneratedKey(data.mapGeneratedKey);
     setSetupMapSize(data.mapSize);
     setSetupMapPrompt(data.mapPrompt);
     setSetupMapNegativePrompt(data.mapNegative);
-    setSetupMapReviewed(legacySimpleMap ? false : data.mapReviewed);
+    setSetupMapReviewed(data.mapReviewed);
     setSetupMapProblem(data.mapProblem ?? "");
     const mapRequest = data.mapRequest ? { ...data.mapRequest, phase: "waiting" as const } : null;
     updateSetupMapRequest(mapRequest);
@@ -255,15 +265,7 @@ export function createFoundingRestoreSetupDraft(ports: {
     setSelectedSetupVenueId(data.selectedVenueId);
     setMovingSetupVenueId(data.movingVenueId);
     setSetupEditorOpen(false);
-    setSetupWorkspace({
-      ...(data.workspace ?? {
-        ...emptyFoundingWorkspace(),
-        view: data.editorOpen ? "details" : "map",
-        paused: !!data.editorOpen,
-      }),
-      mode: data.workspace?.mode ?? "advanced",
-      inactive,
-    });
+    setSetupWorkspace(data.workspace);
     setupEditorOriginal.current = data.editorOriginal;
     setupEditorAuthoredOriginal.current = data.editorAuthoredOriginal ?? [];
     setupEditorZoneOriginal.current = data.editorZoneOriginal;
@@ -302,17 +304,18 @@ export function createFoundingExitSetupDraft(ports: {
   };
 }
 export function createFoundingNewSetupDraft(ports: {
+  readonly confirmVillages: (message: string) => Promise<boolean>;
   readonly draftBlocked: FoundingState["draftBlocked"];
   readonly draftRevision: FoundingState["draftRevision"];
   readonly draftSaveQueue: FoundingState["draftSaveQueue"];
   readonly openSetup: (fresh: boolean, village: import("../../../shared/contracts/village").VillageSnapshot) => void;
-  readonly savedSetupDraft: import("./villages-founding-draft").SavedFoundingDraft<
+  readonly savedSetupDraft: import("../../shared/device-drafts").SavedDeviceDraft<
     import("./draft-model").SetupDraftData
   >;
   readonly setDraftReady: FoundingState["setDraftReady"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
   readonly setSetupAuthoredFields: FoundingState["setSetupAuthoredFields"];
   readonly setSetupMapProblem: FoundingState["setSetupMapProblem"];
@@ -327,6 +330,7 @@ export function createFoundingNewSetupDraft(ports: {
 }) {
   return async () => {
     const {
+      confirmVillages,
       draftBlocked,
       draftRevision,
       draftSaveQueue,
@@ -350,13 +354,13 @@ export function createFoundingNewSetupDraft(ports: {
     if (setupMapBusy || setupVenueBusy || setupSuggestionsBusy) return;
     if (
       savedSetupDraft &&
-      !window.confirm("Discard this saved founding draft and its artwork? Your founded village is unchanged.")
+      !(await confirmVillages("Discard this saved founding draft and its artwork? Your founded village is unchanged."))
     )
       return;
     try {
       setDraftReady(false);
       await draftSaveQueue.current;
-      await removeFoundingDraft(API_PATH);
+      await removeDeviceDraft(API_PATH);
       draftRevision.current = 0;
       draftBlocked.current = false;
       setDraftSaveError("");
@@ -386,7 +390,7 @@ export function createFoundingRetrySetupSaving(ports: {
     const { draftBlocked, draftRevision, persistSetupDraft, setDraftReady, setDraftSaveError, setupDraftData } = ports;
 
     try {
-      const saved = await readFoundingDraft<SetupDraftData>(API_PATH);
+      const saved = await readDeviceDraft<SetupDraftData>(API_PATH);
       if ((saved?.revision ?? 0) !== draftRevision.current)
         throw new Error("This draft changed in another tab. Reload to resume the latest saved choices.");
       draftBlocked.current = false;
@@ -406,7 +410,7 @@ export function useFoundingDraftOffer(ports: {
   readonly setDraftSavedAt: FoundingState["setDraftSavedAt"];
   readonly setDraftSaveError: FoundingState["setDraftSaveError"];
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
   readonly setScreen: React.Dispatch<
     React.SetStateAction<"menu" | "home" | "setup" | "resume" | "preparing" | "venue" | "room" | "person">
@@ -414,25 +418,25 @@ export function useFoundingDraftOffer(ports: {
   readonly setupOfferedRef: FoundingState["setupOfferedRef"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  useEffect(() => {
-    const {
-      draftRevision,
-      loadCatalog,
-      loadPersonas,
-      openSetup,
-      setDraftReady,
-      setDraftSavedAt,
-      setDraftSaveError,
-      setSavedSetupDraft,
-      setScreen,
-      setupOfferedRef,
-      snapshot,
-    } = ports;
+  const {
+    draftRevision,
+    loadCatalog,
+    loadPersonas,
+    openSetup,
+    setDraftReady,
+    setDraftSavedAt,
+    setDraftSaveError,
+    setSavedSetupDraft,
+    setScreen,
+    setupOfferedRef,
+    snapshot,
+  } = ports;
 
+  useEffect(() => {
     if (!snapshot || setupOfferedRef.current) return;
     setupOfferedRef.current = true;
     if (!snapshot.isFounded) {
-      void readFoundingDraft<SetupDraftData>(API_PATH)
+      void readDeviceDraft<SetupDraftData>(API_PATH)
         .then((saved) => {
           if (saved) {
             draftRevision.current = saved.revision;
@@ -451,8 +455,20 @@ export function useFoundingDraftOffer(ports: {
           setDraftSaveError(messageFrom(cause, "Draft storage is unavailable. Keep this tab open."));
         });
     } else {
-      void removeFoundingDraft(API_PATH).catch(() => undefined);
-      if (snapshot.foundingPreparation && snapshot.foundingPreparation.status !== "ready") setScreen("preparing");
+      void removeDeviceDraft(API_PATH).catch(() => undefined);
+      if (snapshot.foundingPreparation && !snapshot.foundingPreparation.canPlay) setScreen("preparing");
     }
-  }, [ports.openSetup, ports.snapshot, ports.loadPersonas, ports.loadCatalog]);
+  }, [
+    openSetup,
+    snapshot,
+    loadPersonas,
+    loadCatalog,
+    setupOfferedRef,
+    draftRevision,
+    setSavedSetupDraft,
+    setDraftSavedAt,
+    setScreen,
+    setDraftReady,
+    setDraftSaveError,
+  ]);
 }

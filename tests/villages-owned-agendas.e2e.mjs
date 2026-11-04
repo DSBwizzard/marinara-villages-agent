@@ -1,17 +1,17 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const browser = await chromium.launch({ headless: true, ...(existsSync(chrome) ? { executablePath: chrome } : {}) });
-try {
+const browser = await chromium.launch({ headless: true });
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } }),
       errors = [],
       patches = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    await mockEngineLookups(page);
     let paid = 0;
     const categories = {
       rhythm: true,
@@ -34,14 +34,15 @@ try {
       name: "Mara",
       missing: false,
       ingestSchedule: false,
+      canInterpretSchedule: true,
       scheduleInfluence: { version: 1, enabled: false, categories },
       nativeSchedule: { weekStart: "", days: {} },
       weekUnreadable: false,
       days: [{ weekday: "Monday", dateLabel: "Today", isToday: true, blocks: [] }],
       effectiveDays: { Monday: [block] },
+      wishes: [],
       agenda: {
         routineSummary: "Mara reads and tends herbs.",
-        wishes: [],
         day: [],
         week: { Monday: [block] },
         scheduleInfluenceSnapshot: {
@@ -51,7 +52,7 @@ try {
       },
     };
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
@@ -84,17 +85,19 @@ try {
       else if (path.endsWith("/lorebooks")) value = { books: [] };
       else if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false, verbose: false, effective: false };
       else if (/generate|regenerate|remap/u.test(path)) paid++;
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: /^Villagers \(/ }).click();
+    await page.getByRole("button", { name: "People", exact: true }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
     const sections = page.getByRole("navigation", { name: "Villager profile sections" });
     await sections.getByRole("button", { name: "Agenda", exact: true }).click();
     await sections.getByRole("button", { name: "Inspect", exact: true }).click();
-    const master = page.getByRole("checkbox", { name: "Let Marinara schedule influence this Agenda" });
+    const master = page.getByRole("checkbox", { name: "Schedule influence", exact: true });
+    const interpret = page.getByRole("button", { name: "Interpret schedule", exact: true });
+    await expect(interpret).toBeDisabled();
     const controls = [
       "Preferred sleep/wake rhythm",
       "Broad busy/free periods",
@@ -112,14 +115,21 @@ try {
     await page.getByRole("checkbox", { name: controls[0], exact: true }).click();
     await expect(page.getByRole("checkbox", { name: controls[0], exact: true })).not.toBeChecked();
     await expect(page.getByText("Interest: Reading", { exact: true })).toBeVisible();
-    await expect(page.getByText(/waits for an existing generation request/)).toBeVisible();
+    await expect(
+      page.getByText("Interest awaiting compatible village activity: Painting", { exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText(/waits for an existing generation request/)).toHaveCount(0);
     await expect(page.getByText("Reading by the window", { exact: true })).toBeVisible();
     await expect(page.getByText("An ordinary day", { exact: true })).toHaveCount(0);
     for (const label of ["Online", "Available", "Busy", "Offline", "Away"])
       await expect(page.getByText(label, { exact: true })).toHaveCount(0);
     await expect(page.getByText("Marinara schedule", { exact: true })).toHaveCount(0);
     assert.equal(paid, 0);
-    assert.equal(patches.length, 2);
+    await expect(interpret).toBeEnabled();
+    await interpret.click();
+    await expect(interpret).toBeEnabled();
+    assert.equal(patches.length, 3, "Explicit interpretation reuses the finite settings admission");
+    assert.equal(patches[2].enabled, true);
     assert.equal(patches[1].categories.rhythm, false);
     const box = await master.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
@@ -128,8 +138,6 @@ try {
     await page.close();
   }
   console.log(
-    "Owned Agenda controls: opt-in, independent categories, preserved day and zero generation on desktop/phones.",
+    "Owned Agenda controls: opt-in, independent categories, explicit interpretation and preserved day on desktop/phones; mocked HTTP only.",
   );
-} finally {
-  await browser.close();
-}
+});

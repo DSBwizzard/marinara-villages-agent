@@ -1,18 +1,17 @@
+import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profiles.js";
-import type { VillageSnapshot, VillageState, VillageStoryPace } from "../../domain/models/world.js";
-import { badRequest, notFound } from "../../domain/rules/errors.js";
+import type { VillageSnapshot, VillageState, VillageBackgroundPace } from "../../domain/models/world.js";
+import { badRequest } from "../../domain/rules/errors.js";
 import { readLoreTokenBudget, readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
-import { boundText, MAX_NOTICE_LENGTH, MAX_NOTICEBOARD_NOTES, remapVenues } from "../../domain/rules/prompt-preset.js";
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import { readBool } from "../../domain/rules/village-projections.js";
-import { readPromptBox, readVillageName, readVillageSetting } from "../../domain/rules/world-input.js";
+import { readPromptBox, readVillageName } from "../../domain/rules/world-input.js";
 
 export interface VillageSettingsPorts {
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   buildVillageSnapshot(): Promise<VillageSnapshot>;
   readLinkedPersona(id: unknown): Promise<{ id: string; name: string; identity: string }>;
-  runVillageBootstrap(): Promise<VillageSnapshot>;
-  villagesLogger(): { warn(message: string, ...args: unknown[]): void };
+  activityChanged?: () => void;
 }
 
 /** Settings retain only their injected coordination ports; construction starts no work. */
@@ -20,8 +19,7 @@ export function createVillageSettings({
   mutateVillageState,
   buildVillageSnapshot,
   readLinkedPersona,
-  runVillageBootstrap,
-  villagesLogger,
+  activityChanged,
 }: VillageSettingsPorts) {
   /** Store the box: what a villager in this village knows. */
   async function setVillagePromptKnowledge(value: unknown): Promise<VillageSnapshot> {
@@ -42,22 +40,26 @@ export function createVillageSettings({
     return buildVillageSnapshot();
   }
 
-  /**
-   * Read a part of the village day out of a request body.
-   *
-   * Refused rather than ignored, for the same reason an over-long preset is: the
-   * player is looking at the switches they pressed, so a value that cannot name a
-   * part of the day has to come back as an error rather than as a village that
-   * quietly disagrees with the panel.
-   */
-  async function setVillageStoryPace(value: unknown): Promise<VillageSnapshot> {
-    const paces: readonly VillageStoryPace[] = ["off", "quiet", "balanced", "lively"];
-    if (typeof value !== "string" || !paces.includes(value as VillageStoryPace)) {
-      throw badRequest("Background events and wishes must be off, quiet, balanced or lively.");
+  /** Set the allowance for optional resident planning and new Wishes. */
+  async function setVillageBackgroundPace(value: unknown): Promise<VillageSnapshot> {
+    const paces: readonly VillageBackgroundPace[] = ["off", "quiet", "balanced", "lively"];
+    if (typeof value !== "string" || !paces.includes(value as VillageBackgroundPace)) {
+      throw badRequest("Choose Off, Quiet, Average or Busy for Pace.");
     }
     await mutateVillageState((state) => {
-      state.storyPace = value as VillageStoryPace;
+      state.backgroundPace = value as VillageBackgroundPace;
     });
+    activityChanged?.();
+    return buildVillageSnapshot();
+  }
+
+  async function setVillageNarrativeConsequence(value: unknown): Promise<VillageSnapshot> {
+    if (typeof value !== "string" || !["gentle", "moderate", "dramatic"].includes(value))
+      throw badRequest("Choose Gentle, Moderate or Dramatic for Consequence.");
+    await mutateVillageState((state) => {
+      state.narrativeConsequence = value as "gentle" | "moderate" | "dramatic";
+    });
+    activityChanged?.();
     return buildVillageSnapshot();
   }
 
@@ -65,6 +67,14 @@ export function createVillageSettings({
     if (typeof value !== "boolean") throw badRequest("Card-flip sprite changes must be on or off.");
     await mutateVillageState((state) => {
       state.spriteCardFlipEnabled = value;
+    });
+    return buildVillageSnapshot();
+  }
+
+  async function setVillageSpriteVariantsEnabled(value: unknown): Promise<VillageSnapshot> {
+    if (typeof value !== "boolean") throw badRequest("Random sprite variants must be on or off.");
+    await mutateVillageState((state) => {
+      state.spriteVariantsEnabled = value;
     });
     return buildVillageSnapshot();
   }
@@ -141,55 +151,11 @@ export function createVillageSettings({
    * village has venues, editing the wording of its setting must never overwrite
    * places the player has since renamed, reworded or added by hand.
    */
-  async function setVillageSetting(value: unknown): Promise<VillageSnapshot> {
-    const setting = readVillageSetting(value);
-    let shouldPropose = false;
+  async function setVillageWorldName(value: unknown): Promise<VillageSnapshot> {
+    const worldName = readWorldName(value);
+    if (worldName === null) throw badRequest("Use a world name within 120 characters.");
     await mutateVillageState((state) => {
-      state.setting = setting;
-      // The houses are places now, and a village with four houses and nowhere to
-      // send anybody is exactly the village that needs places invented. Counting
-      // every stored place here would read the roofs as the answer and leave a
-      // village of four cottages and nothing else.
-      shouldPropose = setting.length > 0 && remapVenues(state.venues).length === 0;
-    });
-
-    if (shouldPropose) {
-      // The setting is saved either way. A model that is offline, unconfigured or
-      // merely unhelpful must not cost the player the text they just typed; they
-      // are told in the tab that no places arrived and can ask again.
-      try {
-        await runVillageBootstrap();
-      } catch (error) {
-        villagesLogger().warn("[villages] could not propose places for the new setting: %s", String(error));
-      }
-    }
-    return buildVillageSnapshot();
-  }
-
-  async function addNotice(value: unknown): Promise<VillageSnapshot> {
-    const notice = boundText(value, MAX_NOTICE_LENGTH);
-    if (notice.length === 0) throw badRequest("Write something before pinning it up.");
-    // Read the length inside the mutation so a concurrent change is respected
-    // rather than overwritten by a count taken before the retry loop.
-    await mutateVillageState((state) => {
-      if (state.noticeboard.length >= MAX_NOTICEBOARD_NOTES) {
-        throw badRequest(`The noticeboard holds at most ${MAX_NOTICEBOARD_NOTES} notices.`);
-      }
-      // Unsigned, because that is what a note you tack up yourself looks like.
-      // The villagers' notes carry their names; yours does not need one, since
-      // everyone here already knows who you are.
-      state.noticeboard.push({ author: "", text: notice });
-    });
-    return buildVillageSnapshot();
-  }
-
-  /** Take one notice down. Removed by position, so identical notices are separable. */
-  async function removeNoticeAt(index: unknown): Promise<VillageSnapshot> {
-    const position = Number(index);
-    if (!Number.isInteger(position) || position < 0) throw badRequest("That is not a notice on the board.");
-    await mutateVillageState((state) => {
-      if (position >= state.noticeboard.length) throw notFound("That notice is no longer on the board.");
-      state.noticeboard.splice(position, 1);
+      state.worldName = worldName;
     });
     return buildVillageSnapshot();
   }
@@ -222,15 +188,15 @@ export function createVillageSettings({
   return {
     setVillagePromptKnowledge,
     setVillageLoreSettings,
-    setVillageStoryPace,
+    setVillageBackgroundPace,
+    setVillageNarrativeConsequence,
     setVillageSpriteCardFlipEnabled,
+    setVillageSpriteVariantsEnabled,
     setVillageSendOnEnter,
     setVillageCharacterSpeechColors,
     setVillageName,
     setVillagePlayer,
-    setVillageSetting,
-    addNotice,
-    removeNoticeAt,
+    setVillageWorldName,
     setScenerySettings,
   };
 }

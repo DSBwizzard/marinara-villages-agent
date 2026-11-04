@@ -1,64 +1,110 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
-import {
-  claimZonePictureEntry,
-  zonePictureContext,
-} from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { imageEditSupport } from "../packages/villages/src/server/domain/rules/image-edit-support.js";
-import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
-import { readZonePictureReference } from "../packages/villages/src/server/adapters/engine/zone-picture-reference.js";
-import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
+import { applyVenueSceneChange } from "../packages/villages/src/server/domain/rules/venue-scene-state.js";
 import {
   createLocationImages,
   type LocationImagePorts,
 } from "../packages/villages/src/server/features/media/location-image-service.js";
-import {
-  createImageGeneration,
-  type ImageGenerationPorts,
-} from "../packages/villages/src/server/features/media/image-generation-service.js";
-import type { VillageVenueImage } from "../packages/villages/src/server/domain/models/world.js";
-
-const picture = (id: string): VillageVenueImage => ({
-  id,
-  ref: `global-gallery:${id}`,
-  url: `/api/global-gallery/file/${id}.png`,
-});
-const image = picture("original");
+import { createVenueCommands } from "../packages/villages/src/server/features/venues/venue-service.js";
+import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+const image = (id: string) => ({ id, ref: "global-gallery:" + id, url: "/api/global-gallery/file/" + id + ".png" });
 function fixture() {
-  return coerceVillageState({
+  let state = coerceVillageState({
     ...defaultVillageState(),
+
     wishSystemVersion: 3,
+    seed: "pictures",
+    foundedAt: "2026-10-29T10:00:00Z",
     venues: [
-      {
+      venueFixture({
+        residentIds: [null].filter((id) => typeof id === "string" && !!id),
         id: "home",
-        name: "Home",
-        form: "House",
-        classes: ["residence"],
+        name: "Hall",
+        classes: ["community"],
         layoutVersion: 1,
         zones: [
-          { ...defaultVenueSpace("other"), id: "exterior", name: "Exterior", kind: "exterior", seen: true, image },
           {
-            ...defaultVenueSpace("residence"),
+            ...defaultVenueSpace("community", "White walls. A rust sofa with a cream blanket."),
             id: "living",
-            name: "Living Room",
-            kind: "shared-residence",
+            name: "Hall",
+            kind: "public",
             seen: true,
-            image,
-            description: "Two windows, hardwood floor",
-            state: {
-              ...defaultVenueSpace("residence").state,
-              items: ["rust linen sofa", "cream knitted blanket on its left arm"],
-            },
+            image: image("original"),
           },
         ],
-      },
+      }),
     ],
   });
+  let stamp = Date.parse("2026-10-29T12:00:00Z"),
+    supported = true,
+    fail = false,
+    during: (() => Promise<void> | void) | undefined;
+  const calls: Record<string, unknown>[] = [];
+  const zone = (id = "living") => state.venues[0].zones!.find((row) => row.id === id)!;
+  const ports = {
+    pictureNow: () => new Date(stamp),
+    readVillageState: async () => structuredClone(state),
+    mutateVillageState: async (update) => {
+      update(state);
+      state = coerceVillageState(state);
+      return structuredClone(state);
+    },
+    resolveVillageImageEditing: async () =>
+      supported ? { connectionId: "images", multiple: true, signature: "same" } : null,
+    resolveVillageImageConnectionId: async () => "images",
+    readZonePictureReference: async (source) => ({ dataUrl: "reference:" + source.id, width: 1200, height: 800 }),
+    generateVillageImage: async (input) => {
+      calls.push(input);
+      await during?.();
+      if (fail) throw Error("Synthetic image failure");
+      return { bytes: new Uint8Array([1]), mime: "image/png", dataUrl: "synthetic" };
+    },
+    uploadVillageGalleryImage: async () => image("render-" + calls.length),
+    assertVenueImageAccess: async () => {},
+    readVillageVisualLore: async () => "",
+    buildVillageSnapshot: async () => ({
+      settings: villageSettings(state, { name: "Player", description: "", personaId: "", missing: false }, null),
+    }),
+    villagesLogger: () => ({ warn() {} }),
+  } as unknown as LocationImagePorts;
+  ports.setVillageVenueImage = createVenueCommands({
+    withSceneNavigation: (work) => work(),
+    readVillageState: ports.readVillageState,
+    mutateVillageState: ports.mutateVillageState,
+    buildVillageSnapshot: ports.buildVillageSnapshot!,
+    sceneQueries: () => ({ activeVenueSession: async () => null }),
+  }).setVillageVenueImage;
+  const service = createLocationImages(ports);
+  return {
+    zone,
+    calls,
+    service,
+    ports,
+    world: () => state,
+    advance: (ms: number) => {
+      stamp += ms;
+    },
+    support: (value: boolean) => {
+      supported = value;
+    },
+    fail: (value: boolean) => {
+      fail = value;
+    },
+    during: (work?: typeof during) => {
+      during = work;
+    },
+    dirty: (text: string, id = "living") => {
+      zone(id).description += "\n" + text;
+      zone(id).picture!.dirty = true;
+    },
+    enter: (id = "living") => service.requestZonePicture("home", id),
+  };
 }
 const connection = (imageService: string, model = "") => ({
   id: "images",
@@ -66,6 +112,36 @@ const connection = (imageService: string, model = "") => ({
   imageService,
   model,
 });
+{
+  const f = fixture();
+  await f.enter();
+  const before = f.zone().description;
+  f.world().venues[0].form = "A restored glass-roofed mall";
+  f.zone().picture!.dirty = true;
+  await f.enter();
+  assert.equal(f.calls.length, 1, "A changed building form updates existing artwork even when Zone prose is unchanged");
+  assert.match(String(f.calls[0].prompt), /restored glass-roofed mall/);
+  assert.equal(f.zone().description, before);
+  assert.equal(f.zone().picture!.dirty, false);
+  await f.enter();
+  assert.equal(f.calls.length, 1, "The saved architectural image context prevents repeat work");
+}
+{
+  const f = fixture();
+  f.dirty("A brass lamp.");
+  f.during(() => {
+    f.world().venues[0].form = "A different building structure";
+    f.zone().picture!.dirty = true;
+  });
+  await f.enter();
+  assert.equal(f.zone().image!.id, "original", "An image admitted before a form change cannot publish afterward");
+  assert.equal(f.zone().picture!.dirty, true);
+  f.during();
+  f.advance(5 * 60_000);
+  await f.enter();
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.zone().image!.id, "render-2");
+}
 assert.equal(imageEditSupport(connection("openai", "gpt-image-1")).status, "supported");
 assert.equal(imageEditSupport(connection("openai", "dall-e-3")).status, "unknown");
 assert.equal(imageEditSupport(connection("gemini_image", "gemini-2.5-flash-image")).multiple, true);
@@ -84,226 +160,283 @@ assert.equal(
   true,
 );
 
-const scene = coerceSession({ id: "scene", placeId: "home" });
-assert.equal(claimZonePictureEntry(scene, "exterior"), true);
-assert.equal(claimZonePictureEntry(scene, "living"), true);
-assert.equal(claimZonePictureEntry(scene, "exterior"), false);
-assert.equal(claimZonePictureEntry(coerceSession(JSON.parse(JSON.stringify(scene))), "living"), false);
-assert.equal(claimZonePictureEntry(coerceSession({ id: "next" }), "exterior"), true);
-
-const calls: Record<string, unknown>[] = [];
-let state = fixture(),
-  supported = true,
-  fail = false;
-let duringGeneration: (() => void) | undefined;
-const imagePorts = {
-  readVillageState: async () => structuredClone(state),
-  mutateVillageState: async (update) => {
-    update(state);
-    state = coerceVillageState(state);
-    return structuredClone(state);
-  },
-  resolveVillageImageEditing: async () =>
-    supported ? { connectionId: "images", multiple: true, signature: "known" } : null,
-  readZonePictureReference: async (source) => ({ dataUrl: `reference:${source.id}`, width: 1200, height: 800 }),
-  generateVillageImage: async (input) => {
-    calls.push(input);
-    duringGeneration?.();
-    if (fail) throw new Error("synthetic failure");
-    return { bytes: new Uint8Array([1]), mime: "image/png", dataUrl: "synthetic" };
-  },
-  uploadVillageGalleryImage: async () => picture(`edited-${calls.length}`),
-  assertVenueImageAccess: async () => {},
-  readVillageVisualLore: async () => "",
-  buildVillageSnapshot: async () => ({}),
-  villagesLogger: () => ({ warn() {} }),
-} as unknown as LocationImagePorts;
-const service = createLocationImages(imagePorts);
-const zone = () => state.venues[0]!.zones!.find((row) => row.id === "living")!;
-const enter = () =>
-  service.personalizeZoneOnEntry("home", "living", zonePictureContext(state, state.venues[0]!, zone()));
-zone().picture = {
-  base: image,
-  baseline: JSON.stringify({ ...JSON.parse(zonePictureContext(state, state.venues[0]!, zone())), items: [] }),
-};
-await enter();
-assert.equal(calls.length, 1);
-assert.equal(zone().picture?.base?.id, "original");
-assert.equal(zone().image?.id, "edited-1");
-assert.deepEqual(calls[0]!.referenceImages, ["reference:original"]);
-await enter();
-assert.equal(calls.length, 1, "unchanged next Scene reuses the picture");
-zone().state.items.push("brass lamp beside the sofa");
-await enter();
-assert.deepEqual(calls[1]!.referenceImages, ["reference:edited-1", "reference:original"]);
-assert.match(String(calls[1]!.prompt), /cream knitted blanket/);
-assert.equal(zone().picture?.base?.id, "original");
-
-zone().state.items = ["brass lamp"];
-supported = false;
-await enter();
-assert.equal(calls.length, 2);
-supported = true;
-state.automaticZonePictures = false;
-await enter();
-assert.equal(calls.length, 2);
-state.automaticZonePictures = true;
-zone().freezePicture = true;
-await enter();
-assert.equal(calls.length, 2);
-zone().freezePicture = false;
-fail = true;
-await enter();
-assert.equal(calls.length, 3);
-await enter();
-assert.equal(calls.length, 3, "identical failed input is not automatically retried");
-assert.equal(zone().image?.id, "edited-2");
-fail = false;
-zone().state.items.push("new rug");
-duringGeneration = () => {
-  zone().freezePicture = true;
-  zone().pictureRevision = (zone().pictureRevision ?? 0) + 1;
-};
-await enter();
-assert.equal(zone().image?.id, "edited-2", "freeze discards a pending result");
-duringGeneration = undefined;
-zone().freezePicture = false;
-zone().image = picture("replacement");
-zone().picture = { base: zone().image };
-zone().pictureRevision!++;
-await enter();
-assert.equal(zone().picture?.base?.id, "replacement");
-zone().image = null;
-zone().picture = { base: null, removed: true };
-await enter();
-assert.equal(zone().image, null, "removal is not undone by personalization");
-const restored = coerceVillageState(JSON.parse(JSON.stringify(state)));
-assert.equal(restored.venues[0]!.zones!.find((row) => row.id === "living")!.picture?.removed, true);
-
-const rows: Record<string, unknown>[] = [connection("openai", "gpt-image-1")];
-const generator = createImageGeneration({
-  villagesImageConnectionChoice: async () => ({ enabled: true, connectionId: "images" }),
-  villageEngineJson: async () => rows,
-} as unknown as ImageGenerationPorts);
-assert.ok(await generator.resolveVillageImageEditing());
-rows.push({ ...connection("pollinations"), id: "backup", fallbackForAgents: "true" });
-assert.equal(await generator.resolveVillageImageEditing(), null);
-rows[1] = { ...connection("automatic1111"), id: "backup", fallbackForAgents: "true" };
-assert.equal((await generator.resolveVillageImageEditing())?.multiple, false);
-assert.equal(
-  imageEditSupport({ ...connection("comfyui"), comfyuiWorkflow: "%reference_image_name_01%" }).status,
-  "supported",
+{
+  const f = fixture();
+  await f.enter();
+  f.zone().description = "The same white walls and rust sofa, described differently.";
+  f.world().sceneryArtStyle = "New style";
+  f.world().personalizeVenueImagesByDefault = true;
+  await f.enter();
+  assert.equal(
+    f.calls.length,
+    0,
+    "legacy artwork, prose edits and style/personality settings do not trigger automatic spending",
+  );
+  f.zone().state.recent = {
+    text: "Cups after tea",
+    occurredAt: "2026-10-29T12:00:00Z",
+    expiresAt: "2026-10-30T12:00:00Z",
+  };
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 1, "manual Update can apply a deliberate correction");
+  assert.doesNotMatch(String(f.calls[0].prompt), /Cups after tea|New style/);
+  assert.deepEqual(f.calls[0].referenceImages, ["reference:original"]);
+  await f.enter();
+  assert.equal(f.calls.length, 1);
+}
+{
+  const f = fixture();
+  const act = (text: string, appearanceChanged: boolean) =>
+    applyVenueSceneChange(
+      f.world(),
+      "home",
+      { narration: "The work is done.", expectedRevision: f.zone().state.revision, append: text, appearanceChanged },
+      "scene",
+      "2026-10-29T12:00:00Z",
+      "community",
+      "public",
+      "",
+      "living",
+      { actorIds: ["player"], witnessIds: [], consentIds: [], positions: { player: "living" } },
+    );
+  act("A small incidental scratch.", false);
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+  act("An oak bookcase is installed.", true);
+  await f.enter();
+  assert.equal(f.calls.length, 1);
+  assert.match(String(f.calls[0].prompt), /oak bookcase/);
+  assert.equal(f.zone().picture?.dirty, false);
+  f.dirty("The wall is now blue.");
+  await f.enter();
+  assert.equal(f.calls.length, 1, "same-Scene actions retain pending work during the per-Zone pause");
+  assert.match(f.zone().picture!.problem!, /limit/);
+  f.advance(5 * 60_000);
+  await f.enter();
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(f.calls[1].referenceImages, ["reference:render-1", "reference:original"]);
+}
+{
+  const f = fixture();
+  f.dirty("A new lamp.");
+  f.support(false);
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.world().zonePictureBudget?.used, 0);
+  assert.match(f.zone().picture!.problem!, /connection/);
+  f.support(true);
+  await f.enter();
+  assert.equal(f.calls.length, 1, "support becoming available does not lose the pending update");
+  for (let n = 0; n < 5; n++) {
+    const room = structuredClone(f.zone());
+    room.id = "room-" + n;
+    room.image = image(room.id);
+    room.picture = { base: room.image, dirty: true, baseline: JSON.stringify({ description: "Empty" }) };
+    f.world().venues[0].zones!.push(room);
+    await f.enter(room.id);
+  }
+  assert.equal(f.calls.length, 6);
+  assert.equal(f.world().zonePictureBudget?.used, 6);
+  f.advance(5 * 60_000);
+  f.dirty("A second lamp.");
+  await f.enter();
+  assert.match(f.zone().picture!.problem!, /limit/);
+  f.advance(60 * 60_000);
+  await f.enter();
+  assert.equal(f.calls.length, 7);
+}
+{
+  const f = fixture();
+  f.dirty("A blue rug.");
+  f.fail(true);
+  await f.enter();
+  assert.equal(f.zone().image!.id, "original");
+  assert.equal(f.zone().picture?.failed, true);
+  f.fail(false);
+  f.dirty("A plant.");
+  await f.enter();
+  assert.equal(f.calls.length, 1, "failed requests require deliberate retry even with further changes");
+  f.world().automaticZonePictures = false;
+  f.zone().freezePicture = true;
+  await f.service.retryZonePicture("home", "living");
+  assert.equal(f.calls.length, 2, "manual retry is independent of automatic controls");
+  assert.equal(f.zone().freezePicture, true);
+  f.zone().picture!.claim = "interrupted";
+  f.zone().picture!.dirty = true;
+  f.zone().description += " A chair.";
+  f.zone().freezePicture = false;
+  f.world().automaticZonePictures = true;
+  await f.enter();
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.zone().picture?.failed, true);
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 3);
+}
+{
+  const f = fixture();
+  f.zone().image = null;
+  f.zone().picture = { base: null };
+  f.zone().seen = false;
+  await f.enter();
+  assert.equal(f.calls.length, 0, "browsing is not an automatic trigger");
+  f.zone().seen = true;
+  await f.enter();
+  assert.equal(f.calls.length, 1, "public Zones use the same initial creation path");
+  assert.ok(f.zone().initialImageAttemptedAt);
+  await f.enter();
+  assert.equal(f.calls.length, 1);
+  await f.ports.setVillageVenueImage("home", null, undefined, "", false, "living");
+  f.advance(60 * 60_000);
+  await f.enter();
+  assert.equal(f.calls.length, 1, "automatic work respects explicit removal");
+  f.world().automaticZonePictures = false;
+  f.zone().freezePicture = true;
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 2, "manual creation is available while frozen or automatic work is disabled");
+}
+{
+  const f = fixture();
+  f.zone().image = null;
+  f.zone().picture = { base: null };
+  f.fail(true);
+  await f.enter();
+  assert.equal(f.calls.length, 1);
+  f.fail(false);
+  await f.enter();
+  assert.equal(f.calls.length, 1);
+  await f.service.retryZonePicture("home", "living");
+  assert.equal(f.calls.length, 2, "initial-image failures use the ordinary retry path");
+}
+{
+  const f = fixture();
+  f.zone().picture!.context = JSON.stringify({ description: "a".repeat(4000) });
+  f.zone().description = "b".repeat(4000);
+  f.zone().picture!.dirty = true;
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+  assert.match(f.zone().picture!.problem!, /too long/);
+}
+{
+  const f = fixture();
+  f.dirty("A lamp.");
+  f.during(() => {
+    f.zone().freezePicture = true;
+    f.zone().pictureRevision!++;
+  });
+  await f.enter();
+  assert.equal(f.zone().image!.id, "original", "a late result cannot overwrite a freeze");
+  assert.equal(f.world().zonePictureBudget!.used, 1, "dispatched requests remain charged to the operational allowance");
+}
+{
+  const f = fixture();
+  const other = structuredClone(f.zone());
+  other.id = "den";
+  f.world().venues[0].zones!.push(other);
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const dispatched = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  f.dirty("A lamp.");
+  f.during(async () => {
+    started();
+    await gate;
+  });
+  const first = f.enter();
+  await dispatched;
+  f.dirty("A blue wall.", "den");
+  const pending = f.enter("den");
+  f.dirty("An oak desk.", "den");
+  const joined = f.enter("den");
+  f.during();
+  release();
+  await Promise.all([first, pending, joined]);
+  assert.equal(f.calls.length, 2, "queued changes coalesce into one latest target per Zone");
+  assert.match(String(f.calls[1].prompt), /blue wall/);
+  assert.match(String(f.calls[1].prompt), /oak desk/);
+}
+{
+  for (const replacement of [false, true]) {
+    const f = fixture();
+    if (!replacement) {
+      f.zone().image = null;
+      f.zone().picture = { base: null };
+    }
+    const mutate = f.ports.mutateVillageState;
+    let reset = false;
+    f.ports.mutateVillageState = async (change) => {
+      const result = await mutate(change);
+      if (!reset && f.zone().picture?.claim) {
+        reset = true;
+        f.world().seed = "replacement-world";
+        f.world().zonePictureEpoch = 20;
+        f.zone().picture = { base: f.zone().image, problem: "New world marker" };
+      }
+      return result;
+    };
+    if (replacement)
+      await assert.rejects(
+        f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living"),
+        /scenery changed/,
+      );
+    else await f.enter();
+    assert.equal(f.calls.length, 0, "reset after admission fences fresh creation and Replace before dispatch");
+    assert.equal(f.zone().picture?.problem, "New world marker");
+  }
+}
+{
+  const f = fixture();
+  f.dirty("A blue rug.");
+  const mutate = f.ports.mutateVillageState;
+  f.ports.mutateVillageState = async (change) => {
+    // A losing CAS attempt may execute the pure updater before its successful retry.
+    change(structuredClone(f.world()));
+    return mutate(change);
+  };
+  await f.enter();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.world().zonePictureBudget?.used, 1, "CAS replay reserves only the committed allowance");
+}
+{
+  const f = fixture();
+  f.zone().picture!.context = "malformed saved metadata";
+  await f.ports.buildVillageSnapshot!();
+  f.dirty("A blue rug.");
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+  assert.match(f.zone().picture!.problem!, /baseline/);
+  await f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living");
+  assert.equal(f.calls.length, 1, "Replace recovers malformed metadata without breaking snapshots");
+}
+{
+  const f = fixture();
+  f.zone().picture = {
+    base: f.zone().image,
+    context: JSON.stringify({ description: f.zone().description }),
+    failed: true,
+    dirty: true,
+    claim: "interrupted",
+    problem: "Artwork needs a deliberate retry.",
+  };
+  await f.enter();
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.zone().picture?.failed, false, "returning to the pictured state clears a redundant failure");
+  assert.equal(f.zone().picture?.claim, undefined);
+  assert.equal(f.zone().picture?.problem, undefined);
+}
+{
+  const f = fixture();
+  f.fail(true);
+  await assert.rejects(f.service.generateVillageLocationImage("home", undefined, undefined, "", false, "living"));
+  f.fail(false);
+  await f.service.retryZonePicture("home", "living");
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls[1].referenceImages, undefined, "Retry repeats a failed Replace as fresh generation");
+}
+console.log(
+  "Zone artwork: material changes, coalescing, operational budgets, generic creation, update/retry, opt-outs and stale-result fences passed.",
 );
-const hidden = fixture();
-hidden.automaticZonePictures = false;
-const privateZone = hidden.venues[0]!.zones![1]!;
-privateZone.seen = false;
-privateZone.picture = {
-  base: picture("secret-base"),
-  context: "secret-room-record",
-  attempted: "secret-attempt",
-  failed: true,
-};
-const projected = villageSettings(hidden, { name: "Player", description: "", personaId: "", missing: false }, null);
-assert.equal(projected.automaticZonePictures, false);
-assert.doesNotMatch(JSON.stringify(projected), /secret-base|secret-room-record|secret-attempt/);
-assert.equal(projected.venues[0]!.zones![1]!.image, null);
-assert.equal((projected.venues[0]!.zones![1] as { pictureRetryAvailable?: boolean }).pictureRetryAvailable, false);
-await assert.rejects(readZonePictureReference({ ...image, url: "https://example.invalid/private.png" }));
-
-state = fixture();
-zone().picture = {
-  base: image,
-  baseline: JSON.stringify({ ...JSON.parse(zonePictureContext(state, state.venues[0]!, zone())), items: [] }),
-};
-const beforeEpoch = calls.length;
-duringGeneration = () => {
-  state.zonePictureEpoch = (state.zonePictureEpoch ?? 0) + 2;
-};
-await enter();
-assert.equal(calls.length, beforeEpoch + 1);
-assert.equal(zone().image?.id, "original", "disable/re-enable epoch invalidates in-flight work");
-duringGeneration = undefined;
-zone().state.traces.push({
-  id: "private",
-  kind: "note",
-  text: "private letter contents",
-  recipientId: "resident",
-  createdAt: new Date().toISOString(),
-});
-assert.doesNotMatch(zonePictureContext(state, state.venues[0]!, zone()), /private letter contents/);
-zone().state.features.push({
-  id: "repair",
-  text: "Repaired oak desk",
-  sourceCharacterId: "",
-  locked: false,
-  updatedAt: "",
-});
-zone().state.traces.push({
-  id: "stain",
-  kind: "stain",
-  text: "ink on the desktop",
-  recipientId: "",
-  createdAt: new Date().toISOString(),
-});
-await enter();
-assert.match(String(calls.at(-1)!.prompt), /Repaired oak desk/);
-assert.match(String(calls.at(-1)!.prompt), /ink on the desktop/);
-
-state = fixture();
-const migratedBaseline = zone().picture!.baseline;
-assert.ok(migratedBaseline, "migration captures the physical baseline before later gameplay");
-zone().state.items.push("copper kettle added after loading");
-await enter();
-assert.match(String(calls.at(-1)!.prompt), /copper kettle added after loading/);
-assert.equal(zone().picture!.baseline, migratedBaseline);
-zone().state.items.push("blue cushions");
-fail = true;
-await enter();
-fail = false;
-const beforeRetry = calls.length;
-assert.equal(zone().picture?.failed, true);
-await service.retryZonePicture("home", "living");
-assert.equal(calls.length, beforeRetry + 1);
-zone().state.items.push("a small plant");
-await service.retryZonePicture("home", "living");
-assert.equal(calls.length, beforeRetry + 1, "stale retry cannot dispatch without a failed attempt");
-fail = true;
-await enter();
-fail = false;
-zone().picture!.failed = false; // Emulate a saved request interrupted before its completion was recorded.
-const beforeRecovery = calls.length;
-await enter();
-assert.equal(calls.length, beforeRecovery, "interrupted requests never automatically repeat spending");
-assert.equal(zone().picture!.failed, true, "the interrupted request becomes explicitly retryable");
-await service.retryZonePicture("home", "living");
-assert.equal(calls.length, beforeRecovery + 1);
-state = fixture();
-zone().state.items.push(...Array.from({ length: 22 }, (_, index) => `${index} ${"x".repeat(235)}`));
-const beforeLong = calls.length;
-await enter();
-assert.equal(calls.length, beforeLong, "overlong deltas do not spend or lose later changes");
-assert.equal(zone().picture?.context, undefined);
-
-state = fixture();
-zone().kind = "staff";
-zone().controllerIds = ["player"];
-zone().image = null;
-zone().picture = { base: null };
-zone().initialImageAttemptedAt = "";
-const venueCommands = createVenueCommands({
-  readVillageState: imagePorts.readVillageState,
-  mutateVillageState: imagePorts.mutateVillageState,
-  buildVillageSnapshot: imagePorts.buildVillageSnapshot!,
-  sceneQueries: () => ({ activeVenueSession: async () => null }),
-});
-imagePorts.setVillageVenueImage = venueCommands.setVillageVenueImage;
-const beforeInitial = calls.length;
-duringGeneration = () => {
-  state.zonePictureEpoch = (state.zonePictureEpoch ?? 0) + 2;
-};
-await service.generateFirstPrivateSpaceImage("home", "living");
-assert.equal(calls.length, beforeInitial + 1);
-assert.equal(zone().image, null, "initial private generation also rejects disable/re-enable races");
-duringGeneration = undefined;
-process.stdout.write("Zone picture continuity, entry claims, opt-outs, failures and fallback checks passed.\n");

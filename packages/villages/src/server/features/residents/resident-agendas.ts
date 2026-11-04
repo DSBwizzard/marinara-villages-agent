@@ -22,11 +22,15 @@ export async function buildVillageAgendas(...args: Parameters<ResidentAgendas["b
 export async function clearVillagerAgenda(...args: Parameters<ResidentAgendas["clearVillagerAgenda"]>) {
   return binding.get().clearVillagerAgenda(...args);
 }
-export async function correctCompletedWish(...args: Parameters<ResidentAgendas["correctCompletedWish"]>) {
-  return binding.get().correctCompletedWish(...args);
-}
 export async function setVillagerScheduleInfluence(
   ...args: Parameters<ResidentAgendas["setVillagerScheduleInfluence"]>
 ) {
   return binding.get().setVillagerScheduleInfluence(...args);
+}
+
+export function readFoundingResidentContext(...args: Parameters<ResidentAgendas["readFoundingResidentContext"]>) {
+  return binding.get().readFoundingResidentContext(...args);
+}
+export function adoptFoundingRoutine(...args: Parameters<ResidentAgendas["adoptFoundingRoutine"]>) {
+  return binding.get().adoptFoundingRoutine(...args);
 }

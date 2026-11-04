@@ -1,22 +1,26 @@
+import { scenePlaybackFixtures } from "./scene-browser.fixture.mjs";
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { runCase, wantsCase } from "../../scripts/test-cases.mjs";
 
 /** Actual mounted hooks; HTTP and authoritative selection/reset are controlled inputs. */
 export async function verifySceneActionLifetimes(browser) {
+  const { authorSceneView } = await scenePlaybackFixtures();
   const bundle = await build({
     stdin: {
       contents: `
 import {createRoot} from 'react-dom/client';
 import {StrictMode,useEffect,useState} from 'react';
 import {useSceneRecord} from './packages/villages/src/client/features/scenes/useSceneRecord.js';
+import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 import {useScenesState} from './packages/villages/src/client/features/scenes/useScenesState.js';
 import {useMoveRoom,useContinueRoomWithoutGreeting,useCloseRoom,useLeaveRoom,useRetrySavedScene} from './packages/villages/src/client/features/scenes/actions.js';
-function scene(id,revision=0,status='active'){return {id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,
+function scene(id,revision=0,status='active'){return authorSceneView({id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,
  zoneId:'exterior',area:'public',status,startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:00:00Z',
  endedAt:'',participants:[],activeIds:[],lines:[],submissions:[],
- operation:window.operation?{...window.operation,id:id+'-saved',attemptId:id+'-attempt'}:undefined};}
+ operation:window.operation?{...window.operation,id:id+'-saved',attemptId:id+'-attempt'}:undefined},'b'.repeat(64));}
 function Harness(){
  const [room,setRoom]=useSceneRecord(),[founded,setFounded]=useState(window.hydrate?undefined:true);
  const [screen,setScreen]=useState('room');
@@ -37,7 +41,7 @@ function Harness(){
   if(window.operation){state.roomSubmissionIdRef.current='A-turn';state.roomLeaveSubmissionIdRef.current='A-leave';}
  },[]);
  const launch=work=>{window.pending.push(work());return window.pending.length-1;};
- const commands={move,continue:()=>continueScene(room.id),close:closeRoom,leave:leaveRoom,retry};
+ const commands={move,continue:()=>continueScene(room.id),close:closeRoom,leave:leaveRoom,retry:()=>retry(["contact","fulfill"].includes(room?.operation?.input?.mode)?{sceneId:room.id,operation:room.operation}:undefined)};
  window.h={launch:kind=>launch(commands[kind]),retain:kind=>{window.retained=commands[kind]},old:()=>launch(window.retained),
   select:(id='B',pending=false,revision=0,closed=false)=>{setRoom(scene(id,revision,closed?'closed':'active'));
    state.setRoomEnded(closed);state.setRoomMoveZoneId('private-'+id);
@@ -83,21 +87,25 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   });
 
   function scene(id, operationId, closed = false, revision = 2) {
-    return {
-      id,
-      version: 1,
-      sceneRevision: revision,
-      placeId: "mill",
-      zoneId: "private-" + id,
-      status: closed ? "closed" : "active",
-      participants: [],
-      activeIds: [],
-      lines: [],
-      submissions: operationId ? [{ id: operationId }] : [],
-    };
+    return authorSceneView(
+      {
+        id,
+        version: 2,
+        sceneRevision: revision,
+        placeId: "mill",
+        zoneId: "private-" + id,
+        status: closed ? "closed" : "active",
+        participants: [],
+        activeIds: [],
+        lines: [],
+        submissions: operationId ? [{ id: operationId }] : [],
+      },
+      "b".repeat(64),
+    );
   }
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       requests = [],
       held = [],
@@ -105,7 +113,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     let operationId;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("http://action-lifetimes.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) => {
       const request = route.request(),
@@ -115,7 +123,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         ? options.operation
           ? "saved"
           : "recovery-operation"
-        : path.includes("/archive/")
+        : path.endsWith("/recovery")
           ? "archive"
           : path.endsWith("/operation")
             ? "preflight"
@@ -134,20 +142,37 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
                 },
               }
             : kind === "recovery-operation"
-              ? { operation: options.recovered ? { id: operationId, status: "complete", kind: "move" } : null }
+              ? {
+                  operation: options.retired
+                    ? {
+                        id: path.split("/").pop(),
+                        status: "complete",
+                        kind: "turn",
+                        terminal: true,
+                        recordEvents: [{ id: "terminal-event", kind: "project", text: "Saved" }],
+                      }
+                    : options.recovered
+                      ? { id: operationId, status: "complete", kind: "move" }
+                      : null,
+                }
               : kind === "active"
                 ? {
-                    session: options.archive
-                      ? null
-                      : scene(
-                          "A",
-                          options.recovered && !options.recoveredOnlyArchive ? operationId : null,
-                          options.closed,
-                          options.latestRevision ?? 2,
-                        ),
+                    session:
+                      options.archive || options.retired
+                        ? null
+                        : scene(
+                            "A",
+                            options.recovered && !options.recoveredOnlyArchive ? operationId : null,
+                            options.closed,
+                            options.latestRevision ?? 2,
+                          ),
                   }
                 : kind === "archive"
-                  ? { visit: scene("A", options.recovered ? operationId : null, options.closed) }
+                  ? {
+                      visit: options.retired
+                        ? null
+                        : scene("A", options.recovered ? operationId : null, options.closed),
+                    }
                   : {
                       session: scene(
                         body.sessionId,
@@ -166,7 +191,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       };
       if (options.hold === kind && requests.filter((item) => item.kind === kind).length >= (options.holdOrdinal ?? 1))
         held.push({ route, response });
-      else return route.fulfill(response);
+      else return fulfill(route, response);
     });
     await page.goto("http://action-lifetimes.test/");
     await page.evaluate(
@@ -204,7 +229,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     const release = async () => {
       assert.equal(held.length, 1);
       const { route, response } = held.shift();
-      await route.fulfill(response);
+      await fulfill(route, response);
     };
     return {
       page,
@@ -241,6 +266,20 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   });
 
   async function verifyExitActions(strict, width) {
+    for (const action of ["close", "leave"]) {
+      const f = await mount(strict, width, { retired: true, fail: true });
+      try {
+        const index = await f.launch(action);
+        await f.settle(index);
+        const after = await f.snapshot();
+        assert.equal(after.state.ended, true);
+        assert.equal(after.received[0].id, "terminal-event");
+        assert.equal(after.loads, 1);
+        assert.equal(f.requests.filter((request) => request.method === "POST").length, 1);
+      } finally {
+        await f.close();
+      }
+    }
     for (const action of ["close", "leave", "retry"]) {
       const operation = action === "retry" ? savedOperation() : undefined;
       const hold = action === "close" ? "end" : action === "leave" ? "preflight" : "saved";
@@ -365,12 +404,12 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         const second = await replacement.launch(action);
         await expect.poll(() => replacement.held.length).toBe(2);
         const old = replacement.held.shift();
-        await old.route.fulfill(old.response);
+        await fulfill(old.route, old.response);
         await replacement.settle(first);
         assert.equal((await replacement.state()).busy, true);
         assert.equal((await replacement.refs()).flight, true);
         const current = replacement.held.shift();
-        await current.route.fulfill(current.response);
+        await fulfill(current.route, current.response);
         await replacement.settle(second);
         assert.equal((await replacement.state()).id, "B");
         assert.equal((await replacement.state()).busy, false);
@@ -411,7 +450,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       ["close", "active", { fail: true }],
       ["close", "archive", { fail: true, archive: true }],
       ["leave", "leave", {}],
-      ["leave", "recovery-operation", { fail: true }],
       ["leave", "active", { fail: true }],
       ["leave", "archive", { fail: true, archive: true }],
       ["leave", "archive", { fail: true, archive: true, holdOrdinal: 2 }],
@@ -623,7 +661,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       const after = await recovery.snapshot();
       assert.deepEqual(
         recovery.requests.map((item) => item.kind),
-        ["preflight", "leave", "recovery-operation", "active", "archive"],
+        ["preflight", "leave", "active", "recovery-operation", "archive"],
       );
       assert.equal(
         after.state.revision,
@@ -833,11 +871,11 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
             if (action === "move") await expect.poll(() => replacement.held.length).toBe(2);
             else await expect.poll(() => replacement.requests.length).toBe(2);
             const old = replacement.held.shift();
-            await old.route.fulfill(old.response);
+            await fulfill(old.route, old.response);
             await replacement.settle(index);
             assert.equal((await replacement.state()).busy, true);
             const current = replacement.held.shift();
-            await current.route.fulfill({
+            await fulfill(current.route, {
               ...current.response,
               body: JSON.stringify(action === "move" ? { operation: null } : { session: scene("B") }),
             });
@@ -849,7 +887,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
           }
         }
 
-        for (const stage of ["zone", "recovery-operation", "active", "archive"]) {
+        for (const stage of ["zone", "active", "archive"]) {
           const f = await mount(strict, width, { hold: stage, fail: stage !== "zone", archive: stage === "archive" });
           try {
             const index = await f.launch("move");

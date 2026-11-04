@@ -65,7 +65,7 @@ export function connectionProblem(zones: readonly ConnectedSpace[]): string {
         reached.add(next);
         queue.push(next);
       }
-  return reached.size === zones.length ? "" : "Every space needs a connection route to Exterior.";
+  return reached.size === zones.length ? "" : "Cannot save Venue layout: Unreachable Zones.";
 }
 
 export function applyConnectionEdits<T extends ConnectedSpace>(

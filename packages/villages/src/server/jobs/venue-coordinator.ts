@@ -41,8 +41,9 @@ export async function coordinatedCompletion<T>(
   fingerprint: string,
   work: (signal?: AbortSignal) => Promise<T>,
   legacyFingerprint?: string,
+  reservation?: { inputTokens: number; outputTokens: number },
 ): Promise<T> {
-  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, legacyFingerprint);
+  return coordinatorBinding.get().coordinatedCompletion<T>(fingerprint, work, legacyFingerprint, reservation);
 }
 export async function rejectVenueCompletion(
   ...args: Parameters<VenueCoordinatorService["rejectVenueCompletion"]>
@@ -57,7 +58,7 @@ export async function coordinateVenue<T>(
   expected: number | undefined,
   retryOfAttemptId: string | undefined,
   work: () => Promise<T>,
-  options: { replay?: boolean; recovery?: boolean; replaceOfOperationId?: string } = {},
+  options: { replay?: boolean; recovery?: boolean; replaceOfOperationId?: string; abandonOfOperationId?: string } = {},
 ): Promise<T> {
   return coordinatorBinding
     .get()

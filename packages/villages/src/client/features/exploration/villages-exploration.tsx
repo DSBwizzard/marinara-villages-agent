@@ -1,10 +1,9 @@
 import type { MobileMapBox, MobileMapSize } from "./villages-mobile-map";
-import { VenuePolaroid } from "./villages-venue-polaroid.js";
-import { type ReactNode, useLayoutEffect, useRef } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useRef } from "react";
 
 const P = "marinara-capability-villages";
 
-export type ExplorationTab = "map" | "places" | "people" | "more";
+export type ExplorationTab = "map" | "places" | "people" | "projects" | "more";
 
 export type ExplorationSheet = { tab: "places" | "people" };
 
@@ -12,9 +11,9 @@ export type ExplorationRow = {
   id: string;
   name: string;
   detail: string;
-  image?: string | null;
-  face?: ReactNode;
   onSelect?: () => void;
+  selected?: boolean;
+  actions?: { label: string; onSelect: () => void }[];
 };
 
 export type ExplorationPin = {
@@ -63,7 +62,7 @@ export function useExplorationViewport(host: HTMLElement, active: boolean): void
   }, [host, active]);
 }
 
-export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" | "visit" }) {
+export function MapIcon({ name }: { name: ExplorationTab | "close" | "visit" }) {
   const paths: Record<typeof name, ReactNode> = {
     map: (
       <>
@@ -83,6 +82,11 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
         <path d="M2 21v-3a7 7 0 0 1 14 0v3ZM17 3a4 4 0 0 1 0 8M20 21v-3a7 7 0 0 0-3-6" />
       </>
     ),
+    projects: (
+      <>
+        <path d="m14 5 5 5M3 21l9-9m1-8 3-2 6 6-2 3-7-7ZM3 21l3-1-2-2-1 3Z" />
+      </>
+    ),
     more: (
       <>
         <circle cx="5" cy="12" r="1" />
@@ -91,12 +95,6 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
       </>
     ),
     close: <path d="m6 6 12 12M18 6 6 18" />,
-    notices: (
-      <>
-        <rect x="5" y="3" width="14" height="18" rx="2" />
-        <path d="M9 7h6M9 12h6M9 17h4" />
-      </>
-    ),
     visit: (
       <>
         <path d="M10 3H4v18h6M9 12h12m-4-4 4 4-4 4" />
@@ -119,7 +117,7 @@ export function MapIcon({ name }: { name: ExplorationTab | "close" | "notices" |
   );
 }
 
-export const EXPLORATION_DESTINATIONS = ["map", "places", "people", "more"] as const;
+export const EXPLORATION_DESTINATIONS = ["map", "places", "people", "projects", "more"] as const;
 
 export function ExplorationNavigation({
   active,
@@ -149,14 +147,16 @@ export function ExplorationNavigation({
   );
 }
 
-export function MobileMarkers({
+export function ExplorationMarkers({
   pins,
   picture,
   frame,
+  onNudge,
 }: {
   pins: ExplorationPin[];
   picture: MobileMapBox;
   frame: MobileMapSize;
+  onNudge?(id: string, dx: number, dy: number): void;
 }) {
   return (
     <>
@@ -166,7 +166,6 @@ export function MobileMarkers({
           const left = picture.left + pin.x * picture.width;
           const top = picture.top + pin.y * picture.height;
           if (left < 0 || top < 0 || left > frame.width || top > frame.height) return null;
-          const people = pins.filter((person) => person.kind === "person" && person.venueId === pin.id);
           return (
             <span key={pin.id} className={P + "-explore-anchor"} style={{ left, top }}>
               <button
@@ -178,21 +177,27 @@ export function MobileMarkers({
                 aria-label={pin.text}
                 title={pin.text}
                 disabled={!pin.onSelect}
+                onKeyDown={(event) => {
+                  if (!onNudge) return;
+                  const delta: Record<string, [number, number]> = {
+                    ArrowLeft: [-0.01, 0],
+                    ArrowRight: [0.01, 0],
+                    ArrowUp: [0, -0.01],
+                    ArrowDown: [0, 0.01],
+                  };
+                  const step = delta[event.key];
+                  if (!step) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onNudge(pin.id, ...step);
+                }}
                 onClick={(event) => {
                   event.stopPropagation();
                   pin.onSelect?.();
                 }}
               >
-                <VenuePolaroid image={pin.image} name={pin.text} className={P + "-explore-polaroid"} />
-                {people.length ? (
-                  <span className={P + "-explore-initials"} aria-hidden="true">
-                    {people.slice(0, 3).map((person) => (
-                      <span key={person.id} className={P + "-explore-initial"} title={person.text}>
-                        {Array.from(person.text.trim())[0]?.toLocaleUpperCase() || "•"}
-                      </span>
-                    ))}
-                  </span>
-                ) : null}
+                <span className={P + "-map-point"} aria-hidden="true" />
+                <span className={P + "-map-label"}>{pin.text}</span>
               </button>
             </span>
           );
@@ -201,28 +206,38 @@ export function MobileMarkers({
   );
 }
 
-function ExplorationPanel({
-  title,
+export function LocationNavigator({
+  rows,
+  search,
+  onSearch,
+  disabled,
   onClose,
-  children,
-  layout,
+  mobile,
+  focusSearch,
 }: {
-  title: string;
+  rows: ExplorationRow[];
+  search: string;
+  onSearch: (value: string) => void;
+  disabled: boolean;
   onClose: () => void;
-  children: ReactNode;
-  layout: "sheet" | "side";
+  mobile: boolean;
+  focusSearch: boolean;
 }) {
-  const titleRef = useRef<HTMLHeadingElement>(null);
-  useLayoutEffect(() => {
-    titleRef.current?.focus({ preventScroll: true });
-  }, [title]);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const selectedId = rows.find((row) => row.selected)?.id;
+  useEffect(() => {
+    if (focusSearch) searchRef.current?.focus({ preventScroll: true });
+  }, [focusSearch]);
+  useEffect(() => {
+    listRef.current?.querySelector('[data-selected="true"]')?.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+  const filtered = rows.filter((row) => row.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
   return (
-    <section
-      className={P + "-explore-sheet"}
-      data-layout={layout}
-      role="dialog"
-      aria-label={title}
-      aria-modal="false"
+    <aside
+      className={P + "-location-navigator " + P + "-explore-sheet"}
+      data-layout={mobile ? "navigator-sheet" : "navigator-rail"}
+      aria-label="Places navigator"
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.stopPropagation();
@@ -231,104 +246,56 @@ function ExplorationPanel({
       }}
     >
       <header>
-        <h2 ref={titleRef} tabIndex={-1}>
-          {title}
-        </h2>
-        <button type="button" aria-label="Close exploration card" onClick={onClose}>
+        <h2>Places</h2>
+        <button type="button" aria-label={mobile ? "Close places" : "Collapse places"} onClick={onClose}>
           <MapIcon name="close" />
         </button>
       </header>
-      {children}
-    </section>
-  );
-}
-
-export function MobileSheet(props: { title: string; onClose: () => void; children: ReactNode }) {
-  return <ExplorationPanel {...props} layout="sheet" />;
-}
-
-export function DesktopPanel(props: { title: string; onClose: () => void; children: ReactNode }) {
-  return <ExplorationPanel {...props} layout="side" />;
-}
-
-export function NoticesButton({
-  count,
-  disabled,
-  onSelect,
-}: {
-  count: number;
-  disabled: boolean;
-  onSelect: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={P + "-explore-notices"}
-      aria-label={`Notices (${count})`}
-      disabled={disabled}
-      onClick={onSelect}
-    >
-      <MapIcon name="notices" />
-      <span>Notices</span>
-      <span className={P + "-explore-badge"} aria-hidden="true">
-        {count}
-      </span>
-    </button>
-  );
-}
-
-export function BrowseList({
-  rows,
-  label,
-  search,
-  onSearch,
-  disabled,
-}: {
-  rows: ExplorationRow[];
-  label: string;
-  search: string;
-  onSearch: (value: string) => void;
-  disabled: boolean;
-}) {
-  const filtered = rows.filter((row) => row.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
-  return (
-    <>
       <label className={P + "-explore-search"}>
-        <span className={P + "-sr-only"}>Search {label.toLowerCase()}</span>
+        <span className={P + "-sr-only"}>Search places</span>
         <input
+          ref={searchRef}
+          autoComplete="off"
           type="search"
           value={search}
           onChange={(event) => onSearch(event.target.value)}
-          placeholder={"Search " + label.toLowerCase() + "…"}
+          placeholder="Find a place"
         />
       </label>
-      <div className={P + "-explore-list"}>
+      <div ref={listRef} className={P + "-explore-list"}>
         {filtered.map((row) => (
-          <button
-            type="button"
-            className={P + "-explore-row"}
-            key={row.id}
-            data-exploration-row={row.id}
-            disabled={disabled || !row.onSelect}
-            onClick={row.onSelect}
-          >
-            {row.face ?? (
-              <span className={P + "-explore-photo"}>
-                {row.image ? <img src={row.image} alt="" /> : <MapIcon name="places" />}
+          <div key={row.id} className={P + "-navigator-place"} data-selected={row.selected ? "true" : "false"}>
+            <button
+              type="button"
+              className={P + "-explore-row"}
+              data-exploration-row={row.id}
+              aria-pressed={row.selected === true}
+              disabled={disabled || !row.onSelect}
+              onClick={row.onSelect}
+            >
+              <MapIcon name="places" />
+              <span>
+                <strong>{row.name}</strong>
+                <small>{row.detail}</small>
               </span>
-            )}
-            <span>
-              <strong>{row.name}</strong>
-              <small>{row.detail}</small>
-            </span>
-          </button>
+            </button>
+            {row.selected ? (
+              <div className={P + "-navigator-actions"}>
+                {row.actions?.map((action) => (
+                  <button key={action.label} type="button" disabled={disabled} onClick={action.onSelect}>
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         ))}
         {filtered.length === 0 ? (
           <p className={P + "-explore-empty"} role="status">
-            {search.trim() ? "No matches. Try another name." : "Nothing to show here yet."}
+            {search.trim() ? "No matching places." : "No places yet."}
           </p>
         ) : null}
       </div>
-    </>
+    </aside>
   );
 }

@@ -9,7 +9,7 @@ Decisions is off by default. The adapter checks capability presence, without pro
 | Judgment | Decisions | System | Deterministic Villages code |
 | --- | --- | --- | --- |
 | Wish progress or fulfillment | Narrow current conversation or the meaning of one qualifying physical receipt | History, conditions, discoveries, mixed or complex goals, uncertain answers | Wish identity and freshness, witnesses, receipt eligibility, proof kind, progress/reward application |
-| Project speech | One person's approval or commitment to one bounded target | Ambiguity, competing targets, conditions, other Project judgments | Actor authority, project identity and phase, prerequisites, materials, time and updates |
+| Project speech | One person's approval or commitment to one bounded target | Ambiguity, competing targets, conditions, other Project judgments | Actor authority, Project identity and design revision, explicit Start, elapsed time and updates |
 | Venue speech | A current invitation, refusal or dismissal with one supporting speaker line | Lasting bans, opening-hour exceptions, complex context or conflicting targets | Current controller authority, Zone availability, saved evidence, permission scope and movement |
 | Nearby attention | A simple whole-message routing choice with complete context within the public question limit | Fragment extraction, mixed/private content, shortened history, oversized context or uncertainty | Direct narrow knocks, adjacency, live doorway routes, plan binding, actual hearing and physical success |
 | Other gameplay | No new Decision use | Existing interpretation owners where meaning is needed | Existing checks and state transitions remain authoritative |

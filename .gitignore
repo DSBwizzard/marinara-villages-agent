@@ -8,5 +8,18 @@ node_modules/
 /packages/villages/manifest.json
 /packages/villages/agents.json
 /packages/villages/locales/en.json
+/packages/villages/letter-fonts/*.json
 # Obsolete capture copies from older local builders are not maintained source.
 /sources/engine/
+
+# Share the portable worktree setup; keep local agent settings and credentials ignored.
+!/.codex/
+/.codex/*
+!/.codex/environments/
+/.codex/environments/*
+!/.codex/environments/environment.toml
+/AGENTS.override.md
+
+# Generated conversation assets and local diagnostic output.
+/output/
+/debug.log

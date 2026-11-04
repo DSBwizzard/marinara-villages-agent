@@ -14,6 +14,7 @@ type Receipt = {
   error: string;
 };
 type Ports = {
+  signal?: AbortSignal;
   setupBeginningSourceKey: string;
   setupWorkspace?: FoundingState["setupWorkspace"];
   setSetupWorkspace?: FoundingState["setSetupWorkspace"];
@@ -27,6 +28,8 @@ export async function requestFoundingSuggestions(
   options: Options | undefined,
   input: object,
 ): Promise<Result> {
+  const { signal } = ports;
+  signal?.throwIfAborted();
   const { setupWorkspace, setSetupWorkspace, persistSetupDraft, setupDraftData } = ports;
   // Older embedders without a persisted founding workspace retain the synchronous API.
   if (!setupWorkspace || !setSetupWorkspace || !persistSetupDraft || !setupDraftData)
@@ -37,6 +40,7 @@ export async function requestFoundingSuggestions(
     sourceKey: ports.setupBeginningSourceKey,
     quickStart: !!options?.quickStart,
     venueId: options?.venueId,
+    ...(!options?.quickStart && options?.venueId ? { sourceInputs: JSON.stringify(input) } : {}),
   };
   // Recovery must use the original merge mode and target, regardless of which button was tapped.
   if (options) {
@@ -67,6 +71,7 @@ export async function requestFoundingSuggestions(
           body: JSON.stringify({ ...input, actionId: pending.id, sourceKey: pending.sourceKey }),
         });
     for (let poll = 0; ; poll++) {
+      signal?.throwIfAborted();
       if (receipt.id !== pending.id || receipt.sourceKey !== pending.sourceKey)
         throw new Error("The saved suggestion attempt does not match this draft. Check suggestions again.");
       if (receipt.status !== "running") {
@@ -80,11 +85,17 @@ export async function requestFoundingSuggestions(
           throw new Error(
             "Founding choices changed since these suggestions were requested. Your draft is kept; generate fresh suggestions when ready.",
           );
+        if (pending.sourceInputs !== undefined && pending.sourceInputs !== JSON.stringify(input))
+          throw new Error(
+            "Founding choices changed since these suggestions were requested. Your draft is kept; request fresh suggestions when ready.",
+          );
         return receipt.result;
       }
       if (poll >= 60) throw new Error("Suggestions are still being prepared.");
+      signal?.throwIfAborted();
       await new Promise((resolve) => window.setTimeout(resolve, 2000));
-      receipt = await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`);
+      signal?.throwIfAborted();
+      receipt = await request<Receipt>(`/setup/venues/suggestions/${encodeURIComponent(pending.id)}`, { signal });
     }
   } catch (error) {
     // A definite refusal permits a new explicit attempt; connection loss keeps the ID for GET recovery.

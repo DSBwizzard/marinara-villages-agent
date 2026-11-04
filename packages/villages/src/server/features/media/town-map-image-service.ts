@@ -1,13 +1,17 @@
 import type { inspectVillageImage } from "../../adapters/engine/image-files.js";
 import type { readVillageVisualLoreEntries } from "../../adapters/engine/lorebooks.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { readSelectedLorebookIds } from "../../domain/rules/lore-policy.js";
+import {
+  readLoreTokenBudget,
+  DEFAULT_LORE_TOKEN_BUDGET,
+  readSelectedLorebookIds,
+} from "../../domain/rules/lore-policy.js";
 import {
   MAX_TOWN_MAP_IMAGE_LENGTH,
   TOWN_MAP_EXPECTED_HEIGHT,
   TOWN_MAP_EXPECTED_WIDTH,
 } from "../../domain/rules/prompt-preset.js";
-import { coerceScenarioImprint } from "../../domain/rules/scenario-rules.js";
+
 import { readSceneryStyle } from "../../domain/rules/scenery-context.js";
 import {
   buildTownMapPrompt,
@@ -30,25 +34,28 @@ export function createTownMapImage(ports: TownMapImagePorts) {
     negative?: unknown;
     connectionId?: unknown;
     selectedLorebookIds?: unknown;
-    scenarioImprint?: unknown;
+    loreTokenBudget?: unknown;
+    worldRules?: unknown;
     sceneryArtStyle?: unknown;
     sceneryStyleProfileId?: unknown;
     useVisualLore?: unknown;
   }): Promise<{ image: string; width: number; height: number }> {
+    const budget = readLoreTokenBudget(input.loreTokenBudget ?? DEFAULT_LORE_TOKEN_BUDGET);
     const ids = readSelectedLorebookIds(input.selectedLorebookIds ?? []);
     if (input.useVisualLore !== undefined && typeof input.useVisualLore !== "boolean")
       throw badRequest("Visual lore must be on or off.");
     const style = input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle);
     // Validate required inputs before lore reads or image dispatch.
-    const base = buildTownMapPrompt(input.structure, input.setting, "", input.scenarioImprint, style);
+    const base = buildTownMapPrompt(input.structure, input.setting, "", input.worldRules, style);
     const negativePrompt = buildTownMapNegativePrompt(input.negative);
     const lore =
       input.useVisualLore === false
         ? []
         : await readVillageVisualLoreEntries(
             ids,
-            [input.setting, JSON.stringify(coerceScenarioImprint(input.scenarioImprint))].filter(Boolean).join("\n"),
+            [input.setting, typeof input.worldRules === "string" ? input.worldRules : ""].filter(Boolean).join("\n"),
             900,
+            budget,
           );
     const prompt = fitMapContext(
       base,

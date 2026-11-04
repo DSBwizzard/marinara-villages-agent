@@ -23,6 +23,7 @@ export function PeopleFields({
       {people.map((person) => (
         <label key={person.id} style={{ display: "block" }}>
           <input
+            autoComplete="off"
             type="checkbox"
             checked={value.includes(person.id)}
             onChange={(event) =>
@@ -59,6 +60,7 @@ export function VisitorHoursFields({
           {weekdays.map((day) => (
             <label key={day}>
               <input
+                autoComplete="off"
                 type="checkbox"
                 checked={row.days.includes(day)}
                 onChange={(event) =>
@@ -80,6 +82,7 @@ export function VisitorHoursFields({
           <label>
             From{" "}
             <input
+              autoComplete="off"
               type="time"
               value={row.start}
               onChange={(event) =>
@@ -90,6 +93,7 @@ export function VisitorHoursFields({
           <label>
             Until{" "}
             <input
+              autoComplete="off"
               type="time"
               value={row.end}
               onChange={(event) =>
@@ -148,6 +152,7 @@ export function ZonePolicyFields({
       </p>
       <label>
         <input
+          autoComplete="off"
           type="checkbox"
           checked={value.managerIds === null}
           onChange={(event) => patch({ managerIds: event.target.checked ? null : [] })}
@@ -171,6 +176,7 @@ export function ZonePolicyFields({
       {(["residents", "workers"] as const).map((role) => (
         <label key={role} style={{ display: "block" }}>
           <input
+            autoComplete="off"
             type="checkbox"
             checked={value.memberRoles.includes(role)}
             onChange={(event) =>
@@ -192,6 +198,7 @@ export function ZonePolicyFields({
       />
       <label>
         <input
+          autoComplete="off"
           type="checkbox"
           checked={value.accompanied}
           onChange={(event) => patch({ accompanied: event.target.checked })}
@@ -218,86 +225,6 @@ export function ZonePolicyFields({
           onChange={(visitorHours) => patch({ visitorHours: visitorHours ?? "always" })}
         />
       ) : null}
-      <fieldset>
-        <legend>Regular visitors · opt in</legend>
-        <p>
-          These rules use the named inviter’s relationship with the visitor. Explicit standing invitations remain until
-          withdrawn.
-        </p>
-        {value.regularVisitors.map((rule, index) => (
-          <div key={index}>
-            <select
-              aria-label="Regular visitor inviter"
-              value={rule.inviterId}
-              onChange={(event) =>
-                patch({
-                  regularVisitors: value.regularVisitors.map((item, i) =>
-                    i === index ? { ...item, inviterId: event.target.value } : item,
-                  ),
-                })
-              }
-            >
-              <option value="">Choose an authorized inviter</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </select>
-            <select
-              aria-label="Regular visitor relationship"
-              value={rule.relationship}
-              onChange={(event) =>
-                patch({
-                  regularVisitors: value.regularVisitors.map((item, i) =>
-                    i === index ? { ...item, relationship: event.target.value as "friend" | "close" } : item,
-                  ),
-                })
-              }
-            >
-              <option value="friend">Friends</option>
-              <option value="close">Close friends</option>
-            </select>
-            <label>
-              <input
-                type="checkbox"
-                checked={rule.accompanied}
-                onChange={(event) =>
-                  patch({
-                    regularVisitors: value.regularVisitors.map((item, i) =>
-                      i === index ? { ...item, accompanied: event.target.checked } : item,
-                    ),
-                  })
-                }
-              />
-              Must accompany
-            </label>
-            <button
-              type="button"
-              onClick={() => patch({ regularVisitors: value.regularVisitors.filter((_, i) => i !== index) })}
-            >
-              Remove rule
-            </button>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() =>
-            patch({
-              regularVisitors: [
-                ...value.regularVisitors,
-                {
-                  inviterId: value.inviterIds[0] ?? value.managerIds?.[0] ?? "",
-                  relationship: "friend",
-                  accompanied: false,
-                },
-              ],
-            })
-          }
-        >
-          Add regular-visitor rule
-        </button>
-      </fieldset>
     </div>
   );
 }
@@ -446,6 +373,7 @@ export function VenueAccessPanel({
                 </label>
                 <label>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     checked={accompanied}
                     onChange={(event) => setAccompanied(event.target.checked)}
@@ -454,6 +382,7 @@ export function VenueAccessPanel({
                 </label>
                 <label>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     checked={outsideHours}
                     onChange={(event) => setOutsideHours(event.target.checked)}

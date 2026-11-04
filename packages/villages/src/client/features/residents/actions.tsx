@@ -1,56 +1,76 @@
+import { type SetStateAction, useCallback, useRef } from "react";
 import type {
   AgendaListResponse,
   BackgroundWork,
-  CatalogEntry,
+  MemoryCursor,
   MemoryLibrary,
+  MemoryListEntry,
   VillagerAgendaView,
   VillagerRefreshPreview,
   VillageSnapshot,
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { type SetStateAction, useCallback, useRef } from "react";
 
 export function useLoadMemoryLibrary(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
   setMemoryLibrary: React.Dispatch<SetStateAction<MemoryLibrary>>;
 }) {
+  const active = useRef<AbortController | null>(null);
   const { setError, setMemoryLibrary } = ports;
-  return useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<MemoryLibrary>("/memories", { signal });
-      if (signal?.aborted) return;
-      setMemoryLibrary(response);
-      setError("");
-    } catch (cause) {
-      if (signal?.aborted) return;
+  return useCallback(
+    async (signal?: AbortSignal, query: { characterId?: string; query?: string; cursor?: MemoryCursor } = {}) => {
+      active.current?.abort();
+      const controller = new AbortController();
+      active.current = controller;
+      const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      const params = new URLSearchParams({ characterId: query.characterId ?? "player", query: query.query ?? "" });
+      if (query.cursor) {
+        params.set("afterId", query.cursor.afterId);
+        params.set("revision", String(query.cursor.revision));
+      }
       setMemoryLibrary(null);
-      setError(messageFrom(cause, "Could not read villager memories."));
-    }
-  }, []);
+      try {
+        const response = await request<MemoryLibrary>("/memories/inspect?" + params, { signal: requestSignal });
+        if (requestSignal.aborted || active.current !== controller) return;
+        setMemoryLibrary(response);
+        setError("");
+      } catch (cause) {
+        if (requestSignal.aborted || active.current !== controller) return;
+        setError(messageFrom(cause, "Could not read memories."));
+      }
+    },
+    [setError, setMemoryLibrary],
+  );
 }
-
 export function useForgetMemory(ports: {
-  loadMemoryLibrary: (signal?: AbortSignal) => Promise<void>;
+  loadMemoryLibrary: ReturnType<typeof useLoadMemoryLibrary>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { loadMemoryLibrary, setBusy, setError } = ports;
   return useCallback(
-    async (kind: "durable" | "recollections", id: string) => {
-      const label = kind === "durable" ? "Forget this durable memory?" : "Let this passing recollection go now?";
-      if (!window.confirm(label)) return;
+    async (entry: MemoryListEntry, knowers: string[], library: MemoryLibrary) => {
       setBusy(true);
       try {
-        await request(`/memories/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" });
-        await loadMemoryLibrary();
+        await request("/memories/" + encodeURIComponent(entry.id) + "/forget", {
+          method: "POST",
+          body: JSON.stringify({
+            operationId: createVillagesClientId(),
+            seed: library.seed,
+            expectedCollectionRevision: library.revision,
+            target: { id: entry.id, revision: entry.revision, rootRevision: entry.rootRevision },
+            knowers,
+          }),
+        });
+        await loadMemoryLibrary(undefined, { characterId: library.characterId, query: library.query });
       } catch (cause) {
-        setError(messageFrom(cause, "That memory could not be removed."));
+        setError(messageFrom(cause, "Could not forget that memory."));
       } finally {
         setBusy(false);
       }
     },
-    [loadMemoryLibrary],
+    [loadMemoryLibrary, setBusy, setError],
   );
 }
 
@@ -59,17 +79,20 @@ export function useLoadAgendas(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { setAgendas, setError } = ports;
-  return useCallback(async (signal?: AbortSignal) => {
-    try {
-      const response = await request<AgendaListResponse>("/agendas", { signal });
-      if (signal?.aborted) return;
-      setAgendas(response.villagers);
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setAgendas(null);
-      setError(messageFrom(cause, "Could not read what the villagers wish for."));
-    }
-  }, []);
+  return useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await request<AgendaListResponse>("/agendas", { signal });
+        if (signal?.aborted) return;
+        setAgendas(response.villagers);
+      } catch (cause) {
+        if (signal?.aborted) return;
+        setAgendas(null);
+        setError(messageFrom(cause, "Could not read what the villagers wish for."));
+      }
+    },
+    [setAgendas, setError],
+  );
 }
 
 export function useRewriteAgenda(ports: {
@@ -110,31 +133,8 @@ export function useRewriteAgenda(ports: {
         setBusy(false);
       }
     },
-    [retryWork],
+    [currentSnapshotRef, retryWork, setAgendas, setBusy, setError],
   );
-}
-
-export function useCorrectCompletedWish(ports: {
-  setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setError: React.Dispatch<SetStateAction<string>>;
-}) {
-  const { setAgendas, setBusy, setError } = ports;
-  return useCallback(async (characterId: string, wishId: string) => {
-    setBusy(true);
-    try {
-      const response = await request<AgendaListResponse>(
-        `/agendas/${encodeURIComponent(characterId)}/completed/${encodeURIComponent(wishId)}/correct`,
-        { method: "POST" },
-      );
-      setAgendas(response.villagers);
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That wish completion could not be corrected."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
 }
 
 export function useSetAgendaScheduleIngestion(ports: {
@@ -143,76 +143,23 @@ export function useSetAgendaScheduleIngestion(ports: {
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
   const { setAgendas, setBusy, setError } = ports;
-  return useCallback(async (characterId: string, enabled: boolean, categories?: Record<string, boolean>) => {
-    setBusy(true);
-    try {
-      const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/influence`, {
-        method: "PATCH",
-        body: JSON.stringify({ enabled, categories }),
-      });
-      setAgendas(response.villagers);
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "Schedule use could not be changed."));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-}
-
-export function useAddVillager(ports: {
-  loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-}) {
-  const { loadCatalog, setBusy, setError, setSnapshot } = ports;
   return useCallback(
-    async (characterId: string) => {
+    async (characterId: string, enabled: boolean, categories?: Record<string, boolean>) => {
       setBusy(true);
       try {
-        setSnapshot(
-          await request<VillageSnapshot>("/villagers", {
-            method: "POST",
-            body: JSON.stringify({ characterId }),
-          }),
-        );
+        const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/influence`, {
+          method: "PATCH",
+          body: JSON.stringify({ enabled, categories }),
+        });
+        setAgendas(response.villagers);
         setError("");
-        await loadCatalog();
       } catch (cause) {
-        setError(messageFrom(cause, "That character could not move in."));
+        setError(messageFrom(cause, "Schedule use could not be changed."));
       } finally {
         setBusy(false);
       }
     },
-    [loadCatalog],
-  );
-}
-
-export function useRemoveVillager(ports: {
-  catalog: CatalogEntry[];
-  loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  setBusy: React.Dispatch<SetStateAction<boolean>>;
-  setError: React.Dispatch<SetStateAction<string>>;
-  setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
-}) {
-  const { catalog, loadCatalog, setBusy, setError, setSnapshot } = ports;
-  return useCallback(
-    async (characterId: string) => {
-      setBusy(true);
-      try {
-        setSnapshot(
-          await request<VillageSnapshot>(`/villagers/${encodeURIComponent(characterId)}`, { method: "DELETE" }),
-        );
-        setError("");
-        if (catalog) await loadCatalog();
-      } catch (cause) {
-        setError(messageFrom(cause, "That villager could not leave."));
-      } finally {
-        setBusy(false);
-      }
-    },
-    [catalog, loadCatalog],
+    [setAgendas, setBusy, setError],
   );
 }
 
@@ -222,18 +169,21 @@ export function usePreviewVillagerRefresh(ports: {
   setRefreshPreviews: React.Dispatch<SetStateAction<Record<string, VillagerRefreshPreview>>>;
 }) {
   const { setError, setRefreshBusyId, setRefreshPreviews } = ports;
-  return useCallback(async (characterId: string) => {
-    setRefreshBusyId(characterId);
-    try {
-      const preview = await request<VillagerRefreshPreview>(`/villagers/${encodeURIComponent(characterId)}/refresh`);
-      setRefreshPreviews((current) => ({ ...current, [characterId]: preview }));
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That villager's card could not be compared."));
-    } finally {
-      setRefreshBusyId("");
-    }
-  }, []);
+  return useCallback(
+    async (characterId: string) => {
+      setRefreshBusyId(characterId);
+      try {
+        const preview = await request<VillagerRefreshPreview>(`/villagers/${encodeURIComponent(characterId)}/refresh`);
+        setRefreshPreviews((current) => ({ ...current, [characterId]: preview }));
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "That villager's card could not be compared."));
+      } finally {
+        setRefreshBusyId("");
+      }
+    },
+    [setError, setRefreshBusyId, setRefreshPreviews],
+  );
 }
 
 export function useApplyVillagerRefresh(ports: {
@@ -243,24 +193,27 @@ export function useApplyVillagerRefresh(ports: {
   setSnapshot: React.Dispatch<SetStateAction<VillageSnapshot>>;
 }) {
   const { setError, setRefreshBusyId, setRefreshPreviews, setSnapshot } = ports;
-  return useCallback(async (characterId: string) => {
-    setRefreshBusyId(characterId);
-    try {
-      setSnapshot(
-        await request<VillageSnapshot>(`/villagers/${encodeURIComponent(characterId)}/refresh`, {
-          method: "POST",
-        }),
-      );
-      setRefreshPreviews((current) => {
-        const next = { ...current };
-        delete next[characterId];
-        return next;
-      });
-      setError("");
-    } catch (cause) {
-      setError(messageFrom(cause, "That villager's card could not be refreshed."));
-    } finally {
-      setRefreshBusyId("");
-    }
-  }, []);
+  return useCallback(
+    async (characterId: string) => {
+      setRefreshBusyId(characterId);
+      try {
+        setSnapshot(
+          await request<VillageSnapshot>(`/villagers/${encodeURIComponent(characterId)}/refresh`, {
+            method: "POST",
+          }),
+        );
+        setRefreshPreviews((current) => {
+          const next = { ...current };
+          delete next[characterId];
+          return next;
+        });
+        setError("");
+      } catch (cause) {
+        setError(messageFrom(cause, "That villager's card could not be refreshed."));
+      } finally {
+        setRefreshBusyId("");
+      }
+    },
+    [setError, setRefreshBusyId, setRefreshPreviews, setSnapshot],
+  );
 }

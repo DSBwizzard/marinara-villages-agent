@@ -1,12 +1,13 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const now = new Date().toISOString();
 const image = (color) =>
@@ -33,18 +34,26 @@ const residents = residentNames.map((name, index) => ({
 const longGreeting =
   "The mill hums softly while dust turns in the late light, and each villager pauses to listen. ".repeat(12);
 const mapImage = image("#719b77");
-const place = (id, x, y) => ({
-  id,
-  name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
-  classes: id === "mill" ? ["workplace", "community"] : ["other"],
-  category: "destination",
-  description: "A village place.",
-  capabilities: [],
-  presentation: { image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id }, x, y },
-  occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-  state: { condition: "sound", upgrades: [], furniture: [], publicFacts: [], updatedAt: now },
-});
+const place = (id, x, y) =>
+  venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
+    id,
+    name: id === "mill" ? "The Mill" : id === "harbour" ? "The Harbour" : "The Market",
+    classes: id === "mill" ? ["workplace", "community"] : ["other"],
+    category: "destination",
+    description: "A village place.",
+    capabilities: [],
+    presentation: {
+      mapId: "map-house",
+      image: { ref: id, url: image(id === "mill" ? "#a77a54" : "#6e91aa"), id },
+      x,
+      y,
+    },
+    occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+    state: { revision: 0, recent: null, updatedAt: now },
+  });
 const snapshot = {
+  worldScope: "a".repeat(64),
   status: "ready",
   isFounded: true,
   village: {
@@ -64,19 +73,15 @@ const snapshot = {
     dayIndex: 1,
     nextTransitionAt: "",
   },
-  noticeboard: [{ id: "note-1", text: "Market today", author: "Mara", at: now }],
   venueRequests: [],
   projects: [],
-  upgradeRequests: [],
   residences: [],
-  happenings: [],
   villagers: residents,
-  recap: null,
   settings: {
     promptKnowledge: "",
     defaultPromptKnowledge: "",
     promptBoxMaxLength: 1000,
-    storyPace: "normal",
+    backgroundPace: "normal",
     venues: [place("mill", 0.04, 0.08), place("harbour", 0.96, 0.92), place("market", 0.5, 0.5)],
     homeBuildingNames: {},
     homeBuildings: [],
@@ -86,8 +91,6 @@ const snapshot = {
     playerPersonaMissing: false,
     selectedLorebookIds: [],
     setting: "",
-    foundingReason: "",
-    foundingDetails: "",
     maxPlaces: 10,
     maxVenueNameLength: 80,
     maxVenueNoteLength: 2000,
@@ -96,16 +99,26 @@ const snapshot = {
     maxVenueImageBytes: 1000000,
     villageGalleryFolderName: "QA Village",
     visitRetention: { mode: "forever", value: 0 },
-    townMapImageSetAt: now,
+    maps: [
+      {
+        id: "map-house",
+        name: "QA Village",
+        artwork: { id: "map-art", ref: "map-art", url: mapImage },
+        width: 1500,
+        height: 1000,
+        view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+        revision: 1,
+      },
+    ],
     townMapExpectedWidth: 1500,
     townMapExpectedHeight: 1000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-    storyPaces: [],
+    backgroundPaces: [],
     macros: [],
   },
 };
 
-try {
+await withBrowser(browser, async () => {
   for (const { width, height, mobile } of [
     { width: 390, height: 844, mobile: true },
     { width: 360, height: 640, mobile: true },
@@ -114,6 +127,7 @@ try {
     { width: 1917, height: 655, mobile: false },
   ]) {
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+    await mockEngineLookups(page);
     const fixtureSnapshot =
       width === 800
         ? {
@@ -145,7 +159,7 @@ try {
     let lastEntry = null;
     let lastLeave = null;
     let session = {
-      version: 1,
+      version: 2,
       id: "visit-1",
       placeId: "mill",
       placeName: "The Mill",
@@ -170,7 +184,7 @@ try {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/locations/venue/home/player-move")) {
-        await route.fulfill({
+        await fulfill(route, {
           status: 409,
           contentType: "application/json",
           body: JSON.stringify({ error: "This home has no room for another resident." }),
@@ -203,6 +217,13 @@ try {
           rating: "sfw",
         };
       else if (path.endsWith("/rooms/activity")) value = { session };
+      else if (path.endsWith(`/rooms/${session.id}/history`))
+        value = {
+          scope: fixtureSnapshot.worldScope,
+          sceneId: session.id,
+          version: "a".repeat(64),
+          lines: session.lines,
+        };
       else if (path.endsWith("/rooms") && route.request().method() === "POST") {
         lastEntry = route.request().postDataJSON();
         const visited = snapshot.settings.venues.find((venue) => venue.id === lastEntry.venueId);
@@ -219,6 +240,7 @@ try {
         const message = lastTurn.message;
         session = {
           ...session,
+          submissions: [...(session.submissions ?? []), { id: lastTurn.submissionId, replyLineIds: ["answer"] }],
           lines: [
             ...session.lines,
             { id: "player", role: "user", speakerId: "", name: "", content: message, at: now },
@@ -272,10 +294,14 @@ try {
         session = { ...session, status: "closed", endedAt: now };
         value = { session, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, fixtureSnapshot.worldScope)),
+      });
     });
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial,sans-serif}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -285,19 +311,18 @@ try {
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toHaveAttribute("data-mobile", String(mobile));
-    if (!mobile)
-      await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(width === 1440 ? 4 : 3);
+    await expect(home.locator(".marinara-capability-villages-pin-photo-card")).toHaveCount(0);
     await expect(home.locator(".marinara-capability-villages-canvas-img")).toHaveAttribute("src", mapImage);
-    await expect(home.locator(`[data-pin-id="${mobile ? "market" : "mill"}"]`)).toBeInViewport();
+    await expect(home.locator('[data-pin-id="market"]')).toBeInViewport();
     await expect(page.getByRole("img", { name: "Weather: clear" })).toBeVisible();
+    await expect(home.getByRole("complementary", { name: "Places navigator" })).toHaveCount(0);
     if (!mobile) {
-      await expect(page.getByRole("button", { name: "Places" })).toBeVisible();
-      await expect(page.getByRole("button", { name: /whole screen/u })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Places", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: /whole screen/u })).toHaveCount(0);
       const stage = await home.locator(".marinara-capability-villages-stage").boundingBox();
       assert.ok(stage && stage.width <= width && stage.height <= height, "desktop fits the whole map");
       const bar = await home.locator(".marinara-capability-villages-home-bar").boundingBox();
       assert.ok(bar && stage.y >= bar.y + bar.height, "desktop controls sit above the map");
-      await expect(home.locator('[data-pin-id="harbour"]')).toBeInViewport();
     }
     if (process.env.VILLAGES_VISUAL_OUTPUT) {
       await page.screenshot({
@@ -305,13 +330,12 @@ try {
       });
     }
 
-    await page.getByRole("button", { name: /Notices \(1\)/u }).click();
-    await expect(page.getByRole("heading", { name: "Noticeboard", level: 1 })).toBeVisible();
-    await expect(page.getByText("Market today")).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /^Villagers \(/u }).click();
+    await expect(page.getByRole("button", { name: /Notices \(/u })).toHaveCount(0);
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
     await page.getByRole("button", { name: "Open Mara profile" }).click();
+    await page.getByText("Character tools", { exact: true }).click();
     const managerButton = page.getByRole("button", { name: /Manage sprites ·/u }).first();
     await managerButton.focus();
     await page.keyboard.press("Enter");
@@ -320,23 +344,21 @@ try {
     await page.getByRole("button", { name: "← Back to profile" }).click();
     await expect(managerButton).toBeFocused();
     await page.getByRole("button", { name: "← Back to Villagers" }).click();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "Village Settings" }).click();
-    await expect(page.getByRole("heading", { name: "Village Map" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Replace map" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "DEBUG Settings" }).click();
-    await expect(page.getByRole("button", { name: "Scenes" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: "More" }).click();
-    await expect(page.getByRole("button", { name: "General Settings", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to the village" }).click();
+    await page.getByRole("button", { name: "Close ×" }).click();
+    const section = async (key, label) => {
+      if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
+      else await page.getByRole("button", { name: label, exact: true }).click();
+    };
+    await section("village", "World Configuration");
+    await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit map" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Scene History", exact: true })).toHaveCount(0);
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
 
-    const visitedId = mobile ? "market" : "mill";
-    const pin = home.locator(`[data-pin-id="${visitedId}"]`);
-    await pin.focus();
-    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Show places", exact: true }).click();
+    const navigator = page.getByRole("complementary", { name: "Places navigator" });
+    await navigator.getByRole("button", { name: mobile ? /^The Market/ : /^The Mill/ }).click();
+    await navigator.getByRole("button", { name: "View venue", exact: true }).click();
     const doors = page.locator(".marinara-capability-villages-venue-profile");
     await expect(doors.getByRole("button", { name: "Visit venue" })).toBeVisible();
     const bounds = await doors.boundingBox();
@@ -417,8 +439,8 @@ try {
     await expect(composer).toBeVisible();
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Projects", level: 1 })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
+    await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
+    await page.getByRole("button", { name: /^Close/ }).click();
     await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     while (await page.getByRole("button", { name: "Next paragraph" }).isEnabled())
       await page.getByRole("button", { name: "Next paragraph" }).click();
@@ -473,7 +495,7 @@ try {
     await expect(modeButton()).toHaveAttribute("title", "Say / Do");
     await modeButton().click();
     await expect(page.getByRole("menuitemradio", { name: "Move", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toBeVisible();
+    await expect(page.getByRole("menuitemradio", { name: "Contact", exact: true })).toHaveCount(0);
     await page.getByRole("menuitemradio", { name: "Say / Do" }).click();
     await expect(modeButton()).toHaveAttribute("title", "Say / Do");
     assert.equal(lastTurn, null, "changing modes does not send the draft");
@@ -496,7 +518,7 @@ try {
       );
     else assert.deepEqual(replyPositions, castPositions, "a new speaker does not rearrange the four cast slots");
     await expect(page.getByRole("button", { name: "Compose" })).toHaveCount(0);
-    const noticeTrigger = page.getByRole("button", { name: "1 village notice" });
+    const noticeTrigger = page.getByRole("button", { name: "1 World change" });
     if ((await noticeTrigger.getAttribute("aria-expanded")) === "false") await noticeTrigger.click();
     const memoryTrigger = page.getByRole("button", { name: "View memory: The village remembered this exchange." });
     await memoryTrigger.click();
@@ -551,25 +573,16 @@ try {
     if (width === 1440) {
       await page.getByRole("button", { name: "Return to map" }).first().click();
       await home.locator('[data-pin-id="home"]').click();
+      await expect(page.getByRole("heading", { name: "Mara's home", exact: true })).toBeVisible();
       await page
         .getByRole("navigation", { name: "Venue sections" })
         .getByRole("button", { name: "Manage", exact: true })
         .click();
       await expect(page.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
-      await page.getByRole("button", { name: "Request to live here" }).click();
-      await page.getByRole("button", { name: "Send housing request" }).click();
-      const moveError = page.getByRole("alert");
-      await expect(moveError).toHaveText("This home has no room for another resident.");
-      const errorBox = await moveError.boundingBox();
-      assert.ok(
-        errorBox && errorBox.x >= 0 && errorBox.x + errorBox.width <= width,
-        "residence error fits the viewport",
-      );
+      await expect(page.getByRole("button", { name: "Move here" })).toBeDisabled();
       await expect(page.getByText("About this area", { exact: true })).toHaveCount(0);
     }
     await page.close();
   }
   console.log("Villages desktop parity: five viewports, four-person stage, compact reading, and map controls passed");
-} finally {
-  await browser.close();
-}
+});

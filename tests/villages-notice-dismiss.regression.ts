@@ -1,6 +1,5 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
 
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -15,6 +14,7 @@ async function main() {
   assert.ok(noticeId.length > 100);
   const state = defaultVillageState();
   const scene = {
+    version: 3,
     id: sceneId,
     processingVersion: 1,
     memoryMode: "live",
@@ -33,13 +33,19 @@ async function main() {
   };
   const records = new Map<string, any>([
     ["villages-village", { id: "villages-village", data: state, revision: 1 }],
-    [`villages-venue-visit-${sceneId}`, { id: `villages-venue-visit-${sceneId}`, data: scene, revision: 1 }],
+    [
+      `villages-venue-visit-${sceneId}`,
+      { id: `villages-venue-visit-${sceneId}`, packageId: "villages", kind: "venue-visit", data: scene, revision: 1 },
+    ],
   ]);
   let modelCalls = 0;
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
+        async list(_pkg: string, kind: string) {
+          return [...records.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row));
+        },
         async getById(_packageId: string, id: string) {
           return structuredClone(records.get(id) ?? null);
         },
@@ -48,7 +54,7 @@ async function main() {
           records.set(input.id, row);
           return structuredClone(row);
         },
-      },
+      }),
     },
     languageModels: {
       async resolveForRequest() {

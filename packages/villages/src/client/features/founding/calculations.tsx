@@ -1,41 +1,39 @@
-import { residentFoundingProblems } from "../../../shared/helpers/resident-founding-context.js";
+import type { AreaDraftCache } from "./villages-founding-editor.js";
+import { residentAdmissionProblems } from "../../../shared/helpers/resident-admission.js";
 import { placeSpot } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin } from "../../shared/types.js";
+import { simpleFoundingMap } from "./simple-map.js";
 
 export function calculateResidentContextProblem(ports: {
-  selectedResidentContexts: {
-    [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
+  selectedResidentAdmissions: {
+    [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
-  const { selectedResidentContexts, snapshot } = ports;
+  const { selectedResidentAdmissions, snapshot } = ports;
   return !snapshot?.isFounded &&
-    Object.values(selectedResidentContexts).some((context) =>
-      Object.values(residentFoundingProblems(context)).some(Boolean),
+    Object.values(selectedResidentAdmissions).some((context) =>
+      Object.values(residentAdmissionProblems(context)).some(Boolean),
     )
-    ? "Complete the highlighted resident background fields in People."
+    ? "Check starting notes in People."
     : "";
-}
-export function calculateSetupHomeCount(ports: { setupFoundingVillagerIds: string[] }) {
-  const { setupFoundingVillagerIds } = ports;
-  return setupFoundingVillagerIds.length;
 }
 export function calculateSetupBeginningSourceKey(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
-  selectedResidentContexts: {
-    [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
+  selectedResidentAdmissions: {
+    [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
-  setupFoundingDetails: string;
-  setupFoundingReason: "custom" | "rebuild" | "pioneer" | "prosper" | "none";
+
   setupLorebookDraft: string[];
   setupLoreTokenBudgetDraft: number;
+  setupWorldName?: string;
   setupSetting: string;
   setupName?: string;
-  setupWorldFacts?: string[];
-  setupImprint?: import("../../../shared/contracts/village").ScenarioImprint;
+  setupContext?: import("./draft-model.js").FoundingContext;
+
   visualLoreDefault: boolean;
 }) {
   const {
@@ -43,9 +41,8 @@ export function calculateSetupBeginningSourceKey(ports: {
     personalizeHomes,
     sceneryStyle,
     sceneryStyleProfileId,
-    selectedResidentContexts,
-    setupFoundingDetails,
-    setupFoundingReason,
+    selectedResidentAdmissions,
+
     setupLorebookDraft,
     setupLoreTokenBudgetDraft,
     setupSetting,
@@ -53,11 +50,9 @@ export function calculateSetupBeginningSourceKey(ports: {
   } = ports;
   return JSON.stringify({
     name: ports.setupName,
-    worldFacts: ports.setupWorldFacts,
-    imprint: ports.setupImprint,
-    residentContexts: selectedResidentContexts,
-    scenario: setupFoundingReason,
-    premise: setupFoundingDetails.trim(),
+    context: ports.setupContext,
+    worldName: ports.setupWorldName,
+    residentAdmissions: selectedResidentAdmissions,
     setting: setupSetting.trim(),
     lorebooks: setupLorebookDraft,
     loreBudget: setupLoreTokenBudgetDraft,
@@ -72,25 +67,24 @@ export function calculateSetupImageContextKey(ports: {
   personaDraft: string;
   personalizeHomes: boolean;
   setupBeginningSourceKey: string;
-  setupImprint: import("../../../shared/contracts/village").ScenarioImprint;
+
   setupName: string;
-  setupWorldFacts: string[];
+  setupContext: import("./draft-model.js").FoundingContext;
   visualLoreDefault: boolean;
 }) {
   const {
     personaDraft,
     personalizeHomes,
     setupBeginningSourceKey,
-    setupImprint,
+
     setupName,
-    setupWorldFacts,
+    setupContext,
     visualLoreDefault,
   } = ports;
   return JSON.stringify({
     source: setupBeginningSourceKey,
     name: setupName,
-    imprint: setupImprint,
-    worldFacts: setupWorldFacts,
+    context: setupContext,
     persona: personaDraft,
     personalizeHomes,
     visualLoreDefault,
@@ -101,10 +95,12 @@ export function calculateSetupMapGenerationKey(ports: {
   sceneryStyle: string;
   sceneryStyleProfileId: string | null;
   setupLorebookDraft: string[];
+  setupLoreTokenBudgetDraft: number;
   setupMapNegativePrompt: string;
   setupMapPrompt: string;
+  setupWorldName?: string;
   setupSetting: string;
-  setupWorldFacts: string[];
+  setupContext: import("./draft-model.js").FoundingContext;
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
 }) {
   const {
@@ -112,16 +108,18 @@ export function calculateSetupMapGenerationKey(ports: {
     sceneryStyle,
     sceneryStyleProfileId,
     setupLorebookDraft,
+    setupLoreTokenBudgetDraft,
     setupMapNegativePrompt,
     setupMapPrompt,
     setupSetting,
-    setupWorldFacts,
-    snapshot,
+    setupContext,
   } = ports;
   return JSON.stringify({
     setting: setupSetting.trim(),
-    worldFacts: snapshot?.isFounded ? setupWorldFacts : null,
+    worldName: ports.setupWorldName,
+    context: setupContext,
     lorebooks: setupLorebookDraft,
+    loreBudget: setupLoreTokenBudgetDraft,
     artStyle: sceneryStyle,
     styleProfileId: sceneryStyleProfileId,
     useVisualLore: mapVisualLore,
@@ -139,9 +137,11 @@ export function calculateSetupMapShape(ports: {
   return snapshot
     ? setupMapSource === "existing"
       ? { width: snapshot.settings.townMapExpectedWidth, height: snapshot.settings.townMapExpectedHeight }
-      : setupMapSize && setupMapImageSource === setupMapSource
-        ? setupMapSize
-        : { width: snapshot.settings.townMapGenerationWidth, height: snapshot.settings.townMapGenerationHeight }
+      : setupMapSource === "simple"
+        ? { width: 1536, height: 1024 }
+        : setupMapSize && setupMapImageSource === setupMapSource
+          ? setupMapSize
+          : { width: snapshot.settings.townMapGenerationWidth, height: snapshot.settings.townMapGenerationHeight }
     : null;
 }
 export function calculateSetupMapSrc(ports: {
@@ -153,9 +153,11 @@ export function calculateSetupMapSrc(ports: {
   const { setupMapImage, setupMapImageSource, setupMapSource, townMapImage } = ports;
   return setupMapSource === "existing"
     ? townMapImage || null
-    : setupMapImageSource === setupMapSource
-      ? setupMapImage || null
-      : null;
+    : setupMapSource === "simple"
+      ? simpleFoundingMap()
+      : setupMapImageSource === setupMapSource
+        ? setupMapImage || null
+        : null;
 }
 export function calculatePlaceCount(ports: {
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
@@ -178,114 +180,9 @@ export function calculateDraftPins(ports: {
   setupAuthoredFields: Record<string, string[]>;
   setupEditorAuthoredOriginal: React.RefObject<string[]>;
   setupEditorOriginal: React.RefObject<import("../../../shared/contracts/village").VillageVenue>;
-  setupEditorZoneOriginal: React.RefObject<{
-    common?: {
-      id: string;
-      name?: string;
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-      controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "community" | "other";
-      description: string;
-      image: import("../../../shared/contracts/village").VillageVenueImage;
-      state: {
-        condition: string;
-        items: string[];
-        publicFacts: string[];
-        features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-        traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-        updatedAt: string;
-      };
-    };
-    personal?: {
-      id: string;
-      name?: string;
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-      controllerIds?: string[];
-      venueClass: "residence" | "workplace" | "community" | "other";
-      description: string;
-      image: import("../../../shared/contracts/village").VillageVenueImage;
-      state: {
-        condition: string;
-        items: string[];
-        publicFacts: string[];
-        features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-        traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-        updatedAt: string;
-      };
-    } & {
-      ownerId: string;
-      name?: string;
-      purpose?: string;
-      access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-      accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-      controllerIds?: string[];
-      adaptationPending?: boolean;
-      initialImageAttemptedAt?: string;
-    };
-  }>;
+  setupEditorZoneOriginal: React.RefObject<AreaDraftCache["current"] | undefined>;
   setupVenues: import("../../../shared/contracts/village").VillageVenue[];
-  setupZoneDrafts: React.RefObject<
-    Record<
-      string,
-      {
-        common?: {
-          id: string;
-          name?: string;
-          ownerId?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-          controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "community" | "other";
-          description: string;
-          image: import("../../../shared/contracts/village").VillageVenueImage;
-          state: {
-            condition: string;
-            items: string[];
-            publicFacts: string[];
-            features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-            traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-            updatedAt: string;
-          };
-        };
-        personal?: {
-          id: string;
-          name?: string;
-          ownerId?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-          controllerIds?: string[];
-          venueClass: "residence" | "workplace" | "community" | "other";
-          description: string;
-          image: import("../../../shared/contracts/village").VillageVenueImage;
-          state: {
-            condition: string;
-            items: string[];
-            publicFacts: string[];
-            features: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-            traces: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-            updatedAt: string;
-          };
-        } & {
-          ownerId: string;
-          name?: string;
-          purpose?: string;
-          access?: import("../../../shared/helpers/venue-access").ZoneAccessPolicy;
-          accessView?: import("../../../shared/helpers/venue-access").ZoneAccessView;
-          controllerIds?: string[];
-          adaptationPending?: boolean;
-          initialImageAttemptedAt?: string;
-        };
-      }
-    >
-  >;
+  setupZoneDrafts: React.RefObject<Record<string, AreaDraftCache["current"]>>;
 }): MapPin[] {
   const {
     selectedSetupVenueId,

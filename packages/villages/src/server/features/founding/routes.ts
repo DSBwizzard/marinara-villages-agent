@@ -2,18 +2,11 @@ import { resetVillage } from "../world/village.js";
 import { fail, SETTINGS_BODY_LIMIT, VENUE_IMAGE_BODY_LIMIT } from "../../adapters/http/route-support.js";
 import { requestFoundingSuggestions, readFoundingSuggestions } from "./founding-suggestions.js";
 import { readTownMapGeneration, requestTownMapGeneration } from "../../jobs/town-map-generation.js";
-import { generateVillageTownMap } from "../media/town-map-image.js";
+
 import { resetVenueSessions } from "../scenes/archive.js";
-import { buildVillageSnapshot } from "../world/snapshot.js";
-import {
-  draftVenueDescriptions,
-  runVillageSetup,
-  suggestFoundingPlaces,
-  suggestFoundingVenueNames,
-} from "./founding-setup.js";
+import { draftVenueDescriptions, runVillageSetup } from "./founding-setup.js";
 import { foundingPreparationSnapshot, retryFoundedVillagePreparation } from "./preparation.js";
 import { generateFoundingVenueImage, suggestStartingVenues, uploadFoundingVenueImage } from "./founding-drafts.js";
-import { draftScenarioImprint } from "./scenario-imprint.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerFoundingRoutes(engine: FastifyInstance) {
@@ -21,15 +14,16 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
   app.post<{
     Body: {
       foundingCharacterIds?: unknown;
-      foundingResidentContexts?: unknown;
+      foundingSpriteRevisions?: unknown;
+      foundingResidentAdmissions?: unknown;
       name?: unknown;
+      timeZone?: unknown;
       setting?: unknown;
-      foundingReason?: unknown;
-      foundingDetails?: unknown;
-      foundingGuidance?: unknown;
-      playerRole?: unknown;
-      scenarioImprint?: unknown;
-      worldFacts?: unknown;
+      worldRules?: unknown;
+      worldName?: unknown;
+      communityVenueId?: unknown;
+      playerBackground?: unknown;
+      circumstances?: unknown;
       selectedLorebookIds?: unknown;
       sceneryArtStyle?: unknown;
       sceneryStyleProfileId?: unknown;
@@ -48,15 +42,16 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       const body = request.body ?? {};
       return await runVillageSetup({
         foundingCharacterIds: body.foundingCharacterIds,
-        foundingResidentContexts: body.foundingResidentContexts,
+        foundingSpriteRevisions: body.foundingSpriteRevisions,
+        foundingResidentAdmissions: body.foundingResidentAdmissions,
         name: body.name,
+        timeZone: body.timeZone,
         setting: body.setting,
-        foundingReason: body.foundingReason,
-        foundingDetails: body.foundingDetails,
-        foundingGuidance: body.foundingGuidance,
-        playerRole: body.playerRole,
-        scenarioImprint: body.scenarioImprint,
-        worldFacts: body.worldFacts,
+        worldRules: body.worldRules,
+        worldName: body.worldName,
+        communityVenueId: body.communityVenueId,
+        playerBackground: body.playerBackground,
+        circumstances: body.circumstances,
         selectedLorebookIds: body.selectedLorebookIds,
         sceneryArtStyle: body.sceneryArtStyle,
         sceneryStyleProfileId: body.sceneryStyleProfileId,
@@ -82,20 +77,16 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return fail(reply, error, "suggesting starting spaces");
     }
   });
-  app.get<{ Params: { actionId: string } }>("/setup/venues/suggestions/:actionId", async (request, reply) => {
-    try {
-      return await readFoundingSuggestions(request.params.actionId);
-    } catch (error) {
-      return fail(reply, error, "retrieving Venue suggestions");
-    }
-  });
-  app.post<{ Body: unknown }>("/setup/scenario-imprint/draft", async (request, reply) => {
-    try {
-      return await draftScenarioImprint(request.body);
-    } catch (error) {
-      return fail(reply, error, "drafting the Scenario imprint");
-    }
-  });
+  app.get<{ Params: { actionId: string; targetId: string } }>(
+    "/setup/venues/suggestions/:actionId",
+    async (request, reply) => {
+      try {
+        return await readFoundingSuggestions(request.params.actionId);
+      } catch (error) {
+        return fail(reply, error, "retrieving Venue suggestions");
+      }
+    },
+  );
   app.post<{
     Body: {
       structure?: unknown;
@@ -108,25 +99,27 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       personalizeVenueImagesByDefault?: unknown;
       useVisualLoreByDefault?: unknown;
       useVisualLore?: unknown;
-      scenarioImprint?: unknown;
       actionId?: unknown;
+      targetId?: unknown;
       sourceKey?: unknown;
     };
-  }>("/setup/town-map/generate", async (request, reply) => {
+  }>("/maps/generate", async (request, reply) => {
     try {
-      if (request.body?.actionId !== undefined) return await requestTownMapGeneration(request.body);
-      return await generateVillageTownMap(request.body ?? {});
+      return await requestTownMapGeneration(request.body);
     } catch (error) {
       return fail(reply, error, "drawing the village map");
     }
   });
-  app.get<{ Params: { actionId: string } }>("/setup/town-map/generation/:actionId", async (request, reply) => {
-    try {
-      return await readTownMapGeneration(request.params.actionId);
-    } catch (error) {
-      return fail(reply, error, "retrieving the requested village map");
-    }
-  });
+  app.get<{ Params: { actionId: string; targetId: string } }>(
+    "/maps/generation/:targetId/:actionId",
+    async (request, reply) => {
+      try {
+        return await readTownMapGeneration(request.params.actionId, request.params.targetId);
+      } catch (error) {
+        return fail(reply, error, "retrieving the requested village map");
+      }
+    },
+  );
   app.post("/setup/reset", async (_request, reply) => {
     try {
       await resetVenueSessions();
@@ -135,32 +128,6 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return fail(reply, error, "resetting the village");
     }
   });
-  app.post("/bootstrap", async (_request, reply) => {
-    try {
-      const snapshot = await buildVillageSnapshot();
-      return await suggestFoundingPlaces(
-        snapshot.settings.setting,
-        snapshot.settings.selectedLorebookIds,
-        snapshot.settings.loreTokenBudget,
-      );
-    } catch (error) {
-      return fail(reply, error, "suggesting places");
-    }
-  });
-  app.post<{ Body: { setting?: unknown; selectedLorebookIds?: unknown; loreTokenBudget?: unknown } }>(
-    "/setup/public-venue/names/suggest",
-    async (request, reply) => {
-      try {
-        return await suggestFoundingVenueNames(
-          request.body?.setting,
-          request.body?.selectedLorebookIds,
-          request.body?.loreTokenBudget,
-        );
-      } catch (error) {
-        return fail(reply, error, "suggesting public venue names");
-      }
-    },
-  );
   app.post<{ Body: unknown }>("/locations/venue/descriptions/draft", async (request, reply) => {
     try {
       return await draftVenueDescriptions(request.body);
@@ -175,13 +142,16 @@ export function registerFoundingRoutes(engine: FastifyInstance) {
       return fail(reply, error, "reading founding preparation");
     }
   });
-  app.post("/setup/preparation/retry", async (_request, reply) => {
-    try {
-      return await retryFoundedVillagePreparation();
-    } catch (error) {
-      return fail(reply, error, "retrying founding preparation");
-    }
-  });
+  app.post<{ Body: import("../../../shared/contracts/founding-tasks.js").FoundingRetry }>(
+    "/setup/preparation/retry",
+    async (request, reply) => {
+      try {
+        return await retryFoundedVillagePreparation(request.body ?? {});
+      } catch (error) {
+        return fail(reply, error, "retrying founding preparation");
+      }
+    },
+  );
   app.post<{ Body: unknown }>("/setup/venue-image/generate", async (request, reply) => {
     try {
       return await generateFoundingVenueImage(request.body);

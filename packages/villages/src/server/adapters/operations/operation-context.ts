@@ -1,7 +1,6 @@
 import { activationScope, bindActivationService, createActivationBinding } from "../engine/activation-scope.js";
 import { villagesLogger } from "../engine/runtime-host.js";
 import { createVenueOperationContext, type Context, type VenueOperationContext } from "./operation-context-service.js";
-import type { VenueOperation } from "../../domain/models/operation-model.js";
 import type { VillagesRequestError } from "../../domain/rules/errors.js";
 export type { Context, VenueOperation, VenueOperationContext } from "./operation-context-service.js";
 export { operationSummary } from "./operation-context-service.js";

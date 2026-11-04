@@ -1,16 +1,17 @@
+import { recoverFoundingPreparation } from "../features/founding/preparation.js";
 import { configureDecisionsAdapter } from "../adapters/engine/decisions-adapter.js";
 import {
   bindActivationService,
   createActivationScope,
   installDefaultActivation,
   type ActivationScope,
-  activationScope as activationScopeForSpinoff,
 } from "../adapters/engine/activation-scope.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
 import { readRuntimeDebug } from "../adapters/observability/runtime-debug.js";
 import { recoverVenueSceneWork } from "../features/scenes/venue-session.js";
 import { startProgressRecovery } from "../features/scenes/progress.js";
-import { readVillageState } from "../features/world/village-store.js";
+import { startRetainedStorageCleanup } from "../features/repair/retained-storage-cleanup.js";
+import { readVillageAuthority, readVillageState } from "../features/world/village-store.js";
 import { startBackgroundWork } from "../jobs/background-work.js";
 import { startTownMapGeneration } from "../jobs/town-map-generation.js";
 import { stopVenueCoordinator } from "../jobs/venue-coordinator.js";
@@ -18,14 +19,11 @@ import { startVillageRefreshScheduler } from "../jobs/village-refresh-scheduler.
 import { villagesRoutes } from "./routes.js";
 import { configureVillagesRuntime } from "./runtime.js";
 import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
-import type { SceneOriginProvider } from "@marinara-engine/shared";
-import { spinoffs } from "../features/scenes/spinoffs.js";
 import type { FastifyPluginAsync } from "fastify";
 
 export type ActivationContext = {
   app?: { db?: unknown };
   api: {
-    registerSceneOrigin?(provider: SceneOriginProvider): () => void | Promise<void>;
     runtime: CapabilityRuntimeHost;
     registerPrivilegedRoutes(
       routes: FastifyPluginAsync,
@@ -37,36 +35,24 @@ export type ActivationContext = {
 type Cleanup = () => void | Promise<void>;
 /** Assembly ports keep lifecycle tests independent of Engine and providers. */
 export interface ApplicationServices {
-  registerSpinoffs?(api: ActivationContext["api"]): Cleanup;
   configureRuntime(runtime: CapabilityRuntimeHost): Cleanup;
   startTownMapGeneration(): Cleanup;
   configureDecisions(runtime: CapabilityRuntimeHost): Cleanup;
   readRuntimeDebug(): Promise<unknown>;
   warnRuntimeDebug(error: unknown): void;
   recoverVenueSceneWork(): Promise<unknown>;
+  recoverFoundingPreparation?(): Promise<void>;
   stopVenueCoordinator: Cleanup;
   routes: FastifyPluginAsync;
   startBackgroundWork(): Cleanup;
   startRefreshScheduler(): Cleanup;
   startProgressRecovery(): Cleanup;
+  startStorageCleanup?(): Cleanup;
   startPrivateSpacePreparation(): Promise<Cleanup>;
   readVillageState(): Promise<unknown>;
+  assertSocialContract?(): Promise<unknown>;
 }
 const applicationServices: ApplicationServices = {
-  registerSpinoffs: (api) => {
-    if (!api.registerSceneOrigin) throw new Error("Spinoffs require Engine scene origins (Capability API 1.66).");
-    const scope = activationScopeForSpinoff();
-    const provider = spinoffs().provider;
-    return api.registerSceneOrigin(
-      scope
-        ? {
-            getContext: scope.bind(provider.getContext),
-            claim: scope.bind(provider.claim!),
-            release: scope.bind(provider.release!),
-          }
-        : provider,
-    );
-  },
   configureRuntime: configureVillagesRuntime,
   startTownMapGeneration,
   configureDecisions: configureDecisionsAdapter,
@@ -75,16 +61,19 @@ const applicationServices: ApplicationServices = {
     villagesLogger().warn("[villages] runtime logging settings could not be read: %s", String(error));
   },
   recoverVenueSceneWork,
+  recoverFoundingPreparation,
   stopVenueCoordinator,
   routes: villagesRoutes,
   startBackgroundWork,
   startRefreshScheduler: startVillageRefreshScheduler,
   startProgressRecovery,
+  startStorageCleanup: startRetainedStorageCleanup,
   async startPrivateSpacePreparation() {
     const { startPrivateSpacePreparation } = await import("../jobs/private-space-preparation.js");
     return startPrivateSpacePreparation();
   },
   readVillageState,
+  assertSocialContract: readVillageAuthority,
 };
 /** An activation owns its registrations and job cleanup in their existing order. */
 export async function startVillagesApplication(
@@ -138,15 +127,17 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
   };
   try {
     cleanups.push(services.configureRuntime(api.runtime));
+    await services.assertSocialContract?.();
     cleanups.push(services.startTownMapGeneration());
     cleanups.push(services.configureDecisions(api.runtime));
     await services.readRuntimeDebug().catch(services.warnRuntimeDebug);
     cleanups.push(services.stopVenueCoordinator);
+    await services.recoverFoundingPreparation?.();
     await services.recoverVenueSceneWork();
-    if (services.registerSpinoffs) cleanups.push(services.registerSpinoffs(api));
     cleanups.push(await api.registerPrivilegedRoutes(services.routes, { prefix: "/api/villages" }));
     // Started only once the routes are up, so a package that failed to activate
     // never leaves a timer behind pointing at a village nobody can reach.
+    if (services.startStorageCleanup) cleanups.push(services.startStorageCleanup());
     cleanups.push(services.startBackgroundWork());
     cleanups.push(services.startRefreshScheduler());
     cleanups.push(services.startProgressRecovery());

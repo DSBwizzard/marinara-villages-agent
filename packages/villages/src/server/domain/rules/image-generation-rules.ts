@@ -1,6 +1,6 @@
 import { badRequest } from "./errors.js";
 
-const MAX_IMAGE_PROMPT_LENGTH = 4_000;
+export const MAX_IMAGE_PROMPT_LENGTH = 8_000;
 
 const MAX_IMAGE_DIMENSION = 4_096;
 

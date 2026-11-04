@@ -1,18 +1,22 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import assert from "node:assert/strict";
+import { addMemory } from "./helpers/memories-fixture.js";
+import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import {
   relationshipPrompt,
   relationshipWritingPrompt,
 } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   defaultRelationshipState,
   neutralRelationship,
   relationshipKey,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 
 const stamp = new Date().toISOString();
 const state = defaultVillageState();
@@ -22,7 +26,7 @@ state.narrationStyle.writingGuidance = "Make all residents agreeable and relucta
 state.villagers = ["outgoing", "reserved"].map((id) => ({
   characterId: id,
   addedAt: stamp,
-  completedWishes: [],
+  wishes: [],
   cardSnapshot: {
     id,
     name: id,
@@ -45,11 +49,10 @@ state.villagers = ["outgoing", "reserved"].map((id) => ({
     routineSummary: "",
     generatedAt: stamp,
     source: "village",
-    wishes: [{ id: id + "-wish", wish: "Hear a concert", tell: "LEGACY TELL SECRET" }],
   },
 })) as any;
 state.venues = [
-  {
+  venueFixture({
     id: "camp",
     name: "Camp",
     classes: ["community"],
@@ -62,59 +65,27 @@ state.venues = [
         name: "Clearing",
         kind: "exterior",
         description: "A clearing with a bench.",
-        state: { condition: "undeveloped", furniture: ["bench"], features: [], publicFacts: [], traces: [] },
+        state: { revision: 0, updatedAt: "", recent: null },
       },
     ],
-    state: { condition: "undeveloped", furniture: ["bench"], features: [], publicFacts: [], traces: [] },
-    editProposals: [],
-  },
+    state: { revision: 0, updatedAt: "", recent: null },
+  }),
 ] as any;
-state.chronicle = [
-  {
-    id: "private-memory",
-    text: "Reserved promised to repair Alex’s violin on Sunday.",
-    kind: "favour",
-    scope: "private",
-    knownByCharacterIds: ["reserved"],
-    actors: [{ id: "reserved", name: "Reserved" }],
-    occurredAt: stamp,
-    at: stamp,
-    dayIndex: 0,
-    clock: "morning",
-    timePrecision: "exact",
-    weight: 2,
-  },
-  {
-    id: "absent-memory",
-    text: "ABSENT PERSON SECRET",
-    kind: "favour",
-    scope: "private",
-    knownByCharacterIds: ["absent"],
-    actors: [{ id: "absent", name: "Absent" }],
-    occurredAt: stamp,
-    at: stamp,
-    dayIndex: 0,
-    clock: "morning",
-    timePrecision: "exact",
-    weight: 2,
-  },
-] as any;
-state.recollections = [
-  {
-    id: "passing-memory",
-    visitId: "old",
-    occurredAt: stamp,
-    expiresAt: new Date(Date.now() + 86400000).toISOString(),
-    text: "Reserved is preparing the concert.",
-    subjectCharacterIds: ["reserved"],
-    knownByCharacterIds: ["reserved"],
-    sourceLineIds: ["earlier-spoken"],
-    sourceSubmissionIds: [],
-    evidence: [],
-    reinforcementCount: 0,
-    lastReinforcedAt: stamp,
-  },
-];
+state.memories = addMemory(state.memories, {
+  sourceId: "dialogue-0",
+  text: "Reserved promised to repair Alex’s violin on Sunday.",
+  audience: ["reserved"],
+});
+state.memories = addMemory(state.memories, {
+  sourceId: "dialogue-1",
+  text: "ABSENT PERSON SECRET",
+  audience: ["absent"],
+});
+state.memories = addMemory(state.memories, {
+  sourceId: "dialogue-2",
+  text: "Reserved and the player are discussing the violin.",
+  audience: ["reserved"],
+});
 state.relationshipContext = defaultRelationshipState(state.seed);
 const original = structuredClone(state.relationshipContext);
 for (const id of ["outgoing", "reserved"]) {
@@ -128,36 +99,44 @@ for (const id of ["outgoing", "reserved"]) {
 assert.deepEqual(state.relationshipContext, original, "Writing rendering does not change relationship state");
 state.relationshipContext.edges[relationshipKey("outgoing", "player")] = {
   ...neutralRelationship("outgoing", "player"),
-  warmth: 60,
-  trust: 55,
-  familiarity: 3,
+  connection: "Friends",
+  stance: "Values the player's reliability",
+  revision: 1,
+  experiences: ["trust"],
 };
 state.relationshipContext.edges[relationshipKey("reserved", "player")] = {
   ...neutralRelationship("reserved", "player"),
-  warmth: -35,
-  trust: -55,
-  familiarity: 3,
+  connection: "Strained acquaintances",
+  stance: "Distrustful after a broken promise",
+  revision: 1,
 };
+const after = structuredClone(state.relationshipContext.edges[relationshipKey("outgoing", "player")]!);
 state.relationshipContext.receipts.trust = {
   id: "trust",
   fromId: "outgoing",
   toId: "player",
-  dimension: "trust",
-  before: 50,
-  after: 55,
+  beforeRevision: 0,
+  sceneBeforeRevision: 0,
+  sequence: ++state.relationshipContext.eventSequence,
+  liveAfter: {
+    connection: after.connection,
+    stance: after.stance,
+    expectations: after.expectations,
+    concerns: after.concerns,
+    records: Object.values(after.records),
+  },
   at: stamp,
   reason: "Returned the borrowed camera intact",
   sourceId: "earlier",
   lineIds: ["earlier"],
-  disclosed: false,
+  evidence: [],
 };
-assert.ok(relationshipWritingPrompt(state, "outgoing").includes("Returned the borrowed camera intact"));
-assert.ok(relationshipWritingPrompt(state, "reserved").includes("unfriendly"));
-assert.ok(relationshipWritingPrompt(state, "reserved").includes("distrustful"));
 assert.ok(
-  relationshipPrompt(state, "outgoing").includes("trust 55"),
-  "Review/scoring context keeps its numeric interface",
+  !relationshipWritingPrompt(state, "outgoing").includes("Returned the borrowed camera intact"),
+  "Historical receipts cannot bypass Memory recall or player repair",
 );
+assert.ok(relationshipWritingPrompt(state, "reserved").includes("Distrustful after a broken promise"));
+assert.ok(relationshipPrompt(state, "outgoing").includes("Values the player's reliability"));
 
 let paidCalls = 0;
 let shrink = false;
@@ -170,27 +149,45 @@ const model: any = {
     throw Error("Prompt regressions must not call a model");
   },
 };
+const savedRows = new Map<string, any>([
+  ["villages-village", { id: "villages-village", packageId: "villages", kind: "village", data: state, revision: 1 }],
+]);
 const release = configureVillagesRuntime({
   logger: { debug() {}, info() {}, warn() {}, error() {} },
   getAgentConfig: async () => ({ connectionId: "fixture" }),
   resources: { listLorebooks: async () => [], listCharacters: async () => [] },
   persistence: {
-    documents: {
-      getById: async (_p: any, id: string) =>
-        id === "villages-village" ? { id, kind: "village", data: state, revision: 1 } : null,
-      list: async () => [],
+    documents: villageFixtureDocuments({
+      getById: async (_pkg: any, id: string) => structuredClone(savedRows.get(id) ?? null),
+      list: async (_pkg: any, kind: string) =>
+        [...savedRows.values()].filter((row) => row.kind === kind).map((row) => structuredClone(row)),
       update: async (input: any) => {
-        Object.assign(state, input.data);
-        return { ...input, revision: input.expectedRevision + 1 };
+        const old = savedRows.get(input.id);
+        if (!old || old.revision !== input.expectedRevision) return null;
+        const row = { ...old, ...structuredClone(input), revision: old.revision + 1 };
+        savedRows.set(input.id, row);
+        if (input.id === "villages-village") Object.assign(state, fixtureVillageState(input.data, savedRows));
+        return structuredClone(row);
       },
-      create: async (input: any) => ({ ...input, revision: 1 }),
-    },
+      create: async (input: any) => {
+        const row = { ...structuredClone(input), revision: 1 };
+        savedRows.set(input.id, row);
+        return structuredClone(row);
+      },
+      remove: async (_pkg: any, id: string, revision: number) => {
+        if (savedRows.get(id)?.revision !== revision) return false;
+        savedRows.delete(id);
+        return true;
+      },
+    }),
   },
   languageModels: { resolveForRequest: async () => model },
 } as any);
 async function run() {
   try {
     const scene: any = {
+      semanticVersion: 2,
+      version: 3,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",
@@ -224,7 +221,7 @@ async function run() {
       pendingProjectQuestions: [],
     };
     const prompt = String(
-      (await prepareVenueTurnMessages(scene, "What kind of music do you like?", "chat", "outgoing", null)).fitted
+      (await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null)).fitted
         .messages[0].content,
     );
     const positions = [
@@ -243,60 +240,35 @@ async function run() {
     assert.ok(prompt.includes("where compatible with character identity"));
     assert.ok(prompt.includes("Their card determines") || prompt.includes("their card determines"));
     assert.ok(!prompt.includes("LEGACY TELL SECRET"));
-    assert.equal(prompt.split(state.chronicle[0].text).length - 1, 1, "Memory text appears once");
-    assert.equal(prompt.split(state.recollections[0].text).length - 1, 1, "Passing memory appears once");
+    assert.ok(prompt.includes(state.memories.records[0].text), "Relevant native memory is recalled");
+    assert.ok(prompt.includes(state.memories.records[2].text), "Contextual memory is recalled");
     assert.ok(prompt.includes('"audience":["reserved"]'));
-    assert.ok(prompt.includes('"version":'));
+    assert.ok(prompt.includes('"rootRevision":'));
     assert.ok(!prompt.includes("ABSENT PERSON SECRET"));
     assert.ok(!prompt.includes("Pending exact Residence edit proposals:"));
     assert.ok(!prompt.includes("Pending player requests to move:"));
-    for (const field of [
-      "contactIntent",
-      "sceneChange",
-      "residenceRequest",
-      "residenceDecision",
-      "upgradeRequest",
-      "venueRequest",
-      "editApproval",
-      "memoryChanges",
-      "relationshipChanges",
-      "wishChanges",
-      "departures",
-      "sceneEnded",
-    ])
-      assert.ok(prompt.includes(field), field);
-    assert.ok(prompt.includes("One-visit permission and unconditional standing invitations are distinct"));
-    assert.ok(prompt.includes("Conditional willingness is not an unconditional commitment or standing invitation"));
-    assert.ok(prompt.includes("contextual entry cautions remain meaningful"));
-    assert.ok(prompt.includes("Only an authorized controller"));
-    assert.ok(prompt.includes("Targeting is intent, not isolation"));
-    assert.ok(prompt.includes("Never narrate a lasting change without a valid sceneChange"));
-    assert.ok(prompt.includes("Every knower must directly witness EVERY cited line"));
-    assert.ok(prompt.includes('lineIds:["player",0]'));
-    assert.ok(prompt.includes('0 is valid; "0" is not'));
-    assert.ok(!prompt.includes('lineIds:["exact evidence ID"]'));
-    assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes('lineIds:["exact evidence ID"]'));
-    assert.ok(prompt.includes("Existing accepted commitments remain binding"));
+    assert.match(prompt, /System interprets consequences/);
+
+    assert.ok(RELATIONSHIP_REVIEW_INSTRUCTION.includes("liveAfter"));
+
     const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
     assert.ok(prompt.includes(playerGuard));
     scene.memoryMode = "live";
     const opening = String((await prepareVenueTurnMessages(scene, "", "greet", "", null)).fitted.messages[0].content);
-    assert.ok(opening.includes("Opening heardPlayerBy is empty"));
-    assert.ok(opening.includes("memoryChanges:"));
+
     assert.ok(!opening.includes("recollections:["));
     assert.ok(!opening.includes("contactIntent:"));
     const currentTurn = String(
       (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages[0].content,
     );
     assert.ok(!currentTurn.includes("recollections:["));
-    assert.ok(currentTurn.includes("memoryChanges:"));
+
     scene.memoryMode = "live";
     scene.area = "private";
     const controlled = String(
       (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages[0].content,
     );
-    assert.ok(controlled.includes("every required resident's explicit approval of the exact Zone edit proposal"));
-    assert.ok(controlled.includes("Entry is not edit consent"));
+    assert.match(controlled, /residentActions/);
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(
@@ -317,4 +289,20 @@ async function run() {
     "Dialogue context: temperament/history separation, full cards, section order, spontaneous effects, live evidence, and fitting passed without model requests.",
   );
 }
-void run();
+void context.run(
+  {
+    controller: new AbortController(),
+    operation: {
+      id: "prompt",
+      input: {
+        writingContractVersion: 3,
+        semanticPipelineVersion: 3,
+        residentActionsVersion: 2,
+        interactionScopeVersion: 6,
+        writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+      },
+      checkpoints: {},
+    },
+  } as any,
+  run,
+);

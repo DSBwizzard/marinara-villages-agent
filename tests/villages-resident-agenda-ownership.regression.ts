@@ -8,27 +8,24 @@ import {
 import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { unwrittenVillageAgenda } from "../packages/villages/src/server/domain/rules/agenda-plan.js";
+import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 import { agendaDateKey } from "../packages/villages/src/server/domain/rules/agenda-week.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { initialIdentityDescription } from "../packages/villages/src/server/domain/rules/resident-description.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import {
   createResidentAgendas,
   type ResidentAgendaPorts,
 } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
 import {
+  clearVillagerAgenda,
   configureResidentAgendas,
   queueVillagerAgenda,
-  clearVillagerAgenda,
   rollActiveAgendas,
 } from "../packages/villages/src/server/features/residents/resident-agendas.js";
-import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const state = defaultVillageState();
@@ -39,7 +36,7 @@ function fixture(name: string) {
     characterId: "same",
     cardSnapshot: snapshotFromCard(card, 2),
     addedAt: "2026-10-06T12:00:00Z",
-    completedWishes: [],
+    wishes: [],
     remap: null,
     remapFailure: null,
     ingestSchedule: false,
@@ -58,6 +55,7 @@ function fixture(name: string) {
     failure: Error | undefined;
   let parsed = 0,
     generated = 0;
+  let parsedResponse: unknown, parsedContext: unknown;
   const note = (operation: string) => {
     calls.push(operation);
     owners.push(scopedActivation());
@@ -108,9 +106,11 @@ function fixture(name: string) {
       note("jobs");
       return [{ kind: "agenda", subjectId: "same", attempt: 3 }] as any;
     },
-    parseCompactFoundingCompletion() {
+    parseCompactFoundingCompletion(response, context) {
       note("parse");
       parsed++;
+      parsedResponse = response;
+      parsedContext = context;
       return { agenda: structuredClone(resident.agenda) } as any;
     },
     async proposeCompactFounding(_context, onModel) {
@@ -166,6 +166,12 @@ function fixture(name: string) {
     get parsed() {
       return parsed;
     },
+    get parsedResponse() {
+      return parsedResponse;
+    },
+    get parsedContext() {
+      return parsedContext;
+    },
     get generated() {
       return generated;
     },
@@ -191,7 +197,6 @@ assert.equal(a.jobs[0].finite, false);
 assert.equal(a.jobs[0].revision, revision);
 assert.equal(a.jobs[0].input.context.village, "A");
 assert.deepEqual(a.jobs[0].input.context.lore, ["Lore A"]);
-assert.equal(a.jobs[0].input.context.allowInitialWish, false);
 assert(!a.calls.includes("allowance"));
 assert.equal(a.generated, 0, "Queueing records input; the handler owns generation.");
 await b.service.queueVillagerAgenda("same");
@@ -200,13 +205,11 @@ assert.equal(b.jobs[0].input.context.village, "B");
 const founding = fixture("Founding");
 founding.state.foundingPreparation = { status: "pending" } as any;
 await founding.service.queueVillagerAgenda("same");
-assert.equal(founding.jobs[0].input.initialWishAttemptId, "wish-Founding");
-assert.equal(founding.jobs[0].input.context.allowInitialWish, true);
-assert(founding.calls.indexOf("allowance") < founding.calls.indexOf("lore"));
+assert(!founding.calls.includes("allowance"), "Routine does not reserve a Wish allowance");
 const unavailable = fixture("Unavailable");
 unavailable.missingCard();
 const retained = structuredClone(unavailable.resident.agenda);
-await unavailable.service.queueVillagerAgenda("same");
+await assert.rejects(unavailable.service.queueVillagerAgenda("same"), /identity is unavailable/);
 assert.equal(unavailable.jobs.length, 0);
 assert.equal(unavailable.generated, 0);
 assert.equal(unavailable.resident.agenda.personalizationPending, false);
@@ -216,7 +219,7 @@ const failed = fixture("Failed"),
   expected = new Error("Exact library failure");
 failed.fail(expected);
 await assert.rejects(failed.service.queueVillagerAgenda("same"), (error) => error === expected);
-assert.deepEqual(failed.calls, ["read", "progress:reading", "card"]);
+assert.deepEqual(failed.calls, ["read", "read", "progress:reading", "card"]);
 assert.equal(failed.jobs.length, 0);
 
 const deliberate = fixture("Deliberate");
@@ -228,10 +231,8 @@ await assert.rejects(deliberate.service.clearVillagerAgenda("absent", "action"),
 const local = fixture("Local");
 await local.service.setVillagerScheduleInfluence("same", { enabled: true, categories: { rhythm: false } });
 await local.service.buildVillageAgendas();
-await local.service.correctCompletedWish("same", "wish");
 assert.equal(local.jobs.length, 0);
 assert.equal(local.generated, 0);
-assert(local.calls.includes("correct:same:wish"));
 assert.equal(local.state.villagers[0]!.scheduleInfluence!.categories.rhythm, false);
 const mutations = local.calls.filter((operation) => operation === "mutate").length;
 await assert.rejects(
@@ -251,10 +252,38 @@ handler.apply(departed, input, retained, { retrying: false });
 assert.deepEqual(departed.villagers, []);
 assert.equal(handler.recoverSavedResult!(input, []), undefined);
 assert.equal(a.parsed, 0);
-handler.recoverSavedResult!(input, [
-  { key: "owned-routine-profile", status: "completed", response: { content: "saved" } },
-] as any);
-assert.equal(a.parsed, 1);
+assert.equal(
+  handler.recoverSavedResult!(input, [
+    { key: "owned-routine-profile", status: "completed", response: { content: "retired profile" } },
+    { key: "founding-routine-v1", status: "completed", response: { content: "another contract" } },
+  ] as any),
+  undefined,
+);
+assert.equal(a.parsed, 0, "Unrelated saved responses cannot enter the admitted parser");
+for (const version of [undefined, 1, 2]) {
+  const context = { ...input.context, contractVersion: version };
+  if (version === undefined) delete context.contractVersion;
+  const admitted = { ...input, context };
+  const key = version === 2 ? "founding-routine-v2" : "founding-routine-v1";
+  const response = { content: "exact admitted response " + version };
+  const steps = [
+    { key: "owned-routine-profile", status: "completed", response: { content: "retired profile" } },
+    {
+      key: version === 2 ? "founding-routine-v1" : "founding-routine-v2",
+      status: "completed",
+      response: { content: "wrong contract" },
+    },
+    { key, status: "running", response: { content: "unfinished response" } },
+    { key, status: "completed", response },
+  ];
+  const before = JSON.stringify(steps),
+    parsed = a.parsed;
+  handler.recoverSavedResult!(admitted, steps as any);
+  assert.equal(a.parsed, parsed + 1);
+  assert.equal(a.parsedResponse, response);
+  assert.equal(a.parsedContext, context, "Recovery uses the frozen admitted context");
+  assert.equal(JSON.stringify(steps), before, "Historical paid evidence stays unchanged");
+}
 assert.equal(a.generated, 0, "Saved completion parsing dispatches no model.");
 const now = new Date(),
   today = agendaDateKey(now),
@@ -265,7 +294,7 @@ const result = structuredClone(a.resident.agenda);
 result.wishes = [{ id: "unadmitted", description: "A generated wish" }] as any;
 handler.apply(a.state, input, result, { retrying: false });
 assert.deepEqual(a.state.villagers[0]!.agenda!.activeDay, current, "A profile result preserves today's captured plan.");
-assert.deepEqual(a.state.villagers[0]!.agenda!.wishes, [], "Ordinary regeneration cannot introduce an initial wish.");
+assert.deepEqual(a.state.villagers[0]!.wishes, [], "Ordinary regeneration cannot introduce an initial wish.");
 
 const one = createActivationScope(),
   two = createActivationScope();
@@ -369,4 +398,63 @@ await assert.rejects(
 );
 console.log(
   "Resident Agenda ownership: inert ports, input/revision admission, recovery without regeneration, current-day preservation, independent owners and bound background callbacks passed (mocked storage, schedules and generation).",
+);
+
+const identity = fixture("Identity");
+identity.state.villagers[0]!.identityDescription = initialIdentityDescription();
+await identity.service.queueVillagerAgenda("same");
+const identityInput = identity.jobs[0].input;
+assert.equal(
+  identityInput.context.identityDescriptionRevision,
+  identity.state.villagers[0]!.identityDescription!.revision,
+);
+const identityResult = {
+  agenda: { ...structuredClone(identity.resident.agenda), generatedAt: new Date().toISOString() },
+  identityDescription: "A patient gardener with an interest in herbs.",
+};
+identity.service.agendaBackgroundHandler.apply(identity.state, identityInput, identityResult, { retrying: false });
+assert.equal(identity.state.villagers[0]!.identityDescription!.text, identityResult.identityDescription);
+assert.equal(identity.state.villagers[0]!.identityDescription!.initialGenerationComplete, true);
+await identity.service.clearVillagerAgenda("same", "later-routine");
+assert.equal(identity.jobs.at(-1).input.context.identityDescriptionRevision, undefined);
+identity.service.agendaBackgroundHandler.apply(
+  identity.state,
+  identity.jobs.at(-1).input,
+  { ...identityResult, identityDescription: "Unexpected replacement." },
+  { retrying: false },
+);
+assert.equal(identity.state.villagers[0]!.identityDescription!.text, identityResult.identityDescription);
+const editedIdentity = fixture("Edited during preparation");
+editedIdentity.state.villagers[0]!.identityDescription = initialIdentityDescription();
+await editedIdentity.service.queueVillagerAgenda("same");
+editedIdentity.state.villagers[0]!.identityDescription = {
+  text: "",
+  revision: "player-edit",
+  initialGenerationComplete: true,
+};
+editedIdentity.service.agendaBackgroundHandler.apply(
+  editedIdentity.state,
+  editedIdentity.jobs[0].input,
+  identityResult,
+  { retrying: false },
+);
+assert.equal(
+  editedIdentity.state.villagers[0]!.identityDescription!.text,
+  "",
+  "Even an intentional blank wins over delayed generation.",
+);
+const invalidIdentity = fixture("Invalid description");
+invalidIdentity.state.villagers[0]!.identityDescription = initialIdentityDescription();
+await invalidIdentity.service.queueVillagerAgenda("same");
+invalidIdentity.service.agendaBackgroundHandler.apply(
+  invalidIdentity.state,
+  invalidIdentity.jobs[0].input,
+  { ...identityResult, identityDescription: "Two sentences. Not one." },
+  { retrying: false },
+);
+assert.equal(invalidIdentity.state.villagers[0]!.identityDescription!.text, "");
+assert.equal(invalidIdentity.state.villagers[0]!.identityDescription!.initialGenerationComplete, true);
+assert(
+  invalidIdentity.state.villagers[0]!.agenda!.generatedAt,
+  "An invalid description does not reject a valid agenda.",
 );

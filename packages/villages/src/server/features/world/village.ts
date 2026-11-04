@@ -10,18 +10,15 @@ export async function resetVillage(...args: Parameters<WorldCoordination["resetV
 export async function reconcileVillage(...args: Parameters<WorldCoordination["reconcileVillage"]>) {
   return binding.get().reconcileVillage(...args);
 }
-export async function runVillageReaction(...args: Parameters<WorldCoordination["runVillageReaction"]>) {
-  return binding.get().runVillageReaction(...args);
-}
-export async function buildVillageStory(...args: Parameters<WorldCoordination["buildVillageStory"]>) {
-  return binding.get().buildVillageStory(...args);
-}
 export async function buildVillageMemories(...args: Parameters<WorldCoordination["buildVillageMemories"]>) {
   return binding.get().buildVillageMemories(...args);
 }
-export async function removeChronicleEntry(...args: Parameters<WorldCoordination["removeChronicleEntry"]>) {
-  return binding.get().removeChronicleEntry(...args);
+export async function readVillageMemoryEvidence(...args: Parameters<WorldCoordination["readVillageMemoryEvidence"]>) {
+  return binding.get().readVillageMemoryEvidence(...args);
 }
-export async function removeVillageRecollection(...args: Parameters<WorldCoordination["removeVillageRecollection"]>) {
-  return binding.get().removeVillageRecollection(...args);
+export async function forgetMemory(...args: Parameters<WorldCoordination["forgetMemory"]>) {
+  return binding.get().forgetMemory(...args);
+}
+export async function correctMemory(...args: Parameters<WorldCoordination["correctMemory"]>) {
+  return binding.get().correctMemory(...args);
 }

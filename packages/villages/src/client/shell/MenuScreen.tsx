@@ -1,466 +1,324 @@
-import { ELEMENT_TAG } from "../shared/constants.js";
-import { FORCE_VILLAGE_UPDATE_NOTICE, MENU_PAGE_TITLES } from "./navigation.js";
-import { renderEventsPage } from "../features/background/EventsPage.js";
+import { useConfirmation } from "../shared/confirmation.js";
+import { useCallback, useState } from "react";
 import { renderProgressDebugPage } from "../features/background/ProgressDebugPage.js";
+import { ReturnCatchupDebug } from "../features/background/ReturnCatchupDebug.js";
 import { renderProjectsPage } from "../features/projects/ProjectsPage.js";
-import { renderSceneArchivePage } from "../features/scenes/SceneArchivePage.js";
-import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js";
-import { renderNoticeboardPage } from "../features/world/NoticeboardPage.js";
+import { RepairPage } from "../features/repair/RepairPage.js";
 import { renderGeneralSettingsPage } from "../features/settings/GeneralSettingsPage.js";
-import { renderMenuIndexPage } from "../features/settings/MenuIndexPage.js";
-import type { MenuScreenController } from "./menu-contracts.js";
-import { VillagesRuntimeDebug } from "../features/settings/SettingsPanels.js";
+import type { LocalDraftStatus, ReportLocalDraftStatus } from "../features/settings/local-draft-status.js";
+import { VillagesRuntimeDebug } from "../features/settings/RuntimeDebug.js";
+import { VillageTimeControl } from "../features/settings/TimeControl.js";
 import { renderVillageSettingsPage } from "../features/settings/VillageSettingsPage.js";
+import { renderVenueRequestsPage } from "../features/venues/VenueRequestsPage.js";
+import { ELEMENT_TAG } from "../shared/constants.js";
+import type { MenuPage } from "../shared/types.js";
+import { WorkspaceShell, type WorkspaceDestination } from "../shared/WorkspaceShell.js";
+import type { MenuScreenController } from "./menu-contracts.js";
+import { MENU_PAGE_TITLES } from "./navigation.js";
 
 export function MenuScreen({ controller }: { controller: MenuScreenController }) {
+  const confirmVillages = useConfirmation(controller.menuPage);
   const {
-    addNotice,
-    addVenue,
-    archiveError,
-    archiveOffset,
-    archiveTotal,
-    archiveVenueId,
-    archiveVillagerId,
     backgroundPanel,
+    connections,
     busy,
-    catchingUp,
     debugDiscardEnabled,
     decideVenueRequest,
     generateRequestDescription,
-    decideHomeUpgrade,
     completeResidenceMove,
     decideResidenceMove,
-    deleteArchivedVisits,
-    discardTownMapDraft,
     error,
     projectsController,
-    framingMap,
-    generateReplacementMap,
-    goHome,
-    insertMacro,
-    knowledgeDraft,
-    knowledgeRef,
+    goHome: rawGoHome,
     loreTokenBudgetDraft,
     lorebookDraft,
     lorebooks,
     lorebooksError,
-    mapGenerating,
-    mapPinDraft,
-    mapRemoveDraft,
-    mapReplaceOpen,
     menuPage,
     menuSection,
     mobile,
     nameOfCharacter,
-    noticeDraft,
-    openArchivedVisit,
-    openMenu,
-    openPlace,
+    openMenu: rawOpenMenu,
+    openPlace: rawOpenPlace,
     housingVenueId,
     setHousingVenueId,
-    openSetup,
-    openVisit,
-    panelMapView,
-    personaDraft,
     personalizeHomes,
-    personas,
-    pickTownMap,
-    placeCount,
-    placingMapVenueId,
+    preparationProblem,
     progressDebug,
-    reframingMap,
-    removeNotice,
-    removeVenue,
     requestEdits,
     resetArmed,
+    retryPreparation,
     room,
-    saveCharacterSpeechColors,
     saveScenerySettings,
+    spriteVisualSettings,
     saveSendOnEnter,
     saveSettings,
-    saveStoryPace,
-    saveTownMap,
-    saveVenue,
-    saveVisitRetention,
+    saveBackgroundPace,
     sceneryStyle,
     sceneryStyleProfileId,
     screen,
-    selectedMapVenueId,
-    setArchiveOffset,
-    setArchiveVenueId,
-    setArchiveVillagerId,
-    setBusy,
     setFocusedProjectId,
-    setKnowledgeDraft,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
-    setMapPinDraft,
-    setMapRemoveDraft,
-    setMenuPage,
-    setNoticeDraft,
-    setOpenArchivedVisit,
-    setPersonaDraft,
     setPersonalizeHomes,
-    setPlacingMapVenueId,
     setPlacingProjectId,
     loadProgressDebug,
-    setReframingMap,
     setRequestEdits,
     setResetArmed,
     setSceneryStyle,
     setSceneryStyleProfileId,
     setScreen,
-    setSelectedMapVenueId,
-    setSettingDraft,
-    setSettingsError,
     setSiteProjectId,
     setSnapshot,
-    setTownMapDraft,
-    setTownMapPick,
-    setVenueEditDraft,
-    setVenueSearch,
     setVisualLoreDefault,
-    settingDraft,
     settingsError,
     siteProjectId,
     snapshot,
-    startMapReplacement,
     startOver,
-    suggestPlaces,
-    townMapAdvice,
-    townMapImage,
-    townMapPick,
-    townMapShape,
-    townMapSrc,
-    townMapZoom,
-    venueEditDraft,
-    venueSearch,
-    venueVisits,
-    venuesDraft,
     visualLoreDefault,
-    writeItUpNow,
-    writeUpNote,
   } = controller;
+  const [localDrafts, setLocalDrafts] = useState<Partial<Record<"world" | "map", NonNullable<LocalDraftStatus>>>>({});
+  const reportLocalDraftStatus = useCallback<ReportLocalDraftStatus>((key, status) => {
+    setLocalDrafts((current) => {
+      if (!status && !current[key]) return current;
+      if (status && current[key]?.dirty === status.dirty && current[key]?.busy === status.busy) return current;
+      const next = { ...current };
+      if (status) next[key] = status;
+      else delete next[key];
+      return next;
+    });
+  }, []);
+  const pendingDrafts = Object.values(localDrafts);
+  const navigationBusy = pendingDrafts.some((entry) => entry.busy);
+  const canLeave = async () =>
+    !navigationBusy &&
+    (!pendingDrafts.some((entry) => entry.dirty) || (await confirmVillages("Leave with unsaved changes?")));
+  const goHome: typeof rawGoHome = async () => {
+    if (await canLeave()) rawGoHome();
+  };
+  const openMenu: typeof rawOpenMenu = async (page) => {
+    if (await canLeave()) rawOpenMenu(page);
+  };
+  const openPlace: typeof rawOpenPlace = async (place) => {
+    if (await canLeave()) rawOpenPlace(place);
+  };
 
-  // ── The dedicated menu screen ──────────────────────────────────────────────
-  // The map is the homepage and carries no villager controls at all, so
-  // everything you can change lives here behind one button that was already on
-  // the map. It is written as two groups rather than one list because the split
-  // is real: Village Management is the village, General settings is the tab.
-  if (screen === "menu") {
+  if (screen === "menu" && menuPage === "projects" && snapshot) {
     return (
-      <div
-        className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-sectioned-menu`}
-        data-section={menuSection}
-        data-page={menuPage}
-        data-mobile={mobile}
-      >
-        <header className={`${ELEMENT_TAG}-header`}>
-          <div>
-            <h1 className={`${ELEMENT_TAG}-title`}>{MENU_PAGE_TITLES[menuPage]}</h1>
-          </div>
-          <div className={`${ELEMENT_TAG}-actions`}>
+      <div className={ELEMENT_TAG + "-root " + ELEMENT_TAG + "-project-root"} data-page="projects" data-mobile={mobile}>
+        {renderProjectsPage({
+          debugDiscardEnabled,
+          projectsController,
+          openMenu,
+          openVenue: openPlace,
+          goHome,
+          mobile,
+          room,
+          setFocusedProjectId,
+          setPlacingProjectId,
+          setScreen,
+          setSiteProjectId,
+          siteProjectId,
+          snapshot,
+        })}
+      </div>
+    );
+  }
+
+  if (screen === "menu" && menuPage === "repair") {
+    return (
+      <RepairPage
+        controller={controller.repairController}
+        preparation={snapshot?.foundingPreparation}
+        preparationProblem={preparationProblem}
+        onRetryPreparation={retryPreparation}
+        onBack={() => rawOpenMenu("index")}
+        onScene={room && room.status !== "closed" ? () => setScreen("room") : undefined}
+      />
+    );
+  }
+
+  if (screen === "menu") {
+    const navigate = (destination: WorkspaceDestination) => {
+      if (destination === "map") goHome();
+      else if (destination === "places") {
+        const first = snapshot?.settings.venues[0];
+        if (first) openPlace(first);
+        else goHome();
+      } else openMenu(destination === "people" ? "villagers" : destination === "projects" ? "projects" : "index");
+    };
+    const selected = menuPage === "index" ? "general" : menuPage;
+    const sections: { page: MenuPage; label: string }[] = [
+      { page: "general", label: "General Preferences" },
+      { page: "village", label: "World Configuration" },
+      { page: "visual", label: "Visual Settings" },
+      { page: "advanced", label: "Advanced" },
+      { page: "venueRequests", label: "Venue Requests" },
+      { page: "repair", label: "REPAIR" },
+      { page: "progress", label: "Debug" },
+    ];
+    const chooseSection = async (page: MenuPage) => {
+      if (page === selected) return true;
+      if (!(await canLeave())) return false;
+      rawOpenMenu(page);
+      return true;
+    };
+    const sidebar = (
+      <>
+        <h2>More</h2>
+        <nav className={ELEMENT_TAG + "-workspace-sections"} aria-label="More sections">
+          {sections.map(({ page, label }) => (
             <button
+              key={page}
               type="button"
-              className={`${ELEMENT_TAG}-button`}
-              onClick={menuPage !== "index" ? () => setMenuPage("index") : goHome}
+              disabled={navigationBusy || (!snapshot && !["general", "advanced", "repair"].includes(page))}
+              aria-current={selected === page ? "page" : undefined}
+              onClick={() => chooseSection(page)}
             >
-              {menuPage !== "index"
-                ? "Back to menu"
-                : room && room.status !== "closed"
-                  ? "Back to Scene"
-                  : "Back to the village"}
+              {label}
             </button>
-          </div>
-          {error ? (
-            <p className={`${ELEMENT_TAG}-error`} role="alert">
-              {error}
-            </p>
-          ) : null}
-        </header>
-
-        <nav className={`${ELEMENT_TAG}-menu-nav`} aria-label="Village menu pages">
-          <div className={`${ELEMENT_TAG}-menu-group`}>
-            <h2 className={`${ELEMENT_TAG}-panel-title`}>Village Management</h2>
-            <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "villagers"}
-                data-active={menuPage === "villagers" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("villagers")}
-              >
-                {`Villagers (${snapshot?.villagers.length ?? 0})`}
-              </button>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "venueRequests"}
-                data-active={menuPage === "venueRequests" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("venueRequests")}
-              >
-                {`Venue Requests (${(snapshot?.venueRequests?.length ?? 0) + (snapshot?.upgradeRequests?.length ?? 0) + (snapshot?.residences?.filter((entry) => entry.status === "pending" && entry.requestedBy === "villager").length ?? 0)})`}
-              </button>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "projects"}
-                data-active={menuPage === "projects" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("projects")}
-              >{`Projects (${snapshot?.projects?.filter((entry) => (entry.kind === "new-venue" || entry.kind === "renovation") && entry.lifecycle?.phase !== "complete").length ?? 0})`}</button>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "village"}
-                data-active={menuPage === "village" ? "true" : "false"}
-                onClick={() => openMenu("village")}
-              >
-                Village Settings
-              </button>
-            </div>
-          </div>
-          <div className={`${ELEMENT_TAG}-menu-group`}>
-            <h2 className={`${ELEMENT_TAG}-panel-title`}>General Settings</h2>
-            <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "general"}
-                data-active={menuPage === "general" ? "true" : "false"}
-                onClick={() => openMenu("general")}
-              >
-                General settings
-              </button>
-            </div>
-          </div>
-          <div className={`${ELEMENT_TAG}-menu-group`}>
-            <h2 className={`${ELEMENT_TAG}-panel-title`}>Debug</h2>
-            <div className={`${ELEMENT_TAG}-menu-group-buttons`}>
-              {debugDiscardEnabled ? (
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  aria-pressed={menuPage === "progress"}
-                  data-active={menuPage === "progress" ? "true" : "false"}
-                  disabled={!snapshot || busy}
-                  onClick={() => openMenu("progress")}
-                >
-                  DEBUG: Progress
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                aria-pressed={menuPage === "chatlogs"}
-                data-active={menuPage === "chatlogs" ? "true" : "false"}
-                disabled={!snapshot || busy}
-                onClick={() => openMenu("chatlogs")}
-              >
-                {`DEBUG: Scenes (${venueVisits?.length ?? 0})`}
-              </button>
-            </div>
-          </div>
+          ))}
         </nav>
-
-        {menuPage === "index" ? (
-          renderMenuIndexPage({ backgroundPanel, busy, openMenu, snapshot })
-        ) : menuPage === "events" && snapshot ? (
-          renderEventsPage({ mobile, snapshot })
-        ) : !snapshot && menuPage !== "general" ? (
-          <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
-            {error ? "The village could not be loaded. Return to the village and try again." : "Loading village menu…"}
-          </section>
-        ) : menuPage === "general" ? (
-          renderGeneralSettingsPage({
-            backgroundPanel,
-            busy: busy,
-            resetArmed,
-            saveCharacterSpeechColors,
-            saveSendOnEnter,
-            saveStoryPace,
-            saveVisitRetention,
-            setResetArmed,
-            settingsError,
-            snapshot,
-            startOver,
-          })
-        ) : menuPage === "village" ? (
-          renderVillageSettingsPage({
-            addVenue,
-            backgroundPanel,
-            busy: busy,
-            discardTownMapDraft,
-            framingMap,
-            generateReplacementMap,
-            insertMacro,
-            knowledgeDraft,
-            knowledgeRef,
-            loreTokenBudgetDraft,
-            lorebookDraft,
-            lorebooks,
-            lorebooksError,
-            mapGenerating,
-            mapPinDraft,
-            mapRemoveDraft,
-            mapReplaceOpen,
-            mobile,
-            nameOfCharacter,
-            openPlace,
-            openSetup,
-            panelMapView,
-            personaDraft,
-            personalizeHomes,
-            personas,
-            pickTownMap,
-            placeCount,
-            placingMapVenueId,
-            reframingMap,
-            removeVenue,
-            saveScenerySettings,
-            saveSettings,
-            saveTownMap,
-            saveVenue,
-            sceneryStyle,
-            sceneryStyleProfileId,
-            selectedMapVenueId,
-            setKnowledgeDraft,
-            setLoreTokenBudgetDraft,
-            setLorebookDraft,
-            setMapPinDraft,
-            setMapRemoveDraft,
-            setPersonaDraft,
-            setPersonalizeHomes,
-            setPlacingMapVenueId,
-            setReframingMap,
-            setSceneryStyle,
-            setSceneryStyleProfileId,
-            setSelectedMapVenueId,
-            setSettingDraft,
-            setTownMapDraft,
-            setTownMapPick,
-            setVenueEditDraft,
-            setVenueSearch,
-            setVisualLoreDefault,
-            settingDraft,
-            settingsError,
-            snapshot,
-            startMapReplacement,
-            suggestPlaces,
-            townMapAdvice,
-            townMapImage,
-            townMapPick,
-            townMapShape,
-            townMapSrc,
-            townMapZoom,
-            venueEditDraft,
-            venueSearch,
-            venuesDraft,
-            visualLoreDefault,
-          })
-        ) : (
-          // The four panels that used to be stacked beside the map. They are
-          // unchanged; only what opens them has moved. `Look again` in the nav
-          // reads the village afresh, so a panel is never stale by the time it
-          // is opened.
-          <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
-            {backgroundPanel}
-            {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
-            {menuSection === "debug" ? (
-              <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-debug-action`}>
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={!snapshot || busy || catchingUp}
-                  onClick={() => void writeItUpNow()}
-                >
-                  Force Village Update
-                </button>
-                <p className={`${ELEMENT_TAG}-status`}>{FORCE_VILLAGE_UPDATE_NOTICE}</p>
-                {writeUpNote ? (
-                  <p className={`${ELEMENT_TAG}-status`} role="status">
-                    {writeUpNote}
-                  </p>
-                ) : null}
-              </section>
+        <label className={ELEMENT_TAG + "-workspace-section-picker"}>
+          Section
+          <select
+            value={selected}
+            disabled={navigationBusy}
+            onChange={(event) => {
+              const picker = event.currentTarget;
+              const next = picker.value as MenuPage;
+              picker.value = selected;
+              void chooseSection(next);
+            }}
+          >
+            {sections.map(({ page, label }) => (
+              <option key={page} value={page} disabled={!snapshot && !["general", "advanced", "repair"].includes(page)}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </>
+    );
+    return (
+      <WorkspaceShell active="more" onNavigate={navigate} sidebar={sidebar} disabled={navigationBusy}>
+        <div
+          className={`${ELEMENT_TAG}-root ${ELEMENT_TAG}-sectioned-menu`}
+          data-section={menuSection}
+          data-page={selected}
+          data-mobile={mobile}
+        >
+          <header className={`${ELEMENT_TAG}-header`}>
+            <div>
+              <h1 className={`${ELEMENT_TAG}-title`}>{MENU_PAGE_TITLES[menuPage]}</h1>
+            </div>
+            {room && room.status !== "closed" ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={navigationBusy}
+                onClick={async () => {
+                  if (await canLeave()) setScreen("room");
+                }}
+              >
+                Back to Scene
+              </button>
             ) : null}
-            {menuPage === "noticeboard" && snapshot
-              ? renderNoticeboardPage({
-                  addNotice,
-                  busy: busy,
-                  noticeDraft,
-                  removeNotice,
-                  setNoticeDraft,
-                  snapshot,
-                })
-              : null}
-
-            {menuPage === "projects" && snapshot
-              ? renderProjectsPage({
-                  debugDiscardEnabled,
-                  projectsController,
-                  goHome,
-                  mobile,
-                  room,
-                  setFocusedProjectId,
-                  setPlacingProjectId,
-                  setScreen,
-                  setSiteProjectId,
-                  siteProjectId,
-                  snapshot,
-                })
-              : null}
-            {menuPage === "venueRequests" && snapshot
-              ? renderVenueRequestsPage({
-                  housingVenueId,
-                  setHousingVenueId,
-                  openPlace,
-                  busy: busy,
-                  decideVenueRequest,
-                  generateRequestDescription,
-                  decideHomeUpgrade,
-                  completeResidenceMove,
-                  decideResidenceMove,
-                  nameOfCharacter,
-                  requestEdits,
-                  setRequestEdits,
-                  settingsError,
-                  snapshot,
-                })
-              : null}
-
-            {menuPage === "progress" ? renderProgressDebugPage({ error, progressDebug, loadProgressDebug }) : null}
-
-            {menuPage === "chatlogs"
-              ? renderSceneArchivePage({
-                  archiveError,
-                  archiveOffset,
-                  archiveTotal,
-                  archiveVenueId,
-                  archiveVillagerId,
-                  busy: busy,
-                  deleteArchivedVisits,
-                  openArchivedVisit,
-                  openVisit,
-                  setArchiveOffset,
-                  setArchiveVenueId,
-                  setArchiveVillagerId,
-                  setOpenArchivedVisit,
-                  snapshot,
-                  venueVisits,
-                })
-              : null}
-
-            {settingsError ? (
+            {error ? (
               <p className={`${ELEMENT_TAG}-error`} role="alert">
-                {settingsError}
+                {error}
               </p>
             ) : null}
-          </div>
-        )}
-      </div>
+          </header>
+
+          {!snapshot && !["index", "general", "advanced"].includes(menuPage) ? (
+            <section className={`${ELEMENT_TAG}-panel ${ELEMENT_TAG}-menu-content`} role="main">
+              {error
+                ? "The village could not be loaded. Return to the village and try again."
+                : "Loading village menu…"}
+            </section>
+          ) : ["index", "general", "advanced"].includes(menuPage) ? (
+            renderGeneralSettingsPage({
+              connections,
+              category: menuPage === "advanced" ? "advanced" : "general",
+              writing: controller.writing,
+              busy: busy || navigationBusy,
+              resetArmed,
+              saveSendOnEnter,
+              saveBackgroundPace,
+              setResetArmed,
+              settingsError,
+              snapshot,
+              startOver,
+            })
+          ) : ["village", "visual"].includes(menuPage) ? (
+            renderVillageSettingsPage({
+              category: menuPage === "visual" ? "visual" : "world",
+              reportLocalDraftStatus,
+              setSnapshot,
+              busy: busy || navigationBusy,
+              loreTokenBudgetDraft,
+              lorebookDraft,
+              lorebooks,
+              lorebooksError,
+              mobile,
+              personalizeHomes,
+              saveScenerySettings,
+              spriteVisualSettings,
+              saveSettings,
+              sceneryStyle,
+              sceneryStyleProfileId,
+              setLoreTokenBudgetDraft,
+              setLorebookDraft,
+              setPersonalizeHomes,
+              setSceneryStyle,
+              setSceneryStyleProfileId,
+              setVisualLoreDefault,
+              settingsError,
+              snapshot,
+              visualLoreDefault,
+            })
+          ) : (
+            // The four panels that used to be stacked beside the map. They are
+            // unchanged; only what opens them has moved. `Look again` in the nav
+            // reads the village afresh, so a panel is never stale by the time it
+            // is opened.
+            <div className={`${ELEMENT_TAG}-menu-body ${ELEMENT_TAG}-menu-content`} role="main">
+              {menuSection === "debug" ? backgroundPanel : null}
+              {menuSection === "debug" ? <VillagesRuntimeDebug /> : null}
+              {menuSection === "debug" ? <VillageTimeControl snapshot={snapshot} onAdvanced={setSnapshot} /> : null}
+              {menuSection === "debug" ? <ReturnCatchupDebug snapshot={snapshot} /> : null}
+              {menuPage === "venueRequests" && snapshot
+                ? renderVenueRequestsPage({
+                    housingVenueId,
+                    setHousingVenueId,
+                    openPlace,
+                    busy: busy,
+                    decideVenueRequest,
+                    generateRequestDescription,
+                    completeResidenceMove,
+                    decideResidenceMove,
+                    nameOfCharacter,
+                    requestEdits,
+                    setRequestEdits,
+                    settingsError,
+                    snapshot,
+                  })
+                : null}
+
+              {menuPage === "progress" && debugDiscardEnabled
+                ? renderProgressDebugPage({ error, progressDebug, loadProgressDebug })
+                : null}
+
+              {settingsError ? (
+                <p className={`${ELEMENT_TAG}-error`} role="alert">
+                  {settingsError}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
+      </WorkspaceShell>
     );
   }
   return null;

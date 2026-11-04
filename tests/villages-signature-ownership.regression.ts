@@ -5,8 +5,11 @@ import {
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   createResidentSignatures,
   type ResidentSignaturePorts,
@@ -18,17 +21,16 @@ import {
   readResidentSignature,
 } from "../packages/villages/src/server/features/residents/resident-signature.js";
 import type { ResidentSignatureView } from "../packages/villages/src/shared/helpers/resident-signature.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred<T = void>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 const stamp = "2026-10-07T00:00:00.000Z";
 function documents(name: string) {
   const state = coerceVillageState({
+    ...defaultVillageState(),
+
     seed: "identical-seed",
     name,
     foundedAt: stamp,
@@ -245,7 +247,7 @@ try {
       two = createActivationScope();
     const host = (api: object) =>
       ({
-        persistence: { documents: api },
+        persistence: { documents: villageFixtureDocuments(api) },
         resources: { listCharacters: async () => [] },
         logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
         isDebugAgentsEnabled: () => false,

@@ -16,3 +16,6 @@ export async function changeSession(...args: Parameters<SceneRepository["changeS
 export async function clearActivePointer(...args: Parameters<SceneRepository["clearActivePointer"]>) {
   return binding.get().clearActivePointer(...args);
 }
+export async function selectActiveScene(...args: Parameters<SceneRepository["selectActiveScene"]>) {
+  return binding.get().selectActiveScene(...args);
+}

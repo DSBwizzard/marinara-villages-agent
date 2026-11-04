@@ -1,26 +1,15 @@
 import type {
   SceneView,
-  StoryEntry,
   VillageBuildingOption,
-  VillageHappening,
   VillagerAgendaView,
-  VillageRecap,
   VillageSnapshot,
-  VillageStoryPace,
   VillageVenue,
 } from "../../shared/contracts/village.js";
 import { ELEMENT_TAG } from "./constants.js";
 import type { EngineConnectionRow, VillageConnectionOption, VillagesStyledNode } from "./types.js";
 import { isHouse, venueClassesFor, venueSpaceFor } from "./venue.js";
 import { parseVillagesInlineMarkdown, type VillagesMarkdownNode } from "./villages-inline-markdown";
-import {
-  type CSSProperties,
-  type MouseEvent as ReactMouseEvent,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 
 /**
  * A stamp as a wall-clock time, or nothing when there is not one to read.
@@ -33,18 +22,6 @@ export function stampTime(at: string): string {
   if (at.length === 0) return "";
   const when = new Date(at);
   return Number.isNaN(when.getTime()) ? "" : CLOCK_TIME.format(when);
-}
-
-/**
- * The time of day a memory was written, when it was written with one.
- *
- * This is the only place a memory's `at` is ever used, and it is formatted
- * rather than compared — the day the memory belongs to arrived as a label
- * already, so nothing here has to work out what "today" means or in whose
- * timezone.
- */
-export function storyTime(entry: StoryEntry): string {
-  return stampTime(entry.occurredAt);
 }
 
 /**
@@ -84,8 +61,15 @@ export function agendaUpdatePending(view: VillagerAgendaView): boolean {
 export function venuePictureOf(venues: readonly VillageVenue[], room: SceneView): string {
   const venue = venues.find((entry) => entry.id === room.placeId);
   if (!venue) return "";
+  if (room.zoneId && venue.zones) {
+    const zone = venue.zones.find((zone) => zone.id === room.zoneId);
+    if (!zone) return "";
+    // A deliberate removal stays blank; old Entrance rows without artwork
+    // keep their Venue-image fallback.
+    if (zone.image !== undefined) return zone.image?.url ?? "";
+    if (room.area !== "outside") return "";
+  }
   if (room.area === "outside") return venue.presentation.image?.url ?? "";
-  if (room.zoneId && venue.zones) return venue.zones.find((zone) => zone.id === room.zoneId)?.image?.url ?? "";
   if (room.area === "private")
     return venue.privateSpaces?.find((entry) => entry.ownerId === room.privateOwnerId)?.image?.url ?? "";
   return (room.spaceClass ? venueSpaceFor(venue, room.spaceClass).image : null)?.url ?? "";
@@ -230,13 +214,6 @@ function drawVillagesStyled(node: VillagesStyledNode, at: string) {
  * one caller reads it back to the player as a statement about what will happen,
  * and `"Morning, Evening"` reads like two unrelated things.
  */
-export function storyPaceSummary(pace: VillageStoryPace): string {
-  if (pace === "off")
-    return "Automatic Events and new wishes are paused. Existing wishes can still be fulfilled or expire.";
-  if (pace === "quiet") return "Usually one optional village story is written on an active day.";
-  if (pace === "lively") return "Up to three optional village stories may be written on an active day.";
-  return "Usually one to three optional village stories are written on an active day, averaging two.";
-}
 
 /**
  * Whether a place is a house, which is the one question the whole place list
@@ -291,16 +268,6 @@ const CLOCK_DATE = new Intl.DateTimeFormat(undefined, { weekday: "short", day: "
 const CLOCK_TIME = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
 
 /**
- * How often an open tab checks whether the village has moved on.
- *
- * A minute, against a clock that turns over four times a day. Fine enough that
- * nothing the village does can be noticed late, coarse enough that the check
- * itself is never the thing anyone is waiting for — and nearly every check ends
- * at the first question, because the part of the day has not changed.
- */
-export const VILLAGE_PULSE_MS = 60_000;
-
-/**
  * How long a write-up has to be running before the tab admits to it.
  *
  * The common tick is the one that finds nothing to write and answers in a few
@@ -309,7 +276,6 @@ export const VILLAGE_PULSE_MS = 60_000;
  * carries every error. The rare tick that has a part of the day to catch up on
  * takes seconds, and that is the one worth saying something about.
  */
-export const SHOW_CATCHING_UP_AFTER_MS = 700;
 
 function clockLabel(now: Date, timeZone?: string): string {
   if (timeZone) {
@@ -398,237 +364,6 @@ function weatherEmoji(weather: string): string {
   if (/frost/u.test(weather)) return "🥶";
   if (/hot|heat/u.test(weather)) return "☀️";
   return "🌤️";
-}
-
-/** The Engine's own node for this tab: everything the tab draws is inside it. */
-function hostOf(node: Element | null): HTMLElement | null {
-  return node?.closest<HTMLElement>(ELEMENT_TAG) ?? null;
-}
-
-/**
- * The way onto the whole screen, and the only way this tab has of getting one.
- *
- * The Engine cannot help here: its capability mount is a plain element in a tab
- * with no fullscreen control of its own, and GachaForge draws its own button for
- * exactly the same reason — so this one lives on the map with the rest of the
- * tab's controls rather than in a header this package does not have.
- *
- * The screen is asked for on the HOST, not on the map's frame. The host is the
- * one node a re-render does not replace, and a fullscreen element that is
- * replaced takes the fullscreen state with it — the map would go fullscreen and
- * then lose the screen the next time the snapshot arrived.
- *
- * It is not stateful beyond the one fact it has to draw. The browser is already
- * keeping the answer, so it is read back off document.fullscreenElement; a copy
- * in this component would be a second answer to the same question, and the two
- * would disagree the first time the player pressed Escape.
- */
-export function FullscreenToggle() {
-  const [full, setFull] = useState(false);
-  useEffect(() => {
-    const sync = () => setFull(hostOf(document.fullscreenElement) !== null);
-    sync();
-    document.addEventListener("fullscreenchange", sync);
-    return () => document.removeEventListener("fullscreenchange", sync);
-  }, []);
-
-  // Some phones — an iPhone is the one that matters — will not give a page the
-  // whole screen at all. The button stays where it is and says so, because a
-  // control that comes and goes with the browser is a control nobody can find
-  // twice; there is nothing else this tab can offer in its place.
-  const available = document.fullscreenEnabled;
-  const label = available
-    ? full
-      ? "Leave the whole screen"
-      : "Use the whole screen"
-    : "This browser will not give the tab the whole screen";
-
-  return (
-    <button
-      type="button"
-      className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-icon-button`}
-      disabled={!available}
-      aria-pressed={full}
-      aria-label={label}
-      title={label}
-      onClick={(event: ReactMouseEvent<HTMLButtonElement>) => {
-        const host = hostOf(event.currentTarget);
-        if (!host) return;
-        if (document.fullscreenElement === host) {
-          void document.exitFullscreen().catch(() => undefined);
-          return;
-        }
-        const request = host.requestFullscreen?.();
-        if (request) void request.catch(() => undefined);
-      }}
-    >
-      {/* Inside out while the screen is ours: the same four corners pointing the
-          other way, rather than a different picture to learn. */}
-      <svg
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        focusable="false"
-      >
-        {full ? (
-          <path d="M9 4H5a1 1 0 0 0-1 1v4M15 4h4a1 1 0 0 1 1 1v4M9 20H5a1 1 0 0 1-1-1v-4M15 20h4a1 1 0 0 0 1-1v-4" />
-        ) : (
-          <path d="M9 3H4a1 1 0 0 0-1 1v5M15 3h5a1 1 0 0 1 1 1v5M9 21H4a1 1 0 0 1-1-1v-5M15 21h5a1 1 0 0 0 1-1v-5" />
-        )}
-      </svg>
-    </button>
-  );
-}
-
-/**
- * Visual-only Events prose, behind the button in the map's own top corner.
- * Until structured Events land, this feed never grounds narration, wishes,
- * memories, notices, or venue state. Its old entries remain readable here.
- *
- * The news used to be a column of the homepage: a gutter down one side of the
- * map, held open whether or not there was anything to put in it, and paid for by
- * the map on every screen. On a phone held sideways there is no width to hold it
- * open with, and a map fitted to whatever the news left of the tab is a strange
- * price for reading the news. So it is a disclosure: the button says the feed is
- * there and the panel unrolls beneath it, over the picture.
- *
- * A details element rather than a button and a box of state, because being open
- * or shut, the Enter and Space keys, and the expanded-or-collapsed announcement
- * are all the element's own and cannot drift out of step with the panel. The one
- * thing it does not do by itself is close when the player presses somewhere
- * else, which is what the component adds: a panel that can only be dismissed by
- * finding the button again would sit over the map for the whole game.
- *
- * What it says is what the column said. Deliberately not the noticeboard, which
- * is the other half of the same idea: the board is what the villagers say TO
- * each other, in their own handwriting, and most of it is a request; this is what
- * HAPPENED to the place, in the narrator's voice, and none of it is aimed at
- * anybody. A village with a full board and a quiet feed is getting on with
- * things.
- *
- * ponytail: it lists every happening the server keeps and scrolls, rather than
- * folding them by day or paging them. Forty short lines is a scroll, not a
- * problem; the day it is one is the day to group them.
- */
-export function VillageEvents({
-  happenings,
-  recap,
-  mobile = false,
-  inline = false,
-}: {
-  happenings: readonly VillageHappening[];
-  recap: VillageRecap | null;
-  mobile?: boolean;
-  inline?: boolean;
-}) {
-  const detailsRef = useRef<HTMLDetailsElement | null>(null);
-  // Whether the panel is open is the element's own business, so this mirrors it
-  // rather than owning it: two answers to one question are two answers that can
-  // disagree, and the dismissal below has to know when there is something to
-  // dismiss.
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    const node = detailsRef.current;
-    if (!node) return;
-    const sync = () => setOpen(node.open);
-    node.addEventListener("toggle", sync);
-    return () => node.removeEventListener("toggle", sync);
-  }, []);
-
-  // A pointerdown on the summary is inside the element, so it does not dismiss
-  // it; a keydown on Enter while the summary has focus is; anything outside is.
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: Event) => {
-      if (!(event.target instanceof Node) || detailsRef.current?.contains(event.target)) return;
-      detailsRef.current?.removeAttribute("open");
-    };
-    document.addEventListener("pointerdown", outside);
-    document.addEventListener("keydown", outside);
-    return () => {
-      document.removeEventListener("pointerdown", outside);
-      document.removeEventListener("keydown", outside);
-    };
-  }, [open]);
-
-  const content = (
-    <div className={`${ELEMENT_TAG}-news-panel`}>
-      <h2 className={`${ELEMENT_TAG}-news-title`}>Events</h2>
-      {recap ? (
-        <div>
-          <strong>While you were away</strong>
-          {recap.details.length > 0 ? (
-            <ul className={`${ELEMENT_TAG}-news-list`}>
-              {recap.details.map((entry) => (
-                <li key={`recap-${entry.id}`} className={`${ELEMENT_TAG}-news-item`}>
-                  {entry.text}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-          {recap.summaries.map((summary) => (
-            <p key={summary} className={`${ELEMENT_TAG}-news-empty`}>
-              {summary}
-            </p>
-          ))}
-          {recap.pendingDecisionCount > 0 ? (
-            <p className={`${ELEMENT_TAG}-news-empty`}>
-              {recap.pendingDecisionCount} pending{" "}
-              {recap.pendingDecisionCount === 1 ? "decision needs" : "decisions need"} your attention.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
-      {happenings.length === 0 ? (
-        <p className={`${ELEMENT_TAG}-news-empty`}>No events to show yet.</p>
-      ) : (
-        <ul className={`${ELEMENT_TAG}-news-list`}>
-          {happenings.map((entry) => (
-            <li key={entry.id} className={`${ELEMENT_TAG}-news-item`}>
-              {entry.text}
-              {entry.socialOutcome ? (
-                <details>
-                  <summary>Social encounter recorded</summary>
-                  <p>This interaction was recorded separately from its visual description.</p>
-                  {entry.socialOutcome.changes.map((text) => (
-                    <p key={text}>{text}</p>
-                  ))}
-                </details>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-  if (inline) return content;
-
-  return (
-    <details ref={detailsRef} className={`${ELEMENT_TAG}-news`}>
-      <summary className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-news-toggle`} aria-label="Events (NYI)">
-        {/* A page and its lines: the news keeps happening, and the button says
-            where it is rather than how much of it there is. */}
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          focusable="false"
-        >
-          <path d="M4 5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" />
-          <path d="M8 8h7M8 12h7M8 16h4" />
-        </svg>
-        {!mobile ? "Events" : null}
-        <span className={`${ELEMENT_TAG}-news-nyi`}>NYI</span>
-      </summary>
-      {content}
-    </details>
-  );
 }
 
 /**

@@ -71,11 +71,6 @@ for (const text of [
   "We need a better finish.",
 ])
   assert.equal(select(check("project", text), projectRow).checks.length, 1);
-assert.equal(
-  select({ ...check("project"), facts: { actorId: "a", projectId: "p", kind: "requirements" } }, projectRow).checks
-    .length,
-  1,
-);
 assert.equal(select(check("project"), projectRow, { ...context, projectActors: ["a"] }).checks.length, 1);
 for (const residents of [1, 4, 8]) {
   const checks = Array.from({ length: residents }, (_, i) => ({
@@ -99,96 +94,3 @@ for (const residents of [1, 4, 8]) {
   );
 }
 console.log("Conservative narration routing: irrelevant skipped; ambiguous, witnessed and pending events retained");
-
-async function integration() {
-  const { configureVillagesRuntime } = await import("../packages/villages/src/server/entry/runtime.js");
-  const { defaultVillageState } = await import("../packages/villages/src/server/domain/decoding/village-codec.js");
-  const { interpretProjectDraft } = await import("../packages/villages/src/server/features/projects/project-checks.js");
-  const records = new Map<string, any>();
-  let calls = 0;
-  const release = configureVillagesRuntime({
-    persistence: {
-      documents: {
-        async getById(_p: string, id: string) {
-          return records.get(id) ?? null;
-        },
-        async create(value: any) {
-          const row = { ...value, revision: 1 };
-          records.set(value.id, row);
-          return row;
-        },
-        async update(value: any) {
-          const row = { ...value, revision: (records.get(value.id)?.revision ?? 0) + 1 };
-          records.set(value.id, row);
-          return row;
-        },
-      },
-    },
-    languageModels: {
-      async resolveForRequest() {
-        return {
-          model: "mock",
-          connectionId: "mock",
-          maxOutputTokens: 5000,
-          maxContext: 32000,
-          fitContext(messages: any, options: any) {
-            return { messages, ...options };
-          },
-          async chatComplete() {
-            calls++;
-            return { content: '{"checks":[]}' };
-          },
-        };
-      },
-    },
-  } as any);
-  const fetchBefore = globalThis.fetch;
-  globalThis.fetch = async () => new Response("[]");
-  try {
-    const state = defaultVillageState();
-    state.villagers = [{ characterId: "a", cardSnapshot: { name: "A" } }] as any;
-    state.projects = [
-      {
-        id: "p",
-        kind: "new-venue",
-        title: "Garden",
-        status: "draft",
-        lifecycle: { version: 2, phase: "builder", affectedIds: [], requirements: [] },
-      },
-    ] as any;
-    state.progressTasks = [
-      { definition: { owner: { kind: "project", id: "p" }, revision: 1 }, transitions: [], resolvedAt: "" },
-    ] as any;
-    const scene: any = {
-      id: "scene",
-      activeIds: ["a"],
-      lines: [],
-      participants: [],
-      submissions: [],
-      zoneId: "outside",
-    };
-    const draft: any[] = [{ speakerId: "a", kind: "dialogue", content: "I like the autumn weather.", heardBy: ["a"] }];
-    assert.equal(
-      await interpretProjectDraft(scene, state, "Lovely weather today.", draft, ["a"], "one", projectRow),
-      null,
-    );
-    assert.equal(calls, 0, "explicit irrelevant routing makes zero verification requests");
-    await interpretProjectDraft(scene, state, "Lovely weather today.", draft, ["a"], "two");
-    assert.equal(calls, 0, "Unrelated exchanges without routing are locally irrelevant");
-    assert.equal(records.size, 0, "Local relevance skips create no interpretation records");
-    await interpretProjectDraft(
-      scene,
-      state,
-      "Will you build Garden?",
-      [{ ...draft[0], content: "Yes, I will build it." }],
-      ["a"],
-      "three",
-    );
-    assert.equal(calls, 1, "Relevant implicit commitments without routing retain authoritative interpretation");
-    assert.ok(records.size > 0, "Relevant checks retain bounded diagnostics");
-  } finally {
-    release();
-    globalThis.fetch = fetchBefore;
-  }
-}
-void integration();

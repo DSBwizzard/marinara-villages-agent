@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -15,11 +16,7 @@ import { createRuntimeDebug } from "../packages/villages/src/server/adapters/obs
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string, verbose: boolean, meter: boolean, enabled: boolean) {
   let record: any = { id: "villages-debug", revision: 1, data: { verbose, showUsageMeter: meter } };
@@ -59,7 +56,11 @@ function fixture(name: string, verbose: boolean, meter: boolean, enabled: boolea
       logs.push(text);
     },
   };
-  const host: any = { isDebugAgentsEnabled: () => engineEnabled, logger, persistence: { documents } };
+  const host: any = {
+    isDebugAgentsEnabled: () => engineEnabled,
+    logger,
+    persistence: { documents: villageFixtureDocuments(documents) },
+  };
   const service = createRuntimeDebug({
     villagesDebugAgentsEnabled: () => engineEnabled,
     villagesDocuments: () => documents,

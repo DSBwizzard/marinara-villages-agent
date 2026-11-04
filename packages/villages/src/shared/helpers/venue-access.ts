@@ -2,11 +2,6 @@
 export type ZoneAccessMode = "public" | "permission-required";
 export type VisitorHours = { days: string[]; start: string; end: string }[];
 export type ZoneVisitorHours = "inherit" | "always" | VisitorHours;
-export type RegularVisitorRule = {
-  inviterId: string;
-  relationship: "friend" | "close";
-  accompanied: boolean;
-};
 export type ZoneAccessPolicy = {
   mode: ZoneAccessMode;
   /** null inherits the Venue managers; an explicit list has independent authority. */
@@ -14,7 +9,6 @@ export type ZoneAccessPolicy = {
   memberIds: string[];
   memberRoles: ("residents" | "workers")[];
   inviterIds: string[];
-  regularVisitors: RegularVisitorRule[];
   visitorHours: ZoneVisitorHours;
   accompanied: boolean;
 };
@@ -102,6 +96,7 @@ export type ZoneAccessView = {
   changes?: AccessChange[];
 };
 export type VenueAccessView = {
+  canDesignateCommunity?: boolean;
   revision: number;
   canManage: boolean;
   canRecover?: boolean;
@@ -116,6 +111,7 @@ export type AccessCommand = {
   expectedRevision: number;
   zoneId: string | null;
 } & (
+  | { action: "community-venue"; previousVenueId: string; previousRevision: number }
   | { action: "recover-managers"; managerIds: string[] }
   | { action: "venue-policy"; managerIds: string[]; visitorHours: VisitorHours | null }
   | { action: "zone-policy"; policy: ZoneAccessPolicy }

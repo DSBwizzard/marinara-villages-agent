@@ -2,19 +2,28 @@ import type { VillageSnapshot } from "../../../shared/contracts/village.js";
 import { request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { agendaMinuteLabel, agendaUpdatePending, remapPlaceName } from "../../shared/presentation.js";
+import { IdentityDescriptionEditor } from "./IdentityDescriptionEditor.js";
+import { VillagerMemoriesPanel } from "./MemoriesPanel.js";
+import { AvatarFace } from "./ResidentPanels.js";
 import type { ResidentsScreenController } from "./screen-contracts.js";
-import { BackgroundWorkPanel } from "../background/BackgroundPanel.js";
-import { AvatarFace, VillagerMemoriesPanel, WishHistory, wishLifetimeLabel } from "./ResidentPanels.js";
 import { type DossierLink, type DossierVenue, VillagerDossier } from "./villages-dossier.js";
 import { SpriteManager } from "./villages-sprite-manager.js";
+import { VillagerWishJournal } from "./villages-wish-journal.js";
 
-export function ResidentsScreen({ controller }: { controller: ResidentsScreenController }) {
+export function ResidentsScreen({
+  controller,
+  onDirectory,
+  onClose,
+}: {
+  controller: ResidentsScreenController;
+  onDirectory?: () => void;
+  onClose?: () => void;
+}) {
   const {
     element,
     agendas,
     applyVillagerRefresh,
     busy,
-    correctCompletedWish,
     error,
     explorationReturnTab,
     forgetMemory,
@@ -28,15 +37,13 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
     profileOrigin,
     refreshBusyId,
     refreshPreviews,
-    removeVillager,
-    retryWork,
     rewriteAgenda,
     screen,
     setAgendaScheduleIngestion,
     setExploreSheet,
     setFocusedProjectId,
     setFocusedRequestId,
-    setMemoryLibrary,
+    setHousingVenueId,
     setMenuPage,
     setPersonProfile,
     setProfileInspection,
@@ -68,7 +75,9 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
     const relevantVenues: DossierVenue[] = (snapshot?.settings.venues ?? []).map((venue) => {
       const connections: string[] = [];
       const home = (venue.residentIds ?? [venue.occupancy.residentCharacterId]).includes(personProfile.actorId);
-      if (home) connections.push("Home");
+      const work = venue.workerIds?.includes(personProfile.actorId) ?? false;
+      const publicConnections = [...(home ? ["Home"] : []), ...(work ? ["Work"] : [])];
+      connections.push(...publicConnections);
       const controlled = venue.zones?.some(
         (zone) => zone.ownerId === personProfile.actorId || zone.controllerIds?.includes(personProfile.actorId),
       );
@@ -77,16 +86,41 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
       const agendaDestination = selectedAgendas.some((entry) =>
         Object.values(entry.effectiveDays ?? {}).some((blocks) => blocks.some((block) => block.venueId === venue.id)),
       );
-      if (!connections.length && agendaDestination) connections.push("Agenda destination");
+      if (connections.length === publicConnections.length && agendaDestination) connections.push("Agenda destination");
       return {
         id: venue.id,
         name: venue.name,
         image: venue.presentation.image?.url,
         connections,
-        inspectOnly: !home && !controlled && venue.id !== person?.place?.id,
+        publicConnections,
       };
     });
     const relatedLinks: DossierLink[] = [];
+    relatedLinks.push({
+      id: "personal-mail",
+      title: "Message",
+      detail: "Mailbox",
+      onOpen: () => controller.setMailboxOpen(true),
+    });
+    relatedLinks.push(
+      {
+        id: "projects-all",
+        title: "Projects",
+        detail: "Open Projects",
+        playerVisible: true,
+        onOpen: () => openMenu("projects"),
+      },
+      {
+        id: "requests-all",
+        title: "Venue Requests",
+        detail: "Open Venue Requests",
+        playerVisible: true,
+        onOpen: () => {
+          setHousingVenueId("");
+          openMenu("venueRequests");
+        },
+      },
+    );
     for (const project of snapshot?.projects ?? []) {
       const flow = project.lifecycle;
       if (
@@ -94,8 +128,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
         !project.participantIds?.includes(personProfile.actorId) &&
         flow?.builderId !== personProfile.actorId &&
         !flow?.affectedIds?.includes(personProfile.actorId) &&
-        !flow?.approvals?.some((entry) => entry.residentId === personProfile.actorId) &&
-        !flow?.sources?.some((entry) => entry.supplierId === personProfile.actorId)
+        !flow?.approvals?.some((entry) => entry.residentId === personProfile.actorId)
       )
         continue;
       relatedLinks.push({
@@ -121,18 +154,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
         },
       });
     }
-    for (const proposal of snapshot?.upgradeRequests ?? []) {
-      if (proposal.requesterCharacterId !== personProfile.actorId) continue;
-      relatedLinks.push({
-        id: "upgrade:" + proposal.id,
-        title: proposal.detail,
-        detail: "Venue upgrade request",
-        onOpen: () => {
-          openMenu("venueRequests");
-          setFocusedRequestId("upgrade:" + proposal.id);
-        },
-      });
-    }
     for (const residence of snapshot?.residences ?? []) {
       if (
         residence.characterId !== personProfile.actorId ||
@@ -151,93 +172,13 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
       });
     }
     const wishInspection = (
-      <div className={`${ELEMENT_TAG}-overlay`}>
-        <div className={`${ELEMENT_TAG}-overlay-head`}>
-          <h2 className={`${ELEMENT_TAG}-panel-title`}>Private wishes</h2>
-        </div>
-        <p className={`${ELEMENT_TAG}-empty`}>
-          Private wishes can shape what a villager notices, says, and does. Their full routine is in Inspect → Agenda.
-        </p>
-
-        {agendas === null ? (
-          <p className={`${ELEMENT_TAG}-empty`}>Reading what the villagers wish…</p>
-        ) : selectedAgendas.length === 0 ? (
-          <p className={`${ELEMENT_TAG}-empty`}>Nobody lives here yet.</p>
-        ) : (
-          <section>
-            {selectedAgendas.map((villager) => (
-              <div key={villager.characterId}>
-                <h3 className={`${ELEMENT_TAG}-story-day`}>
-                  {villager.name}
-                  {villager.missing ? <span className={`${ELEMENT_TAG}-badge`}>card missing</span> : null}
-                </h3>
-                {villager.agenda === null ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    Not written for yet. The village works this out on the next part of the day it already runs on, so
-                    there is nothing to press.
-                  </p>
-                ) : villager.agenda.wishes.length === 0 ? (
-                  <p className={`${ELEMENT_TAG}-empty`}>
-                    {villager.agenda.personalizationFailure
-                      ? `Routine personalization needs attention: ${villager.agenda.personalizationFailure}`
-                      : villager.agenda.generatedAt
-                        ? "No current wishes."
-                        : "Their provisional routine is available. New wishes follow the daily allowance."}
-                  </p>
-                ) : (
-                  <ul className={`${ELEMENT_TAG}-story`}>
-                    {villager.agenda.wishes.map((wish) => (
-                      <li key={wish.id} className={`${ELEMENT_TAG}-wish-card`}>
-                        <p className={`${ELEMENT_TAG}-wish-text`}>{wish.wish}</p>
-                        {/* Said as the thing somebody would notice,
-                                      which is the half that makes a wish a
-                                      reason for an event instead of a to-do. */}
-                        {wish.tell.length > 0 ? (
-                          <p className={`${ELEMENT_TAG}-wish-tell`}>{`Shows as: ${wish.tell}`}</p>
-                        ) : null}
-                        {/* How long it has been sitting there, and the
-                                      day it goes quiet on its own. Said here
-                                      because this tab is the only place a wish is
-                                      a fact at all, and a wish that vanishes
-                                      between two visits reads as a bug until the
-                                      date it was always going to vanish on is
-                                      written down beside it. */}
-                        <p className={`${ELEMENT_TAG}-wish-meta`}>
-                          {`${wish.intensity === 1 ? "Faint" : wish.intensity === 3 ? "Strong" : "Present"} · ${wishLifetimeLabel(wish.addedAt ?? "", wish.expiresAt ?? "")}`}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <WishHistory
-                  characterId={villager.characterId}
-                  total={villager.wishHistoryCount ?? 0}
-                  busy={busy}
-                  onCorrect={correctCompletedWish}
-                />
-                {villager.wishAttempt ? (
-                  <p
-                    className={`${ELEMENT_TAG}-hint`}
-                  >{`Wish update: ${villager.wishAttempt.stage} · ${villager.wishAttempt.reason} · ${villager.wishAttempt.calls} requests · input tokens ${villager.wishAttempt.inputTokens ?? "unavailable"} · output tokens ${villager.wishAttempt.outputTokens ?? "unavailable"}`}</p>
-                ) : null}
-                {/*
-                          The Engine's own week and the village's translation of
-                          it live in Villager Agendas, not alongside wishes.
-                        */}
-              </div>
-            ))}
-          </section>
-        )}
-      </div>
+      <VillagerWishJournal request={request} characterId={personProfile.actorId} prefix={ELEMENT_TAG} inspect />
     );
     const agendaInspection = (
       <div className={`${ELEMENT_TAG}-overlay`}>
         <div className={`${ELEMENT_TAG}-overlay-head`}>
           <h2 className={`${ELEMENT_TAG}-panel-title`}>Villager agendas</h2>
         </div>
-        <p className={`${ELEMENT_TAG}-empty`}>
-          Each villager follows a Villages agenda. A Marinara schedule can guide future days when enabled.
-        </p>
         {agendas === null ? (
           <p className={`${ELEMENT_TAG}-empty`}>Loading agendas…</p>
         ) : selectedAgendas.length === 0 ? (
@@ -280,6 +221,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                   <div className={`${ELEMENT_TAG}-agenda-actions`}>
                     <label className={`${ELEMENT_TAG}-agenda-switch`}>
                       <input
+                        autoComplete="off"
                         type="checkbox"
                         checked={villager.ingestSchedule}
                         disabled={busy}
@@ -287,7 +229,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                           void setAgendaScheduleIngestion(villager.characterId, event.target.checked)
                         }
                       />
-                      Let Marinara schedule influence this Agenda
+                      Schedule influence
                     </label>
                     <button
                       type="button"
@@ -297,7 +239,16 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                     >
                       Regenerate agenda
                     </button>
-
+                    {villager.canInterpretSchedule ? (
+                      <button
+                        type="button"
+                        className={`${ELEMENT_TAG}-button`}
+                        disabled={busy || !villager.ingestSchedule}
+                        onClick={() => void setAgendaScheduleIngestion(villager.characterId, true)}
+                      >
+                        Interpret schedule
+                      </button>
+                    ) : null}
                     {Object.entries({
                       rhythm: "Preferred sleep/wake rhythm",
                       busyFree: "Broad busy/free periods",
@@ -307,6 +258,7 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                     }).map(([key, label]) => (
                       <label key={key} className={ELEMENT_TAG + "-agenda-switch"}>
                         <input
+                          autoComplete="off"
                           type="checkbox"
                           checked={villager.scheduleInfluence?.categories[key] !== false}
                           disabled={busy || !villager.ingestSchedule}
@@ -320,18 +272,13 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                       </label>
                     ))}
                   </div>
-                  <p className={ELEMENT_TAG + "-story-scope"}>
-                    Changes guide future days locally and make no AI requests. Today's plan and accepted commitments
-                    remain intact.
-                    {villager.ingestSchedule ? "" : " Schedule influence is off."}
-                  </p>
                   {villager.ingestSchedule ? (
                     <ul>
                       {(villager.agenda?.scheduleInfluenceSnapshot?.adopted ?? []).map((line) => (
                         <li key={line}>{line}</li>
                       ))}
                       {(villager.agenda?.scheduleInfluenceSnapshot?.unresolved ?? []).map((line) => (
-                        <li key={line}>{line}; waits for an existing generation request.</li>
+                        <li key={line}>{line}</li>
                       ))}
                     </ul>
                   ) : null}
@@ -391,14 +338,16 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
         )}
       </div>
     );
-    const back = () => {
-      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+    const back = async () => {
+      if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return;
       setSpriteManagerId(null);
       setProfileInspection(null);
       setPersonProfile(null);
       setScreen(personProfile.returnTo);
       if (personProfile.returnTo === "home") setExploreSheet({ tab: "people" });
-      if (personProfile.returnTo === "menu") setMenuPage("villagers");
+      if (personProfile.returnTo === "menu") {
+        setMenuPage("villagers");
+      }
       requestAnimationFrame(() => {
         for (const { selector, top } of profileOrigin.current.scroll) {
           const target = element.querySelector<HTMLElement>(selector);
@@ -428,7 +377,8 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
           links={relatedLinks}
           error={error}
           onInspectSection={setProfileInspection}
-          onBack={back}
+          onBack={onDirectory ?? back}
+          onClose={onClose}
           onVenue={(id) => {
             const venue = snapshot?.settings.venues.find((entry) => entry.id === id);
             if (venue) {
@@ -459,12 +409,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
             ) : undefined
           }
           inspectors={{
-            overview: (
-              <BackgroundWorkPanel
-                jobs={(snapshot?.backgroundWork ?? []).filter((job) => job.subjectId === personProfile.actorId)}
-                onRetry={retryWork}
-              />
-            ),
             wishes: wishInspection,
             agenda: agendaInspection,
             memories: (
@@ -474,17 +418,17 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
                   characterId={personProfile.actorId}
                   library={memoryLibrary}
                   busy={busy}
-                  onRefresh={() => {
-                    setMemoryLibrary(null);
-                    void loadMemoryLibrary();
-                  }}
-                  onForget={(kind, id) => void forgetMemory(kind, id)}
+                  onQuery={(query, signal) => loadMemoryLibrary(signal, query)}
+                  onForget={(entry, knower) => memoryLibrary && void forgetMemory(entry, [knower], memoryLibrary)}
                 />
               </div>
             ),
           }}
           controls={
             <>
+              {person ? (
+                <IdentityDescriptionEditor key={person.characterId} villager={person} onSave={setSnapshot} />
+              ) : null}
               <button
                 type="button"
                 disabled={busy}
@@ -503,16 +447,6 @@ export function ResidentsScreen({ controller }: { controller: ResidentsScreenCon
               >
                 Compare card
               </button>
-              <details>
-                <summary>Actions</summary>
-                <button
-                  type="button"
-                  disabled={busy || !!refreshBusyId}
-                  onClick={() => void removeVillager(personProfile.actorId)}
-                >
-                  Move out
-                </button>
-              </details>
               {refreshPreviews[personProfile.actorId] ? (
                 <div className={`${ELEMENT_TAG}-dossier-refresh`}>
                   <p>

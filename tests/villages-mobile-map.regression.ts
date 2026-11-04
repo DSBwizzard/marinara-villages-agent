@@ -1,8 +1,4 @@
-import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import {
   focusedPhotoScale,
   mobileCoverZoom,
@@ -12,6 +8,7 @@ import {
   mobileMapGesture,
   mobilePhotoScale,
 } from "../packages/villages/src/client/features/exploration/villages-mobile-map.ts";
+import { clientImplementation } from "./client-source.js";
 
 const image = { width: 1500, height: 1000 };
 const frame = { width: 360, height: 600 };
@@ -40,6 +37,10 @@ const pinched = mobileMapGesture(image, frame, initial, anchor, anchor, 1.5);
 const after = mobileMapBox(image, frame, pinched);
 assert.ok(Math.abs((anchor.x - centered.left) / centered.width - (anchor.x - after.left) / after.width) < 1e-10);
 assert.ok(Math.abs((anchor.y - centered.top) / centered.height - (anchor.y - after.top) / after.height) < 1e-10);
+// Closing the Places drawer can enlarge the frame beyond the stored zoom.
+const drawerView = { ...initial, zoom: 1 };
+const afterDrawerClose = mobileMapBox(image, frame, mobileMapGesture(image, frame, drawerView, anchor, anchor, 1.5));
+assert.deepEqual(afterDrawerClose, after, "pinch starts at the rendered scale after the map frame grows");
 const all = mobileMapBox(image, frame, mobileMapGesture(image, frame, initial, anchor, anchor, 0.01));
 assert.deepEqual(all, centered);
 assert.equal(mobilePhotoScale(cover, cover), 0.32);
@@ -98,7 +99,6 @@ assert.ok(source.includes('data-mobile-gesturing", "true"'));
 assert.ok(
   source.includes("left: `${picture.left + pin.x * picture.width + (pinOffset?.id === pin.id ? pinOffset.x : 0)}px`"),
 );
-assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-doors, .${ELEMENT_TAG}-zoom`)"));
 assert.equal(source.includes('mobileStart="contain"'), false);
 assert.ok(
   source.includes("const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current"),
@@ -106,16 +106,13 @@ assert.ok(
 assert.ok(source.includes("onPlace(round4(x), round4(y), {"));
 assert.ok(source.includes("photoWidth: photoRect?.width"));
 assert.ok(source.includes("event.target.closest(`.${ELEMENT_TAG}-canvas`)"));
-assert.ok(source.includes("<NoticesButton"));
-assert.ok(source.includes('aria-label="Events (NYI)"'));
-assert.ok(source.includes("Force Village Update"));
-assert.ok(source.includes("FORCE_VILLAGE_UPDATE_NOTICE"));
-assert.ok(source.includes("bypasses Background events and wishes for one visual Events update"));
+assert.equal(source.includes("<NoticesButton"), false);
+assert.equal(source.includes('aria-label="Events (NYI)"'), false);
+assert.equal(source.includes("Force Village Update"), false);
+assert.equal(source.includes("FORCE_VILLAGE_UPDATE_NOTICE"), false);
+assert.equal(source.includes('openMenu("events")'), false);
 assert.ok(source.includes("data-section={menuSection}"));
-assert.ok(source.includes('onClick={() => openMenu("general")}'));
-assert.ok(source.includes('onClick={() => openMenu("village")}'));
 assert.equal(source.includes('onClick={() => openMenu("memories")}'), false);
-assert.ok(source.includes('onClick={() => openMenu("villagers")}'));
 assert.equal(source.includes('onClick={() => openMenu("story")}'), false);
 assert.equal(source.includes("Fit entire map"), false);
 

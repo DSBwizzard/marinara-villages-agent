@@ -1,8 +1,7 @@
+import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
-import { createHash } from "node:crypto";
-import { zonePictureBaseline, zonePictureChanges, zonePictureContext } from "../../domain/rules/zone-picture.js";
-import { privateInteriorKey } from "../../domain/rules/private-interior.js";
-import type { resolveVillageImageEditing } from "./image-generation.js";
+import { createZonePictures } from "./zone-picture-service.js";
+import type { resolveVillageImageEditing, resolveVillageImageConnectionId } from "./image-generation.js";
 import type { readZonePictureReference } from "../../adapters/engine/zone-picture-reference.js";
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
 import type { readVillageVisualLore } from "../../adapters/engine/lorebooks.js";
@@ -17,15 +16,22 @@ import {
   LOCATION_IMAGE_HEIGHT,
   LOCATION_NEGATIVE_PROMPT,
 } from "../../domain/rules/location-image-rules.js";
-import { sceneryCharacterContext, sceneryImageKey, sceneryPrompt } from "../../domain/rules/scenery-context.js";
-import { venueClasses, venueInArea, venueInSpace } from "../../domain/rules/venue-model.js";
-import { legacyZoneId, resolveVenueZone, venueInZone, venueZones } from "../../domain/rules/venue-zones.js";
+import {
+  sceneryAdmissionContext,
+  sceneryCharacterContext,
+  sceneryImageKey,
+  sceneryPrompt,
+} from "../../domain/rules/scenery-context.js";
+import { venueClasses } from "../../domain/rules/venue-model.js";
+import { legacyZoneId, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { assertVenueImageAccess, setVillageVenueImage } from "../venues/services.js";
 import type { generateVillageImage } from "./image-generation.js";
 import type { decodeImageDataUrl } from "./location-image-codec.js";
 export type LocationImagePorts = {
+  pictureNow?: () => Date;
+  resolveVillageImageConnectionId?: typeof resolveVillageImageConnectionId;
   resolveVillageImageEditing?: typeof resolveVillageImageEditing;
   readZonePictureReference?: typeof readZonePictureReference;
   buildVillageSnapshot?: () => Promise<VillageSnapshot>;
@@ -39,9 +45,8 @@ export type LocationImagePorts = {
   decodeImageDataUrl: typeof decodeImageDataUrl;
   villagesLogger: () => Pick<ReturnType<typeof villagesLogger>, "warn">;
 };
-/** Access, private-entry claims, upload and current-context writes stay with one application. */
+/** Image access, serialized requests, uploads and current-context writes share one activation. */
 export function createLocationImages(ports: LocationImagePorts) {
-  const activeClaims = new Set<string>();
   const {
     readVillageState,
     mutateVillageState,
@@ -51,7 +56,6 @@ export function createLocationImages(ports: LocationImagePorts) {
     generateVillageImage,
     uploadVillageGalleryImage,
     decodeImageDataUrl,
-    villagesLogger,
   } = ports;
 
   async function requireVenue(venueId: string): Promise<{ village: VillageState; venue: VillageVenue }> {
@@ -61,32 +65,33 @@ export function createLocationImages(ports: LocationImagePorts) {
     return { village, venue };
   }
 
-  async function generateVillageLocationImage(
+  async function drawVillageLocationImage(
     venueId: string,
     connectionId?: string,
     spaceClass?: VillageVenueClass,
     privateOwnerId = "",
     onlyIfEmpty = false,
     zoneId?: string,
+    guard?: (state: VillageState) => boolean,
   ): Promise<VillageSnapshot> {
     const found = await requireVenue(venueId);
     const village = found.village;
+    if (guard && !guard(village)) {
+      if (!onlyIfEmpty) throw conflict("The scenery changed while its image was generated. Generate again.");
+      return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
+    }
     if (spaceClass && !venueClasses(found.venue).includes(spaceClass))
       throw notFound("That Venue space no longer exists.");
+    zoneId ??= legacyZoneId(
+      found.venue,
+      privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
+      spaceClass,
+      privateOwnerId,
+    );
+    const targetZone = resolveVenueZone(found.venue, zoneId);
+    if (!targetZone) throw conflict("Choose the exact Zone before drawing its image.");
     await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
-    const venue = zoneId
-      ? venueInZone(found.venue, zoneId)
-      : privateOwnerId
-        ? venueInArea(found.venue, "private", "residence", privateOwnerId)
-        : spaceClass
-          ? venueInSpace(found.venue, spaceClass)
-          : found.venue;
-    const targetZone = zoneId
-      ? resolveVenueZone(found.venue, zoneId)
-      : privateOwnerId
-        ? resolveVenueZone(found.venue, legacyZoneId(found.venue, "private", "residence", privateOwnerId))
-        : undefined;
-    if (privateOwnerId && !targetZone) throw conflict("Choose the exact personal Zone before drawing its image.");
+    const venue = venueInZone(found.venue, zoneId);
     const character = onlyIfEmpty
       ? sceneryCharacterContext(
           village,
@@ -107,30 +112,24 @@ export function createLocationImages(ports: LocationImagePorts) {
     );
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
+      environment: village.narrative,
       seed: village.seed,
       now: villageNow(),
     });
-    const exterior = zoneId
-      ? resolveVenueZone(found.venue, zoneId)?.kind === "exterior"
-      : !spaceClass && !privateOwnerId;
-    const exteriorContext = [venue.name, venue.form, venue.description, venue.exteriorState?.condition ?? ""].join(
-      "\n",
-    );
+    const exterior = targetZone.kind === "exterior";
+    const exteriorContext = [venue.name, venue.form, venue.description].join("\n");
     const lore =
       (found.venue.imageContext?.useVisualLore ?? village.useVisualLoreByDefault)
         ? await readVillageVisualLore(
             village.selectedLorebookIds,
-            `${village.name}\n${village.setting}\n${village.worldFacts.join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}\n${venue.state.condition}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
+            `${village.name}\n${village.worldName}\n${village.setting}\n${currentVillageCircumstances(village).join("\n")}\n${exterior ? exteriorContext : `${venue.name}\n${venue.form}\n${venue.description}`}\n${character}\n${targetZone?.name ?? ""}\n${targetZone?.purpose ?? ""}`,
             900,
+            village.loreTokenBudget,
           )
         : "";
     const basePrompt = buildLocationPrompt(
-      { ...village, setting: "", worldFacts: [], venues: [] },
-      {
-        ...venue,
-        state: { ...venue.state, furniture: [], publicFacts: [], upgrades: [] },
-        exteriorState: venue.exteriorState ? { ...venue.exteriorState, items: [], publicFacts: [] } : undefined,
-      },
+      { ...village, setting: "", worldRules: "", narrative: undefined, venues: [] },
+      { ...venue, description: "" },
       moment,
       "",
       exterior ? "exterior" : "interior",
@@ -150,10 +149,7 @@ export function createLocationImages(ports: LocationImagePorts) {
           ? `Public exterior context for architectural continuity only: ${found.venue.description}. Carry over explicit architectural cues that apply inside; do not depict this exterior or infer hidden contents.`
           : "",
         targetZone && isPrivateInterior(targetZone)
-          ? `Illustrate this saved interior without adding possessions from personality context. Visible items: ${targetZone.state.items.join("; ")}. Physical facts: ${targetZone.state.publicFacts.join("; ")}.`
-          : "",
-        character.includes("## Starting background:") && !(targetZone && isPrivateInterior(targetZone))
-          ? `Occupant context: ${character}`
+          ? "Illustrate this saved interior without adding possessions from personality context."
           : "",
       ],
       [
@@ -163,26 +159,24 @@ export function createLocationImages(ports: LocationImagePorts) {
         targetZone && isPrivateInterior(targetZone)
           ? `Public exterior context for architectural continuity only: ${found.venue.description.slice(0, 400)}. Do not depict the exterior or infer hidden contents.`
           : "",
-        character && !character.includes("## Starting background:") && !(targetZone && isPrivateInterior(targetZone))
+        character && !(targetZone && isPrivateInterior(targetZone))
           ? `Occupant context, reflect preferences without depicting people: ${character}`
           : "",
-        village.setting ? `Village setting: ${village.setting.slice(0, 400)}` : "",
-        ...village.worldFacts.map((fact) => `World fact: ${fact}`),
+        village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : "",
         lore ? `Established visual lore: ${lore}` : "",
-        ...(targetZone && isPrivateInterior(targetZone)
-          ? []
-          : exterior
-            ? (venue.exteriorState?.items ?? [])
-            : venue.state.furniture
-        ).map((item) => `Visible physical detail: ${item}`),
-        ...(targetZone && isPrivateInterior(targetZone)
-          ? []
-          : exterior
-            ? (venue.exteriorState?.publicFacts ?? [])
-            : venue.state.publicFacts
-        ).map((fact) => `Established area fact: ${fact}`),
       ],
       village.sceneryArtStyle,
+      [
+        village.setting ? "Authored place description; later verified state takes precedence: " + village.setting : "",
+        village.worldRules ? "Standing world rules: " + village.worldRules : "",
+        ...currentVillageCircumstances(village, found.venue.id, targetZone.id).map(
+          (fact) => "Current circumstance: " + fact,
+        ),
+        `Current physical account: ${venue.description}`,
+        ...(onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
+          ? sceneryAdmissionContext(village, found.venue)
+          : []),
+      ],
     );
     if (onlyIfEmpty) {
       const latest = await readVillageState();
@@ -198,6 +192,10 @@ export function createLocationImages(ports: LocationImagePorts) {
       )
         return ports.buildVillageSnapshot!();
     }
+    if (guard && !guard(await readVillageState())) {
+      if (!onlyIfEmpty) throw conflict("The scenery changed while its image was generated. Generate again.");
+      return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
+    }
     const decoded = await generateVillageImage({
       sceneryStyleProfileId: village.sceneryStyleProfileId,
       connectionId,
@@ -208,6 +206,10 @@ export function createLocationImages(ports: LocationImagePorts) {
       height: LOCATION_IMAGE_HEIGHT,
       maxBase64Length: MAX_LOCATION_IMAGE_BASE64_LENGTH,
     });
+    if (guard && !guard(await readVillageState())) {
+      if (!onlyIfEmpty) throw conflict("The scenery changed while its image was generated. Generate again.");
+      return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
+    }
     const image = await uploadVillageGalleryImage({
       bytes: decoded.bytes,
       mime: decoded.mime,
@@ -219,40 +221,27 @@ export function createLocationImages(ports: LocationImagePorts) {
     return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, onlyIfEmpty, zoneId, expectedContext);
   }
 
-  async function generateFirstPrivateSpaceImage(venueId: string, ownerId: string): Promise<void> {
-    let claimed = false;
-    let targetId = "";
-    await mutateVillageState((state) => {
-      claimed = false;
-      const venue = state.venues.find((entry) => entry.id === venueId);
-      const space =
-        venue &&
-        venueZones(venue).find(
-          (entry) => entry.id === ownerId || (entry.kind === "private-residence" && entry.ownerId === ownerId),
-        );
-      if (
-        state.automaticZonePictures === false ||
-        space?.freezePicture ||
-        space?.picture?.removed ||
-        !space?.seen ||
-        !["private-residence", "staff", "restricted"].includes(space.kind) ||
-        space.image ||
-        space.initialImageAttemptedAt ||
-        space.preparation?.status === "pending" ||
-        space.preparation?.status === "failed"
-      )
-        return;
-      space.initialImageAttemptedAt = villageNow().toISOString();
-      targetId = space.id;
-      claimed = true;
-    });
-    if (!claimed) return;
-    try {
-      await generateVillageLocationImage(venueId, undefined, undefined, "", true, targetId);
-    } catch (error) {
-      villagesLogger().warn("[villages] first private-space image failed for %s: %s", venueId, String(error));
-    }
+  const pictures = createZonePictures(ports, (venueId, zoneId, automatic, guard) =>
+    drawVillageLocationImage(venueId, undefined, undefined, "", automatic, zoneId, guard),
+  );
+  async function generateVillageLocationImage(...args: Parameters<typeof drawVillageLocationImage>) {
+    const { venue } = await requireVenue(args[0]);
+    const targetId =
+      args[5] ??
+      legacyZoneId(
+        venue,
+        args[3] ? "private" : args[2] === "residence" ? "shared" : args[2] ? "public" : "outside",
+        args[2],
+        args[3],
+      );
+    return (await pictures.replaceZonePicture(args[0], targetId, (guard) =>
+      drawVillageLocationImage(args[0], args[1], args[2], args[3], args[4], args[5], guard),
+    )) as VillageSnapshot;
   }
+
+  const requestZonePicture = pictures.requestZonePicture;
+  const generateFirstZoneImage = requestZonePicture;
+  const updateZonePicture = pictures.updateZonePicture;
 
   async function storeVillageVenueImage(
     venueId: string,
@@ -286,157 +275,21 @@ export function createLocationImages(ports: LocationImagePorts) {
     return ports.buildVillageSnapshot!();
   }
 
-  async function personalizeZoneOnEntry(venueId: string, zoneId: string, entryContext: string): Promise<void> {
-    const { village, venue } = await requireVenue(venueId);
-    const zone = resolveVenueZone(venue, zoneId);
-    if (
-      !zone ||
-      village.automaticZonePictures === false ||
-      zone.freezePicture ||
-      zone.picture?.removed ||
-      !zone.seen ||
-      zone.preparation?.status === "pending" ||
-      zone.preparation?.status === "failed" ||
-      zonePictureContext(village, venue, zone) !== entryContext
-    )
-      return;
-    if (!zone.image) {
-      await generateFirstPrivateSpaceImage(venueId, zoneId);
-      return;
-    }
-    if (!ports.resolveVillageImageEditing || !ports.readZonePictureReference) return;
-    const support = await ports.resolveVillageImageEditing();
-    if (!support || zone.picture?.context === entryContext) return;
-    const source = zone.image,
-      base = zone.picture?.base ?? source;
-    const baseline = zone.picture?.baseline ?? zonePictureBaseline(entryContext);
-    const changes = zonePictureChanges(zone.picture?.context ?? baseline, entryContext);
-    if (changes === "{}") {
-      await mutateVillageState((state) => {
-        const currentVenue = state.venues.find((entry) => entry.id === venueId);
-        const current = currentVenue && resolveVenueZone(currentVenue, zoneId);
-        if (current?.image?.id === source.id && zonePictureContext(state, currentVenue!, current) === entryContext)
-          current.picture = { ...current.picture, base, baseline, context: entryContext };
-      });
-      return;
-    }
-    const epoch = village.zonePictureEpoch ?? 0,
-      revision = zone.pictureRevision ?? 0;
-    const claim = createHash("sha256")
-      .update(JSON.stringify([entryContext, source.id, base.id, support.signature, revision, epoch]))
-      .digest("hex");
-    let claimed = false;
-    const valid = (state: VillageState) => {
-      const currentVenue = state.venues.find((entry) => entry.id === venueId);
-      const current = currentVenue && resolveVenueZone(currentVenue, zoneId);
-      return state.seed === village.seed &&
-        state.foundedAt === village.foundedAt &&
-        state.automaticZonePictures !== false &&
-        (state.zonePictureEpoch ?? 0) === epoch &&
-        current &&
-        !current.freezePicture &&
-        (current.pictureRevision ?? 0) === revision &&
-        current.image?.id === source.id &&
-        zonePictureContext(state, currentVenue!, current) === entryContext
-        ? current
-        : undefined;
-    };
-    await mutateVillageState((state) => {
-      claimed = false;
-      const current = valid(state);
-      if (!current) return;
-      if (current.picture?.attempted === claim) {
-        if (current.picture.claim && !activeClaims.has(claim)) current.picture.failed = true;
-        return;
-      }
-      current.picture = { ...current.picture, base, baseline, attempted: claim, claim, failed: false };
-      activeClaims.add(claim);
-      claimed = true;
-    });
-    if (!claimed) return;
-    try {
-      const reference = await ports.readZonePictureReference(source);
-      const references = [reference.dataUrl];
-      if (support.multiple && base.id !== source.id)
-        references.push((await ports.readZonePictureReference(base)).dataUrl);
-      const prompt = [
-        "Edit reference 1, the latest appearance of this exact Zone. Preserve its viewpoint, architecture, windows, doors, floor materials, furniture identities, colors, fabrics and unrelated decorations.",
-        references.length > 1
-          ? "Reference 2 is the original architectural anchor, not an instruction to remove later furnishings."
-          : "",
-        "Apply only the listed changes. Explicit renovations may change structure. Preserve everything else, including existing furniture colors and fabrics. Resident identity may inspire small decorative touches; no new major possessions or people. Match the existing art style.",
-        `Changes: ${changes}`,
-        `Current furniture and decoration continuity: ${JSON.stringify(zone.state.items)}`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      // Never omit physical changes and then claim the complete state was rendered.
-      if (prompt.length > 4000) return;
-      const before = await readVillageState();
-      if (valid(before)?.picture?.claim !== claim) return;
-      const currentSupport = await ports.resolveVillageImageEditing();
-      if (currentSupport?.signature !== support.signature) return;
-      const scale = Math.min(1, 2048 / Math.max(reference.width, reference.height));
-      const decoded = await generateVillageImage({
-        connectionId: support.connectionId,
-        referenceImages: references,
-        name: `${venue.name} · ${zone.name}`,
-        prompt,
-        width: Math.max(64, Math.round(reference.width * scale)),
-        height: Math.max(64, Math.round(reference.height * scale)),
-        maxBase64Length: MAX_LOCATION_IMAGE_BASE64_LENGTH,
-      });
-      if (valid(await readVillageState())?.picture?.claim !== claim) return;
-      const image = await uploadVillageGalleryImage({
-        bytes: decoded.bytes,
-        mime: decoded.mime,
-        name: `${venue.name} · ${zone.name}`,
-        prompt,
-      });
-      await mutateVillageState((state) => {
-        const current = valid(state);
-        if (!current || current.picture?.claim !== claim) return;
-        current.image = image;
-        current.picture = { base, baseline, context: entryContext, attempted: claim };
-        if (isPrivateInterior(current)) current.imageInteriorKey = privateInteriorKey(current);
-      });
-    } catch (error) {
-      await mutateVillageState((state) => {
-        const current = valid(state);
-        if (current?.picture?.claim === claim) current.picture.failed = true;
-      });
-      villagesLogger().warn("[villages] Zone picture retained for %s/%s: %s", venueId, zoneId, String(error));
-    } finally {
-      activeClaims.delete(claim);
-    }
-  }
-
   async function retryZonePicture(venueId: string, zoneId: string): Promise<VillageSnapshot> {
-    await assertVenueImageAccess(venueId, undefined, "", zoneId);
-    let claimedRetry = false;
-    await mutateVillageState((state) => {
-      claimedRetry = false;
-      const venue = state.venues.find((entry) => entry.id === venueId);
-      const zone = venue && resolveVenueZone(venue, zoneId);
-      if (!zone?.picture?.failed || (zone.picture.claim && activeClaims.has(zone.picture.claim))) return;
-      zone.picture.attempted = undefined;
-      zone.picture.failed = false;
-      zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
-      claimedRetry = true;
-    });
-    if (!claimedRetry) return ports.buildVillageSnapshot!();
-    const { village, venue } = await requireVenue(venueId);
-    const zone = resolveVenueZone(venue, zoneId);
-    if (zone) await personalizeZoneOnEntry(venueId, zoneId, zonePictureContext(village, venue, zone));
-    return ports.buildVillageSnapshot!();
+    const { venue } = await requireVenue(venueId);
+    if (!resolveVenueZone(venue, zoneId)?.picture?.failed) return ports.buildVillageSnapshot!();
+    if (resolveVenueZone(venue, zoneId)?.picture?.operation === "replace")
+      return generateVillageLocationImage(venueId, undefined, undefined, "", false, zoneId);
+    return updateZonePicture(venueId, zoneId);
   }
 
   return {
     generateVillageLocationImage,
-    generateFirstPrivateSpaceImage,
+    generateFirstZoneImage,
     storeVillageVenueImage,
     setZonePictureFrozen,
-    personalizeZoneOnEntry,
+    requestZonePicture,
+    updateZonePicture,
     retryZonePicture,
   };
 }

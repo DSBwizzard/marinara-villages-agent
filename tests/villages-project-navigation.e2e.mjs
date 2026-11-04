@@ -1,378 +1,462 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { tsImport } from "tsx/esm/api";
+const { readBaseVenueLayout, validateLayoutZones } = await tsImport(
+  "../packages/villages/src/server/domain/rules/venue-layout.ts",
+  import.meta.url,
+);
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
-import { build } from "esbuild";
-import { snapshot as fixture, image } from "./fixtures/villages-scene-browser.fixture.mjs";
-
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
-});
-
-function projectSnapshot() {
-  const snapshot = structuredClone(fixture);
-  snapshot.projects = ["canvas", "workshop"].map((id, index) => {
-    const venue = {
-      ...snapshot.settings.venues[0],
-      id,
-      name: index ? "Workshop" : "Canvas Tent",
-      classes: ["workplace"],
-      constructionStatus: index ? undefined : "worksite",
-      spaces: [],
-      privateSpaces: [],
-      zones: [],
-      occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-    };
-    snapshot.settings.venues.push(venue);
-    return {
-      id: `${id}-build`,
-      kind: index ? "renovation" : "new-venue",
-      title: venue.name,
-      venueId: id,
-      status: "finishing",
-      progress: 100,
-      participantIds: [],
-      updatedAt: new Date().toISOString(),
-      venueDraft: { name: venue.name, classes: venue.classes, description: "A useful place" },
-      lifecycle: {
-        phase: "finishing",
-        targetVenueId: id,
-        change: index ? { detail: "Renovate the Workshop" } : null,
-        affectedIds: [],
-        approvals: [],
-        candidates: [],
-        builderId: "mara",
-        requirements: [],
-        builderAgreement: null,
-        checklistAccepted: true,
-      },
-    };
-  });
-  return snapshot;
-}
-
-async function openPage(width, snapshot, imageHandler) {
-  const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
+import { chromium, expect, mockEngineLookups, fulfill, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { openProjectPage, currentProject, projectSnapshot } from "./fixtures/villages-project-browser.fixture.mjs";
+import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
+const output = process.env.VILLAGES_VISUAL_OUTPUT;
+if (output) await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ headless: true });
+async function checkMapPlacement(width, activeScene = false) {
+  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 700 });
+  await mockEngineLookups(page);
+  const snapshot = projectSnapshot();
+  delete snapshot.projects[0].venueDraft.position;
+  const placements = [];
+  let heldPlacement;
+  const session = activeScene
+    ? {
+        id: "project-scene",
+        version: 2,
+        sceneRevision: 0,
+        placeId: "mill",
+        placeName: "The Mill",
+        zoneId: "exterior",
+        area: "public",
+        status: "active",
+        activeIds: [],
+        participants: [],
+        lines: [],
+        submissions: [],
+        startedAt: snapshot.village.instant,
+        lastActivityAt: snapshot.village.instant,
+        endedAt: "",
+      }
+    : null;
+  if (session) {
+    snapshot.foundingPreparation = { status: "ready", canPlay: true };
+    snapshot.sceneVenue = { sceneId: session.id, venue: structuredClone(snapshot.settings.venues[0]) };
+    snapshot.sceneVenue.venue.zones[1].name = "Captured workshop";
+  }
+  const originalSession = structuredClone(session);
+  const originalVenue = structuredClone(snapshot.sceneVenue);
   await page.route("**/api/villages**", async (route) => {
     const path = new URL(route.request().url()).pathname;
-    if (path.endsWith("/setup/venue-image/generate")) return imageHandler(route);
-    const value = path.endsWith("/connections")
-      ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
-      : path.endsWith("/lorebooks")
-        ? { books: [] }
-        : snapshot;
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+    assert(!(route.request().method() !== "GET" && /\/rooms(?:\/|$)/.test(path)), "placement never mutates the Scene");
+    let value = snapshot;
+    if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+    else if (path.endsWith("/town-map")) value = { image: mapImage };
+    else if (path.endsWith("/projects/canvas/place")) {
+      const body = route.request().postDataJSON();
+      placements.push(body);
+      assert.equal(body.expectedRevision, snapshot.projects[0].lifecycle.revision);
+      assert(body.requestId);
+      snapshot.projects[0].venueDraft.position = { x: body.x, y: body.y };
+      snapshot.projects[0].lifecycle.revision++;
+      snapshot.settings.venues[0].zones[1].name = "Changed live workshop";
+      if (activeScene) {
+        heldPlacement = route;
+        return;
+      }
+    }
+    await fulfill(route, { json: authorSceneResponse(value, snapshot.worldScope) });
   });
-  await page.route("**/api/connections", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([{ id: "talk", provider: "language", name: "Talk", defaultForAgents: true }]),
-    }),
-  );
-  await page.route("http://projects.test/", (route) =>
-    route.fulfill({
-      status: 200,
+  await page.route("http://project-placement.test/", (route) =>
+    fulfill(route, {
       contentType: "text/html",
-      body: "<style>:root{font-size:20px;--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+      body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7}html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
     }),
   );
-  await page.goto("http://projects.test/");
+  await page.goto("http://project-placement.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-  await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
-  await page.getByRole("button", { name: /^Projects \(/ }).click();
-  return { page, errors };
-}
-
-async function selectProject(page, name) {
-  await page.getByRole("button", { name: "All Projects", exact: true }).click();
-  await page.getByRole("button", { name }).click();
-  await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
-}
-
-// A mounted source-hook harness makes reset, repeated focus and application
-// disposal deterministic without simulating the entire founding wizard.
-async function checkControllerLifetime() {
-  const bundle = await build({
-    stdin: {
-      contents: `
-        import { createRoot } from "react-dom/client";
-        import { useState } from "react";
-        import { useProjectsController } from "./packages/villages/src/client/features/projects/useProjectsController.js";
-        import { useProjectsState } from "./packages/villages/src/client/features/projects/useProjectsState.js";
-        function Harness() {
-          const [snapshot, setSnapshot] = useState(window.initialSnapshot);
-          const focus = useProjectsState();
-          const controller = useProjectsController({ snapshot,
-            onSnapshot: next => { window.snapshotCallbacks++; setSnapshot(next); },
-            focusProjectId: focus.focusedProjectId, focusProjectRequest: focus.projectFocusRequest });
-          window.projectsHarness = { controller, setSnapshot, focus: focus.setFocusedProjectId };
-          return <pre id="state">{JSON.stringify({
-            project: controller.project?.id, form: controller.form, name: controller.name,
-            preview: controller.imagePreview?.image.id, busy: controller.busy, error: controller.error,
-            founded: snapshot?.isFounded, personality: controller.openingPersonality, lore: controller.openingLore,
-            revision: controller.revisionEditor?.draft
-          })}</pre>;
-        }
-        const root = createRoot(document.getElementById("root"));
-        window.unmountProjects = () => root.render(null);
-        window.mountProjects = () => root.render(<Harness />);
-        window.mountProjects();
-      `,
-      resolveDir: process.cwd(),
-      loader: "tsx",
-    },
-    bundle: true,
-    write: false,
-    format: "iife",
-    platform: "browser",
-    jsx: "automatic",
-  });
-  const page = await browser.newPage();
-  const imageRequests = [];
-  const mutationRequests = [];
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.route("http://project-hooks.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
-  );
-  await page.route("**/api/villages**", (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.endsWith("/setup/venue-image/generate")) imageRequests.push(route);
-    else if (path.endsWith("/projects/canvas-build/open")) mutationRequests.push(route);
-    else throw new Error(`Unexpected controller request: ${path}`);
-  });
-  const snapshot = projectSnapshot();
-  snapshot.settings.personalizeVenueImagesByDefault = false;
-  snapshot.settings.useVisualLoreByDefault = false;
-  await page.goto("http://project-hooks.test/");
-  await page.evaluate((initial) => {
-    window.initialSnapshot = initial;
-    window.snapshotCallbacks = 0;
-  }, snapshot);
-  await page.addScriptTag({ content: bundle.outputFiles[0].text });
-  const state = () => page.locator("#state").textContent().then(JSON.parse);
-  const call = (operation) => page.evaluate(operation);
-  const focusA = () => call(() => window.projectsHarness.focus("canvas-build"));
-  const settle = () =>
-    page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
-  const respond = async (index, id) => {
-    const completed = page.waitForResponse((response) => response.url().endsWith("/setup/venue-image/generate"));
-    await imageRequests[index].fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ id, url: image("#997755") }),
-    });
-    await (await completed).finished();
-    await settle();
+  const openSite = async () => {
+    await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
+    const projects = page.getByRole("navigation", { name: "Projects", exact: true });
+    if (await projects.isVisible()) await projects.getByRole("button", { name: /Canvas Tent/ }).click();
+    await page.getByRole("tab", { name: "Location", exact: true }).click();
   };
-  await focusA();
-  await expect.poll(async () => (await state()).project).toBe("canvas-build");
-  assert.equal((await state()).personality, false);
-  assert.equal((await state()).lore, false);
-  await call(() => window.projectsHarness.controller.setForm("Retained A"));
-  await call(() => window.projectsHarness.controller.setSelectedId("workshop-build"));
-  await expect.poll(async () => (await state()).project).toBe("workshop-build");
-  await call(() => {
-    const editor = window.projectsHarness.controller.revisionEditor;
-    editor.setEditing(true);
-    editor.setTitle("Batched revision title");
-    editor.setChange({ ...editor.draft.change, detail: "Batched revision detail" });
-  });
-  await expect.poll(async () => (await state()).revision.title).toBe("Batched revision title");
-  assert.equal((await state()).revision.editing, true);
-  assert.equal((await state()).revision.change.detail, "Batched revision detail");
-  await focusA();
-  await expect.poll(async () => (await state()).project).toBe("canvas-build");
-  assert.equal((await state()).form, "Retained A", "Repeated explicit focus must override a later local selection.");
-  await call(() => {
-    void window.projectsHarness.controller.generateImage("exterior");
-    void window.projectsHarness.controller.generateImage("exterior");
-  });
-  await expect.poll(() => imageRequests.length).toBe(1);
-  await call(() => window.projectsHarness.controller.setSelectedId("workshop-build"));
-  const changed = structuredClone(snapshot);
-  changed.settings.setting = "Changed global scenery";
-  await page.evaluate((next) => window.projectsHarness.setSnapshot(next), changed);
-  await respond(0, "stale-hidden-image");
-  await focusA();
-  await expect.poll(async () => (await state()).error).toContain("Venue changed while the image was being prepared");
-  assert.equal((await state()).preview, undefined);
-
-  await call(() => void window.projectsHarness.controller.generateImage("exterior"));
-  await expect.poll(() => imageRequests.length).toBe(2);
-  const reset = { ...structuredClone(snapshot), isFounded: false, projects: [] };
-  await page.evaluate((next) => window.projectsHarness.setSnapshot(next), reset);
-  await expect.poll(async () => (await state()).founded).toBe(false);
-  await page.evaluate((next) => window.projectsHarness.setSnapshot(next), snapshot);
-  await focusA();
-  await expect.poll(async () => (await state()).project).toBe("canvas-build");
-  assert.equal((await state()).form, "", "Explicit reset must discard the previous world's Project draft.");
-  await call(() => void window.projectsHarness.controller.generateImage("exterior"));
-  await expect.poll(() => imageRequests.length).toBe(3);
-  await respond(1, "pre-reset-image");
-  assert.equal((await state()).busy, true, "Pre-reset cleanup cannot clear the new attempt.");
-  assert.equal((await state()).preview, undefined);
-  await respond(2, "current-image");
-  await expect.poll(async () => (await state()).preview).toBe("current-image");
-
-  await call(() => void window.projectsHarness.controller.openVenue());
-  await expect.poll(() => mutationRequests.length).toBe(1);
-  await page.evaluate((next) => window.projectsHarness.setSnapshot(next), reset);
-  await expect.poll(async () => (await state()).founded).toBe(false);
-  const completedMutation = page.waitForResponse((response) => response.url().endsWith("/projects/canvas-build/open"));
-  await mutationRequests[0].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
-  await (await completedMutation).finished();
-  await settle();
-  assert.equal(
-    await page.evaluate(() => window.snapshotCallbacks),
+  if (activeScene) {
+    const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    await composer.fill("An unsent Scene draft.");
+    await composer.evaluate((node) => {
+      window.retainedComposer = node;
+    });
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
+  }
+  await openSite();
+  await page.getByRole("button", { name: "Choose map position", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Cancel placement", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel placement", exact: true }).click();
+  await openSite();
+  assert.equal(placements.length, 0, "cancelling returns to the Project without saving a position");
+  if (activeScene) {
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Message at The Mill", exact: true })).toHaveValue(
+      "An unsent Scene draft.",
+    );
+    await page.getByRole("button", { name: "Venue actions", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Projects", exact: true }).click();
+    await openSite();
+  }
+  await page.getByRole("button", { name: "Choose map position", exact: true }).click();
+  const canvas = page.getByRole("group", { name: "Map navigation" });
+  await expect(canvas).toHaveAttribute("data-placing", "true");
+  await expect(page.getByRole("button", { name: "Choose the design, agreements and lead", exact: true })).toHaveCount(
     0,
-    "A pre-reset mutation reply cannot restore the old world.",
   );
-  assert.equal((await state()).founded, false);
-
-  await page.evaluate((next) => window.projectsHarness.setSnapshot(next), snapshot);
-  await focusA();
-  await expect.poll(async () => (await state()).project).toBe("canvas-build");
-  await call(() => void window.projectsHarness.controller.generateImage("exterior"));
-  await expect.poll(() => imageRequests.length).toBe(4);
-  await call(() => window.unmountProjects());
-  await expect(page.locator("#state")).toHaveCount(0);
-  await call(() => window.mountProjects());
-  await focusA();
-  await expect.poll(async () => (await state()).project).toBe("canvas-build");
-  await call(() => void window.projectsHarness.controller.generateImage("exterior"));
-  await expect.poll(() => imageRequests.length).toBe(5);
-  await respond(3, "disposed-image");
-  assert.equal((await state()).busy, true);
-  assert.equal((await state()).preview, undefined);
-  await respond(4, "new-owner-image");
-  await expect.poll(async () => (await state()).preview).toBe("new-owner-image");
-  assert.equal(imageRequests.length, 5, "Duplicates, focus, reset and remount must not retry provider requests.");
-  assert.deepEqual(errors, []);
+  const art = canvas.locator("img").first();
+  await expect(art).toHaveJSProperty("naturalWidth", 1500);
+  await expect(page.locator(".marinara-capability-villages-stage")).toHaveAttribute("data-picture-width", /[1-9]/);
+  await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+  await expect(page.locator('.marinara-capability-villages-stage [data-kind="person"]')).toHaveCount(0);
+  if (output)
+    await page.screenshot({ path: resolve(output, "projects-map-placement-" + width + ".png"), fullPage: true });
+  const box = await canvas.boundingBox();
+  const point = { x: box.x + box.width * 0.2, y: box.y + box.height * 0.75 };
+  if (width < 700) await page.touchscreen.tap(point.x, point.y);
+  else await page.mouse.click(point.x, point.y);
+  if (activeScene) {
+    await expect.poll(() => !!heldPlacement).toBe(true);
+    await expect(page.getByRole("button", { name: "Cancel placement", exact: true })).toBeDisabled();
+    await page.mouse.click(point.x, point.y);
+    assert.equal(placements.length, 1, "a pending placement cannot admit a second map click");
+    await fulfill(heldPlacement, { json: snapshot });
+  }
+  await expect(page.getByRole("main", { name: "Projects" })).toBeVisible();
+  assert.equal(placements.length, 1, "a map click or tap places the Project exactly once");
+  assert(placements[0].x >= 0.03 && placements[0].x <= 0.97);
+  assert(placements[0].y >= 0.03 && placements[0].y <= 0.97);
+  await page.getByRole("tab", { name: "Location", exact: true }).click();
+  await expect(page.getByRole("tabpanel")).toContainText("Marked on the village map");
+  await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeEnabled();
+  if (output) await page.screenshot({ path: resolve(output, "projects-placed-" + width + ".png"), fullPage: true });
+  if (activeScene) {
+    await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
+    const composer = page.getByRole("textbox", { name: "Message at The Mill", exact: true });
+    await expect(composer).toHaveValue("An unsent Scene draft.");
+    assert(await composer.evaluate((node) => node === window.retainedComposer), "the original Scene stays mounted");
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
+    await page.getByRole("menuitemradio", { name: "Move", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Move to Zone" }).locator('option[value="work"]')).toHaveText(
+      "Captured workshop",
+    );
+  }
+  assert.deepEqual(session, originalSession, "placement and cancellation preserve the Scene's captured state");
+  assert.deepEqual(snapshot.sceneVenue, originalVenue);
   await page.close();
 }
-
-try {
-  await checkControllerLifetime();
-  for (const width of [1366, 390]) {
-    // Draft state belongs to the application even when the Project panel is absent.
-    const { page: draftPage, errors: draftErrors } = await openPage(width, structuredClone(fixture), () => {
-      throw new Error("Editing a draft must not generate an image.");
+await withBrowser(browser, async () => {
+  for (const width of [1280, 390]) {
+    await checkMapPlacement(width);
+    await checkMapPlacement(width, true);
+    const f = await openProjectPage(browser, width, undefined, async (path, body, snapshot) => {
+      if (path === "/projects") {
+        const project = currentProject("created");
+        project.title = body.name;
+        project.venueDraft.name = body.name;
+        project.venueDraft.classes = body.classes;
+        project.venueDraft.description = body.description;
+        project.plan = null;
+        project.lifecycle.builderId = "";
+        project.lifecycle.candidates = [];
+        snapshot.projects.push(project);
+        return;
+      }
+      const [, id, action] = path.split("/").slice(1),
+        project = snapshot.projects.find((p) => p.id === id);
+      assert(project);
+      assert(body.requestId);
+      assert.equal(body.expectedRevision, project.lifecycle.revision);
+      if (action === "plan") {
+        project.plan = body;
+        project.venueDraft.classes = body.classes;
+        project.lifecycle.revision++;
+      }
+      if (action === "revise") {
+        project.lifecycle.change = body;
+        project.lifecycle.revision++;
+      }
+      if (action === "start") {
+        project.status = project.lifecycle.phase = "working";
+        project.venueId = "built";
+        project.lifecycle.workOrder = {
+          startsAt: "2026-10-23T12:00:00Z",
+          completesAt: "2026-10-24T12:00:00Z",
+          remainingMs: 86400000,
+          pausedAt: "",
+        };
+      }
+      if (action === "cancel") project.status = project.lifecycle.phase = "cancelled";
     });
-    await draftPage.getByRole("button", { name: /NEW VENUE.*Imagine a new place/ }).click();
-    await draftPage.getByLabel("Venue name", { exact: true }).fill("Retained draft");
-    await draftPage.getByLabel(/What would this place/).fill("An unsaved plan for the village.");
-    await draftPage.getByRole("button", { name: "Back to menu", exact: true }).click();
-    await draftPage.getByRole("button", { name: "Projects (0)", exact: true }).click();
-    await expect(draftPage.getByLabel("Venue name", { exact: true })).toHaveValue("Retained draft");
-    await expect(draftPage.getByLabel(/What would this place/)).toHaveValue("An unsaved plan for the village.");
-    assert.deepEqual(draftErrors, []);
-    await draftPage.close();
-
-    const revisionSnapshot = projectSnapshot();
-    revisionSnapshot.projects[1].lifecycle.phase = "approval";
-    const { page: revisionPage, errors: revisionErrors } = await openPage(width, revisionSnapshot, () => {
-      throw new Error("Editing a revision must not generate an image.");
-    });
-    await revisionPage.getByRole("button", { name: /RENOVATION.*Workshop/ }).click();
-    await revisionPage.getByRole("button", { name: "Revise reviewed proposal", exact: true }).click();
-    await revisionPage.getByLabel("Project name", { exact: true }).fill("Retained renovation revision");
-    await revisionPage.getByLabel(/^Reviewed change/).fill("An unsaved revision of the reviewed terms.");
-    await revisionPage.getByRole("button", { name: "Back to menu", exact: true }).click();
-    await revisionPage.getByRole("button", { name: "Projects (2)", exact: true }).click();
-    await expect(revisionPage.getByLabel("Project name", { exact: true })).toHaveValue("Retained renovation revision");
-    await expect(revisionPage.getByLabel(/^Reviewed change/)).toHaveValue("An unsaved revision of the reviewed terms.");
-    await revisionPage.getByRole("button", { name: "Cancel revision", exact: true }).click();
-    await expect(revisionPage.getByLabel("Project name", { exact: true })).toHaveCount(0);
-    assert.deepEqual(revisionErrors, []);
-    await revisionPage.close();
-
-    // Two paused requests prove per-Project admission, completion and cleanup.
-    const requests = [];
-    const { page, errors } = await openPage(width, projectSnapshot(), (route) => {
-      requests.push(route);
-    });
-    await page.getByRole("button", { name: /NEW VENUE.*Canvas Tent/ }).click();
-    await page.getByRole("button", { name: "Visit finished Venue", exact: true }).click();
-    let editor = page.locator(".marinara-capability-villages-project-finish-visit");
-    await editor.getByLabel("Physical form", { exact: true }).fill("A retained canvas shelter");
-    await editor.getByLabel("Exterior appearance", { exact: true }).fill("Canvas in morning light.");
-    await editor.getByRole("button", { name: "Use Exterior only", exact: true }).click();
-    await editor.getByRole("button", { name: "Generate image", exact: true }).click();
-    await expect.poll(() => requests.length).toBe(1);
-    await page.getByRole("button", { name: "Back to menu", exact: true }).click();
-    await page.getByRole("button", { name: "Projects (2)", exact: true }).click();
-    editor = page.locator(".marinara-capability-villages-project-finish-visit");
-    await expect(editor.getByLabel("Physical form", { exact: true })).toHaveValue("A retained canvas shelter");
-    await expect(editor.getByRole("button", { name: "Generate image", exact: true })).toBeDisabled();
-    await editor.getByRole("button", { name: "Back to Project", exact: true }).click();
-    await selectProject(page, /RENOVATION.*Workshop/);
-    await page.getByRole("button", { name: "Generate image", exact: true }).click();
-    await expect.poll(() => requests.length).toBe(2);
-    await requests[0].fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ id: "canvas-image", url: image("#aa7744") }),
-    });
-    // A's completion cannot attach to B or clear B's pending request.
-    await expect(page.getByRole("button", { name: "Generate image", exact: true })).toBeDisabled();
-    await expect(page.getByAltText("Generated Venue candidate")).toHaveCount(0);
-    await page.getByRole("button", { name: "Back to Project", exact: true }).click();
-    await selectProject(page, /NEW VENUE.*Canvas Tent/);
-    await expect(page.getByAltText("Generated Venue candidate")).toBeVisible();
-    await page.getByRole("button", { name: "Use this image", exact: true }).click();
-    await expect(page.getByAltText("exterior preview")).toBeVisible();
-    await page.getByRole("button", { name: "Back to Project", exact: true }).click();
-    await selectProject(page, /RENOVATION.*Workshop/);
-    await requests[1].fulfill({
-      status: 500,
-      contentType: "application/json",
-      body: JSON.stringify({ error: "Workshop image failed" }),
-    });
-    await expect(page.getByRole("alert")).toContainText("Workshop image failed");
-    await expect(page.getByRole("button", { name: "Generate image", exact: true })).toBeEnabled();
-    assert.equal(requests.length, 2, "Navigation and failures must never retry image requests automatically.");
-    await page.getByRole("button", { name: "Back to Project", exact: true }).click();
-    await selectProject(page, /NEW VENUE.*Canvas Tent/);
-    await page.getByRole("button", { name: "Generate image", exact: true }).click();
-    await expect.poll(() => requests.length).toBe(3);
-    await page.getByLabel("Physical form", { exact: true }).fill("A changed shelter");
-    await page.getByRole("button", { name: "Back to Project", exact: true }).click();
-    await selectProject(page, /RENOVATION.*Workshop/);
-    await requests[2].fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ id: "outdated-image", url: image("#4488aa") }),
-    });
-    await expect(page.getByRole("alert")).toContainText("Workshop image failed");
-    await page.getByRole("button", { name: "Back to Project", exact: true }).click();
-    await selectProject(page, /NEW VENUE.*Canvas Tent/);
-    await expect(page.getByRole("alert")).toContainText("Venue changed while the image was being prepared");
-    await expect(page.getByAltText("Generated Venue candidate")).toHaveCount(0);
-    await expect(page.getByAltText("exterior preview")).toBeVisible();
-    await page.getByRole("button", { name: "Generate image", exact: true }).click();
-    await expect.poll(() => requests.length).toBe(4);
-    await requests[3].fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ id: "discarded-image", url: image("#44aa88") }),
-    });
-    await expect(page.getByAltText("Generated Venue candidate")).toBeVisible();
-    await page.getByRole("button", { name: "Discard", exact: true }).click();
-    await expect(page.getByAltText("Generated Venue candidate")).toHaveCount(0);
-    await expect(page.getByAltText("exterior preview")).toBeVisible();
-    assert.equal(requests.length, 4, "Changed inputs, selection and discard must not trigger extra requests.");
-    assert.deepEqual(errors, []);
+    const { page } = f;
+    const screenshot = async (name) => {
+      if (output)
+        await page.screenshot({ path: resolve(output, "projects-" + name + "-" + width + ".png"), fullPage: true });
+    };
+    const select = async (name) =>
+      page.getByRole("navigation", { name: "Projects", exact: true }).getByRole("button", { name }).click();
+    const back = async () => page.getByRole("button", { name: "‹ All Projects", exact: true }).click();
+    await screenshot("index");
+    await select(/Canvas Tent/);
+    await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeEnabled();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).hover();
+    const selectedContrast = await page
+      .getByRole("tab", { name: "Design & Spaces", exact: true })
+      .evaluate((element) => {
+        const style = getComputedStyle(element);
+        const luminance = (color) =>
+          color
+            .match(/[0-9.]+/g)
+            .slice(0, 3)
+            .map(Number)
+            .map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            })
+            .reduce((sum, value, i) => sum + value * [0.2126, 0.7152, 0.0722][i], 0);
+        const a = luminance(style.color),
+          b = luminance(style.backgroundColor);
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+      });
+    assert(selectedContrast >= 4.5, "a hovered selected tab retains readable contrast");
+    await page.getByLabel("Physical design", { exact: true }).fill("An edited pavilion");
+    await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
+    await page.getByRole("tab", { name: "Location", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Change map position", exact: true })).toBeDisabled();
+    await expect(page.getByRole("tabpanel")).toContainText("Save design to choose a map position.");
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    // Keyboard navigation changes tabs, never the design or server.
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).press("ArrowRight");
+    await expect(page.getByRole("tab", { name: "People", exact: true })).toBeFocused();
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await page.getByRole("button", { name: "Zones", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Project Zones" })
+      .getByRole("button", { name: /Art room/ })
+      .click();
+    await page.getByLabel("Zone Used For", { exact: true }).fill("Painting");
+    await screenshot("zones");
+    await page.getByRole("tab", { name: "People", exact: true }).click();
+    await expect(
+      page.getByRole("group", { name: "Willing leads" }).getByRole("button", { name: /Mara/ }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("group", { name: "Willing leads" }).getByRole("button")).toHaveCount(1);
+    await screenshot("people");
+    await back();
+    await select(/Workshop/);
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await expect(
+      page.getByRole("group", { name: "Classes", exact: true }).getByRole("button", { name: "Community", exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await page.getByLabel("Physical design", { exact: true }).fill("A revised workshop");
+    await back();
+    await select(/Canvas Tent/);
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await page.getByRole("button", { name: "Design", exact: true }).click();
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("An edited pavilion");
+    await page.getByRole("button", { name: "Save design", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeEnabled();
+    assert.equal(f.calls.length, 1, "editing, saving and navigation never start work");
+    assert.equal(f.calls[0].body.expectedRevision, 1);
+    assert.equal(f.calls[0].body.spaces[0].purpose, "Painting");
+    await screenshot("design");
+    await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
+    await expect(page.getByRole("tabpanel")).toContainText("An edited pavilion");
+    await expect(page.getByRole("tabpanel")).not.toContainText("A shared art pavilion.");
+    await page.getByRole("button", { name: "Start · 24 hours", exact: true }).click();
+    await expect(page.locator("time")).toHaveAttribute("datetime", "2026-10-24T12:00:00Z");
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveAttribute("readonly", "");
+    await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
+    await page.getByRole("button", { name: "Cancel Project", exact: true }).click();
+    await back();
+    await page.getByRole("button", { name: "History", exact: true }).click();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Project history", exact: true })
+        .getByRole("button", { name: /Canvas Tent.*Cancelled/ }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "‹ Projects", exact: true }).click();
+    await select(/Workshop/);
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A revised workshop");
+    await page.getByRole("button", { name: "Save design", exact: true }).click();
+    assert.deepEqual(
+      f.calls.at(-1).body.classes,
+      ["community", "workplace"],
+      "saved Classes do not reset to the live target",
+    );
+    // All sections fit on desktop and phone, with a single visible section.
+    for (const name of ["Overview & Progress", "Design & Spaces", "People", "Location"]) {
+      await page.getByRole("tab", { name, exact: true }).click();
+      const box = await page.getByRole("main", { name: "Projects" }).boundingBox();
+      assert(box && box.x >= 0 && box.x + box.width <= width + 1, name + " stays within the viewport");
+      assert(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        name + " does not overflow",
+      );
+    }
+    await back();
+    await page.getByRole("button", { name: "New Venue", exact: true }).click();
+    await page.getByLabel("Name", { exact: true }).fill("New Garden");
+    await page.getByLabel("Physical design", { exact: true }).fill("A shared garden.");
+    await page
+      .getByRole("group", { name: "Classes", exact: true })
+      .getByRole("button", { name: "Workplace", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Create draft", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "New Garden", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start · 24 hours", exact: true })).toBeDisabled();
+    assert.deepEqual(f.calls.find((call) => call.path === "/projects").body.classes, ["community", "workplace"]);
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await expect(page.getByLabel("Physical design", { exact: true })).toHaveValue("A shared garden.");
+    const longDesign = "A shared garden with sheltered work tables, winding paths and open planting beds. ".repeat(24);
+    await page.getByLabel("Physical design", { exact: true }).fill(longDesign);
+    await page.getByRole("button", { name: "Zones", exact: true }).click();
+    if (width < 700)
+      await page
+        .getByRole("navigation", { name: "Project Zones" })
+        .getByRole("button", { name: /Entrance/ })
+        .click();
+    await expect(page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue("");
+    await page.getByLabel("Long-term details", { exact: true }).first().fill("A narrow gate beside the old oak.");
+    await page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await expect(page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue(
+      "A narrow gate beside the old oak.",
+    );
+    await page.getByRole("tab", { name: "Overview & Progress", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Full design", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Save design", exact: true }).click();
+    await expect.poll(() => f.calls.at(-1)?.path).toBe("/projects/created/plan");
+    assert.equal(f.calls.at(-1).body.form, longDesign);
+    assert.equal(f.calls.at(-1).body.exteriorDescription, "A narrow gate beside the old oak.");
+    const reopened = await openProjectPage(browser, width, structuredClone(f.snapshot));
+    await reopened.page
+      .getByRole("navigation", { name: "Projects", exact: true })
+      .getByRole("button", { name: /New Garden/ })
+      .click();
+    await expect(reopened.page.getByRole("button", { name: "Full design", exact: true })).toBeVisible();
+    await reopened.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await expect(reopened.page.getByLabel("Physical design", { exact: true })).toHaveValue(longDesign);
+    await reopened.page.getByRole("button", { name: "Zones", exact: true }).click();
+    if (width < 700)
+      await reopened.page
+        .getByRole("navigation", { name: "Project Zones" })
+        .getByRole("button", { name: /Entrance/ })
+        .click();
+    await expect(reopened.page.getByLabel("Long-term details", { exact: true }).first()).toHaveValue(
+      "A narrow gate beside the old oak.",
+    );
+    await reopened.page.close();
     await page.close();
+
+    // Six-Zone admission and private specifications are authored through the same selected-space editor.
+    const data = projectSnapshot();
+    data.projects[0].plan.spaces = Array.from({ length: 6 }, (_, i) => ({
+      ...data.projects[0].plan.spaces[0],
+      id: "art-" + i,
+      name: "Art " + i,
+    }));
+    const limit = await openProjectPage(browser, width, data);
+    await limit.page
+      .getByRole("navigation", { name: "Projects", exact: true })
+      .getByRole("button", { name: /Canvas Tent/ })
+      .click();
+    await limit.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await limit.page.getByRole("button", { name: "Zones", exact: true }).click();
+    await expect(limit.page.getByRole("button", { name: "Add Zone", exact: true })).toBeDisabled();
+    await expect(limit.page.getByRole("button", { name: "Add private Zone", exact: true })).toBeDisabled();
+    await limit.page.getByRole("navigation", { name: "Project Zones" }).getByRole("button", { name: /Art 0/ }).click();
+    if (width < 700) await limit.page.getByRole("button", { name: "Options", exact: true }).click();
+    await limit.page.getByRole("button", { name: "Remove Zone", exact: true }).click();
+    await limit.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
+    await limit.page.getByLabel("Zone Name", { exact: true }).fill("Quiet room");
+    if (width < 700) await limit.page.getByRole("button", { name: "Long-term details", exact: true }).click();
+    await limit.page.getByLabel("Long-term details", { exact: true }).fill("A quiet canvas alcove.");
+    await expect(limit.page.getByLabel("Room Specification", { exact: true })).toHaveCount(0);
+    await limit.page.getByRole("button", { name: "Save design", exact: true }).click();
+    await expect.poll(() => limit.calls.length).toBe(1);
+    assert.equal(limit.calls[0].body.spaces.length, 5);
+    assert.equal(limit.calls[0].body.privateSpaces[0].description, "A quiet canvas alcove.");
+    assert.deepEqual(limit.calls[0].body.privateSpaces[0].connectedTo, ["exterior"]);
+    const payload = limit.calls[0].body;
+    const decoded = readBaseVenueLayout(
+      { ...payload, description: payload.exteriorDescription },
+      payload.classes,
+      "",
+      () => null,
+    );
+    assert.equal(decoded.length, 7, "the actual production decoder admits the authored six-Zone design");
+    assert.equal(decoded.at(-1).access.mode, "permission-required");
+    await limit.page.close();
+    const restricted = await openProjectPage(browser, width);
+    await restricted.page
+      .getByRole("navigation", { name: "Projects", exact: true })
+      .getByRole("button", { name: /Workshop/ })
+      .click();
+    await restricted.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await restricted.page.getByRole("button", { name: "Zones", exact: true }).click();
+    await restricted.page.getByRole("button", { name: "Add private Zone", exact: true }).click();
+    await restricted.page.getByLabel("Zone Name", { exact: true }).fill("Archive");
+    if (width < 700) await restricted.page.getByRole("button", { name: "Long-term details", exact: true }).click();
+    await restricted.page.getByLabel("Room Specification", { exact: true }).fill("Shelves and a reading desk.");
+    if (width < 700) await restricted.page.getByRole("button", { name: "Options", exact: true }).click();
+    if (width < 700) await restricted.page.getByRole("button", { name: "Controllers", exact: true }).click();
+    await restricted.page
+      .getByRole("group", { name: "Zone controllers" })
+      .getByRole("button", { name: "You", exact: true })
+      .click();
+    await restricted.page.getByRole("button", { name: "Save design", exact: true }).click();
+    await expect.poll(() => restricted.calls.length).toBe(1);
+    const terms = restricted.calls[0].body;
+    validateLayoutZones(restricted.snapshot.settings.venues[0], terms.zones, terms.classes, {
+      villagers: restricted.snapshot.villagers,
+    });
+    assert.deepEqual(terms.zones.at(-1).controllerIds, ["player"], "new restricted authority is an explicit choice");
+    await restricted.page.close();
+
+    const changed = await openProjectPage(browser, width);
+    await changed.page
+      .getByRole("navigation", { name: "Projects", exact: true })
+      .getByRole("button", { name: /Canvas Tent/ })
+      .click();
+    await changed.page.getByRole("tab", { name: "Design & Spaces", exact: true }).click();
+    await changed.page.getByLabel("Physical design", { exact: true }).fill("Local edit");
+    changed.snapshot.projects[0].plan.form = "A design saved elsewhere";
+    changed.snapshot.projects[0].lifecycle.revision++;
+    await changed.update();
+    await expect(changed.page.getByRole("button", { name: "Save design", exact: true })).toBeDisabled();
+    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveValue("Local edit");
+    await changed.page.getByRole("button", { name: "Discard edits", exact: true }).click();
+    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveValue("A design saved elsewhere");
+    assert.equal(changed.calls.length, 0, "a stale local draft cannot overwrite a newer revision");
+    await changed.page.getByLabel("Physical design", { exact: true }).fill("Another local edit");
+    changed.snapshot.projects[0].status = changed.snapshot.projects[0].lifecycle.phase = "paused";
+    changed.snapshot.projects[0].lifecycle.workOrder = {
+      remainingMs: 60000,
+      startsAt: "",
+      completesAt: "",
+      pausedAt: "",
+    };
+    await changed.update();
+    await expect(changed.page.getByRole("button", { name: "Resume", exact: true })).toBeDisabled();
+    await changed.page.getByRole("button", { name: "Discard edits", exact: true }).click();
+    await expect(changed.page.getByRole("button", { name: "Resume", exact: true })).toBeEnabled();
+    await expect(changed.page.getByLabel("Physical design", { exact: true })).toHaveAttribute("readonly", "");
+    await changed.page.close();
   }
   console.log(
-    "Mocked desktop/mobile Project drafts, selection, pending image navigation and independent completion passed.",
+    "Blueprint Projects on desktop/phone: tabs, keyboard access, retained edits, explicit Start, deadline, cancellation, two Classes, six Zones and private specifications passed.",
   );
-} finally {
-  await browser.close();
-}
+});

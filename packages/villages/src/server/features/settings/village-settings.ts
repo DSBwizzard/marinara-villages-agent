@@ -14,13 +14,21 @@ export function setVillagePromptKnowledge(...args: Parameters<VillageSettings["s
 export function setVillageLoreSettings(...args: Parameters<VillageSettings["setVillageLoreSettings"]>) {
   return villageSettings().setVillageLoreSettings(...args);
 }
-export function setVillageStoryPace(...args: Parameters<VillageSettings["setVillageStoryPace"]>) {
-  return villageSettings().setVillageStoryPace(...args);
+export function setVillageBackgroundPace(...args: Parameters<VillageSettings["setVillageBackgroundPace"]>) {
+  return villageSettings().setVillageBackgroundPace(...args);
+}
+export function setVillageNarrativeConsequence(...args: Parameters<VillageSettings["setVillageNarrativeConsequence"]>) {
+  return villageSettings().setVillageNarrativeConsequence(...args);
 }
 export function setVillageSpriteCardFlipEnabled(
   ...args: Parameters<VillageSettings["setVillageSpriteCardFlipEnabled"]>
 ) {
   return villageSettings().setVillageSpriteCardFlipEnabled(...args);
+}
+export function setVillageSpriteVariantsEnabled(
+  ...args: Parameters<VillageSettings["setVillageSpriteVariantsEnabled"]>
+) {
+  return villageSettings().setVillageSpriteVariantsEnabled(...args);
 }
 export function setVillageSendOnEnter(...args: Parameters<VillageSettings["setVillageSendOnEnter"]>) {
   return villageSettings().setVillageSendOnEnter(...args);
@@ -36,15 +44,10 @@ export function setVillageName(...args: Parameters<VillageSettings["setVillageNa
 export function setVillagePlayer(...args: Parameters<VillageSettings["setVillagePlayer"]>) {
   return villageSettings().setVillagePlayer(...args);
 }
-export function setVillageSetting(...args: Parameters<VillageSettings["setVillageSetting"]>) {
-  return villageSettings().setVillageSetting(...args);
-}
-export function addNotice(...args: Parameters<VillageSettings["addNotice"]>) {
-  return villageSettings().addNotice(...args);
-}
-export function removeNoticeAt(...args: Parameters<VillageSettings["removeNoticeAt"]>) {
-  return villageSettings().removeNoticeAt(...args);
-}
 export function setScenerySettings(...args: Parameters<VillageSettings["setScenerySettings"]>) {
   return villageSettings().setScenerySettings(...args);
+}
+
+export function setVillageWorldName(...args: Parameters<VillageSettings["setVillageWorldName"]>) {
+  return villageSettings().setVillageWorldName(...args);
 }

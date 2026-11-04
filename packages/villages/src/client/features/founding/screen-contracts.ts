@@ -1,7 +1,5 @@
 import type { PortraitMap } from "../../shared/types.js";
 
-import type { createFoundingChooseSetupScenario } from "./setup-controller.js";
-
 import type { FoundingState } from "./useFoundingState.js";
 
 import type { createFoundingExitSetupDraft } from "./draft-controller.js";
@@ -42,7 +40,6 @@ export type FoundingScreenController = {
   readonly setSetupTimeZone?: (value: string) => void;
   readonly busy: boolean;
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
-  readonly chooseSetupScenario: ReturnType<typeof createFoundingChooseSetupScenario>;
   readonly connectionSetupProblem: FoundingState["connectionSetupProblem"];
   readonly draftPins: import("../../shared/types").MapPin[];
   readonly draftSaveError: FoundingState["draftSaveError"];
@@ -69,7 +66,7 @@ export type FoundingScreenController = {
   readonly sceneryStyle: FoundingState["sceneryStyle"];
   readonly sceneryStyleProfileId: FoundingState["sceneryStyleProfileId"];
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";
-  readonly selectedResidentContexts: ReturnType<typeof useFoundingSelectedResidentContexts>;
+  readonly selectedResidentAdmissions: ReturnType<typeof useFoundingSelectedResidentContexts>;
   readonly selectedSetupVenueId: FoundingState["selectedSetupVenueId"];
   readonly setConnectionSetupProblem: FoundingState["setConnectionSetupProblem"];
   readonly setMapVisualLore: FoundingState["setMapVisualLore"];
@@ -83,7 +80,8 @@ export type FoundingScreenController = {
   readonly setSelectedSetupVenueId: FoundingState["setSelectedSetupVenueId"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupFocusIssue: FoundingState["setSetupFocusIssue"];
-  readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
+  readonly setSetupSpriteRevisions: FoundingState["setSetupSpriteRevisions"];
+  readonly setupSpriteRevisions: FoundingState["setupSpriteRevisions"];
   readonly setSetupFoundingVillagerIds: FoundingState["setSetupFoundingVillagerIds"];
   readonly setSetupKeyboardSpot: FoundingState["setSetupKeyboardSpot"];
   readonly setSetupLoreTokenBudgetDraft: FoundingState["setSetupLoreTokenBudgetDraft"];
@@ -96,20 +94,19 @@ export type FoundingScreenController = {
   readonly setSetupMapSource: FoundingState["setSetupMapSource"];
   readonly setSetupName: FoundingState["setSetupName"];
   readonly setSetupPlacementError: FoundingState["setSetupPlacementError"];
-  readonly setSetupPlayerRole: FoundingState["setSetupPlayerRole"];
+  readonly setSetupPlayerBackground: FoundingState["setSetupPlayerBackground"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
-  readonly setSetupResidentContexts: FoundingState["setSetupResidentContexts"];
+  readonly setSetupResidentAdmissions: FoundingState["setSetupResidentAdmissions"];
+  readonly setSetupWorldName: FoundingState["setSetupWorldName"];
   readonly setSetupSetting: FoundingState["setSetupSetting"];
   readonly setSetupShowIssues: FoundingState["setSetupShowIssues"];
   readonly setSetupVenues: FoundingState["setSetupVenues"];
   readonly setSetupWorkspace: FoundingState["setSetupWorkspace"];
-  readonly setSetupWorldFacts: FoundingState["setSetupWorldFacts"];
+  readonly setSetupContext: FoundingState["setSetupContext"];
   readonly settingsError: string;
   readonly setupBeginningSourceKey: string;
   readonly setupEditorOpen: FoundingState["setupEditorOpen"];
   readonly setupFocusIssue: FoundingState["setupFocusIssue"];
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
-  readonly setupFoundingReason: FoundingState["setupFoundingReason"];
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupImageClaim: FoundingState["setupImageClaim"];
   readonly setupImageTarget: FoundingState["setupImageTarget"];
@@ -129,9 +126,10 @@ export type FoundingScreenController = {
   readonly setupMapSrc: string;
   readonly setupName: FoundingState["setupName"];
   readonly setupPlacementError: FoundingState["setupPlacementError"];
-  readonly setupPlayerRole: FoundingState["setupPlayerRole"];
+  readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
   readonly setupProblem: FoundingState["setupProblem"];
-  readonly setupResidentContexts: FoundingState["setupResidentContexts"];
+  readonly setupResidentAdmissions: FoundingState["setupResidentAdmissions"];
+  readonly setupWorldName: FoundingState["setupWorldName"];
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupShowIssues: FoundingState["setupShowIssues"];
   readonly setupStep: FoundingState["setupStep"];
@@ -141,7 +139,7 @@ export type FoundingScreenController = {
   readonly setupVenueBusy: FoundingState["setupVenueBusy"];
   readonly setupVenues: FoundingState["setupVenues"];
   readonly setupWorkspace: FoundingState["setupWorkspace"];
-  readonly setupWorldFacts: FoundingState["setupWorldFacts"];
+  readonly setupContext: FoundingState["setupContext"];
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
   readonly suggestSetupVenues: ReturnType<typeof createFoundingSuggestSetupVenues>;
   readonly updateSetupMapRequest: ReturnType<typeof useUpdateSetupMapRequest>;
@@ -162,7 +160,7 @@ export type ResumeScreenController = {
   readonly draftSavedAt: FoundingState["draftSavedAt"];
   readonly newSetupDraft: ReturnType<typeof createFoundingNewSetupDraft>;
   readonly restoreSetupDraft: ReturnType<typeof createFoundingRestoreSetupDraft>;
-  readonly savedSetupDraft: import("./villages-founding-draft").SavedFoundingDraft<
+  readonly savedSetupDraft: import("../../shared/device-drafts").SavedDeviceDraft<
     import("./draft-model").SetupDraftData
   >;
   readonly screen: "room" | "venue" | "home" | "menu" | "setup" | "resume" | "preparing" | "person";

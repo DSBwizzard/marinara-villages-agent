@@ -1,39 +1,28 @@
-import type { ResidentsState } from "./useResidentsState.js";
+import { useCallback, useEffect } from "react";
 import type { CatalogResponse } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { readPersonaPortrait, readPortraits } from "./ResidentPanels.js";
-import { useCallback, useEffect } from "react";
+import type { ResidentsState } from "./useResidentsState.js";
 
 export function useResidentsLoadCatalog(ports: {
   readonly setCatalog: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village").CatalogEntry[]>>;
   readonly setError: React.Dispatch<React.SetStateAction<string>>;
 }) {
-  return useCallback(async (signal?: AbortSignal) => {
-    const { setCatalog, setError } = ports;
+  const { setCatalog, setError } = ports;
 
-    try {
-      const response = await request<CatalogResponse>("/catalog", { signal });
-      setCatalog(response.characters);
-      setError("");
-    } catch (cause) {
-      if (signal?.aborted) return;
-      setError(messageFrom(cause, "Could not read your character library."));
-    }
-  }, []);
-}
-
-export function useResidentPickerLoad(ports: {
-  readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
-  readonly pickerOpen: boolean;
-}) {
-  useEffect(() => {
-    const { loadCatalog, pickerOpen } = ports;
-
-    if (!pickerOpen) return;
-    const controller = new AbortController();
-    void loadCatalog(controller.signal);
-    return () => controller.abort();
-  }, [ports.pickerOpen, ports.loadCatalog]);
+  return useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const response = await request<CatalogResponse>("/catalog", { signal });
+        setCatalog(response.characters);
+        setError("");
+      } catch (cause) {
+        if (signal?.aborted) return;
+        setError(messageFrom(cause, "Could not read your character library."));
+      }
+    },
+    [setCatalog, setError],
+  );
 }
 
 /**
@@ -41,10 +30,7 @@ export function useResidentPickerLoad(ports: {
  *
  * One call for the whole list rather than one per villager: the Engine's
  * summary route takes ids in a batch, and a village of twelve asking twelve
- * times is twelve chances to be slow for nothing. Only ids nobody has asked
- * about travel, so opening the picker over a list already on screen costs no
- * call at all, and a search that narrows it costs one small call for whoever
- * has just become visible.
+ * times is twelve chances to be slow for nothing. Only ids nobody has asked about travel.
  *
  * Nothing here fails loudly. A picture that could not be read is a villager
  * wearing their initial, which is what they wore before any of this existed —
@@ -58,32 +44,40 @@ export function useResidentPortraits(ports: {
   readonly portraitWanted: string;
   readonly setPortraits: ResidentsState["setPortraits"];
 }) {
-  useEffect(() => {
-    const { portraitsAsked, portraitWanted, setPortraits } = ports;
+  const { portraitsAsked, portraitWanted, setPortraits } = ports;
 
-    const missing = portraitWanted.split("\n").filter((id) => id.length > 0 && !portraitsAsked.current.has(id));
+  useEffect(() => {
+    const asked = portraitsAsked.current;
+    const missing = portraitWanted.split("\n").filter((id) => id.length > 0 && !asked.has(id));
     if (missing.length === 0) return;
-    for (const id of missing) portraitsAsked.current.add(id);
+    for (const id of missing) asked.add(id);
     const controller = new AbortController();
+    let settled = false;
     void (async () => {
       try {
         const read = await readPortraits(missing, controller.signal);
         if (!controller.signal.aborted) setPortraits((current) => ({ ...current, ...read }));
       } catch {
         // The initial is already on screen, and it is the whole fallback.
+      } finally {
+        if (!controller.signal.aborted) settled = true;
       }
     })();
-    return () => controller.abort();
-  }, [ports.portraitWanted]);
+    return () => {
+      controller.abort();
+      // Cleanup runs before the next wanted list claims these IDs.
+      if (!settled) for (const id of missing) asked.delete(id);
+    };
+  }, [portraitWanted, portraitsAsked, setPortraits]);
 }
 
 export function usePersonaPortrait(ports: {
   readonly personaPortraitId: string;
   readonly setPersonaPortrait: React.Dispatch<React.SetStateAction<import("../../shared/types").Portrait>>;
 }) {
-  useEffect(() => {
-    const { personaPortraitId, setPersonaPortrait } = ports;
+  const { personaPortraitId, setPersonaPortrait } = ports;
 
+  useEffect(() => {
     setPersonaPortrait(null);
     if (personaPortraitId.length === 0) return;
     const controller = new AbortController();
@@ -97,5 +91,5 @@ export function usePersonaPortrait(ports: {
       }
     })();
     return () => controller.abort();
-  }, [ports.personaPortraitId]);
+  }, [personaPortraitId, setPersonaPortrait]);
 }

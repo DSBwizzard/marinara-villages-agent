@@ -1,0 +1,57 @@
+import type { NarrativeSituation } from "../models/narrative-model.js";
+import type { VillageVenue, VillageState } from "../models/world.js";
+import { badRequest } from "./errors.js";
+import { asRecord, asTrimmedString } from "./coerce.js";
+import { ensureNarrative } from "./narrative-development.js";
+import { rememberDomainFact } from "./domain-memories.js";
+
+export function readFoundingCircumstances(value: unknown, venues: VillageVenue[], at: string): NarrativeSituation[] {
+  if (!Array.isArray(value) || value.length > 4) throw badRequest("Choose at most four starting circumstances.");
+  return value.map((raw, index) => {
+    const row = asRecord(raw),
+      summary = asTrimmedString(row.summary);
+    if (!summary || summary.length > 600 || !["village", "zone"].includes(String(row.scope)))
+      throw badRequest("Each starting circumstance needs a scope and up to 600 characters.");
+    const venueId = asTrimmedString(row.venueId),
+      zoneId = asTrimmedString(row.zoneId);
+    if (
+      row.scope === "zone" &&
+      !venues.find((venue) => venue.id === venueId)?.zones?.some((zone) => zone.id === zoneId)
+    )
+      throw badRequest("Choose an existing Zone for each Zone-local starting circumstance.");
+    return {
+      id: `founding:${index}`,
+      scope: row.scope as "village" | "zone",
+      revision: 1,
+      title: `Starting circumstance ${index + 1}`,
+      summary,
+      status: "active",
+      targets: row.scope === "zone" ? [{ venueId, zoneId }] : [],
+      updatedAt: at,
+    };
+  });
+}
+
+export function seedFoundingCircumstances(
+  state: VillageState,
+  situations: NarrativeSituation[],
+  knowers: string[],
+  at: string,
+): void {
+  ensureNarrative(state, at).situations = situations;
+  for (const situation of situations) {
+    const parts: string[] = [];
+    let part = "";
+    for (const character of situation.summary) {
+      if (Buffer.byteLength(part + character, "utf8") > 600) {
+        parts.push(part);
+        part = "";
+      }
+      part += character;
+    }
+    if (part) parts.push(part);
+    parts.forEach((text, index) =>
+      rememberDomainFact(state, { id: `${situation.id}:${index}`, at, recordedAt: at, text, knowers, subjects: [] }),
+    );
+  }
+}

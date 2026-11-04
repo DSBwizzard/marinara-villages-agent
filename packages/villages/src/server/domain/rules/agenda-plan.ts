@@ -63,13 +63,11 @@ export function villageAgendaDay(proposed: unknown, venues: readonly VillageVenu
   });
 }
 
-export function unwrittenVillageAgenda(venues: readonly VillageVenue[], name: string): VillageAgenda {
-  const now = new Date();
+export function unwrittenVillageAgenda(venues: readonly VillageVenue[], name: string, now = new Date()): VillageAgenda {
   const week = workingAgendaWeek(venues, name);
   const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
   return {
     routineProfile: adoptedProfile(week),
-    wishes: [],
     routineSummary: "An ordinary day around the village.",
     day: villageAgendaDay(null, venues, name),
     week,

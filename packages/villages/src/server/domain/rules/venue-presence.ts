@@ -1,41 +1,34 @@
-import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager } from "../models/world.js";
-import { conflict } from "./errors.js";
-import { venueResidentIds } from "./venue-model.js";
-import { VILLAGE_WEEKDAYS } from "./village-clock.js";
+import type { VillageState } from "../models/world.js";
+import { agendaBlocksFor, agendaDateKey } from "./agenda-week.js";
+import { calendarAt } from "../../../shared/helpers/zoned-date.js";
+import { villagePresence } from "./village-projections.js";
+import { MAX_ZONE_VILLAGERS } from "./venue-model.js";
 
-/** Reject a schedule that would put a fifth villager in any Venue at once. */
-export function assertVillagePresence(state: VillageState, candidateId = "", candidate?: VillageAgenda): void {
-  for (const weekday of VILLAGE_WEEKDAYS) {
-    const rows = state.villagers.map((villager) => {
-      const agenda = villager.characterId === candidateId ? (candidate ?? villager.agenda) : villager.agenda;
-      const blocks: Array<Pick<VillageAgendaBlock, "startMinute" | "endMinute" | "venueId">> =
-        agenda?.week?.[weekday] ?? agenda?.day ?? [];
-      const homeId = state.venues.find((venue) => venueResidentIds(venue).includes(villager.characterId))?.id ?? "";
-      return { villager, blocks, homeId };
-    });
-    const boundaries = new Set([0, 1440]);
-    for (const row of rows)
-      for (const block of row.blocks) {
-        boundaries.add(block.startMinute);
-        boundaries.add(block.endMinute);
-      }
-    for (const minute of [...boundaries].sort((a, b) => a - b).slice(0, -1)) {
-      const present = new Map<string, VillageVillager[]>();
-      for (const row of rows) {
-        const venueId =
-          row.blocks.find((block) => block.startMinute <= minute && minute < block.endMinute)?.venueId || row.homeId;
-        if (!venueId || !state.venues.some((venue) => venue.id === venueId)) continue;
-        const people = present.get(venueId) ?? [];
-        people.push(row.villager);
-        present.set(venueId, people);
-        if (people.length > 4) {
-          const venue = state.venues.find((entry) => entry.id === venueId)!;
-          const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-          throw conflict(
-            `${venue.name} would have five villagers at ${weekday} ${time}. Choose another Venue or time.`,
-          );
-        }
-      }
+/** Check every occupied interval, counting a requested group atomically. */
+export function zoneActivityFits(
+  state: VillageState,
+  actorIds: readonly string[],
+  venueId: string,
+  zoneId: string,
+  startMinute: number,
+  endMinute: number,
+  date: Date,
+): boolean {
+  if (actorIds.length > MAX_ZONE_VILLAGERS) return false;
+  const boundaries = new Set([startMinute]);
+  for (const resident of state.villagers) {
+    if (!resident.agenda) continue;
+    for (const block of agendaBlocksFor(resident.agenda, resident.ingestSchedule !== false, date)) {
+      for (const minute of [block.startMinute, block.endMinute])
+        if (minute > startMinute && minute < endMinute) boundaries.add(minute);
     }
   }
+  for (const minute of boundaries) {
+    const at = calendarAt(date, agendaDateKey(date), minute);
+    const others = [...villagePresence(state, minute, at)].filter(
+      ([id, position]) => !actorIds.includes(id) && position.id === venueId && position.zoneId === zoneId,
+    );
+    if (others.length + actorIds.length > MAX_ZONE_VILLAGERS) return false;
+  }
+  return true;
 }

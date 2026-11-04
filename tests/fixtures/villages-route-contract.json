@@ -1,5 +1,5 @@
 {
-  "baseline": "9e12f23be71c137c2e5017375641f72ec45b38b3",
+  "baseline": "native-memories",
   "routes": [
     {
       "method": "get",
@@ -16,15 +16,75 @@
     },
     {
       "method": "get",
+      "path": "/villagers/:characterId/wishes/inspect"
+    },
+    {
+      "method": "patch",
+      "path": "/villagers/:characterId/wishes/:wishId/follow"
+    },
+    {
+      "method": "get",
+      "path": "/mailbox"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads"
+    },
+    {
+      "method": "get",
+      "path": "/mailbox/threads/:threadId/messages/:messageId"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads/:threadId/messages"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads/:threadId/read"
+    },
+    {
+      "method": "post",
+      "path": "/mailbox/threads/:threadId/messages/:messageId/retry"
+    },
+    {
+      "method": "post",
+      "path": "/relationships/outbox/:id/recovery"
+    },
+    {
+      "method": "post",
+      "path": "/relationships/clarifications"
+    },
+    {
+      "method": "get",
       "path": "/relationships"
     },
     {
-      "method": "post",
-      "path": "/villagers/:characterId/wishes/:wishId/retire"
+      "method": "get",
+      "path": "/relationships/inspect"
+    },
+    {
+      "method": "get",
+      "path": "/characters/:characterId/sprites/setup/settled"
+    },
+    {
+      "method": "get",
+      "path": "/characters/:characterId/sprites/setup"
     },
     {
       "method": "post",
-      "path": "/relationships/creator"
+      "path": "/characters/:characterId/sprites/setup/prepare"
+    },
+    {
+      "method": "post",
+      "path": "/characters/:characterId/sprites/setup/save"
+    },
+    {
+      "method": "post",
+      "path": "/characters/:characterId/sprites/setup/frame"
+    },
+    {
+      "method": "post",
+      "path": "/characters/:characterId/sprites/setup/apply"
     },
     {
       "method": "get",
@@ -95,13 +155,18 @@
       "path": "/image-style-profiles"
     },
     {
-      "method": "get",
-      "path": "/town-map"
+      "method": "post",
+      "path": "/maps",
+      "bodyLimit": 8065536
     },
     {
       "method": "put",
-      "path": "/town-map",
+      "path": "/maps/:id",
       "bodyLimit": 8065536
+    },
+    {
+      "method": "patch",
+      "path": "/villagers/:characterId/description"
     },
     {
       "method": "post",
@@ -129,6 +194,14 @@
     },
     {
       "method": "get",
+      "path": "/rooms/:id/playback"
+    },
+    {
+      "method": "get",
+      "path": "/rooms/:id/history"
+    },
+    {
+      "method": "get",
       "path": "/rooms/active"
     },
     {
@@ -140,20 +213,8 @@
       "path": "/rooms/zone"
     },
     {
-      "method": "get",
-      "path": "/spinoffs/active"
-    },
-    {
-      "method": "post",
-      "path": "/spinoffs/begin"
-    },
-    {
-      "method": "post",
-      "path": "/spinoffs/prepare"
-    },
-    {
-      "method": "post",
-      "path": "/spinoffs/resolve"
+      "method": "put",
+      "path": "/venues/:venueId/layout"
     },
     {
       "method": "post",
@@ -165,7 +226,7 @@
     },
     {
       "method": "put",
-      "path": "/venues/:venueId/zones/:zoneId"
+      "path": "/venues/:venueId/zones/:zoneId/name"
     },
     {
       "method": "post",
@@ -206,6 +267,11 @@
     },
     {
       "method": "post",
+      "path": "/rooms/:id/changes/:submissionId/continue",
+      "bodyLimit": 2048
+    },
+    {
+      "method": "post",
       "path": "/rooms/:id/changes/replay"
     },
     {
@@ -230,19 +296,7 @@
     },
     {
       "method": "get",
-      "path": "/rooms/archive"
-    },
-    {
-      "method": "get",
-      "path": "/rooms/archive/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/rooms/archive/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/rooms/archive"
+      "path": "/rooms/:id/recovery"
     },
     {
       "method": "get",
@@ -263,6 +317,15 @@
     {
       "method": "patch",
       "path": "/usage/pricing"
+    },
+    {
+      "method": "get",
+      "path": "/debug/lore"
+    },
+    {
+      "method": "post",
+      "path": "/debug/lore",
+      "bodyLimit": 12000
     },
     {
       "method": "get",
@@ -312,27 +375,15 @@
     },
     {
       "method": "post",
-      "path": "/setup/scenario-imprint/draft"
-    },
-    {
-      "method": "post",
-      "path": "/setup/town-map/generate"
+      "path": "/maps/generate"
     },
     {
       "method": "get",
-      "path": "/setup/town-map/generation/:actionId"
+      "path": "/maps/generation/:targetId/:actionId"
     },
     {
       "method": "post",
       "path": "/setup/reset"
-    },
-    {
-      "method": "post",
-      "path": "/bootstrap"
-    },
-    {
-      "method": "post",
-      "path": "/setup/public-venue/names/suggest"
     },
     {
       "method": "post",
@@ -360,6 +411,10 @@
       "path": "/locations/venue/image/retry"
     },
     {
+      "method": "post",
+      "path": "/locations/venue/image/update"
+    },
+    {
       "method": "patch",
       "path": "/locations/venue/image/freeze"
     },
@@ -378,11 +433,11 @@
     },
     {
       "method": "post",
-      "path": "/locations/venue"
+      "path": "/projects"
     },
     {
       "method": "post",
-      "path": "/projects"
+      "path": "/projects/:projectId/plan"
     },
     {
       "method": "post",
@@ -390,19 +445,7 @@
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/request-approval"
-    },
-    {
-      "method": "post",
       "path": "/projects/:projectId/builder"
-    },
-    {
-      "method": "post",
-      "path": "/projects/:projectId/requirements"
-    },
-    {
-      "method": "post",
-      "path": "/projects/:projectId/deliver"
     },
     {
       "method": "post",
@@ -410,11 +453,19 @@
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/debug-complete"
+      "path": "/projects/:projectId/complete"
     },
     {
       "method": "post",
-      "path": "/projects/:projectId/open"
+      "path": "/projects/:projectId/resume"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/cancel"
+    },
+    {
+      "method": "post",
+      "path": "/projects/:projectId/debug-complete"
     },
     {
       "method": "post",
@@ -429,14 +480,6 @@
       "path": "/projects/:projectId/record"
     },
     {
-      "method": "post",
-      "path": "/projects/:projectId/existing-source"
-    },
-    {
-      "method": "post",
-      "path": "/projects/:projectId/reallocate-held"
-    },
-    {
       "method": "get",
       "path": "/projects/:projectId/evidence"
     },
@@ -446,7 +489,31 @@
     },
     {
       "method": "post",
+      "path": "/projects/establishments/:placeId"
+    },
+    {
+      "method": "post",
       "path": "/projects/renovations/:venueId"
+    },
+    {
+      "method": "post",
+      "path": "/places/:id/position"
+    },
+    {
+      "method": "get",
+      "path": "/places"
+    },
+    {
+      "method": "post",
+      "path": "/places/explore"
+    },
+    {
+      "method": "get",
+      "path": "/places/:id"
+    },
+    {
+      "method": "post",
+      "path": "/places/:id/prepare"
     },
     {
       "method": "post",
@@ -457,20 +524,8 @@
       "path": "/venue-requests/:requestId/deny"
     },
     {
-      "method": "post",
-      "path": "/venue-upgrades/:requestId/approve"
-    },
-    {
-      "method": "post",
-      "path": "/venue-upgrades/:requestId/deny"
-    },
-    {
       "method": "put",
       "path": "/locations/venue/:venueId"
-    },
-    {
-      "method": "post",
-      "path": "/locations/venue/:venueId/edit-proposals"
     },
     {
       "method": "get",
@@ -494,10 +549,6 @@
     },
     {
       "method": "post",
-      "path": "/venue-mail/:mailId/decision"
-    },
-    {
-      "method": "post",
       "path": "/residences/approvals"
     },
     {
@@ -509,20 +560,16 @@
       "path": "/residences/debug/complete-now"
     },
     {
+      "method": "get",
+      "path": "/clock"
+    },
+    {
       "method": "post",
-      "path": "/residences/private-space/retry"
+      "path": "/clock/advance"
     },
     {
       "method": "post",
       "path": "/clock/recover"
-    },
-    {
-      "method": "post",
-      "path": "/noticeboard"
-    },
-    {
-      "method": "delete",
-      "path": "/noticeboard/:index"
     },
     {
       "method": "post",
@@ -533,32 +580,48 @@
       "path": "/background/presence"
     },
     {
-      "method": "post",
-      "path": "/background/retry"
+      "method": "get",
+      "path": "/background/catchup"
     },
     {
       "method": "get",
-      "path": "/story"
+      "path": "/debug/return-catchup"
+    },
+    {
+      "method": "post",
+      "path": "/background/catchup/retry"
+    },
+    {
+      "method": "post",
+      "path": "/background/catchup/continue"
+    },
+    {
+      "method": "post",
+      "path": "/background/retry"
     },
     {
       "method": "get",
       "path": "/memories"
     },
     {
-      "method": "delete",
-      "path": "/memories/durable/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/memories/recollections/:id"
-    },
-    {
-      "method": "delete",
-      "path": "/story/:id"
+      "method": "get",
+      "path": "/memories/inspect"
     },
     {
       "method": "get",
-      "path": "/agendas/:characterId/history"
+      "path": "/memories/:id/evidence"
+    },
+    {
+      "method": "get",
+      "path": "/memories/inspect/:id"
+    },
+    {
+      "method": "post",
+      "path": "/memories/:id/forget"
+    },
+    {
+      "method": "post",
+      "path": "/memories/:id/correct"
     },
     {
       "method": "get",
@@ -569,12 +632,48 @@
       "path": "/agendas/:characterId/regenerate"
     },
     {
-      "method": "post",
-      "path": "/agendas/:characterId/completed/:wishId/correct"
-    },
-    {
       "method": "patch",
       "path": "/agendas/:characterId/influence"
+    },
+    {
+      "method": "get",
+      "path": "/repair"
+    },
+    {
+      "method": "get",
+      "path": "/repair/records"
+    },
+    {
+      "method": "get",
+      "path": "/repair/record"
+    },
+    {
+      "method": "post",
+      "path": "/repair/review"
+    },
+    {
+      "method": "post",
+      "path": "/repair/apply"
+    },
+    {
+      "method": "post",
+      "path": "/repair/cancel"
+    },
+    {
+      "method": "post",
+      "path": "/repair/undo"
+    },
+    {
+      "method": "post",
+      "path": "/repair/checkpoints"
+    },
+    {
+      "method": "post",
+      "path": "/repair/restore"
+    },
+    {
+      "method": "delete",
+      "path": "/repair/checkpoints"
     }
   ],
   "freshStartChanges": [

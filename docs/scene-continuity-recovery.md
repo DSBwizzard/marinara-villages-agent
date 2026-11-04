@@ -2,6 +2,8 @@
 
 The current Scene writer uses contract v3. Previously admitted v1/v2 operations retain their saved contracts, source identities and hearing behavior. Existing Scene history never acquires witnesses retrospectively.
 
+An empty supplied cast permits surroundings and player actions, never invented unseen responders or incoming messages. Invalid narrated-sound metadata rejects the uncommitted writer result; explicit retry may replace it while retaining the original player input and bounded private diagnostics. Routing failures caused by System movement interpretation retain valid writing and retry only that interpretation. Reads and reloads never request replacements.
+
 ## Speech capture
 
 Narration returns an internal `playerSpeechCapture` result: captured, silent or uncertain. Captured utterances cite input quote IDs or exact literal spans with one-based occurrences. Code expands the references into player speech, preserving authored resident segments and remapping their effect citations. Quotes are source references, not proof of audibility. Code resolves source offsets, retains interrupted utterances, and persists provenance on the server alongside delivery, targets and code-owned witnesses. Unquoted speech is supported; quotation marks alone do not establish audibility. Thoughts, actions, remembered or hypothetical quotations and negated speech are excluded by the capture contract.
@@ -24,7 +26,7 @@ Complete syntax, speaker attribution, capture, hearing/privacy, movement and phy
 
 Accepted prose, stable line IDs, proposals and failures commit together before acknowledgement. Provider completions are checkpointed before validation. Storage replay makes no provider calls. Domain receipts prevent completed effects from being applied twice. Explicit interpretation retry calls System only for the selected failed domain, using saved evidence and relevant context; it never rewrites accepted prose.
 
-Projects retain responsibility for physical effects and receipt checks. Physical settlement precedes Project bookkeeping, and dependent Wish work waits for its physical receipt. Ordinary conversation can continue while noncritical domains remain pending. Existing state/revision/authority gates continue to govern dependent actions.
+Projects consume consent, lead commitment and withdrawal evidence; objects and transfers have no Project effects. Scene physical settlement precedes agreement bookkeeping, and physical Wishes wait for their authoritative receipt. Ordinary conversation can continue while noncritical domains remain pending. Existing state/revision/authority gates continue to govern dependent actions.
 
 Raw completions remain server-only until recoverable payloads commit; normal operation completion clears redundant checkpoints and attempt payloads. Public Scene projections exclude raw failures, provenance, fingerprints, checkpoints and interpretation history.
 

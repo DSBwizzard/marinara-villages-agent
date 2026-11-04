@@ -14,3 +14,7 @@ export async function dismissSceneNotice(...args: Parameters<SceneChanges["dismi
 export async function replaySceneChanges(...args: Parameters<SceneChanges["replaySceneChanges"]>) {
   return binding.get().replaySceneChanges(...args);
 }
+
+export async function continueSceneChange(...args: Parameters<SceneChanges["continueSceneChange"]>) {
+  return binding.get().continueSceneChange(...args);
+}

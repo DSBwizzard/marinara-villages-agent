@@ -17,20 +17,20 @@ export function useNavigationOpenPerson(ports: {
   readonly setSpriteManagerId: ResidentsState["setSpriteManagerId"];
   readonly spriteLeaveGuard: ResidentsState["spriteLeaveGuard"];
 }) {
-  return useCallback(
-    (navigation: DossierNavigation) => {
-      const {
-        element,
-        profileOrigin,
-        setError,
-        setPersonProfile,
-        setProfileInspection,
-        setScreen,
-        setSpriteManagerId,
-        spriteLeaveGuard,
-      } = ports;
+  const {
+    element,
+    profileOrigin,
+    setError,
+    setPersonProfile,
+    setProfileInspection,
+    setScreen,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  } = ports;
 
-      if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+  return useCallback(
+    async (navigation: DossierNavigation) => {
+      if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return false;
       const button = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const key = button?.getAttribute("data-exploration-row");
       const label = button?.getAttribute("aria-label");
@@ -53,8 +53,18 @@ export function useNavigationOpenPerson(ports: {
       setSpriteManagerId(null);
       setPersonProfile(navigation);
       setScreen("person");
+      return true;
     },
-    [ports.element],
+    [
+      element,
+      profileOrigin,
+      setError,
+      setPersonProfile,
+      setProfileInspection,
+      setScreen,
+      setSpriteManagerId,
+      spriteLeaveGuard,
+    ],
   );
 }
 
@@ -69,23 +79,31 @@ export function useNavigationGoHome(ports: {
   readonly setSpriteManagerId: ResidentsState["setSpriteManagerId"];
   readonly spriteLeaveGuard: ResidentsState["spriteLeaveGuard"];
 }) {
-  return useCallback(() => {
-    const {
-      setExploreSheet,
-      setOpenPlaceId,
-      setPickerOpen,
-      setScreen,
-      setSettingsError,
-      setSpriteManagerId,
-      spriteLeaveGuard,
-    } = ports;
+  const {
+    setExploreSheet,
+    setOpenPlaceId,
+    setPickerOpen,
+    setScreen,
+    setSettingsError,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  } = ports;
 
-    if (spriteLeaveGuard.current && !spriteLeaveGuard.current()) return;
+  return useCallback(async () => {
+    if (spriteLeaveGuard.current && !(await spriteLeaveGuard.current())) return;
     setSpriteManagerId(null);
     setExploreSheet(null);
     setPickerOpen(false);
     setSettingsError("");
     setOpenPlaceId(null);
     setScreen("home");
-  }, []);
+  }, [
+    setExploreSheet,
+    setOpenPlaceId,
+    setPickerOpen,
+    setScreen,
+    setSettingsError,
+    setSpriteManagerId,
+    spriteLeaveGuard,
+  ]);
 }

@@ -1,14 +1,12 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-// Test cases: settings/hooks, settings/package, settings/requests, venues/mutations, venues/requests
+// Test cases: settings/hooks, settings/package
 import { runCase } from "../scripts/test-cases.mjs";
-import { chromium } from "@playwright/test";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { expect } from "./fixtures/fast-browser-expect.mjs";
-import { build } from "esbuild";
+import { build } from "../scripts/esbuild.mjs";
 import { resolve } from "node:path";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
-import { verifySettingsRequestLifetimes } from "./fixtures/villages-settings-request-lifetime.fixture.mjs";
-import { verifyVenueMutationLifetimes } from "./fixtures/villages-venue-mutation-lifetime.fixture.mjs";
-import { verifyVenueRequestLifetimes } from "./fixtures/villages-venue-request-lifetime.fixture.mjs";
 
 function initialSnapshot() {
   const snapshot = structuredClone(fixture);
@@ -45,9 +43,9 @@ const bundle = await build({
       const session=useSettingsDraftSession({...settings,snapshot,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft});
       const loadPersonas=useLoadPersonas({setError:unused,setPersonaDraft:settings.setPersonaDraft,setPersonas});
       const open=useScenesOpenMenu({snapshot,screen,menuPage,setScreen,setMenuPage,openSettings:session.openSettings,
-        loadCatalog:async()=>{},loadLorebooks:async()=>{},loadPersonas,loadProgressDebug:async()=>{},setFocusedRequestId:unused,
+        loadCatalog:async()=>{},loadLorebooks:async()=>{},loadPersonas,debugDiscardEnabled:false,loadProgressDebug:async()=>{},setFocusedRequestId:unused,
         setSiteProjectId:unused,setSettingsError:settings.setSettingsError});
-      const save=useSaveSettings({...settings,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
+      const save=useSaveSettings({...settings,visualLoreDefault,snapshot,setBusy,setSnapshot,acceptSavedSettings:session.acceptSavedSettings});
       window.settingsHarness={settings,open,save:()=>{const promise=save(); (window.pendingSettingsSaves??=[]).push(promise); return promise;},setSnapshot,setBusy,loadPersonas,setSceneryStyle,setSceneryStyleProfileId,setPersonalizeHomes,setVisualLoreDefault,setVenuesDraft};
       return <pre id='state'>{JSON.stringify({knowledge:settings.knowledgeDraft,persona:settings.personaDraft,lore:settings.lorebookDraft,
         budget:settings.loreTokenBudgetDraft,setting:settings.settingDraft,scenery:sceneryStyle,personalizeHomes,visualLoreDefault,
@@ -68,16 +66,17 @@ const bundle = await build({
 const browser = await chromium.launch({ headless: true });
 async function checkHooks(width) {
   const page = await browser.newPage({ viewport: { width, height: 900 } });
+  await mockEngineLookups(page);
   const requests = [],
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("http://settings-hooks.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+    fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/personas"))
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({ personas: [{ id: "active-persona", name: "Active", isActive: true }] }),
@@ -100,13 +99,13 @@ async function checkHooks(width) {
   };
   const respond = async (index, response, status = 200, saveIndex = index, idle = true) => {
     const completed = page.waitForResponse((r) => r.url().endsWith("/settings"));
-    await requests[index].fulfill({ status, contentType: "application/json", body: JSON.stringify(response) });
+    await fulfill(requests[index], { status, contentType: "application/json", body: JSON.stringify(response) });
     await (await completed).finished();
     await page.evaluate((index) => window.pendingSettingsSaves[index], saveIndex);
     if (idle) await expect.poll(async () => (await state()).busy).toBe(false);
   };
   await open("village");
-  await expect.poll(async () => (await state()).personas).toBe(1);
+  assert.equal((await state()).personas, 0, "Settings no longer loads Persona choices");
   assert.equal((await state()).knowledge, "Saved knowledge");
   assert.equal((await state()).persona, "saved-persona");
   await call(() => {
@@ -156,19 +155,21 @@ async function checkHooks(width) {
   await call(() => void window.settingsHarness.save());
   await expect.poll(() => requests.length).toBe(1);
   assert.deepEqual(requests[0].request().postDataJSON(), {
-    promptKnowledge: "Retained unsaved knowledge",
-    playerPersonaId: "",
-    setting: "Updated saved setting",
     selectedLorebookIds: ["edited-book"],
     loreTokenBudget: 2200,
+    useVisualLoreByDefault: false,
   });
-  await call(() => window.settingsHarness.settings.setKnowledgeDraft("Newer edit during save"));
+  await call(() => {
+    window.settingsHarness.settings.setKnowledgeDraft("Newer edit during save");
+    window.settingsHarness.setVisualLoreDefault(true);
+  });
   const saved = structuredClone(changed);
   Object.assign(saved.settings, {
     promptKnowledge: "Canonical saved knowledge",
     playerPersonaId: "",
     selectedLorebookIds: ["canonical-book"],
     loreTokenBudget: 2300,
+    useVisualLoreByDefault: false,
   });
   await respond(0, saved);
   assert.equal(
@@ -178,6 +179,7 @@ async function checkHooks(width) {
   );
   assert.deepEqual((await state()).lore, ["canonical-book"]);
   assert.equal((await state()).budget, 2300);
+  assert.equal((await state()).visualLoreDefault, true, "a newer image preference survives an in-flight save");
   await open("index");
   await open("village");
   assert.equal((await state()).knowledge, "Newer edit during save");
@@ -292,24 +294,83 @@ async function checkHooks(width) {
 }
 
 async function checkPackage(width) {
+  let failVisualSave = false;
   const page = await browser.newPage({ viewport: { width, height: 900 } }),
     errors = [],
     scenerySaves = [],
+    loreSaves = [],
+    worldSaves = [],
+    writingSaves = [],
     usagePreviews = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await mockEngineLookups(page);
   const snapshot = initialSnapshot();
+  const narration = {
+    tense: "present",
+    person: "second",
+    rating: "sfw",
+    writingGuidance: "Saved writing guidance",
+    writingGuidanceMaxLength: 2000,
+  };
+  let narrationReads = 0;
+  let holdWriting = false;
+  let connectionReads = 0;
+  let holdConnectionRead = width === 390;
+  let heldConnectionRead = null;
+  let heldConnectionSave = null;
+  let heldReset = null;
+  const connections = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
   await page.clock.install();
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/setup/reset")) {
+      heldReset = route;
+      return;
+    }
+    if (path.endsWith("/connections")) {
+      if (route.request().method() === "PUT") {
+        heldConnectionSave = route;
+        return;
+      }
+      connectionReads++;
+      if (holdConnectionRead) {
+        heldConnectionRead = route;
+        return;
+      }
+      return fulfill(route, { json: connections });
+    }
+    if (path.endsWith("/narration")) {
+      if (route.request().method() === "PUT") {
+        Object.assign(narration, route.request().postDataJSON());
+        if (holdWriting) {
+          writingSaves.push(route);
+          return;
+        }
+      } else {
+        narrationReads++;
+        if (width === 1366 && narrationReads === 1)
+          return fulfill(route, { status: 503, json: { error: "Writing unavailable" } });
+      }
+      return fulfill(route, { json: narration });
+    }
     if (path.endsWith("/settings") && route.request().method() === "PATCH") {
-      scenerySaves.push(route);
+      const visual = route.request().postDataJSON();
+      if (["spriteVariantsEnabled", "spriteCardFlipEnabled", "characterSpeechColors"].some((key) => key in visual)) {
+        if (failVisualSave) return fulfill(route, { status: 503, json: { error: "Visual save unavailable" } });
+        Object.assign(snapshot.settings, visual);
+        return fulfill(route, { json: snapshot });
+      }
+
+      if ("worldName" in route.request().postDataJSON()) worldSaves.push(route);
+      else if ("selectedLorebookIds" in route.request().postDataJSON()) loreSaves.push(route);
+      else scenerySaves.push(route);
       return;
     }
     if (path.endsWith("/usage/preview") && route.request().method() === "POST") {
       const preview = route.request().postDataJSON();
       assert.ok(["images", "change"].includes(preview.action), "only Settings cost forecasts are admitted");
       usagePreviews.push(preview);
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
@@ -344,17 +405,17 @@ async function checkPackage(width) {
                       residentGuidance: {},
                     }
                   : {};
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
   await page.route("**/api/connections", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify([{ id: "talk", provider: "language", name: "Talk", defaultForAgents: true }]),
     }),
   );
   await page.route("http://settings-package.test/", (route) =>
-    route.fulfill({
+    fulfill(route, {
       status: 200,
       contentType: "text/html",
       body: "<style>html,body{margin:0;width:100%;height:100%}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -362,36 +423,125 @@ async function checkPackage(width) {
   );
   await page.goto("http://settings-package.test/");
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await expect.poll(() => narrationReads).toBe(1);
+  await expect.poll(() => connectionReads).toBe(1);
   await page.getByRole("button", { name: /^(Open settings menu|More)$/ }).click();
-  await page.getByRole("button", { name: "General Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+  if (width === 1366) {
+    await expect(page.getByRole("alert")).toContainText("Writing unavailable");
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Tense", exact: true })).toBeVisible();
+  }
+  const expectedNarrationReads = width === 1366 ? 2 : 1;
+  const section = async (key, label) => {
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
+    else await page.getByRole("button", { name: label, exact: true }).click();
+    await page.evaluate(() => new Promise(requestAnimationFrame));
+    const confirmation = page.getByRole("dialog", { name: "Confirm", exact: true });
+    if (await confirmation.count()) await confirmation.getByRole("button", { name: "Continue", exact: true }).click();
+  };
+  if (width === 390) {
+    await expect.poll(() => heldConnectionRead !== null).toBe(true);
+    await section("advanced", "Advanced");
+    await expect.poll(() => connectionReads).toBe(2);
+    connections.systemConnectionId = "";
+    holdConnectionRead = false;
+    await fulfill(heldConnectionRead, { json: connections });
+    await expect(page.getByLabel("System", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("System", { exact: true })).toBeEnabled();
+    connections.systemConnectionId = "talk";
+    heldConnectionRead = null;
+  }
+  await section("village", "World Configuration");
   await page.clock.fastForward(350);
   assert.equal(usagePreviews.length, 0, "public Settings never request the private cost preview");
-  await page.getByLabel("The information villagers know", { exact: true }).fill("Packaged retained draft");
-  await page.getByRole("button", { name: "Back to menu", exact: true }).click();
-  await page.getByRole("button", { name: "General Settings", exact: true }).click();
-  await page.getByRole("button", { name: "Village Settings", exact: true }).click();
-  await expect(page.getByLabel("The information villagers know", { exact: true })).toHaveValue(
-    "Packaged retained draft",
-  );
+  const loreCard = page.getByRole("region", { name: "Village Lorebooks", exact: true });
+  const editLore = loreCard.getByRole("button", { name: "Choose Village Lorebooks", exact: true });
+  await editLore.click();
+  const loreDialog = page.getByRole("dialog", { name: "Choose Lorebooks", exact: true });
+  const missingBook = loreDialog.getByRole("checkbox", { name: /^saved-book/ });
+  await expect(missingBook).toBeChecked();
+  await expect(missingBook).toBeEnabled();
+  await expect(loreDialog.getByText("Missing", { exact: true })).toBeVisible();
+  await missingBook.uncheck();
+  await loreDialog.getByRole("searchbox", { name: "Search Lorebooks", exact: true }).press("Escape");
+  await expect(editLore).toBeFocused();
+  await expect(loreCard.getByRole("button", { name: "Remove saved-book", exact: true })).toBeVisible();
+  const loreBudget = page.getByLabel("Lorebook Token Budget", { exact: true });
+  await expect(loreBudget).toHaveAttribute("type", "text");
+  await loreBudget.fill("800");
+  await loreBudget.fill("");
+  await expect(loreBudget).toHaveValue("");
+  await expect(loreBudget).toHaveAttribute("placeholder", "1600");
+  const imageLore = page.getByLabel("Use selected lorebooks when generating images", { exact: true });
+  await expect(imageLore).toBeChecked();
+  await imageLore.uncheck();
+  await page.getByLabel("Village world", { exact: true }).fill("A new world name");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect.poll(() => worldSaves.length).toBe(1);
+  await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeDisabled();
+  const worldSaved = structuredClone(snapshot);
+  worldSaved.settings.worldName = "A new world name";
+  await fulfill(worldSaves[0], { status: 200, json: worldSaved });
+  await expect(page.getByRole("button", { name: "Save settings", exact: true })).toBeEnabled();
+  Object.assign(snapshot.settings, worldSaved.settings);
+  await page.getByRole("button", { name: "Save settings", exact: true }).click();
+  await expect.poll(() => loreSaves.length).toBe(1);
+  await expect(page.getByLabel("Village world", { exact: true })).toBeDisabled();
+  assert.equal(loreSaves[0].request().postDataJSON().useVisualLoreByDefault, false);
+  const loreSaved = structuredClone(snapshot);
+  Object.assign(loreSaved.settings, loreSaves[0].request().postDataJSON());
+  await fulfill(loreSaves[0], { status: 200, contentType: "application/json", body: JSON.stringify(loreSaved) });
+  await expect(imageLore).not.toBeChecked();
+  Object.assign(snapshot.settings, loreSaved.settings);
+
+  await expect(page.getByRole("checkbox", { name: "Character chat colors", exact: true })).toHaveCount(0);
+  await section("visual", "Visual Settings");
+  const variants = page.getByRole("checkbox", { name: "Random sprite variants", exact: true });
+  const flips = page.getByRole("checkbox", { name: "Card-flip sprite changes", exact: true });
+  const colors = page.getByRole("checkbox", { name: "Character chat colors", exact: true });
+  await expect(variants).toBeChecked();
+  await variants.uncheck();
+  await expect.poll(() => snapshot.settings.spriteVariantsEnabled).toBe(false);
+  await section("general", "General Preferences");
+  await expect(page.getByRole("checkbox", { name: "Card-flip sprite changes" })).toHaveCount(0);
+  await section("visual", "Visual Settings");
+  await expect(variants).not.toBeChecked();
+  failVisualSave = true;
+  // A rejected save can roll back before Playwright checks the transient checked state.
+  await variants.click();
+  await expect(page.getByText("Visual save unavailable", { exact: true })).toBeVisible();
+  await expect(variants).not.toBeChecked();
+  failVisualSave = false;
+  await variants.check();
+  await expect.poll(() => snapshot.settings.spriteVariantsEnabled).toBe(true);
+  await flips.uncheck();
+  await expect.poll(() => snapshot.settings.spriteCardFlipEnabled).toBe(false);
+  await flips.check();
+  await expect.poll(() => snapshot.settings.spriteCardFlipEnabled).toBe(true);
+  await colors.uncheck();
+  await expect.poll(() => snapshot.settings.characterSpeechColors).toBe(false);
+  if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
+    await page.screenshot({
+      path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `sprite-visual-settings-${width}.png`),
+    });
   await page.getByLabel("Scenery style description", { exact: true }).fill("Packaged scenery save");
   await page.getByLabel("Personalize new venue images by default", { exact: true }).uncheck();
-  await page.getByLabel("Use visual lore by default", { exact: true }).check();
+  await expect(page.getByLabel("Use selected lorebooks when generating images", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Save scenery settings", exact: true }).click();
   await expect.poll(() => scenerySaves.length).toBe(1);
   assert.deepEqual(scenerySaves[0].request().postDataJSON(), {
     sceneryArtStyle: "Packaged scenery save",
     sceneryStyleProfileId: null,
     personalizeVenueImagesByDefault: false,
-    useVisualLoreByDefault: true,
   });
   await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeDisabled();
   await page.getByLabel("Scenery style description", { exact: true }).fill("Newer packaged scenery draft");
-  await page.getByRole("button", { name: "Back to menu", exact: true }).click();
+  await section("general", "General Preferences");
+  assert.equal(narrationReads, expectedNarrationReads, "Writing settings are retained across navigation");
   const saved = structuredClone(snapshot);
   Object.assign(saved.settings, scenerySaves[0].request().postDataJSON());
-  await scenerySaves[0].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
-  await page.getByRole("button", { name: "Village Settings", exact: true }).click();
+  await fulfill(scenerySaves[0], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await section("visual", "Visual Settings");
   await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeEnabled();
   await expect(page.getByLabel("Scenery style description", { exact: true })).toHaveValue(
     "Newer packaged scenery draft",
@@ -403,14 +553,69 @@ async function checkPackage(width) {
   await expect.poll(() => scenerySaves.length).toBe(2);
   assert.deepEqual(scenerySaves[1].request().postDataJSON(), { automaticZonePictures: false });
   saved.settings.automaticZonePictures = false;
-  await scenerySaves[1].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await fulfill(scenerySaves[1], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await expect(automatic).not.toBeChecked();
   await automatic.click();
   await expect.poll(() => scenerySaves.length).toBe(3);
   assert.deepEqual(scenerySaves[2].request().postDataJSON(), { automaticZonePictures: true });
   saved.settings.automaticZonePictures = true;
-  await scenerySaves[2].fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await fulfill(scenerySaves[2], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   await expect(automatic).toBeChecked();
+  await section("general", "General Preferences");
+  await expect(page.getByLabel("Additional writing guidance", { exact: true })).toHaveCount(0);
+  await page.locator("label").filter({ hasText: "Tense" }).locator("select").selectOption("past");
+  await expect.poll(() => narration.tense).toBe("past");
+  await expect(page.getByRole("combobox", { name: "Tense", exact: true })).toBeEnabled();
+  holdWriting = true;
+  await page.getByRole("combobox", { name: "Person", exact: true }).selectOption("first");
+  await expect.poll(() => writingSaves.length).toBe(1);
+  holdConnectionRead = true;
+  await section("advanced", "Advanced");
+  await expect.poll(() => heldConnectionRead !== null).toBe(true);
+  const systemConnection = page.getByLabel("System", { exact: true });
+  await expect(systemConnection).toBeVisible();
+  await expect(systemConnection).toHaveValue(width === 390 ? "" : "talk");
+  await expect(systemConnection).toBeDisabled();
+  holdConnectionRead = false;
+  await fulfill(heldConnectionRead, { json: connections });
+  heldConnectionRead = null;
+  await expect(systemConnection).toBeEnabled();
+  await systemConnection.selectOption(width === 390 ? "talk" : "");
+  await expect.poll(() => heldConnectionSave !== null).toBe(true);
+  await expect(page.getByRole("button", { name: "Erase Village", exact: true })).toBeDisabled();
+  await section("general", "General Preferences");
+  const readsBeforeReopen = connectionReads;
+  await section("advanced", "Advanced");
+  assert.equal(connectionReads, readsBeforeReopen, "reopening waits for a connection save before refreshing");
+  await expect(page.getByLabel("System", { exact: true })).toBeDisabled();
+  connections.systemConnectionId = width === 390 ? "talk" : "";
+  await fulfill(heldConnectionSave, { json: connections });
+  await expect.poll(() => connectionReads).toBe(readsBeforeReopen + 1);
+  await expect(page.getByLabel("System", { exact: true })).toHaveValue(connections.systemConnectionId);
+  await expect(page.getByLabel("System", { exact: true })).toBeEnabled();
+  await expect(page.getByText("Permanently erase this Village and its progress. This cannot be undone.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Erase Village", exact: true })).toBeDisabled();
+  await fulfill(writingSaves[0], { status: 200, json: narration });
+  await expect(page.getByRole("button", { name: "Erase Village", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Erase Village", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toBeVisible();
+  await section("general", "General Preferences");
+  await section("advanced", "Advanced");
+  await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Erase Village", exact: true }).click();
+  await page.getByRole("button", { name: "People", exact: true }).click();
+  await page.getByRole("button", { name: "Close ×", exact: true }).click();
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  await section("advanced", "Advanced");
+  await expect(page.getByRole("button", { name: "Erase Village permanently", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("System", { exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Erase Village", exact: true }).click();
+  await page.getByRole("button", { name: "Erase Village permanently", exact: true }).click();
+  await expect.poll(() => heldReset !== null).toBe(true);
+  for (const label of ["System", "Narration", "Images"]) {
+    await expect(page.getByLabel(label, { exact: true })).toBeDisabled();
+  }
+  assert.equal(narration.writingGuidance, "Saved writing guidance", "Writing preferences preserve saved guidance");
   if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS)
     await page.screenshot({
       path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `zone-picture-settings-${width}.png`),
@@ -418,17 +623,12 @@ async function checkPackage(width) {
   assert.deepEqual(errors, []);
   await page.close();
 }
-try {
+await withBrowser(browser, async () => {
   await runCase("settings/hooks/1366", () => checkHooks(1366));
   for (const width of [1366, 390]) {
     await runCase("settings/package/" + width, () => checkPackage(width));
   }
-  await runCase("settings/requests", () => verifySettingsRequestLifetimes(browser));
-  await runCase("venues/mutations", () => verifyVenueMutationLifetimes(browser));
-  await runCase("venues/requests", () => verifyVenueRequestLifetimes(browser));
   console.log(
     "Selected Settings/Venue navigation and lifetime scenarios passed; the case report records exact coverage.",
   );
-} finally {
-  await browser.close();
-}
+});

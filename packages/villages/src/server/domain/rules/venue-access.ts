@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { ordinaryUseRestricted } from "./narrative-environment.js";
 import type {
   AccessCommand,
   VenueAccessState,
@@ -7,6 +9,7 @@ import type {
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
 import { badRequest, conflict, VillagesRequestError } from "./errors.js";
 import { z } from "zod";
+import { communityVenueEligible } from "./community-venue.js";
 
 const id = z.string().trim().min(1).max(200);
 const ids = z
@@ -25,9 +28,6 @@ export const zonePolicySchema = z
     memberIds: ids,
     memberRoles: z.array(z.enum(["residents", "workers"])).max(2),
     inviterIds: ids,
-    regularVisitors: z
-      .array(z.object({ inviterId: id, relationship: z.enum(["friend", "close"]), accompanied: z.boolean() }).strict())
-      .max(20),
     visitorHours: z.union([z.literal("inherit"), z.literal("always"), hoursSchema]),
     accompanied: z.boolean(),
   })
@@ -75,6 +75,7 @@ const stateSchema = z.object({
   ),
   visitDenials: z.array(z.object({ zoneId: id, visitorId: id, sceneId: id, issuerId: id })).default([]),
   receipts: z.record(
+    z.string(),
     z.object({
       fingerprint: z.string(),
       revision: z.number().int(),
@@ -84,6 +85,14 @@ const stateSchema = z.object({
 });
 const base = { operationId: id, expectedRevision: z.number().int().nonnegative(), zoneId: id.nullable() };
 const commandSchema = z.discriminatedUnion("action", [
+  z
+    .object({
+      ...base,
+      action: z.literal("community-venue"),
+      previousVenueId: id,
+      previousRevision: z.number().int().nonnegative(),
+    })
+    .strict(),
   z.object({ ...base, action: z.literal("recover-managers"), managerIds: ids }).strict(),
   z
     .object({
@@ -151,7 +160,6 @@ export function defaultZonePolicy(venue: VillageVenue, zone: VillageVenueZone): 
             ? ["workers"]
             : [],
     inviterIds: [],
-    regularVisitors: [],
     visitorHours: "inherit",
     accompanied: false,
   };
@@ -162,7 +170,7 @@ export function initializeVenueAccess(venue: VillageVenue): void {
   venue.access ??= {
     version: 1,
     revision: 0,
-    managerIds: venue.occupancy.playerHome ? ["player"] : [...(venue.residentIds ?? [])],
+    managerIds: [...(venue.residentIds ?? []), ...(venue.occupancy.playerHome ? ["player"] : [])],
     visitorHours: null,
     permissions: [],
     bans: [],
@@ -242,6 +250,7 @@ export function withinVisitorHours(hours: VenueAccessState["visitorHours"], at: 
   });
 }
 export type AccessContext = {
+  environment?: import("../models/narrative-model.js").NarrativeState;
   at?: Date;
   sceneId?: string;
   positions?: Record<string, string>;
@@ -315,7 +324,18 @@ export function evaluateZoneAccess(
         : policy.visitorHours;
   const open = withinVisitorHours(hours, context.at ?? new Date());
   // A ban exception supplies only its exact invitation; it does not restore general membership.
-  if (member && !bans.length) return result(true, "member", "You have access as a designated member or Zone manager.");
+  const restricted = ordinaryUseRestricted(
+    context.environment,
+    (context.at ?? new Date()).toISOString(),
+    venue.id,
+    zone.id,
+  );
+  if (member && !bans.length && (!restricted || canManage))
+    return result(
+      true,
+      "member",
+      restricted ? "Inspection and corrective work only." : "You have access as a designated member or Zone manager.",
+    );
   const eligible = permitted.filter((grant) => open || grant.outsideHours);
   if (!open && !eligible.length)
     return result(
@@ -335,14 +355,19 @@ export function evaluateZoneAccess(
     );
   }
   if (!bans.length && policy.mode === "public" && !policy.accompanied)
-    return result(true, "public", "Public during visitor hours.");
-  if (!bans.length)
-    for (const rule of policy.regularVisitors) {
-      const edge = context.relationships?.edges[JSON.stringify([rule.inviterId, actor])];
-      if (!mayInvite(venue, zone, rule.inviterId) || !edge?.[rule.relationship]) continue;
-      if ((rule.accompanied || policy.accompanied) && !escortPresent(rule.inviterId)) continue;
-      return result(true, "regular-visitor", "This Zone allows you under its regular-visitor rule.");
-    }
+    return restricted
+      ? !zoneManagers(venue, zone).length
+        ? result(
+            true,
+            "public",
+            "Ordinary use is restricted. Public access permits inspection and corrective work only.",
+          )
+        : result(
+            false,
+            "unavailable",
+            "Ordinary use is restricted. A controller can authorize inspection or corrective work.",
+          )
+      : result(true, "public", "Public during visitor hours.");
   if (eligible.some((grant) => grant.accompaniedBy || policy.accompanied))
     return result(false, "accompaniment-required", "Your named escort must be here with you.");
   return result(false, "permission-required", "Permission is required for this Zone.");
@@ -372,6 +397,7 @@ export function applyAccessCommand(
   at: string,
   knownActors: string[],
   sourceLineIds: string[] = [],
+  communityVenueId?: string,
 ): void {
   const ledger = venue.access;
   if (!ledger) throw conflict("This legacy Venue uses its existing access rules.");
@@ -387,6 +413,13 @@ export function applyAccessCommand(
   }
   if (command.expectedRevision !== ledger.revision)
     throw conflict("Access changed since you opened this panel. Reload before trying again.");
+  if (
+    venue.id === communityVenueId &&
+    ["recover-managers", "venue-policy", "zone-policy", "ban", "refuse-entry", "leave-now"].includes(command.action)
+  )
+    throw conflict(
+      "Designate another Community Venue before restricting or taking control of this neutral public place.",
+    );
   const zone = venue.zones?.find((row) => row.id === command.zoneId);
   if (command.zoneId !== null && (!zone || zone.kind === "exterior"))
     throw badRequest("Entrance is always Unrestricted; choose another Zone.");
@@ -399,6 +432,8 @@ export function applyAccessCommand(
       throw badRequest("Choose people who belong to this Village.");
   };
   switch (command.action) {
+    case "community-venue":
+      throw badRequest("Community designation requires the current Village state.");
     case "recover-managers": {
       const currentManagers = zone ? zoneManagers(venue, zone) : ledger.managerIds;
       if (
@@ -458,22 +493,9 @@ export function applyAccessCommand(
       break;
     case "zone-policy":
       if (!zone || !manager) forbidden();
-      assertIds([
-        ...(command.policy.managerIds ?? []),
-        ...command.policy.memberIds,
-        ...command.policy.inviterIds,
-        ...command.policy.regularVisitors.map((rule) => rule.inviterId),
-      ]);
+      assertIds([...(command.policy.managerIds ?? []), ...command.policy.memberIds, ...command.policy.inviterIds]);
       if (command.policy.managerIds?.length === 0)
         throw badRequest("Choose at least one manager or inherit Venue managers.");
-      if (
-        command.policy.regularVisitors.some(
-          (rule) =>
-            !(command.policy.managerIds ?? ledger.managerIds).includes(rule.inviterId) &&
-            !command.policy.inviterIds.includes(rule.inviterId),
-        )
-      )
-        throw badRequest("Regular-visitor rules must belong to someone who may invite guests.");
       zone!.access = command.policy;
       break;
     case "invite":
@@ -573,6 +595,16 @@ export function claimVisitPermission(venue: VillageVenue, permissionId: string |
     throw conflict("This invitation belongs to another visit.");
   grant.sceneId = sceneId;
 }
+/** Later authority changes invalidate a previously witnessed permission. */
+export function accessChangedAfter(venue: VillageVenue, zoneId: string, at: string): boolean {
+  return !!venue.access?.changes.some(
+    (change) =>
+      change.action !== "invite" &&
+      change.action !== "destinations" &&
+      (change.zoneId === null || change.zoneId === zoneId) &&
+      Date.parse(change.at) > Date.parse(at),
+  );
+}
 /** Both live and offscreen witnessed standing permissions use this replay/authority fence. */
 export function settleStandingAccess(
   venue: VillageVenue,
@@ -589,16 +621,7 @@ export function settleStandingAccess(
 ): void {
   const ledger = venue.access;
   if (!ledger || ledger.receipts[permission.id]) return;
-  if (
-    permission.action === "grant" &&
-    ledger.changes.some(
-      (change) =>
-        change.action !== "invite" &&
-        change.action !== "destinations" &&
-        (change.zoneId === null || change.zoneId === permission.zoneId) &&
-        Date.parse(change.at) > Date.parse(at),
-    )
-  ) {
+  if (permission.action === "grant" && accessChangedAfter(venue, permission.zoneId, at)) {
     ledger.receipts[permission.id] = {
       fingerprint: "obsolete-standing-speech",
       revision: ledger.revision,
@@ -629,11 +652,16 @@ export function settleStandingAccess(
       (grant) =>
         grant.zoneId === permission.zoneId &&
         grant.visitorId === permission.visitorId &&
+        grant.duration === "standing" &&
         !grant.revoked &&
         Date.parse(grant.issuedAt) <= Date.parse(at) &&
         grant.issuerId === permission.controllerId,
     )) {
-      const operationId = permission.id + ":" + grant.id;
+      const operationId =
+        "standing-revoke:" +
+        createHash("sha256")
+          .update(JSON.stringify([permission.id, grant.id]))
+          .digest("hex");
       if (!ledger.receipts[operationId])
         applyAccessCommand(
           venue,
@@ -657,13 +685,14 @@ export function settleStandingAccess(
     };
   }
 }
-export function projectVenueAccess(venue: VillageVenue, actor: string) {
+export function projectVenueAccess(venue: VillageVenue, actor: string, communityVenueId?: string) {
   if (!venue.access) return undefined;
-  const canManage = managesAccess(venue, null, actor);
+  const canManage = venue.id !== communityVenueId && managesAccess(venue, null, actor);
   return {
     revision: venue.access.revision,
+    canDesignateCommunity: actor === "player" && venue.id !== communityVenueId && communityVenueEligible(venue, true),
     canManage,
-    canRecover: actor === "player" && !venue.access.managerIds.length,
+    canRecover: venue.id !== communityVenueId && actor === "player" && !venue.access.managerIds.length,
     ...(canManage
       ? {
           managerIds: venue.access.managerIds,

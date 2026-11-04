@@ -1,5 +1,20 @@
 import assert from "node:assert/strict";
 import {
+  createActivationScope,
+  installDefaultActivation,
+  scopedActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import {
+  captureMissingVillagerCardColors,
+  villagerCardFromSnapshot,
+} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import {
   createVillageSnapshot,
   type VillageSnapshotPorts,
 } from "../packages/villages/src/server/features/world/snapshot-service.js";
@@ -7,27 +22,12 @@ import {
   buildVillageSnapshot,
   configureVillageSnapshot,
 } from "../packages/villages/src/server/features/world/snapshot.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import {
-  coerceVillageState,
-  defaultVillageState,
-} from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  captureMissingVillagerCardColors,
-  villagerCardFromSnapshot,
-} from "../packages/villages/src/server/adapters/engine/catalog.js";
 import { privatePreparationRooms } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 
 const stamp = "2026-10-07T12:00:00.000Z";
 const now = new Date(stamp);
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(label: string, missingColors = false) {
   const world = coerceVillageState({
@@ -85,6 +85,7 @@ function fixture(label: string, missingColors = false) {
     assert.equal(scopedActivation(), owner);
     if (stage === failure) throw exact;
   }
+  let activeScene: VenueScene | null = null;
   const ports: VillageSnapshotPorts = {
     readVillageState: async () => {
       await touch("world");
@@ -113,7 +114,7 @@ function fixture(label: string, missingColors = false) {
       return {
         activeVenueSession: async () => {
           await touch("scene");
-          return null;
+          return activeScene;
         },
       };
     },
@@ -126,6 +127,9 @@ function fixture(label: string, missingColors = false) {
   const service = createVillageSnapshot(ports);
   return {
     world,
+    setScene: (scene: VenueScene) => {
+      activeScene = scene;
+    },
     card,
     calls,
     owners,
@@ -147,12 +151,57 @@ function fixture(label: string, missingColors = false) {
 
 async function main() {
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
+  const marker = fixture("marker");
+  const scene = coerceSession({
+    version: 3,
+    id: "active",
+    villageSeed: marker.world.seed,
+    status: "active",
+    startedAt: stamp,
+    placeId: "square",
+    participants: [],
+    activeIds: [],
+    lines: [],
+    submissions: [],
+  });
+  scene.submissions.push({ id: "late", changeSequence: 1, semanticReady: false } as any);
+  marker.setScene(scene);
+  const revision = (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision;
+  assert.equal(
+    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
+    revision,
+    "idle snapshots do not restart the feed",
+  );
+  scene.submissions[0]!.semanticReady = true;
+  const ready = (await marker.service.buildVillageSnapshot(now)).sceneChanges!;
+  assert.equal(ready.sceneId, scene.id);
+  assert.notEqual(ready.revision, revision, "late readiness reopens delivery without a processing sequence change");
+  marker.world.exchangeReceipts.foreign = { id: "foreign", sceneId: "elsewhere", noticeSequence: 1 } as any;
+  assert.equal((await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision, ready.revision);
+  marker.world.exchangeReceipts.own = { id: "own", sceneId: scene.id, noticeSequence: 2 } as any;
+  assert.notEqual(
+    (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,
+    ready.revision,
+    "late own-Scene notice is delivered through shared refresh",
+  );
   const plain = fixture("plain");
   assert.deepEqual(plain.calls, [], "construction must not read, mutate, load a catalog or start background work");
   const snapshot = await plain.service.buildVillageSnapshot(now);
   assert.deepEqual(plain.calls, ["world", "roll", "catalog", "query-connection", "scene", "background"]);
   assert.equal(snapshot.villagers[0]!.name, "plain live");
-  assert.equal(snapshot.villagers[0]!.summary, "plain summary");
+  assert.equal(snapshot.villagers[0]!.summary, "", "Card summaries are not a fallback for People descriptions.");
+  plain.world.villagers[0]!.identityDescription = {
+    text: "A reserved explorer.",
+    revision: "player-description",
+    initialGenerationComplete: true,
+  };
+  const described = await plain.service.buildVillageSnapshot(now);
+  assert.equal(described.villagers[0]!.summary, "A reserved explorer.");
+  assert.deepEqual(described.villagers[0]!.identityDescription, {
+    text: "A reserved explorer.",
+    revision: "player-description",
+  });
+  assert.equal((described.villagers[0]!.identityDescription as any)?.initialGenerationComplete, undefined);
   assert.equal(snapshot.villagers[0]!.nameColor, "adopted-name");
   assert.equal(plain.world.villagers[0]!.cardSnapshot.name, "plain adopted");
   const rolled = fixture("rolled");
@@ -163,9 +212,9 @@ async function main() {
   oldRead.world.visitMemoryBackfilled = false;
   await oldRead.service.buildVillageSnapshot(now);
   assert.deepEqual(
-    oldRead.calls.slice(0, 3),
-    ["world", "world", "roll"],
-    "the existing hydrated reread stays before Agenda work",
+    oldRead.calls.slice(0, 2),
+    ["world", "roll"],
+    "Snapshot reads do not backfill retired memory stores",
   );
   const colors = fixture("colors", true);
   const painted = await colors.service.buildVillageSnapshot(now);

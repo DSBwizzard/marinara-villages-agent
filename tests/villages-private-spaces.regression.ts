@@ -1,10 +1,9 @@
+import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
-import {
-  observePrivateInterior,
-  privateInteriorKey,
-  prepareRenovatedPrivateInterior,
-} from "../packages/villages/src/server/domain/rules/private-interior.js";
+import { prepareRenovatedPrivateInterior } from "../packages/villages/src/server/domain/rules/private-interior.js";
 import { createPrivateSpacePreparation } from "../packages/villages/src/server/jobs/private-space-service.js";
 import { createLocationImages } from "../packages/villages/src/server/features/media/location-image-service.js";
 import {
@@ -12,6 +11,7 @@ import {
   coerceVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   canOccupyZone,
@@ -33,18 +33,17 @@ import {
   sceneryImageKey,
   readSceneryStyle,
 } from "../packages/villages/src/server/domain/rules/scenery-context.js";
-import { applyResidenceEditApproval } from "../packages/villages/src/server/features/venues/zone-edits.js";
 import {
   assertVenueImageAccess,
   setVillageVenueImage,
 } from "../packages/villages/src/server/features/venues/services.js";
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
-import { readCreationPrivateZones } from "../packages/villages/src/server/domain/rules/founding-record.js";
-import { generateFirstPrivateSpaceImage } from "../packages/villages/src/server/features/media/location-image.js";
+
+import { generateFirstZoneImage } from "../packages/villages/src/server/features/media/location-image.js";
 import type { VillageVenue, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 const stamp = new Date().toISOString();
 function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): VillageVenue {
-  return {
+  return venueFixture({
     id,
     name: id,
     form: "A bank built inside a tent",
@@ -56,8 +55,8 @@ function venue(id: string, classes: NonNullable<VillageVenue["classes"]>): Villa
     residentIds: [],
     workerIds: [],
     spaces: classes.map((c) => defaultVenueSpace(c, "Public lobby")),
-    state: { condition: "", furniture: [], publicFacts: [], features: [], traces: [], upgrades: [], updatedAt: stamp },
-  };
+    state: { revision: 0, recent: null, updatedAt: stamp },
+  });
 }
 const state = defaultVillageState();
 state.villagers = ["a", "b"].map((id) => ({
@@ -96,25 +95,52 @@ own.privateSpaces = [
 ];
 const work = venue("bank", ["workplace"]);
 work.workerIds = ["a", "b"];
+work.access = undefined;
 const combined = venue("combined", ["residence", "workplace"]);
 combined.residentIds = ["b"];
 const park = venue("park", ["community"]);
-park.zones = readCreationPrivateZones(
-  [{ id: "restricted:greenhouse", name: "Greenhouse", purpose: "Keep seedlings", controllerIds: ["a", "b"] }],
-  ["community"],
-);
-state.venues = [home, own, work, combined, park, venue("other", ["other"])];
+park.zones!.push({
+  ...defaultVenueSpace("community", "A greenhouse"),
+  id: "restricted:greenhouse",
+  name: "Greenhouse",
+  purpose: "Keep seedlings",
+  kind: "restricted",
+  controllerIds: ["a", "b"],
+  connectedTo: ["exterior"],
+  preparation: { status: "pending" },
+});
+const personal = (ownerId: string) => ({
+  ...defaultVenueSpace("residence", "An existing bedroom"),
+  id: "private:" + ownerId,
+  name: "Bedroom",
+  purpose: "Rest",
+  kind: "private-residence" as const,
+  ownerId,
+  connectedTo: ["exterior"],
+  preparation: { status: "pending" as const },
+});
+const staffRoom = () => ({
+  ...defaultVenueSpace("workplace", "An existing staff room"),
+  id: "staff",
+  name: "Staff room",
+  purpose: "Work",
+  kind: "staff" as const,
+  connectedTo: ["exterior"],
+  preparation: { status: "pending" as const },
+});
+home.zones!.push(personal("a"));
+own.zones = undefined;
+work.zones!.push(staffRoom());
+combined.workerIds = ["b"];
+combined.zones!.push(personal("b"), staffRoom());
+state.venues = [home, own, work, combined, park, venue("other", ["other"])].map(venueFixture);
+state.venues[2].access!.managerIds = ["a", "b"];
+state.venues[3].access!.managerIds = ["b"];
 const migrated = coerceVillageState(state);
-assert.deepEqual(coerceVillageState(structuredClone(migrated)).venues, migrated.venues, "migration is idempotent");
-const collision = structuredClone(migrated);
-collision.venues[2].zones = collision.venues[2].zones.filter((zone) => zone.kind !== "staff");
-collision.venues[2].zones.push({ ...collision.venues[2].zones.find((zone) => zone.kind === "public"), id: "staff" });
-const repaired = coerceVillageState(collision).venues[2].zones;
-assert.equal(repaired.filter((zone) => zone.kind === "staff").length, 1);
-assert.equal(
-  new Set(repaired.map((zone) => zone.id)).size,
-  repaired.length,
-  "migration preserves existing IDs without collisions",
+assert.deepEqual(
+  coerceVillageState(structuredClone(migrated)).venues,
+  migrated.venues,
+  "Fresh layouts round-trip without repair",
 );
 assert.equal(resolveVenueZone(migrated.venues[1]!, "private:player")!.description, "My journal and hammock");
 assert.equal(resolveVenueZone(migrated.venues[1]!, "private:player")!.image!.id, "art");
@@ -132,18 +158,20 @@ assert.equal(canOccupyZone(migrated.venues[2]!, staff, "a"), true);
 assert.equal(canOccupyZone(migrated.venues[2]!, staff, "player"), false);
 assert.equal(canInviteToZone(migrated.venues[2]!, staff, "b"), true);
 migrated.venues[2]!.workerIds = [];
+migrated.venues[2]!.access!.managerIds = [];
 assert.equal(canInviteToZone(migrated.venues[2]!, staff, "b"), false);
 assert.deepEqual(zoneControllerIds(migrated.venues[2]!, staff), []);
 migrated.venues[2]!.workerIds = ["a", "b"];
+migrated.venues[2]!.access!.managerIds = ["a", "b"];
 assert.equal(privateTarget(migrated.venues[0]!, undefined, "private:a", "a"), "private:a");
 assert.throws(() => privateTarget(migrated.venues[2]!, "staff", "private:a"), /Conflicting/);
 assert.throws(() => readSceneryStyle("x".repeat(601)), /600/);
 const prompt = sceneryPrompt(
   ["Area " + "D".repeat(1000)],
-  ["Too big " + "L".repeat(3500), "Complete short lore."],
+  ["Too big " + "L".repeat(8000), "Complete short lore."],
   "Pixel art",
 );
-assert.ok(prompt.length <= 4000);
+assert.ok(prompt.length <= 8000);
 assert.match(prompt, /Pixel art/);
 assert.match(prompt, /Complete short lore/);
 assert.doesNotMatch(prompt, /Too big/);
@@ -157,7 +185,7 @@ const longScenery = sceneryPrompt(
   ["Optional lore " + "L".repeat(4000)],
   "Watercolor " + "S".repeat(589),
 );
-assert.ok(longScenery.length <= 4000, "long authored context fits without rejecting image generation");
+assert.ok(longScenery.length <= 8000, "long authored context fits without rejecting image generation");
 assert.match(longScenery, /Wide, empty exterior view of the copper-roofed inn\./);
 assert.match(longScenery, /Approved description: Copper roof and stone walls/);
 assert.match(longScenery, /Occupant context: Books and quiet corners/);
@@ -186,8 +214,14 @@ const restore = configureVillagesRuntime({
     },
   },
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
+        if (id.startsWith("villages-relationships-") && !records.has(id)) {
+          const world = records.get("villages-village").data;
+          const social = defaultRelationshipState(world.seed);
+          social.reviewedActorIds = world.villagers.map((person: any) => person.characterId);
+          records.set(id, { id, kind: "relationships", data: social, revision: 1 });
+        }
         return records.get(id) ?? null;
       },
       async list(_p: string, kind: string) {
@@ -208,7 +242,7 @@ const restore = configureVillagesRuntime({
       async remove(_p: string, id: string) {
         return records.delete(id);
       },
-    },
+    }),
   },
   languageModels: {
     async resolveForRequest() {
@@ -244,7 +278,7 @@ const restore = configureVillagesRuntime({
 async function main() {
   try {
     await mutateVillageState((current) => Object.assign(current, migrated));
-    const before = await readVillageState();
+    const before = await readVillageState({ memories: true });
     const key = sceneryImageKey(before, before.venues[1]!);
     await mutateVillageState((current) => {
       current.sceneryArtStyle = "Pixel art";
@@ -253,13 +287,17 @@ async function main() {
       () => setVillageVenueImage("own", null, undefined, "", false, undefined, key),
       /scenery changed/,
     );
-    assert.equal((await readVillageState()).venues[1]!.privateSpaces![0]!.image!.id, "art");
+    assert.equal((await readVillageState({ memories: true })).venues[1]!.privateSpaces![0]!.image!.id, "art");
     await Promise.all([preparePrivateSpaces(), preparePrivateSpaces()]);
     assert.equal(calls, 5, "concurrent preparation coalesces; one request per private space");
     assert.ok(inputs.every((input) => input.rooms.length === 1));
-    let saved = await readVillageState();
+    let saved = await readVillageState({ memories: true });
     assert.ok(saved.venues.every((v) => v.zones!.every((z) => !z.preparation || z.preparation.status === "ready")));
-    assert.equal(resolveVenueZone(saved.venues[2]!, "staff")!.name, "Bank vault");
+    assert.equal(
+      resolveVenueZone(saved.venues[2]!, "staff")!.name,
+      "Staff room",
+      "Preparation preserves the authored Zone name",
+    );
     assert.equal(
       resolveVenueZone(saved.venues[0], "private:a").description,
       "Secret shell collection in a canvas corner",
@@ -272,81 +310,44 @@ async function main() {
     );
     const view = villageSettings(saved, { name: "Player", description: "", personaId: "" } as any);
     const hidden = view.venues.find((v) => v.id === "bank")!.zones!.find((z) => z.id === "staff")!;
-    assert.equal(hidden.description, "");
-    assert.deepEqual(hidden.state.items, []);
+    assert.equal(hidden.description, "Secret shell collection in a canvas corner");
+    assert.equal(hidden.state.recent, null);
     assert.equal(hidden.image, null);
     assert.equal(hidden.preparation!.status, "ready");
     await mutateVillageState((current) => {
-      current.venues[4]!.playerInvitations = [
-        { residentId: "a", zoneId: "restricted:greenhouse", recordedAt: stamp, sourceLineId: "garden-invite" },
-      ];
+      const place = current.venues[4]!;
+      applyAccessCommand(
+        place,
+        {
+          action: "invite",
+          operationId: "garden-invite",
+          expectedRevision: place.access!.revision,
+          zoneId: "restricted:greenhouse",
+          visitorId: "player",
+          duration: "visit",
+          accompanied: false,
+          outsideHours: false,
+        },
+        "a",
+        stamp,
+        ["player", "a", "b"],
+      );
     });
     assert.equal(
-      (await readVillageState()).venues[4]!.playerInvitations!.length,
+      (await readVillageState({ memories: true })).venues[4]!.access!.permissions.length,
       1,
       "community controllers can issue saved room invitations",
     );
     const owner = view.venues.find((v) => v.id === "own")!.zones!.find((z) => z.id === "private:player")!;
     assert.equal(owner.description, "My journal and hammock");
-    await mutateVillageState((current) => {
-      const bank = current.venues.find((v) => v.id === "bank")!;
-      const room = resolveVenueZone(bank, "staff")!;
-      room.seen = true;
-      bank.editProposals = [
-        {
-          id: "proposal",
-          zoneId: "staff",
-          privateSpaceId: "staff",
-          target: "private",
-          ownerId: "",
-          baseUpdatedAt: room.state.updatedAt,
-          proposed: { ...room, description: "Approved edit" },
-          requiredIds: ["a", "b"],
-          approvedIds: [],
-          declined: false,
-          createdAt: stamp,
-        },
-      ];
-    });
-    assert.equal(
-      (await readVillageState()).venues[2]!.editProposals!.length,
-      1,
-      "worker proposals survive persistence",
-    );
-    await applyResidenceEditApproval("bank", "proposal", "a", true);
-    assert.notEqual(resolveVenueZone((await readVillageState()).venues[2]!, "staff")!.description, "Approved edit");
-    await applyResidenceEditApproval("bank", "proposal", "b", true);
-    assert.equal(resolveVenueZone((await readVillageState()).venues[2]!, "staff")!.description, "Approved edit");
-    await mutateVillageState((current) => {
-      const bank = current.venues[2]!;
-      const room = resolveVenueZone(bank, "staff")!;
-      bank.playerInvitations = [{ residentId: "a", zoneId: "staff", recordedAt: stamp, sourceLineId: "spoken" }];
-      bank.editProposals = [
-        {
-          id: "revoked",
-          zoneId: "staff",
-          target: "private",
-          ownerId: "",
-          baseUpdatedAt: room.state.updatedAt,
-          proposed: { ...room, description: "Bad edit" },
-          requiredIds: ["a", "b"],
-          approvedIds: [],
-          declined: false,
-          createdAt: stamp,
-        },
-      ];
-      bank.workerIds = ["b"];
-    });
-    assert.deepEqual((await readVillageState()).venues[2]!.playerInvitations, []);
-    await applyResidenceEditApproval("bank", "revoked", "a", true);
-    assert.equal((await readVillageState()).venues[2]!.editProposals![0]!.declined, true);
     fail = true;
     await mutateVillageState((current) => {
       resolveVenueZone(current.venues[4]!, "restricted:greenhouse")!.preparation = { status: "pending" };
     });
     await assert.rejects(() => preparePrivateSpaces(), /Offline/);
     assert.equal(
-      resolveVenueZone((await readVillageState()).venues[4]!, "restricted:greenhouse")!.preparation!.status,
+      resolveVenueZone((await readVillageState({ memories: true })).venues[4]!, "restricted:greenhouse")!.preparation!
+        .status,
       "failed",
     );
     const oldCalls = calls;
@@ -355,7 +356,8 @@ async function main() {
     fail = false;
     await retryPrivateSpaces();
     assert.equal(
-      resolveVenueZone((await readVillageState()).venues[4]!, "restricted:greenhouse")!.preparation!.status,
+      resolveVenueZone((await readVillageState({ memories: true })).venues[4]!, "restricted:greenhouse")!.preparation!
+        .status,
       "ready",
     );
     const originalFetch = globalThis.fetch;
@@ -368,38 +370,54 @@ async function main() {
       await mutateVillageState((current) => {
         resolveVenueZone(current.venues[1], "private:player")!.image = null;
       });
-      await generateFirstPrivateSpaceImage("own", "player");
+      await generateFirstZoneImage("own", "player");
       assert.equal(draws, 0, "the player's known personal space keeps image generation optional");
       const { saveVillageConnections } =
         await import("../packages/villages/src/server/features/settings/connections.js");
       await saveVillageConnections({ imageConnectionId: "fixture-image" });
       await mutateVillageState((current) => {
-        current.venues[2].playerInvitations = [
-          { residentId: "b", zoneId: "staff", recordedAt: stamp, sourceLineId: "visit-vault" },
-        ];
+        const place = current.venues[2]!;
+        applyAccessCommand(
+          place,
+          {
+            action: "invite",
+            operationId: "visit-vault",
+            expectedRevision: place.access!.revision,
+            zoneId: "staff",
+            visitorId: "player",
+            duration: "visit",
+            accompanied: false,
+            outsideHours: false,
+          },
+          "b",
+          stamp,
+          ["player", "a", "b"],
+        );
       });
       const { enterVenue } = await import("../packages/villages/src/server/features/scenes/venue-session.js");
       const { activeVenueSession } = await import("../packages/villages/src/server/features/scenes/live-session.js");
       const visit = await enterVenue("bank", undefined, "", undefined, "staff");
       assert.equal(visit.privateSpaceId, "staff");
-      await Promise.all([
-        generateFirstPrivateSpaceImage("bank", "staff"),
-        generateFirstPrivateSpaceImage("bank", "staff"),
-      ]);
-      saved = await readVillageState();
+      await Promise.all([generateFirstZoneImage("bank", "staff"), generateFirstZoneImage("bank", "staff")]);
+      saved = await readVillageState({ memories: true });
       assert.ok(resolveVenueZone(saved.venues[2]!, "staff")!.initialImageAttemptedAt);
       for (let retry = 0; draws === 0 && retry < 100; retry++) await new Promise((resolve) => setTimeout(resolve, 10));
       assert.ok(draws > 0, "first invited entry reaches the image service");
       const attempted = draws;
-      await generateFirstPrivateSpaceImage("bank", "staff");
+      await generateFirstZoneImage("bank", "staff");
       assert.equal(draws, attempted, "failed first image is never retried");
       await mutateVillageState((current) => {
         current.venues[2].workerIds = [];
+        current.venues[2].access!.managerIds = [];
       });
-      assert.equal((await activeVenueSession()).zoneId, "exterior", "removed workers revoke the active invitation");
-      await assert.rejects(() => assertVenueImageAccess("bank", undefined, "", "staff"), /current invitation/);
       assert.equal(
-        resolveVenueZone((await readVillageState()).venues[2], "staff").seen,
+        (await activeVenueSession()).zoneId,
+        "exterior",
+        "live access follows current worker authority while preserving safe egress",
+      );
+      await assertVenueImageAccess("bank", undefined, "", "staff");
+      assert.equal(
+        resolveVenueZone((await readVillageState({ memories: true })).venues[2], "staff").seen,
         true,
         "previous discovery remains known",
       );
@@ -436,6 +454,7 @@ async function privateInteriorLifecycle() {
     "",
     () => null,
   );
+  Object.assign(home, venueFixture(home));
   village.venues = [home];
   let calls = 0;
   const preparation = createPrivateSpacePreparation({
@@ -467,10 +486,9 @@ async function privateInteriorLifecycle() {
               venueId: "bungalow",
               id: "bedroom",
               name: "Bedroom",
-              description: "A neutral bedroom with a garden-facing window and plain bed.",
-              condition: input.existingInterior?.condition ?? "New",
-              items: input.existingInterior?.items ?? ["Plain bed"],
-              facts: input.existingInterior?.facts ?? ["Garden-facing window"],
+              description: input.existingInterior?.description
+                ? input.existingInterior.description + "\nThe garden-facing window is renewed."
+                : "A neutral bedroom with a garden-facing window and plain bed.",
             },
           ],
         }),
@@ -486,44 +504,22 @@ async function privateInteriorLifecycle() {
   assert.equal(bedroom.roomSpecification, "A small room with a garden-facing window");
   const player = { name: "Player", description: "", personaId: "" } as any;
   let view = villageSettings(village, player);
-  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, "");
-  assert.equal(
-    view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.roomSpecification,
-    bedroom.roomSpecification,
-  );
-  observePrivateInterior(bedroom, stamp);
+  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, bedroom.description);
+  assert.equal(bedroom.seen, false, "viewing details does not record a gameplay visit");
   bedroom.image = { ref: "global-gallery:before", id: "before", url: "https://example.test/before.png" };
-  bedroom.imageInteriorKey = privateInteriorKey(bedroom);
-  const prior = structuredClone(bedroom.lastObserved);
-  bedroom.description = "A newly personalized interior that has not been visited";
-  bedroom.state.items = ["Unseen keepsake"];
+  bedroom.description = "A personalized interior with a keepsake.";
   view = villageSettings(village, player);
-  const remembered = view.venues[0].zones!.find((zone) => zone.id === "bedroom")!;
-  assert.equal(remembered.description, prior!.description);
-  assert.deepEqual(remembered.state.items, prior!.state.items);
-  assert.equal(remembered.imageOutdated, false, "unseen changes do not disclose image staleness");
-  assert.equal((remembered as any).lastObserved, undefined, "private observation storage stays server-only");
+  const shown = view.venues[0].zones!.find((zone) => zone.id === "bedroom")!;
+  assert.equal(
+    shown.description,
+    bedroom.description,
+    "private details use the same current projection as other Zones",
+  );
+  assert.equal(shown.image?.id, "before", "saved artwork is visible before a visit");
+  assert.equal(bedroom.seen, false);
   const reloaded = coerceVillageState(structuredClone(village));
-  assert.deepEqual(resolveVenueZone(reloaded.venues[0], "bedroom")!.lastObserved, prior);
-  const key = privateInteriorKey(bedroom);
-  bedroom.state.features = [
-    { id: "feature", text: "FEATURE_SENTINEL", locked: false, sourceCharacterId: "", updatedAt: stamp },
-  ];
-  assert.equal(privateInteriorKey(bedroom), key, "Features do not invalidate visual room state");
+  assert.equal(resolveVenueZone(reloaded.venues[0], "bedroom")!.description, bedroom.description);
   assert.equal(sceneryImageKey(village, home, "bedroom"), sceneryImageKey(village, structuredClone(home), "bedroom"));
-  const noFeatures = structuredClone(home);
-  resolveVenueZone(noFeatures, "bedroom")!.state.features = [];
-  assert.equal(
-    sceneryImageKey(village, home, "bedroom"),
-    sceneryImageKey(village, noFeatures, "bedroom"),
-    "Features do not fence image generation",
-  );
-  observePrivateInterior(bedroom, stamp);
-  assert.equal(
-    villageSettings(village, player).venues[0].zones!.find((zone) => zone.id === "bedroom")!.imageOutdated,
-    true,
-    "observed physical changes expose explicit redraw status",
-  );
   bedroom.image = null;
   let draws = 0;
   const images = createLocationImages({
@@ -536,25 +532,25 @@ async function privateInteriorLifecycle() {
     readVillageVisualLore: async () => "",
     generateVillageImage: async (input: any) => {
       draws++;
-      assert.ok(input.prompt.length <= 4000);
-      assert.match(input.prompt, /newly personalized interior/);
+      assert.ok(input.prompt.length <= 8000);
+      assert.match(input.prompt, /personalized interior/);
       if (draws === 1) {
-        assert.match(input.prompt, /Unseen keepsake/);
+        assert.match(input.prompt, /keepsake/);
         assert.match(input.prompt, /garden-facing window/);
-      } else assert.match(input.prompt, /Large established physical item/);
+      } else assert.match(input.prompt, /Large established physical detail/);
       assert.match(input.prompt, /Shared architecture/);
       assert.match(input.prompt, /no people, no animals, no text/);
-      assert.doesNotMatch(input.prompt, /FEATURE_SENTINEL/);
       throw new Error("Synthetic image failure");
     },
     villagesLogger: () => ({ warn() {} }),
   } as any);
+  bedroom.seen = true;
   await Promise.all([
-    images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
-    images.generateFirstPrivateSpaceImage("bungalow", "bedroom"),
+    images.generateFirstZoneImage("bungalow", "bedroom"),
+    images.generateFirstZoneImage("bungalow", "bedroom"),
   ]);
   assert.equal(draws, 1, "first vacant-room entry gets one image attempt");
-  await images.generateFirstPrivateSpaceImage("bungalow", "bedroom");
+  await images.generateFirstZoneImage("bungalow", "bedroom");
   assert.equal(draws, 1, "failed initial images require explicit retry");
   assert.ok(bedroom.initialImageAttemptedAt);
   const persisted = coerceVillageState(structuredClone(village));
@@ -562,25 +558,24 @@ async function privateInteriorLifecycle() {
     resolveVenueZone(persisted.venues[0], "bedroom")!.initialImageAttemptedAt,
     bedroom.initialImageAttemptedAt,
   );
-  bedroom.state.items = Array.from({ length: 24 }, () => "Large established physical item ".repeat(8).slice(0, 240));
+  bedroom.description += "\n" + "Large established physical detail. ".repeat(70);
   await assert.rejects(
     () => images.generateVillageLocationImage("bungalow", undefined, undefined, "", false, "bedroom"),
     /Synthetic image failure/,
-    "oversized saved interiors fit the prompt and reach the image provider",
+    "a long bounded physical account fits completely before requesting an image",
   );
   assert.equal(draws, 2);
+  bedroom.description += "\nExisting damage.";
   const priorRoom = structuredClone(bedroom);
-  bedroom.state.condition = "Existing damage";
   bedroom.roomSpecification = "A new garden-facing window";
   prepareRenovatedPrivateInterior(bedroom, priorRoom);
   assert.equal(bedroom.preparation?.mode, "renovation");
   assert.equal(bedroom.description, priorRoom.description, "approved specification waits for reconciled preparation");
-  assert.deepEqual(bedroom.lastObserved, priorRoom.lastObserved);
   assert.equal(bedroom.initialImageAttemptedAt, priorRoom.initialImageAttemptedAt);
   await preparation.preparePrivateSpaces();
   assert.equal(calls, 2, "an approved Renovation prepares exactly once");
-  assert.equal(bedroom.state.items.length, 24, "reconciliation preserves existing contents beyond initial room limits");
-  assert.equal(bedroom.state.condition, "Existing damage");
+  assert.match(bedroom.description, /Large established physical detail/);
+  assert.match(bedroom.description, /Existing damage/);
   await preparation.preparePrivateSpaces();
   assert.equal(calls, 2);
   const ownRoom = { ...structuredClone(bedroom), ownerId: "player", description: "My authored interior" };

@@ -1,11 +1,131 @@
-import type { VenueScene } from "../models/scene-model.js";
+import type { VenueRecordEvent, VenueScene } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { deriveVillageMoment } from "./village-clock.js";
+export function sceneTurnPublished(value: unknown) {
+  const turn = asRecord(value);
+  return asRecord(turn.semanticProvenance).version !== 2 || turn.semanticReady === true;
+}
+function unpublishedLines(submissions: unknown[]) {
+  return new Set(
+    submissions.flatMap((entry) => {
+      const turn = asRecord(entry);
+      return !sceneTurnPublished(turn) ? ((asRecord(turn.processing).lineIds as string[]) ?? []) : [];
+    }),
+  );
+}
+/** Positions enumerate only content that the ordinary public projection can publish. */
+export function publicSceneHistoryProjection(scene: VenueScene) {
+  const hidden = unpublishedLines(scene.submissions);
+  return {
+    positions: scene.lines.flatMap((line, position) =>
+      !hidden.has(line.id) && (line.contactHidden !== true || line.soundOnly?.player === true) ? [position] : [],
+    ),
+    privateHearing: publicSceneHistoryHearing(scene),
+  };
+}
+export function scenePresenceNotices(scene: VenueScene): VenueRecordEvent[] {
+  return publicSceneHistoryProjection(scene).positions.flatMap((position) => {
+    const line = scene.lines[position];
+    return line.presenceChange && !line.contactHidden
+      ? [{ id: `presence:${scene.id}:${line.id}`, kind: "venue" as const, text: line.content }]
+      : [];
+  });
+}
+export function publicSceneHistoryHearing(value: unknown) {
+  const scene = asRecord(value);
+  return privateSceneHearing({
+    ...scene,
+    submissions: Array.isArray(scene.submissions) ? scene.submissions.filter(sceneTurnPublished) : [],
+  });
+}
+export function sameSceneHistoryTurnPolicy(before: unknown, after: unknown) {
+  const policy = (turn: unknown) => [
+    sceneTurnPublished(turn),
+    publicSceneHistoryHearing({ submissions: [turn] }),
+    [...unpublishedLines([turn])],
+    asRecord(turn).activeIdsAtTurn,
+    asRecord(turn).activeIdsAfterTurn,
+    asRecord(turn).replyLineIds,
+  ];
+  return JSON.stringify(policy(before)) === JSON.stringify(policy(after));
+}
+function privateSceneHearing(value: unknown): boolean {
+  const row = asRecord(value);
+  return (
+    (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
+    (asRecord(row.operation).input !== undefined &&
+      asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
+    asRecord(row.contactGeneration).zoneEvents === true ||
+    asRecord(row.contactGeneration).acoustics === true ||
+    (Array.isArray(row.submissions) &&
+      row.submissions.some((turn) => asRecord(asRecord(asRecord(turn).attention).validation).version === 3))
+  );
+}
 export function sceneProcessingSummary(scene: VenueScene) {
   const domains = scene.submissions.flatMap((turn) => (turn.processing ? Object.values(turn.processing.domains) : []));
   return {
     pending: domains.filter((domain) => domain.status === "pending").length,
     failed: domains.filter((domain) => domain.status === "failed").length,
     rejected: domains.filter((domain) => domain.status === "rejected").length,
+  };
+}
+/** Current authority is explicit; immutable playback carries the separately paged prose. */
+export function publicSceneAuthority(scene: VenueScene) {
+  const fields = [
+    "id",
+    "placeId",
+    "placeName",
+    "spaceClass",
+    "zoneId",
+    "grantedZoneIds",
+    "privateSpaceId",
+    "zoneGrants",
+    "doorwayContacts",
+    "entryOffers",
+    "area",
+    "privateOwnerId",
+    "privateAccessOwnerId",
+    "startedAt",
+    "endedAt",
+    "lastActivityAt",
+    "endReason",
+    "status",
+    "activeIds",
+    "sceneRevision",
+    "memoryMode",
+    "semanticVersion",
+    "liveSceneVersion",
+  ] as const;
+  const selected = Object.fromEntries(fields.filter((key) => scene[key] !== undefined).map((key) => [key, scene[key]]));
+  const projected = publicSceneResponse({
+    ...selected,
+    lines: [],
+    submissions: [],
+    continuity: scene.continuity,
+    sceneAttendance: scene.sceneAttendance,
+    pendingAttention: scene.pendingAttention,
+  });
+  const last = scene.submissions.at(-1);
+  const { lines: _lines, submissions: _submissions, ...authority } = projected;
+  return {
+    ...authority,
+    ...(scene.liveSceneVersion === 1 && scene.continuity
+      ? {
+          currentTime: (() => {
+            const facts = scene.continuity!.facts;
+            const moment = deriveVillageMoment({
+              foundedAt: facts.foundedAt,
+              seed: facts.seed,
+              timeZone: facts.timeZone || undefined,
+              now: new Date(scene.continuity!.capturedAt),
+            });
+            return `${moment.weekday}, ${moment.dateLabel} · ${moment.localTime}`;
+          })(),
+        }
+      : {}),
+    version: 1 as const,
+    processingSummary: sceneProcessingSummary(scene),
+    ...(last ? { latestTurn: { id: last.id, at: last.at, published: sceneTurnPublished(last) } } : {}),
   };
 }
 export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, privateHearing = false): T {
@@ -31,15 +151,13 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
       })
       .map((entry) => publicSceneResponse(entry, visibleIds, privateHearing)) as T;
   if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype) return value;
-  const row = value as Record<string, unknown>;
-  privateHearing ||=
-    (Array.isArray(row.submissions) && row.submissions.some((turn) => asRecord(turn).zoneEventsVersion === 1)) ||
-    (asRecord(row.operation).input !== undefined &&
-      asRecord(asRecord(row.operation).input).interactionScopeVersion === 6) ||
-    asRecord(row.contactGeneration).zoneEvents === true ||
-    asRecord(row.contactGeneration).acoustics === true ||
-    (Array.isArray(row.submissions) &&
-      row.submissions.some((turn) => asRecord(asRecord(asRecord(turn).attention).validation).version === 3));
+  const row = { ...value } as Record<string, unknown>;
+  if (Array.isArray(row.lines) && Array.isArray(row.submissions)) {
+    const hidden = unpublishedLines(row.submissions);
+    row.lines = row.lines.filter((line) => !hidden.has(asRecord(line).id as string));
+    row.submissions = row.submissions.filter(sceneTurnPublished);
+  }
+  privateHearing ||= privateSceneHearing(row);
   const pending = asRecord(row.pendingAttention);
   const clarification =
     pending.id && pending.message && pending.originZoneId === row.zoneId && pending.revision === row.sceneRevision
@@ -66,22 +184,16 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
       Array.isArray(row.lines) && Array.isArray(row.submissions)
         ? {
             ...row,
-            submissions: (row.submissions as Record<string, unknown>[]).map((turn) => {
-              if (!privateHearing && asRecord(asRecord(turn.attention).validation).version !== 3) return turn;
-              const publicLines = new Set(
-                (row.lines as Record<string, unknown>[]).filter((line) => !line.contactHidden).map((line) => line.id),
-              );
-              return {
-                ...turn,
-                recollections: Array.isArray(turn.recollections)
-                  ? turn.recollections.filter((value) => {
-                      const refs = asRecord(value).lineIds;
-                      return Array.isArray(refs) && refs.length > 0 && refs.every((id) => publicLines.has(id));
-                    })
-                  : turn.recollections,
-              };
-            }),
             processingSummary: sceneProcessingSummary(row as VenueScene),
+            ...(row.continuity
+              ? {
+                  capturedContext: true,
+                  playerName:
+                    asRecord(asRecord(row.continuity).facts).playerPersonaName ||
+                    asRecord(asRecord(row.continuity).facts).playerName ||
+                    "You",
+                }
+              : {}),
             ...(Array.isArray(asRecord(row.sceneAttendance).layout)
               ? {
                   connectionMap: (asRecord(row.sceneAttendance).layout as Record<string, unknown>[]).map((zone) => ({
@@ -96,8 +208,29 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
     )
       .filter(
         ([key]) =>
-          !(privateHearing && ["heardBy", "heardPlayerBy", "heardHistory"].includes(key)) &&
+          !(privateHearing && ["heardBy", "heardPlayerBy"].includes(key)) &&
           ![
+            "developmentChanges",
+            "npcAdmissions",
+            "pendingNpcAdmissions",
+            "npcIntroductions",
+            "placeDiscoveries",
+            "establishmentProgress",
+            "worldPlaces",
+            "continuity",
+            "sceneFacts",
+            "semanticReady",
+            "semanticConclude",
+            "semanticPlayerMoves",
+            "physicalContext",
+            "narrativeSource",
+            "semanticContinuedDomains",
+            "semanticIntent",
+            "semanticProvenance",
+            "proposalFingerprint",
+            "semanticAccess",
+            "residentActionReceipt",
+            "residentActions",
             "responseDiagnostics",
             "effectFailures",
             "speechSource",
@@ -106,11 +239,14 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "playerSpeechCapture",
             "failure",
             "sceneAttendance",
+            "rejectedSubmissions",
             "navigationReceipts",
             "spinoff",
             "accompanying",
+            "departureDestinations",
             "access",
             "accessEvents",
+            "accessOperationId",
             "accessPreviousZones",
             "pendingAccessClaim",
             "contactGeneration",
@@ -130,14 +266,20 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             "wishInterpretationProof",
             "wishProposals",
             "wishContexts",
+            "wishAuthority",
             "liveProposals",
             "interpretationHistory",
             "requestMetrics",
             "timing",
             "memoryChanges",
+            "memories",
+            "memoryScenes",
+            "recollections",
+            "turnMemories",
             "relationshipChanges",
             "earlierLineIds",
-            "memoryVersions",
+            "memoryContexts",
+            "sourceFingerprint",
             "wishProposalError",
             "wishChanges",
             "snapshot",
@@ -157,25 +299,7 @@ export function publicSceneResponse<T>(value: T, visibleIds?: Set<string>, priva
             }
           : visible && ["heardBy", "heardPlayerBy"].includes(key) && Array.isArray(entry)
             ? entry.filter((id) => visible.has(id))
-            : key === "recollections" && visible && Array.isArray(entry)
-              ? publicSceneResponse(
-                  entry.filter((memory) => {
-                    const row = asRecord(memory);
-                    return ["subjectCharacterIds", "knownByCharacterIds"].every(
-                      (field) =>
-                        !Array.isArray(row[field]) ||
-                        row[field].every((id: unknown) => typeof id === "string" && visible.has(id)),
-                    );
-                  }),
-                  visible,
-                  privateHearing,
-                )
-              : key === "heardHistory" && visible && Array.isArray(entry)
-                ? publicSceneResponse(
-                    entry.filter((history) => visible.has(asTrimmedString(asRecord(history).characterId))),
-                    visible,
-                  )
-                : publicSceneResponse(entry, visible, privateHearing),
+            : publicSceneResponse(entry, visible, privateHearing),
       ]),
   ) as T;
 }

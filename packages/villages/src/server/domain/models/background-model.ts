@@ -3,10 +3,21 @@ import type { WorkFailure } from "../rules/work-failure.js";
 import type { BackgroundCompletion } from "./background-completion-model.js";
 import type { VillageState } from "./world.js";
 
-export type BackgroundKind = "story" | "agenda" | "translation" | "wish" | "wish-check" | "mail" | "adaptation";
+export type BackgroundKind =
+  | "schedule-influence"
+  | "starting-ties"
+  | "story" // Read-only compatibility for retired prose jobs.
+  | "resident-planning"
+  | "world-development"
+  | "agenda"
+  | "translation"
+  | "wish"
+  | "personal-mail"
+  | "social-recovery";
 export type BackgroundStatus = "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
 export type BackgroundSummary = {
   id: string;
+  instanceId: string;
   kind: BackgroundKind;
   subjectId: string;
   label: string;
@@ -22,11 +33,27 @@ export type BackgroundSummary = {
   failedAt?: string;
 };
 export type Step = {
+  /** Raw late evidence has been adopted but not yet validated by its generator. */
+  lateResponse?: boolean;
   key?: string;
   fingerprint: string;
   status: "running" | "completed";
   response?: Awaited<ReturnType<BackgroundCompletion>>;
+  responseClaim?: { instanceId: string; attempt: number; id: string };
+  responseRef?: { id: string; digest: string };
   responseDiagnostics?: ResponseDiagnostics;
+  timing?: {
+    queuedAt: string;
+    admittedAt: string;
+    hostStartedAt?: string;
+    hostFinishedAt?: string;
+    queueMs: number;
+    hostMs?: number;
+    requestedOutputTokens: number;
+    reasoningRequested?: string;
+    outcome: "pending" | "complete" | "unknown";
+    firstResponseMs: null;
+  };
 };
 export type BackgroundInput = {
   residentIds?: string[];
@@ -41,9 +68,14 @@ export type BackgroundInput = {
   legacyError?: string;
   automaticDate?: string;
   expectedAttempt?: number;
+  /** Paired with expectedAttempt; null asserts that the slot is empty. */
+  expectedInstanceId?: string | null;
+  /** Server-owned explicit retry admission for a replacement with changed source inputs. */
+  retryActionId?: string;
 };
 export type Job = BackgroundInput & {
   id: string;
+  instanceId: string;
   status: BackgroundStatus;
   owner: string;
   attempt: number;
@@ -52,6 +84,13 @@ export type Job = BackgroundInput & {
     string,
     { status: "dispatching" | "complete" | "unknown"; elapsedMs: number; result?: unknown }
   >;
+  attemptHistory?: Array<{
+    attempt: number;
+    requests: number;
+    tokens: number | null;
+    failure?: WorkFailure;
+    steps: Array<Pick<Step, "key" | "status" | "timing" | "responseDiagnostics">>;
+  }>;
   settings: Record<string, unknown>;
   result?: unknown;
   hasResult: boolean;
@@ -60,6 +99,7 @@ export type Job = BackgroundInput & {
   error: string;
   failedStep: number | null;
   retryActions: string[];
+  automaticRetryUsed?: true;
   retrying: boolean;
   connectionId: string;
   highWaterDate: string;
@@ -72,8 +112,10 @@ export type Job = BackgroundInput & {
   failedAt?: string;
 };
 export type Handler = {
+  authority?: "raw";
+  reserve?(state: VillageState, input: any, attemptId: string): void;
   generate(input: any): Promise<unknown>;
-  valid(state: VillageState, input: any): boolean;
+  valid(state: VillageState, input: any, admission?: { activityAttemptId: string; activityDate?: string }): boolean;
   apply(state: VillageState, input: any, result: any, context: { retrying: boolean }): void | WorkFailure;
   /** Pure local validation of saved replies on deliberate retry, before discarding failed steps. */
   recoverSavedResult?(input: any, steps: readonly Step[]): unknown;

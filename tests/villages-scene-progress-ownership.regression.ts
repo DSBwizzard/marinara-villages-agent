@@ -1,4 +1,18 @@
 import assert from "node:assert/strict";
+import {
+  createActivationScope,
+  installDefaultActivation,
+  scopedActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { DomainProcessing, ExchangeDomain } from "../packages/villages/src/server/domain/models/exchange-model.js";
+import type { VenueLine, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { createLiveEvidenceContext } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { createProgressTask } from "../packages/villages/src/server/domain/rules/progress-engine.js";
+import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
+import { dispatchExchange } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
 import { createSceneProgress } from "../packages/villages/src/server/features/scenes/progress-service.js";
 import {
   configureSceneProgress,
@@ -6,24 +20,8 @@ import {
   processSavedProgressSubmission,
   startProgressRecovery,
 } from "../packages/villages/src/server/features/scenes/progress.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
-import { createProgressTask } from "../packages/villages/src/server/domain/rules/progress-engine.js";
-import { dispatchExchange } from "../packages/villages/src/server/features/scenes/exchange-processing.js";
-import { createLiveEvidenceContext } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import type { VenueLine, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
-import type { DomainProcessing, ExchangeDomain } from "../packages/villages/src/server/domain/models/exchange-model.js";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 async function bounded(promise: Promise<void>) {
@@ -75,6 +73,7 @@ function fixture(name: string) {
   }
   function add(id = "same") {
     const saved = coerceSession({
+      version: 3,
       id,
       placeId: "venue",
       placeName: name,
@@ -167,9 +166,6 @@ function fixture(name: string) {
     async applyVenueTurnChange(scene) {
       note("physical");
       assert.equal(scene.placeName, name);
-    },
-    async applyProjectPickup() {
-      note("pickup");
     },
     async processWishExchange(scene) {
       note("wishes");
@@ -343,10 +339,18 @@ async function main() {
   };
   await movement.service.processSavedExchange("same", "turn");
   assert.deepEqual(
-    movement.calls,
-    ["measure:saved exchange", "read:same", "access", "invitation"],
-    "saved access/invitation precede movement return",
+    movement.calls.filter((call) =>
+      ["access", "invitation", "physical", "wishes", "memories", "relationships"].includes(call),
+    ),
+    ["access", "invitation"],
+    "saved movement applies access/invitation without entering exchange domains",
   );
+  const finalExchange = fixture("final-exchange");
+  finalExchange.saved.status = "closed";
+  finalExchange.result("wishes", { status: "pending", reason: "Saved verdict awaits recovery" });
+  await finalExchange.service.processSavedExchange("same", "turn");
+  finalExchange.result("wishes", { status: "applied", reason: "Saved verdict recovered" });
+  await finalExchange.service.processSavedExchange("same", "turn");
   for (const field of ["seed", "scene", "submission"] as const) {
     const changed = fixture("changed");
     if (field === "seed") changed.world.seed = "replacement";
@@ -430,20 +434,19 @@ async function main() {
   assert.equal(physical.turn().processing!.domains.wishes.status, "rejected");
   assert(!physical.calls.includes("speech:same:turn"));
   assert(!physical.calls.includes("pickup"));
-  const pickup = fixture("pickup");
+  const pickup = fixture("physical-order");
   pickup.turn().physicalOutcomeVersion = 1;
-  pickup.turn().action = { happened: true, narration: "Picked up timber" };
+  pickup.turn().action = { happened: true, narration: "Recorded a physical change" };
   pickup.world.venueEvents.push({
     id: "venue-chat:same:turn",
     venueId: "venue",
     venueName: "Workshop",
     at: pickup.saved.startedAt,
-    text: "Picked up timber",
-    actionReceipt: { submissionId: "turn", happened: true, narration: "Picked up timber" },
+    text: "Recorded a physical change",
+    actionReceipt: { submissionId: "turn", happened: true, narration: "Recorded a physical change" },
   });
   await pickup.service.processSavedExchange("same", "turn");
-  assert(pickup.calls.indexOf("physical") < pickup.calls.indexOf("pickup"));
-  assert(pickup.calls.indexOf("pickup") < pickup.calls.indexOf("speech:same:turn"));
+  assert(pickup.calls.indexOf("physical") < pickup.calls.indexOf("speech:same:turn"));
   assert.equal(pickup.turn().processing!.domains.projects.status, "applied");
   const missingTurn = fixture("missing-turn");
   await missingTurn.service.processSavedProgressSubmission("same", "missing");

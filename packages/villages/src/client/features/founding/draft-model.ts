@@ -1,15 +1,11 @@
-import type { FoundingPhase } from "./founding-steps.js";
 import type { useFoundingSetupDraftData } from "./controller-hooks.js";
-import type { emptyFoundingWorkspace } from "./villages-founding-workspace-state.js";
 
-/** Stored founding drafts predate the optional workspace navigation field. */
-export type SetupDraftData = Omit<
-  ReturnType<typeof useFoundingSetupDraftData>,
-  "workspace" | "phase" | "mapSource" | "styleProfileId"
-> & {
-  /** Legacy Simple map drafts are restored into an artwork choice. */
-  mapSource: ReturnType<typeof useFoundingSetupDraftData>["mapSource"] | "none";
-  styleProfileId?: string | null;
-  phase?: FoundingPhase;
-  workspace?: ReturnType<typeof emptyFoundingWorkspace>;
+export type FoundingContext = {
+  rules: string;
+  circumstances: import("../../../shared/contracts/village.js").FoundingCircumstance[];
+  communityVenueId: string;
+  /** Opaque source data retained only while an already-admitted request is recovered. */
+  households?: unknown;
 };
+
+export type SetupDraftData = ReturnType<typeof useFoundingSetupDraftData>;

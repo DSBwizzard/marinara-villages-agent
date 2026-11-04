@@ -1,16 +1,20 @@
 import assert from "node:assert/strict";
+import { readEffectiveVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
+import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { VillagerCard } from "../../packages/villages/src/server/domain/models/catalog-model.js";
+import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
+import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
+import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
+import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/social-wishes.js";
+import { sceneWritingCapabilities } from "../../packages/villages/src/server/domain/rules/scene-compact-contract.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
 } from "../../packages/villages/src/server/features/scenes/writing-service.js";
-import { coerceVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { readEffectiveVillagerCard } from "../../packages/villages/src/server/adapters/engine/catalog.js";
-import { snapshotFromCard } from "../../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { wishFingerprint } from "../../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
-import type { VillageState } from "../../packages/villages/src/server/domain/models/world.js";
-import type { VillagerCard } from "../../packages/villages/src/server/domain/models/catalog-model.js";
-import type { VenueScene } from "../../packages/villages/src/server/domain/models/scene-model.js";
 
 /** Exercise the current Scene prompt path with a fitting model that cannot generate. */
 export async function currentScenePrompt(
@@ -19,6 +23,7 @@ export async function currentScenePrompt(
   mode: "greet" | "chat" | "leave" = "chat",
   message = "What do you think?",
   overrides: Partial<VenueScene> = {},
+  operationInput: ReturnType<SceneWritingPorts["venueOperationInput"]> = {},
 ) {
   const snapshot = {
     ...snapshotFromCard(
@@ -35,6 +40,8 @@ export async function currentScenePrompt(
     capturedAt: "2026-10-07T12:00:00.000Z",
   };
   const world = coerceVillageState({
+    ...defaultVillageState(),
+
     ...state,
     villagers: state.villagers.some((resident) => resident.characterId === card.id)
       ? state.villagers.map((resident) =>
@@ -48,6 +55,8 @@ export async function currentScenePrompt(
     "all supplied residents, including hidden actors, survive current save decoding",
   );
   const session = coerceSession({
+    version: 3,
+    semanticVersion: 2,
     id: "prompt-fixture",
     placeId: "common-room",
     placeName: "Common room",
@@ -62,6 +71,17 @@ export async function currentScenePrompt(
     submissions: [],
     ...overrides,
   });
+  // Contact generation is request-local and intentionally absent from saved decoding.
+  session.contactGeneration = overrides.contactGeneration;
+  const admission = {
+    writingContractVersion: 3,
+    semanticPipelineVersion: 3,
+    residentActionsVersion: 2,
+    interactionScopeVersion: 6,
+    playerAgencyVersion: 1,
+    writingCapabilities: sceneWritingCapabilities(world, session),
+    ...operationInput,
+  };
   const forbidden = () => assert.fail("Prompt preparation must not generate, interpret, or mutate a Scene.");
   type Model = Awaited<ReturnType<ReturnType<SceneWritingPorts["villagesLanguageModels"]>["resolveForRequest"]>>;
   const model: Model = {
@@ -100,12 +120,10 @@ export async function currentScenePrompt(
     measurePipeline: forbidden,
     runtimeDebug() {},
     venueOperationId: () => "",
-    venueOperationInput: () => ({ interactionScopeVersion: 1 }),
-    venueOperationSignal: () => undefined,
+    venueOperationInput: () => admission,
     rejectVenueCompletion: forbidden,
     completeWithRoom: forbidden,
     refreshZoneParticipants: forbidden,
-    interpretRoomReply: forbidden,
   };
   const result = await createSceneWriting(ports).prepareVenueTurnMessages(session, message, mode, "", null);
   const prompt = result.fitted.messages.map((entry) => entry.content).join("\n");
@@ -119,7 +137,7 @@ export async function currentScenePrompt(
     "appearance",
     "postHistoryInstructions",
   ] as const) {
-    if (card[field]?.trim())
+    if (result.audience.includes(card.id) && card[field]?.trim())
       assert.ok(prompt.includes(card[field].trim()), `the actual Scene writer includes authored ${field}`);
   }
   if (mode === "chat")

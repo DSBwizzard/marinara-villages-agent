@@ -22,7 +22,7 @@ The Zone selector stays in Venue actions during an active Scene and disables whi
 
 ## Validation
 
-Passed locally: `npm run check` and `node scripts/build-feature-packages.mjs villages` with Node 24.21 and Engine 2.4.6 build dependencies. Generated manifest: Villages 0.6.140, built against Engine 2.4.6 (`e0313a33caef973e645616419d11894f4d8c434e`).
+Passed locally: repository checks and the package build with Node 24.21 and Engine 2.4.6 build dependencies. Generated manifest: Villages 0.6.140, built against Engine 2.4.6 (`e0313a33caef973e645616419d11894f4d8c434e`).
 
 Passed regression suites: venue-session, zones, contact, scene-actions, venue-coordinator, room-events, private-spaces, optional-layouts, project-checks, live-wishes, wish-interpretation, wish-batch, project-interpretation, progress-projects, progress-engine, live-memory, exchange-processing, pipeline-efficiency, reading-pages, scene-staging, character-writing, dialogue-context, scene-text and check-cost-replay. Affected suites were rerun after recovery changes.
 

@@ -82,10 +82,7 @@ export function routeInterpretationChecks(checks: InterpretationCheck[], raw: un
       (check.essentialEvidenceIds?.length ||
         contextualAnswer ||
         (check.domain === "room" && permission.test(request + " " + text)) ||
-        (check.domain === "project" &&
-          (project.test(request + " " + text) ||
-            facts.kind === "requirements" ||
-            context.projectActors?.includes(actor))))
+        (check.domain === "project" && (project.test(request + " " + text) || context.projectActors?.includes(actor))))
     )
       reason = "Pending context, short answer, gesture or relevant request requires verification";
     const group = checks.filter(

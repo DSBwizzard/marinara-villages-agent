@@ -3,8 +3,11 @@ import {
   captureMissingVillagerCardColors,
   readVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVillagerCardSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 const card = readVillagerCard({
   id: "resident",
@@ -40,6 +43,8 @@ const legacy = {
 } satisfies VillageVillagerCardSnapshot;
 const migrated = captureMissingVillagerCardColors(legacy, card);
 const recovered = coerceVillageState({
+  ...defaultVillageState(),
+
   wishSystemVersion: 3,
   villagers: [{ characterId: "resident", cardSnapshot: legacy, addedAt: legacy.capturedAt }],
 });

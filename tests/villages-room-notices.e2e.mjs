@@ -1,18 +1,21 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const page = await browser.newPage({ viewport: { width: 375, height: 740 } });
+await mockEngineLookups(page);
 const errors = [];
 page.on("pageerror", (error) => errors.push(error.message));
 const now = new Date().toISOString();
 const snapshot = {
+  worldScope: "a".repeat(64),
   status: "ready",
   isFounded: true,
   village: {
@@ -32,24 +35,22 @@ const snapshot = {
     dayIndex: 1,
     nextTransitionAt: "",
   },
-  noticeboard: [],
+  projects: [],
   venueRequests: [],
-  upgradeRequests: [],
   residences: [],
-  happenings: [],
   villagers: [],
-  recap: null,
   settings: {
     venues: [],
     visitRetention: { mode: "forever", value: 0 },
-    townMapImageSetAt: "",
+    maps: [],
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
-    storyPaces: [],
+    backgroundPaces: [],
     macros: [],
   },
 };
 
 const session = {
+  version: 2,
   id: "live",
   memoryMode: "live",
   sceneRevision: 1,
@@ -124,27 +125,34 @@ const api = async (route) => {
     value = {};
   } else if (path.endsWith("/retry-memory") || path.endsWith("/leave-pending")) {
     closingReviews++;
-    return route.fulfill({ status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
+    return fulfill(route, { status: 404, contentType: "application/json", body: '{"error":"Retired Scene route"}' });
   } else if (path.endsWith("/operation")) value = { operation: null };
   else if (path.endsWith("/catalog")) value = { characters: [] };
   else if (path.endsWith("/relationships")) value = { profiles: [], starting: { pending: false, summaries: [] } };
-  await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+  await fulfill(route, {
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+  });
 };
 const html =
-  "<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>";
+  '<html data-marinara-accent-animation><style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;font-family:Arial;color:var(--foreground)}svg{display:block}[data-marinara-accent-animation] :where(.mari-rgb-icon-scope) svg:not(.mari-rgb-static-icon){color:#d946a8;stroke:currentColor}marinara-capability-villages{display:block;width:100%;height:100%}</style><body class="mari-rgb-icon-scope"><marinara-capability-villages></marinara-capability-villages></body></html>';
+async function refresh(tab = page) {
+  await tab.evaluate(() => window.dispatchEvent(new Event("focus")));
+}
 async function mount(tab) {
   await tab.route("**/api/villages**", api);
   await tab.route("http://villages.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: html }),
+    fulfill(route, { status: 200, contentType: "text/html", body: html }),
   );
   await tab.goto("http://villages.test/");
   await tab.addScriptTag({ path: resolve("packages/villages/client.js") });
 }
-try {
+await withBrowser(browser, async () => {
   await mount(page);
   const composer = page.getByRole("textbox", { name: "Message at The Park" });
-  const tray = page.getByRole("button", { name: /village notice/ });
-  const stack = page.locator("[aria-label='Village events']");
+  const tray = page.getByRole("button", { name: /World changes?/ });
+  const stack = page.locator("[aria-label='World changes']");
   await composer.waitFor();
   await composer.focus();
   await expect(page.getByRole("button", { name: /^\d+ Scene errors?$/ })).toHaveCount(0);
@@ -156,6 +164,7 @@ try {
     wishUpdate: { wishId: "garden", state: "revealed" },
   };
   notices.push(shared);
+  await refresh();
   await expect(tray).toHaveAttribute("aria-expanded", "true");
   await expect(stack).toContainText(shared.text);
   await expect(composer).toBeFocused();
@@ -177,12 +186,15 @@ try {
     wishUpdate: { wishId: "garden", state: "progress" },
   });
   pending = false;
+  await refresh();
   await expect(stack).toContainText("Wish progressed · Bob");
   notices.push({ id: "heart", kind: "relationship-up", text: "Bob's warmth toward you increased." });
   notices.push({ id: "memory", kind: "memory", text: "A memory was forged.", detail: "Saturday planting." });
+  await refresh();
   await expect(stack).toContainText("♥");
   await expect(stack).toContainText("★");
   notices.push(shared);
+  await refresh();
   await expect(page.locator(".marinara-capability-villages-room-star")).toHaveCount(4);
   await page.getByRole("button", { name: "Dismiss " + shared.text }).click();
   await expect.poll(() => dismissed.has(shared.id)).toBe(true);
@@ -198,13 +210,81 @@ try {
     wishUpdate: { wishId: "garden", state: "fulfilled" },
   };
   notices.push(fulfilled);
+  await refresh();
   await expect(stack).toContainText(fulfilled.text);
   const second = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await mockEngineLookups(second);
   await mount(second);
-  await expect(second.locator("[aria-label='Village events']")).toContainText(fulfilled.text);
+  await expect(second.locator("[aria-label='World changes']")).toContainText(fulfilled.text);
   await page.getByRole("button", { name: "Dismiss " + fulfilled.text }).click();
-  await expect(second.locator("[aria-label='Village events']")).not.toContainText(fulfilled.text);
+  await expect.poll(() => dismissed.has(fulfilled.id)).toBe(true);
+  await refresh(second);
+  await expect(second.locator("[aria-label='World changes']")).not.toContainText(fulfilled.text);
   await second.close();
+  const arrival = {
+    id: "attendance",
+    role: "assistant",
+    speakerId: "__venue_scene__",
+    name: "Narration",
+    kind: "narration",
+    content: "11:57 AM · Bob is no longer here. Jimmy is here.",
+    at: now,
+    heardBy: [],
+    physicalIdsAfter: ["jimmy"],
+    presenceChange: true,
+  };
+  session.initialActiveIds = ["bob"];
+  session.participants.push({ characterId: "jimmy", name: "Jimmy", doing: "gardening" });
+  session.activeIds = ["jimmy"];
+  session.lines.push(arrival);
+  session.sceneRevision++;
+  const arrivalNotice = { id: "presence:live:attendance", kind: "venue", text: arrival.content };
+  notices.push(arrivalNotice);
+  await refresh();
+  await expect(stack).toContainText(arrival.content);
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCount(1);
+  await expect(stack.locator('[data-icon="presence"]')).toHaveCount(1);
+  await expect(tray.locator('[data-icon="presence"] path')).toHaveCSS("stroke", "none");
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCSS("color", "rgb(217, 70, 168)");
+  const countAlignment = await tray.evaluate((button) => {
+    const icon = button.querySelector("svg").getBoundingClientRect();
+    const count = document.createRange();
+    count.selectNode(button.lastChild);
+    const text = count.getBoundingClientRect();
+    return Math.abs((icon.top + icon.bottom) / 2 - (text.top + text.bottom) / 2);
+  });
+  assert(countAlignment < 4, "The icon and count remain on the same row under host SVG styles");
+  await stack
+    .locator(".marinara-capability-villages-room-star")
+    .filter({ hasText: arrival.content })
+    .screenshot({ path: "artifacts/attendance-notice-detail.png" });
+  await expect(stack).toContainText("★");
+  await expect(page.locator(".marinara-capability-villages-chat-vn-reading")).not.toContainText(arrival.content);
+  await expect(page.locator(".marinara-capability-villages-chat-vn-counter")).toHaveText(/1\s*\/\s*1$/u);
+  await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
+  await expect(page.locator('[data-character-id="bob"]')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await page.screenshot({ path: "artifacts/attendance-chip-phone.png" });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.locator('[data-character-id="jimmy"]')).toBeVisible();
+  await page.screenshot({ path: "artifacts/attendance-chip-desktop.png" });
+  await page.getByRole("button", { name: "Dismiss " + arrival.content }).click();
+  await page.reload();
+  await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+  await expect(stack).not.toContainText(arrival.content);
+  await expect(tray.locator('[data-icon="presence"]')).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  const history = session.lines;
+  session.lines = [arrival];
+  const empty = await browser.newPage({ viewport: { width: 375, height: 740 } });
+  await mockEngineLookups(empty);
+  await mount(empty);
+  await expect(empty.getByRole("textbox", { name: "Message at The Park" })).toBeEnabled();
+  await expect(empty.locator('[data-character-id="jimmy"]')).toBeVisible();
+  await expect(empty.locator(".marinara-capability-villages-chat-vn-counter")).toHaveCount(0);
+  await expect(empty.getByRole("button", { name: "Next paragraph", exact: true })).toBeDisabled();
+  await empty.close();
+  session.lines = history;
   assert.equal(interpretations, 0, "Wish display, polling, refresh and dismissal add no interpretation requests");
   assert.equal(closingReviews, 0);
   mkdirSync("artifacts", { recursive: true });
@@ -212,39 +292,39 @@ try {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/live-wish-chips-desktop.png" });
   failed = true;
+  await refresh();
   const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
   await chip.click();
   const status = page.getByRole("region", { name: "Scene errors" });
-  await status.locator("summary").filter({ hasText: "memories update failed" }).click();
-  await expect(status).toContainText("A citation is unavailable or was not witnessed by every affected resident");
-  await expect(
-    status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }),
-  ).toBeVisible();
+  await status.locator("summary").filter({ hasText: "World change failed · memories" }).click();
+  await expect(status).toContainText(
+    "The game could not confirm this world change from what the residents saw or heard.",
+  );
+  await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/memory-cause-desktop.png" });
-  await status.getByRole("button", { name: "Replay saved work · no model request" }).click();
+  await status.getByRole("button", { name: "Replay" }).click();
   await expect.poll(() => replays).toBe(1);
   assert.equal(interpretations, 0);
-  await status.getByRole("button", { name: "Retry memories interpretation · may use model requests" }).click();
+  await status.getByRole("button", { name: "Retry memories" }).click();
   await expect.poll(() => interpretations).toBe(1);
   failedDomain = "projects";
   failed = true;
+  await refresh();
   await expect(chip).toBeVisible();
   if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
-  await status.locator("summary").filter({ hasText: "projects update failed" }).click();
+  await status.locator("summary").filter({ hasText: "World change failed · projects" }).click();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.screenshot({ path: "artifacts/project-recovery-desktop.png" });
-  await status.getByRole("button", { name: "Retry projects interpretation · may use model requests" }).click();
+  await status.getByRole("button", { name: "Retry projects" }).click();
   await expect.poll(() => interpretations).toBe(2);
   assert.deepEqual(interpretedDomains, ["memories", "projects"]);
   assert.deepEqual(errors, []);
   console.log(
     "villages-room-notices: live Wish chips, stars/hearts, focus, details, duplicate receipts, refresh, two-tab dismissal, and explicit recovery passed",
   );
-} finally {
-  await browser.close();
-}
+});

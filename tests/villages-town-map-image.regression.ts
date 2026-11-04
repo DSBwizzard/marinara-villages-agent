@@ -1,11 +1,12 @@
-import { townMapImageProblem } from "../packages/villages/src/shared/helpers/town-map-upload.js";
-import { villageRouteSource } from "./route-source.js";
-import { clientImplementation } from "./client-source.js";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { PNG } from "pngjs";
+import { townMapImageProblem } from "../packages/villages/src/shared/helpers/town-map-upload.js";
+import { clientImplementation } from "./client-source.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { villageRouteSource } from "./route-source.js";
 
 async function main() {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -20,20 +21,13 @@ async function main() {
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
   const { DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } =
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
-  const {
-    TOWN_MAP_EXPECTED_HEIGHT,
-    TOWN_MAP_EXPECTED_WIDTH,
-    MAX_TOWN_MAP_IMAGE_LENGTH,
-    villageCurrentSetting,
-    villageFoundingSetting,
-    villageRelevantOrigin,
-  } = await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
-  const { defaultVillageState, coerceVillageState } = await import(
-    pathToFileURL(join(services, "domain/decoding/village-codec.ts")).href
-  );
+  const { TOWN_MAP_EXPECTED_HEIGHT, TOWN_MAP_EXPECTED_WIDTH, MAX_TOWN_MAP_IMAGE_LENGTH, villageCurrentSetting } =
+    await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);
+  const { defaultVillageState } = await import(pathToFileURL(join(services, "domain/decoding/village-codec.ts")).href);
   const { inspectVillageImage } = await import(pathToFileURL(join(services, "adapters/engine/image-files.ts")).href);
 
   for (const [width, height] of [
+    [2560, 1440],
     [1536, 1024],
     [1024, 1024],
     [768, 1152],
@@ -53,120 +47,23 @@ async function main() {
     assert.ok(townMapImageProblem({ width, height }), `${width} x ${height} rejected`);
   assert.match(townMapImageProblem({ width: 1080, height: 2412 })!, /at most 1620px tall/);
   assert.match(townMapImageProblem({ width: 2412, height: 1080 })!, /at most 2160px wide/);
-  assert.equal(TOWN_MAP_EXPECTED_WIDTH, 1536);
-  assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1024);
+  assert.equal(TOWN_MAP_EXPECTED_WIDTH, 2560);
+  assert.equal(TOWN_MAP_EXPECTED_HEIGHT, 1440);
   assert.equal(MAX_TOWN_MAP_IMAGE_LENGTH, 8_000_000);
   const founded = {
+    ...defaultVillageState(),
     setting: "Misty cliffs",
-    worldFacts: ["The cliffs shelter seabirds"],
-    foundingReason: "rebuild",
-    foundingDetails: "Survivors gathered after the flood in the early days.",
-    foundingGuidance: "Favor quiet solidarity.",
-    scenarioImprint: {
-      origin: "Survivors founded the village after a flood.",
-      worldFacts: ["The cliffs shelter seabirds"],
-      openingConditions: ["The old footbridge needs repair"],
-      visualCues: ["Reused timber"],
-    },
+    worldRules: "The sun never sets",
   };
-  assert.match(villageCurrentSetting(founded), /^Misty cliffs\n/);
-  assert.match(villageCurrentSetting(founded), /Current world facts:\n- The cliffs shelter seabirds/);
-  assert.doesNotMatch(villageCurrentSetting(founded), /early days|flood|footbridge|solidarity/);
-  assert.match(
-    villageFoundingSetting(founded),
-    /Starting conditions \(at founding only\): The old footbridge needs repair/,
-  );
-  assert.match(villageFoundingSetting(founded), /Shared starting circumstances.*Survivors gathered after the flood/);
-  assert.match(villageFoundingSetting(founded), /Founding visual cues: Reused timber/);
-  assert.doesNotMatch(villageFoundingSetting(founded), /quiet solidarity|Player-authored creative preferences/);
-  const openBeginning = {
-    ...founded,
-    foundingReason: "none",
-    foundingDetails: "Friends gather with tools to build a new home.",
-    foundingGuidance: "",
-    scenarioImprint: { origin: "", worldFacts: [], openingConditions: ["A temporary camp"], visualCues: [] },
-  };
-  assert.match(villageFoundingSetting(openBeginning), /Shared starting circumstances.*Friends gather with tools/);
-  assert.doesNotMatch(villageCurrentSetting(openBeginning), /temporary camp|Friends gather/);
-  const freshBeginning = {
-    setting: "A fishing village above the sea",
-    worldFacts: [],
-    foundingReason: "none",
-    foundingDetails: "On Day 1, storm-damaged boats reach the cove.",
-    foundingGuidance: "",
-    scenarioImprint: null,
-  };
-  assert.match(villageFoundingSetting(freshBeginning), /Shared starting circumstances.*storm-damaged boats/);
-  assert.doesNotMatch(villageFoundingSetting(freshBeginning), /Earlier background/);
-  assert.doesNotMatch(villageCurrentSetting(freshBeginning), /storm-damaged/);
-  assert.match(villageRelevantOrigin(freshBeginning, "How did this village begin?"), /storm-damaged boats/);
-  assert.equal(villageRelevantOrigin(founded, "What is for dinner?"), "");
-  assert.match(
-    villageRelevantOrigin(founded, "Who founded this village?"),
-    /Survivors founded the village after a flood/,
-  );
-  assert.equal(
-    villageRelevantOrigin({ setting: "Misty cliffs", foundingReason: "none", foundingDetails: "" }, "history"),
-    "",
-  );
-  const legacy = coerceVillageState({
-    wishSystemVersion: 3,
-    setting: "Misty cliffs",
-    foundingReason: "rebuild",
-    foundingDetails: "After the flood",
-  });
-  assert.equal(legacy.scenarioImprint, null);
-  assert.deepEqual(legacy.worldFacts, []);
-  assert.match(villageCurrentSetting(legacy), /^Misty cliffs\n/);
-  assert.match(villageRelevantOrigin(legacy, "Tell me the village history"), /After the flood/);
-  assert.deepEqual([defaultVillageState().townMapCanvasWidth, defaultVillageState().townMapCanvasHeight], [1536, 1024]);
-  assert.deepEqual(
-    [
-      coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3 }).townMapCanvasHeight,
-    ],
-    [1536, 1024],
-  );
-  assert.deepEqual(
-    [
-      coerceVillageState({ wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3, setupAt: "2025-01-01T00:00:00Z" }).townMapCanvasHeight,
-    ],
-    [1216, 832],
-  );
-  assert.deepEqual(
-    [
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
-        .townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 1264, townMapCanvasHeight: 848 })
-        .townMapCanvasHeight,
-    ],
-    [1264, 848],
-  );
-  assert.deepEqual(
-    [
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 }).townMapCanvasWidth,
-      coerceVillageState({ wishSystemVersion: 3, townMapCanvasWidth: 9000, townMapCanvasHeight: 2 })
-        .townMapCanvasHeight,
-    ],
-    [1536, 1024],
-  );
-  const mapPrefix = "data:image/png;base64,";
-  const acceptedMap = mapPrefix + "A".repeat(7_999_976);
-  const oversizedMap = mapPrefix + "A".repeat(7_999_980);
-  assert.ok(acceptedMap.length <= MAX_TOWN_MAP_IMAGE_LENGTH);
-  assert.ok(oversizedMap.length > MAX_TOWN_MAP_IMAGE_LENGTH);
-  assert.equal(
-    coerceVillageState({ wishSystemVersion: 3, townMapImage: acceptedMap }).townMapImage.length,
-    acceptedMap.length,
-  );
-  assert.equal(coerceVillageState({ wishSystemVersion: 3, townMapImage: oversizedMap }).townMapImage, "");
+  assert.match(villageCurrentSetting(founded), /Misty cliffs/);
+  assert.match(villageCurrentSetting(founded), /Standing world rules.*The sun never sets/s);
+  assert.doesNotMatch(villageCurrentSetting(founded), /Survivors gathered/);
+  assert.deepEqual(defaultVillageState().maps, []);
   assert.match(
     DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     /Make rooms, outdoor spaces, entrances and connecting routes easy to distinguish/,
   );
-  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /3:2 landscape canvas, wider than it is tall/);
-  assert.equal(DEFAULT_TOWN_MAP_LAYOUT_PROMPT.includes("1536×1024"), false);
+  assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /16:9 landscape canvas/);
   assert.match(DEFAULT_TOWN_MAP_LAYOUT_PROMPT, /Do not draw outlined lots or a zoning grid/);
   const fixtures = [
     "A forest settlement of timber cabins and clearings.",
@@ -189,12 +86,12 @@ async function main() {
     assert.match(prompt, /Map details: Respect repeated living spaces/);
     assert.ok(prompt.length <= 4000);
   }
-  const tightBase = buildTownMapPrompt(undefined, "x".repeat(1900));
+  const tightBase = buildTownMapPrompt(undefined, "x".repeat(1500));
   const exactlyFits = "v".repeat(4000 - tightBase.length - 1 - "Compatible visual lore: ".length);
-  const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1900), [exactlyFits]);
+  const tightPrompt = buildTownMapPrompt(undefined, "x".repeat(1500), [exactlyFits]);
   assert.equal(tightPrompt.length, 4000, "complete optional entry fits the actual final character allowance");
   assert.ok(tightPrompt.includes("\nCompatible visual lore: "));
-  const longSetting = "a".repeat(1990) + "LAST-FACT";
+  const longSetting = "a".repeat(1490) + "LAST-FACT";
   assert.ok(buildTownMapPrompt(undefined, longSetting, "", undefined, "Watercolor").includes("LAST-FACT"));
   const optionalPrompt = buildTownMapPrompt(undefined, "An enclosed mall.", ["z".repeat(4000), "COMPLETE-SHORT-ENTRY"]);
   assert.ok(!optionalPrompt.includes("zzz"));
@@ -210,8 +107,8 @@ async function main() {
     assert.match(prompt, /Map details take priority over conflicting Village description/);
     assert.ok(prompt.includes("Village description: A harbor town with canals"));
   }
-  const imprintMap = buildTownMapPrompt(undefined, "Misty cliffs", "", founded.scenarioImprint);
-  assert.match(imprintMap, /Reused timber/);
+  const imprintMap = buildTownMapPrompt(undefined, "Misty cliffs", "", "Restored timber");
+  assert.match(imprintMap, /Restored timber/);
   assert.match(DEFAULT_TOWN_MAP_NEGATIVE_PROMPT, /text, letters, writing, numerals, labels/);
   assert.match(
     DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
@@ -249,7 +146,7 @@ async function main() {
   const documents = new Map<string, any>();
   const releaseRuntime = configureVillagesRuntime({
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_packageId: string, id: string) {
           return documents.get(id) ?? null;
         },
@@ -263,7 +160,7 @@ async function main() {
           documents.set(input.id, row);
           return row;
         },
-      },
+      }),
     },
     logger: { warn() {}, error() {}, info() {}, debug() {}, debugOverride() {} },
   } as any);
@@ -297,12 +194,20 @@ async function main() {
     };
     const input = {
       structure: "A corridor and shared hall. ".repeat(4),
-      setting: "An indoor observatory. ".repeat(70),
+      setting: "An indoor observatory. ".repeat(58),
       sceneryArtStyle: "Painted scenery. ".repeat(6),
-      useVisualLore: false,
+      useVisualLore: true,
+      selectedLorebookIds: ["zero-budget-book"],
+      loreTokenBudget: 0,
       connectionId: "fixture-image",
     };
-    const expectedPrompt = buildTownMapPrompt(input.structure, input.setting, "", null, input.sceneryArtStyle.trim());
+    const expectedPrompt = buildTownMapPrompt(
+      input.structure,
+      input.setting,
+      "",
+      undefined,
+      input.sceneryArtStyle.trim(),
+    );
     assert.ok(expectedPrompt.length > 3000 && expectedPrompt.length <= 4000);
     await assert.rejects(
       generateVillageTownMap({ ...input, structure: "x".repeat(1500), sceneryArtStyle: "s".repeat(600) }),
@@ -312,6 +217,7 @@ async function main() {
     const generated = await generateVillageTownMap(input);
     assert.deepEqual(generated, { image: generatedImage, width: 1536, height: 1024 });
     assert.equal(imageRequests.length, 1);
+    assert.deepEqual([imageRequests[0].width, imageRequests[0].height], [2560, 1440]);
     assert.equal(imageRequests[0].appearance, expectedPrompt);
     assert.equal(expectedPrompt.split(VILLAGE_SHARED_SETTING_RULE).length - 1, 1);
     assert.equal(imageRequests[0].promptOverrides[0].prompt, expectedPrompt);
@@ -327,39 +233,42 @@ async function main() {
     imageGate = new Promise<void>((resolve) => {
       releaseImage = resolve;
     });
-    const attempt = { ...input, actionId: "map-attempt-one", sourceKey: "original-inputs" };
+    const attempt = { targetId: "target-map", ...input, actionId: "map-attempt-one", sourceKey: "original-inputs" };
     const first = await requestTownMapGeneration(attempt);
     assert.equal(first.status, "running", "admission finishes before the provider response");
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(imageRequests.length, 3);
     assert.equal((await requestTownMapGeneration(attempt)).id, first.id);
-    assert.equal(
-      (await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" })).id,
-      first.id,
-      "another tab joins the existing request",
+    await assert.rejects(
+      requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" }),
+      /still being generated/,
     );
-    assert.equal((await readTownMapGeneration(first.id)).status, "running");
+    assert.equal((await readTownMapGeneration(first.id, "target-map")).status, "running");
     assert.equal(imageRequests.length, 3, "status reads and repeated admission do not spend again");
     releaseImage();
-    for (let i = 0; i < 30 && (await readTownMapGeneration(first.id)).status === "running"; i++)
+    for (let i = 0; i < 30 && (await readTownMapGeneration(first.id, "target-map")).status === "running"; i++)
       await new Promise((resolve) => setImmediate(resolve));
-    const complete = await readTownMapGeneration(first.id);
+    const complete = await readTownMapGeneration(first.id, "target-map");
     assert.equal(complete.status, "complete");
     assert.deepEqual(complete.result, generated);
     stop();
     stop = startTownMapGeneration();
     assert.equal(
-      (await readTownMapGeneration(first.id)).status,
+      (await readTownMapGeneration(first.id, "target-map")).status,
       "complete",
       "completed result survives runtime restart",
     );
     failImage = true;
     imageGate = undefined;
-    const second = await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-two" });
-    for (let i = 0; i < 30 && (await readTownMapGeneration(second.id)).status === "running"; i++)
+    const second = await requestTownMapGeneration({
+      targetId: "target-map",
+      ...attempt,
+      actionId: "map-attempt-two",
+    });
+    for (let i = 0; i < 30 && (await readTownMapGeneration(second.id, "target-map")).status === "running"; i++)
       await new Promise((resolve) => setImmediate(resolve));
-    assert.equal((await readTownMapGeneration(second.id)).status, "failed");
-    assert.match((await readTownMapGeneration(second.id)).error, /Provider unavailable/);
+    assert.equal((await readTownMapGeneration(second.id, "target-map")).status, "failed");
+    assert.match((await readTownMapGeneration(second.id, "target-map")).error, /Provider unavailable/);
     assert.equal(imageRequests.length, 4);
     await assert.rejects(requestTownMapGeneration(attempt), /already used/);
     assert.equal(imageRequests.length, 4, "replaying a replaced receipt must not spend again");
@@ -367,15 +276,19 @@ async function main() {
     imageGate = new Promise<void>((resolve) => {
       releaseImage = resolve;
     });
-    const third = await requestTownMapGeneration({ ...attempt, actionId: "map-attempt-three" });
+    const third = await requestTownMapGeneration({
+      targetId: "target-map",
+      ...attempt,
+      actionId: "map-attempt-three",
+    });
     await new Promise((resolve) => setImmediate(resolve));
     stop();
     stop = startTownMapGeneration();
-    assert.equal((await readTownMapGeneration(third.id)).status, "interrupted");
+    assert.equal((await readTownMapGeneration(third.id, "target-map")).status, "interrupted");
     releaseImage();
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal(
-      (await readTownMapGeneration(third.id)).status,
+      (await readTownMapGeneration(third.id, "target-map")).status,
       "interrupted",
       "late response cannot overwrite restarted runtime state",
     );
@@ -392,10 +305,10 @@ async function main() {
     releaseRuntime();
   }
   const client = await clientImplementation();
-  for (const step of ["People", "Place", "Venues", "Review"]) {
+  for (const step of ["Setting", "People", "Venues and Map", "Review"]) {
     assert.ok(client.includes(`"${step}"`));
   }
-  assert.ok(client.includes('"/setup/town-map/generate"'));
+  assert.ok(client.includes('"/maps/generate"'));
   assert.ok(client.includes("More options"));
   assert.equal(client.includes("setupMapOptions"), false);
   assert.equal(client.includes("Fit entire map"), false);
@@ -411,21 +324,16 @@ async function main() {
   assert.equal(client.includes('["none", "Simple map"'), false, "map artwork is required");
   assert.ok(client.includes("setupMapNegativePrompt"));
   assert.equal(client.includes("DEFAULT_TOWN_MAP_SRC"), false);
-  assert.equal(
-    client.match(/\/setup\/town-map\/generate/g)?.length,
-    2,
-    "founding and replacement each generate explicitly",
-  );
 
   const routes = villageRouteSource();
   assert.ok(routes.includes('>("/setup", { bodyLimit: SETTINGS_BODY_LIMIT }'));
-  assert.ok(routes.includes('>("/setup/town-map/generate"'));
+  assert.ok(routes.includes('>("/maps/generate"'));
 
   const village = await readFile(join(services, "features/founding/founding-setup-service.ts"), "utf8");
   assert.ok(
     village.includes('if (setting.length === 0) throw badRequest("Describe the place and world before founding.")'),
   );
-  assert.ok(village.includes("state.townMapImage = townMap.image"));
+  assert.ok(village.includes("state.maps = [townMap]"));
 
   const builder = await readFile(join(root, "packages/villages/package-definition.mjs"), "utf8");
   assert.equal(builder.includes('"villages-townmap.png"'), false);

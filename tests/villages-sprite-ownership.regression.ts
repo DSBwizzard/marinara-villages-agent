@@ -5,35 +5,37 @@ import {
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { createSpriteImageDecoder } from "../packages/villages/src/server/features/media/sprite-image-codec.js";
 import {
   createSpriteManager,
   type SpriteManagerPorts,
 } from "../packages/villages/src/server/features/media/sprite-manager-service.js";
 import {
-  configureSpriteManager,
-  importSpriteArtwork,
   adoptSpriteArtwork,
-  readSpriteManager,
+  configureSpriteManager,
   decodeSpriteImage,
+  importSpriteArtwork,
+  readSpriteManager,
 } from "../packages/villages/src/server/features/media/sprite-manager.js";
+import { createSpriteWrites } from "../packages/villages/src/server/features/media/sprite-writes.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const source = new PNG({ width: 16, height: 24 });
 for (let y = 4; y < 20; y++) for (let x = 4; x < 12; x++) source.data.set([120, 50, 90, 255], (y * 16 + x) * 4);
 const image = "data:image/png;base64," + PNG.sync.write(source).toString("base64");
 const village = (name: string) =>
   coerceVillageState({
+    ...defaultVillageState(),
+
     name,
     foundedAt: new Date().toISOString(),
     wishSystemVersion: 3,
@@ -90,14 +92,9 @@ function fixture(name: string) {
     async readSpriteFile() {
       throw new Error("No file read expected");
     },
-    async deleteVillageSpriteFile() {
-      events.push("delete:" + name);
+    async saveSpriteFile(_assetId, _expression, _image, upload) {
+      return upload();
     },
-    villagesLogger: () => ({
-      warn() {
-        events.push("warn:" + name);
-      },
-    }),
     writes: createSpriteWrites(),
   };
   const service = createSpriteManager(ports);
@@ -235,7 +232,7 @@ try {
       two = createActivationScope();
     const host = (api: object) =>
       ({
-        persistence: { documents: api },
+        persistence: { documents: villageFixtureDocuments(api) },
         resources: { listCharacters: async () => [] },
         logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
         isDebugAgentsEnabled: () => false,

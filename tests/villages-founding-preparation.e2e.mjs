@@ -1,24 +1,37 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const screenshotDir = process.env.VILLAGES_SCREENSHOT_DIR;
 if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1366, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
     snapshot.village.name = "Station Fields";
+    snapshot.backgroundWork = [
+      {
+        id: "fixture-work",
+        instanceId: "fixture-instance",
+        kind: "wish",
+        label: "Initial Wish",
+        status: "running",
+        attempt: 1,
+        updatedAt: new Date().toISOString(),
+        completedSteps: 0,
+        requests: 1,
+        tokens: null,
+      },
+    ];
     snapshot.villagers = [
       { characterId: "aqua", name: "Aqua" },
       { characterId: "feddy", name: "Feddy Fastbayer" },
@@ -35,12 +48,13 @@ try {
             name: "Signal Loft",
             kind: "private-residence",
             description: "",
-            state: { items: [], publicFacts: [] },
+            state: { revision: 0, recent: null, updatedAt: "" },
           },
         ],
       },
     ];
     snapshot.foundingPreparation = {
+      canPlay: false,
       status: "pending",
       completedIds: [],
       currentId: "",
@@ -55,16 +69,37 @@ try {
       privateSpacesTotal: 4,
     };
     let retries = 0;
+    let retryBody;
+    const backgroundReads = [];
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>html,body{margin:0;background:#171b25;color:white;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
     );
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (path.replace(/\/$/, "") === "/api/villages") backgroundReads.push(snapshot.foundingPreparation.status);
+      if (path.endsWith("/repair"))
+        return fulfill(route, {
+          json: {
+            seed: "fixture",
+            identity: "fixture",
+            records: [],
+            history: [],
+            historyOffset: 0,
+            historyTotal: 0,
+            checkpoints: [],
+            checkpointOffset: 0,
+            checkpointTotal: 0,
+            sceneOpen: false,
+            people: [],
+          },
+        });
+      if (path.endsWith("/repair/records")) return fulfill(route, { json: { records: [], total: 0, next: null } });
       if (path.endsWith("/setup/preparation/retry")) {
         retries++;
+        retryBody = route.request().postDataJSON();
         snapshot.foundingPreparation.status = "pending";
       }
       const response = path.endsWith("/catalog")
@@ -86,18 +121,16 @@ try {
                 : path.endsWith("/agendas")
                   ? { villagers: [] }
                   : snapshot;
-      return route.fulfill({ json: response });
+      return fulfill(route, { json: response });
     });
-    await page.route("**/api/connections", (route) => route.fulfill({ json: [] }));
+    await page.route("**/api/connections", (route) => fulfill(route, { json: [] }));
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     const root = page.locator(".villages-forging-preparing");
-    await expect(root.getByRole("heading", { name: "Station Fields is settling in" })).toBeVisible();
-    const details = root
-      .locator("details")
-      .filter({ has: page.locator("summary", { hasText: "Preparation details" }) })
-      .first();
-    await details.locator("summary").click();
+    await expect(root.getByRole("heading", { name: "Preparing Village" })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Enter Village" })).toHaveCount(0);
+    const details = root.getByRole("region", { name: "Preparation details" });
+    await expect(details).toBeVisible();
     await expect(details).toContainText("Waiting for Fixture System to write starting venue details");
     await expect(details).toContainText("Attempt 1");
     await expect(details).not.toContainText("of 3");
@@ -122,9 +155,10 @@ try {
       currentZoneId: "",
       privateSpacesReady: 4,
     };
-    await expect(details).toContainText("Waiting for Fixture System to write wishes and a routine profile for Aqua");
+    await expect(details).toContainText("Waiting for Fixture System to write a Routine for Aqua");
     snapshot.foundingPreparation = {
       status: "pending",
+      canPlay: false,
       completedIds: [],
       currentId: "",
       error: "",
@@ -136,22 +170,70 @@ try {
       status: "failed",
       error: "Signal Loft · Fixture System · limit 3000 · finish length: Output was truncated.",
     };
-    await expect(root.getByRole("button", { name: "Retry preparation", exact: true })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Retry failed", exact: true })).toBeVisible();
     await expect(root.getByRole("alert")).toContainText("Output was truncated");
-    await expect(details).toContainText("Completed work is saved");
-    await root.getByRole("button", { name: "Retry preparation", exact: true }).click();
+    await expect(root).not.toContainText("Completed work is saved");
+    await root.getByRole("button", { name: "Retry failed", exact: true }).click();
     await expect.poll(() => retries).toBe(1);
     await expect(details).toContainText("Preparing private spaces");
+    snapshot.foundingPreparation = {
+      ...snapshot.foundingPreparation,
+      status: "failed",
+      tasksVersion: 1,
+      canPlay: false,
+      tasks: {
+        aqua: {
+          routine: { contract: 1, revision: "r", jobId: "j", status: "completed", attempt: 1, error: "", receipt: "r" },
+          wish: { contract: 1, revision: "w", jobId: "k", status: "failed", attempt: 2, error: "Invalid response" },
+        },
+      },
+    };
+    snapshot.villagers.push({ characterId: "newcomer", name: "New arrival" });
+    await expect(root.getByRole("button", { name: "Retry failed", exact: true })).toBeVisible();
+    snapshot.foundingPreparation.canPlay = true;
+    await expect(root).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+    assert.equal(retries, 1, "A usable Village opens automatically without retrying optional work");
+    snapshot.foundingPreparation.status = "ready";
+    snapshot.backgroundWork = [];
+    await expect.poll(() => backgroundReads.includes("ready"), { timeout: 10000 }).toBe(true);
+    assert.equal(retries, 1, "Background completion refreshes without another preparation request");
+    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `optional-founding-${width}.png`) });
+
+    snapshot.foundingPreparation.status = "failed";
+    snapshot.foundingPreparation.error = "Resident preparation incomplete.";
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+    await expect(root).toHaveCount(0);
+    assert.equal(retries, 1, "Reloading an optional failure does not retry it");
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Founding extras", exact: true })).toHaveCount(0);
+    if (width <= 700) await page.getByRole("combobox", { name: "Section", exact: true }).selectOption("repair");
+    else await page.getByRole("button", { name: "REPAIR", exact: true }).click();
+    const repair = page.locator(".villages-repair");
+    await repair.getByRole("button", { name: /^Progress\b/ }).click();
+    const recovery = repair.getByRole("region", { name: "Initial preparation" });
+    await expect(recovery).toContainText("Resident preparation incomplete");
+    const retry = recovery.getByRole("button", { name: "Retry unfinished work", exact: true });
+    assert.ok((await retry.boundingBox()).height >= 44);
+    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `preparation-recovery-${width}.png`) });
+    await retry.click();
+    await expect.poll(() => retries).toBe(2);
+    assert.match(retryBody.actionId, /^[a-zA-Z0-9-]+$/);
     assert.ok(
-      await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      await repair.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
       "no horizontal overflow",
     );
     assert.deepEqual(errors, []);
+    await page.goto("http://villages.test/");
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+    await expect(root).toHaveCount(0);
+    assert.equal(retries, 2, "Reload preserves optional work without retrying it");
     await page.close();
   }
   console.log(
     "Founding preparation browser: venue/private/resident progress, legacy fallback, retry and private-content boundaries passed at desktop, 390px and 320px.",
   );
-} finally {
-  await browser.close();
-}
+});

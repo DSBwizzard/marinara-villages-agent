@@ -1,3 +1,5 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { EMPTY_RESIDENT_ADMISSION } from "../packages/villages/src/shared/helpers/resident-admission.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { registerFoundingRoutes } from "../packages/villages/src/server/features/founding/routes.js";
@@ -10,61 +12,62 @@ import { readVillagerCard } from "../packages/villages/src/server/adapters/engin
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageSnapshot, VillageState } from "../packages/villages/src/server/domain/models/world.js";
 import { DEFAULT_TOWN_MAP_VIEW } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
 import { createFoundingSetup } from "../packages/villages/src/server/features/founding/founding-setup-service.js";
 import {
   configureFoundingSetup,
   runVillageSetup,
-  suggestFoundingVenueNames,
+  draftVenueDescriptions,
 } from "../packages/villages/src/server/features/founding/founding-setup.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function input(name: string) {
   return {
     name,
+    worldName: "same-world",
+    foundingResidentAdmissions: Object.fromEntries(
+      ["same"].map((id) => [id, { homeworld: "Othiras", startingSituation: "Already living here." }]),
+    ),
     setting: "An observatory village",
     townMapImage: "test-map",
-    foundingReason: "none",
-    foundingDetails: "We begin our first day as neighbours.",
+    communityVenueId: "hall",
+    worldRules: "",
+    circumstances: [],
     playerPersonaId: "player",
     foundingCharacterIds: ["same"],
-    venues: ["player", "same", "hall"].map((id, index) => ({
-      id,
-      name: `${name} ${id}`,
-      form: "A room",
-      description: "A welcoming doorway",
-      category: id === "hall" ? "public-center" : "house",
-      classes: [id === "hall" ? "community" : "residence"],
-      layoutVersion: 1,
-      layout: "common",
-      spaces: [
-        {
-          id: "common:base",
-          name: "Shared room",
-          purpose: "Conversation",
-          description: "A table",
-          venueClass: id === "hall" ? "community" : "residence",
-        },
-      ],
-      privateSpaces: [],
-      occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
-      presentation: { x: 0.2 + index * 0.2, y: 0.5 },
-    })),
+    venues: ["player", "same", "hall"].map((id, index) => {
+      const venue = venueFixture({
+        residentIds: [id === "same" ? id : null].filter((id) => typeof id === "string" && !!id),
+        id,
+        name: `${name} ${id}`,
+        form: "A room",
+        description: "A welcoming doorway",
+        category: id === "hall" ? "public-center" : "house",
+        classes: [id === "hall" ? "community" : "residence"],
+        layoutVersion: 1,
+        layout: "common",
+        spaces: [
+          {
+            id: "common:base",
+            name: "Shared room",
+            purpose: "Conversation",
+            description: "A table",
+            venueClass: id === "hall" ? "community" : "residence",
+          },
+        ],
+        privateSpaces: [],
+        occupancy: { playerHome: id === "player", residentCharacterId: id === "same" ? id : null, homeKind: null },
+        presentation: { x: 0.2 + index * 0.2, y: 0.5 },
+      });
+      if (id === "hall") venue.access!.managerIds = [];
+      return venue;
+    }),
   };
 }
 function fixture(name: string) {
   const state = defaultVillageState();
   const card = readVillagerCard({ id: "same", comment: "", data: { name, description: `Private card ${name}` } });
-  const proposal = venueDraft(
-    { id: "proposed", name: `${name} garden`, classes: ["community"], form: "Garden", description: "A quiet garden" },
-    null,
-  );
   const calls: string[] = [],
     owners: unknown[] = [],
     attempts: VillageState[] = [],
@@ -79,14 +82,18 @@ function fixture(name: string) {
     owners.push(scopedActivation());
   };
   const service = createFoundingSetup({
-    async readVillageState() {
-      note("read");
+    async peekVillageAuthority() {
+      note("peek");
       if (pause) {
         pause = false;
         entered.resolve();
         await gate.promise;
         owners.push(scopedActivation());
       }
+      return structuredClone(state);
+    },
+    async readVillageState() {
+      note("read");
       return structuredClone(state);
     },
     async mutateVillageState(update) {
@@ -106,12 +113,20 @@ function fixture(name: string) {
     },
     async buildVillageSnapshot() {
       note("snapshot");
-      return { village: { name: state.name } } as VillageSnapshot;
+      return { village: { name: state.name, timeZone: state.timeZone } } as VillageSnapshot;
     },
-    async readTownMapSubmission(value) {
+    async prepareVillageMap(value) {
       note("map");
-      assert.equal(value, "test-map");
-      return { image: "test-map", size: null, view: DEFAULT_TOWN_MAP_VIEW };
+      assert.equal(value.image, "test-map");
+      return {
+        id: value.id,
+        name: value.name,
+        artwork: { ref: "global-gallery:map", id: "map", url: "/map.png" },
+        width: 1440,
+        height: 900,
+        view: DEFAULT_TOWN_MAP_VIEW,
+        revision: 1,
+      };
     },
     async readVillageConnectionSettings() {
       note("connections");
@@ -133,13 +148,18 @@ function fixture(name: string) {
       note("cards");
       return [structuredClone(card)];
     },
+    async preparedSpriteManager(id) {
+      note("sprites:" + id);
+      assert(
+        !state.villagers.some((resident) => resident.characterId === id),
+        "Existing residents retain their sprites.",
+      );
+      return null;
+    },
     async prepareFoundedVillage() {
       note("prepare");
       assert.equal(state.villagers.length, 1);
       assert(state.setupAt);
-    },
-    async queueVillagerAgenda(id) {
-      note("agenda:" + id);
     },
     queueMicrotask(work) {
       note("schedule");
@@ -149,16 +169,6 @@ function fixture(name: string) {
       note("lore");
       contexts.push(args);
       return [`Private lore ${name}`];
-    },
-    async proposeVillage(...args) {
-      note("propose");
-      contexts.push(args);
-      return { venues: [structuredClone(proposal)], model: "mock" };
-    },
-    async proposePublicVenueNames(...args) {
-      note("names");
-      contexts.push(args);
-      return [`${name} square`];
     },
     async draftVillageVenueDescriptions(...args) {
       note("descriptions");
@@ -190,26 +200,11 @@ function fixture(name: string) {
 }
 
 // Exercise the real HTTP entry and setup coordinator with provider-free ports.
-for (const invalid of ["exterior-residence", "missing-purpose", "community-private", "owned-community"]) {
+for (const invalid of ["missing-purpose", "layout-mismatch"]) {
   const api = fixture(invalid),
     payload = input(invalid);
-  if (invalid === "exterior-residence") Object.assign(payload.venues[0]!, { layout: "exterior", spaces: [] });
+  if (invalid === "layout-mismatch") payload.venues[0]!.spaces = [];
   if (invalid === "missing-purpose") payload.venues[0]!.spaces[0]!.purpose = "";
-  if (invalid === "community-private")
-    Object.assign(payload.venues[2]!, {
-      layout: "both",
-      privateSpaces: [
-        {
-          id: "forbidden",
-          name: "Bedroom",
-          purpose: "Rest",
-          description: "Bed",
-          venueClass: "community",
-          ownerId: "player",
-        },
-      ],
-    });
-  if (invalid === "owned-community") Object.assign(payload.venues[2]!.spaces[0]!, { ownerId: "player" });
   const dispose = configureFoundingSetup(api.service),
     server = Fastify();
   registerFoundingRoutes(server);
@@ -227,12 +222,79 @@ for (const invalid of ["exterior-residence", "missing-purpose", "community-priva
     await server.close();
   }
 }
+// Founding rejects homes without sleeping destinations and a Community without usable common space.
+{
+  const api = fixture("Entrance-only"),
+    server = Fastify();
+  const dispose = configureFoundingSetup(api.service);
+  registerFoundingRoutes(server);
+  try {
+    const payload = input("Entrance-only");
+    for (const venue of payload.venues) Object.assign(venue, { layout: "exterior", spaces: [], privateSpaces: [] });
+    const response = await server.inject({ method: "POST", url: "/setup", payload });
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(api.state.setupAt, "");
+    assert.ok(
+      !api.calls.some((call) => ["propose", "names", "descriptions"].includes(call)),
+      "founding does not regenerate edited templates",
+    );
+  } finally {
+    dispose();
+    await server.close();
+  }
+}
+// Exercise timezone selection through the HTTP adapter, including durable first-save semantics.
+{
+  const api = fixture("Timezone"),
+    server = Fastify();
+  const dispose = configureFoundingSetup(api.service);
+  registerFoundingRoutes(server);
+  try {
+    const payload = { ...input("Timezone"), timeZone: "Asia/Tokyo" };
+    const invalid = await server.inject({
+      method: "POST",
+      url: "/setup",
+      payload: { ...payload, timeZone: "Not/A_Zone" },
+    });
+    assert.equal(invalid.statusCode, 400);
+    assert.equal(api.calls.includes("mutate"), false, "Invalid timezone is rejected before saved-world changes");
+    const saved = await server.inject({ method: "POST", url: "/setup", payload });
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.equal(saved.json().village.timeZone, "Asia/Tokyo");
+    assert.equal(api.state.timeZone, "Asia/Tokyo", "The selected timezone reaches durable setup state");
+    const before = structuredClone(api.state);
+    const changed = await server.inject({
+      method: "POST",
+      url: "/setup",
+      payload: { ...payload, timeZone: "America/Los_Angeles" },
+    });
+    assert.equal(changed.statusCode, 409);
+    assert.deepEqual(api.state, before, "A second setup cannot change an existing world");
+    const { timeZone: _timeZone, foundingResidentAdmissions: _admissions, ...legacyPayload } = payload;
+    const legacy = await server.inject({ method: "POST", url: "/setup", payload: legacyPayload });
+    assert.equal(legacy.statusCode, 409, legacy.body);
+    assert.deepEqual(api.state, before, "Omitting founding fields cannot reopen setup");
+  } finally {
+    dispose();
+    await server.close();
+  }
+}
+
 const direct = fixture("Direct");
-await assert.rejects(
-  direct.service.runVillageSetup({ ...input("Direct"), foundingDetails: "" }),
-  /first day|brings you/,
-);
-assert.deepEqual(direct.calls, ["read"], "First-day validation precedes external connections and generation.");
+for (const setting of ["A farm", "An abandoned farm"]) {
+  const everyday = fixture("Everyday");
+  const payload = { ...input("Everyday"), setting };
+  await everyday.service.runVillageSetup(payload);
+  assert.equal(everyday.state.setting, setting);
+  assert.equal(Object.hasOwn(everyday.state, "foundingHistory"), false);
+  assert.equal(everyday.state.opening?.stage, "gathering", "the tutorial is unchanged");
+}
+const noChangesFixture = fixture("No changes");
+const noChangesInput = { ...input("No changes"), foundingResidentAdmissions: undefined, worldName: undefined };
+await noChangesFixture.service.runVillageSetup(noChangesInput);
+assert.deepEqual(noChangesFixture.state.villagers[0].admission, EMPTY_RESIDENT_ADMISSION);
+const invalid = { ...input("Invalid"), foundingResidentAdmissions: { stranger: EMPTY_RESIDENT_ADMISSION } };
+await assert.rejects(direct.service.runVillageSetup(invalid), /selected/);
 const result = await direct.service.runVillageSetup(input("Direct"));
 assert.equal(result.village.name, "Direct");
 assert.equal(direct.state.playerPersonaIdentity, "Private Persona Direct");
@@ -247,24 +309,25 @@ assert.equal(direct.calls.filter((call) => call === "mutate").length, 2);
 assert.equal(direct.calls.filter((call) => call === "schedule").length, 1);
 assert.equal(direct.calls.filter((call) => call === "prepare").length, 1);
 assert(!direct.calls.includes("propose"));
-assert(
-  !direct.calls.includes("agenda:same"),
-  "Fresh setup schedules preparation rather than separate duplicate admission.",
-);
 const saved = structuredClone(direct.state);
+const callsBeforeReopening = direct.calls.length;
 await assert.rejects(
-  direct.service.runVillageSetup({ ...input("Direct"), foundingDetails: "Changed starting history" }),
-  /locked/,
+  direct.service.runVillageSetup({ ...input("Direct"), worldRules: "Changed standing rules" }),
+  /already founded/,
 );
 assert.deepEqual(direct.state, saved);
+await assert.rejects(
+  direct.service.runVillageSetup({
+    ...input("Direct"),
+    foundingResidentAdmissions: undefined,
+    foundingSpriteRevisions: { same: -1 },
+  }),
+  /already founded/,
+);
+assert.deepEqual(direct.state, saved);
+assert.deepEqual(direct.calls.slice(callsBeforeReopening), ["peek", "peek"], "Rejected setup has no side effects");
 
 const suggestions = fixture("Suggestions");
-assert.deepEqual(await suggestions.service.suggestFoundingPlaces("Observatory", ["book"], 1600), {
-  places: [{ name: "Suggestions garden" }],
-});
-assert.deepEqual(await suggestions.service.suggestFoundingVenueNames("Observatory", ["book"], 1600), {
-  names: ["Suggestions square"],
-});
 assert.deepEqual(
   await suggestions.service.draftVenueDescriptions({
     setting: "Observatory",
@@ -274,17 +337,8 @@ assert.deepEqual(
   { descriptions: { hall: "Suggestions description" } },
 );
 assert(!suggestions.calls.includes("mutate"));
-assert.equal(suggestions.calls.filter((call) => call === "propose").length, 1);
-assert.equal(suggestions.calls.filter((call) => call === "names").length, 1);
 assert.equal(suggestions.calls.filter((call) => call === "descriptions").length, 1);
 assert(JSON.stringify(suggestions.contexts).includes("Private lore Suggestions"));
-const beforeBootstrap = structuredClone(
-  direct.state.venues.filter((venue) => venue.occupancy.playerHome || venue.occupancy.residentCharacterId),
-);
-await direct.service.runVillageBootstrap();
-assert.deepEqual(direct.state.venues.slice(0, 2), beforeBootstrap, "Bootstrap retains the saved homes.");
-assert.equal(direct.state.venues.at(-1)!.name, "Direct garden");
-
 const changed = fixture("Changed");
 changed.retryWith((state) => {
   state.setupAt = "concurrent-founded";
@@ -325,7 +379,13 @@ assert(current.calls.includes("prepare"));
 a.run(releaseA);
 a.dispose();
 clearA();
-assert.deepEqual(await suggestFoundingVenueNames("Observatory", []), { names: ["Current square"] });
+assert.deepEqual(
+  await draftVenueDescriptions({
+    setting: "Observatory",
+    venues: [{ id: "hall", name: "Hall", classes: ["community"] }],
+  }),
+  { descriptions: { hall: "Current description" } },
+);
 const missing = createActivationScope();
 await assert.rejects(
   missing.run(() => runVillageSetup(input("Missing"))),
@@ -335,7 +395,9 @@ b.run(releaseB);
 b.dispose();
 clearB();
 await assert.rejects(
-  b.run(() => suggestFoundingVenueNames("Observatory", [])),
+  b.run(() =>
+    draftVenueDescriptions({ setting: "Observatory", venues: [{ id: "hall", name: "Hall", classes: ["community"] }] }),
+  ),
   /not configured/,
 );
 console.log(

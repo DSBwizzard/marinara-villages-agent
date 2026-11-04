@@ -1,58 +1,55 @@
-import type { TownMapView } from "../../../shared/contracts/village.js";
-import type { ExplorationSheet, ExplorationTab } from "./villages-exploration";
-import type { MobileMapView } from "./villages-mobile-map";
-import { useRef, useState } from "react";
+import type { VillageSnapshot } from "../../../shared/contracts/village.js";
+import type { ExplorationSheet, ExplorationTab } from "./villages-exploration.js";
+import type { MobileMapView } from "./villages-mobile-map.js";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-/** Always mounted by the application controller so navigation retains this feature state. */
-export function useExplorationState() {
+/** Browsing preferences are device-local, separate from the Village and its Scene. */
+export function useExplorationState(snapshot: VillageSnapshot | null) {
   const [openPlaceId, setOpenPlaceId] = useState<string | null>(null);
-
   const [exploreSheet, setExploreSheet] = useState<ExplorationSheet | null>(null);
-
   const [explorationSearch, setExplorationSearch] = useState({ places: "", people: "" });
-
   const explorationReturnTab = useRef<ExplorationTab>("map");
-
-  const [navigationView, setNavigationView] = useState<MobileMapView | null>(null);
-
   const explorationOrigin = useRef<HTMLElement | null>(null);
-
-  const [selectedMapVenueId, setSelectedMapVenueId] = useState<string | null>(null);
-
-  const [placingMapVenueId, setPlacingMapVenueId] = useState<string | null>(null);
-
-  const [mapReplaceOpen, setMapReplaceOpen] = useState(false);
-
-  const [mapRemoveDraft, setMapRemoveDraft] = useState(false);
-
-  const [mapGenerating, setMapGenerating] = useState(false);
-
-  const [mapExpectedSetAt, setMapExpectedSetAt] = useState("");
-
-  const [mapBasePositions, setMapBasePositions] = useState<Record<string, { x: number | null; y: number | null }>>({});
-
-  const [mapPinDraft, setMapPinDraft] = useState<Record<string, { x: number | null; y: number | null }>>({});
-
-  // The town map itself, held here rather than on the snapshot: an image in a
-  // snapshot read on every chat send would be re-sent whole every turn.
-  const [townMapImage, setTownMapImage] = useState("");
-
-  /**
-   * A picture that has been picked but not written yet, with the size it decoded
-   * to. Held here rather than sent straight up because picking a picture and
-   * deciding how it sits in the frame are two answers to one question, and the
-   * village should not be handed the first without the second.
-   */
-  const [townMapPick, setTownMapPick] = useState<{
-    image: string;
-    size: { width: number; height: number };
-  } | null>(null);
-
-  /** The framing being tried out on the preview. Null means "whatever is saved". */
-  const [townMapDraft, setTownMapDraft] = useState<TownMapView | null>(null);
-
-  /** Whether the saved picture is being re-framed. A picked picture frames itself. */
-  const [reframingMap, setReframingMap] = useState(false);
+  const [selectedId, selectId] = useState("");
+  const [showAllMaps, setShowAllMaps] = useState(false);
+  const [cameras, setCameras] = useState<Record<string, MobileMapView | null>>({});
+  const maps = snapshot?.settings.maps ?? [];
+  const selectedMap = maps.find((map) => map.id === selectedId) ?? maps[0] ?? null;
+  const preferenceKey = "villages-map:" + (snapshot?.settings.maps[0]?.id ?? "");
+  useEffect(() => {
+    try {
+      selectId(localStorage.getItem(preferenceKey) ?? "");
+    } catch {
+      selectId("");
+    }
+    setCameras({});
+  }, [preferenceKey]);
+  const setSelectedMapId = useCallback(
+    (id: string) => {
+      selectId(id);
+      setShowAllMaps(false);
+      setOpenPlaceId(null);
+      setExplorationSearch((current) => ({ ...current, places: "" }));
+      setExploreSheet(null);
+      try {
+        localStorage.setItem(preferenceKey, id);
+      } catch {
+        /* Browsing remains available without preference storage. */
+      }
+    },
+    [preferenceKey],
+  );
+  const mapId = selectedMap?.id ?? "";
+  const navigationView = cameras[mapId] ?? null;
+  const setNavigationView = useCallback<React.Dispatch<React.SetStateAction<MobileMapView | null>>>(
+    (value) => {
+      setCameras((current) => ({
+        ...current,
+        [mapId]: typeof value === "function" ? value(current[mapId] ?? null) : value,
+      }));
+    },
+    [mapId],
+  );
   return {
     openPlaceId,
     setOpenPlaceId,
@@ -61,34 +58,13 @@ export function useExplorationState() {
     explorationSearch,
     setExplorationSearch,
     explorationReturnTab,
+    explorationOrigin,
     navigationView,
     setNavigationView,
-    explorationOrigin,
-    selectedMapVenueId,
-    setSelectedMapVenueId,
-    placingMapVenueId,
-    setPlacingMapVenueId,
-    mapReplaceOpen,
-    setMapReplaceOpen,
-    mapRemoveDraft,
-    setMapRemoveDraft,
-    mapGenerating,
-    setMapGenerating,
-    mapExpectedSetAt,
-    setMapExpectedSetAt,
-    mapBasePositions,
-    setMapBasePositions,
-    mapPinDraft,
-    setMapPinDraft,
-    townMapImage,
-    setTownMapImage,
-    townMapPick,
-    setTownMapPick,
-    townMapDraft,
-    setTownMapDraft,
-    reframingMap,
-    setReframingMap,
+    selectedMap,
+    setSelectedMapId,
+    showAllMaps,
+    setShowAllMaps,
   };
 }
-
 export type ExplorationState = ReturnType<typeof useExplorationState>;

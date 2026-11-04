@@ -1,19 +1,17 @@
-import type { PlayerRole } from "../../../shared/contracts/player-role.js";
-import type { ScenarioImprint, SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
-import type { ResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
+import type { PlayerBackground } from "../../../shared/contracts/player-background.js";
+import type { SetupMapRequest, VillageLorebookOption } from "../../../shared/contracts/village.js";
+import type { ResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import type { SetupMapSource, SetupVenueDraft } from "../../shared/types.js";
-import { emptyScenarioImprint } from "./FoundingPanels.js";
-import type { FoundingScenarioId } from "./scenarios.js";
 import type { SetupDraftData } from "./draft-model.js";
-import type { SavedFoundingDraft } from "./villages-founding-draft.js";
+import type { SavedDeviceDraft } from "../../shared/device-drafts.js";
 import { type AreaDraftCache } from "./villages-founding-editor";
 import { emptyFoundingWorkspace, type FoundingIssue } from "./villages-founding-workspace-state";
-import { DEFAULT_PLAYER_ROLE } from "./villages-player-role.js";
+import { DEFAULT_PLAYER_BACKGROUND } from "./villages-player-background.js";
 import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useFoundingState() {
-  const [savedSetupDraft, setSavedSetupDraft] = useState<SavedFoundingDraft<SetupDraftData> | null>(null);
+  const [savedSetupDraft, setSavedSetupDraft] = useState<SavedDeviceDraft<SetupDraftData> | null>(null);
   const [lorebooks, setLorebooks] = useState<VillageLorebookOption[] | null>(null);
   const [lorebooksError, setLorebooksError] = useState("");
   const pendingDraftSaves = useRef(0);
@@ -29,23 +27,25 @@ export function useFoundingState() {
   const [setupName, setSetupName] = useState("");
   const [setupTimeZone, setSetupTimeZone] = useState("");
 
+  const [setupWorldName, setSetupWorldName] = useState("");
   const [setupSetting, setSetupSetting] = useState("");
 
-  const [setupFoundingReason, setSetupFoundingReason] = useState<FoundingScenarioId>("custom");
+  const [setupPlayerBackground, setSetupPlayerBackground] = useState<PlayerBackground | null>(
+    DEFAULT_PLAYER_BACKGROUND,
+  );
 
-  const [setupFoundingDetails, setSetupFoundingDetails] = useState<string>("");
-
-  const [setupPlayerRole, setSetupPlayerRole] = useState<PlayerRole | null>({ ...DEFAULT_PLAYER_ROLE });
-
-  const [setupImprint, setSetupImprint] = useState<ScenarioImprint>(emptyScenarioImprint);
-
-  const [setupWorldFacts, setSetupWorldFacts] = useState<string[]>([]);
+  const [setupContext, setSetupContext] = useState<import("./draft-model.js").FoundingContext>({
+    rules: "",
+    circumstances: [],
+    communityVenueId: "founding-community",
+  });
 
   const [setupVenues, setSetupVenues] = useState<SetupVenueDraft[]>([]);
 
   const [setupFoundingVillagerIds, setSetupFoundingVillagerIds] = useState<string[]>([]);
+  const [setupSpriteRevisions, setSetupSpriteRevisions] = useState<Record<string, number>>({});
 
-  const [setupResidentContexts, setSetupResidentContexts] = useState<Record<string, ResidentFoundingContext>>({});
+  const [setupResidentAdmissions, setSetupResidentAdmissions] = useState<Record<string, ResidentAdmission>>({});
 
   const [setupKeyboardSpot, setSetupKeyboardSpot] = useState({ x: 0.5, y: 0.5 });
 
@@ -86,7 +86,7 @@ export function useFoundingState() {
 
   const [setupPlacementError, setSetupPlacementError] = useState("");
 
-  const [setupMapSource, setSetupMapSource] = useState<SetupMapSource>("generate");
+  const [setupMapSource, setSetupMapSource] = useState<SetupMapSource>("simple");
 
   const [setupMapImage, setSetupMapImage] = useState("");
 
@@ -164,24 +164,24 @@ export function useFoundingState() {
     setSetupName,
     setupTimeZone,
     setSetupTimeZone,
+    setupWorldName,
+    setSetupWorldName,
     setupSetting,
     setSetupSetting,
-    setupFoundingReason,
-    setSetupFoundingReason,
-    setupFoundingDetails,
-    setSetupFoundingDetails,
-    setupPlayerRole,
-    setSetupPlayerRole,
-    setupImprint,
-    setSetupImprint,
-    setupWorldFacts,
-    setSetupWorldFacts,
+
+    setupPlayerBackground,
+    setSetupPlayerBackground,
+
+    setupContext,
+    setSetupContext,
     setupVenues,
     setSetupVenues,
+    setupSpriteRevisions,
+    setSetupSpriteRevisions,
     setupFoundingVillagerIds,
     setSetupFoundingVillagerIds,
-    setupResidentContexts,
-    setSetupResidentContexts,
+    setupResidentAdmissions,
+    setSetupResidentAdmissions,
     setupKeyboardSpot,
     setSetupKeyboardSpot,
     setupEditorOpen,

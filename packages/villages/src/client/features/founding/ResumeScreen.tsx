@@ -38,10 +38,10 @@ export function ResumeScreen({ controller }: { controller: ResumeScreenControlle
             <div>
               <span className="villages-forging-saved">Saved draft</span>
               <h2>Welcome back to {draft?.name.trim() || "your village"}</h2>
-              <p>Your choices, edits, photograph positions, and finished artwork are saved.</p>
+              <p>Your choices, edits, Venue positions, and finished artwork are saved.</p>
               <p>
                 <strong>Resume:</strong> {SETUP_STEPS[savedFoundingStep(draft)]} · {count} of{" "}
-                {draft?.venues.length ?? 0} photographs placed
+                {draft?.venues.length ?? 0} Venues placed
               </p>
               <p>{draft?.roster.length ?? 0} villagers selected · Persona and role saved</p>
               {draftSavedAt ? <p>Last saved {new Date(draftSavedAt).toLocaleString()}</p> : null}
@@ -52,7 +52,7 @@ export function ResumeScreen({ controller }: { controller: ResumeScreenControlle
                   disabled={!draft}
                   onClick={() => draft && restoreSetupDraft(draft)}
                 >
-                  Resume {savedFoundingStep(draft) === 3 ? "photograph placement" : "founding"}
+                  Resume {savedFoundingStep(draft) === 3 ? "Venue placement" : "founding"}
                 </button>
                 <button
                   type="button"

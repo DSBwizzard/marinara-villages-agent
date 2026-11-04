@@ -1,4 +1,5 @@
 import { ZonedDate, copyDate } from "../../../shared/helpers/zoned-date.js";
+import { effectiveWeather } from "./narrative-environment.js";
 // Villages — the village's own clock, derived rather than stored.
 //
 // Every answer to "when is it?" is derived on read from the village founding
@@ -257,6 +258,7 @@ function weatherFor(seed: string, dayIndex: number, season: VillageSeason): stri
  * and a record written before it had a clock should not invent a past.
  */
 export function deriveVillageMoment(input: {
+  environment?: import("../models/narrative-model.js").NarrativeState;
   foundedAt: string;
   seed: string;
   now: Date;
@@ -291,7 +293,7 @@ export function deriveVillageMoment(input: {
     timeZone,
     hour,
     minute,
-    weather: weatherFor(seed, dayIndex, season),
+    weather: effectiveWeather(input.environment, now.toISOString(), weatherFor(seed, dayIndex, season)),
     dayIndex,
     nextTransitionAt: nextTransition.toISOString(),
   };

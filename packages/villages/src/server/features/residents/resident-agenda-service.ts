@@ -1,49 +1,56 @@
-import { copyDate, calendarDate } from "../../../shared/helpers/zoned-date.js";
-import { villageNow } from "../../adapters/time/clock-gate.js";
+import { venueResidentIds } from "../../domain/rules/venue-model.js";
+import { admissionLoreContext } from "../../../shared/helpers/resident-admission.js";
+import { calendarDate, copyDate, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
+import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
+import type { readNativeScheduleSnapshot } from "../../adapters/engine/native-schedules.js";
+import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
 import type { Handler } from "../../domain/models/background-model.js";
 import type { VillageAgenda, VillageAgendaView, VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
+import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 import { agendaBlocksFor, agendaDateKey, workingAgendaWeek } from "../../domain/rules/agenda-week.js";
+import type { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
+import {
+  completeFoundingTask,
+  foundingSlot,
+  foundingTaskRevision,
+  ownsFoundingTask,
+} from "../../domain/rules/founding-tasks.js";
+
 import {
   deriveInfluence,
   INFLUENCE_CATEGORIES,
   influenceSettings,
   validateRoutineDay,
 } from "../../domain/rules/owned-routine.js";
-import { remapVenues, villageCurrentSetting, villageFoundingSetting } from "../../domain/rules/prompt-preset.js";
+import { currentVillageCircumstances, remapVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
+import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
+import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
 import {
   deriveVillageMoment,
   randomVillageSeed,
   VILLAGE_WEEKDAYS,
   villageDateLabel,
 } from "../../domain/rules/village-clock.js";
-import type { readEffectiveVillagerCard } from "../../adapters/engine/catalog.js";
-import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
-import type { readNativeScheduleSnapshot } from "../../adapters/engine/native-schedules.js";
 import type { backgroundWorkSummaries, queueBackgroundJob } from "../../jobs/background-work.js";
-import type { parseCompactFoundingCompletion } from "../../domain/rules/compact-founding-rules.js";
 import type { proposeCompactFounding } from "../founding/founding-compact.js";
 import type { reportFoundingProgress } from "../founding/founding-progress.js";
-import type { correctResidentWish, reserveInitialWishAllowance } from "../residents/wishes/wish-lifecycle.js";
-import type { registerInitialWish } from "./wishes/wish-initial.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
-import { agendaRevision } from "../../domain/rules/agenda-revision.js";
 export interface ResidentAgendaPorts {
+  queueScheduleInfluence?(characterId: string): Promise<void>;
   readVillageState: typeof readVillageState;
   mutateVillageState: typeof mutateVillageState;
   reportFoundingProgress: typeof reportFoundingProgress;
   readEffectiveVillagerCard: typeof readEffectiveVillagerCard;
-  reserveInitialWishAllowance: typeof reserveInitialWishAllowance;
   readVillageLore: typeof readVillageLore;
   queueBackgroundJob: typeof queueBackgroundJob;
   backgroundWorkSummaries: typeof backgroundWorkSummaries;
   parseCompactFoundingCompletion: typeof parseCompactFoundingCompletion;
   proposeCompactFounding: typeof proposeCompactFounding;
   readNativeScheduleSnapshot: typeof readNativeScheduleSnapshot;
-  registerInitialWish: typeof registerInitialWish;
-  correctResidentWish: typeof correctResidentWish;
 }
 /** A resident Agenda owns its specific saved-world, schedule, job and generation connections. */
 export function createResidentAgendas(ports: ResidentAgendaPorts) {
@@ -52,29 +59,33 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     mutateVillageState,
     reportFoundingProgress,
     readEffectiveVillagerCard,
-    reserveInitialWishAllowance,
     readVillageLore,
     queueBackgroundJob,
     backgroundWorkSummaries,
     parseCompactFoundingCompletion,
     proposeCompactFounding,
     readNativeScheduleSnapshot,
-    registerInitialWish,
-    correctResidentWish,
   } = ports;
-  async function rollActiveAgendas(now: Date, known?: VillageState): Promise<boolean> {
+  async function rollActiveAgendas(at?: Date, known?: VillageState, clockRevision?: number): Promise<boolean> {
+    const clock = at ? undefined : await observeVillageClock();
+    const now = at ?? (clock?.instant ? new ZonedDate(clock.instant, clock.timeZone) : villageNow());
+    const revision = clockRevision ?? clock?.revision;
     const village = known ?? (await readVillageState());
     if (village.villagers.every((villager) => villager.agenda?.activeDay?.dateKey === agendaDateKey(now))) return false;
+    let changed = false;
     await mutateVillageState((state) => {
+      changed = false;
+      if (revision !== undefined && state.clock?.revision !== revision) return;
       planRoutineDays(state, now);
       for (const villager of state.villagers) {
         if (villager.agenda?.activeDay?.dateKey !== agendaDateKey(now)) activateVillagerDay(villager, now, state);
       }
+      changed = true;
     });
-    return true;
+    return changed;
   }
-  async function queueVillagerAgenda(characterId: string, finite = true): Promise<void> {
-    const village = await readVillageState();
+  async function readFoundingResidentContext(characterId: string) {
+    const village = await readVillageState({ wishes: [characterId] });
     const villager = village.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
     await reportFoundingProgress(village.seed, { stage: "reading" }, characterId);
@@ -83,43 +94,52 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       await mutateVillageState((state) => {
         const resident = state.villagers.find((entry) => entry.characterId === characterId);
         if (!resident) return;
-        resident.agenda ??= unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+        resident.agenda ??= unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, villageNow());
         resident.agenda.personalizationPending = false;
         resident.agenda.personalizationFailure =
           "Character identity is unavailable. Keep the existing routine and retry deliberately after restoring the card.";
       });
       return;
     }
-    const agendaSetting =
-      village.foundingPreparation?.status === "pending"
-        ? villageFoundingSetting(village)
-        : villageCurrentSetting(village);
-    const initialWishAttemptId =
-      village.foundingPreparation?.status === "pending"
-        ? await reserveInitialWishAllowance(characterId, villageNow())
-        : undefined;
+    const agendaSetting = village.setting;
     await reportFoundingProgress(village.seed, { stage: "lore" }, characterId);
+    const native = villager.scheduleInfluence?.enabled
+      ? await readNativeScheduleSnapshot(villageNow(), [characterId])
+      : null;
     const context = {
+      ...(villager.identityDescription && !villager.identityDescription.initialGenerationComplete
+        ? { identityDescriptionRevision: villager.identityDescription.revision }
+        : {}),
+      playerAgencyVersion: 1 as const,
+      semanticVersion: 2 as const,
       card: effectiveCard,
       characterId,
-      wishAttemptId: initialWishAttemptId,
-      allowInitialWish: !!initialWishAttemptId,
-      playerRole: village.playerRole,
+      sourceRevision: foundingTaskRevision(village, characterId, "routine"),
+      contractVersion: 2 as const,
+      circumstances: {
+        worldFacts: currentVillageCircumstances(village),
+        worldRules: village.worldRules,
+      },
+      playerBackground: village.playerBackground,
       playerPersonaName: village.playerPersonaName,
-      schedule: null,
+      schedule: native?.schedules.find((row) => row.characterId === characterId) ?? null,
+      influenceSettings: villager.scheduleInfluence,
       influenceHints: villager.scheduleInfluence?.enabled ? villager.agenda?.scheduleInfluenceSnapshot?.unresolved : [],
       village: village.name,
-      setting: agendaSetting,
+      setting: [agendaSetting, village.worldName ? `Village world: ${JSON.stringify(village.worldName)}` : ""]
+        .filter(Boolean)
+        .join("\n"),
       home: (() => {
-        const home = village.venues.find((venue) => venue.occupancy.residentCharacterId === characterId);
-        return home ? [home.name, home.form, home.state.condition].filter(Boolean).join("; ") : "";
+        const home = village.venues.find((venue) => venueResidentIds(venue).includes(characterId));
+        return home ? [home.name, home.form, home.description].filter(Boolean).join("; ") : "";
       })(),
-      completedWishes: villager.completedWishes,
-      activeWishes: villager.agenda?.wishes ?? [],
+      wishes: villager.wishes,
       lore: await readVillageLore(
         village.selectedLorebookIds,
         [
           agendaSetting,
+          admissionLoreContext(village.worldName, [villager.admission]),
+          effectiveCard.backstory,
           effectiveCard.name,
           effectiveCard.summary,
           effectiveCard.personality,
@@ -134,27 +154,61 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       // house can be named for. The houses are left out for the same reason the
       // translation leaves them out — see `remapVenues`.
       venues: remapVenues(village.venues),
-      name: effectiveCard.name,
-      summary: effectiveCard.summary,
-      tags: effectiveCard.tags,
-      personality: effectiveCard.personality,
-      description: effectiveCard.description,
-      routineSummary: "",
     };
+    return context;
+  }
+  async function queueVillagerAgenda(characterId: string, finite = true, origin?: "founding"): Promise<void> {
+    let village = await readVillageState();
+    const villager = village.villagers.find((row) => row.characterId === characterId);
+    if (!villager) return;
+    const context = await readFoundingResidentContext(characterId);
+    if (!context) throw new Error("Character identity is unavailable.");
+    village = await readVillageState();
+    if (context.sourceRevision !== foundingTaskRevision(village, characterId, "routine"))
+      throw new Error("Resident context changed. Retry routine.");
+    const founding = origin === "founding";
+    const revision = founding
+      ? foundingTaskRevision(village, characterId, "routine")
+      : agendaRevision(village, characterId);
+    if (founding)
+      await mutateVillageState((state) => {
+        const marker = state.foundingPreparation;
+        if (
+          state.seed !== village.seed ||
+          !marker ||
+          marker.tasksVersion !== 1 ||
+          marker.status !== "pending" ||
+          context.sourceRevision !== foundingTaskRevision(state, characterId, "routine")
+        )
+          throw new Error("Resident context changed. Retry routine.");
+        marker.tasks ??= {};
+        marker.tasks[characterId] ??= {};
+        const old = marker.tasks[characterId].routine;
+        if (old?.revision !== revision)
+          marker.tasks[characterId].routine = {
+            contract: 1,
+            revision,
+            jobId: foundingSlot("routine", characterId),
+            status: "pending",
+            attempt: 0,
+            error: "",
+          };
+      });
     await reportFoundingProgress(village.seed, { stage: "queued", loreEntryCount: context.lore.length }, characterId);
     await queueBackgroundJob({
       kind: "agenda",
+      retryActionId: founding ? village.foundingPreparation?.retryActions?.at(-1) : undefined,
       subjectId: characterId,
       seed: village.seed,
-      revision: agendaRevision(village, characterId),
+      revision,
       finite,
       label: villager.cardSnapshot.name + "'s agenda",
-      legacyError: villager.agenda?.personalizationFailure,
+      legacyError: founding ? undefined : villager.agenda?.personalizationFailure,
       input: {
         seed: village.seed,
         characterId,
-        initialWishAttemptId,
-        revision: agendaRevision(village, characterId),
+        foundingContract: founding ? 1 : undefined,
+        revision,
         context,
       },
     });
@@ -162,9 +216,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
 
   const agendaBackgroundHandler: Handler = {
     recoverSavedResult: (input, steps) => {
-      const saved = steps.find((step) => step.key === "owned-routine-profile" && step.status === "completed");
+      const key = input.context.contractVersion === 2 ? "founding-routine-v2" : "founding-routine-v1";
+      const saved = steps.find((step) => step.key === key && step.status === "completed");
       if (!saved?.response) return undefined;
-      return parseCompactFoundingCompletion(saved.response, input.context).agenda;
+      return parseCompactFoundingCompletion(saved.response, input.context);
     },
     generate: async (input) => {
       const job = (await backgroundWorkSummaries()).find(
@@ -175,12 +230,24 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
         await reportFoundingProgress(input.seed, { stage: "model", modelName }, input.characterId);
       });
       await reportFoundingProgress(input.seed, { stage: "applying" }, input.characterId);
-      return result.agenda;
+      return result;
     },
     valid: (state, input) =>
       state.villagers.some((resident) => resident.characterId === input.characterId) &&
-      agendaRevision(state, input.characterId) === input.revision,
-    apply: (state, input, agenda) => applyAgenda(state, input.characterId, agenda, input.initialWishAttemptId),
+      (input.foundingContract === 1
+        ? ownsFoundingTask(state, input.characterId, "routine", input.revision, input.context)
+        : agendaRevision(state, input.characterId) === input.revision),
+    apply: (state, input, result) => {
+      const resident = state.villagers.find((row) => row.characterId === input.characterId);
+      if (resident)
+        applyInitialIdentityDescription(
+          resident,
+          input.context.identityDescriptionRevision,
+          result.identityDescription,
+        );
+      applyAgenda(state, input.characterId, result.agenda ?? result);
+      if (input.foundingContract === 1) completeFoundingTask(state, input.characterId, "routine", input.revision);
+    },
   };
 
   /**
@@ -192,12 +259,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
    * is right in that case — the call was made for a villager who no longer
    * exists, and there is no error a player could act on.
    */
-  function applyAgenda(
-    state: VillageState,
-    characterId: string,
-    agenda: VillageAgenda,
-    initialWishAttemptId?: string,
-  ): void {
+  function applyAgenda(state: VillageState, characterId: string, agenda: VillageAgenda): void {
     const villager = state.villagers.find((entry) => entry.characterId === characterId);
     if (!villager) return;
     if (state.foundingPreparation?.status === "pending" && state.foundingPreparation.currentId === characterId) {
@@ -206,52 +268,25 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     }
     const previous = villager.agenda;
     const now = villageNow();
-    const initialAttempt = villager.wishLifecycle?.attempt;
-    const acceptsInitialWish =
-      !!initialWishAttemptId &&
-      !!initialAttempt &&
-      initialAttempt.id === initialWishAttemptId &&
-      initialAttempt.dateKey === agendaDateKey(now) &&
-      !initialAttempt.candidate;
     const weekday = VILLAGE_WEEKDAYS[(now.getDay() + 6) % 7]!;
     const nextDay = agenda.week?.[weekday] ?? workingAgendaWeek(state.venues, villager.cardSnapshot.name)[weekday]!;
     villager.agenda = {
       ...agenda,
-      // Initial preparation alone may add a wish. A routine result cannot resurrect stale wishes.
-      wishes: [...(previous?.wishes ?? []), ...(acceptsInitialWish ? agenda.wishes : [])]
-        .filter((wish) => !villager.completedWishes.some((entry) => entry.wish.id === wish.id))
-        .filter((wish, index, all) => all.findIndex((entry) => entry.id === wish.id) === index)
-        .slice(0, previous?.wishes.length ? Math.max(previous.wishes.length, 2) : acceptsInitialWish ? 1 : 0),
       plannedDays: Object.fromEntries(
         Object.entries(previous?.plannedDays ?? {}).filter(
           ([key]) =>
-            [...(previous?.wishActivities ?? []), ...(previous?.socialActivities ?? [])].some(
-              (entry) => entry.dateKey === key,
-            ) ||
-            (previous?.projectWork &&
-              key >= previous.projectWork.startsAt.slice(0, 10) &&
-              key <= previous.projectWork.endsAt.slice(0, 10)),
+            (previous?.socialActivities ?? []).some((entry) => entry.dateKey === key) ||
+            (previous?.reservations ?? []).some((entry) => entry.dateKey === key),
         ),
       ),
-      wishActivities: previous?.wishActivities ?? [],
       socialActivities: previous?.socialActivities ?? [],
-      projectWork: previous?.projectWork,
       scheduleInfluenceSnapshot: previous?.scheduleInfluenceSnapshot,
-      activeDay: {
-        dateKey: agendaDateKey(now),
-        weekday,
-        blocks: previous?.activeDay?.dateKey === agendaDateKey(now) ? previous.activeDay.blocks : nextDay,
-        scheduleInformed: false,
-      },
+      activeDay:
+        previous?.activeDay?.dateKey === agendaDateKey(now)
+          ? previous.activeDay
+          : { dateKey: agendaDateKey(now), weekday, blocks: nextDay, scheduleInformed: false },
       personalizationAttemptDate: agendaDateKey(now),
     };
-    registerInitialWish(villager, now);
-    if (initialAttempt && initialAttempt.id === initialWishAttemptId) {
-      initialAttempt.candidate = villager.agenda.wishes[0];
-      initialAttempt.reason = initialAttempt.candidate
-        ? "Initial wish granted during preparation."
-        : "No initial wish today.";
-    }
     if (villager.agenda.week)
       for (const weekday of VILLAGE_WEEKDAYS) {
         const date = copyDate(now);
@@ -263,6 +298,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       planRoutineDays(state, now);
       activateVillagerDay(villager, now, state);
     }
+    projectAgendaReservations(state);
   }
 
   /** Discover missing agendas. The coordinator retains failures across dates and throttles provider requests. */
@@ -272,7 +308,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       await mutateVillageState((state) => {
         for (const resident of state.villagers)
           if (!resident.agenda) {
-            resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+            resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name, villageNow());
             resident.agenda.personalizationPending = false;
           }
       });
@@ -292,14 +328,13 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await mutateVillageState((state) => {
       for (const resident of state.villagers) {
         if ((only && resident.characterId !== only) || !resident.agenda) continue;
-        const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident, state);
+        const next = deriveInfluence(weeks.get(resident.characterId) ?? null, resident, state, now);
         if (next.signature !== resident.agenda.scheduleInfluenceSnapshot?.signature) {
           for (const key of Object.keys(resident.agenda.plannedDays ?? {})) {
             if (
               key === resident.agenda.activeDay?.dateKey ||
-              [...(resident.agenda.wishActivities ?? []), ...(resident.agenda.socialActivities ?? [])].some(
-                (activity) => activity.dateKey === key,
-              )
+              (resident.agenda.reservations ?? []).some((activity) => activity.dateKey === key) ||
+              (resident.agenda.socialActivities ?? []).some((activity) => activity.dateKey === key)
             )
               continue;
             delete resident.agenda.plannedDays![key];
@@ -316,7 +351,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const now = villageNow(),
       initial = await readVillageState();
     await refreshVillagerRemaps(initial, now);
-    await rollActiveAgendas(now);
+    await rollActiveAgendas();
     const village = await readVillageState();
     const snapshot = await readNativeScheduleSnapshot(
       now,
@@ -325,18 +360,19 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     const weeks = new Map(snapshot.schedules.map((schedule) => [schedule.characterId, schedule]));
     const moment = deriveVillageMoment({
       foundedAt: village.foundedAt,
+      environment: village.narrative,
       seed: village.seed,
       timeZone: village.timeZone || undefined,
       now,
     });
     return village.villagers.map((resident) => ({
+      canInterpretSchedule: resident.agenda?.routineProfile?.semanticVersion === 2,
       characterId: resident.characterId,
       name: resident.cardSnapshot.name,
       missing: false,
       weekUnreadable: !snapshot.cardsReadable,
       addedAt: resident.addedAt,
       agenda: resident.agenda,
-      completedWishes: [],
       ingestSchedule: resident.scheduleInfluence?.enabled === true,
       scheduleInfluence: influenceSettings(resident.scheduleInfluence),
       nativeSchedule: weeks.has(resident.characterId) ? { weekStart: "", days: {} } : null,
@@ -349,8 +385,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           ];
         }),
       ),
-      wishHistoryCount: resident.wishLifecycle?.outcomeCount ?? 0,
-      wishAttempt: resident.wishLifecycle?.attempt,
       remap: null,
       weekStart: "",
       stale: false,
@@ -386,11 +420,6 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     await queueVillagerAgenda(characterId);
   }
 
-  /** Correct a false wish verdict without changing any separately confirmed world state. */
-  async function correctCompletedWish(characterId: string, wishId: string): Promise<void> {
-    await correctResidentWish(characterId, wishId);
-  }
-
   async function setVillagerScheduleInfluence(characterId: string, value: unknown): Promise<void> {
     const raw = value as { enabled?: unknown; categories?: Record<string, unknown> };
     if (
@@ -418,16 +447,21 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       });
       resident.ingestSchedule = resident.scheduleInfluence.enabled;
     });
+    await ports.queueScheduleInfluence?.(characterId);
     await refreshVillagerRemaps(await readVillageState(), villageNow(), characterId);
   }
   return {
+    adoptFoundingRoutine: (state: VillageState, id: string, agenda: VillageAgenda, revision: string) => {
+      applyAgenda(state, id, agenda);
+      completeFoundingTask(state, id, "routine", revision);
+    },
+    readFoundingResidentContext,
     rollActiveAgendas,
     queueVillagerAgenda,
     backfillAgendas,
     refreshVillagerRemaps,
     buildVillageAgendas,
     clearVillagerAgenda,
-    correctCompletedWish,
     setVillagerScheduleInfluence,
     agendaBackgroundHandler,
   };

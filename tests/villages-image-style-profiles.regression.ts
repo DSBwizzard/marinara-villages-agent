@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { createImageGeneration } from "../packages/villages/src/server/features/media/image-generation-service.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 const custom = {
   id: "my-ink",
   name: "My ink",
@@ -86,9 +89,15 @@ assert.ok(
 );
 settings = { defaultProfileId: "my-ink", profiles: [{ ...custom, styleText: "x".repeat(17000) }] };
 await assert.rejects(service.generateVillageImage({ ...input, sceneryStyleProfileId: "" }), /too long/);
-assert.equal(coerceVillageState({ sceneryArtStyle: "Legacy authored style" }).sceneryStyleProfileId, null);
-assert.equal(coerceVillageState({ sceneryStyleProfileId: "my-ink" }).sceneryStyleProfileId, "my-ink");
-assert.equal(coerceVillageState({ sceneryStyleProfileId: "" }).sceneryStyleProfileId, "");
+assert.equal(
+  coerceVillageState({ ...defaultVillageState(), sceneryArtStyle: "Legacy authored style" }).sceneryStyleProfileId,
+  null,
+);
+assert.equal(
+  coerceVillageState({ ...defaultVillageState(), sceneryStyleProfileId: "my-ink" }).sceneryStyleProfileId,
+  "my-ink",
+);
+assert.equal(coerceVillageState({ ...defaultVillageState(), sceneryStyleProfileId: "" }).sceneryStyleProfileId, "");
 console.log(
   "Engine image style catalog, privacy, selection, persistence, prompt override and dispatch limits passed; synthetic provider only.",
 );

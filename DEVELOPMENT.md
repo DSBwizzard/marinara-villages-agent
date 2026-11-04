@@ -1,108 +1,93 @@
-# Building Villages
+# Developing Villages
 
-This repository contains Villages source, its package definition, and the commands used by both local development and CI. Villages builds as a self-contained optional Marinara package.
+Use Node 24 with Corepack (CI pins Node 24.21.0 with npm 11.19.0). The checked-in [Villages Codex environment](.codex/environments/environment.toml) selects the npm version from `packageManager` before locked installation and creates npm shims in that worktree’s ignored `node_modules/.bin` so nested scripts use it too. Select this environment for new worktrees; rerun its setup after dependency changes or removing `node_modules`. Run the npm commands below as `corepack npm` in local Codex shells. Global Node/npm installations are unchanged; strict version and install-script checks remain enabled. Maintained source is in `packages/villages/src`; package identity, version, permissions and entry points are in `packages/villages/package-definition.mjs`. [AGENTS.md](AGENTS.md) owns development principles.
 
-## Build
+## Ordinary work
 
-Requires Node.js 24 or newer. A normal build uses this repository's locked dependencies and pinned public Engine declarations. It needs no Engine installation and never updates an Engine checkout or captured source:
+When inspecting a deployed environment, verify its installed package identity and deployed revision against its deployment records before using matching source for analysis. Report the identity and any mismatch or unverifiable correspondence. A branch, checkout, preview or version number alone does not establish what is deployed. Use read-only inspection and preserve runtime and saved-data boundaries.
 
-```powershell
-npm ci
-npm run build
-npm run verify:package
-```
+Before any audit, review, investigation or implementation that depends on current staging, run `git fetch origin staging` and require success, then record the verified revision with `git rev-parse --verify origin/staging`. For read-only work, inspect that commit (for example, `git show <commit>:<path>`) rather than assuming a checkout is current, and identify the inspected commit when reporting findings. If fetching fails, explicitly report that staging freshness could not be verified and do not present cached code as current.
 
-`packages/villages/package-definition.mjs` owns the package identity, version, entry points, permissions, and contributions. `packages/villages/src` owns editable code. `sources/engine-public/PROVENANCE.md` identifies the pinned public declarations and small compatibility fixture. Decisions uses `api.runtime.decisions.evaluate()` introduced by Engine PR #7369. Engine 2.5.0 is the minimum; earlier 2.5.0 builds without the capability use System. `engine-boundary.json` contains no private runtime imports.
+1. Assess PR boundaries under AGENTS.md before substantial implementation and revisit them when scope grows. For each cohesive change, create an owned worktree from verified `origin/staging` and set up its dependencies. Confirm `HEAD` matches that revision, then create a unique `codex/...` branch before editing. Implement, test and review in the owned worktree, and reuse it for feedback.
+2. Implement the smallest coherent change. Run `npm run check:changed` and explicit affected tests, for example `npm test -- --filter=venue-access` or `npm run test:browser -- --case=settings/package`. Empty and unknown selections fail.
+3. Build with `npm run build` and verify with `npm run verify:package` when package inputs or build behavior change, or a package is needed for a preview. Removing an unused helper or editing instructions needs the affected static checks and regressions; runtime, saved-state and layout tests apply when those behaviors change. Open a PR to staging as soon as the change is reviewable, with a concise description of the final behavior and relevant validation. Let CI run while preparing any required preview.
+4. Present significant new behavior in an independent working preview and obtain acceptance of that package before merging. Routine corrections follow the standing authorization in AGENTS.md. CI validates the combined merge candidate. Resolve failures and conflicts, then merge after required checks and any applicable acceptance. Use a final summary for the merge commit rather than a list of intermediate commit titles. Main promotion is a separate explicit decision.
+5. Confirm the PR is merged and the review targets the owned checkout before reporting source delivery. Complete each independent change without waiting for other work in the request. Report deployment separately, including any deferral; verify the installed package before claiming deployment. Release and housekeeping remain separate outcomes.
 
-## Find and check a change
+### Staging turns
 
-Client features own their screens, state and actions under `src/client/features`. The shell owns navigation and composition. Server features coordinate requests under `src/server/features`; rules and saved models belong in `src/server/domain`, host/storage/model connections in `src/server/adapters`, and background work in `src/server/jobs`. Shared contracts and calculations belong in `src/shared`. Keep private world and Scene records server-only.
+Use the GitHub PR label `staging-turn` to coordinate final validation and merging across sessions. This is an advisory convention; the strict current-base ruleset and required checks remain the final merge safeguards.
 
-For a focused development check:
+- Development, review and preliminary CI can proceed in parallel. Before taking a turn, inspect all open staging PRs for the label and enabled auto-merge. Wait while another turn or competing auto-merge is active; do not initiate a competing merge or enable auto-merge. Only a PR ready for final validation and merging may claim the label. Leave waiting branches on their current base instead of updating them after each preceding merge.
+- Add the label to the chosen PR, then recheck all open staging PRs before updating the branch or merging. If simultaneous claims produce multiple labels, the lowest PR number keeps its claim; all other claimants remove theirs and wait. Only after owning the turn, update to current staging and obtain all required checks on that candidate. Reuse passing required checks while the candidate and staging base remain unchanged. Recheck immediately before merging, and stop if ownership is unclear or staging has moved. Never bypass protection.
+- Keep the turn through final validation and merge. Remove the label promptly after merge or when checks fail, changes are needed, the PR is blocked, or preview acceptance is pending. Do not hold a turn while waiting for review or acceptance. A closed PR does not own a turn.
+- To recover a stale turn, inspect the labeled PR, its checks and recent activity. If it is clearly closed, blocked, failed or abandoned, remove the label and proceed; if active ownership is uncertain, leave it in place and ask the user to resolve it. Do not interrupt or message another session to recover a turn.
 
-```powershell
-npm run check:changed
-npm test -- --filter=venue-access
-```
+On resume inspect the owned checkout and PR, and read current tracked guidance before edits. Preserve other branches and unrelated work when updating checkouts. Do not interrupt or move another task without explicit user authorization.
 
-`check` covers formatting, lint, maintained-code compiler checking, pinned declaration integrity, architectural imports and runtime cycles. It rejects client imports of server code, impure domain dependencies, and connector calls back into feature coordinators. Client and server features collaborate only through the named contracts in [feature-interfaces.mjs](scripts/feature-interfaces.mjs); other modules and exports remain private. Entry assembles factories, the client shell connects its feature implementations, and modules within one feature may use their own implementation. Shared client support cannot import features or shell assembly; features cannot import the shell. Types, aliases, reexports and delayed imports obey the same boundaries. Add public contracts deliberately after reviewing their ownership and effects. An empty test selection fails. Focused checks support iteration; they do not establish complete candidate readiness.
+Task scratch files belong in `.build-tmp/`; generated conversation assets belong in ignored `output/`. Technical review is proportional to risk as described in AGENTS.md. Routine copy/layout corrections need no separate preview acceptance; significant new behavior does.
 
-During feedback, a clearly labeled preview may use static checks and explicit affected regression/browser selections plus relevant packaged acceptance. Shared helpers require coverage of affected consumers; unknown impact requires broader validation.
+Keep routine planning to the outcome, scope and affected checks. Review material assumptions when they change; do not restart a full review for cosmetic follow-ups or repeat an unchanged local package proof without a concrete unresolved question. Required CI still qualifies the current merge candidate.
 
-CI maintains complete candidate coverage through `npm run validate:ci`. Schema-3 evidence fingerprints each static check, build, package/reproducibility check and test independently using bundler dependencies, declared fixture reads, helpers, locked dependencies and the pinned Node/runner/platform environment. Dynamic or unknown dependencies conservatively include the broader maintained input set. Feature/test/helper edits invalidate consumers; version-only metadata edits preserve behavior evidence that does not read that metadata. A policy/toolchain change establishes a new complete Linux/Windows baseline. `coverageComplete` means every current required check has verified passing evidence; `executedAllTests` separately records execution in this attempt. Failed, skipped, stale, changed-input and foreign CI results never satisfy coverage. `--fresh`/`--full` and manual full mode deliberately execute the complete inventory. Local tests remain feedback; authenticated CI is the reusable release authority.
+Worktree archival is separate housekeeping. Preserve active, unknown and unrelated dirty checkouts.
 
-When a complete local or release check is explicitly required:
-
-```sh
-npm run validate
-npm run verify:build
-```
-
-`validate` runs the same check/build/package verification and provider-free regression/browser inventory as CI. Browser scenarios use mocked APIs and synthetic artwork. `verify:build` builds twice, compares archive hashes and verifies that tracked source bytes remain unchanged. Generated bundles, manifests, locales and ZIPs are ignored; commit source, definitions, relevant tests and documentation.
+## Commands and coverage
 
 ```sh
-npm run test:inventory
-npm test
-npm run test:browser
-npm run test:engine
+npm run audit:dependencies # fail on low-or-higher dependency advisories
+npm run check             # format, lint, types, Engine declarations, architecture
+npm run check:changed     # affected static checks; optional --base=<ref> or --file=<path>
+npm test -- --filter=name # explicit regression feedback
+npm run test:browser      # provider-free browser tests
+npm run test:inventory    # all suites and available cases
+npm run validate          # full static + two builds + package + regression/browser inventory
 ```
 
-The inventory accounts for every regression and browser scenario. Engine tests are explicitly separate: the image compatibility test requires `MARINARA_ENGINE_ROOT` for read-only source, Decisions transport requires a compatible existing built runtime and synthetic local provider, and the shell test needs `VILLAGES_ENGINE_URL` pointing to an isolated running Engine. They do not authorize Engine source changes, rebuilds or everyday restarts. Mocked tests complement actual packaged activation, persistence, Scene privacy, recovery and desktop/mobile verification.
+Install the locked Chromium runtime locally with `npx playwright install chromium`. CI runs full static/build/regression validation on Linux and Windows without browser provisioning, plus the complete browser inventory split into two fixed partitions per OS (`--shard=1/2`, `--shard=2/2`). Linux browser jobs use the official Playwright Noble image pinned by version and digest, with its preinstalled browsers at `/ms-playwright`; update that pin together with the locked Playwright dependency. Windows browser jobs cache the locked Chromium runtime. Node is pinned and npm downloads are cached. Package parity waits for every partition. Required job names are `validate`, `validate-windows`, and `package-parity`. A new PR head cancels its superseded run. CI runs on PRs and manual dispatch. Protected current-base requirements apply.
 
-## Keeping the architecture healthy
+Only regular UTF-8 edits to root `AGENTS.md`, `DEVELOPMENT.md`, `README.md`, `packages/villages/README.md` and Markdown guides directly under `docs/` qualify for documentation-only CI. These paths have been verified as prose, not runtime or package inputs; keep executable fixtures and build inputs elsewhere. The exact PR merge parent must match the event base; missing history, mode changes, new/deleted/renamed files, mixed or other paths and manual dispatch use full CI. Both platforms must independently confirm qualification, every required job must succeed and the final gate must check their agreement. This path performs no dependency installation, product builds, tests or artifact comparison. It produces no qualified package and reuses no prior results. Executable and ambiguous changes retain complete validation, reproducible builds, artifacts and package parity.
 
-For each task, state the intended user-visible outcome and identify its feature owner, collaborators and relevant Engine contract. Start with the smallest change that fits those owners. If the request appears to require a dependency outside an existing feature contract, duplicated host service, new private Engine import, data-policy change or broad restructuring, explain the concrete tradeoff and discuss the approach before expanding implementation. Follow the engineering discussion guidance in [AGENTS.md](AGENTS.md); conventions are revisable, but changes to them need a reason and appropriate validation.
+Manual workflow operations must explicitly select the intended ref, for example `gh workflow run ci.yml --ref staging` or an explicitly chosen task branch. Default `main` still contains older workflow machinery; do not rely on an implicit default ref.
 
-During review, check these points:
+Unexpected build warnings, test stderr, browser console warnings/errors and uncaught page exceptions fail validation. Deliberate negative browser responses use the shared fixture helper to allow at most one diagnostic for that exact URL and response; other messages fail. Full and filtered runs verify the completion of every declared selected case. Dependency install scripts require the reviewed package.json policy; new scripts fail installation.
 
-- Ownership and dependencies remain explicit; client-visible projections expose only permitted data, and asynchronous work respects its activation and operation lifetime.
-- New interfaces or layers have an evidenced purpose. Superseded paths are removed within scope, rather than leaving two ways to implement the same behavior.
-- A maintainer can find the behavior and diagnose its failures. Important tradeoffs and changed contracts are documented close to their maintained guidance, without creating a permanent log of routine implementation decisions.
-- Tests protect observable behavior and relevant failures, with accurate coverage limitations. A rising test count or line count alone does not demonstrate improvement. Fix unreliable fixtures or excessive test grouping without dropping assertions or weakening gates.
-- Git history and the PR stay focused on one outcome. Integration changes are reviewed and revalidated; required checks, publication authorization, immutable released bytes and separate staging/main decisions remain intact.
+The runner executes selected tests afresh. Focused local tests are feedback; passing CI describes the tested merge candidate. The runner defaults to four workers and up to two local browser workers. `--jobs=1`, `--browser-jobs=1`, `--keep-going` and `--fail-fast` control execution. Resource locks prevent unsafe overlap; unknown suites run exclusively. Logs, progress, first failure and coverage are under `.build-tmp/test-results`. Inspect the owner before recovering an interrupted checkout lock.
 
-Small cleanup belongs with the feature it affects. Larger refactors require a demonstrated problem, bounded scope and an agreed outcome; they are not a routine prerequisite for new features. For post-0.7.0 work, discuss saved-data compatibility whenever a change affects existing worlds. The fresh-world decision for 0.7.0 does not silently authorize future data loss or require speculative migration machinery for every edit.
+`npm run test:engine` is separate integration coverage. Its tests require an explicitly supplied compatible Engine root, existing built runtime or isolated Engine URL. They do not authorize Engine changes, builds, upgrades or personal installation operations. Mocked tests do not prove real-provider quality. Private Docker tooling verifies packaged activation, desktop/phone rendering, restart and persistence using disposable provider-free storage.
 
-## Package identities and releases
+## Preview and saved data
 
-Each build writes working outputs under `packages/villages/` and `artifacts/villages-<version>.zip`. It retains archive bytes at `artifacts/<version>/<source-content-hash>/<archive-sha256>.zip`, with a build receipt alongside them and the latest receipt at `.build-tmp/package-build.json`. Receipts identify source revision, exact input hashes and archive bytes. Use those identities when reviewing or installing a staging build; version equality alone does not identify the build.
+Villages is an unreleased prototype without a public installer or official catalog entry. Test installation is arranged separately; historical tagged downloads are not the current prototype distribution.
 
-Staging integrates reviewed source changes. A merge, tiny edit, local commit or rebuild does not itself consume a release number. Choose one new version when deliberately releasing a batch; retain it through unpublished review iterations. Published numbered archives remain immutable. A later separately numbered release gets a new version. Merged staging packages may retain a release number for personal installation when their revision/hash, validation and rollback copies are recorded.
+The [social Wishes](docs/wishes.md) guide documents their behavior and extension boundaries. Social Wishes replace the prior Wish/Pursuit implementations. The current build requires a fresh format-15 Village with immutable Memory pages; no conversion is provided.
 
-The architecture baseline is numbered 0.7.0 and starts with fresh worlds. The [migration ledger](docs/architecture-migration.md) records the starting baseline, completed work and validation scope. Keep changes focused and atomic; separate code movement from behavior corrections. Explain any change to saving, privacy, recovery, concurrency or model spending and obtain independent technical review.
+During development, **DEBUG Settings → Advance Village time** advances the current instance by a chosen elapsed duration. The saved offset survives restart; days are 24 hours. It runs ordinary absence catch-up across Village mechanics, including any normally enabled model work, and preserves active Scene snapshots and held failures. Operational clocks and model settings remain unchanged. It is available in every development instance. Before admitting active playtesters, remove the `TimeControl.tsx` UI and `/clock/advance` route. Retain saved-offset compatibility so existing development worlds do not jump backwards; resetting the offset is not an undo operation. Checkpoint retained worlds before consequential time tests.
 
-Installing a package uses the host's supported package mechanism and a validated ZIP, rather than copying a source tree into Engine. Computer-specific review environments, approval gates and installation helpers live in local workflow instructions outside this repository. Loading a changed server package requires a restart; follow that environment's explicit restart authorization. This repository does not publish a replacement for the official multi-agent catalog or plan upstream submission.
+**DEBUG Settings → Verbose runtime logging** defaults Off and can print prompts, replies and private conversation context in the server terminal. It is separate from destructive debug controls. Keep logs private. Background leases renew every 30 seconds while visible; unsettled work may use scoped status reads, while settled views have no dedicated polling timer. The [generation lifecycle](docs/generation-pipeline.md), [Scene privacy](docs/scene-response-privacy.md), [response recovery](docs/scene-response-recovery.md) and [saved-state contracts](docs/architecture-migration.md#saved-work-and-compatibility) own request, evidence, persistence and compatibility details.
 
-## Engine image style profiles
+Sprite setup is manual and provider-free. Imported names use Engine labels or filenames; side artwork must face right. The existing Scene System exchange selects expressions and attention, with concrete variants saved in its checkpoint. Narration has no sprite catalog. Code owns visual placement, mirroring and animation.
 
-Villages reads the user's synced image style settings over the Engine HTTP API and normalizes them with the running Engine's public `@marinara-engine/shared` export. That public export also compiles background prompts before Villages submits its exact image override. The audited loader resolves the import entry declared by the Engine shared package manifest from the existing built server/shared package layout; it never bundles Engine implementations or loads private image modules. Illustrator is not required. Unsupported public exports report an actionable failure; saved custom descriptions and uploads remain usable.
+New previews copy selective setup and Villages data from a verified saved checkpoint into independent storage, without stopping the source environment. Existing preview progress is preserved on feedback. Package changes require the guarded installer and checkpoint/recovery protection. Deliberate paid gameplay and personal installation operations require separate authorization.
 
-New villages follow Engine's default profile; explicit choices store only the profile ID, and existing descriptions remain custom. The catalog exposes only profile names/IDs and the default ID. Authored source prompts retain their 4000-character limit; normalized profile compilation has a separate 16000-character final positive/negative limit checked before provider dispatch. Map and Venue framing stays under Villages' control. The read-only image Engine contract test now also requires the selected Engine's existing built shared export.
+## Build and release
 
-## Test iteration and diagnostics
+The builder owns generated bundles, manifests, locales and ZIPs. Commit maintained sources, tests and documentation. Locked dependencies and pinned public Engine declarations permit builds without an Engine checkout. `sources/engine-public/PROVENANCE.md` identifies those declarations. Engine 2.5.0 is the minimum; Decisions uses the public `api.runtime.decisions.evaluate()` capability when present and otherwise System.
 
-The runner defaults to four total workers and two browser workers. Use --jobs=1 for a serial comparison or --browser-jobs=1 to reduce pressure. Maintained resource ownership permits isolated tests to overlap even after edits; unknown suites stay exclusive. Local runs stop after the first failure; CI keeps going for diagnostics. Unexecuted tests never count as passing. Reports record exact coverage, outcomes and wall time. A per-checkout lock prevents overlapping builders/runners; inspect interrupted owners before recovery.
+`npm run verify:build` builds twice, compares archive hashes and checks that tracked source bytes are unchanged. The latest build receipt is `.build-tmp/package-build.json`; exact retained archives are under `artifacts/<version>/<source-content-hash>/<archive-sha256>.zip`. Version equality alone does not establish package identity.
 
-Use `node scripts/select-tests.mjs` for affected owners/consumers and `node scripts/run-tests.mjs browser --case=settings/package` for a named scenario. Settings, Venue layout and Scene action scenarios expose cases in the inventory. Real layout checks retain desktop/mobile coverage; state-only fixtures run once per StrictMode variant. Source tooling can be refreshed on an idle clean managed task with `node scripts/task-tooling.mjs --apply`; it uses normal Git integration and preserves uncommitted work. Private preview orchestration remains outside product Git.
+For an explicitly authorized release:
 
-## Release a validated candidate
+1. Choose the deliberate release version once in the package definition. Do not bump it for each development edit. Preserve published numbered bytes.
+2. Open the staging-to-main PR. Obtain all required checks for its current merge candidate. Record the successful Actions run URL, tested Git SHA/tree, package artifact and SHA256. Download the artifact from that successful run; verify its hash and the Linux/Windows parity job. If a merge changes executable source, validate the new candidate.
+3. Rehearse the exact ZIP with guarded provider-free packaged verification and, when needed, a checkpointed copy of an existing world. Preserve rollback and review meaningful saved-data compatibility changes.
+4. Obtain explicit authorization for main promotion and numbered publication. Publish the verified immutable artifact, not an unverified rebuild. Record the version, commit, run URL and archive hash in the normal release description.
 
-Staging/main PRs for the same head serialize each platform job before a runner is allocated. The next job consumes the first job's evidence when inputs match, rather than launching a duplicate full matrix. Different maintained inputs still require their own coverage. Per-PR workflow concurrency continues to cancel superseded commits.
+Never substitute a local success, identical bytes alone, or stale PR approval for required current checks. No publication occurs merely because staging merged.
 
-Development PRs validate the combined candidate. CI stores a compact `villages-coverage` manifest and an immutable `villages-candidate` artifact containing the exact reproducible package and both platform build receipts. Preparation uses at most two indexed manifests instead of scanning artifact history. A cached Windows check requires its original Windows environment, but a fully covered Windows receipt can be verified on a Linux runner without executing Windows checks. Same-head workers refresh proof after serialization to avoid repeating an earlier job's work.
+## Product contracts
 
-Do focused local diagnosis and use CI for the complete integration run. Do not run a duplicate full local inventory while CI validates the same candidate. Keep applicable pinned, provider-free Engine acceptance as separate package evidence.
+Client features own screens/actions; the shell composes them. Server features coordinate requests, domain modules own rules and saved models, adapters own host I/O, and jobs own background work. Shared contracts/calculations remain explicit. `scripts/feature-interfaces.mjs` declares cross-feature contracts; architecture checks enforce client/server privacy and domain boundaries and reject missing literal relative imports in standalone scripts. These checks run through `check`, `check:changed` and CI. A new layer or interface needs a concrete purpose.
 
-Use the maintained release command from the frozen candidate checkout with Node matching CI:
+Saved-data changes must preserve existing worlds or explicitly explain the compatibility decision. The fresh-world 0.7.0 baseline is historical, not authorization for future loss. See [architecture and compatibility](docs/architecture-migration.md). Engine image styles use the public shared export and HTTP API; private Engine implementations are not bundled. Product details belong in `packages/villages/README.md` and relevant feature docs.
 
-```sh
-node scripts/release.mjs --version 0.7.3 --candidate <full-commit> --staging-pr <number> --main-pr <number> --wait
-```
-
-The command records elapsed time from invocation, including any unexpected preparation, under `.build-tmp/releases/`. It waits without model polling and prints state changes. Failed checks require diagnosis. Missing/expired candidate proof automatically dispatches preparation; `--wait` waits for it. Preparation can take longer than the under-five-minute warm release target, and incomplete evidence never permits publication. Choose the intended version and complete candidate CI and applicable pinned Engine acceptance during development. `node scripts/prepare-release.mjs --run=<CI-run>` authenticates coverage and restores exact prepared bytes without rebuilding. Environment-specific Engine acceptance stays in the private guarded workflow.
-
-Rehearse the entire verification path with `--dry-run --acceptance <verification.json>`; this never merges, tags or creates a release. Measure a ready candidate before claiming the under-five-minute target. Promotion reuses static/build/reproducibility and gameplay proof and publishes the same verified bytes. Source revision may advance while identical build inputs/bytes retain their original build provenance.\n\nAfter explicit authorization for staging/main merges, add `--merge --acceptance <verification.json>`. The command verifies both platform receipts, exact archive bytes and matching successful pinned Engine package acceptance before merging staging, then main. Branch protections and matching-head checks remain enforced.
-
-Numbered publication additionally requires `--publish --notes <release-notes.md>`. It creates a draft, uploads the verified archive, checks its GitHub digest, publishes, and verifies the immutable tag/asset identity. Existing different bytes or tags are rejected. Repeating the same command verifies remote state and skips completed mutations. The published checkpoint contains the next patch target for workflow bookkeeping; it does not modify private review worlds or machine-specific release coordination.
-
-A per-candidate operation lock rejects concurrent invocations. After an interrupted process, inspect its recorded PID and checkpoint before recovering a stale lock; never remove a live process's lock.
+Keep process changes small: demonstrate the problem and net maintenance benefit, remove what they replace, and measure request-to-preview/staging time including queueing and interventions. Faster tests or more checks alone do not justify permanent machinery.

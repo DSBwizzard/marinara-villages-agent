@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import {
@@ -11,6 +12,7 @@ import {
   villagesRuntimeEpoch,
 } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { configureVillageClock } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { startVillagesApplication, type ActivationContext } from "../packages/villages/src/server/entry/application.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
@@ -19,17 +21,16 @@ import {
   type SceneQueries,
 } from "../packages/villages/src/server/features/scenes/services.js";
 import { readVillageAuthority } from "../packages/villages/src/server/features/world/village-store.js";
+import { repairStorageId } from "../packages/villages/src/server/features/repair/repair-storage.js";
 
 // Actual dispatch/assembly and Fastify handlers; synthetic document stores, no Engine or providers.
 function deferred<T = void>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 function fixture(name: string, decisionsEnabled: boolean) {
   const reads: string[] = [];
+  const checkpointId = repairStorageId("repair-checkpoint", "shared-checkpoint");
+  let checkpoint: { id: string; packageId: string; kind: string; revision: number; data: any } | undefined;
   let onInterpretation: (() => Promise<void>) | undefined;
   const state = defaultVillageState();
   state.name = name;
@@ -37,9 +38,10 @@ function fixture(name: string, decisionsEnabled: boolean) {
   state.clock = { revision: 1, trustedAt: new Date().toISOString(), recovery: null, replayUntilDate: "" };
   const runtime = {
     persistence: {
-      documents: {
+      documents: villageFixtureDocuments({
         async getById(_package: string, id: string) {
           reads.push(id);
+          if (id === checkpointId) return structuredClone(checkpoint ?? null);
           if (id === "villages-interpretation-settings") {
             await onInterpretation?.();
             return { id, revision: 1, data: { decisionsEnabled } };
@@ -52,10 +54,13 @@ function fixture(name: string, decisionsEnabled: boolean) {
         async create() {
           throw new Error("This fixture must not write");
         },
-        async update() {
-          throw new Error("This fixture must not write");
+        async update(input) {
+          assert.equal(input.id, checkpointId, "Only the requested checkpoint may change");
+          if (!checkpoint || checkpoint.revision !== input.expectedRevision) return null;
+          checkpoint = { ...checkpoint, data: structuredClone(input.data), revision: checkpoint.revision + 1 };
+          return structuredClone(checkpoint);
         },
-      },
+      }),
     },
     logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
     isDebugAgentsEnabled: () => false,
@@ -64,6 +69,28 @@ function fixture(name: string, decisionsEnabled: boolean) {
   return {
     runtime,
     reads,
+    state,
+    seedCheckpoint() {
+      checkpoint = {
+        id: checkpointId,
+        packageId: "villages",
+        kind: "repair-checkpoint",
+        revision: 1,
+        data: {
+          version: 2,
+          id: "shared-checkpoint",
+          seed: state.seed,
+          setupAt: state.setupAt,
+          mode: "manual",
+          token: "shared-token",
+          title: name,
+          at: new Date().toISOString(),
+          records: 1,
+          snapshots: "[]", // Deletion releases the header without loading its saved sources.
+        },
+      };
+    },
+    checkpoint: () => structuredClone(checkpoint),
     holdInterpretation(work: typeof onInterpretation) {
       onInterpretation = work;
     },
@@ -143,7 +170,6 @@ async function productionHandlers() {
     const application = await startVillagesApplication({
       api: {
         runtime: f.runtime,
-        registerSceneOrigin: () => () => {},
         async registerPrivilegedRoutes(plugin, options) {
           capturedOwner = activationScope();
           await engine.register(plugin, options);
@@ -178,13 +204,48 @@ async function productionHandlers() {
       false,
       "actual late handler retains its original document store",
     );
+    a.state.setupAt = "already-founded";
+    const savedA = structuredClone(a.state),
+      beforeSetup = a.reads.length;
+    const unexpectedClock = async () => {
+      throw new Error("Rejected setup must not observe the clock");
+    };
+    const releaseClock = a.owner.run(() =>
+      configureVillageClock({ now: () => new Date(), observe: unexpectedClock, resolve: unexpectedClock }),
+    );
+    try {
+      const rejected = await a.engine.inject({ method: "POST", url: "/api/villages/setup", payload: {} });
+      assert.equal(rejected.statusCode, 409, rejected.body);
+      assert.match(rejected.json().error, /already founded/);
+      assert.deepEqual(a.state, savedA, "Rejected setup preserves saved authority");
+      assert.deepEqual(a.reads.slice(beforeSetup), ["villages-village"], "Only raw admission runs");
+    } finally {
+      releaseClock();
+    }
+    a.seedCheckpoint();
+    b.seedCheckpoint();
+    const beforeCheckpointB = b.checkpoint();
+    const deleted = await a.engine.inject({
+      method: "DELETE",
+      url: "/api/villages/repair/checkpoints",
+      payload: { id: "shared-checkpoint", token: "shared-token" },
+    });
+    assert.equal(deleted.statusCode, 200, deleted.body);
+    assert.equal(a.checkpoint()?.data.deleted, true, "DELETE uses the runtime that registered its route");
+    assert.deepEqual(b.checkpoint(), beforeCheckpointB, "A matching checkpoint in another runtime stays intact");
+    const stale = await a.engine.inject({
+      method: "DELETE",
+      url: "/api/villages/repair/checkpoints",
+      payload: { id: "shared-checkpoint", token: "stale-token" },
+    });
+    assert.equal(stale.statusCode, 409, "Checkpoint identity checks still apply through the bound route");
+    assert.deepEqual(b.checkpoint(), beforeCheckpointB);
     const failedSetup = new Error("synthetic route admission failed");
     let failedOwner: ReturnType<typeof activationScope>;
     await assert.rejects(
       startVillagesApplication({
         api: {
           runtime: fixture("failed-replacement", false).runtime,
-          registerSceneOrigin: () => () => {},
           async registerPrivilegedRoutes() {
             failedOwner = activationScope();
             throw failedSetup;

@@ -1,12 +1,5 @@
-import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
-import {
-  configureSceneChanges,
-  readSceneChanges,
-  dismissSceneNotice,
-  replaySceneChanges,
-} from "../packages/villages/src/server/features/scenes/changes.js";
+import assert from "node:assert/strict";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -16,28 +9,34 @@ import {
   createVenueOperationContext,
   type Context,
 } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
-import {
-  defaultRelationshipState,
-  applyRelationshipReview,
-} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
-import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
-import { relationshipChangeNotices } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import type { RelationshipChange } from "../packages/villages/src/server/domain/models/relationship-types.js";
 import type { VenueSubmission } from "../packages/villages/src/server/domain/models/scene-model.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { relationshipChangeNotices } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
+import { emptyRelationshipReview } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import {
+  applyRelationshipReview,
+  defaultRelationshipState,
+} from "../packages/villages/src/server/domain/rules/relationship-rules.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { createSceneChanges } from "../packages/villages/src/server/features/scenes/changes-service.js";
+import {
+  configureSceneChanges,
+  dismissSceneNotice,
+  readSceneChanges,
+  replaySceneChanges,
+} from "../packages/villages/src/server/features/scenes/changes.js";
 
 type Document = Awaited<ReturnType<CapabilityDocumentStore["list"]>>[number];
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function submission(id: string, sequence: number): VenueSubmission {
   return {
@@ -78,6 +77,7 @@ function fixture(name: string) {
     ],
   });
   const scene = coerceSession({
+    version: 3,
     id: "same",
     processingVersion: 1,
     villageSeed: name,
@@ -301,20 +301,21 @@ async function main() {
   );
   assert.deepEqual(
     feed.changes[0]!.notices.map((x) => x.id),
-    ["first:notice"],
+    ["first:notice", "hidden-wish"],
+    "Delivered historical notices survive later knowledge changes",
   );
   assert.equal(
     feed.changes[0]!.evidence[0]!.contactHidden,
     true,
     "privileged server diagnostics retain exact saved evidence",
   );
-  assert.equal(feed.nextCursor, "1:1:0");
+  assert.equal(feed.nextCursor, "1:3:0");
   assert.equal(feed.hasMore, true);
   const second = await read.service.readSceneChanges("same", feed.nextCursor, 1);
   assert.deepEqual(
     second.notices.map((x) => x.id),
-    ["global"],
-    "notices remain a global Village stream",
+    [],
+    "another Scene cannot inject future notices into this Scene",
   );
   assert.deepEqual(second.changes[0]!.receipts.domainEffects, []);
   assert.equal(second.nextCursor, "2:3:0");
@@ -336,16 +337,32 @@ async function main() {
   assert.deepEqual(mismatch.calls, ["scene:same", "snapshot"]);
   const capped = fixture("seed");
   for (let i = 0; i < 55; i++) capped.job("job-" + i, {});
-  assert.equal((await capped.service.readSceneChanges("same")).backgroundChecks.length, 50);
+  capped.job("current-batch", { input: {}, subjectId: "wish-batch:same:latest", status: "running" });
+  const cappedFeed = await capped.service.readSceneChanges("same");
+  assert.equal(cappedFeed.backgroundChecks.length, 50);
+  assert.equal(cappedFeed.backgroundChecks[0]!.id, "current-batch");
 
   const relationships = fixture("seed"),
     state = defaultRelationshipState("seed");
   relationships.world.relationshipContext = state;
   const change = (id: string, amount: number): RelationshipChange => ({
     id,
-    amount,
-    dimension: "warmth",
-    ordinary: false,
+    expectedRevision: Object.values(state.edges)[0]?.revision ?? 0,
+    sceneAfter: {
+      connection: amount ? "Friends" : "Acquaintances",
+      stance: "Private",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
+    liveAfter: {
+      connection: amount ? "Friends" : "Acquaintances",
+      stance: "Private",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
+    evidence: [],
     fromId: "mara",
     toId: "player",
     reason: "Shared experience",
@@ -367,7 +384,7 @@ async function main() {
     const receipt = state.receipts[id]!;
     assert(receipt);
     Object.assign(receipt, {
-      sceneId: "other-scene",
+      sceneId: "same",
       submissionId: id,
       committedAt: stamp,
       noticeSequence: ++state.noticeSequence,
@@ -379,9 +396,72 @@ async function main() {
   assert.equal(invisible.nextCursor, "50:0:1");
   assert.equal(invisible.hasMore, true);
   const visible = await relationships.service.readSceneChanges("same", invisible.nextCursor, 1);
-  assert.equal(visible.notices.length, 1);
+  assert.equal(visible.notices.length, 0, "Private perspective changes never create player notices");
   assert.equal(visible.nextCursor, "50:0:2");
   assert.equal(visible.hasMore, false);
+
+  const privacy = fixture("seed");
+  privacy.world.relationshipContext = defaultRelationshipState("seed");
+  privacy.scene.continuity = captureSceneContinuity(privacy.world, privacy.scene, Date.parse(stamp));
+  const later = privacy.world.relationshipContext;
+  later.edges['["mara","player"]'] = { fromId: "mara", toId: "player", close: true, warmth: 90, trust: 90 } as any;
+  later.receipts.private = {
+    id: "private",
+    sceneId: "same",
+    sourceId: "same",
+    fromId: "mara",
+    toId: "another",
+    before: 0,
+    after: 2,
+    dimension: "warmth",
+    at: stamp,
+    lineIds: [],
+    noticeSequence: 1,
+    reason: "Private",
+  };
+  privacy.scene.submissions[0]!.recordEvents!.push({ id: "private", kind: "relationship-up", text: "Private" });
+  const privateFeed = await privacy.service.readSceneChanges("same");
+  assert(
+    !privateFeed.notices.some((notice) => notice.id === "private"),
+    "later global closeness cannot expose private Scene receipts",
+  );
+  assert(
+    !privateFeed.changes.some((turn) => turn.notices.some((notice) => notice.id === "private")),
+    "cached notices use the same captured visibility",
+  );
+
+  const presence = fixture("presence");
+  const attendance = {
+    id: "attendance",
+    speakerId: "__venue_scene__",
+    name: "Narration",
+    role: "assistant" as const,
+    kind: "narration" as const,
+    content: "10:00 AM · Mara is no longer here.",
+    at: stamp,
+    heardBy: [],
+    physicalIdsAfter: [],
+    presenceChange: true as const,
+  };
+  presence.scene.lines.push(
+    attendance,
+    { ...attendance, id: "hidden", contactHidden: true, content: "Secret" },
+    {
+      ...attendance,
+      id: "audible",
+      contactHidden: true,
+      content: "Hidden words behind a door",
+      soundOnly: { player: true, characterIds: [], text: "A distant sound." },
+    },
+  );
+  const presenceId = "presence:same:attendance";
+  const arrivals = await presence.service.readSceneChanges("same", "50:50:50");
+  assert.deepEqual(arrivals.notices, [{ id: presenceId, kind: "venue", text: attendance.content }]);
+  await assert.rejects(presence.service.dismissSceneNotice("same", "presence:same:hidden"), /unavailable/);
+  await assert.rejects(presence.service.dismissSceneNotice("same", "presence:same:audible"), /unavailable/);
+  await presence.service.dismissSceneNotice("same", presenceId);
+  assert.deepEqual((await presence.service.readSceneChanges("same")).notices, []);
+  assert.deepEqual(presence.world.dismissedNoticeIds, [presenceId]);
 
   const dismiss = fixture("seed");
   await assert.rejects(dismiss.service.dismissSceneNotice("same", "missing"), /unavailable/);

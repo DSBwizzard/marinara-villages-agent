@@ -38,15 +38,25 @@ export function hasVillagePresence(): boolean {
 export async function villageBackgroundPresence<T = void>(
   sessionId: string,
   visible: boolean,
-  options: { beforeResume?: () => Promise<T> } = {},
+  options: {
+    beforeResume?: () => Promise<T>;
+    afterResume?: () => Promise<void>;
+    onVisible?: () => Promise<void>;
+    onHidden?: () => Promise<void>;
+  } = {},
 ): Promise<T | undefined> {
   return binding.get().villageBackgroundPresence<T>(sessionId, visible, options);
 }
 export function queueBackgroundJob(work: BackgroundInput): Promise<void> {
   return binding.get().queueBackgroundJob(work);
 }
-export async function retryBackgroundJob(id: string, expectedAttempt: number, actionId: string): Promise<void> {
-  return binding.get().retryBackgroundJob(id, expectedAttempt, actionId);
+export function cancelReturnCatchup(batchId: string): Promise<void> {
+  return binding.get().cancelReturnCatchup(batchId);
+}
+export async function retryBackgroundJob(
+  ...args: Parameters<BackgroundWorkService["retryBackgroundJob"]>
+): Promise<void> {
+  return binding.get().retryBackgroundJob(...args);
 }
 export async function recoverBackgroundWork(): Promise<void> {
   return binding.get().recoverBackgroundWork();
@@ -60,6 +70,19 @@ export function startBackgroundWork(options: { now?: () => number } = {}): () =>
 export async function settleBackgroundWork(): Promise<void> {
   return binding.get().settleBackgroundWork();
 }
-export async function previewBackgroundJobs(_defaultBatchSize?: number) {
-  return binding.get().previewBackgroundJobs(_defaultBatchSize);
+export async function previewBackgroundJobs() {
+  return binding.get().previewBackgroundJobs();
+}
+
+/** Private server-only frozen inputs and response receipts for deliberate migration. */
+export function backgroundJobSnapshot(kind: BackgroundKind, subjectId: string) {
+  return binding.get().backgroundJobSnapshot(kind, subjectId);
+}
+
+export function backgroundLegacyFounding(subjectId: string, seed: string, revision: string) {
+  return binding.get().backgroundLegacyFounding(subjectId, seed, revision);
+}
+
+export function retireLegacyFounding(...args: Parameters<BackgroundWorkService["retireLegacyFounding"]>) {
+  return binding.get().retireLegacyFounding(...args);
 }

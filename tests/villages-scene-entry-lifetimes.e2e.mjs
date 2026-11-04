@@ -1,14 +1,9 @@
-import { existsSync } from "node:fs";
-import { chromium } from "@playwright/test";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { verifySceneEntryLifetimes } from "./fixtures/villages-scene-entry-lifetime.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
-try {
+await withBrowser(browser, async () => {
   await verifySceneEntryLifetimes(browser);
-} finally {
-  await browser.close();
-}
+});

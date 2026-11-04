@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, mkdirSync } from "node:fs";
+import { fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
+import { readFileSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 // Opt-in integration QA: the Engine serves its existing shell, but this browser
@@ -11,12 +12,9 @@ const output = resolve(process.env.VILLAGES_VISUAL_OUTPUT ?? "artifacts/warm-eng
 mkdirSync(output, { recursive: true });
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync("C:/Program Files/Google/Chrome/Application/chrome.exe")
-    ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" }
-    : {}),
 });
 const manifest = JSON.parse(readFileSync("packages/villages/manifest.json", "utf8"));
-try {
+await withBrowser(browser, async () => {
   for (const viewport of [
     { width: 1917, height: 872 },
     { width: 390, height: 844 },
@@ -26,17 +24,17 @@ try {
     await page.route("**/*", async (route) => {
       const url = new URL(route.request().url());
       const path = url.pathname;
-      if (url.origin !== new URL(base).origin) return route.abort();
+      if (url.origin !== new URL(base).origin) return abort(route);
       if (path === "/api/capability-packages/villages/client")
-        return route.fulfill({ contentType: "application/javascript", path: resolve("packages/villages/client.js") });
+        return fulfill(route, { contentType: "application/javascript", path: resolve("packages/villages/client.js") });
       if (/^\/api\/capability-packages\/[^/]+\/client$/.test(path))
-        return route.fulfill({ contentType: "application/javascript", body: "" });
+        return fulfill(route, { contentType: "application/javascript", body: "" });
       if (path === "/api/capability-packages/installed") {
         const original = await route.fetch();
         const installed = await original.json();
         const villages = installed.find((item) => item.id === "villages");
         if (!villages) throw new Error("Running Engine has no Villages package entry for shell QA.");
-        return route.fulfill({
+        return fulfill(route, {
           json: [{ ...villages, status: "active", readiness: "ready", version: manifest.version, manifest }],
         });
       }
@@ -49,14 +47,14 @@ try {
         else if (path.endsWith("/personas")) value = { personas: [] };
         else if (path.endsWith("/lorebooks")) value = { books: [] };
         else if (path.endsWith("/debug/runtime")) value = { showUsageMeter: false };
-        return route.fulfill({ json: value });
+        return fulfill(route, { json: value });
       }
-      if (path === "/api/characters/summaries") return route.fulfill({ json: [] });
-      if (path === "/api/connections/refresh-local-context") return route.fulfill({ json: { updated: [] } });
+      if (path === "/api/characters/summaries") return fulfill(route, { json: [] });
+      if (path === "/api/connections/refresh-local-context") return fulfill(route, { json: { updated: [] } });
       // Block every real Engine write, including automatic achievements/preferences.
       if (!["GET", "HEAD"].includes(route.request().method())) {
         blockedWrites.push({ path, method: route.request().method() });
-        return route.fulfill({ json: {} });
+        return fulfill(route, { json: {} });
       }
       return route.continue();
     });
@@ -75,7 +73,9 @@ try {
     const home = page.locator(".marinara-capability-villages-home-full");
     await expect(home).toBeVisible({ timeout: 20000 });
     await expect(home).toHaveAttribute("data-mobile", String(viewport.width < 705));
-    await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(0);
+    await expect(home.getByRole("button", { name: /^(Zoom in|Zoom out|Reset map view)$/ })).toHaveCount(
+      viewport.width < 705 ? 0 : 3,
+    );
     for (const button of await home
       .locator(
         ".marinara-capability-villages-explore-nav button, .marinara-capability-villages-explore-notices, .marinara-capability-villages-home-bar .marinara-capability-villages-icon-button",
@@ -85,8 +85,8 @@ try {
       await expect(button.locator("svg")).toHaveCSS("color", color);
     }
     await page.screenshot({ path: resolve(output, `warm-engine-map-${viewport.width}.png`) });
-    await home.getByRole("button", { name: "Places", exact: true }).click();
-    const panel = page.getByRole("dialog", { name: "Places", exact: true });
+    await home.getByRole("button", { name: "Show places", exact: true }).click();
+    const panel = page.getByRole("complementary", { name: "Places navigator", exact: true });
     await expect(panel).toBeVisible();
     const bounds = await panel.boundingBox();
     const host = await home.boundingBox();
@@ -98,6 +98,4 @@ try {
   console.log(
     "Warm exploration rendered inside the unchanged running Engine shell at desktop and mobile sizes; all Village requests mocked and all Engine writes blocked.",
   );
-} finally {
-  await browser.close();
-}
+});

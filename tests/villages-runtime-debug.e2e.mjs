@@ -1,24 +1,24 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     let verbose = false,
       engineEnabled = false,
+      progressReads = 0,
       patchCount = 0,
       failPatch = false;
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>html,body{margin:0;background:#171b25;color:white;font-family:Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -30,10 +30,13 @@ try {
       if (path.endsWith("/rooms/active")) value = { session: null, debugDiscardEnabled: false };
       else if (path.endsWith("/town-map")) value = { image: mapImage };
       else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
-      else if (path.endsWith("/debug/runtime")) {
+      else if (path.endsWith("/progress/debug")) {
+        progressReads++;
+        return fulfill(route, { status: 404, json: { error: "Debug disabled" } });
+      } else if (path.endsWith("/debug/runtime")) {
         if (route.request().method() === "PATCH") {
           if (failPatch) {
-            await route.fulfill({
+            await fulfill(route, {
               status: 500,
               contentType: "application/json",
               body: JSON.stringify({ error: "Could not save diagnostics" }),
@@ -45,12 +48,13 @@ try {
         }
         value = { verbose, effective: verbose || engineEnabled, engineEnabled };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(value) });
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     const toggle = page.getByRole("checkbox", { name: "Verbose runtime logging", exact: true });
     await expect(toggle).toBeEnabled();
     await expect(toggle).not.toBeChecked();
@@ -60,7 +64,8 @@ try {
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     await expect(toggle).toBeChecked();
     failPatch = true;
     await toggle.click();
@@ -73,15 +78,15 @@ try {
     await page.reload();
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await page.getByRole("button", { name: /^(Open settings menu|More)$/, exact: true }).click();
-    await page.getByRole("button", { name: "DEBUG Settings", exact: true }).click();
+    if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("progress");
+    else await page.getByRole("button", { name: "Debug", exact: true }).click();
     await expect(toggle).not.toBeChecked();
     await expect(page.getByText("Terminal logging: on (also enabled by DEBUG_AGENTS).", { exact: true })).toBeVisible();
     const box = await toggle.boundingBox();
     assert.ok(box && box.x >= 0 && box.x + box.width <= width);
+    assert.equal(progressReads, 0, "Debug without developer access never requests gated Progress diagnostics");
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log("Verbose logging toggle, persistence, failed saves and layout passed on desktop and phones.");
-} finally {
-  await browser.close();
-}
+});

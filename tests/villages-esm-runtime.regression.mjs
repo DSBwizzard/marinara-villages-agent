@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { authorSceneFixture } from "./helpers/village-storage.fixture.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { villagesDocuments } from "../packages/villages/src/server/adapters/engine/runtime-host.js";
 import {
@@ -15,9 +16,16 @@ import {
 const rows = new Map([
   [
     "villages-venue-visit-esm",
-    { id: "villages-venue-visit-esm", revision: 1, data: { sceneRevision: 0, status: "active" } },
+    {
+      id: "villages-venue-visit-esm",
+      kind: "venue-visit",
+      packageId: "villages",
+      revision: 1,
+      data: { version: 3, id: "esm", villageSeed: "esm-world", sceneRevision: 0, status: "active" },
+    },
   ],
 ]);
+rows.get("villages-venue-visit-esm").data = authorSceneFixture(rows, rows.get("villages-venue-visit-esm").data);
 const documents = {
   async create(input) {
     const row = { ...structuredClone(input), revision: 1 };

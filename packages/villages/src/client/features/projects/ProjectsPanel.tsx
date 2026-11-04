@@ -1,1352 +1,1067 @@
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import type { SceneView, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
+import { MAX_PHYSICAL_DESIGN_LENGTH, MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
 import { SpaceConnections } from "../../shared/SpaceConnections.js";
-import { createVillagesClientId } from "../../shared/request-id.js";
-import type { SceneView, VenueClass, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
-import { request } from "../../shared/api.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
-import { BaseZoneFields, venueHasCommon, VenueLayoutFields } from "../founding/villages-founding-editor";
-import { FoundingZoneFields, foundingZoneProblem } from "../founding/villages-founding-zones";
-import { VENUE_CLASS_CHOICES } from "../venues/VenuePanels.js";
-import { useEffect, useRef, useState } from "react";
+import { messageFrom, request } from "../../shared/api.js";
+import { ELEMENT_TAG as P } from "../../shared/constants.js";
+import { readFileAsDataUrl } from "../../shared/presentation.js";
+
+import { ArtworkUpload, ClassChoices, ProjectDrawing, titleCase } from "./ProjectDesign.js";
+import { ProjectZones } from "./ProjectZones.js";
+import { projectStyles } from "./project-styles.js";
 import type { ProjectsController } from "./useProjectsController.js";
 
-const PROJECT_PHASES = [
-  "concept",
-  "approval",
-  "builder",
-  "requirements",
-  "materials",
-  "construction",
-  "finishing",
-] as const;
-
-const PROJECT_PHASE_NAMES: Record<(typeof PROJECT_PHASES)[number], string> = {
-  concept: "Concept & placement",
-  approval: "Affected villagers",
-  builder: "Assign a Builder",
-  requirements: "Define requirements",
-  materials: "Prepare materials",
-  construction: "Construction",
-  finishing: "Finishing visit",
-};
-
-function RenovationRevisionEditor({
-  venue,
-  people,
-  revision,
-  busy,
-}: {
-  revision: NonNullable<ProjectsController["revisionEditor"]>;
-  venue?: VillageVenue;
-  people: { id: string; name: string }[];
-  busy: boolean;
-}) {
-  const { editing, title, change } = revision.draft;
-  const { setEditing, setTitle, setChange, save: onSave } = revision;
-  const upgrade = change.improvement;
-  if (!editing)
-    return (
-      <button type="button" className={ELEMENT_TAG + "-button"} disabled={busy} onClick={() => setEditing(true)}>
-        Revise reviewed proposal
-      </button>
-    );
+const tabs = ["Overview & Progress", "Design & Spaces", "People", "Location"] as const;
+type Tab = (typeof tabs)[number];
+const active = (status: string) => status === "working" || status === "paused";
+const kindName = (kind: string) =>
+  kind === "new-venue" ? "New Venue" : kind === "establishment" ? "Establishment" : "Renovation";
+function Facts({ rows }: { rows: [string, ReactNode][] }) {
   return (
-    <section className={ELEMENT_TAG + "-project-card"}>
-      <p>
-        Changing reviewed terms requires fresh affected-person approvals, a Builder agreement, and a checklist. Acquired
-        supplies remain available.
-      </p>
-      <label>
-        Project name
-        <input value={title} onChange={(event) => setTitle(event.target.value)} />
-      </label>
-      <label>
-        Reviewed change
-        <textarea value={change.detail} onChange={(event) => setChange({ ...change, detail: event.target.value })} />
-      </label>
-      {change.classes ? (
-        <label>
-          Base Classes
-          {VENUE_CLASS_CHOICES.map((role) => (
-            <label key={role}>
-              <input
-                type="checkbox"
-                checked={change.classes!.includes(role)}
-                onChange={(event) =>
-                  setChange({
-                    ...change,
-                    classes: event.target.checked
-                      ? [...change.classes!, role]
-                      : change.classes!.filter((item) => item !== role),
-                  })
-                }
-              />
-              {role}
-            </label>
-          ))}
-        </label>
-      ) : null}
-      {change.capacity !== undefined ? (
-        <label>
-          Residential capacity
-          <input
-            type="number"
-            min={1}
-            max={4}
-            value={change.capacity}
-            onChange={(event) => setChange({ ...change, capacity: Number(event.target.value) })}
-          />
-        </label>
-      ) : null}
-      {change.baseZones && venue ? (
-        <BaseZoneFields
-          venue={venue}
-          people={people}
-          zones={change.baseZones}
-          onChange={(baseZones) => setChange({ ...change, baseZones })}
-        />
-      ) : null}
-      {upgrade ? (
-        <>
-          <label>
-            Upgrade title
-            <input
-              value={upgrade.title}
-              onChange={(event) => setChange({ ...change, improvement: { ...upgrade, title: event.target.value } })}
-            />
-          </label>
-          <label>
-            Upgrade description
-            <textarea
-              value={upgrade.description}
-              onChange={(event) =>
-                setChange({ ...change, improvement: { ...upgrade, description: event.target.value } })
-              }
-            />
-          </label>
-          <label>
-            Contributed Class
-            <select
-              value={upgrade.classContribution ?? ""}
-              onChange={(event) =>
-                setChange({
-                  ...change,
-                  improvement: {
-                    ...upgrade,
-                    classContribution: (event.target.value || undefined) as VenueClass | undefined,
-                  },
-                })
-              }
-            >
-              <option value="">No additional Class</option>
-              {VENUE_CLASS_CHOICES.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
-          </label>
-          {venue ? (
-            <SpaceConnections
-              editableIds={upgrade.zones?.flatMap((zone) => (zone.id ? [zone.id] : [])) ?? []}
-              spaces={[
-                ...(venue.zones ?? []).filter(
-                  (zone) => zone.upgradeId !== upgrade.id && !upgrade.zones?.some((draft) => draft.id === zone.id),
-                ),
-                ...(upgrade.zones ?? []).filter((zone) => !!zone.id).map((zone) => ({ ...zone, id: zone.id! })),
-              ]}
-              onChange={(rows) =>
-                setChange({
-                  ...change,
-                  improvement: {
-                    ...upgrade,
-                    zones: rows.filter((zone) => upgrade.zones?.some((draft) => draft.id === zone.id)) as NonNullable<
-                      typeof upgrade.zones
-                    >,
-                  },
-                })
-              }
-            />
-          ) : null}
-          {(upgrade.zones ?? []).map((zone, index) => (
-            <section key={zone.id || index}>
-              <label>
-                Zone name
-                <input
-                  value={zone.name}
-                  onChange={(event) =>
-                    setChange({
-                      ...change,
-                      improvement: {
-                        ...upgrade,
-                        zones: upgrade.zones!.map((item, i) =>
-                          i === index ? { ...item, name: event.target.value } : item,
-                        ),
-                      },
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Zone description
-                <textarea
-                  value={zone.description}
-                  onChange={(event) =>
-                    setChange({
-                      ...change,
-                      improvement: {
-                        ...upgrade,
-                        zones: upgrade.zones!.map((item, i) =>
-                          i === index ? { ...item, description: event.target.value } : item,
-                        ),
-                      },
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Zone kind
-                <select
-                  value={zone.kind}
-                  onChange={(event) =>
-                    setChange({
-                      ...change,
-                      improvement: {
-                        ...upgrade,
-                        zones: upgrade.zones!.map((item, i) =>
-                          i === index
-                            ? {
-                                ...item,
-                                kind: event.target.value as typeof zone.kind,
-                                venueClass:
-                                  event.target.value === "staff"
-                                    ? "workplace"
-                                    : event.target.value === "shared-residence" ||
-                                        event.target.value === "private-residence"
-                                      ? "residence"
-                                      : (upgrade.classContribution ?? item.venueClass),
-                              }
-                            : item,
-                        ),
-                      },
-                    })
-                  }
-                >
-                  <option value="public">Public</option>
-                  <option value="shared-residence">Residential Common Space</option>
-                  <option value="private-residence">Residential Private Space · assigned resident</option>
-                  <option value="staff">Staff</option>
-                </select>
-              </label>
-              {zone.kind === "private-residence" ? (
-                <label>
-                  Assigned resident
-                  <select
-                    value={zone.ownerId ?? ""}
-                    disabled={!!venue?.zones?.some((area) => area.id === zone.id)}
-                    onChange={(event) =>
-                      setChange({
-                        ...change,
-                        improvement: {
-                          ...upgrade,
-                          zones: upgrade.zones!.map((area, i) =>
-                            i === index ? { ...area, ownerId: event.target.value || undefined } : area,
-                          ),
-                        },
-                      })
-                    }
-                  >
-                    <option value="">Vacant</option>
-                    {venue?.occupancy.playerHome ? <option value="player">You</option> : null}
-                    {venue?.residentIds?.map((id) => (
-                      <option key={id} value={id}>
-                        {people.find((person) => person.id === id)?.name ?? id}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ) : null}
-              <button
-                type="button"
-                className={ELEMENT_TAG + "-button"}
-                onClick={() =>
-                  setChange({
-                    ...change,
-                    improvement: { ...upgrade, zones: upgrade.zones!.filter((_, i) => i !== index) },
-                  })
-                }
-              >
-                Remove this zone
-              </button>
-            </section>
-          ))}
-          <button
-            type="button"
-            className={ELEMENT_TAG + "-button"}
-            disabled={(upgrade.zones?.length ?? 0) >= 16}
-            onClick={() =>
-              setChange({
-                ...change,
-                improvement: {
-                  ...upgrade,
-                  zones: [
-                    ...(upgrade.zones ?? []),
-                    {
-                      id: "zone:" + createVillagesClientId(),
-                      connectedTo: ["exterior"],
-                      name: "",
-                      description: "",
-                      kind: "public",
-                      venueClass: upgrade.classContribution ?? "other",
-                    },
-                  ],
-                },
-              })
-            }
-          >
-            Add a zone
-          </button>
-        </>
-      ) : null}
-      <button
-        type="button"
-        className={ELEMENT_TAG + "-button"}
-        disabled={busy}
-        onClick={async () => {
-          if (await onSave({ title, ...change })) setEditing(false);
-        }}
-      >
-        Submit revised proposal
-      </button>
-      <button type="button" className={ELEMENT_TAG + "-button"} disabled={busy} onClick={() => setEditing(false)}>
-        Cancel revision
-      </button>
-    </section>
+    <dl className="vp-facts">
+      {rows.map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
-
-export function ProjectsPanelV2({
+export function ProjectsPanel({
   snapshot,
+  controller: c,
+  onPlaceOnMap,
+  onPeople,
+  onVenue,
+  onMap,
+  onClose = onMap,
   room,
   onReturn,
-  onMap,
-  onPlaceOnMap,
   mobile,
-  debugEnabled,
-  controller,
-  siteProjectId,
+  debugEnabled = false,
 }: {
   snapshot: VillageSnapshot;
-  room: SceneView | null;
-  onReturn: () => void;
-  onMap: () => void;
-  onPlaceOnMap: (projectId: string) => void;
-  mobile: boolean;
-  debugEnabled: boolean;
   controller: ProjectsController;
+  onPlaceOnMap(id: string): void;
+  onPeople(): void;
+  onVenue(id: string): void;
+  onMap(): void;
+  onClose?(): void;
+  debugEnabled?: boolean;
+  room: SceneView | null;
+  onReturn(): void;
+  mobile: boolean;
   siteProjectId: string;
 }) {
-  const {
-    setSelectedId,
-    draftType,
-    setDraftType,
-    name,
-    setName,
-    venueClass,
-    setVenueClass,
-    description,
-    setDescription,
-    venueId,
-    setVenueId,
-    changeKind,
-    setChangeKind,
-    baseZoneDrafts,
-    setBaseZoneDrafts,
-    baseClasses,
-    setBaseClasses,
-    upgradeTarget,
-    setUpgradeTarget,
-    capacity,
-    setCapacity,
-    slot,
-    setSlot,
-    extraBeds,
-    setExtraBeds,
-    upgradeMode,
-    setUpgradeMode,
-    upgradeClass,
-    setUpgradeClass,
-    upgradeZones,
-    setUpgradeZones,
-    form,
-    setForm,
-    openingVenueType,
-    setOpeningVenueType,
-    exterior,
-    setExterior,
-    interior,
-    exteriorImage,
-    setExteriorImage,
-    interiorImage,
-    setInteriorImage,
-    zoneImages,
-    imagePreview,
-    setImagePreview,
-    finishingVisit,
-    setFinishingVisit,
-    openingLayout,
-    openingPersonality,
-    setOpeningPersonality,
-    openingLore,
-    setOpeningLore,
-    busy,
-    error,
-    active,
-    project,
-    flow,
-    target,
-    selectedVenue,
-    openingVenue,
-    patchOpeningLayout,
-    action,
-    create,
-    openingImageKey,
-    generateImage,
-    uploadImage,
-    phase,
-    uploadZoneImage,
-    openVenue,
-    revisionEditor,
-  } = controller;
-  const [openingFocusArea, setOpeningFocusArea] = useState<"common" | "private">();
-  const openingEditors = useRef<HTMLDivElement>(null);
+  const { project, workspace } = c,
+    draft = workspace.draft,
+    flow = project?.lifecycle,
+    venue = draft.venue;
+  const [selectedTabs, setTabs] = useState<Record<string, Tab>>({});
+  const [selectedZones, setZones] = useState<Record<string, string>>({});
+  const [detailPages, setDetailPages] = useState<Record<string, string>>({});
+  const [indexView, setIndexView] = useState<"projects" | "history">("projects");
+  const [mobileSection, setMobileSection] = useState<"drafts" | "slot1" | "slot2">("drafts");
+  const [draftPage, setDraftPage] = useState(0);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [peopleSection, setPeopleSection] = useState<"lead" | "agreements">("lead");
+  const [peoplePage, setPeoplePage] = useState(0);
+  const boardRef = useRef<HTMLElement>(null);
+  const [boardHeight, setBoardHeight] = useState(0);
   useEffect(() => {
-    if (!openingFocusArea) return;
-    const area = openingEditors.current?.querySelector<HTMLElement>(`[data-layout-editor="${openingFocusArea}"]`);
-    area?.scrollIntoView({ block: "nearest" });
-    (area?.matches("input,textarea,select")
-      ? area
-      : area?.querySelector<HTMLElement>("input,textarea,select")
-    )?.focus();
-    setOpeningFocusArea(undefined);
-  }, [openingFocusArea, openingLayout]);
-  if (project && phase === "finishing" && finishingVisit)
-    return (
-      <div className={`${ELEMENT_TAG}-project-finish-visit`} ref={openingEditors}>
-        <header>
-          <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setFinishingVisit(false)}>
-            Back to Project
-          </button>
-          <h2>{project.kind === "new-venue" ? `Open ${project.title}` : `Review ${project.title}`}</h2>
-          <p>
-            {project.kind === "new-venue"
-              ? "Define the Venue Type, physical form, and each Zone’s use and appearance. Images are optional."
-              : "Review the approved zone names, access, and descriptions, then choose final images if you wish."}
-          </p>
+    const board = boardRef.current;
+    if (!board) return;
+    const root = board.closest<HTMLElement>("." + P + "-project-root") ?? board;
+    const observer = new ResizeObserver(() => setBoardHeight(root.clientHeight));
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
+  const social = project?.kind === "establishment" && !project.establishment?.physical;
+  const spec = draft.establishment;
+  const tab = selectedTabs[workspace.key] ?? "Overview & Progress";
+  const detailKey = workspace.key + ":" + tab;
+  const detailPage = detailPages[detailKey] ?? (tab === "Overview & Progress" ? "Overview" : "Design");
+  const selectDetailPage = (page: string) => setDetailPages((current) => ({ ...current, [detailKey]: page }));
+  const selectTab = (next: Tab) => setTabs((current) => ({ ...current, [workspace.key]: next }));
+  const tabId = useId();
+  const people = snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }));
+  const person = (id: string) => people.find((person) => person.id === id)?.name ?? project?.actorNames?.[id] ?? id;
+  const focusTime = (at: string) =>
+    new Date(at).toLocaleString(undefined, {
+      timeZone: snapshot.village.timeZone || undefined,
+      weekday: "short",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  const editable = project?.status === "planning",
+    resumable = project?.status === "paused";
+  const sceneActive = !!room && room.status !== "closed";
+  const placementBlocked = draft.dirty ? "Save design to choose a map position." : "";
+  const missing =
+    flow?.affectedIds.filter((id) => !flow.approvals.some((approval) => approval.residentId === id)) ?? [];
+  const stale = draft.dirty && (!editable || draft.revision !== flow?.revision);
+  const otherActive = snapshot.projects.filter((entry) => entry.id !== project?.id && active(entry.status));
+  const unavailable = draft.dirty
+    ? "Save design before Start."
+    : project?.kind === "new-venue" && !project.plan
+      ? "Save the design."
+      : project?.kind === "new-venue" && project.venueDraft?.position?.x == null
+        ? "Choose a map position in Location."
+        : !social && !flow?.builderId
+          ? "Choose a willing lead in People."
+          : missing.length
+            ? "Agreement needed · " + missing.map(person).join(", ")
+            : otherActive.length >= 2
+              ? "Two Projects are already active."
+              : !social && otherActive.some((entry) => entry.lifecycle?.builderId === flow?.builderId)
+                ? "The lead is working on another Project."
+                : project?.venueId && otherActive.some((entry) => entry.venueId === project.venueId)
+                  ? "This Venue already has active work."
+                  : "";
+  const allProjects = () => {
+    c.setSelectedId("");
+    c.setDraftType("");
+  };
+  const patchVenue = (next: VillageVenue) => workspace.field("venue")(next);
+  const upload = async (file: File | undefined, zoneId?: string) => {
+    if (!file || !venue) return;
+    const attempt = workspace.begin();
+    if (!attempt) return;
+    try {
+      const image = await request<VillageVenue["presentation"]["image"]>("/setup/venue-image", {
+        method: "PUT",
+        body: JSON.stringify({ name: venue.name, image: await readFileAsDataUrl(file) }),
+      });
+      if (!attempt.current()) return;
+      workspace.field("venue")((previous) =>
+        !previous
+          ? previous
+          : zoneId
+            ? {
+                ...previous,
+                spaces: previous.spaces?.map((zone) => (zone.id === zoneId ? { ...zone, image } : zone)),
+                privateSpaces: previous.privateSpaces?.map((zone) => (zone.id === zoneId ? { ...zone, image } : zone)),
+              }
+            : { ...previous, presentation: { ...previous.presentation, image } },
+      );
+    } catch (error) {
+      if (attempt.current()) workspace.field("error")(messageFrom(error, "The image could not be uploaded."));
+    } finally {
+      attempt.finish();
+    }
+  };
+  const start = async () => {
+    const next = await c.action(resumable ? "resume" : "start");
+    if (next) {
+      selectTab("Overview & Progress");
+      setDetailPages((current) => ({ ...current, [workspace.key + ":Overview & Progress"]: "Progress" }));
+    }
+  };
+  const connections: { id: string; name?: string; kind: string; connectedTo?: string[] }[] = venue
+    ? project?.kind === "new-venue"
+      ? [
+          { id: "exterior", name: "Entrance", kind: "exterior", connectedTo: undefined as string[] | undefined },
+          ...(venue.spaces ?? []).map((zone) => ({ ...zone, kind: "public" })),
+          ...(venue.privateSpaces ?? []).map((zone) => ({ ...zone, kind: "restricted" })),
+        ]
+      : [{ id: "exterior", name: "Entrance", kind: "exterior", connectedTo: [] as string[] }, ...draft.zones]
+    : [];
+  const intended =
+    project?.kind === "establishment"
+      ? (spec?.goal ?? "")
+      : project?.kind === "new-venue"
+        ? (venue?.form ?? "")
+        : draft.detail;
+  const overviewLimit = mobile ? 45 : 300;
+  const count =
+    project?.kind === "new-venue"
+      ? (venue?.spaces?.length ?? 0) + (venue?.privateSpaces?.length ?? 0)
+      : draft.zones.length;
+  const drafts = snapshot.projects.filter((entry) => entry.status === "planning");
+  const activeProjects = snapshot.projects.filter((entry) => active(entry.status));
+  const finished = snapshot.projects.filter((entry) => entry.status === "complete" || entry.status === "cancelled");
+  const history = [...activeProjects.slice(2), ...finished];
+  const pageSize =
+    boardHeight && boardHeight < 490 ? 2 : boardHeight && boardHeight < 600 ? 3 : mobile ? 4 : MAX_PROJECT_DRAFTS;
+  const detailPageSize = mobile ? (boardHeight && boardHeight < 650 ? 1 : 2) : 4;
+  const pages = Math.max(1, Math.ceil(drafts.length / pageSize));
+  const currentDraftPage = Math.min(draftPage, pages - 1);
+  const historyPages = Math.max(1, Math.ceil(history.length / pageSize));
+  const currentHistoryPage = Math.min(historyPage, historyPages - 1);
+  return (
+    <div className={P + "-project-desk"}>
+      <style>{projectStyles}</style>
+      <main ref={boardRef} className={P + "-project-board"} aria-label="Projects">
+        <header className="vp-header">
+          <div>
+            <h1>Projects</h1>
+          </div>
+          <div className="vp-actions">
+            {project || c.draftType ? (
+              <button type="button" className="vp-subtle" onClick={allProjects}>
+                ‹ All Projects
+              </button>
+            ) : null}
+            <button type="button" className="vp-subtle" onClick={onClose}>
+              Close ×
+            </button>
+          </div>
         </header>
-        {project.kind === "renovation" ? (
-          <button
-            type="button"
-            className={ELEMENT_TAG + "-button"}
-            disabled={busy}
-            onClick={async () => {
-              if (await action("renew-approvals")) setFinishingVisit(false);
-            }}
-          >
-            Renew approvals for current residents and workers
-          </button>
-        ) : null}
-        {project.kind === "new-venue" ? (
+        {!project && !c.draftType && indexView === "projects" ? (
           <>
-            <label>
-              Venue Type
-              <input
-                value={openingVenueType}
-                maxLength={100}
-                placeholder="Bakery, church, campsite…"
-                onChange={(event) => setOpeningVenueType(event.target.value)}
-              />
-            </label>
-            <label>
-              Physical form
-              <input
-                value={form}
-                onChange={(event) => setForm(event.target.value)}
-                placeholder="What is this place, physically?"
-              />
-            </label>
-            {openingVenue ? (
-              <VenueLayoutFields venue={openingVenue} onChange={patchOpeningLayout} onReveal={setOpeningFocusArea} />
-            ) : null}
-            <label>
-              Exterior appearance
-              <textarea value={exterior} onChange={(event) => setExterior(event.target.value)} />
-            </label>
-            {openingVenue ? (
-              <FoundingZoneFields
-                venue={openingVenue}
-                busy={busy}
-                editAccess={false}
-                people={snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }))}
-                onPatch={patchOpeningLayout}
-                imageFields={() => <p>Optional artwork for additional Zones can be added after opening.</p>}
-              />
-            ) : null}
-            <label>
-              <input
-                type="checkbox"
-                checked={openingPersonality}
-                onChange={(event) => setOpeningPersonality(event.target.checked)}
-              />
-              Use assigned villagers’ personality for images
-            </label>
-            <label>
-              <input type="checkbox" checked={openingLore} onChange={(event) => setOpeningLore(event.target.checked)} />
-              Use selected visual lore
-            </label>
-            {target?.classes?.includes("residence") ? (
-              <p>
-                Capacity starts at one resident. A personal residential Zone is assigned explicitly when someone moves
-                in.
-              </p>
+            <div className="vp-index-tools">
+              <div className="vp-actions">
+                {history.length ? (
+                  <button type="button" onClick={() => setIndexView("history")}>
+                    History
+                  </button>
+                ) : null}
+              </div>
+              <span className="vp-note">{activeProjects.length} / 2 active</span>
+            </div>
+            <div className="vp-mobile-sections" role="group" aria-label="Project sections">
+              {(
+                [
+                  ["drafts", "Drafts"],
+                  ["slot1", "Slot 1"],
+                  ["slot2", "Slot 2"],
+                ] as const
+              ).map(([id, label]) => (
+                <button type="button" key={id} aria-pressed={mobileSection === id} onClick={() => setMobileSection(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            <nav className="vp-workspace" aria-label="Projects" data-mobile-section={mobileSection}>
+              <section className="vp-drafts" aria-label="Project drafts">
+                <h2>Project Drafts</h2>
+                <div className="vp-project-list">
+                  {drafts.slice(currentDraftPage * pageSize, currentDraftPage * pageSize + pageSize).map((entry) => (
+                    <button
+                      type="button"
+                      className="vp-project-row"
+                      key={entry.id}
+                      onClick={() => c.setSelectedId(entry.id)}
+                    >
+                      <span>{entry.title}</span>
+                      <span aria-hidden="true">›</span>
+                    </button>
+                  ))}
+                  {!drafts.length ? <p className="vp-note">No drafts.</p> : null}
+                </div>
+                <div className="vp-actions vp-draft-create" data-full={activeProjects.length >= 2}>
+                  <button
+                    type="button"
+                    disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                    onClick={() => c.setDraftType("new-venue")}
+                  >
+                    New Venue
+                  </button>
+                  <button
+                    type="button"
+                    disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                    onClick={() => c.setDraftType("renovation")}
+                  >
+                    Renovation
+                  </button>
+                </div>
+                {drafts.length >= MAX_PROJECT_DRAFTS ? <p className="vp-note">Six drafts maximum.</p> : null}
+                {pages > 1 ? (
+                  <div className="vp-actions">
+                    <button
+                      type="button"
+                      disabled={currentDraftPage === 0}
+                      onClick={() => setDraftPage(currentDraftPage - 1)}
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      {currentDraftPage + 1} / {pages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={currentDraftPage + 1 === pages}
+                      onClick={() => setDraftPage(currentDraftPage + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
+              </section>
+              {[0, 1].map((index) => {
+                const entry = activeProjects[index - Math.max(0, 2 - activeProjects.length)];
+                const artwork =
+                  entry?.kind === "renovation"
+                    ? snapshot.settings.venues.find((item) => item.id === entry.venueId)?.presentation.image
+                    : entry?.plan?.exteriorImage;
+                return (
+                  <section className="vp-active-slot" key={index} aria-label={`Project slot ${index + 1}`}>
+                    {entry ? (
+                      <button type="button" className="vp-active-project" onClick={() => c.setSelectedId(entry.id)}>
+                        <strong>{kindName(entry.kind)}</strong>
+                        {artwork ? <img src={artwork.url} alt="" /> : null}
+                        <span>{entry.title}</span>
+                        <small>{titleCase(entry.status)}</small>
+                      </button>
+                    ) : (
+                      <div className="vp-empty-slot">
+                        <span>Empty slot</span>
+                        {index === 0 ? (
+                          <div className="vp-new-types">
+                            <button
+                              type="button"
+                              disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                              onClick={() => c.setDraftType("new-venue")}
+                            >
+                              New Venue
+                            </button>
+                            <button
+                              type="button"
+                              disabled={drafts.length >= MAX_PROJECT_DRAFTS}
+                              onClick={() => c.setDraftType("renovation")}
+                            >
+                              Renovation
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
+            </nav>
+          </>
+        ) : null}
+        {!project && !c.draftType && indexView !== "projects" ? (
+          <>
+            <button type="button" onClick={() => setIndexView("projects")}>
+              ‹ Projects
+            </button>
+
+            {indexView === "history" ? (
+              <section className="vp-panel">
+                <h2>History</h2>
+                <nav aria-label="Project history" className="vp-project-list">
+                  {history
+                    .slice(currentHistoryPage * pageSize, currentHistoryPage * pageSize + pageSize)
+                    .map((entry) => (
+                      <button
+                        className="vp-project-row"
+                        type="button"
+                        key={entry.id}
+                        onClick={() => c.setSelectedId(entry.id)}
+                      >
+                        <span>
+                          {entry.title} · {titleCase(entry.status)}
+                        </span>
+                        <span aria-hidden="true">›</span>
+                      </button>
+                    ))}
+                </nav>
+                {historyPages > 1 ? (
+                  <div className="vp-actions">
+                    <button
+                      type="button"
+                      disabled={currentHistoryPage === 0}
+                      onClick={() => setHistoryPage(currentHistoryPage - 1)}
+                    >
+                      Previous
+                    </button>
+                    <span>
+                      {currentHistoryPage + 1} / {historyPages}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={currentHistoryPage + 1 === historyPages}
+                      onClick={() => setHistoryPage(currentHistoryPage + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                ) : null}
+              </section>
             ) : null}
           </>
-        ) : (
-          <p>{flow?.change?.detail}</p>
-        )}
-        {(
-          [
-            "exterior",
-            ...(project.kind === "new-venue" && openingVenue && venueHasCommon(openingVenue) ? ["interior"] : []),
-          ] as Array<"exterior" | "interior">
-        ).map((area) => {
-          const image = area === "exterior" ? exteriorImage : interiorImage;
-          return (
-            <section key={area} className={`${ELEMENT_TAG}-project-image`}>
-              <h3>
-                {area === "exterior" ? "Exterior" : openingVenue?.spaces?.[0]?.name || "First Zone"} image · optional
-              </h3>
-              {image ? (
-                <img src={image.url} alt={`${area} preview`} />
-              ) : (
-                <p>No image chosen. A placeholder will be used.</p>
-              )}
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={busy}
-                onClick={() => void generateImage(area)}
-              >
-                Generate image
-              </button>
-
-              <input
-                type="file"
-                accept="image/*"
-                aria-label={`Upload ${area} image`}
-                disabled={busy}
-                onChange={(event) => {
-                  const file = event.target.files?.[0];
-                  event.target.value = "";
-                  void uploadImage(area, file);
-                }}
-              />
-            </section>
-          );
-        })}
-        {project.kind === "renovation"
-          ? (flow?.change?.improvement?.zones ?? []).map((zone) => (
-              <section key={zone.id} className={ELEMENT_TAG + "-project-image"}>
-                <h3>
-                  {zone.name} · {zone.kind}
-                </h3>
-                <p>{zone.description}</p>
-                {zoneImages[zone.id!] ? (
-                  <img src={zoneImages[zone.id!]!.url} alt={zone.name + " preview"} />
-                ) : (
-                  <p>Image optional. Existing images are preserved.</p>
-                )}
-                <label>
-                  Upload final zone image
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={busy}
-                    onChange={async (event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      await uploadZoneImage(zone, file);
-                    }}
-                  />
-                </label>
-              </section>
-            ))
-          : null}
-        {imagePreview && imagePreview.key === openingImageKey ? (
-          <section className={`${ELEMENT_TAG}-project-image`}>
-            <img src={imagePreview.image.url} alt="Generated Venue candidate" />
-            <button
-              type="button"
-              className={`${ELEMENT_TAG}-button`}
-              onClick={() => {
-                if (imagePreview.area === "exterior") setExteriorImage(imagePreview.image);
-                else setInteriorImage(imagePreview.image);
-                setImagePreview(null);
-              }}
-            >
-              Use this image
-            </button>
-            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setImagePreview(null)}>
-              Discard
-            </button>
-          </section>
         ) : null}
-        <button
-          type="button"
-          className={`${ELEMENT_TAG}-button`}
-          disabled={
-            busy ||
-            (project.kind === "new-venue" &&
-              (!form.trim() ||
-                !exterior.trim() ||
-                !openingLayout ||
-                ((openingLayout === "common" || openingLayout === "both") && !interior.trim()) ||
-                !!(openingVenue && foundingZoneProblem(openingVenue))))
-          }
-          onClick={async () => {
-            await openVenue();
-          }}
-        >
-          Open Venue
-        </button>
-        {error ? (
-          <p className={`${ELEMENT_TAG}-error`} role="alert">
-            {error}
-          </p>
-        ) : null}
-      </div>
-    );
-  return (
-    <div className={`${ELEMENT_TAG}-project-screen`} data-mobile={mobile}>
-      <header className={`${ELEMENT_TAG}-project-head`}>
-        <div>
-          <span className={`${ELEMENT_TAG}-project-eyebrow`}>PROJECTS</span>
-          <h2>{project?.title ?? "Build something in the Village"}</h2>
-          <p>
-            {project
-              ? project.kind === "new-venue"
-                ? "A new place, from blueprint to opening day."
-                : "Change a place that already belongs to the Village."
-              : "One New Venue and one Renovation may be underway at once."}
-          </p>
-        </div>
-        {project ? (
-          <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setSelectedId("")}>
-            All Projects
-          </button>
-        ) : null}
-      </header>
-      {!project ? (
-        <div className={`${ELEMENT_TAG}-project-slots`}>
-          {(["new-venue", "renovation"] as const).map((kind) => {
-            const current = active.find((entry) => entry.kind === kind);
-            return (
-              <button
-                key={kind}
-                type="button"
-                className={`${ELEMENT_TAG}-project-slot`}
-                onClick={() => (current ? setSelectedId(current.id) : setDraftType(kind))}
-              >
-                <span>{kind === "new-venue" ? "NEW VENUE" : "RENOVATION"}</span>
-                <strong>
-                  {current?.title ?? (kind === "new-venue" ? "Imagine a new place" : "Change an existing Venue")}
-                </strong>
-                <small>
-                  {current?.lifecycle
-                    ? (PROJECT_PHASE_NAMES[current.lifecycle.phase as (typeof PROJECT_PHASES)[number]] ?? "Opening")
-                    : "Available"}
-                </small>
-              </button>
-            );
-          })}
-          {draftType ? (
-            <section className={`${ELEMENT_TAG}-project-card ${ELEMENT_TAG}-project-create`}>
-              <h3>{draftType === "new-venue" ? "Describe the new Venue" : "Describe the Renovation"}</h3>
-              {draftType === "renovation" ? (
-                <>
-                  <label>
-                    Venue
-                    <select value={venueId} onChange={(event) => setVenueId(event.target.value)}>
-                      <option value="">Choose a Venue</option>
-                      {snapshot.settings.venues
-                        .filter((entry) => entry.constructionStatus !== "worksite")
-                        .map((entry) => (
-                          <option key={entry.id} value={entry.id}>
-                            {entry.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    Physical change
-                    <select
-                      value={changeKind}
-                      onChange={(event) => setChangeKind(event.target.value as typeof changeKind)}
-                    >
-                      <option value="upgrade">Add or replace an Upgrade</option>
-                      <option value="remove-upgrade">Remove an Upgrade</option>
-                      <option value="class">Change base Classes</option>
-                      <option value="layout">Change base layout</option>
-                      <option value="capacity">Change Residence capacity</option>
-                    </select>
-                  </label>
-                  {changeKind === "class" ? (
-                    <fieldset>
-                      <legend>Base Classes</legend>
-                      <p>
-                        Choose one or two base Classes. Upgrade contributions also count toward the two-Class limit.
-                      </p>
-                      {VENUE_CLASS_CHOICES.map((item) => (
-                        <label key={item}>
-                          <input
-                            type="checkbox"
-                            checked={baseClasses.includes(item)}
-                            onChange={(event) =>
-                              setBaseClasses((current) =>
-                                event.target.checked ? [...current, item] : current.filter((entry) => entry !== item),
-                              )
-                            }
-                          />
-                          {item}
-                        </label>
-                      ))}
-                    </fieldset>
-                  ) : null}
-                  {changeKind === "layout" && selectedVenue ? (
-                    <BaseZoneFields
-                      venue={selectedVenue}
-                      people={snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }))}
-                      zones={baseZoneDrafts}
-                      onChange={setBaseZoneDrafts}
-                    />
-                  ) : null}
-                  {changeKind === "capacity" ? (
+        {c.draftType ? (
+          <form
+            autoComplete="off"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void c.create();
+            }}
+          >
+            <div className="vp-project-heading">
+              <h2>{kindName(c.draftType)}</h2>
+              <span>Planning</span>
+            </div>
+            <div className="vp-columns">
+              <section className="vp-panel">
+                <h3>{c.draftType === "new-venue" ? "New Venue" : "Renovation"} specification</h3>
+                <fieldset disabled={draft.busy}>
+                  {c.draftType === "renovation" ? (
                     <label>
-                      Capacity
-                      <input
-                        type="number"
-                        min={1}
-                        max={4}
-                        value={capacity}
-                        onChange={(event) => setCapacity(Number(event.target.value))}
-                      />
-                    </label>
-                  ) : null}
-                  {changeKind === "upgrade" || changeKind === "remove-upgrade" ? (
-                    <label>
-                      Upgrade slot
-                      <select value={slot} onChange={(event) => setSlot(Number(event.target.value))}>
-                        <option value={0}>Slot 1 · {selectedVenue?.improvements?.[0]?.title ?? "empty"}</option>
-                        <option value={1}>Slot 2 · {selectedVenue?.improvements?.[1]?.title ?? "empty"}</option>
+                      Venue
+                      <select value={c.venueId} onChange={(event) => c.setVenueId(event.target.value)}>
+                        <option value="">Choose a Venue</option>
+                        {snapshot.settings.venues
+                          .filter((venue) => venue.constructionStatus !== "worksite")
+                          .map((venue) => (
+                            <option key={venue.id} value={venue.id}>
+                              {venue.name}
+                            </option>
+                          ))}
                       </select>
                     </label>
                   ) : null}
-                  {changeKind === "upgrade" ? (
+                  <label>
+                    Name
+                    <input
+                      autoComplete="off"
+                      value={c.name}
+                      required
+                      maxLength={100}
+                      onChange={(event) => c.setName(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Physical design
+                    <textarea
+                      aria-label="Physical design"
+                      autoComplete="off"
+                      value={c.description}
+                      required
+                      rows={3}
+                      maxLength={MAX_PHYSICAL_DESIGN_LENGTH}
+                      onChange={(event) => c.setDescription(event.target.value)}
+                    />
+                  </label>
+                  {c.draftType === "new-venue" ? (
                     <>
-                      <label>
-                        Upgrade action
-                        <select
-                          value={upgradeMode}
-                          onChange={(event) => setUpgradeMode(event.target.value as "replace" | "modify")}
-                        >
-                          <option value="replace">Add or replace this Upgrade</option>
-                          {selectedVenue?.improvements?.[slot] ? (
-                            <option value="modify">Modify the existing Upgrade</option>
-                          ) : null}
-                        </select>
-                      </label>
-                      <label>
-                        Class contributed
-                        <select
-                          value={upgradeClass}
-                          onChange={(event) => setUpgradeClass(event.target.value as VenueClass | "")}
-                        >
-                          <option value="">No additional Class</option>
-                          {VENUE_CLASS_CHOICES.map((item) => (
-                            <option key={item} value={item}>
-                              {item}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Existing area improved (optional)
-                        <select value={upgradeTarget} onChange={(event) => setUpgradeTarget(event.target.value)}>
-                          <option value="">No existing Zone</option>
-                          {selectedVenue?.zones
-                            ?.filter((zone) => zone.kind !== "private-residence")
-                            .map((zone) => (
-                              <option key={zone.id} value={zone.id}>
-                                {zone.name}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <p>
-                        A Venue supports at most two distinct Classes, including its Upgrades. An Upgrade can add zones
-                        or improve an existing area.
-                      </p>
-                      {selectedVenue ? (
-                        <SpaceConnections
-                          spaces={[
-                            ...(selectedVenue.zones ?? []).filter(
-                              (zone) =>
-                                (!zone.upgradeId || zone.upgradeId !== selectedVenue.improvements?.[slot]?.id) &&
-                                !upgradeZones?.some((draft) => draft.id === zone.id),
-                            ),
-                            ...(upgradeZones ?? [])
-                              .filter((zone) => !!zone.id)
-                              .map((zone) => ({ ...zone, id: zone.id! })),
-                          ]}
-                          onChange={(rows) =>
-                            setUpgradeZones(
-                              rows.filter((zone) => upgradeZones?.some((draft) => draft.id === zone.id)) as NonNullable<
-                                typeof upgradeZones
-                              >,
-                            )
-                          }
-                        />
-                      ) : null}
-                      {(upgradeZones ?? []).map((zone, index) => (
-                        <section className={ELEMENT_TAG + "-project-card"} key={zone.id ?? index}>
-                          <label>
-                            Zone name
-                            <input
-                              value={zone.name}
-                              onChange={(event) =>
-                                setUpgradeZones((current) =>
-                                  current?.map((item, i) =>
-                                    i === index ? { ...item, name: event.target.value } : item,
-                                  ),
-                                )
-                              }
-                            />
-                          </label>
-                          <label>
-                            Area
-                            <select
-                              value={zone.kind}
-                              onChange={(event) =>
-                                setUpgradeZones((current) =>
-                                  current?.map((item, i) =>
-                                    i === index
-                                      ? {
-                                          ...item,
-                                          kind: event.target.value as typeof zone.kind,
-                                          venueClass:
-                                            event.target.value === "shared-residence" ||
-                                            event.target.value === "private-residence"
-                                              ? "residence"
-                                              : event.target.value === "staff"
-                                                ? "workplace"
-                                                : upgradeClass || selectedVenue?.classes?.[0] || "other",
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            >
-                              <option value="public">General Zone</option>
-                              <option value="shared-residence">Shared residential Zone</option>
-                              <option value="private-residence">Personal residential Zone · assigned resident</option>
-                              <option value="staff">Work Zone</option>
-                              <option value="restricted">Other dedicated Zone</option>
-                            </select>
-                          </label>
-                          {
-                            <label>
-                              Used for
-                              <input
-                                value={zone.purpose ?? ""}
-                                maxLength={240}
-                                onChange={(event) =>
-                                  setUpgradeZones((current) =>
-                                    current?.map((item, i) =>
-                                      i === index ? { ...item, purpose: event.target.value } : item,
-                                    ),
-                                  )
-                                }
-                              />
-                            </label>
-                          }
-                          {zone.kind === "private-residence" ? (
-                            <label>
-                              Assigned resident
-                              <select
-                                value={zone.ownerId || ""}
-                                onChange={(event) =>
-                                  setUpgradeZones((current) =>
-                                    current?.map((item, i) =>
-                                      i === index ? { ...item, ownerId: event.target.value || undefined } : item,
-                                    ),
-                                  )
-                                }
-                              >
-                                <option value="">Vacant · assign on move-in</option>
-                                {selectedVenue?.residentIds?.map((id) => (
-                                  <option key={id} value={id}>
-                                    {snapshot.villagers.find((person) => person.characterId === id)?.name || id}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          ) : null}
-                          {zone.kind === "restricted" ? (
-                            <fieldset>
-                              <legend>Room controllers</legend>
-                              {snapshot.villagers.map((person) => (
-                                <label key={person.characterId}>
-                                  <input
-                                    type="checkbox"
-                                    checked={zone.controllerIds?.includes(person.characterId) ?? false}
-                                    onChange={(event) =>
-                                      setUpgradeZones((current) =>
-                                        current?.map((item, i) =>
-                                          i === index
-                                            ? {
-                                                ...item,
-                                                controllerIds: event.target.checked
-                                                  ? [...(item.controllerIds ?? []), person.characterId]
-                                                  : item.controllerIds?.filter((id) => id !== person.characterId),
-                                              }
-                                            : item,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                  {person.name}
-                                </label>
-                              ))}
-                            </fieldset>
-                          ) : null}
-                          <label>
-                            Description
-                            <textarea
-                              value={zone.description}
-                              onChange={(event) =>
-                                setUpgradeZones((current) =>
-                                  current?.map((item, i) =>
-                                    i === index ? { ...item, description: event.target.value } : item,
-                                  ),
-                                )
-                              }
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            className={ELEMENT_TAG + "-button"}
-                            onClick={() => setUpgradeZones((current) => current?.filter((_, i) => i !== index))}
-                          >
-                            Remove from proposal
-                          </button>
-                        </section>
-                      ))}
-                      <button
-                        type="button"
-                        className={ELEMENT_TAG + "-button"}
-                        onClick={() =>
-                          setUpgradeZones((current) => [
-                            ...(current ?? []),
-                            {
-                              name: "",
-                              kind: "public",
-                              description: "",
-                              venueClass: upgradeClass || selectedVenue?.classes?.[0] || "other",
-                            },
-                          ])
-                        }
-                      >
-                        Add a Zone to this Upgrade
-                      </button>
+                      <span className="vp-label">Classes · up to two</span>
+                      <ClassChoices value={c.classes} onChange={c.setClasses} />
                     </>
                   ) : null}
-                  {changeKind === "upgrade" ? (
-                    <label>
-                      Extra beds
-                      <input
-                        type="number"
-                        min={0}
-                        max={3}
-                        value={extraBeds}
-                        onChange={(event) => setExtraBeds(Number(event.target.value))}
-                      />
-                    </label>
-                  ) : null}
-                </>
-              ) : (
-                <label>
-                  Venue Class
-                  <select value={venueClass} onChange={(event) => setVenueClass(event.target.value as VenueClass)}>
-                    <option value="residence">Residence</option>
-                    <option value="workplace">Workplace</option>
-                    <option value="community">Community</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-              )}
-              <label>
-                {draftType === "new-venue" ? "Venue name" : "Project name"}
-                <input
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Give this place a name"
-                />
-              </label>
-              <label>
-                What would this {draftType === "new-venue" ? "place" : "change"} be like in the Village?
-                <textarea value={description} onChange={(event) => setDescription(event.target.value)} />
-              </label>
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={
-                  busy ||
-                  !name.trim() ||
-                  !description.trim() ||
-                  (draftType === "renovation" &&
-                    (!venueId || (changeKind === "class" && (!baseClasses.length || baseClasses.length > 2))))
-                }
-                onClick={() => void create()}
-              >
-                {draftType === "new-venue" ? "Continue to map placement" : "Start Renovation"}
-              </button>
-            </section>
-          ) : null}
-        </div>
-      ) : (
-        <div className={`${ELEMENT_TAG}-project-layout`}>
-          <nav className={`${ELEMENT_TAG}-project-rail`} aria-label="Project phases">
-            {PROJECT_PHASES.filter((item) => item !== "approval" || project.kind === "renovation").map(
-              (item, index) => {
-                const currentIndex = PROJECT_PHASES.indexOf(phase as (typeof PROJECT_PHASES)[number]);
-                const stepIndex = PROJECT_PHASES.indexOf(item);
-                return (
-                  <div
-                    key={item}
-                    className={`${ELEMENT_TAG}-project-step`}
-                    data-state={stepIndex === currentIndex ? "active" : stepIndex < currentIndex ? "done" : "locked"}
-                  >
-                    <b>{stepIndex < currentIndex ? "✓" : index + 1}</b>
-                    <span>{PROJECT_PHASE_NAMES[item]}</span>
-                  </div>
-                );
-              },
-            )}
-          </nav>
-          <main className={`${ELEMENT_TAG}-project-card`}>
-            {project.kind === "renovation" &&
-            revisionEditor &&
-            !["construction", "finishing", "complete"].includes(phase ?? "") ? (
-              <RenovationRevisionEditor
-                key={project.id + project.updatedAt}
-                revision={revisionEditor}
-                venue={target}
-                people={snapshot.villagers.map((person) => ({ id: person.characterId, name: person.name }))}
-                busy={busy}
-              />
+                  <button className="vp-primary" disabled={draft.busy || (c.draftType === "renovation" && !c.venueId)}>
+                    Create draft
+                  </button>
+                </fieldset>
+              </section>
+            </div>
+          </form>
+        ) : null}
+        {project && flow ? (
+          <article>
+            <div className="vp-project-heading">
+              <h2 title={project.title}>{project.title}</h2>
+              <span>
+                {kindName(project.kind)} · {titleCase(project.status)}
+              </span>
+            </div>
+            {stale ? (
+              <div className="vp-error" role="status">
+                <p>This Project changed. Discard local edits to load the current design.</p>
+                <button type="button" disabled={draft.busy} onClick={workspace.discard}>
+                  Discard edits
+                </button>
+              </div>
             ) : null}
-            {phase === "concept" ? (
-              <>
-                <h3>Place the blueprint</h3>
-                <p>{project.venueDraft?.description}</p>
-                <p>Choose a clear spot on the Village map. The blueprint marks where this Venue will be built.</p>
+            <div className="vp-tabs" role="tablist" aria-label="Project sections">
+              {tabs.map((name, index) => (
                 <button
                   type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={!!room && room.status !== "closed"}
-                  title={room && room.status !== "closed" ? "End the Scene to place on the map" : undefined}
-                  onClick={() => onPlaceOnMap(project.id)}
+                  role="tab"
+                  key={name}
+                  aria-label={name}
+                  id={tabId + name}
+                  aria-selected={tab === name}
+                  aria-controls={tabId + "panel"}
+                  tabIndex={tab === name ? 0 : -1}
+                  onClick={() => selectTab(name)}
+                  onKeyDown={(event) => {
+                    const next =
+                      event.key === "ArrowRight"
+                        ? (index + 1) % tabs.length
+                        : event.key === "ArrowLeft"
+                          ? (index + tabs.length - 1) % tabs.length
+                          : event.key === "Home"
+                            ? 0
+                            : event.key === "End"
+                              ? tabs.length - 1
+                              : -1;
+                    if (next < 0) return;
+                    event.preventDefault();
+                    selectTab(tabs[next]);
+                    document.getElementById(tabId + tabs[next])?.focus();
+                  }}
                 >
-                  Place on Village map
+                  {mobile && name === "Overview & Progress"
+                    ? "Overview"
+                    : mobile && name === "Design & Spaces"
+                      ? "Design"
+                      : name}
                 </button>
-              </>
-            ) : null}
-            {phase === "approval" ? (
-              <>
-                <h3>People affected by this change</h3>
-                <p>{flow?.change?.detail}</p>
-                {(flow?.change?.improvement?.zones ?? []).map((zone) => (
-                  <p key={zone.id}>
-                    <strong>{zone.name}</strong> · {zone.kind}: {zone.description}
-                  </p>
-                ))}
-                <p>
-                  They may approve in conversation or reply through Mailbox. Every affected resident or worker must
-                  agree before you ask for a Builder.
-                </p>
-                {flow?.affectedIds.map((id) => (
-                  <p key={id}>
-                    {snapshot.villagers.find((entry) => entry.characterId === id)?.name ?? id}:{" "}
-                    {flow.approvals.some((entry) => entry.residentId === id) ? "Approved" : "Awaiting approval"}
-                  </p>
-                ))}
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={busy}
-                  onClick={() => void action("request-approval")}
+              ))}
+            </div>
+            <div role="tabpanel" id={tabId + "panel"} aria-labelledby={tabId + tab}>
+              {tab === "Overview & Progress" || tab === "Design & Spaces" ? (
+                <div
+                  className={
+                    "vp-detail-pages" +
+                    (tab === "Design & Spaces" && project.kind === "renovation" ? " vp-renovation-pages" : "")
+                  }
+                  role="group"
+                  aria-label={tab + " pages"}
                 >
-                  Ask remaining villagers through Mailbox
-                </button>
-              </>
-            ) : null}
-            {phase === "builder" ? (
-              <>
-                <h3>Find a Builder</h3>
-                <p>
-                  Find villagers on the map and ask them about this Project in a real conversation. Their clear
-                  agreements appear here automatically.
-                </p>
-
-                {flow?.candidates.length ? (
-                  flow.candidates.map((entry) => (
-                    <button
-                      key={entry.residentId}
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => void action("builder", { residentId: entry.residentId })}
-                    >
-                      Assign{" "}
-                      {snapshot.villagers.find((row) => row.characterId === entry.residentId)?.name ?? "this Villager"}
-                    </button>
-                  ))
-                ) : (
-                  <p>No one has agreed yet.</p>
-                )}
-              </>
-            ) : null}
-            {phase === "requirements" ? (
-              <>
-                <h3>Define requirements with your Builder</h3>
-                <p>
-                  Ask{" "}
-                  {snapshot.villagers.find((entry) => entry.characterId === flow?.builderId)?.name ?? "your Builder"}{" "}
-                  what this job needs. They decide the materials, functional equipment, and finishing supplies. Their
-                  checklist appears here automatically.
-                </p>
-                {flow?.requirements.length ? (
-                  <div>
-                    {flow.requirements.map((entry) => (
-                      <p key={entry.id}>
-                        <strong>{entry.category}</strong> · {entry.needed ? entry.title : "Not needed"}
-                      </p>
-                    ))}
+                  {(tab === "Overview & Progress"
+                    ? ["Overview", "Progress", ...(mobile && venue?.presentation.image ? ["Artwork"] : [])]
+                    : ["Design", ...(project.kind === "renovation" ? ["Building"] : []), "Zones", "Connections"]
+                  ).map((page) => (
                     <button
                       type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => void action("requirements")}
+                      key={page}
+                      aria-label={page}
+                      aria-pressed={detailPage === page}
+                      onClick={() => selectDetailPage(page)}
                     >
-                      Accept Builder's plan
-                    </button>
-                    <p>To change it, discuss a revision with the Builder.</p>
-                  </div>
-                ) : (
-                  <p>Waiting for the Builder's plan.</p>
-                )}
-                {flow?.candidates
-                  .filter((entry) => entry.residentId !== flow.builderId)
-                  .map((entry) => (
-                    <button
-                      key={entry.residentId}
-                      type="button"
-                      className={`${ELEMENT_TAG}-button`}
-                      disabled={busy}
-                      onClick={() => void action("builder", { residentId: entry.residentId })}
-                    >
-                      Switch to{" "}
-                      {snapshot.villagers.find((row) => row.characterId === entry.residentId)?.name ??
-                        "another Builder"}
+                      {mobile && page === "Connections" ? "Links" : page}
                     </button>
                   ))}
-              </>
-            ) : null}
-            {phase === "materials" ? (
-              <>
-                <h3>Prepare materials</h3>
-                <p>
-                  Find each supply in the Village, then bring it to this blueprint site. Offers and handoffs are
-                  recognized during your Scenes. Deliveries update the list here.
-                </p>
-                {flow?.requirements
-                  .filter((entry) => entry.needed)
-                  .map((entry) => (
-                    <div key={entry.id} className={`${ELEMENT_TAG}-project-material`}>
-                      <strong>{entry.title}</strong>
-                      <span>
-                        {entry.deliveredAt ? "Delivered" : entry.carriedAt ? "Ready to deliver" : "Find and obtain"}
-                      </span>
-                      {snapshot.progressEngineVersion === 1 && !entry.carriedAt ? (
-                        <>
-                          {!flow.sources?.some((source) => source.requirementId === entry.id) ? (
-                            <>
-                              {(flow.recordedItems ?? [])
-                                .filter((item) => item.itemName.toLocaleLowerCase() === entry.title.toLocaleLowerCase())
-                                .map((item) => (
-                                  <button
-                                    key={item.venueId + ":" + item.zoneId + ":" + item.itemName}
-                                    type="button"
-                                    className={`${ELEMENT_TAG}-button`}
-                                    disabled={busy}
-                                    onClick={() =>
-                                      void action("existing-source", {
-                                        requirementId: entry.id,
-                                        venueId: item.venueId,
-                                        zoneId: item.zoneId,
-                                      })
-                                    }
-                                  >
-                                    Choose available item at{" "}
-                                    {snapshot.settings.venues.find((venue) => venue.id === item.venueId)?.name ??
-                                      "Venue"}
-                                    {item.zoneId
-                                      ? " · " +
-                                        (snapshot.settings.venues
-                                          .find((venue) => venue.id === item.venueId)
-                                          ?.zones?.find((zone) => zone.id === item.zoneId)?.name ?? "Zone")
-                                      : ""}
-                                  </button>
-                                ))}
-                              {(flow.heldSupplies ?? [])
-                                .filter(
-                                  (held) =>
-                                    !held.assignedRequirementId &&
-                                    held.itemName.toLocaleLowerCase() === entry.title.toLocaleLowerCase(),
-                                )
-                                .map((held) => (
-                                  <button
-                                    key={held.id}
-                                    type="button"
-                                    className={`${ELEMENT_TAG}-button`}
-                                    disabled={busy}
-                                    onClick={() =>
-                                      void action("reallocate-held", { requirementId: entry.id, heldId: held.id })
-                                    }
-                                  >
-                                    Commit previously acquired {held.itemName}
-                                    {held.deliveredAt ? " (already delivered)" : ""}
-                                  </button>
-                                ))}
-                            </>
-                          ) : (
-                            <p>The supplier’s handoff will be recognized during your Scene.</p>
-                          )}
-                        </>
-                      ) : null}
-                      {entry.carriedAt && !entry.deliveredAt && siteProjectId === project.id ? (
+                </div>
+              ) : null}
+              {tab === "Overview & Progress" && detailPage === "Overview" ? (
+                <div className="vp-columns">
+                  {!mobile ? <ProjectDrawing image={venue?.presentation.image} caption={project.title} /> : null}
+                  <section className="vp-panel">
+                    <h3>Project overview</h3>
+                    {spec ? (
+                      <fieldset disabled={draft.busy}>
+                        <legend>Establishment</legend>
+                        <label>
+                          Ongoing village use
+                          <textarea
+                            autoComplete="off"
+                            readOnly={!editable}
+                            maxLength={1000}
+                            value={spec.goal}
+                            onChange={(event) =>
+                              workspace.field("establishment")({ ...spec, goal: event.target.value })
+                            }
+                          />
+                        </label>
+                        <label>
+                          <input
+                            autoComplete="off"
+                            type="checkbox"
+                            disabled={!editable}
+                            checked={spec.physical}
+                            onChange={(event) =>
+                              workspace.field("establishment")({ ...spec, physical: event.target.checked })
+                            }
+                          />
+                          Physical work required
+                        </label>
+                        <label>
+                          Objectives · one per line
+                          <textarea
+                            autoComplete="off"
+                            readOnly={!editable}
+                            maxLength={4000}
+                            value={spec.objectives.map((row) => row.text).join("\n")}
+                            onChange={(event) =>
+                              workspace.field("establishment")({
+                                ...spec,
+                                objectives: event.target.value
+                                  .split("\n")
+                                  .map((text, index) => ({ id: "objective:" + index, text, met: false, evidence: [] })),
+                              })
+                            }
+                          />
+                        </label>
+                        <ul>
+                          {project.establishment?.objectives.map((row) => (
+                            <li key={row.id}>
+                              {row.met ? "✓ " : "○ "}
+                              {row.text}
+                            </li>
+                          ))}
+                        </ul>
+                        <fieldset disabled={!editable}>
+                          <legend>Affected spaces</legend>
+                          {c.target?.zones?.map((zone) => (
+                            <label key={zone.id}>
+                              <input
+                                autoComplete="off"
+                                type="checkbox"
+                                checked={spec.zoneIds.includes(zone.id)}
+                                onChange={(event) =>
+                                  workspace.field("establishment")({
+                                    ...spec,
+                                    zoneIds: event.target.checked
+                                      ? [...spec.zoneIds, zone.id]
+                                      : spec.zoneIds.filter((id) => id !== zone.id),
+                                  })
+                                }
+                              />
+                              {zone.name}
+                            </label>
+                          ))}
+                        </fieldset>
+                      </fieldset>
+                    ) : null}
+                    <div className="vp-panel-heading">
+                      <span className="vp-label">Physical design</span>
+                      {intended.length > overviewLimit ? (
                         <button
                           type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          disabled={busy}
-                          onClick={() => void action("deliver", { requirementId: entry.id })}
+                          onClick={() => {
+                            selectTab("Design & Spaces");
+                            setDetailPages((current) => ({
+                              ...current,
+                              [workspace.key + ":Design & Spaces"]: "Design",
+                            }));
+                          }}
                         >
-                          Deliver at blueprint site
+                          Full design
                         </button>
-                      ) : null}
-                      {entry.carriedAt && !entry.deliveredAt && siteProjectId !== project.id ? (
-                        <span>Visit this Project's blueprint on the Village map to deliver it.</span>
                       ) : null}
                     </div>
-                  ))}
-                <button
-                  type="button"
-                  className={`${ELEMENT_TAG}-button`}
-                  disabled={busy || flow?.requirements.some((entry) => entry.needed && !entry.deliveredAt)}
-                  onClick={() => void action("start")}
-                >
-                  Begin construction
-                </button>
-              </>
-            ) : null}
-            {phase === "construction" ? (
-              <>
-                <h3>Construction is underway</h3>
-                <p>
-                  {snapshot.villagers.find((entry) => entry.characterId === flow?.builderId)?.name ?? "The Builder"} is
-                  focused on this site for 24 hours, with normal rest and essential breaks.
-                </p>
-                {flow?.workOrder ? (
-                  <p>
-                    Expected completion:{" "}
-                    {new Date(flow.workOrder.completesAt).toLocaleString(undefined, {
-                      timeZone: snapshot.clock?.timeZone || snapshot.village.timeZone,
-                    })}
-                  </p>
-                ) : null}
-                {flow?.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
-                {project.status === "blocked"
-                  ? flow?.candidates
-                      .filter((entry) => entry.residentId !== flow.builderId)
-                      .map((entry) => (
+                    <p>
+                      {intended.length > overviewLimit ? intended.slice(0, overviewLimit).trimEnd() + "…" : intended}
+                    </p>
+                    <Facts
+                      rows={[
+                        ...(!social
+                          ? [["Lead", flow.builderId ? person(flow.builderId) : "Not selected"] as [string, ReactNode]]
+                          : []),
+                        ["Design", count + " / 6 Zones"],
+                        ["Agreements", missing.length ? missing.map(person).join(", ") : "Ready"],
+                      ]}
+                    />
+                    {flow.blockedReason ? <p role="status">{flow.blockedReason}</p> : null}
+                  </section>
+                </div>
+              ) : null}
+              {tab === "Overview & Progress" && detailPage === "Artwork" && venue?.presentation.image ? (
+                <ProjectDrawing image={venue.presentation.image} caption={project.title} />
+              ) : null}
+              {tab === "Design & Spaces" && detailPage === "Design" && venue ? (
+                <div className="vp-columns">
+                  {!mobile ? <ProjectDrawing image={venue.presentation.image} caption={project.title} /> : null}
+                  <section className="vp-panel">
+                    <h3>Design specification</h3>
+                    {editable ? (
+                      <fieldset disabled={draft.busy}>
+                        {project.kind === "renovation" ? (
+                          <>
+                            <label>
+                              Name
+                              <input
+                                autoComplete="off"
+                                value={draft.title}
+                                maxLength={100}
+                                onChange={(event) => workspace.field("title")(event.target.value)}
+                              />
+                            </label>
+                          </>
+                        ) : null}
+                        <span className="vp-label">Classes · up to two</span>
+                        <ClassChoices
+                          value={venue.classes ?? []}
+                          onChange={(classes) => patchVenue({ ...venue, classes })}
+                        />
+                        <label>
+                          Physical design
+                          <textarea
+                            autoComplete="off"
+                            aria-label="Physical design"
+                            rows={4}
+                            maxLength={MAX_PHYSICAL_DESIGN_LENGTH}
+                            value={intended}
+                            onChange={(event) =>
+                              project.kind === "new-venue"
+                                ? patchVenue({ ...venue, form: event.target.value })
+                                : workspace.field("detail")(event.target.value)
+                            }
+                          />
+                        </label>
+                        {venue.classes?.includes("residence") ? (
+                          <label className="vp-capacity">
+                            Residence capacity
+                            <input
+                              autoComplete="off"
+                              type="number"
+                              min={1}
+                              max={4}
+                              value={draft.capacity}
+                              onChange={(event) => workspace.field("capacity")(Number(event.target.value))}
+                            />
+                          </label>
+                        ) : null}
+                        {project.kind === "new-venue" ? (
+                          <ArtworkUpload busy={draft.busy} onUpload={(file) => void upload(file)} />
+                        ) : null}
+                      </fieldset>
+                    ) : (
+                      <>
+                        <Facts rows={[["Classes", (venue.classes ?? []).map(titleCase).join(" · ")]]} />
+                        <label>
+                          Physical design
+                          <textarea autoComplete="off" aria-label="Physical design" readOnly value={intended} />
+                        </label>
+                        {venue.classes?.includes("residence") ? (
+                          <Facts rows={[["Residence capacity", String(draft.capacity)]]} />
+                        ) : null}
+                      </>
+                    )}
+                  </section>
+                </div>
+              ) : null}
+              {tab === "Design & Spaces" && detailPage === "Building" && venue ? (
+                <section className="vp-panel">
+                  <label>
+                    Building form
+                    <textarea
+                      autoComplete="off"
+                      aria-label="Building form"
+                      rows={4}
+                      maxLength={MAX_PHYSICAL_DESIGN_LENGTH}
+                      value={venue.form ?? ""}
+                      readOnly={!editable}
+                      disabled={draft.busy}
+                      onChange={(event) => patchVenue({ ...venue, form: event.target.value })}
+                    />
+                  </label>
+                </section>
+              ) : null}
+              {tab === "Design & Spaces" && detailPage === "Zones" && venue ? (
+                <ProjectZones
+                  key={project.id}
+                  venue={venue}
+                  people={people}
+                  mobile={mobile}
+                  pageSize={detailPageSize}
+                  selectedId={selectedZones[workspace.key] ?? "exterior"}
+                  onSelect={(id) => setZones((current) => ({ ...current, [workspace.key]: id }))}
+                  zones={draft.zones}
+                  renovation={project.kind === "renovation"}
+                  editable={editable}
+                  busy={draft.busy}
+                  onVenue={patchVenue}
+                  onZones={workspace.field("zones")}
+                  onUpload={(file, id) => void upload(file, id)}
+                />
+              ) : null}
+              {tab === "Design & Spaces" && detailPage === "Connections" && venue ? (
+                <section className="vp-panel">
+                  <SpaceConnections
+                    spaces={connections}
+                    disabled={!editable || draft.busy}
+                    pageSize={detailPageSize}
+                    compact={mobile}
+                    editableIds={project.kind === "renovation" ? draft.zones.map((zone) => zone.id) : undefined}
+                    onChange={(rows) =>
+                      project.kind === "renovation"
+                        ? workspace.field("zones")(
+                            draft.zones.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                          )
+                        : patchVenue({
+                            ...venue,
+                            spaces: venue.spaces?.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                            privateSpaces: venue.privateSpaces?.map((zone) => ({
+                              ...zone,
+                              connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                            })),
+                          })
+                    }
+                  />
+                </section>
+              ) : null}
+              {tab === "People" ? (
+                <>
+                  <div className="vp-detail-pages" role="group" aria-label="People pages">
+                    <button
+                      type="button"
+                      hidden={social}
+                      aria-pressed={!social && peopleSection === "lead"}
+                      onClick={() => {
+                        setPeopleSection("lead");
+                        setPeoplePage(0);
+                      }}
+                    >
+                      Lead
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={social || peopleSection === "agreements"}
+                      onClick={() => {
+                        setPeopleSection("agreements");
+                        setPeoplePage(0);
+                      }}
+                    >
+                      Agreements
+                    </button>
+                  </div>
+                  <div className="vp-columns">
+                    {!social && peopleSection === "lead" ? (
+                      <section className="vp-panel">
+                        <h3>Resident lead</h3>
+                        <div className="vp-people" role="group" aria-label="Willing leads">
+                          {flow.candidates
+                            .slice(peoplePage * detailPageSize, peoplePage * detailPageSize + detailPageSize)
+                            .map((candidate) => (
+                              <button
+                                type="button"
+                                className="vp-person"
+                                key={candidate.residentId}
+                                aria-pressed={flow.builderId === candidate.residentId}
+                                disabled={draft.busy || !(editable || resumable)}
+                                onClick={() => void c.action("builder", { residentId: candidate.residentId })}
+                              >
+                                <span className="vp-number">{person(candidate.residentId).charAt(0)}</span>
+                                <span>
+                                  <strong>{person(candidate.residentId)}</strong>
+                                  <small>
+                                    {flow.builderId === candidate.residentId ? "Selected lead" : "Willing to lead"}
+                                  </small>
+                                </span>
+                                <span aria-hidden="true">{flow.builderId === candidate.residentId ? "✓" : "›"}</span>
+                              </button>
+                            ))}
+                        </div>
+                        {flow.candidates.length > detailPageSize ? (
+                          <div className="vp-actions">
+                            <button
+                              type="button"
+                              disabled={peoplePage === 0}
+                              onClick={() => setPeoplePage(peoplePage - 1)}
+                            >
+                              Previous
+                            </button>
+                            <span>
+                              {peoplePage + 1} / {Math.ceil(flow.candidates.length / detailPageSize)}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={(peoplePage + 1) * detailPageSize >= flow.candidates.length}
+                              onClick={() => setPeoplePage(peoplePage + 1)}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        ) : null}
+                        {!flow.candidates.length ? (
+                          <>
+                            <p className="vp-note">No willing lead yet.</p>
+                            <button type="button" onClick={onPeople}>
+                              Talk to residents
+                            </button>
+                          </>
+                        ) : null}
+                      </section>
+                    ) : null}
+                    {social || peopleSection === "agreements" ? (
+                      <section className="vp-panel">
+                        <h3>Agreements</h3>
+                        {flow.affectedIds.length ? (
+                          <ul className="vp-agreements">
+                            {flow.affectedIds
+                              .slice(peoplePage * detailPageSize, peoplePage * detailPageSize + detailPageSize)
+                              .map((id) => (
+                                <li key={id}>
+                                  <span>{person(id)}</span>
+                                  <span>{missing.includes(id) ? "Needed" : "Agreed"}</span>
+                                </li>
+                              ))}
+                          </ul>
+                        ) : (
+                          <p>No additional agreements needed.</p>
+                        )}
+                        {flow.affectedIds.length > detailPageSize ? (
+                          <div className="vp-actions">
+                            <button
+                              type="button"
+                              disabled={peoplePage === 0}
+                              onClick={() => setPeoplePage(peoplePage - 1)}
+                            >
+                              Previous
+                            </button>
+                            <span>
+                              {peoplePage + 1} / {Math.ceil(flow.affectedIds.length / detailPageSize)}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={(peoplePage + 1) * detailPageSize >= flow.affectedIds.length}
+                              onClick={() => setPeoplePage(peoplePage + 1)}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        ) : null}
+                      </section>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+              {tab === "Location" ? (
+                <div className="vp-columns">
+                  {!mobile ? (
+                    <ProjectDrawing
+                      image={project.kind === "renovation" ? c.target?.presentation.image : null}
+                      caption={project.kind === "renovation" ? (c.target?.name ?? project.title) : "Map location"}
+                    />
+                  ) : null}
+                  <section className="vp-panel">
+                    <h3>Project site</h3>
+                    <Facts
+                      rows={[
+                        ["Venue", project.kind === "renovation" ? (c.target?.name ?? project.venueId) : project.title],
+                        [
+                          "Location",
+                          project.kind === "renovation"
+                            ? "Existing Venue"
+                            : project.venueDraft?.position?.x == null
+                              ? "Not placed"
+                              : "Marked on the village map",
+                        ],
+                      ]}
+                    />
+                    {project.kind === "new-venue" && editable ? (
+                      <div className="vp-actions">
                         <button
-                          key={entry.residentId}
                           type="button"
-                          className={`${ELEMENT_TAG}-button`}
-                          onClick={() => void action("builder", { residentId: entry.residentId })}
+                          disabled={draft.busy || !!placementBlocked}
+                          aria-describedby={placementBlocked ? tabId + "-placement-blocked" : undefined}
+                          onClick={() => onPlaceOnMap(project.id)}
                         >
-                          Continue with{" "}
-                          {snapshot.villagers.find((row) => row.characterId === entry.residentId)?.name ?? "Builder"}
+                          {project.venueDraft?.position?.x == null ? "Choose map position" : "Change map position"}
                         </button>
-                      ))
-                  : null}
-                {debugEnabled && project.status === "building" ? (
+                        {sceneActive ? (
+                          <button type="button" onClick={onReturn}>
+                            Return to Scene
+                          </button>
+                        ) : null}
+                        {placementBlocked ? <p id={tabId + "-placement-blocked"}>{placementBlocked}</p> : null}
+                      </div>
+                    ) : null}
+                  </section>
+                </div>
+              ) : null}
+              {tab === "Overview & Progress" && detailPage === "Progress" ? (
+                <div className="vp-columns">
+                  <section className="vp-panel">
+                    {!social && (editable || flow.workOrder) ? (
+                      <Facts
+                        rows={[
+                          ...(editable ? [["Duration", "24 hours"] as [string, string]] : []),
+                          ...(project.status === "working" && flow.workOrder
+                            ? [
+                                [
+                                  "Completes",
+                                  <time dateTime={flow.workOrder.completesAt}>
+                                    {focusTime(flow.workOrder.completesAt)}
+                                  </time>,
+                                ] as [string, ReactNode],
+                              ]
+                            : []),
+                          ...(resumable && flow.workOrder
+                            ? [
+                                ["Remaining", Math.ceil(flow.workOrder.remainingMs / 60_000) + " minutes"] as [
+                                  string,
+                                  string,
+                                ],
+                              ]
+                            : []),
+                          ...(editable || flow.workOrder?.focus ? [["Lead focus", "6 hours"] as [string, string]] : []),
+                          ...(flow.workOrder?.focus?.nextPeriod
+                            ? [
+                                [
+                                  "Next work period",
+                                  focusTime(flow.workOrder.focus.nextPeriod.startsAt) +
+                                    " – " +
+                                    focusTime(flow.workOrder.focus.nextPeriod.endsAt),
+                                ] as [string, string],
+                              ]
+                            : []),
+                        ]}
+                      />
+                    ) : null}
+                  </section>
+                  <section className="vp-panel">
+                    <h3>Project actions</h3>
+                    {social && project.status === "working" ? (
+                      <button
+                        type="button"
+                        disabled={
+                          draft.busy || missing.length > 0 || project.establishment!.objectives.some((row) => !row.met)
+                        }
+                        onClick={() => void c.action("complete")}
+                      >
+                        Complete establishment
+                      </button>
+                    ) : null}
+                    <div className="vp-actions">
+                      {debugEnabled && project.status === "working" && !!flow.workOrder ? (
+                        <button type="button" disabled={draft.busy} onClick={() => void c.action("debug-complete")}>
+                          Complete · Debug
+                        </button>
+                      ) : null}
+                      {project.status === "complete" ? (
+                        <button type="button" className="vp-primary" onClick={() => onVenue(project.venueId)}>
+                          Visit Venue
+                        </button>
+                      ) : null}
+                      {!["complete", "cancelled"].includes(project.status) ? (
+                        <button
+                          type="button"
+                          className="vp-subtle"
+                          disabled={draft.busy}
+                          onClick={() => void c.action("cancel")}
+                        >
+                          Cancel Project
+                        </button>
+                      ) : null}
+                      {project.status === "cancelled" ? <p>No active work.</p> : null}
+                    </div>
+                  </section>
+                </div>
+              ) : null}
+            </div>
+            {editable || resumable ? (
+              <footer className="vp-footer">
+                {unavailable ? <p role="status">{unavailable}</p> : null}
+                <div className="vp-actions">
+                  {editable ? (
+                    <button type="button" disabled={draft.busy || stale} onClick={() => void c.save()}>
+                      Save design
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy}
-                    onClick={() => void action("debug-complete")}
+                    className="vp-primary"
+                    disabled={draft.busy || !!unavailable}
+                    onClick={() => void start()}
                   >
-                    DEBUG: Complete construction now
+                    {resumable ? "Resume" : social ? "Start establishment" : "Start · 24 hours"}
                   </button>
-                ) : null}
-              </>
+                </div>
+              </footer>
             ) : null}
-            {phase === "finishing" ? (
-              <>
-                <h3>Construction is complete</h3>
-                <p>
-                  Visit the finished {project.kind === "new-venue" ? "Venue" : "Renovation"} to define its final details
-                  and open it to the Village.
-                </p>
-                <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setFinishingVisit(true)}>
-                  Visit finished Venue
-                </button>
-              </>
-            ) : null}
-            {error ? (
-              <p className={`${ELEMENT_TAG}-error`} role="alert">
-                {error}
-              </p>
-            ) : null}
-            <footer className={`${ELEMENT_TAG}-project-footer`}>
-              {room && room.status !== "closed" ? (
-                <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onReturn}>
-                  Return to current Scene
-                </button>
-              ) : (
-                <button type="button" className={`${ELEMENT_TAG}-button`} onClick={onMap}>
-                  Back to map
-                </button>
-              )}
-            </footer>
-          </main>
-        </div>
-      )}
-      {!project && error ? (
-        <p className={`${ELEMENT_TAG}-error`} role="alert">
-          {error}
-        </p>
-      ) : null}
+          </article>
+        ) : null}
+        {draft.error ? (
+          <p className="vp-error" role="alert">
+            {draft.error}
+          </p>
+        ) : null}
+      </main>
     </div>
   );
 }

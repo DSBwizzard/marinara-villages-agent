@@ -1,13 +1,24 @@
-import { PLAYER_CAPTURE_CONTRACT } from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
-import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
-import { readSceneWritingCapabilities } from "../packages/villages/src/server/domain/rules/scene-compact-contract.js";
 import assert from "node:assert/strict";
 import {
-  normalizeSceneEffectReferences,
+  materializePlayerSpeech,
+  PLAYER_CAPTURE_CONTRACT,
+} from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
+import { sceneMissingFields } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
+import {
+  compactSceneContract,
+  readSceneWritingCapabilities,
+  reliableSceneContract,
+} from "../packages/villages/src/server/domain/rules/scene-compact-contract.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import {
+  completeSceneObject,
   normalizeRecoverableSceneReply,
+  normalizeSceneEffectReferences,
+  normalizeSparseSceneReply,
 } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { materializePlayerSpeech } from "../packages/villages/src/server/domain/rules/player-speech-capture.js";
+import { sceneWritingHistory } from "../packages/villages/src/server/domain/rules/scene-writing-history.js";
 import { workFailureSummary } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zone-events.js";
 
 // Compact optional metadata and citation syntax survive player-speech insertion.
 {
@@ -22,22 +33,46 @@ import { workFailureSummary } from "../packages/villages/src/server/domain/rules
     assert.deepEqual(result.raw.relationshipChanges, { changes: [], permissions: [], disclosures: [] });
   }
   const refs = ["0", "utterance:0", "saved-line", "01", "-1", "0.0", " 0", "99"];
-  const wire = { ...core, memoryChanges: [{ evidence: refs }], relationshipChanges: { changes: [{ lineIds: refs }] } };
+  const wire = {
+    ...core,
+    memoryChanges: [{ learners: { rosa: { support: refs.map((lineId) => ({ lineId, excerpt: "tea" })) } } }],
+    relationshipChanges: { changes: [{ lineIds: refs }] },
+  };
   const canonical = normalizeSceneEffectReferences(wire);
   const expanded = materializePlayerSpeech(canonical, "Hello.");
-  assert.deepEqual((expanded.memoryChanges as any)[0].evidence, [1, 0, ...refs.slice(2)]);
+  assert.deepEqual(
+    (expanded.memoryChanges as any)[0].learners.rosa.support.map((row: any) => row.lineId),
+    [1, 0, ...refs.slice(2)],
+  );
   assert.deepEqual((expanded.relationshipChanges as any).changes[0].lineIds, [1, 0, ...refs.slice(2)]);
-  assert.deepEqual((wire.memoryChanges as any)[0].evidence, refs, "normalization never mutates saved input");
-  assert.equal((normalizeSceneEffectReferences(wire, ["0"]).memoryChanges as any)[0].evidence[0], "0");
+  assert.deepEqual(
+    (wire.memoryChanges as any)[0].learners.rosa.support.map((row: any) => row.lineId),
+    refs,
+    "normalization never mutates saved input",
+  );
+  assert.equal(
+    (normalizeSceneEffectReferences(wire, ["0"]).memoryChanges as any)[0].learners.rosa.support[0].lineId,
+    "0",
+  );
   const change = {
     fromId: "rosa",
     toId: "player",
-    dimension: "warmth",
-    strength: "minor",
-    direction: "increase",
-    ordinary: "PRIVATE REASON",
+    expectedRevision: "PRIVATE REASON",
+    sceneAfter: {
+      connection: "Acquaintances",
+      stance: "Enjoys conversation",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
+    liveAfter: {
+      connection: "Acquaintances",
+      stance: "Enjoys conversation",
+      expectations: [],
+      concerns: [],
+      records: [],
+    },
     lineIds: [0],
-    disclosed: false,
   };
   const malformed = normalizeRecoverableSceneReply({ ...core, relationshipChanges: { changes: [change] } });
   const message = malformed.failures.relationships!.message;
@@ -51,24 +86,13 @@ import { workFailureSummary } from "../packages/villages/src/server/domain/rules
     ...core,
     relationshipChanges: { changes: [{ ...change, reason: "Friendly visit" }] },
   });
-  assert.match(invalidFlag.failures.relationships!.message, /ordinary must be a boolean/);
+  assert.match(invalidFlag.failures.relationships!.message, /expectedRevision must be a nonnegative integer/);
   const valid = normalizeRecoverableSceneReply({
     ...core,
-    relationshipChanges: { changes: [{ ...change, ordinary: true, reason: "Friendly visit" }] },
+    relationshipChanges: { changes: [{ ...change, expectedRevision: 0, reason: "Friendly visit" }] },
   });
   assert.deepEqual(valid.failures, {});
 }
-import {
-  completeSceneObject,
-  normalizeSparseSceneReply,
-} from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { sceneMissingFields } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
-import {
-  compactSceneContract,
-  reliableSceneContract,
-} from "../packages/villages/src/server/domain/rules/scene-compact-contract.js";
-import { zoneEventReply } from "../packages/villages/src/server/domain/rules/zone-events.js";
-import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 
 const raw = {
   segments: [
@@ -177,28 +201,27 @@ const unavailable = {
   movement: false,
   residences: false,
   residenceDecision: false,
-  editApproval: false,
 };
 const minimal = compactSceneContract(context, unavailable).join("\n");
 assert.doesNotMatch(
   minimal,
   /wishChanges|projectSpeech|residenceRequest|residenceDecision|editApproval:|manage-access/,
 );
-assert.match(minimal, /upgradeRequest|venueRequest/, "spontaneous available proposals survive ordinary conversation");
+assert.match(minimal, /venueRequest/, "spontaneous available proposals survive ordinary conversation");
 const full = compactSceneContract(
   { ...context, wishes: true, projects: true, invitationZones: "common" },
-  { management: true, movement: true, residences: true, residenceDecision: true, editApproval: true },
+  { management: true, movement: true, residences: true, residenceDecision: true },
 ).join("\n");
 assert.match(full, /wishChanges/);
 assert.match(full, /projectSpeech/);
 assert.match(full, /manage-access/);
 assert.match(full, /residenceRequest/);
-assert.match(full, /editApproval/);
+assert.doesNotMatch(full, /editApproval/);
 // Mechanical budget excludes authored cards, writing guidance, world facts and history.
 // All capabilities remain described; compaction cannot trade away their availability.
 const reliableFull = reliableSceneContract(
   { ...context, residentControlled: true, staging: true, wishes: true, projects: true, invitationZones: "common" },
-  { management: true, movement: true, residences: true, residenceDecision: true, editApproval: true },
+  { management: true, movement: true, residences: true, residenceDecision: true },
 ).join("\n");
 assert(
   reliableFull.length + PLAYER_CAPTURE_CONTRACT.length <= 8000,
@@ -211,7 +234,6 @@ for (const field of [
   "manage-access",
   "residenceRequest",
   "residenceDecision",
-  "editApproval",
   "sound",
   "relationshipChanges",
   "memoryChanges",
@@ -449,11 +471,16 @@ for (const supplied of [
   ]) {
     const core = {
       segments: [{ kind: "dialogue", speakerId: "rosa", text: "I will bluff if I please." }],
-      sceneChange: { happened: true, narration: "The stone moves." },
+      placeUpdate: {
+        happened: true,
+        narration: "The stone moves.",
+        expectedRevision: 0,
+        recent: { text: "A stone beside the wall." },
+      },
     };
     const result = normalizeRecoverableSceneReply({ ...core, [field]: "malformed" });
     assert.deepEqual(result.raw.segments, core.segments);
-    assert.deepEqual(result.raw.sceneChange, core.sceneChange);
+    assert.deepEqual(result.raw.placeUpdate, core.placeUpdate);
     assert.equal(result.failures[domain as keyof typeof result.failures]?.kind, "metadata");
     assert.equal(result.raw[field], undefined);
     assert.equal((result.failures[domain as keyof typeof result.failures]?.proposal as any)[field], "malformed");
@@ -534,12 +561,27 @@ for (const supplied of [
   );
   const { normalizeRecoverableSceneReply } =
     await import("../packages/villages/src/server/domain/rules/scene-writing-contract.js");
-  for (const projectSpeech of [[{}], [{ projectId: "missing", kind: "unknown", speakerId: "rosa", citations: [] }]]) {
+  const project = { projectId: "bridge", speakerId: "rosa", citations: [{ segment: 0 }] };
+  const segments = [{ kind: "dialogue", speakerId: "rosa", text: "I withdraw my commitment to lead the bridge." }];
+  const withdrawal = normalizeRecoverableSceneReply({
+    segments,
+    projectSpeech: [{ ...project, kind: "withdrawal" }],
+  });
+  assert.deepEqual(withdrawal.failures, {});
+  assert.equal((withdrawal.raw.projectSpeech as any)[0].kind, "withdrawal");
+  assert.equal((withdrawal.raw.projectSpeech as any)[0].citations[0].quote, segments[0].text);
+  for (const projectSpeech of [
+    [{}],
+    [{ projectId: "missing", kind: "unknown", speakerId: "rosa", citations: [] }],
+    [{ ...project, kind: "requirements" }],
+  ]) {
     const result = normalizeRecoverableSceneReply({
-      segments: [{ kind: "narration", text: "Prose stays." }],
+      segments,
       projectSpeech,
     });
     assert(result.failures.projects);
+    assert.equal(result.raw.projectSpeech, undefined);
+    assert.deepEqual(result.raw.segments, withdrawal.raw.segments, "Invalid metadata preserves the accepted prose");
   }
 }
 
@@ -560,6 +602,37 @@ for (const supplied of [
       utterances: [{ quote: 1 }, { quote: 2, delivery: "whisper", targetId: "rosa" }],
     },
   };
+  const aliasInput = {
+    ...original,
+    playerSpeechCapture: {
+      status: "captured",
+      utterances: [{ id: 1 }, { id: 2, delivery: "whisper", targetId: "rosa" }],
+    },
+  };
+  const beforeAlias = structuredClone(aliasInput);
+  assert.deepEqual(
+    materializePlayerSpeech(aliasInput, input),
+    materializePlayerSpeech(original, input),
+    "Supplied quote IDs retain the same exact text, occurrence and audience",
+  );
+  assert.deepEqual(aliasInput, beforeAlias, "Saved raw capture is never rewritten");
+  for (const id of [-1, 99, "1", 1.5, null])
+    assert.throws(
+      () =>
+        materializePlayerSpeech(
+          { ...original, playerSpeechCapture: { status: "captured", utterances: [{ id }] } },
+          input,
+        ),
+      /capture/,
+    );
+  assert.throws(
+    () =>
+      materializePlayerSpeech(
+        { ...original, playerSpeechCapture: { status: "captured", utterances: [{ id: 1, occurrence: 1 }] } },
+        input,
+      ),
+    /capture/,
+  );
   const expanded = materializePlayerSpeech(original, input);
   const captured = playerSpeechCapture(expanded, input);
   assert.equal(captured.get(0)![0].start, input.lastIndexOf("mint"));
@@ -684,4 +757,19 @@ for (const supplied of [
     /capture needs recovery/,
   );
   assert.equal(resolve("mint mint", [{ text: "mint", occurrence: 2 }]).get(0)![0].start, 5);
+  const originalWords = "Mari, I don’t want to be friends anymore. I’m ending our friendship.";
+  const typography = resolve(originalWords, [
+    { text: "Mari, I don't want to be friends anymore. I'm ending our friendship.", occurrence: 1 },
+  ]);
+  assert.equal(typography.get(0)![0].text, originalWords, "Typography repair always keeps the player's original words");
+  assert.equal(typography.get(0)![0].start, 0);
+  assert.equal(typography.get(0)![0].end, originalWords.length);
+  assert.equal(resolve("I don't mind.", [{ text: "I don’t mind." }]).get(0)![0].text, "I don't mind.");
+  for (const [input, text, occurrence] of [
+    ["I don’t mind. I don‘t mind.", "I don't mind.", 1],
+    ["I don’t mind.", "I don't mind.", 2],
+    ["I don’t mind.", "I do not mind.", 1],
+    ["I don’t mind.", "I don't Mind.", 1],
+  ])
+    assert.throws(() => resolve(input as string, [{ text, occurrence }]), /capture needs recovery/);
 }

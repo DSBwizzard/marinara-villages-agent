@@ -12,3 +12,8 @@ export async function processSocialOutbox(
 ): ReturnType<RelationshipSocialService["processSocialOutbox"]> {
   return binding.get().processSocialOutbox(...args);
 }
+export async function recoverSocialOutbox(
+  ...args: Parameters<RelationshipSocialService["recover"]>
+): ReturnType<RelationshipSocialService["recover"]> {
+  return binding.get().recover(...args);
+}

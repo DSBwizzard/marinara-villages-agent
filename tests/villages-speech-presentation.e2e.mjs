@@ -1,24 +1,26 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const output = resolve("artifacts/speech-presentation");
 mkdirSync(output, { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [390, 1440]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       id: "speech-placements",
       placeId: "mill",
@@ -51,10 +53,14 @@ try {
       else if (path.endsWith("/interpretation-settings"))
         value = { settings: { decisionsEnabled: false }, status: { available: false } };
       else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.route("http://speech.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial}[data-component=HomeBrowserHub],.shell{height:100%;display:flex;flex-direction:column}.mari-home-browser-chrome{height:48px;flex-shrink:0}main{flex:1;min-height:0;overflow:auto}${tag}{display:block;width:100%;height:100%}</style><div data-component="HomeBrowserHub"><div class="shell"><header class="mari-home-browser-chrome">Villages</header><main data-component="HomeBrowserHub.Content"><${tag}></${tag}></main></div></div>`,
@@ -140,9 +146,7 @@ try {
     assert.deepEqual(errors, []);
     await page.close();
   }
-} finally {
-  await browser.close();
-}
+});
 console.log(
   "Main and floating ordinary/whisper/shout speech, legacy main whispers, restored orphan anchors and desktop/mobile rendering passed.",
 );

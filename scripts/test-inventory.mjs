@@ -25,7 +25,7 @@ export async function testInventory(root = new URL("../", import.meta.url)) {
             : name.endsWith(".e2e.mjs")
               ? "mocked-browser"
               : "provider-free",
-      ...(name === "villages-decision-transport.regression.ts"
+      ...(["villages-decision-transport.regression.ts"].includes(name)
         ? { requirements: "Existing compatible Engine runtime; synthetic local provider" }
         : {}),
       ...(name === "villages-image-engine-contract.regression.ts"

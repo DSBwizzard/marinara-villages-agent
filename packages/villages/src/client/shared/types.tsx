@@ -1,11 +1,15 @@
 import type { VenueClass, VillageVenue, VillageVenueImage } from "../../shared/contracts/village.js";
-import type { StagingEvent } from "../../shared/helpers/scene-staging.js";
 import type { SpeechDelivery } from "../../shared/helpers/scene-speech.js";
+import type { StagingPresentation } from "../../shared/helpers/scene-staging.js";
+import type { VillagesWalkAside } from "../../shared/contracts/scene-beat.js";
 import type { VillagesMarkdownNode } from "./villages-inline-markdown";
 
-export type SetupMapSource = "existing" | "generate" | "upload";
+export type SetupMapSource = "existing" | "simple" | "generate" | "upload";
 
-export type SetupVenueDraft = VillageVenue;
+export type SetupVenueDraft = VillageVenue & {
+  /** null follows the household; absent retains an existing draft's capacity. */
+  foundingCapacity?: number | null;
+};
 
 export type PersonaPreview = {
   id: string;
@@ -50,7 +54,7 @@ export type PersonaPreview = {
  */
 export type VillageBeatRegister = "speech" | "narration";
 
-export type SceneComposerMode = "chat" | "fulfill" | "move" | "conclude" | "contact";
+export type SceneComposerMode = "chat" | "move" | "conclude";
 
 /**
  * What a connection is for, in the Engine's own terms.
@@ -167,7 +171,6 @@ export type VenueViewZone = {
   locked: boolean;
   canEnter: boolean;
   accessLabel: string;
-  adaptationPending?: boolean;
 };
 
 /** One pin drawn over the town map. */
@@ -247,27 +250,18 @@ export type IdentityPreview = IdentityChoice & {
   context: string;
 };
 
-/** One line attached to a Scene paragraph instead of becoming a separate step. */
-export type VillagesWalkAside = {
-  register: "side" | "whisper" | "shout";
-  /** The words, with the tag taken off. */
-  text: string;
-  /** The listener, on a whisper. Absent when the villager did not name one. */
-  target?: string;
-};
-
 /** One paragraph in a Scene, with its speaker and attached asides. */
 export type RoomStep = {
-  stagingEvent?: StagingEvent;
-  /**
-   * Stable under append, which is the only thing a room's history ever does.
-   *
-   * The position in the walk rather than the time on the line: two paragraphs can
-   * share a second, and a key made of the clock would collide on the first fast
-   * answer. Nothing is ever removed from the middle of a room, so a number that
-   * only ever counts up cannot go stale.
-   */
+  /** World/Scene/line/paragraph identity survives window changes and reflow. */
   key: string;
+  lineId: string;
+  paragraph: number;
+  paragraphIndex: number;
+  momentIndex: number;
+  anchorCursor?: string;
+  presentation: StagingPresentation;
+  viaDoorway?: boolean;
+  remoteDelivery?: "loud";
   /** A character id, or `""` for the player's own paragraph. */
   speakerId: string;
   /** What is printed over the paragraph: their name, or the player's. */
@@ -281,46 +275,9 @@ export type RoomStep = {
   gazeAt?: string;
 };
 
-// ── RETIRED 0.4.43 — the gate the tab drew while a villager was away. ───────
-//
-// What was here was `SceneGate({ lock, villageName, chatName, busy, error,
-// onGo, onBringBack, onForget })`, and it was drawn INSTEAD of the whole tab
-// whenever the scene listing carried a lock. The village stood still while a
-// villager was out: every route refused work, and this screen offered the three
-// things that were still on offer.
-//
-// It is retired because the lane it belonged to is gone. The lock needed a link
-// record to be true of, the link record is what 0.4.43 deleted, and the reason
-// it could be deleted is that a spin-off is a roleplay the player owns: the
-// village takes a snapshot and then has nothing left to wait for, so there is no
-// state for a gate to be the drawing of. The snapshot is *frozen*, which is the
-// whole answer to "how does the village still reach the chat without a live
-// feed" — a gate was only ever needed when the answer was a live feed.
-//
-// WHAT IS WORTH KEEPING, if a lock is ever wanted again:
-//   • `readVillageSceneLock` and the `VillageSceneLockView` shape, both of which
-//     are still in the server (`services/villages/spinoff.ts`) and still
-//     exported, kept rather than deleted for exactly this reason;
-//   • `sceneLockedRoutes(engine)` in `routes/villages.routes.ts`, which is the
-//     hook-free way to make every other route refuse, and the one line it takes
-//     to re-register;
-//   • `leaveForChat`, which is below and still live — it is how the player is
-//     put into a chat the Engine made, and the spawn path uses it on every run;
-//   • the `.${ELEMENT_TAG}-gate*` rules in the stylesheet, which are left in
-//     place and now match nothing.
-
 /**
- * Pages reachable from the village menu and the map's Noticeboard shortcut.
+ * Pages reachable from the village menu.
  */
-type MenuTab =
-  | "events"
-  | "villagers"
-  | "noticeboard"
-  | "venueRequests"
-  | "projects"
-  | "village"
-  | "general"
-  | "chatlogs"
-  | "progress";
+type MenuTab = "villagers" | "venueRequests" | "projects" | "village" | "visual" | "general" | "advanced" | "progress";
 
-export type MenuPage = "index" | MenuTab;
+export type MenuPage = "index" | "repair" | MenuTab;

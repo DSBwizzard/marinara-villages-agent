@@ -1,12 +1,17 @@
 import { copyDate } from "../../shared/helpers/zoned-date.js";
-import { villageNow } from "../adapters/time/clock-gate.js";
+import { VILLAGE_ACTIVITY_POLICY } from "../../shared/helpers/activity-policy.js";
+import { createActivationBinding } from "../adapters/engine/activation-scope.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
+import { onVillageClockAdvance, villageNow } from "../adapters/time/clock-gate.js";
 import type { VillageState } from "../domain/models/world.js";
 import { agendaBlocksFor } from "../domain/rules/agenda-week.js";
+import { nextEventAttemptAt } from "../domain/rules/event-attempts.js";
+import { arrangementActivityAt } from "../domain/rules/activity-arbitration.js";
+import { nextEnvironmentDeadline } from "../domain/rules/narrative-environment.js";
 import { nextClockChangeAt } from "../domain/rules/village-clock.js";
-import { wishRetained } from "../domain/rules/wish-definition.js";
-import { readVillageState } from "../features/world/village-store.js";
+import { readVillageAuthority, readVillageSnapshot } from "../features/world/village-store.js";
 import { reconcileVillage } from "../features/world/village.js";
+import { hasVillagePresence } from "./background-work.js";
 
 // Villages — arm one unreferenced wake for the next meaningful deadline.
 //
@@ -17,6 +22,12 @@ import { reconcileVillage } from "../features/world/village.js";
 export const REFRESH_MIN_DELAY_MS = 1_000;
 export const REFRESH_SETTLE_MS = 250;
 export const REFRESH_MAX_DELAY_MS = 24 * 60 * 60_000;
+const refreshBinding = createActivationBinding<() => void>("Village refresh scheduler is not running.");
+
+/** Re-arm the activation's existing timer after activity settings, presence or work changes. */
+export function requestVillageRefresh(): void {
+  refreshBinding.maybe()?.();
+}
 
 function localMinuteDeadline(now: Date, minute: number): number {
   const deadline = copyDate(now);
@@ -26,39 +37,36 @@ function localMinuteDeadline(now: Date, minute: number): number {
 }
 
 /**
- * Find the next schedule, atmosphere, wish, or planned-event deadline. The
+ * Find the next schedule, atmosphere, Wish or move deadline. The
  * calculation is exact to the stored minute and never replays every minute in
  * between.
  */
 export function villageSchedulerDelayMs(
   now: Date,
-  village?: Pick<VillageState, "villagers" | "scheduledEvents" | "residences" | "venueMail">,
+  village?: Pick<VillageState, "villagers" | "residences"> & Partial<VillageState>,
+  activityNotBefore = Number.NEGATIVE_INFINITY,
 ): number {
   if (!Number.isFinite(now.getTime())) return REFRESH_MAX_DELAY_MS;
   const deadlines = [nextClockChangeAt(now).getTime()];
+  const environment = nextEnvironmentDeadline(village?.narrative, now.getTime());
+  if (environment !== null) deadlines.push(environment);
+  if (village?.backgroundPace) {
+    let activity = nextEventAttemptAt(village as VillageState, now);
+    const arrangement = arrangementActivityAt(village as VillageState, now);
+    if (activity !== null && arrangement !== null && arrangement > now.getTime() && activity <= arrangement)
+      activity = arrangement;
+    if (activity !== null && activityNotBefore !== Number.POSITIVE_INFINITY)
+      deadlines.push(activity > now.getTime() ? activity : Math.max(now.getTime(), activityNotBefore));
+  }
   for (const villager of village?.villagers ?? []) {
     for (const row of villager.agenda ? agendaBlocksFor(villager.agenda, villager.ingestSchedule !== false, now) : []) {
       deadlines.push(localMinuteDeadline(now, row.startMinute), localMinuteDeadline(now, row.endMinute));
     }
-    for (const wish of villager.agenda?.wishes ?? []) {
-      if (wishRetained(wish)) continue;
-      const expiry = Date.parse(wish.expiresAt);
-      if (Number.isFinite(expiry) && expiry > now.getTime()) deadlines.push(expiry);
-    }
-  }
-  for (const event of village?.scheduledEvents ?? []) {
-    const occursAt = Date.parse(event.occursAt);
-    if (Number.isFinite(occursAt) && occursAt > now.getTime()) deadlines.push(occursAt);
   }
   for (const residence of village?.residences ?? []) {
     if (residence.status !== "moving") continue;
     const completesAt = Date.parse(residence.completesAt ?? "");
     if (Number.isFinite(completesAt) && completesAt > now.getTime()) deadlines.push(completesAt);
-  }
-  for (const mail of village?.venueMail ?? []) {
-    if (mail.status !== "awaiting-villagers") continue;
-    const dueAt = Date.parse(mail.dueAt);
-    if (Number.isFinite(dueAt) && dueAt > now.getTime()) deadlines.push(dueAt);
   }
   const next = Math.min(...deadlines);
   const delay = next - now.getTime() + REFRESH_SETTLE_MS;
@@ -73,6 +81,8 @@ export function startVillageRefreshScheduler(
   let stopped = false;
   let running = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let armRevision = 0;
+  let lastActivityCheckAt = Number.NEGATIVE_INFINITY;
 
   const arm = (delay: number) => {
     if (stopped) return;
@@ -85,12 +95,20 @@ export function startVillageRefreshScheduler(
 
   const armNext = async () => {
     if (stopped) return;
+    const revision = ++armRevision;
+    if (timer) clearTimeout(timer);
+    timer = null;
     try {
-      const village = await readVillageState();
-      arm(delayMs(villageNow(), village));
+      const village = await readVillageSnapshot().catch(() => readVillageAuthority());
+      if (stopped || revision !== armRevision) return;
+      const now = villageNow();
+      const activityNotBefore = hasVillagePresence()
+        ? lastActivityCheckAt + VILLAGE_ACTIVITY_POLICY[village.backgroundPace].intervalMs
+        : Number.POSITIVE_INFINITY;
+      arm(options.delayMs ? delayMs(now, village) : villageSchedulerDelayMs(now, village, activityNotBefore));
     } catch (error) {
       villagesLogger().warn("[villages] could not read the next village deadline: %s", String(error));
-      arm(REFRESH_MAX_DELAY_MS);
+      if (!stopped && revision === armRevision) arm(REFRESH_MAX_DELAY_MS);
     }
   };
 
@@ -98,6 +116,7 @@ export function startVillageRefreshScheduler(
     if (!stopped && !running) {
       running = true;
       try {
+        lastActivityCheckAt = villageNow().getTime();
         await reconcileVillage();
       } catch (error) {
         villagesLogger().warn("[villages] could not reconcile village time: %s", String(error));
@@ -108,11 +127,21 @@ export function startVillageRefreshScheduler(
     await armNext();
   };
 
+  const unsubscribe = onVillageClockAdvance(() => {
+    lastActivityCheckAt = Number.NEGATIVE_INFINITY;
+    void armNext();
+  });
+  const releaseRefresh = refreshBinding.configure(() => {
+    lastActivityCheckAt = Number.NEGATIVE_INFINITY;
+    void armNext();
+  });
   void armNext();
   villagesLogger().debug("[villages] Continuous village reconciliation started");
 
   return () => {
     stopped = true;
+    releaseRefresh();
+    unsubscribe();
     if (timer) clearTimeout(timer);
     timer = null;
   };

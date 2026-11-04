@@ -1,4 +1,17 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
+import {
+  createActivationScope,
+  installDefaultActivation,
+  scopedActivation,
+} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { wishFingerprint } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
   createSceneWriting,
   type SceneWritingPorts,
@@ -8,28 +21,18 @@ import {
   generate,
   prepareVenueTurnMessages,
 } from "../packages/villages/src/server/features/scenes/writing.js";
-import {
-  createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { readEffectiveVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { wishFingerprint } from "../packages/villages/src/server/domain/rules/wish-interpretation-rules.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 const stamp = "2026-10-07T12:00:00.000Z";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
-function fixture(label: string) {
+function fixture(label: string, checkpointed = false) {
   const world = defaultVillageState();
   world.seed = "same-seed";
   world.name = label;
   world.foundedAt = world.setupAt = stamp;
   const scene = coerceSession({
+    version: 3,
+    semanticVersion: 2,
     id: "same-scene",
     placeId: "same-place",
     placeName: "Common room",
@@ -54,7 +57,9 @@ function fixture(label: string) {
     guardDisposed = false,
     brokenReply = false;
   const owner = createActivationScope();
-  let roomInterpretation: Awaited<ReturnType<SceneWritingPorts["interpretRoomReply"]>> = null;
+  const checkpoints = new Map<string, unknown>();
+  let roomInterpretation:
+    import("../packages/villages/src/server/domain/models/interpretation-model.js").InterpretationBatch | null = null;
   async function touch(stage: string) {
     calls.push(stage);
     owners.push(scopedActivation());
@@ -123,8 +128,22 @@ function fixture(label: string) {
       calls.push("debug");
     },
     venueOperationId: () => label + " operation",
-    venueOperationInput: () => ({ interactionScopeVersion: 1 }),
-    venueOperationSignal: () => undefined,
+    venueOperationInput: () => ({
+      interactionScopeVersion: 6,
+      writingContractVersion: 3,
+      semanticPipelineVersion: 3,
+      residentActionsVersion: 2,
+      writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+    }),
+    venueCheckpoint: async <T>(stage: string, work: () => Promise<T>): Promise<T> => {
+      if (!checkpointed) return work();
+      if (checkpoints.has(stage)) return structuredClone(checkpoints.get(stage)) as T;
+      const value = await work();
+      checkpoints.set(stage, structuredClone(value));
+      return value;
+    },
+    venueSavedCheckpoint: <T>(stage: string) =>
+      checkpointed && checkpoints.has(stage) ? (structuredClone(checkpoints.get(stage)) as T) : undefined,
     rejectVenueCompletion: async () => {
       calls.push("reject");
     },
@@ -138,6 +157,8 @@ function fixture(label: string) {
         content: brokenReply
           ? "invalid"
           : JSON.stringify({
+              playerSpeechCapture: { status: "silent", utterances: [] },
+              residentActions: [],
               segments: [{ kind: "narration", text: label + " room remains quiet." }],
               heardPlayerBy: [],
               wishChanges: [],
@@ -152,11 +173,25 @@ function fixture(label: string) {
       await touch("refresh");
       return scene;
     },
-    interpretRoomReply: async (selected, current) => {
-      assert.equal(selected, scene);
-      assert.equal(current, world);
-      await touch("interpretation");
-      return roomInterpretation;
+    semantic: {
+      preflight: async () => {},
+      intent: async () => assert.fail("The current writer never buys a separate intent"),
+      exchange: async () => {
+        await touch("interpretation");
+        return {
+          version: 2,
+          checkpointKey: "exchange",
+          sourceHash: "current-system",
+          authority: { physical: false, access: true, projects: false, standing: false },
+          effects: {
+            memoryChanges: [],
+            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+            wishChanges: [],
+            projectSpeech: [],
+          },
+          access: roomInterpretation,
+        };
+      },
     },
   };
   const service = createSceneWriting(ports);
@@ -205,10 +240,41 @@ assert.equal(reply.lines[0]?.content, "A room remains quiet.");
 assert.equal(reply.roomInterpretation, null);
 assert.equal(complete.calls.filter((x) => x === "completion").length, 1);
 assert.equal(complete.calls.filter((x) => x === "interpretation").length, 1);
+{
+  const replay = fixture("replay", true);
+  replay.world.villagers = [wishWorld().villagers[0]];
+  const initial = fixtureWish({ wish: "Original captured desire" }, "same-wish", stamp);
+  replay.world.villagers[0].wishes = [initial];
+  replay.scene.participants = [{ characterId: "a", name: "Ada", doing: "Waiting" }];
+  replay.scene.activeIds = ["a"];
+  replay.scene.continuity = captureSceneContinuity(replay.world, replay.scene, Date.parse(stamp));
+  replay.fail("interpretation");
+  await assert.rejects(replay.run(), (error) => error === replay.exact);
+  assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1);
+  const updated = { ...initial, revision: 2, wish: "Later committed desire" };
+  replay.world.villagers[0].wishes = [updated];
+  replay.scene.submissions.push({ id: "earlier", at: stamp } as never);
+  replay.world.exchangeReceipts.late = {
+    id: "late",
+    sceneId: replay.scene.id,
+    submissionId: "earlier",
+    status: "applied",
+    sceneFacts: { wish: { actorId: "a", wishId: initial.id, value: updated } },
+  } as never;
+  replay.fail("");
+  const reply = await replay.run();
+  assert.equal(
+    reply.wishContexts[0].wishes[0].wish,
+    initial.wish,
+    "Saved writing and its recovery baseline remain one purchased request despite delayed earlier Scene effects",
+  );
+  assert.equal(reply.wishContexts[0].wishes[0].revision, 1);
+  assert.equal(replay.calls.filter((stage) => stage === "completion").length, 1, "Retry reuses the purchased response");
+}
 for (const source of ["decisions", "system"] as const) {
   const invitation = fixture(source);
   invitation.world.venues = [
-    {
+    venueFixture({
       id: "same-place",
       name: "Ada's home",
       classes: ["residence"],
@@ -227,7 +293,7 @@ for (const source of ["decisions", "system"] as const) {
           ownerId: "ada",
         },
       ],
-    },
+    }),
   ] as any;
   invitation.interpretation({
     checks: [
@@ -243,11 +309,10 @@ for (const source of ["decisions", "system"] as const) {
     results: [{ outcome: "invite-now", source, evidenceIds: ["spoken"], reason: "" }],
     traces: [],
   });
-  const result = await invitation.run();
-  assert.equal(
-    !!result.invitationSignal,
-    source === "system",
-    "unbound saved Decision invitations are inert; the same System evidence retains normal authority checks",
+  await assert.rejects(
+    invitation.run(),
+    /lacks current witnessed evidence/,
+    "Neither a Decision nor System can grant an invitation from an absent source line",
   );
 }
 for (const stage of ["world", "connection", "lore", "model", "completion", "refresh", "interpretation"]) {

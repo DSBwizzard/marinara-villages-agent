@@ -5,6 +5,7 @@ export const VILLAGES_SCENE_STYLES = `
 [data-component="HomeBrowserHub"]:has(${tag}[data-scene-play]) [data-component="HomeBrowserHub.Content"] { overflow: hidden; }
 ${tag}[data-scene-play] { height: var(--villages-scene-canvas-height, 100%) !important; }
 .${tag}-root.${tag}-room-screen { position: relative; }
+.${tag}-room-time { display: block; overflow: hidden; text-overflow: ellipsis; font-size: .6875rem; opacity: .8; }
 .${tag}-room-screen > .${tag}-room-error { position: absolute; z-index: 20; top: 3rem; left: .75rem; right: .75rem; max-height: max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 9rem)); overflow-y: auto; }
 .${tag}-room-screen > .${tag}-chat { position: relative; flex: 1 0 100%; height: 100%; min-height: 0; }
 .${tag}-room-screen .${tag}-chat-stage {
@@ -56,6 +57,9 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-chat-log {
   position: relative; inset: auto; max-height: min(55cqh, max(3rem, calc(var(--villages-scene-visible-height, 100cqh) - 10rem)));
 }
+.${tag}-scene-history-pages { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; padding-bottom: .5rem; background: var(--popover); }
+.${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 32px; }
+.${tag}-room-screen[data-mobile="true"] .${tag}-scene-history-pages .${tag}-chat-vn-button { min-height: 44px; min-width: 44px; }
 .${tag}-room-screen .${tag}-composer { border: 0; padding: 0; gap: .375rem; }
 .${tag}-room-screen .${tag}-chat-input { padding: .375rem .5rem; gap: .25rem; }
 .${tag}-room-screen .${tag}-chat-input:has(> .${tag}-attention-choice) { flex-wrap: wrap; }
@@ -95,6 +99,9 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-room-screen .${tag}-scene-notice-chips .${tag}-room-stars { top: calc(100% + .5rem); left: 0; right: auto; }
 .${tag}-scene-error-trigger { display: flex; align-items: center; justify-content: center; gap: .4rem; min-height: 44px; min-width: 3.5rem; padding: .35rem .65rem; border: 1px solid var(--border); border-radius: 1.5rem; background: var(--popover); color: var(--foreground); font: inherit; font-size: .75rem; cursor: pointer; }
 .${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #ed6689; }
+.${tag}-scene-errors[data-information] .${tag}-scene-error-trigger[aria-expanded="true"] { border-color: #75b7f5; }
+.${tag}-scene-errors[data-information] .${tag}-scene-error-icon { background: #75b7f5; color: #102a43; }
+.${tag}-scene-errors[data-information] .${tag}-scene-error-detail { padding-top: .75rem; }
 .${tag}-scene-error-icon { display: inline-grid; place-items: center; flex: 0 0 auto; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #ed6689; color: #2c101a; font-weight: 750; font-size: .875rem; line-height: 1; }
 .${tag}-scene-error-panel { position: absolute; top: calc(100% + .5rem); left: 0; width: min(26rem, 100%); max-height: max(5rem, calc(var(--villages-scene-visible-height, 100cqh) - 12rem)); overflow-y: auto; box-sizing: border-box; border: 1px solid var(--border); border-radius: .75rem; background: var(--popover); color: var(--foreground); box-shadow: 0 .75rem 2rem #0006; font-size: .8125rem; }
 .${tag}-scene-error-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .25rem .75rem; border-bottom: 1px solid var(--border); }
@@ -116,7 +123,6 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-error-trigger:focus-visible, .${tag}-scene-error-item summary:focus-visible, .${tag}-scene-error-panel button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .${tag}-scene-modal-errors { position: relative; margin-bottom: .5rem; }
 .${tag}-scene-modal-errors .${tag}-scene-error-panel { z-index: 40; }
-.${tag}-spinoff-error-notice .${tag}-scene-error-panel { top: auto; bottom: calc(100% + .5rem); max-height: 50cqh; }
 @media (min-width: 768px) {
   .${tag}-room-screen .${tag}-chat-vn-row { padding: 1rem; gap: 1rem; }
   .${tag}-room-screen .${tag}-chat-input { padding: .625rem 1rem; gap: .5rem; }

@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -14,11 +15,7 @@ import {
 import type { InterpretationTrace } from "../packages/villages/src/server/domain/models/interpretation-model.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const trace: InterpretationTrace = {
   id: "access-speech:same-check",
@@ -56,7 +53,7 @@ function fixture(name: string) {
       return next;
     },
     async remove(_package: string, id: string, revision: number) {
-      if (rows.get(id)?.revision === revision) rows.delete(id);
+      return rows.get(id)?.revision === revision && rows.delete(id);
     },
   };
   const ports = {
@@ -73,7 +70,11 @@ function fixture(name: string) {
   };
   const service = createInterpretationDiagnostics(ports);
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
-  const host: any = { persistence: { documents }, isDebugAgentsEnabled: () => false, logger };
+  const host: any = {
+    persistence: { documents: villageFixtureDocuments(documents) },
+    isDebugAgentsEnabled: () => false,
+    logger,
+  };
   return {
     service,
     ports,

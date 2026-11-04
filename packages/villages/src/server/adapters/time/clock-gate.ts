@@ -1,21 +1,38 @@
 import { createActivationBinding } from "../engine/activation-scope.js";
-import type { VillageClockView } from "../../../shared/contracts/clock.js";
+import { withRepairWork, assertRepairGeneration } from "../storage/repair-gate.js";
+import type { VillageClockView, VillageTimeAdvance } from "../../../shared/contracts/clock.js";
+import type { VillageState } from "../../domain/models/world.js";
+export type ClockAdvanceEffect = (state: VillageState, from: Date, until: Date) => void;
 export interface VillageClockAuthority {
   observe(): Promise<VillageClockView>;
-  now(): Date;
+  now(advanceMs?: number): Date;
   shiftMs?(): number;
   commit?<T>(work: () => Promise<T>, revision?: number): Promise<T>;
   resolve(revision: number, choice: "accept" | "check"): Promise<VillageClockView>;
+  advance?(request: VillageTimeAdvance, effect?: ClockAdvanceEffect): Promise<VillageClockView>;
+  onAdvance?(listener: () => void): () => void;
+  advanceSettled?(): void;
 }
 const binding = createActivationBinding<VillageClockAuthority>("Village clock is not configured.");
 export function configureVillageClock(authority: VillageClockAuthority) {
   return binding.configure(authority);
 }
-export function villageNow(): Date {
-  return binding.maybe()?.now() ?? new Date();
+export function villageNow(advanceMs?: number): Date {
+  return binding.maybe()?.now(advanceMs) ?? new Date(Date.now() + (advanceMs ?? 0));
 }
 export async function observeVillageClock() {
   return binding.maybe()?.observe();
+}
+export function advanceVillageClock(request: VillageTimeAdvance, effect?: ClockAdvanceEffect) {
+  const clock = binding.get();
+  if (!clock.advance) throw new Error("Time advancement is unavailable.");
+  return clock.advance(request, effect);
+}
+export function onVillageClockAdvance(listener: () => void): () => void {
+  return binding.maybe()?.onAdvance?.(listener) ?? (() => {});
+}
+export function villageTimeAdvanceSettled(): void {
+  binding.maybe()?.advanceSettled?.();
 }
 // Compatibility adapters for callers built around the former blocking recovery gate.
 // Time changes no longer invalidate work, provider responses or storage commits.
@@ -24,11 +41,14 @@ export function clockAdministration<T>(callback: () => T): T {
 }
 export async function assertVillageClockWrite() {}
 export async function withVillageClockWork<T>(callback: () => Promise<T>, _readOnly = false): Promise<T> {
-  await observeVillageClock();
-  return callback();
+  return withRepairWork(async () => {
+    await observeVillageClock();
+    return callback();
+  });
 }
 export async function guardedClockGeneration<T>(callback: () => Promise<T>): Promise<T> {
-  return callback();
+  assertRepairGeneration();
+  return withRepairWork(callback);
 }
 export async function resolveVillageClock(revision: number, choice: "accept" | "check") {
   return binding.get().resolve(revision, choice);

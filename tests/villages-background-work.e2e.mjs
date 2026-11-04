@@ -1,12 +1,10 @@
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const tag = "marinara-capability-villages";
 const snapshot = {
@@ -29,16 +27,12 @@ const snapshot = {
     dayIndex: 1,
     nextTransitionAt: "2026-09-28T18:00:00.000Z",
   },
-  noticeboard: [],
   venueRequests: [],
   projects: [],
-  upgradeRequests: [],
   residences: [],
   venueMail: [],
-  happenings: [],
   villagers: [{ characterId: "mara", name: "Mara", summary: "", tags: [], missing: false, place: null }],
   foundingPreparation: null,
-  recap: null,
   settings: {
     characterSpeechColors: false,
     visitRetention: { mode: "forever", value: 0 },
@@ -46,26 +40,20 @@ const snapshot = {
     defaultPromptKnowledge: "",
     promptBoxMaxLength: 2000,
     macros: [],
-    storyPace: "off",
-    storyPaces: ["off"],
+    backgroundPace: "off",
+    backgroundPaces: ["off"],
     villageNameMaxLength: 80,
     playerPersonaId: "",
     playerPersonaName: "",
     playerPersonaMissing: false,
-    maxNoticeboardNotes: 12,
-    maxNoticeLength: 500,
     setting: "A quiet village",
     settingMaxLength: 2000,
-    foundingReason: "",
-    foundingDetails: "",
     foundingGuidance: "",
-    scenarioImprint: null,
     worldFacts: [],
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     loreTokenBudgetMin: 200,
     loreTokenBudgetMax: 3200,
-    foundingDetailsMaxLength: 2000,
     foundingGuidanceMaxLength: 500,
     townMapLayoutPrompt: "",
     townMapNegativePrompt: "",
@@ -84,7 +72,7 @@ const snapshot = {
     setupPlaceCount: 5,
     setupMinVillagerCount: 0,
     setupMaxVillagerCount: 3,
-    townMapImageSetAt: "",
+    maps: [],
     townMapImageMaxLength: 100000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     townMapExpectedWidth: 1280,
@@ -100,6 +88,7 @@ const snapshot = {
 snapshot.backgroundWork = [
   {
     id: "villages-background-" + "a".repeat(64),
+    instanceId: "10000000-0000-4000-8000-000000000000",
     kind: "agenda",
     subjectId: "mara",
     label: "Mara's agenda",
@@ -116,6 +105,7 @@ snapshot.backgroundWork[0].failedAt = "2026-09-28T12:00:00.000Z";
 snapshot.backgroundWork[0].failure = { cause: "provider_exception", stage: "dispatch" };
 snapshot.backgroundWork.push({
   id: "villages-background-" + "b".repeat(64),
+  instanceId: "20000000-0000-4000-8000-000000000000",
   kind: "wish-check",
   subjectId: "finished",
   label: "Finished Wish check",
@@ -128,30 +118,32 @@ snapshot.backgroundWork.push({
   connectionPaused: false,
 });
 const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+await mockEngineLookups(page);
 const errors = [],
   heartbeats = [],
   retries = [];
 let acceptedRetries = 0;
-try {
+await withBrowser(browser, async () => {
   await page.clock.install();
   page.on("pageerror", (error) => errors.push(error.message));
   await page.route("**/api/villages**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/background/presence")) {
       heartbeats.push(route.request().postDataJSON());
-      return route.fulfill({ json: { ready: true, snapshot } });
+      return fulfill(route, { json: { ready: true, snapshot } });
     }
     if (path.endsWith("/background/retry")) {
       const action = route.request().postDataJSON();
+      assert.equal(action.expectedInstanceId, snapshot.backgroundWork[0].instanceId);
       retries.push(action);
       if (retries.length === 1) {
         acceptedRetries++;
         snapshot.backgroundWork[0].attempt++;
-        await route.abort(); // The server accepted it but its HTTP response was lost.
+        await abort(route); // The server accepted it but its HTTP response was lost.
         return;
       }
       assert.deepEqual(action, retries[0], "retrying a lost response retains action ID and expected attempt");
-      return route.fulfill({ json: snapshot });
+      return fulfill(route, { json: snapshot });
     }
     const response = path.endsWith("/catalog")
       ? { characters: [] }
@@ -164,11 +156,11 @@ try {
             : path.endsWith("/narration")
               ? { tense: "present", person: "second", rating: "sfw" }
               : snapshot;
-    return route.fulfill({ json: response });
+    return fulfill(route, { json: response });
   });
-  await page.route("**/api/connections", (route) => route.fulfill({ json: [] }));
+  await page.route("**/api/connections", (route) => fulfill(route, { json: [] }));
   await page.route("http://villages.test/", (route) =>
-    route.fulfill({
+    fulfill(route, {
       contentType: "text/html",
       body: "<style>html,body{margin:0;width:100%;height:100%;font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
     }),
@@ -181,17 +173,21 @@ try {
   await page.addScriptTag({ path: resolve("packages/villages/client.js") });
   await expect.poll(() => heartbeats.some((beat) => beat.visible)).toBe(true);
   await page.getByRole("button", { name: "More" }).click();
+  await expect(page.getByText("Background work", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Debug", exact: true }).click();
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Needs attention (1)" })).toBeVisible();
-  await expect(page.getByText(/Background work: 0 running \/ queued, 0 paused, 1 need attention/)).toBeVisible();
+  await expect(page.getByText("0 active · 0 paused · 1 need attention", { exact: true })).toBeVisible();
   await expect(page.getByText("Finished Wish check", { exact: true })).not.toBeVisible();
-  await page.getByText("Completed history (1)", { exact: true }).click();
+  await page.getByText("Completed (1)", { exact: true }).click();
   await expect(page.getByText("Finished Wish check", { exact: true })).toBeVisible();
-  await page.getByText("Completed history (1)", { exact: true }).click();
+  await page.getByText("Completed (1)", { exact: true }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(page.getByText("Wednesday unavailable", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Retry unfinished work" })).toBeVisible();
-  await expect(page.getByText(/3 reusable steps, 4 requests, token usage unavailable/)).toBeVisible();
+  await expect(page.getByText(/3 steps · 4 requests · tokens unavailable/)).toBeVisible();
+  if (process.env.VILLAGES_BACKGROUND_SCREENSHOT)
+    await page.screenshot({ path: process.env.VILLAGES_BACKGROUND_SCREENSHOT });
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect(page.getByRole("alert")).toContainText("Could not reach the server");
   await page.clock.fastForward(30_000);
@@ -199,12 +195,12 @@ try {
   await page.getByRole("button", { name: "Retry unfinished work" }).click();
   await expect.poll(() => retries.length).toBe(2);
   assert.equal(acceptedRetries, 1);
-  await page.getByRole("button", { name: /^Villagers \(/ }).click();
+  await page.getByRole("button", { name: "People", exact: true }).click();
   await page.getByRole("button", { name: "Open Mara profile" }).click();
   await page.getByRole("button", { name: "Inspect", exact: true }).click();
-  await expect(page.getByText("Mara's agenda", { exact: true })).toBeVisible();
-  if (process.env.VILLAGES_BACKGROUND_SCREENSHOT)
-    await page.screenshot({ path: process.env.VILLAGES_BACKGROUND_SCREENSHOT });
+  await expect(
+    page.getByRole("region", { name: "Mara profile", exact: true }).getByText("Background work"),
+  ).toHaveCount(0);
   await page.evaluate(() => {
     document.querySelector("marinara-capability-villages").style.display = "none";
   });
@@ -213,6 +209,4 @@ try {
   console.log(
     "Villages background UI: contextual recovery, lost response IDs, HTTP LAN, heartbeat and visibility passed",
   );
-} finally {
-  await browser.close();
-}
+});

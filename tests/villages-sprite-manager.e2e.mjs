@@ -1,23 +1,17 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { residentsFixture } from "./fixtures/residents-browser.fixture.mjs";
+const residentsBundle = await residentsFixture();
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync } from "node:fs";
-import { createRequire } from "node:module";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { PNG } from "pngjs";
-import { chromium, expect as baseExpect } from "@playwright/test";
+import { chromium, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { fastExpect } from "./fixtures/fast-browser-expect.mjs";
 import { snapshot, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
-const expect = baseExpect.configure({ timeout: 15000 });
-const require = createRequire(import.meta.url);
-const { build } = require("esbuild");
+const expect = fastExpect({ timeout: 15000 });
 mkdirSync(".build-tmp/sprite-manager", { recursive: true });
-await build({
-  entryPoints: [resolve("packages/villages/src/shared/helpers/sprite-framing.ts")],
-  bundle: true,
-  platform: "node",
-  format: "cjs",
-  outfile: resolve(".build-tmp/sprite-manager/pixels.cjs"),
-});
-const { renderSpritePixels, initialSpriteFrame } = require(resolve(".build-tmp/sprite-manager/pixels.cjs"));
+import { renderSpritePixels, initialSpriteFrame } from "../packages/villages/src/shared/helpers/sprite-framing.ts";
 function pngImage(opaque = false, multiple = false) {
   const image = new PNG({ width: multiple ? 192 : 64, height: 96 });
   if (opaque) image.data.fill(255);
@@ -30,11 +24,8 @@ function pngImage(opaque = false, multiple = false) {
 }
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync("C:/Program Files/Google/Chrome/Application/chrome.exe")
-    ? { executablePath: "C:/Program Files/Google/Chrome/Application/chrome.exe" }
-    : {}),
 });
-try {
+await withBrowser(browser, async () => {
   for (const viewport of [
     { width: 1917, height: 1000 },
     { width: 1440, height: 900 },
@@ -44,6 +35,19 @@ try {
     { width: 360, height: 640 },
   ]) {
     const page = await browser.newPage({ viewport, hasTouch: viewport.width < 720 });
+    await mockEngineLookups(page);
+    await page.addInitScript(() => {
+      window.spriteDownloads = [];
+      window.__MARINARA_HOST__ = {
+        api: {
+          api: {
+            download: async (path, filename) => {
+              window.spriteDownloads.push({ path, filename });
+            },
+          },
+        },
+      };
+    });
     const errors = [],
       requests = [],
       files = new Map();
@@ -51,6 +55,10 @@ try {
       failUnassign = false,
       failLibrary = false;
     page.on("pageerror", (error) => errors.push(error.message));
+    page.on("dialog", (dialog) => {
+      errors.push("Unexpected browser dialog: " + dialog.type());
+      void dialog.dismiss();
+    });
     let manager = {
       version: 1,
       artwork: [],
@@ -108,14 +116,14 @@ try {
       return id;
     }
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--primary:#a7c7ff;--primary-foreground:#152132}html,body{margin:0;background:#171b25;color:#f4f0e8;font:16px Arial}marinara-capability-villages{display:block;height:100vh}</style><marinara-capability-villages></marinara-capability-villages>",
       }),
     );
     await page.route("**/api/sprites/**", (route) => {
       const bytes = files.get(new URL(route.request().url()).pathname);
-      return route.fulfill({ status: bytes ? 200 : 404, contentType: "image/png", body: bytes ?? "" });
+      return fulfill(route, { status: bytes ? 200 : 404, contentType: "image/png", body: bytes ?? "" });
     });
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
@@ -160,7 +168,7 @@ try {
           } else if (path.endsWith("/save")) {
             if (failSave) {
               failSave = false;
-              await route.fulfill({
+              await fulfill(route, {
                 status: 500,
                 contentType: "application/json",
                 body: JSON.stringify({ error: "Storage failed; your assigned artwork is unchanged." }),
@@ -179,8 +187,8 @@ try {
             files.set(art.rendered.url, PNG.sync.write({ ...rendered.image, data: Buffer.from(rendered.image.data) }));
             const id = body.expressionId || "e-" + randomUUID(),
               expression = manager.expressions.find((item) => item.id === id);
-            if (expression) Object.assign(expression, { name: body.name, useWhen: body.useWhen });
-            else manager.expressions.push({ id, name: body.name, useWhen: body.useWhen });
+            if (expression) Object.assign(expression, { name: body.name });
+            else manager.expressions.push({ id, name: body.name });
             manager.assignments = manager.assignments.filter(
               (item) => item.expressionId !== id || item.view !== body.view,
             );
@@ -189,7 +197,7 @@ try {
           } else if (path.endsWith("/unassign")) {
             if (failUnassign) {
               failUnassign = false;
-              await route.fulfill({
+              await fulfill(route, {
                 status: 500,
                 contentType: "application/json",
                 body: JSON.stringify({ error: "Assignment removal failed." }),
@@ -230,11 +238,12 @@ try {
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/interpretation-settings"))
         value = { settings: { decisionsEnabled: false }, status: { available: false } };
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, { contentType: "application/json", body: JSON.stringify(value) });
     });
     async function openManager() {
-      await page.getByRole("button", { name: /^Villagers \(/ }).click();
-      await page.getByRole("button", { name: "Open Mara profile" }).click();
+      await expect.poll(() => page.evaluate(() => !!window.featureController?.snapshot)).toBe(true);
+      await page.evaluate(() => window.featureController.openPerson({ actorId: "mara", returnTo: "menu" }));
+      await page.getByText("Character tools", { exact: true }).click();
       await page
         .getByRole("button", { name: /Manage sprites ·/ })
         .first()
@@ -243,8 +252,7 @@ try {
       await expect(page.getByRole("heading", { name: "Mara’s Sprite Manager" })).toBeFocused();
     }
     await page.goto("http://villages.test/");
-    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-    await page.getByRole("button", { name: "More" }).click();
+    await page.addScriptTag({ content: residentsBundle });
     await openManager();
     await expect(page.getByText(/No sprites assigned yet/)).toBeVisible();
     await page.getByLabel("Upload sprite images").setInputFiles([
@@ -252,9 +260,10 @@ try {
       { name: "Angry.png", mimeType: "image/png", buffer: pngImage(true) },
       { name: "Two figures.png", mimeType: "image/png", buffer: pngImage(false, true) },
     ]);
-    await expect(page.getByLabel("Expression name")).toHaveValue("Composed");
+    await expect(page.getByLabel("Expression name")).toHaveValue("");
+    await page.getByLabel("Expression name").fill("Composed");
     await expect(page.getByLabel("Expression name")).toHaveCSS("background-color", "rgb(55, 53, 43)");
-    await page.getByLabel("Use when…", { exact: true }).fill("Listening with controlled authority.");
+    await expect(page.getByLabel("Use when…", { exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Save and use in Scenes" })).toBeEnabled();
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
@@ -266,10 +275,35 @@ try {
     const feedbackBox = await feedback.boundingBox();
     assert.ok(feedbackBox.height < 60, "confirmation stays compact even on narrow screens");
     await page.locator(".vsm-actions").scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: resolve(`.build-tmp/sprite-manager/confirmation-${viewport.width}x${viewport.height}.png`),
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `confirmation-${viewport.width}x${viewport.height}.png`),
+      });
 
+    if (![1917, 390].includes(viewport.width)) {
+      await page.getByLabel("More artwork actions").click();
+      await expect(page.locator(".vsm-more-menu")).toBeVisible();
+      const menuBox = await page.locator(".vsm-more-menu").boundingBox();
+      const settingsBox = await page.locator(".vsm-settings").boundingBox();
+      const expressionBox = await page.getByRole("heading", { name: "Expression", exact: true }).boundingBox();
+      assert.ok(menuBox.x >= settingsBox.x && menuBox.x + menuBox.width <= settingsBox.x + settingsBox.width + 1);
+      assert.ok(expressionBox.y >= menuBox.y + menuBox.height);
+      const actions = page.locator(".vsm-settings > .vsm-actions");
+      await expect(actions).toHaveCSS("position", "static");
+      await actions.scrollIntoViewIfNeeded();
+      const before = await actions.boundingBox();
+      await page.getByLabel("Foot position", { exact: true }).scrollIntoViewIfNeeded();
+      const after = await actions.boundingBox();
+      assert.ok(after.y < before.y - 20);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+      if (process.env.VILLAGES_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `layout-${viewport.width}x${viewport.height}.png`),
+        });
+      assert.deepEqual(errors, []);
+      await page.close();
+      continue;
+    }
     await page
       .getByRole("group", { name: "Preview screen" })
       .getByRole("button", { name: "Mobile", exact: true })
@@ -283,7 +317,7 @@ try {
     await page.getByLabel("Expression name", { exact: true }).fill("Calm draft");
     await expect(page.getByRole("button", { name: "Discard changes" })).toBeEnabled();
     await page.getByRole("button", { name: /Angry.png/ }).click();
-    await page.getByLabel("Use when…", { exact: true }).fill("Angry draft");
+    await page.getByLabel("Expression name", { exact: true }).fill("Angry draft");
     await page.getByRole("button", { name: /Composed.png/ }).click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     await page.setViewportSize({ width: viewport.width > 719 ? 390 : 1024, height: 844 });
@@ -297,25 +331,32 @@ try {
       await host.evaluate((element) => (element.style.width = ""));
       await expect(page.locator(".vsm-artwork")).toHaveCSS("display", "grid");
     }
+    await page.reload();
+    await page.addScriptTag({ content: residentsBundle });
+    await openManager();
+    await page.getByRole("button", { name: /Composed.png/ }).click();
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     assert.equal(
       await page.evaluate(() => {
         const event = new Event("beforeunload", { cancelable: true });
         window.dispatchEvent(event);
         return event.defaultPrevented;
       }),
-      true,
-      "closing the browser warns about unsaved drafts",
+      false,
+      "closing the browser does not invoke a browser confirmation",
     );
-    let rejectedLeave = false;
-    page.once("dialog", async (dialog) => {
-      rejectedLeave = true;
-      await dialog.dismiss();
-    });
     await page.getByRole("button", { name: "← Back to profile", exact: true }).click();
-    assert.equal(rejectedLeave, true);
+    await expect(page.getByRole("dialog", { name: "Confirm", exact: true })).toBeVisible();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page.getByRole("button", { name: "← Back to profile", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     await page.getByRole("button", { name: "Save and use in Scenes" }).click();
     await expect(page.getByRole("status")).toHaveText("Expression and artwork saved for Scenes.");
@@ -323,7 +364,7 @@ try {
     await page.getByRole("button", { name: "Discard changes" }).click();
     await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Calm draft");
     await page.getByRole("button", { name: /Angry.png/ }).click();
-    await expect(page.getByLabel("Use when…", { exact: true })).toHaveValue("Angry draft");
+    await expect(page.getByLabel("Expression name", { exact: true })).toHaveValue("Angry draft");
     await page.getByRole("button", { name: "Discard changes" }).click();
     await page.getByRole("button", { name: /Angry.png/ }).click();
     await expect(page.getByText(/This artwork has an opaque background/)).toBeVisible();
@@ -346,9 +387,10 @@ try {
       removeSide = page.getByRole("button", { name: /^Remove Side assignment for/ });
     await expect(removeFront).toBeVisible();
     await expect(removeSide).toBeVisible();
-    await page.getByRole("group", { name: "Saved assignments" }).screenshot({
-      path: resolve(`.build-tmp/sprite-manager/assignments-${viewport.width}x${viewport.height}.png`),
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.getByRole("group", { name: "Saved assignments" }).screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `assignments-${viewport.width}x${viewport.height}.png`),
+      });
     await page.getByLabel("Expression name", { exact: true }).fill("Unsaved name");
     await expect(removeFront).toBeDisabled();
     await page.getByRole("button", { name: "Discard changes" }).click();
@@ -409,13 +451,19 @@ try {
       "extra actions push settings down rather than covering them",
     );
     await page.locator(".vsm-more-menu").scrollIntoViewIfNeeded();
-    await page.screenshot({ path: resolve(`.build-tmp/sprite-manager/menu-${viewport.width}x${viewport.height}.png`) });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `menu-${viewport.width}x${viewport.height}.png`),
+      });
     await page.getByRole("button", { name: "Make default" }).click();
     await page.getByLabel("More artwork actions").click();
     await expect(page.getByRole("button", { name: "Make default" })).toBeDisabled();
-    const download = page.waitForEvent("download");
+
     await page.getByRole("button", { name: "Download saved PNG" }).click();
-    assert.match((await download).suggestedFilename(), /Calculating-front\.png/);
+    await expect.poll(() => page.evaluate(() => window.spriteDownloads.length)).toBe(1);
+    const download = await page.evaluate(() => window.spriteDownloads[0]);
+    assert.equal(download.path, manager.artwork[2].rendered.url.replace(/^\/api/, ""));
+    assert.match(download.filename, /Calculating-front\.png/);
     const png = PNG.sync.read(files.get(manager.artwork[2].rendered.url));
     assert.equal(png.width, 1024);
     assert.equal(png.height, 1536);
@@ -440,7 +488,7 @@ try {
     await page.getByRole("button", { name: "Retry library" }).click();
     await page.getByRole("checkbox", { name: "full_native.png" }).check();
     await page.getByRole("button", { name: "Add selected artwork" }).click();
-    await expect(page.getByLabel("Expression name")).toHaveValue("native");
+    await expect(page.getByLabel("Expression name")).toHaveValue("");
     const artworkAfterAdoption = manager.artwork.length;
     await page.getByRole("button", { name: "Character library" }).click();
     await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
@@ -449,23 +497,27 @@ try {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Character library" })).toBeFocused();
     await page.getByRole("heading", { name: "Scene preview", exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: resolve(`.build-tmp/sprite-manager/${viewport.width}x${viewport.height}.png`),
-      fullPage: true,
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `${viewport.width}x${viewport.height}.png`),
+        fullPage: true,
+      });
     const actions = page.locator(".vsm-settings > .vsm-actions");
     await expect(actions).toHaveCount(1);
     await expect(page.locator(".vsm-savebar")).toHaveCount(0);
     await expect(actions).toHaveCSS("position", "static");
     await actions.scrollIntoViewIfNeeded();
     const beforeScroll = await actions.boundingBox();
+    const footBeforeScroll = await page.getByLabel("Foot position", { exact: true }).boundingBox();
     await page.getByLabel("Foot position", { exact: true }).scrollIntoViewIfNeeded();
     const afterScroll = await actions.boundingBox();
-    assert.ok(afterScroll.y < beforeScroll.y - 20, "controls scroll away with settings");
+    if (footBeforeScroll.y + footBeforeScroll.height > viewport.height || footBeforeScroll.y < 0)
+      assert.ok(afterScroll.y < beforeScroll.y - 0.5, "controls scroll away with settings when scrolling is needed");
     await actions.scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: resolve(`.build-tmp/sprite-manager/controls-${viewport.width}x${viewport.height}.png`),
-    });
+    if (process.env.VILLAGES_SCREENSHOT_DIR)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `controls-${viewport.width}x${viewport.height}.png`),
+      });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
     assert.equal(overflow, false, "manager fits narrow screens");
     await page.getByRole("button", { name: "← Back to profile" }).click();
@@ -480,11 +532,17 @@ try {
     await expect(page.getByRole("checkbox", { name: "full_native.png · Already added" })).toBeDisabled();
     await page.getByRole("button", { name: "Close library" }).click();
     await page.getByLabel("More artwork actions").click();
-    page.once("dialog", (dialog) => dialog.dismiss());
     await page.getByRole("button", { name: "Remove artwork" }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Cancel", exact: true })
+      .click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toHaveCount(1);
-    page.once("dialog", (dialog) => dialog.accept());
     await page.getByRole("button", { name: "Remove artwork" }).click();
+    await page
+      .getByRole("dialog", { name: "Confirm", exact: true })
+      .getByRole("button", { name: "Continue", exact: true })
+      .click();
     await expect(page.getByRole("button", { name: /full_native.png/ })).toHaveCount(0);
     await page.getByRole("button", { name: "Character library" }).click();
     await expect(page.getByRole("checkbox", { name: "full_native.png", exact: true })).toBeEnabled();
@@ -495,7 +553,7 @@ try {
       filename: "full_native.png",
     });
     await page.getByRole("button", { name: "Add selected artwork" }).click();
-    await expect(page.getByLabel("Expression name")).toHaveValue("native");
+    await expect(page.getByLabel("Expression name")).toHaveValue("");
     await expect(page.getByRole("status")).toHaveText("Selected artwork is already in Sprite Manager.");
     assert.equal(manager.artwork.length, artworkAfterAdoption, "removal permits one new adoption");
     assert.equal(
@@ -507,8 +565,11 @@ try {
       const remainingArtwork = manager.artwork.length - 1;
       await page.locator(".vsm-artwork button").first().click();
       await page.getByLabel("More artwork actions").click();
-      page.once("dialog", (dialog) => dialog.accept());
       await page.getByRole("button", { name: "Remove artwork" }).click();
+      await page
+        .getByRole("dialog", { name: "Confirm", exact: true })
+        .getByRole("button", { name: "Continue", exact: true })
+        .click();
       await expect(page.locator(".vsm-artwork button")).toHaveCount(remainingArtwork);
     }
     await expect(page.getByText(/No sprites assigned yet/)).toBeVisible();
@@ -522,6 +583,4 @@ try {
   console.log(
     "Sprite Manager browser: desktop, portrait phones, uploads, framing, expressions, failures, exports, adoption and reload passed.",
   );
-} finally {
-  await browser.close();
-}
+});

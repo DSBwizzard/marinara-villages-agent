@@ -1,15 +1,15 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1366, 390, 320]) {
     const snapshot = structuredClone(fixture);
     snapshot.villagers = residents.slice(0, 1);
@@ -23,7 +23,7 @@ try {
       placeName: "The Mill",
       area: "public",
       zoneId: "hall",
-      version: 1,
+      version: 2,
       sceneRevision: 1,
       status: "active",
       memoryMode: "live",
@@ -31,6 +31,7 @@ try {
       startedAt: now,
       lastActivityAt: now,
       activeIds: ["mara"],
+      initialActiveIds: ["mara"],
       participants: [{ characterId: "mara", name: "Mara", doing: "listening" }],
       submissions: [],
       lines: [
@@ -54,26 +55,26 @@ try {
     let staleMove = true;
     const navigation = new Map();
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage();
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await context.route("http://actions.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
-        body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:calc(100% - 180px)}</style><header style="height:180px"></header><marinara-capability-villages></marinara-capability-villages><script>document.querySelector('marinara-capability-villages').capabilityProps={startScene:async()=>null}</script>`,
+        body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:calc(100% - 180px)}</style><header style="height:180px"></header><marinara-capability-villages></marinara-capability-villages><script>document.querySelector('marinara-capability-villages').capabilityProps={}</script>`,
       }),
     );
     await context.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = snapshot;
-      if (path.endsWith("/spinoffs/active")) value = { spinoff: null };
-      else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
+      if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session: scene };
       else if (path.endsWith("/rooms/zone")) {
         const body = route.request().postDataJSON();
         if (staleMove || body.expectedSceneRevision !== scene.sceneRevision) {
           staleMove = false;
-          return route.fulfill({
+          return fulfill(route, {
             status: 409,
             contentType: "application/json",
             body: JSON.stringify({ code: "SCENE_STALE", error: "The Scene changed. Review it before moving." }),
@@ -89,7 +90,7 @@ try {
           operation: { id: body.operationId, kind: "move", status: "complete", input: { zoneId: body.zoneId } },
         };
         navigation.set(body.operationId, scene.operation);
-        if (width === 320) return route.abort("failed");
+        if (width === 320) return abort(route, "failed");
         value = { session: scene };
       } else if (path.includes("/operations/")) {
         value = { operation: navigation.get(decodeURIComponent(path.split("/").at(-1))) ?? null };
@@ -122,7 +123,11 @@ try {
         };
         value = { session: scene, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.goto("http://actions.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -133,22 +138,23 @@ try {
     const composerBefore = await composer.boundingBox();
     assert.ok(composerBefore && composerBefore.y + composerBefore.height <= 844, "text entry fits the host panel");
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Start a spinoff", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Spinoff", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page.getByRole("dialog", { name: "Spinoff", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("menuitem", { name: "Start a spinoff", exact: true })).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await expect(composer).toHaveValue("Keep this draft");
-    assert.deepEqual(await composer.boundingBox(), composerBefore, "opening and cancelling preserves Scene geometry");
+    assert.deepEqual(
+      await composer.boundingBox(),
+      composerBefore,
+      "opening and closing Scene actions preserves geometry",
+    );
     if (process.env.VILLAGES_VISUAL_OUTPUT)
-      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "spinoff-cancel-" + width + ".png") });
+      await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
     await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
     assert.deepEqual(
       await page.getByRole("menu", { name: "Scene mode" }).getByRole("menuitemradio").allTextContents(),
-      ["Say / Do", "Move", "Contact", "Conclude"],
+      ["Say / Do", "Move", "Conclude"],
     );
-    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
+    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
     await expect(composer).toHaveValue("Keep this draft");
-    await page.getByLabel("Contact Zone", { exact: true }).selectOption("exterior");
     let finishContact;
     heldContact = new Promise((done) => {
       finishContact = done;
@@ -161,12 +167,13 @@ try {
     await expect(composer).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Mode:.*Choose mode/ })).toHaveCount(0);
     await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
-    assert.equal(lastContact.mode, "contact");
-    assert.equal(lastContact.contact.kind, "call");
-    assert.equal(lastContact.contact.boundaryZoneId, "exterior");
+    assert.equal(lastContact.mode, "chat");
+    assert.equal(lastContact.contact, undefined);
     finishContact();
-    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("No answer.");
     const next = page.getByRole("button", { name: "Next paragraph", exact: true });
+    await next.click();
+    await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("quiet doorway");
     while (await next.isEnabled()) {
       await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
       await expect(composer).toHaveCount(0);
@@ -175,8 +182,6 @@ try {
     }
     await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
     await expect(composer).toBeVisible();
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
     const preservedDraft = "Draft survives Zone changes. ".repeat(35);
     await composer.fill(preservedDraft);
     const dockAtBottom = async (selector) => {
@@ -241,14 +246,12 @@ try {
     await expect(page.getByLabel("Move to Zone")).toHaveCount(0);
     assert.equal(moves, 5);
     assert.equal(scene.lines.length, lineCount);
-    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
-    await page.getByRole("menuitemradio", { name: "Contact", exact: true }).click();
-    await expect(page.getByLabel("Contact Zone")).toHaveValue("");
+    await expect(page.getByLabel("Contact Zone")).toHaveCount(0);
     if (process.env.VILLAGES_VISUAL_OUTPUT)
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "scene-actions-" + width + ".png") });
     const finalMessage = width === 1366 ? "Goodbye." : "";
     await composer.fill(finalMessage);
-    await page.getByRole("button", { name: "Mode: Contact. Choose mode", exact: true }).click();
+    await page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true }).click();
     await page.getByRole("menuitemradio", { name: "Conclude", exact: true }).click();
     assert.equal(lastLeave, undefined, "selecting Conclude does not end the Scene");
     await expect(composer).toHaveValue(finalMessage);
@@ -260,8 +263,6 @@ try {
     await context.close();
   }
   console.log(
-    "Scene actions browser: four modes, inline immediate movement, contact targeting, final-paragraph readiness, busy/stale/lost-response navigation, drafts, silent repeated moves and optional concluding messages passed",
+    "Scene actions browser: three modes, inline immediate movement, Say / Do, final-paragraph readiness, busy/stale/lost-response navigation, drafts, silent repeated moves and optional concluding messages passed",
   );
-} finally {
-  await browser.close();
-}
+});

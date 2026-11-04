@@ -1,61 +1,54 @@
-import { materializeConnections } from "../../../shared/helpers/zone-contact.js";
-import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
-import { decodeVillageClock } from "../rules/clock-recovery.js";
-import { savedVenueClassRecord } from "./venue-class-compat.js";
-import { readResidentFoundingContext } from "../../../shared/helpers/resident-founding-context.js";
-import { isPrivateInterior, observePrivateInterior, privateInteriorKey } from "../rules/private-interior.js";
-import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
+import { readResidenceAgreement } from "../rules/residence-agreement.js";
+import { emptyPlaceRegistry, readPlaceRegistry } from "../rules/places.js";
+import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
+import { MAX_PHYSICAL_DESIGN_LENGTH } from "../../../shared/helpers/project-design.js";
+import {
+  EMPTY_RESIDENT_ADMISSION,
+  readResidentAdmission,
+  readWorldName,
+} from "../../../shared/helpers/resident-admission.js";
+import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
+import { readZoneLayout } from "../../../shared/helpers/zone-layout.js";
+import { validTimeZone, ZonedDate } from "../../../shared/helpers/zoned-date.js";
+import { RETURN_CATCHUP_HISTORY_LIMIT } from "../models/world.js";
+import { cloneReturnCapture, copyExchangeReceipts } from "../rules/world-context-copy.js";
+import { readEstablishment } from "../rules/establishment.js";
 import type {
   VillageAgenda,
-  VillageChronicleActor,
-  VillageChronicleEntry,
-  VillageCompletedWish,
-  VillageHappening,
-  VillageNotice,
-  VillageOpportunity,
+  VillageBackgroundPace,
   VillagePendingDecision,
   VillageProject,
-  VillageRecollection,
-  VillageRelationship,
   VillageRemap,
   VillageRemapFailure,
   VillageRemapMove,
   VillageResidence,
-  VillageScheduledEvent,
   VillageState,
-  VillageStoryPace,
   VillageTownMapView,
   VillageVenue,
   VillageVenueClass,
   VillageVenueEvent,
-  VillageVenueFeature,
   VillageVenueImage,
-  VillageVenueMail,
-  VillageVenueTrace,
   VillageVenueZone,
   VillageVillager,
   VillageVillagerCardSnapshot,
-  VillageWish,
   VillageZoneDraft,
 } from "../models/world.js";
 import { unwrittenVillageAgenda, VILLAGE_AGENDA_WINDOWS } from "../rules/agenda-plan.js";
 import { completeAgendaWeek, legacyAgendaWeek, workingAgendaWeek } from "../rules/agenda-week.js";
-import {
-  asFraction,
-  asInstant,
-  asIsoString,
-  asRecord,
-  asString,
-  asStringArray,
-  asTrimmedString,
-} from "../rules/coerce.js";
+import { projectAgendaReservations, readProjectFocus } from "../rules/project-focus.js";
+import { decodeVillageClock } from "../rules/clock-recovery.js";
+import { asFraction, asIsoString, asRecord, asString, asStringArray, asTrimmedString } from "../rules/coerce.js";
+import { coerceFoundingTasks } from "../rules/founding-tasks.js";
 import { coerceLoreTokenBudget, coerceSelectedLorebookIds, DEFAULT_LORE_TOKEN_BUDGET } from "../rules/lore-policy.js";
-import { MAX_MEMORY_LENGTH } from "../rules/memory-policy.js";
+import { memoryRequire, readMemoryCollection } from "../rules/memory-integrity.js";
+import { readPlaceContinuity, readPlaceDescription } from "../rules/zone-continuity.js";
 import { coerceVillageNarrationStyle, defaultVillageNarrationStyle } from "../rules/narration-style.js";
 import { MAX_REMAP_ATTEMPTS, MAX_REMAP_FAILURE_LENGTH, remapBlockKey } from "../rules/native-remap.js";
+import { readOpening } from "../rules/opening-project.js";
 import { adoptedProfile, coerceRoutineProfile, influenceSettings } from "../rules/owned-routine.js";
-import { coercePlayerRole } from "../rules/player-role.js";
-import { coerceProgressTasks, readProgressInterpretation } from "../rules/progress-engine.js";
+import { coercePlayerBackground } from "../rules/player-background.js";
+import { coerceProgressTasks } from "../rules/progress-engine.js";
+import { readProjectPlan } from "../rules/project-completion.js";
 import {
   boundText,
   DEFAULT_TOWN_MAP_VIEW,
@@ -63,17 +56,10 @@ import {
   HOME_BUILDINGS,
   isGlobalGalleryRef,
   isHomeBuildingKind,
-  isHousePlace,
   isTownMapFit,
-  isTownMapImage,
-  LEGACY_TOWN_MAP_HEIGHT,
-  LEGACY_TOWN_MAP_WIDTH,
-  MAX_CHRONICLE_LENGTH,
-  MAX_HAPPENING_LENGTH,
-  MAX_HAPPENINGS,
-  MAX_NOTICE_AUTHOR_LENGTH,
-  MAX_NOTICE_LENGTH,
-  MAX_NOTICEBOARD_NOTES,
+  MAX_REQUESTER_NAME_LENGTH,
+  MAX_EVENT_TEXT_LENGTH,
+  MAX_PHYSICAL_NARRATION_LENGTH,
   MAX_PLACES,
   MAX_PLAYER_PERSONA_ID_LENGTH,
   MAX_PLAYER_PERSONA_IDENTITY_LENGTH,
@@ -84,74 +70,58 @@ import {
   MAX_REMAP_SLOT_LENGTH,
   MAX_ROUTINE_SUMMARY_LENGTH,
   MAX_SETTING_LENGTH,
-  MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_DESCRIPTION_LENGTH,
   MAX_VENUE_EVENTS,
   MAX_VENUE_IMAGE_URL_LENGTH,
   MAX_VENUE_NAME_LENGTH,
   MAX_VENUE_NOTE_LENGTH,
-  MAX_VILLAGER_WISHES,
-  MAX_WISH_LENGTH,
-  MAX_WISH_TELL_LENGTH,
-  TOWN_MAP_EXPECTED_HEIGHT,
-  TOWN_MAP_EXPECTED_WIDTH,
   TOWN_MAP_FOCUS_MAX,
   TOWN_MAP_FOCUS_MIN,
   TOWN_MAP_ZOOM_MAX,
   TOWN_MAP_ZOOM_MIN,
   VILLAGES_PROMPT_BOX_MAX_LENGTH,
 } from "../rules/prompt-preset.js";
-import { coerceScenarioImprint, coerceWorldFacts } from "../rules/scenario-rules.js";
+import { localDateKey } from "../rules/resident-planning.js";
+
+import { coerceSocialActivities } from "../rules/social-activity.js";
+import { copySocialWishes } from "../rules/social-wishes.js";
 import { coerceSpriteManager, managerResidentSprite } from "../rules/sprite-manager-model.js";
 import { readVenueAccess, readZonePolicy } from "../rules/venue-access.js";
-import {
-  defaultVenueSpace,
-  validVenueClasses,
-  validVenueImprovements,
-  venueResidentIds,
-} from "../rules/venue-model.js";
-import {
-  canInviteToZone,
-  chooseAgendaZone,
-  legacyVenueZones,
-  legacyZoneId,
-  synchronizeVenueZones,
-  ZONE_KINDS,
-} from "../rules/venue-zones.js";
+import { readNarrativeState } from "./narrative-codec.js";
+import { defaultVenueSpace, validVenueClasses, venueResidentIds } from "../rules/venue-model.js";
+import { canInviteToZone, chooseAgendaZone, synchronizeVenueZones, ZONE_KINDS } from "../rules/venue-zones.js";
 import { randomVillageSeed, VILLAGE_CLOCKS, VILLAGE_WEEKDAYS, villageClockIndex } from "../rules/village-clock.js";
-import { coerceWishActivities, coerceWishLifecycle } from "../rules/wish-coercion.js";
-import { WISH_SYSTEM_VERSION, wishSize } from "../rules/wish-definition.js";
-import { coerceWishKnowledge, resetLegacyWishRecords } from "../rules/wish-journal.js";
-import { shortWishText, wishPolicy, routineRevision } from "../rules/wish-policy.js";
+import { readMemorySceneStates, readMemoryReceipts } from "../rules/village-memories.js";
+import { zonePictureBaseline, zonePicturePhysicalRecord } from "../rules/zone-picture.js";
+
+import { routineRevision } from "../rules/wish-policy.js";
 
 export function defaultVillageState(): VillageState {
   return {
-    version: 2,
+    worldPlaces: emptyPlaceRegistry(),
+    version: 15,
+    memories: { format: 1, revision: 0, records: [] },
+    memoryScenes: {},
+    memoryReceipts: {},
     backgroundReceipts: {},
     exchangeReceipts: {},
     noticeSequence: 0,
     dismissedNoticeIds: [],
-    wishSystemVersion: WISH_SYSTEM_VERSION,
-    wishResetPending: [],
-    wishKnowledge: {},
-    projectWishOutbox: [],
-    wishRefillIntents: {},
+    socialContractVersion: 2,
     progressEngineVersion: 1,
-    name: "Willowbrook",
+    name: "",
     narrationStyle: defaultVillageNarrationStyle(),
     characterSpeechColors: true,
     sendOnEnter: false,
     spriteCardFlipEnabled: true,
+    spriteVariantsEnabled: true,
     // An empty setting means "no place yet": the venue and routine blocks render
     // nothing, and the village behaves exactly as it did before they existed.
     setting: "",
-    foundingReason: "",
-    foundingDetails: "",
-    foundingGuidance: "",
-    playerRole: null,
-    scenarioImprint: null,
-    worldFacts: [],
-    venueCapacityPolicy: "sixteen-total-v1",
+    worldRules: "",
+    worldName: "",
+    communityVenueId: "",
+    playerBackground: "",
     selectedLorebookIds: [],
     sceneryArtStyle: "",
     personalizeVenueImagesByDefault: true,
@@ -179,37 +149,18 @@ export function defaultVillageState(): VillageState {
     // player who only ever looks at the tab never gets a record created for them.
     foundedAt: "",
     seed: "",
-    // A village starts with nothing pinned up. The board is a record of what
-    // the people here have said to each other, and on the day it is founded
-    // nobody has said anything yet — shipping a few notices to make the panel
-    // look occupied would be the village inventing its own history.
-    noticeboard: [],
-    // Nothing has happened yet either, for the same reason: the founding is not
-    // an event, it is the moment the record began.
-    happenings: [],
-    // And nothing is remembered yet. The chronicle fills in as the village is
-    // written up, one batch at a time, from the same call that writes the
-    // happenings — a village shipped with a few memories to make the panel look
-    // occupied would be inventing a past it never had.
-    chronicle: [],
-    recollections: [],
-    correctedWishMemoryIds: [],
     simulatedThrough: "",
     lastKnownTimeZone: "",
     timeZone: "",
     clock: null,
-    storyPace: "balanced",
-    lastCreativeDate: "",
-    processedOpportunityIds: [],
-    opportunities: [],
-    scheduledEvents: [],
-    relationships: [],
+    backgroundPace: "balanced",
+    narrativeConsequence: "gentle",
+    lastPlanningDate: "",
+    planningUsage: { dateKey: "", count: 0 },
+    processedActionIds: [],
     projects: [],
     progressTasks: [],
-    narrativeItems: [],
-    projectSourceClaims: [],
     pendingDecisions: [],
-    venueMail: [],
     villagers: [],
     // Empty rather than the default text: the default lives in `prompt-preset.ts`
     // and is applied at render time, so improving it reaches villages that never
@@ -233,30 +184,35 @@ export function defaultVillageState(): VillageState {
     playerPersonaMissing: false,
     // No map until the player adds one. The image is a data URL so it is carried
     // with the record rather than sitting somewhere the village cannot back up.
-    townMapImage: "",
-    townMapImageSetAt: "",
-    townMapCanvasWidth: TOWN_MAP_EXPECTED_WIDTH,
-    townMapCanvasHeight: TOWN_MAP_EXPECTED_HEIGHT,
-    // A copy rather than the shared object, so a write through one village's
-    // state cannot reach the default every other village is given.
-    townMapView: { ...DEFAULT_TOWN_MAP_VIEW },
+    maps: [],
   };
 }
 function coerceVillager(value: unknown, venues: readonly VillageVenue[]): VillageVillager | null {
   const raw = asRecord(value);
+  if (Object.hasOwn(raw, "wishHead")) throw new Error("Wish history was not loaded for this operation.");
   const characterId = asTrimmedString(raw.characterId);
   if (characterId.length === 0) return null;
   const cardSnapshot = coerceVillagerCardSnapshot(raw.cardSnapshot);
   if (!cardSnapshot || cardSnapshot.id !== characterId) return null;
   return {
     characterId,
+    ...(typeof raw.letterFontId === "string" && raw.letterFontId.length <= 120
+      ? { letterFontId: raw.letterFontId }
+      : {}),
     agendaGeneration: asString(raw.agendaGeneration),
     translationGeneration: asString(raw.translationGeneration),
     cardSnapshot,
-    ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
-    ...(readResidentFoundingContext(raw.foundingContext)
-      ? { foundingContext: readResidentFoundingContext(raw.foundingContext)! }
+    ...(typeof asRecord(raw.identityDescription).revision === "string"
+      ? {
+          identityDescription: {
+            text: boundText(asRecord(raw.identityDescription).text, MAX_IDENTITY_DESCRIPTION_LENGTH),
+            revision: asRecord(raw.identityDescription).revision as string,
+            initialGenerationComplete: asRecord(raw.identityDescription).initialGenerationComplete !== false,
+          },
+        }
       : {}),
+    ...(coerceResidentSignature(raw.signature) ? { signature: coerceResidentSignature(raw.signature)! } : {}),
+    admission: readResidentAdmission(raw.admission) ?? { ...EMPTY_RESIDENT_ADMISSION },
     spriteManager: coerceSpriteManager(raw.spriteManager),
     sprite: managerResidentSprite(coerceSpriteManager(raw.spriteManager)),
     addedAt: asIsoString(raw.addedAt) ?? new Date().toISOString(),
@@ -265,8 +221,7 @@ function coerceVillager(value: unknown, venues: readonly VillageVenue[]): Villag
     // village write one. An empty agenda is a positive statement that asking
     // produced nothing, and it must only ever come from actually asking.
     agenda: coerceAgenda(raw.agenda, venues, cardSnapshot.name, raw.ingestSchedule !== false),
-    completedWishes: coerceCompletedWishes(raw.completedWishes),
-    wishLifecycle: coerceWishLifecycle(raw.wishLifecycle),
+    wishes: copySocialWishes(raw.wishes),
     ingestSchedule: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false).enabled,
     scheduleInfluence: influenceSettings(raw.scheduleInfluence, raw.ingestSchedule !== false),
     // Read on the same terms as the agenda, and for the same reason — but null
@@ -316,60 +271,6 @@ function coerceRemapFailure(value: unknown): VillageRemapFailure | null {
   if (!at || message.length === 0) return null;
   return { at, message };
 }
-function coerceWish(value: unknown): VillageWish | null {
-  const raw = asRecord(value);
-  const wish = boundText(raw.wish, MAX_WISH_LENGTH);
-  if (wish.length === 0) return null;
-  const intensity = typeof raw.intensity === "number" && Number.isFinite(raw.intensity) ? Math.round(raw.intensity) : 2;
-  const need = asRecord(raw.need);
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    wish,
-    // Clamped rather than dropped. The number only decides how loudly a wish is
-    // written and in what order, so a model that answers with 0 or 9 has said
-    // something usable badly, not something unusable.
-    intensity: Math.min(3, Math.max(1, intensity)),
-    tell: boundText(raw.tell, MAX_WISH_TELL_LENGTH),
-    addedAt: asInstant(raw.addedAt),
-    expiresAt: asInstant(raw.expiresAt),
-    size: wishSize(raw.size),
-    conditionRevision:
-      Number.isSafeInteger(raw.conditionRevision) && (raw.conditionRevision as number) >= 0
-        ? (raw.conditionRevision as number)
-        : 0,
-    ...(asInstant(raw.learnedAt)
-      ? {
-          learnedAt: asInstant(raw.learnedAt),
-          learnedLineIds: Array.isArray(raw.learnedLineIds)
-            ? raw.learnedLineIds.filter((id): id is string => typeof id === "string")
-            : [],
-        }
-      : {}),
-    ...(shortWishText(need.id)
-      ? {
-          need: {
-            id: shortWishText(need.id),
-            subject: shortWishText(need.subject, 80),
-            action: shortWishText(need.action, 80),
-            policy: wishPolicy(need.policy),
-          },
-        }
-      : {}),
-  };
-}
-function coerceCompletedWishes(value: unknown): VillageCompletedWish[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  return value.flatMap((entry): VillageCompletedWish[] => {
-    const raw = asRecord(entry);
-    const wish = coerceWish(raw.wish);
-    const fulfilledAt = asInstant(raw.fulfilledAt);
-    const memoryId = asTrimmedString(raw.memoryId);
-    if (!wish || !fulfilledAt || !memoryId || seen.has(wish.id)) return [];
-    seen.add(wish.id);
-    return [{ wish, fulfilledAt, memoryId }];
-  });
-}
 function coerceAgenda(
   value: unknown,
   venues: readonly VillageVenue[],
@@ -379,20 +280,8 @@ function coerceAgenda(
   if (value === null || value === undefined) return null;
   const raw = asRecord(value);
   if (Object.keys(raw).length === 0) return null;
-  const wishes: VillageWish[] = [];
-  const seen = new Set<string>();
-  if (Array.isArray(raw.wishes)) {
-    for (const entry of raw.wishes) {
-      const wish = coerceWish(entry);
-      if (!wish || seen.has(wish.id) || wishes.length >= MAX_VILLAGER_WISHES) continue;
-      seen.add(wish.id);
-      wishes.push(wish);
-    }
-  }
   const agenda: VillageAgenda = {
-    wishActivities: coerceWishActivities(raw.wishActivities),
-    socialActivities: coerceWishActivities(raw.socialActivities),
-    wishes,
+    socialActivities: coerceSocialActivities(raw.socialActivities),
     routineSummary: boundText(raw.routineSummary, MAX_ROUTINE_SUMMARY_LENGTH),
     day: Array.isArray(raw.day)
       ? raw.day.flatMap((entry) => {
@@ -427,20 +316,6 @@ function coerceAgenda(
     // time on it that the debug tab would then show as fact.
     generatedAt: asIsoString(raw.generatedAt) ?? "",
   };
-  const projectWork = asRecord(raw.projectWork);
-  if (
-    asTrimmedString(projectWork.projectId) &&
-    asTrimmedString(projectWork.venueId) &&
-    asIsoString(projectWork.startsAt) &&
-    asIsoString(projectWork.endsAt)
-  )
-    agenda.projectWork = {
-      projectId: asTrimmedString(projectWork.projectId),
-      venueId: asTrimmedString(projectWork.venueId),
-      zoneId: asTrimmedString(projectWork.zoneId) || "exterior",
-      startsAt: asIsoString(projectWork.startsAt)!,
-      endsAt: asIsoString(projectWork.endsAt)!,
-    };
   const fallback = workingAgendaWeek(venues, name);
   agenda.week = legacyAgendaWeek({ ...agenda, week: raw.week as VillageAgenda["week"] }, fallback);
   agenda.scheduleWeek = raw.scheduleWeek ? completeAgendaWeek(raw.scheduleWeek, agenda.week) : null;
@@ -581,15 +456,19 @@ function coerceRemapMove(value: unknown): { key: string; move: VillageRemapMove 
 }
 function coerceVenue(value: unknown): VillageVenue | null {
   const original = asRecord(value);
-  const legacyCommunity = [original.classes, original.baseClasses].some(
-    (classes) => Array.isArray(classes) && classes.includes("gathering"),
-  );
-  const raw = savedVenueClassRecord(value);
-  if (Array.isArray(raw.spaces)) raw.spaces = raw.spaces.map(savedVenueClassRecord);
-  if (Array.isArray(raw.improvements))
-    raw.improvements = raw.improvements.map((entry) => (entry === null ? null : savedVenueClassRecord(entry)));
+  if (Array.isArray(original.zones) && original.zones.filter((value) => asRecord(value).id !== "exterior").length > 6)
+    throw new Error("A Venue may have at most six Zones besides Entrance.");
+  const raw = original;
+  if (
+    raw.layoutVersion !== 1 ||
+    !Array.isArray(raw.zones) ||
+    !Array.isArray(raw.residentIds) ||
+    !validVenueClasses(raw.classes) ||
+    !raw.access
+  )
+    throw new Error("Saved Venues need explicit fresh-format Zones, classes, residents and access policies.");
   const name = boundText(raw.name, MAX_VENUE_NAME_LENGTH);
-  const description = boundText(raw.description, MAX_VENUE_DESCRIPTION_LENGTH);
+  const description = readPlaceDescription(raw.description);
   const category = boundText(raw.category, MAX_VENUE_NOTE_LENGTH);
   const presentation = asRecord(raw.presentation);
   const occupancy = asRecord(raw.occupancy);
@@ -599,30 +478,22 @@ function coerceVenue(value: unknown): VillageVenue | null {
         .map((entry) => entry.trim())
         .filter(Boolean)
     : [];
-  const state = asRecord(raw.state);
   const x = asFraction(presentation.x);
   const y = asFraction(presentation.y);
   const playerHome = occupancy.playerHome === true;
-  const residentCharacterId = asTrimmedString(occupancy.residentCharacterId);
   const homeKind = isHomeBuildingKind(occupancy.homeKind) ? occupancy.homeKind : null;
-  const classes: VillageVenueClass[] = validVenueClasses(raw.classes)
-    ? raw.classes
-    : playerHome || residentCharacterId || homeKind
-      ? ["residence"]
-      : ["other"];
+  const classes: VillageVenueClass[] = raw.classes as VillageVenueClass[];
   const residentIds = coerceVenueIds(raw.residentIds);
-  if (!residentIds.length && residentCharacterId && !playerHome) residentIds.push(residentCharacterId);
-  const coerceSpaceState = (value: unknown) => {
-    const scene = asRecord(value);
-    return {
-      condition: boundText(scene.condition, MAX_VENUE_NOTE_LENGTH),
-      items: coerceVenueStringList(scene.items),
-      publicFacts: coerceVenueStringList(scene.publicFacts),
-      features: coerceVenueFeatures(scene.features),
-      traces: coerceVenueTraces(scene.traces),
-      updatedAt: asIsoString(scene.updatedAt) ?? "",
-    };
-  };
+  if (residentIds.length !== raw.residentIds.length || residentIds.includes("player"))
+    throw new Error("Saved resident IDs must be distinct non-player people.");
+  if (
+    !Number.isInteger(raw.residenceCapacity) ||
+    Number(raw.residenceCapacity) < 1 ||
+    Number(raw.residenceCapacity) > 4 ||
+    residentIds.length + Number(playerHome) > Number(raw.residenceCapacity)
+  )
+    throw new Error("Saved household membership must fit explicit residential capacity.");
+  const coerceSpaceState = readPlaceContinuity;
   const privateSpaceFor = (ownerId: string, value: unknown) => {
     const row = asRecord(value);
     return {
@@ -637,20 +508,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
           : { status: "pending" as const },
       ownerId,
       ...(typeof row.roomSpecification === "string"
-        ? { roomSpecification: boundText(row.roomSpecification, MAX_VENUE_DESCRIPTION_LENGTH) }
+        ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
         : {}),
-      ...(asIsoString(asRecord(row.lastObserved).observedAt)
-        ? {
-            lastObserved: {
-              description: boundText(asRecord(row.lastObserved).description, MAX_VENUE_DESCRIPTION_LENGTH),
-              state: coerceSpaceState(asRecord(row.lastObserved).state),
-              observedAt: asIsoString(asRecord(row.lastObserved).observedAt)!,
-            },
-          }
-        : {}),
-      ...(typeof row.imageInteriorKey === "string" ? { imageInteriorKey: row.imageInteriorKey.slice(0, 20000) } : {}),
       description: value
-        ? boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || `A private space for this resident at ${name}.`
+        ? readPlaceDescription(row.description) || `A private space for this resident at ${name}.`
         : "",
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
@@ -660,116 +521,22 @@ function coerceVenue(value: unknown): VillageVenue | null {
         base: coerceVenueImage(asRecord(row.picture).base) ?? coerceVenueImage(row.image),
         removed: asRecord(row.picture).removed === true,
         failed: asRecord(row.picture).failed === true,
+        dirty: asRecord(row.picture).dirty === true,
+        operation: asRecord(row.picture).operation === "replace" ? ("replace" as const) : ("update" as const),
+        problem: boundText(asRecord(row.picture).problem, 300) || undefined,
+        lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
         context: boundText(asRecord(row.picture).context, 24000) || undefined,
         baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
         attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
         claim: boundText(asRecord(row.picture).claim, 128) || undefined,
       },
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
-      adaptationPending: row.adaptationPending === true,
-      adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
     };
   };
-  const explicitLayout = raw.layoutVersion === 1;
-  const privateSpaces =
-    !explicitLayout && classes.includes("residence")
-      ? [...residentIds, ...(playerHome ? ["player"] : [])].map((ownerId) =>
-          privateSpaceFor(
-            ownerId,
-            Array.isArray(raw.privateSpaces)
-              ? raw.privateSpaces.find((entry) => asTrimmedString(asRecord(entry).ownerId) === ownerId)
-              : null,
-          ),
-        )
-      : [];
-  const spaceClasses = explicitLayout
-    ? Array.isArray(raw.spaces)
-      ? raw.spaces
-          .map((entry) => asRecord(entry).venueClass)
-          .filter((entry): entry is VillageVenueClass => validVenueClasses([entry]))
-      : []
-    : validVenueClasses(raw.baseClasses)
-      ? raw.baseClasses
-      : classes;
-  const spaces = spaceClasses.map((venueClass) => {
-    const row = Array.isArray(raw.spaces)
-      ? asRecord(raw.spaces.find((entry) => asRecord(entry).venueClass === venueClass))
-      : {};
-    const scene = asRecord(row.state);
-    const fallback = defaultVenueSpace(venueClass, description);
-    const legacyScene: Record<string, unknown> = Array.isArray(raw.spaces) ? {} : state;
-    return {
-      ...fallback,
-      id: asTrimmedString(row.id) || (legacyCommunity && venueClass === "community" ? "gathering" : venueClass),
-      description: boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH) || description,
-      image:
-        coerceVenueImage(row.image) ??
-        (Array.isArray(raw.spaces) || venueClass === "residence" ? null : coerceVenueImage(presentation.image)),
-      state: {
-        condition: boundText(scene.condition ?? legacyScene.condition, MAX_VENUE_NOTE_LENGTH),
-        items: coerceVenueStringList(scene.items ?? legacyScene.furniture),
-        publicFacts: coerceVenueStringList(scene.publicFacts ?? legacyScene.publicFacts),
-        features: coerceVenueFeatures(scene.features ?? legacyScene.features),
-        traces: coerceVenueTraces(scene.traces ?? legacyScene.traces),
-        updatedAt: asIsoString(scene.updatedAt ?? legacyScene.updatedAt) ?? "",
-      },
-    };
-  });
-  if (!Array.isArray(raw.zones)) {
-    const primary = spaces.find((space) => space.venueClass !== "residence") ?? spaces[0];
-    if (primary) {
-      primary.state.condition ||= boundText(state.condition, MAX_VENUE_NOTE_LENGTH);
-      primary.state.publicFacts = [
-        ...new Set([
-          ...primary.state.publicFacts,
-          ...coerceVenueStringList(state.publicFacts).filter(
-            (fact) =>
-              !spaces.some((space) => space.state.publicFacts.includes(fact)) &&
-              !privateSpaces.some((space) => space.state.publicFacts.includes(fact)) &&
-              !coerceSpaceState(raw.exteriorState).publicFacts.includes(fact),
-          ),
-        ]),
-      ];
-      for (const feature of coerceVenueFeatures(state.features))
-        if (
-          ![...spaces, ...privateSpaces].some((space) => space.state.features.some((item) => item.id === feature.id)) &&
-          !coerceSpaceState(raw.exteriorState).features.some((item) => item.id === feature.id)
-        )
-          primary.state.features.push(feature);
-      for (const trace of coerceVenueTraces(state.traces))
-        if (
-          ![...spaces, ...privateSpaces].some((space) => space.state.traces.some((item) => item.id === trace.id)) &&
-          !coerceSpaceState(raw.exteriorState).traces.some((item) => item.id === trace.id)
-        )
-          primary.state.traces.push(trace);
-      const placed = new Set([
-        ...spaces.flatMap((space) => space.state.items),
-        ...privateSpaces.flatMap((space) => space.state.items),
-        ...coerceSpaceState(raw.exteriorState).items,
-      ]);
-      primary.state.items.push(...coerceVenueStringList(state.furniture).filter((item) => !placed.has(item)));
-    }
-  }
-  const improvements = validVenueImprovements(raw.improvements)
-    ? raw.improvements.map((entry) =>
-        entry
-          ? {
-              id: entry.id,
-              title: boundText(entry.title, MAX_VENUE_NOTE_LENGTH),
-              description: boundText(entry.description, MAX_VENUE_DESCRIPTION_LENGTH),
-              spaceId: asTrimmedString(entry.spaceId) || null,
-              classContribution: validVenueClasses([entry.classContribution]) ? entry.classContribution : undefined,
-              zones: coerceZoneDrafts(entry.zones),
-              extraBeds: entry.extraBeds,
-              approvedAt: asIsoString(entry.approvedAt) ?? "",
-            }
-          : null,
-      )
-    : [null, null];
-  if (
-    asTrimmedString(raw.id).length === 0 ||
-    (name.length === 0 && !playerHome && residentCharacterId.length === 0 && homeKind === null)
-  ) {
+  const privateSpaces: VillageVenue["privateSpaces"] = [];
+  const spaces: VillageVenue["spaces"] = [];
+
+  if (asTrimmedString(raw.id).length === 0 || name.length === 0) {
     return null;
   }
   const venue: VillageVenue = {
@@ -796,10 +563,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
         ? raw.constructionStatus
         : undefined,
     name,
-    form: boundText(raw.form, MAX_VENUE_NOTE_LENGTH),
+    form: boundText(raw.form, MAX_PHYSICAL_DESIGN_LENGTH),
     classes,
-    baseClasses: validVenueClasses(raw.baseClasses) ? raw.baseClasses : classes,
-    layoutVersion: explicitLayout ? 1 : undefined,
+    discovered: raw.discovered === true,
+    layoutVersion: 1,
     spaces,
     residenceCapacity:
       Number.isInteger(raw.residenceCapacity) &&
@@ -823,61 +590,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
           })
           .filter((entry): entry is NonNullable<typeof entry> => entry !== null)
           .slice(-32)
-      : [],
-    editProposals: Array.isArray(raw.editProposals)
-      ? raw.editProposals
-          .flatMap((value) => {
-            const entry = asRecord(value);
-            const id = asTrimmedString(entry.id);
-            const target = entry.target === "private" ? ("private" as const) : ("shared" as const);
-            const ownerId = asTrimmedString(entry.ownerId);
-            const proposed = asRecord(entry.proposed);
-            const requiredIds = coerceVenueIds(entry.requiredIds);
-            if (
-              !id ||
-              !requiredIds.length ||
-              (target === "private" && !entry.zoneId && !entry.privateSpaceId && ownerId !== requiredIds[0])
-            )
-              return [];
-            const current =
-              asTrimmedString(entry.zoneId) && Array.isArray(raw.zones)
-                ? raw.zones.map(asRecord).find((zone) => zone.id === entry.zoneId)
-                : target === "private"
-                  ? privateSpaces.find((space) => space.ownerId === ownerId)
-                  : spaces.find((space) => space.venueClass === "residence");
-            // Older image-only proposals have no resident decision to make now.
-            if (
-              current &&
-              boundText(proposed.description, MAX_VENUE_DESCRIPTION_LENGTH) === current.description &&
-              JSON.stringify(coerceSpaceState(proposed.state)) === JSON.stringify(current.state)
-            )
-              return [];
-            return [
-              {
-                id,
-                target,
-                zoneId: asTrimmedString(entry.privateSpaceId ?? entry.zoneId) || undefined,
-                privateSpaceId:
-                  target === "private" ? asTrimmedString(entry.privateSpaceId ?? entry.zoneId) || undefined : undefined,
-                ownerId,
-                baseUpdatedAt: asIsoString(entry.baseUpdatedAt) ?? "",
-                proposed: {
-                  name: boundText(proposed.name, MAX_VENUE_NAME_LENGTH) || undefined,
-                  purpose: boundText(proposed.purpose, 240) || undefined,
-                  id: asTrimmedString(proposed.id) || (target === "private" ? `private:${ownerId}` : "residence"),
-                  venueClass: "residence" as const,
-                  description: boundText(proposed.description, MAX_VENUE_DESCRIPTION_LENGTH),
-                  image: coerceVenueImage(proposed.image),
-                  state: coerceSpaceState(proposed.state),
-                },
-                requiredIds,
-                approvedIds: coerceVenueIds(entry.approvedIds).filter((residentId) => requiredIds.includes(residentId)),
-                declined: entry.declined === true,
-                createdAt: asIsoString(entry.createdAt) ?? "",
-              },
-            ];
-          })
-          .slice(-8)
       : [],
     usedInvitationIds: Array.isArray(raw.usedInvitationIds)
       ? [
@@ -907,10 +619,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
           )
           .slice(-16)
       : [],
-    improvements,
     description,
     category,
     presentation: {
+      mapId: asTrimmedString(presentation.mapId),
       image: coerceVenueImage(presentation.image),
       x: x !== null && y !== null ? x : null,
       y: x !== null && y !== null ? y : null,
@@ -922,52 +634,32 @@ function coerceVenue(value: unknown): VillageVenue | null {
     },
     capabilities,
     workerIds: coerceVenueIds(raw.workerIds),
-    state: {
-      condition: boundText(state.condition, MAX_VENUE_NOTE_LENGTH),
-      upgrades: coerceVenueStringList(state.upgrades),
-      furniture: coerceVenueStringList(state.furniture),
-      publicFacts: coerceVenueStringList(state.publicFacts),
-      features: coerceVenueFeatures(state.features),
-      traces: coerceVenueTraces(state.traces),
-      updatedAt: asIsoString(state.updatedAt) ?? "",
-    },
+    state: readPlaceContinuity(raw.state),
   };
   const readZone = (value: unknown, archived = false): VillageVenueZone | null => {
-    const row = savedVenueClassRecord(value);
+    const row = asRecord(value);
     const id = asTrimmedString(row.id);
     if (!id || !ZONE_KINDS.includes(row.kind as VillageVenueZone["kind"])) return null;
+    if (!archived && (!Array.isArray(row.connectedTo) || (row.kind !== "exterior" && row.access === undefined)))
+      throw new Error("Saved Zones need explicit connections and access policies.");
     const ownerId = asTrimmedString(row.ownerId);
     if (
       !archived &&
       row.kind === "private-residence" &&
-      !(explicitLayout && !ownerId) &&
+      !!ownerId &&
       !(residentIds.includes(ownerId) || (ownerId === "player" && playerHome))
     )
       return null;
-    const upgradeId = asTrimmedString(row.upgradeId);
-    if (upgradeId && !improvements.some((upgrade) => upgrade?.id === upgradeId)) return null;
     const zone: VillageVenueZone = {
       id,
-      connectedTo: Array.isArray(row.connectedTo)
-        ? row.connectedTo.filter((id): id is string => typeof id === "string")
-        : undefined,
+      connectedTo: Array.isArray(row.connectedTo) ? (row.connectedTo as string[]) : undefined,
       name: boundText(row.name, MAX_VENUE_NAME_LENGTH) || "Zone",
       kind: row.kind as VillageVenueZone["kind"],
       venueClass: validVenueClasses([row.venueClass]) ? (row.venueClass as VillageVenueClass) : "other",
-      description: boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH),
+      description: readPlaceDescription(row.description),
       ...(typeof row.roomSpecification === "string"
-        ? { roomSpecification: boundText(row.roomSpecification, MAX_VENUE_DESCRIPTION_LENGTH) }
+        ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
         : {}),
-      ...(asIsoString(asRecord(row.lastObserved).observedAt)
-        ? {
-            lastObserved: {
-              description: boundText(asRecord(row.lastObserved).description, MAX_VENUE_DESCRIPTION_LENGTH),
-              state: coerceSpaceState(asRecord(row.lastObserved).state),
-              observedAt: asIsoString(asRecord(row.lastObserved).observedAt)!,
-            },
-          }
-        : {}),
-      ...(typeof row.imageInteriorKey === "string" ? { imageInteriorKey: row.imageInteriorKey.slice(0, 20000) } : {}),
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
       ownerId: ownerId || undefined,
@@ -991,7 +683,6 @@ function coerceVenue(value: unknown): VillageVenue | null {
               : {}),
           }
         : undefined,
-      upgradeId: upgradeId || undefined,
       seen: row.seen === true,
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
@@ -999,14 +690,16 @@ function coerceVenue(value: unknown): VillageVenue | null {
         base: coerceVenueImage(asRecord(row.picture).base) ?? coerceVenueImage(row.image),
         removed: asRecord(row.picture).removed === true,
         failed: asRecord(row.picture).failed === true,
+        dirty: asRecord(row.picture).dirty === true,
+        operation: asRecord(row.picture).operation === "replace" ? ("replace" as const) : ("update" as const),
+        problem: boundText(asRecord(row.picture).problem, 300) || undefined,
+        lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
         context: boundText(asRecord(row.picture).context, 24000) || undefined,
         baseline: boundText(asRecord(row.picture).baseline, 24000) || undefined,
         attempted: boundText(asRecord(row.picture).attempted, 128) || undefined,
         claim: boundText(asRecord(row.picture).claim, 128) || undefined,
       },
       initialImageAttemptedAt: asIsoString(row.initialImageAttemptedAt) ?? "",
-      adaptationPending: row.adaptationPending === true,
-      adaptationSourceArchiveAt: asIsoString(row.adaptationSourceArchiveAt) ?? "",
     };
     if (zone.image && !zone.picture?.baseline) {
       zone.picture = {
@@ -1015,56 +708,51 @@ function coerceVenue(value: unknown): VillageVenue | null {
         baseline: zone.picture?.context ?? zonePictureBaseline(JSON.stringify(zonePicturePhysicalRecord(zone))),
       };
     }
-    if (isPrivateInterior(zone) && zone.seen) {
-      if (!zone.lastObserved) observePrivateInterior(zone, zone.state.updatedAt || "1970-01-01T00:00:00.000Z");
-      if (zone.image && !zone.imageInteriorKey) zone.imageInteriorKey = privateInteriorKey(zone.lastObserved!);
-    }
     return zone;
   };
   if (Array.isArray(raw.zones)) {
     const ids = new Set<string>();
     venue.zones = raw.zones.flatMap((value) => {
       const zone = readZone(value);
-      if (!zone || ids.has(zone.id)) return [];
+      if (!zone || ids.has(zone.id)) throw new Error("Saved Zone identities must be valid and unique.");
       ids.add(zone.id);
       return [zone];
     });
-    for (const legacy of explicitLayout ? [] : legacyVenueZones(venue))
-      if (!venue.zones.some((zone) => zone.id === legacy.id)) venue.zones.push(legacy);
+    if (!venue.zones.some((zone) => zone.id === "exterior" && zone.kind === "exterior"))
+      throw new Error("A saved Venue needs its Entrance.");
     const exterior = venue.zones.find((zone) => zone.kind === "exterior");
     if (exterior) {
       venue.exteriorState = exterior.state;
       venue.presentation.image = exterior.image;
       venue.description = exterior.description;
     }
-    venue.spaces = venue.zones.filter((zone) => !zone.upgradeId && ["public", "shared-residence"].includes(zone.kind));
+    venue.spaces = venue.zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
     venue.privateSpaces = venue.zones
       .filter((zone) => zone.kind === "private-residence")
       .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
   }
-  // Archive entries retain their state even after their owner Upgrade is removed.
+  if (raw.zoneLayout !== undefined) {
+    const ids = (venue.zones ?? []).map((zone) => zone.id);
+    venue.zoneLayout =
+      readZoneLayout(
+        Object.fromEntries(Object.entries(asRecord(raw.zoneLayout)).filter(([id]) => ids.includes(id))),
+        ids,
+      ) ?? undefined;
+  }
+  // Archive entries retain the state of removed Zones.
   venue.archivedZones = Array.isArray(raw.archivedZones)
     ? raw.archivedZones
         .flatMap((value) => {
           const row = asRecord(value),
             zone = asRecord(row.zone),
             archivedAt = asIsoString(row.archivedAt);
-          const parsed = readZone({ ...zone, upgradeId: undefined }, true);
-          return parsed && archivedAt
-            ? [{ zone: { ...parsed, upgradeId: asTrimmedString(zone.upgradeId) || undefined }, archivedAt }]
-            : [];
+          const parsed = readZone(zone, true);
+          return parsed && archivedAt ? [{ zone: parsed, archivedAt }] : [];
         })
         .slice(-64)
     : [];
-  venue.zones = (venue.zones ?? legacyVenueZones(venue)).flatMap((zone) => {
-    const parsed = readZone(zone);
-    return parsed ? [parsed] : [];
-  });
-  synchronizeVenueZones(venue, structuredClone(venue));
-  venue.zones = materializeConnections(venue.zones ?? legacyVenueZones(venue)).flatMap((zone) => {
-    const parsed = readZone(zone);
-    return parsed ? [parsed] : [];
-  });
+  const graphProblem = connectionProblem(venue.zones ?? []);
+  if (graphProblem) throw new Error(graphProblem);
   synchronizeVenueZones(venue, structuredClone(venue));
   venue.playerInvitations = venue.playerInvitations?.filter((invitation) => {
     invitation.zoneId ??=
@@ -1084,10 +772,10 @@ function coerceVenue(value: unknown): VillageVenue | null {
 function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
   if (!Array.isArray(value)) return undefined;
   return value.flatMap((entry) => {
-    const row = savedVenueClassRecord(entry),
+    const row = asRecord(entry),
       id = asTrimmedString(row.id),
       name = boundText(row.name, MAX_VENUE_NAME_LENGTH),
-      description = boundText(row.description, MAX_VENUE_DESCRIPTION_LENGTH);
+      description = readPlaceDescription(row.description);
     if (
       !id ||
       !name ||
@@ -1103,7 +791,7 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
         name,
         description,
         ...(typeof row.roomSpecification === "string"
-          ? { roomSpecification: boundText(row.roomSpecification, MAX_VENUE_DESCRIPTION_LENGTH) }
+          ? { roomSpecification: readPlaceDescription(row.roomSpecification) }
           : {}),
         purpose: boundText(row.purpose, 240),
         controllerIds: coerceVenueIds(row.controllerIds),
@@ -1118,63 +806,9 @@ function coerceZoneDrafts(value: unknown): VillageZoneDraft[] | undefined {
     ];
   });
 }
-function coerceVenueStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((entry): entry is string => typeof entry === "string")
-    .map((entry) => boundText(entry, MAX_VENUE_NOTE_LENGTH))
-    .filter(Boolean)
-    .slice(0, 24);
-}
 function coerceVenueIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.filter((id): id is string => typeof id === "string" && id.length > 0))].slice(0, 60);
-}
-function coerceVenueFeatures(value: unknown): VillageVenueFeature[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  return value
-    .flatMap((entry) => {
-      const row = asRecord(entry);
-      const id = asTrimmedString(row.id);
-      const text = boundText(row.text, MAX_VENUE_NOTE_LENGTH);
-      if (!id || !text || seen.has(id)) return [];
-      seen.add(id);
-      return [
-        {
-          id,
-          text,
-          sourceCharacterId: asTrimmedString(row.sourceCharacterId),
-          locked: row.locked === true,
-          updatedAt: asIsoString(row.updatedAt) ?? "",
-        },
-      ];
-    })
-    .slice(0, 5);
-}
-function coerceVenueTraces(value: unknown): VillageVenueTrace[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  return value
-    .flatMap((entry) => {
-      const row = asRecord(entry);
-      const id = asTrimmedString(row.id);
-      const text = boundText(row.text, MAX_VENUE_NOTE_LENGTH);
-      if (!id || !text || seen.has(id)) return [];
-      seen.add(id);
-      return [
-        {
-          id,
-          kind: typeof row.kind === "string" && /^[a-z][a-z0-9-]{0,39}$/u.test(row.kind) ? row.kind : "other",
-          text,
-          recipientId: asTrimmedString(row.recipientId),
-          createdAt: asIsoString(row.createdAt) ?? "",
-          seenBy: coerceVenueIds(row.seenBy),
-          ...(asIsoString(row.expiresAt) ? { expiresAt: asIsoString(row.expiresAt)! } : {}),
-        } satisfies VillageVenueTrace,
-      ];
-    })
-    .slice(0, 16);
 }
 function coerceResidentSignature(value: unknown) {
   const raw = asRecord(value);
@@ -1204,13 +838,15 @@ function coerceVenues(value: unknown): VillageVenue[] {
   let sawPlayerHome = false;
   for (const entry of value) {
     const venue = coerceVenue(entry);
-    if (!venue || seenIds.has(venue.id) || venues.length >= MAX_PLACES) continue;
+    if (!venue || seenIds.has(venue.id) || venues.length >= MAX_PLACES)
+      throw new Error("Saved Venues must have distinct valid identities within the Village limit.");
     if (venue.occupancy.playerHome) {
-      if (sawPlayerHome) continue;
+      if (sawPlayerHome) throw new Error("The player cannot have two homes.");
       sawPlayerHome = true;
-    } else if (venue.occupancy.residentCharacterId !== null) {
-      if (seenOccupants.has(venue.occupancy.residentCharacterId)) continue;
-      seenOccupants.add(venue.occupancy.residentCharacterId);
+    }
+    for (const id of venue.residentIds ?? []) {
+      if (seenOccupants.has(id)) throw new Error("A resident cannot have two homes.");
+      seenOccupants.add(id);
     }
     seenIds.add(venue.id);
     venues.push(venue);
@@ -1218,69 +854,42 @@ function coerceVenues(value: unknown): VillageVenue[] {
   return venues;
 }
 function coerceVenueEvent(value: unknown): VillageVenueEvent | null {
-  const raw = asRecord(value);
-  const receipt = asRecord(raw.actionReceipt);
-  const id = asTrimmedString(raw.id) || randomVillageSeed();
-  const venueId = asTrimmedString(raw.venueId);
-  const text = boundText(raw.text, MAX_NOTICE_LENGTH);
-  if (venueId.length === 0 || text.length === 0) return null;
+  const raw = asRecord(value),
+    receipt = asRecord(raw.actionReceipt),
+    after = asRecord(receipt.after);
+  const venueId = asTrimmedString(raw.venueId),
+    text = boundText(raw.text, MAX_EVENT_TEXT_LENGTH);
+  if (!venueId || !text) return null;
+  let actionReceipt: VillageVenueEvent["actionReceipt"];
+  if (raw.actionReceipt !== undefined) {
+    const state = readPlaceContinuity(after.state);
+    if (
+      typeof after.description !== "string" ||
+      after.description.length > MAX_VENUE_DESCRIPTION_LENGTH ||
+      !Number.isSafeInteger(receipt.expectedRevision) ||
+      Number(receipt.expectedRevision) < 0 ||
+      state.revision !== Number(receipt.expectedRevision) + 1 ||
+      receipt.happened !== true ||
+      !asTrimmedString(receipt.submissionId)
+    )
+      throw new Error("Invalid saved physical outcome; its bytes are preserved.");
+    actionReceipt = {
+      submissionId: asTrimmedString(receipt.submissionId),
+      happened: true,
+      expectedRevision: Number(receipt.expectedRevision),
+      narration: boundText(receipt.narration, MAX_PHYSICAL_NARRATION_LENGTH),
+      witnessIds: coerceVenueIds(receipt.witnessIds),
+      after: { description: after.description, state },
+    };
+  }
   return {
-    id,
+    id: asTrimmedString(raw.id) || randomVillageSeed(),
     venueId,
+    text,
     venueName: boundText(raw.venueName, MAX_VENUE_NAME_LENGTH),
     zoneId: asTrimmedString(raw.zoneId) || undefined,
-    text,
     at: asIsoString(raw.at) ?? "",
-    ...(asTrimmedString(receipt.submissionId)
-      ? {
-          actionReceipt: {
-            submissionId: asTrimmedString(receipt.submissionId),
-            happened: receipt.happened === true,
-            narration: boundText(receipt.narration, MAX_HAPPENING_LENGTH),
-            ...Object.fromEntries(
-              [
-                "conditionBefore",
-                "conditionAfter",
-                "featureId",
-                "featureText",
-                "publicFactBefore",
-                "publicFactAfter",
-                "sceneNote",
-              ].flatMap((key) =>
-                typeof receipt[key] === "string" ? [[key, boundText(receipt[key], MAX_VENUE_NOTE_LENGTH)]] : [],
-              ),
-            ),
-            ...(Array.isArray(receipt.witnessIds)
-              ? { witnessIds: receipt.witnessIds.filter((id): id is string => typeof id === "string").slice(0, 100) }
-              : {}),
-            ...(asTrimmedString(receipt.transferTo) ? { transferTo: asTrimmedString(receipt.transferTo) } : {}),
-            ...(asTrimmedString(asRecord(receipt.itemTransfer).itemName) &&
-            asRecord(receipt.itemTransfer).itemName === receipt.removeItem &&
-            asRecord(receipt.itemTransfer).recipientId === receipt.transferTo
-              ? {
-                  itemTransfer: {
-                    itemName: asTrimmedString(asRecord(receipt.itemTransfer).itemName),
-                    recipientId: asTrimmedString(asRecord(receipt.itemTransfer).recipientId),
-                  },
-                }
-              : {}),
-            ...(asTrimmedString(receipt.addItem) ? { addItem: boundText(receipt.addItem, MAX_VENUE_NOTE_LENGTH) } : {}),
-            ...(asTrimmedString(receipt.removeItem)
-              ? { removeItem: boundText(receipt.removeItem, MAX_VENUE_NOTE_LENGTH) }
-              : {}),
-            ...(typeof receipt.traceKind === "string" && /^[a-z][a-z0-9-]{0,39}$/u.test(receipt.traceKind)
-              ? { traceKind: receipt.traceKind }
-              : {}),
-            ...(asTrimmedString(receipt.traceText)
-              ? { traceText: boundText(receipt.traceText, MAX_VENUE_NOTE_LENGTH) }
-              : {}),
-            ...(asTrimmedString(receipt.recipientId) ? { recipientId: asTrimmedString(receipt.recipientId) } : {}),
-            ...(asTrimmedString(receipt.resolveTraceId)
-              ? { resolveTraceId: asTrimmedString(receipt.resolveTraceId) }
-              : {}),
-          },
-        }
-      : {}),
+    ...(actionReceipt ? { actionReceipt } : {}),
   };
 }
 function coerceVenueEvents(value: unknown): VillageVenueEvent[] {
@@ -1294,9 +903,12 @@ function coerceResidence(value: unknown): VillageResidence | null {
   const raw = asRecord(value);
   const venueId = asTrimmedString(raw.venueId);
   const characterId = asTrimmedString(raw.characterId);
-  if (venueId.length === 0 || characterId.length === 0) return null;
+  if (characterId.length === 0) throw new Error("A saved move needs its incoming person.");
   const status = raw.status === "pending" || raw.status === "moving" ? raw.status : "current";
   return {
+    ...(status !== "current"
+      ? { agreement: readResidenceAgreement(raw.agreement), holdReason: boundText(raw.holdReason, 600) }
+      : {}),
     venueId,
     characterId,
     status,
@@ -1321,232 +933,6 @@ function coerceResidences(value: unknown): VillageResidence[] {
     residences.push(residence);
   }
   return residences.slice(0, MAX_PLACES);
-}
-function coerceNotice(value: unknown): VillageNotice | null {
-  if (typeof value === "string") {
-    const text = boundText(value, MAX_NOTICE_LENGTH);
-    return text.length > 0 ? { author: "", text } : null;
-  }
-  const raw = asRecord(value);
-  const text = boundText(raw.text, MAX_NOTICE_LENGTH);
-  if (text.length === 0) return null;
-  return { author: boundText(raw.author, MAX_NOTICE_AUTHOR_LENGTH), text };
-}
-function coerceNotices(value: unknown): VillageNotice[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map(coerceNotice)
-    .filter((entry): entry is VillageNotice => entry !== null)
-    .slice(0, MAX_NOTICEBOARD_NOTES);
-}
-function legacyOccurrence(
-  foundedAt: string,
-  dayIndex: number,
-  clock: string,
-  exact: unknown,
-): { occurredAt: string; timePrecision: "exact" | "phase" } {
-  const stored = asIsoString(exact);
-  if (stored) return { occurredAt: stored, timePrecision: "exact" };
-  const parsed = new Date(foundedAt);
-  const founded = Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-  const midpointHour = clock === "night" ? 2 : clock === "morning" ? 8 : clock === "afternoon" ? 14 : 20;
-  const migrated = new Date(
-    founded.getFullYear(),
-    founded.getMonth(),
-    founded.getDate() + dayIndex,
-    midpointHour,
-    0,
-    0,
-    0,
-  );
-  return { occurredAt: migrated.toISOString(), timePrecision: "phase" };
-}
-function coerceHappening(value: unknown, foundedAt: string): VillageHappening | null {
-  const raw = asRecord(value);
-  const text = boundText(raw.narration, MAX_HAPPENING_LENGTH) || boundText(raw.text, MAX_HAPPENING_LENGTH);
-  if (text.length === 0) return null;
-  const dayIndex =
-    typeof raw.dayIndex === "number" && Number.isFinite(raw.dayIndex) && raw.dayIndex >= 0
-      ? Math.floor(raw.dayIndex)
-      : 0;
-  const clock = asTrimmedString(raw.clock);
-  const occurrence = legacyOccurrence(foundedAt, dayIndex, clock, raw.occurredAt ?? raw.at);
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    kind: boundText(raw.kind, 40) || "observation",
-    actorIds: asStringArray(raw.actorIds)
-      .map((actor) => actor.trim())
-      .filter(Boolean)
-      .slice(0, 8),
-    venueId: asTrimmedString(raw.venueId),
-    dayIndex,
-    clock: villageClockIndex(clock) >= 0 ? clock : "",
-    ...occurrence,
-    sourceOpportunityId: asTrimmedString(raw.sourceOpportunityId),
-    narration: boundText(raw.narration, MAX_HAPPENING_LENGTH) || text,
-    text,
-  };
-}
-function coerceHappenings(value: unknown, foundedAt: string): VillageHappening[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => coerceHappening(entry, foundedAt))
-    .filter((entry): entry is VillageHappening => entry !== null)
-    .slice(0, MAX_HAPPENINGS);
-}
-function coerceChronicleActor(value: unknown): VillageChronicleActor | null {
-  if (typeof value === "string") {
-    const name = boundText(value, MAX_NOTICE_AUTHOR_LENGTH);
-    return name.length > 0 ? { id: "", name } : null;
-  }
-  const raw = asRecord(value);
-  const name = boundText(raw.name, MAX_NOTICE_AUTHOR_LENGTH);
-  if (name.length === 0) return null;
-  return { id: asTrimmedString(raw.id), name };
-}
-function coerceChronicleEntry(value: unknown, foundedAt: string): VillageChronicleEntry | null {
-  const raw = asRecord(value);
-  const text = boundText(raw.text, MAX_MEMORY_LENGTH);
-  if (text.length === 0) return null;
-  const scope = raw.scope === "private" ? "private" : "village";
-  const actors = Array.isArray(raw.actors)
-    ? raw.actors.map(coerceChronicleActor).filter((entry): entry is VillageChronicleActor => entry !== null)
-    : [];
-  // A private memory is FOR someone, so one with nobody to belong to is dropped
-  // rather than stored: it would never reach a prompt (no villager is named as
-  // its subject) and would only sit in the debug tab looking like a leak.
-  if (scope === "private" && actors.length === 0) return null;
-  const dayIndex =
-    typeof raw.dayIndex === "number" && Number.isFinite(raw.dayIndex) && raw.dayIndex >= 0
-      ? Math.floor(raw.dayIndex)
-      : 0;
-  const clock = asTrimmedString(raw.clock);
-  const occurrence = legacyOccurrence(foundedAt, dayIndex, clock, raw.occurredAt ?? raw.at);
-  return {
-    id: asTrimmedString(raw.id) || randomVillageSeed(),
-    dayIndex,
-    clock: villageClockIndex(clock) >= 0 ? clock : "",
-    ...occurrence,
-    scope,
-    actors,
-    kind: raw.kind === "chat" || raw.kind === "favour" ? raw.kind : "tick",
-    weight: typeof raw.weight === "number" && Number.isFinite(raw.weight) ? raw.weight : undefined,
-    sourceLineIds: Array.isArray(raw.sourceLineIds)
-      ? raw.sourceLineIds.filter((id): id is string => typeof id === "string")
-      : undefined,
-    memoryCategory:
-      raw.memoryCategory === "commitment" ||
-      raw.memoryCategory === "personal-fact" ||
-      raw.memoryCategory === "preference" ||
-      raw.memoryCategory === "relationship" ||
-      raw.memoryCategory === "shared-experience"
-        ? raw.memoryCategory
-        : undefined,
-    subjectCharacterIds: Array.isArray(raw.subjectCharacterIds)
-      ? [...new Set(raw.subjectCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-      : undefined,
-    knownByCharacterIds: Array.isArray(raw.knownByCharacterIds)
-      ? [...new Set(raw.knownByCharacterIds.filter((id): id is string => typeof id === "string" && !!id))]
-      : undefined,
-    sourceVisitId: asTrimmedString(raw.sourceVisitId) || undefined,
-    lastReinforcedAt: asIsoString(raw.lastReinforcedAt) ?? undefined,
-    supersededAt: asIsoString(raw.supersededAt) ?? undefined,
-    supersededBy: asTrimmedString(raw.supersededBy) || undefined,
-    evidenceHistory: Array.isArray(raw.evidenceHistory)
-      ? raw.evidenceHistory
-          .map((value) => {
-            const entry = asRecord(value);
-            return {
-              visitId: asTrimmedString(entry.visitId),
-              submissionId: asTrimmedString(entry.submissionId),
-              lineIds: asStringArray(entry.lineIds),
-            };
-          })
-          .filter((entry) => entry.visitId && entry.submissionId && entry.lineIds.length)
-      : undefined,
-    sourceRecollectionIds: Array.isArray(raw.sourceRecollectionIds)
-      ? [...new Set(raw.sourceRecollectionIds.filter((id): id is string => typeof id === "string" && !!id))]
-      : undefined,
-    text,
-  };
-}
-function coerceChronicle(value: unknown, foundedAt: string): VillageChronicleEntry[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => coerceChronicleEntry(entry, foundedAt))
-    .filter((entry): entry is VillageChronicleEntry => entry !== null);
-}
-function coerceRecollections(value: unknown): VillageRecollection[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((value): VillageRecollection | null => {
-      const raw = asRecord(value);
-      const id = asTrimmedString(raw.id);
-      const visitId = asTrimmedString(raw.visitId);
-      const text = boundText(raw.text, MAX_MEMORY_LENGTH);
-      const occurredAt = asIsoString(raw.occurredAt) ?? "";
-      const expiresAt = asIsoString(raw.expiresAt) ?? "";
-      const subjectCharacterIds = [...new Set(asStringArray(raw.subjectCharacterIds).filter(Boolean))];
-      const knownByCharacterIds = [...new Set(asStringArray(raw.knownByCharacterIds).filter(Boolean))];
-      const sourceLineIds = [...new Set(asStringArray(raw.sourceLineIds).filter(Boolean))];
-      const sourceSubmissionIds = [...new Set(asStringArray(raw.sourceSubmissionIds).filter(Boolean))];
-      const evidence = Array.isArray(raw.evidence)
-        ? raw.evidence
-            .map((value) => {
-              const row = asRecord(value);
-              const sourceVisitId = asTrimmedString(row.visitId);
-              const submissionId = asTrimmedString(row.submissionId);
-              const lineIds = [...new Set(asStringArray(row.lineIds).filter(Boolean))];
-              return sourceVisitId && lineIds.length ? { visitId: sourceVisitId, submissionId, lineIds } : null;
-            })
-            .filter((entry): entry is { visitId: string; submissionId: string; lineIds: string[] } => entry !== null)
-        : [];
-      if (!id || !visitId || !text || !occurredAt || !expiresAt || !knownByCharacterIds.length || !sourceLineIds.length)
-        return null;
-      return {
-        id,
-        visitId,
-        occurredAt,
-        expiresAt,
-        text,
-        subjectCharacterIds,
-        knownByCharacterIds,
-        sourceLineIds,
-        sourceSubmissionIds,
-        evidence: evidence.length
-          ? evidence
-          : [{ visitId, submissionId: sourceSubmissionIds[0] ?? "", lineIds: sourceLineIds }],
-        reinforcementCount:
-          typeof raw.reinforcementCount === "number" && Number.isFinite(raw.reinforcementCount)
-            ? Math.max(0, Math.floor(raw.reinforcementCount))
-            : 0,
-        lastReinforcedAt: asIsoString(raw.lastReinforcedAt) ?? occurredAt,
-      };
-    })
-    .filter((entry): entry is VillageRecollection => entry !== null);
-}
-function coerceTownMapImage(value: unknown): string {
-  const image = asString(value);
-  return image.length <= MAX_TOWN_MAP_IMAGE_LENGTH && isTownMapImage(image) ? image : "";
-}
-function coerceTownMapCanvas(raw: Record<string, unknown>, legacyCanvas: boolean): { width: number; height: number } {
-  if (legacyCanvas) return { width: LEGACY_TOWN_MAP_WIDTH, height: LEGACY_TOWN_MAP_HEIGHT };
-  const width = raw.townMapCanvasWidth;
-  const height = raw.townMapCanvasHeight;
-  if (
-    typeof width === "number" &&
-    typeof height === "number" &&
-    Number.isInteger(width) &&
-    Number.isInteger(height) &&
-    width > 0 &&
-    height > 0 &&
-    width <= 8192 &&
-    height <= 8192 &&
-    width * height <= 16_000_000
-  ) {
-    return { width, height };
-  }
-  return { width: TOWN_MAP_EXPECTED_WIDTH, height: TOWN_MAP_EXPECTED_HEIGHT };
 }
 function coerceRefreshClocks(value: unknown): string[] {
   if (!Array.isArray(value)) return [...VILLAGE_CLOCKS];
@@ -1576,12 +962,12 @@ export function coerceTownMapView(value: unknown): VillageTownMapView {
     zoom: asZoom(raw.zoom) ?? DEFAULT_TOWN_MAP_VIEW.zoom,
   };
 }
-const STORY_PACES: readonly VillageStoryPace[] = ["off", "quiet", "balanced", "lively"];
+const BACKGROUND_PACES: readonly VillageBackgroundPace[] = ["off", "quiet", "balanced", "lively"];
 const MAX_SIMULATION_RECORDS = 256;
-function coerceStoryPace(raw: Record<string, unknown>): VillageStoryPace {
-  if (typeof raw.storyPace === "string" && STORY_PACES.includes(raw.storyPace as VillageStoryPace)) {
-    return raw.storyPace as VillageStoryPace;
-  }
+function coerceBackgroundPace(raw: Record<string, unknown>): VillageBackgroundPace {
+  const pace = raw.backgroundPace ?? raw.storyPace;
+  if (typeof pace === "string" && BACKGROUND_PACES.includes(pace as VillageBackgroundPace))
+    return pace as VillageBackgroundPace;
   const clocks = coerceRefreshClocks(raw.refreshClocks);
   if (raw.backgroundRefreshesEnabled === false || clocks.length === 0) return "off";
   return clocks.length === 1 ? "quiet" : "balanced";
@@ -1596,345 +982,225 @@ function legacySimulatedThrough(foundedAt: string, key: unknown): string {
   at.setMinutes(window.endMinute);
   return at.toISOString();
 }
-function coerceOpportunities(value: unknown): VillageOpportunity[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const id = asTrimmedString(raw.id);
-      const startsAt = asIsoString(raw.startsAt);
-      const endsAt = asIsoString(raw.endsAt);
-      const kinds = ["encounter", "wish", "weather", "routine", "project"] as const;
-      if (!id || !startsAt || !endsAt || !kinds.includes(raw.kind as (typeof kinds)[number])) return [];
-      return [
-        {
-          id,
-          kind: raw.kind as VillageOpportunity["kind"],
-          startsAt,
-          endsAt,
-          actorIds: asStringArray(raw.actorIds)
-            .map((id) => id.trim())
-            .filter(Boolean)
-            .slice(0, 8),
-          venueId: asTrimmedString(raw.venueId),
-          zoneId: asTrimmedString(raw.zoneId) || undefined,
-          facts: asStringArray(raw.facts)
-            .map((fact) => boundText(fact, MAX_HAPPENING_LENGTH))
-            .filter(Boolean)
-            .slice(0, 8),
-        },
-      ];
-    })
-    .slice(-MAX_SIMULATION_RECORDS);
-}
-function coerceScheduledEvents(value: unknown): VillageScheduledEvent[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const id = asTrimmedString(raw.id);
-      const opportunityId = asTrimmedString(raw.opportunityId);
-      const occursAt = asIsoString(raw.occursAt);
-      if (!id || !opportunityId || !occursAt) return [];
-      return [
-        {
-          id,
-          opportunityId,
-          occursAt,
-          kind: boundText(raw.kind, 40),
-          actorIds: asStringArray(raw.actorIds)
-            .map((actor) => actor.trim())
-            .filter(Boolean)
-            .slice(0, 8),
-          venueId: asTrimmedString(raw.venueId),
-          narration: boundText(raw.narration, MAX_HAPPENING_LENGTH),
-        },
-      ];
-    })
-    .slice(-MAX_SIMULATION_RECORDS);
-}
-function coerceRelationships(value: unknown): VillageRelationship[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const raw = asRecord(entry);
-      const firstCharacterId = asTrimmedString(raw.firstCharacterId);
-      const secondCharacterId = asTrimmedString(raw.secondCharacterId);
-      if (!firstCharacterId || !secondCharacterId || firstCharacterId === secondCharacterId) return [];
-      return [
-        {
-          firstCharacterId,
-          secondCharacterId,
-          closeness:
-            typeof raw.closeness === "number" && Number.isFinite(raw.closeness)
-              ? Math.max(-5, Math.min(5, Math.trunc(raw.closeness)))
-              : 0,
-          updatedAt: asIsoString(raw.updatedAt) ?? "",
-        },
-      ];
-    })
-    .slice(0, MAX_SIMULATION_RECORDS);
+/** Preserve the spent daily allowance when removing the legacy visual feed. */
+function coercePlanningUsage(raw: Record<string, unknown>): VillageState["planningUsage"] {
+  const usage = asRecord(raw.planningUsage),
+    dateKey = boundText(usage.dateKey ?? raw.lastPlanningDate ?? raw.lastCreativeDate, 10);
+  if (raw.planningUsage && typeof usage.count === "number" && Number.isSafeInteger(usage.count) && usage.count >= 0)
+    return { dateKey, count: usage.count };
+  const timeZone = validTimeZone(raw.timeZone)
+    ? raw.timeZone
+    : validTimeZone(raw.lastKnownTimeZone)
+      ? raw.lastKnownTimeZone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const count = (Array.isArray(raw.happenings) ? raw.happenings : []).filter((row) => {
+    const at = asIsoString(asRecord(row).occurredAt);
+    return !!at && localDateKey(new ZonedDate(at, timeZone)) === dateKey;
+  }).length;
+  return { dateKey, count: dateKey ? Math.max(1, count) : 0 };
 }
 function coerceProjects(value: unknown): VillageProject[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap<VillageProject>((entry) => {
-    const raw = asRecord(entry);
-    const id = asTrimmedString(raw.id);
-    const title = boundText(raw.title, MAX_NOTICE_LENGTH);
-    if (!id || !title) return [];
-    if ((raw.kind === "new-venue" || raw.kind === "renovation") && asRecord(raw.lifecycle).version === 2) {
-      const flow = asRecord(raw.lifecycle);
-      const draft = savedVenueClassRecord(raw.venueDraft);
-      const position = asRecord(draft.position);
-      const phases = [
-        "concept",
-        "approval",
-        "builder",
-        "requirements",
-        "materials",
-        "construction",
-        "finishing",
-        "complete",
-      ] as const;
-      const phase = phases.includes(flow.phase as (typeof phases)[number])
-        ? (flow.phase as (typeof phases)[number])
-        : "concept";
-      const order = asRecord(flow.workOrder);
-      const change = savedVenueClassRecord(flow.change);
-      const improvement = savedVenueClassRecord(change.improvement);
-      return [
-        {
-          id,
-          title,
-          kind: raw.kind,
-          venueId: asTrimmedString(raw.venueId),
-          participantIds: asStringArray(raw.participantIds),
-          progress: Number.isFinite(Number(raw.progress)) ? Math.max(0, Math.min(100, Number(raw.progress))) : 0,
-          status:
-            raw.status === "blocked"
-              ? "blocked"
-              : phase === "complete"
-                ? "complete"
-                : phase === "finishing"
-                  ? "finishing"
-                  : phase === "construction"
-                    ? "building"
-                    : phase === "concept"
-                      ? "draft"
-                      : "active",
-          updatedAt: asIsoString(raw.updatedAt) ?? "",
-          ...(raw.kind === "new-venue"
-            ? {
-                venueDraft: {
-                  name: boundText(draft.name, MAX_VENUE_NAME_LENGTH),
-                  classes: validVenueClasses(draft.classes) ? draft.classes : ["other" as const],
-                  description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
-                  category: "",
-                  position: {
-                    x: typeof position.x === "number" && position.x >= 0 && position.x <= 1 ? position.x : null,
-                    y: typeof position.y === "number" && position.y >= 0 && position.y <= 1 ? position.y : null,
-                  },
-                  occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-                  capabilities: [],
-                  state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
-                },
-              }
-            : {}),
-          lifecycle: {
-            version: 2 as const,
-            phase,
-            targetVenueId: asTrimmedString(flow.targetVenueId),
-            change:
-              flow.change && typeof flow.change === "object"
-                ? {
-                    ...(validVenueClasses(change.classes) ? { classes: change.classes } : {}),
-                    ...(Number.isInteger(change.capacity) ? { capacity: Number(change.capacity) } : {}),
-                    ...(Array.isArray(change.baseZones) ? { baseZones: coerceZoneDrafts(change.baseZones) } : {}),
-                    ...(isHomeBuildingKind(change.homeKind) ? { homeKind: change.homeKind } : {}),
-                    ...(change.slot === 0 || change.slot === 1 ? { slot: change.slot } : {}),
-                    ...(change.improvement === null
-                      ? { improvement: null }
-                      : improvement.title
-                        ? {
-                            improvement: {
-                              id: asTrimmedString(improvement.id),
-                              title: boundText(improvement.title, MAX_VENUE_NOTE_LENGTH),
-                              description: boundText(improvement.description, MAX_VENUE_DESCRIPTION_LENGTH),
-                              spaceId: asTrimmedString(improvement.spaceId) || null,
-                              classContribution: validVenueClasses([improvement.classContribution])
-                                ? (improvement.classContribution as VillageVenueClass)
-                                : undefined,
-                              zones: coerceZoneDrafts(improvement.zones),
-                              extraBeds: Number(improvement.extraBeds ?? 0),
-                              approvedAt: asIsoString(improvement.approvedAt) ?? "",
-                            },
-                          }
-                        : {}),
-                    detail: boundText(change.detail, MAX_VENUE_DESCRIPTION_LENGTH),
-                  }
-                : null,
-            affectedIds: asStringArray(flow.affectedIds),
-            approvals: Array.isArray(flow.approvals)
-              ? flow.approvals.flatMap((item) => {
-                  const row = asRecord(item),
-                    residentId = asTrimmedString(row.residentId);
-                  return residentId
-                    ? [
-                        {
-                          residentId,
-                          source: row.source === "mailbox" ? ("mailbox" as const) : ("conversation" as const),
-                          evidenceId: asTrimmedString(row.evidenceId),
-                          at: asIsoString(row.at) ?? "",
-                        },
-                      ]
-                    : [];
-                })
-              : [],
-            candidates: Array.isArray(flow.candidates)
-              ? flow.candidates.flatMap((item) => {
-                  const row = asRecord(item),
-                    residentId = asTrimmedString(row.residentId);
-                  return residentId
-                    ? [{ residentId, evidenceId: asTrimmedString(row.evidenceId), at: asIsoString(row.at) ?? "" }]
-                    : [];
-                })
-              : [],
-            builderId: asTrimmedString(flow.builderId),
-            requirements: Array.isArray(flow.requirements)
-              ? flow.requirements.flatMap((item) => {
-                  const row = asRecord(item),
-                    requirementId = asTrimmedString(row.id);
-                  const category = ["structure", "equipment", "finish"].includes(String(row.category))
-                    ? row.category
-                    : "structure";
-                  return requirementId
-                    ? [
-                        {
-                          id: requirementId,
-                          category: category as "structure" | "equipment" | "finish",
-                          title: boundText(row.title, MAX_VENUE_NOTE_LENGTH),
-                          needed: row.needed !== false,
-                          carriedAt: asIsoString(row.carriedAt) ?? "",
-                          deliveredAt: asIsoString(row.deliveredAt) ?? "",
-                        },
-                      ]
-                    : [];
-                })
-              : [],
-            requirementsEvidenceId: asTrimmedString(flow.requirementsEvidenceId),
-            requirementsAcceptedAt: asIsoString(flow.requirementsAcceptedAt) ?? "",
-            recordedItems: Array.isArray(flow.recordedItems)
-              ? flow.recordedItems.flatMap((entry) => {
-                  const item = asRecord(entry);
-                  const venueId = asTrimmedString(item.venueId);
-                  const itemName = boundText(item.itemName, MAX_VENUE_NOTE_LENGTH);
-                  return venueId && itemName
-                    ? [{ venueId, zoneId: asTrimmedString(item.zoneId) || undefined, itemName }]
-                    : [];
-                })
-              : [],
-            sources: Array.isArray(flow.sources)
-              ? flow.sources.flatMap((entry) => {
-                  const source = asRecord(entry);
-                  const requirementId = asTrimmedString(source.requirementId);
-                  const venueId = asTrimmedString(source.venueId);
-                  const itemName = boundText(source.itemName, MAX_VENUE_NOTE_LENGTH);
-                  const evidenceId = asTrimmedString(source.evidenceId);
-                  if (!requirementId || !venueId || !itemName || !evidenceId) return [];
-                  return [
-                    {
-                      requirementId,
-                      kind:
-                        source.kind === "existing-item"
-                          ? ("existing-item" as const)
-                          : source.kind === "held-supply"
-                            ? ("held-supply" as const)
-                            : ("resident-offer" as const),
-                      venueId,
-                      zoneId: asTrimmedString(source.zoneId) || undefined,
-                      itemName,
-                      supplierId: asTrimmedString(source.supplierId),
-                      evidenceId,
-                      at: asIsoString(source.at) ?? "",
-                      acquiredAt: asIsoString(source.acquiredAt) ?? "",
-                    },
-                  ];
-                })
-              : [],
-            heldSupplies: Array.isArray(flow.heldSupplies)
-              ? flow.heldSupplies.flatMap((entry) => {
-                  const held = asRecord(entry);
-                  const id = asTrimmedString(held.id);
-                  const itemName = boundText(held.itemName, MAX_VENUE_NOTE_LENGTH);
-                  const acquiredAt = asIsoString(held.acquiredAt) ?? "";
-                  return id && itemName && acquiredAt
-                    ? [
-                        {
-                          id,
-                          itemName,
-                          acquiredAt,
-                          deliveredAt: asIsoString(held.deliveredAt) ?? "",
-                          assignedRequirementId: asTrimmedString(held.assignedRequirementId),
-                        },
-                      ]
-                    : [];
-                })
-              : [],
-            spokenProofs: Array.isArray(flow.spokenProofs)
-              ? flow.spokenProofs.flatMap((entry) => {
-                  const proof = asRecord(entry);
-                  const lineId = asTrimmedString(proof.lineId);
-                  const sessionId = asTrimmedString(proof.sessionId);
-                  const submissionId = asTrimmedString(proof.submissionId);
-                  if (!lineId || !sessionId || !submissionId) return [];
-                  return [
-                    {
-                      lineId,
-                      sessionId,
-                      submissionId,
-                      speakerId: asTrimmedString(proof.speakerId),
-                      venueId: asTrimmedString(proof.venueId),
-                      zoneId: asTrimmedString(proof.zoneId) || undefined,
-                      quote: boundText(proof.quote, 300),
-                      at: asIsoString(proof.at) ?? "",
-                      ...readProgressInterpretation(proof),
-                    },
-                  ];
-                })
-              : [],
-            evidenceIds: asStringArray(flow.evidenceIds),
-            workOrder:
-              asIsoString(order.startsAt) && asIsoString(order.completesAt)
-                ? {
-                    startsAt: asIsoString(order.startsAt)!,
-                    completesAt: asIsoString(order.completesAt)!,
-                    pausedAt: asIsoString(order.pausedAt) ?? "",
-                    remainingMs: Number.isFinite(Number(order.remainingMs))
-                      ? Math.max(0, Number(order.remainingMs))
-                      : 0,
-                  }
-                : null,
-            blockedReason: boundText(flow.blockedReason, MAX_VENUE_NOTE_LENGTH),
-            completedAt: asIsoString(flow.completedAt) ?? "",
-          },
-        },
-      ];
+  if (!Array.isArray(value)) throw new Error("Invalid Project records.");
+  return value.map((value) => {
+    const raw = asRecord(value),
+      flow = asRecord(raw.lifecycle),
+      draft = asRecord(raw.venueDraft);
+    if (
+      !asTrimmedString(raw.id) ||
+      !asTrimmedString(raw.title) ||
+      !["new-venue", "renovation", "establishment"].includes(String(raw.kind)) ||
+      !["planning", "working", "paused", "complete", "cancelled"].includes(String(raw.status)) ||
+      flow.phase !== raw.status ||
+      !Number.isInteger(flow.revision) ||
+      Number(flow.revision) < 1 ||
+      !Array.isArray(flow.approvals) ||
+      !Array.isArray(flow.candidates) ||
+      !Array.isArray(flow.spokenProofs) ||
+      !Array.isArray(flow.evidenceIds)
+    )
+      throw new Error("Invalid Project record.");
+    const approvals = flow.approvals.filter((value) => asRecord(value).source !== "mailbox");
+    const rows = [...approvals, ...flow.candidates];
+    if (
+      rows.some((value) => {
+        const row = asRecord(value);
+        return (
+          !asTrimmedString(row.residentId) ||
+          !asTrimmedString(row.evidenceId) ||
+          typeof row.scope !== "string" ||
+          !asIsoString(row.at)
+        );
+      }) ||
+      approvals.some((value) => asRecord(value).source !== "conversation") ||
+      flow.spokenProofs.some((value) => {
+        const row = asRecord(value);
+        return (
+          !asTrimmedString(row.lineId) ||
+          !asTrimmedString(row.sessionId) ||
+          !asTrimmedString(row.submissionId) ||
+          !asTrimmedString(row.speakerId) ||
+          !asIsoString(row.at)
+        );
+      })
+    )
+      throw new Error("Invalid Project agreement records.");
+    const order = flow.workOrder === null ? null : asRecord(flow.workOrder);
+    if (
+      order &&
+      (!asIsoString(order.startsAt) ||
+        !asIsoString(order.completesAt) ||
+        !Number.isFinite(order.remainingMs) ||
+        Number(order.remainingMs) < 0)
+    )
+      throw new Error("Invalid Project deadline.");
+    if (
+      ["working", "paused"].includes(String(raw.status)) &&
+      !order &&
+      !(raw.kind === "establishment" && asRecord(raw.establishment).physical === false)
+    )
+      throw new Error("Missing Project deadline.");
+    const position = asRecord(draft.position);
+    if (raw.kind === "new-venue" && (!validVenueClasses(draft.classes) || !asTrimmedString(draft.name)))
+      throw new Error("Invalid Project Venue.");
+    const change = asRecord(flow.change),
+      zones = flow.change === null ? undefined : coerceZoneDrafts(change.zones);
+    if (
+      ["renovation", "establishment"].includes(String(raw.kind)) &&
+      (!validVenueClasses(change.classes) ||
+        (change.form !== undefined && (typeof change.form !== "string" || change.form.length > 2000)) ||
+        (change.exteriorDescription !== undefined &&
+          (typeof change.exteriorDescription !== "string" ||
+            !change.exteriorDescription.trim() ||
+            change.exteriorDescription.length > 4000)) ||
+        !Number.isInteger(change.capacity) ||
+        Number(change.capacity) < 1 ||
+        Number(change.capacity) > 4 ||
+        !Array.isArray(change.zones) ||
+        !zones ||
+        zones.length !== change.zones.length ||
+        zones.length > 6 ||
+        new Set(zones.map((zone) => zone.id)).size !== zones.length ||
+        typeof flow.baseDesignHash !== "string" ||
+        !/^[a-f0-9]{64}$/.test(flow.baseDesignHash))
+    )
+      throw new Error("Invalid Renovation design.");
+    const opening = asRecord(raw.opening);
+    const project: VillageProject = {
+      id: String(raw.id),
+      title: String(raw.title),
+      kind: raw.kind as VillageProject["kind"],
+      ...(raw.kind === "establishment" ? { establishment: readEstablishment(raw.establishment) } : {}),
+      venueId: asTrimmedString(raw.venueId),
+      participantIds: asStringArray(raw.participantIds),
+      status: raw.status as VillageProject["status"],
+      progress: raw.status === "complete" ? 100 : 0,
+      updatedAt: asIsoString(raw.updatedAt) ?? "",
+      requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
+      ...(raw.kind === "new-venue"
+        ? {
+            venueDraft: {
+              name: String(draft.name),
+              classes: draft.classes as VillageVenueClass[],
+              description: asTrimmedString(draft.description),
+              position: {
+                ...(asTrimmedString(asRecord(draft.position).mapId)
+                  ? { mapId: asTrimmedString(asRecord(draft.position).mapId) }
+                  : {}),
+                x: typeof position.x === "number" ? position.x : null,
+                y: typeof position.y === "number" ? position.y : null,
+              },
+            },
+          }
+        : {}),
+      ...(raw.opening
+        ? {
+            opening: {
+              established: opening.established === true,
+              provenance: asTrimmedString(opening.provenance),
+              work: asTrimmedString(opening.work),
+              firstUse: asTrimmedString(opening.firstUse),
+            },
+          }
+        : {}),
+    };
+    project.lifecycle = {
+      phase: raw.status as NonNullable<VillageProject["lifecycle"]>["phase"],
+      revision: Number(flow.revision),
+      targetVenueId: asTrimmedString(flow.targetVenueId),
+      change:
+        flow.change === null
+          ? null
+          : {
+              classes: validVenueClasses(asRecord(flow.change).classes)
+                ? (asRecord(flow.change).classes as VillageVenue["classes"])
+                : undefined,
+              capacity: Number(asRecord(flow.change).capacity),
+              zones,
+              detail: asTrimmedString(asRecord(flow.change).detail),
+              ...(asRecord(flow.change).form !== undefined
+                ? { form: asTrimmedString(asRecord(flow.change).form) }
+                : {}),
+              ...(asRecord(flow.change).exteriorDescription !== undefined
+                ? { exteriorDescription: asTrimmedString(asRecord(flow.change).exteriorDescription) }
+                : {}),
+            },
+      affectedIds: asStringArray(flow.affectedIds),
+      approvals: structuredClone(approvals) as NonNullable<VillageProject["lifecycle"]>["approvals"],
+      candidates: structuredClone(flow.candidates) as NonNullable<VillageProject["lifecycle"]>["candidates"],
+      baseDesignHash: asTrimmedString(flow.baseDesignHash),
+      changedZoneIds: asStringArray(flow.changedZoneIds),
+      builderId: asTrimmedString(flow.builderId),
+      spokenProofs: structuredClone(flow.spokenProofs) as NonNullable<VillageProject["lifecycle"]>["spokenProofs"],
+      evidenceIds: asStringArray(flow.evidenceIds),
+      commandReceipts: Object.fromEntries(
+        Object.entries(asRecord(flow.commandReceipts)).filter(
+          (row): row is [string, string] => typeof row[1] === "string",
+        ),
+      ),
+      workOrder: order
+        ? {
+            startsAt: String(order.startsAt),
+            completesAt: String(order.completesAt),
+            remainingMs: Number(order.remainingMs),
+            pausedAt: asTrimmedString(order.pausedAt),
+            ...(order.focus !== undefined ? { focus: readProjectFocus(order.focus) } : {}),
+          }
+        : null,
+      blockedReason: asTrimmedString(flow.blockedReason),
+      completedAt: asTrimmedString(flow.completedAt),
+    };
+    if (raw.plan) {
+      const plan = asRecord(raw.plan);
+      const interiors = [
+        ...(Array.isArray(plan.spaces) ? plan.spaces : []),
+        ...(Array.isArray(plan.privateSpaces) ? plan.privateSpaces : []),
+      ].map((entry) => {
+        const zone = asRecord(entry);
+        if (typeof zone.id !== "string" || !zone.id || zone.id !== zone.id.trim() || zone.id === "exterior")
+          throw new Error("The saved Project plan needs explicit Zone identities.");
+        return { id: zone.id, connectedTo: zone.connectedTo as string[] };
+      });
+      const problem = connectionProblem([{ id: "exterior", connectedTo: [] }, ...interiors]);
+      if (problem) throw new Error(`The saved Project plan needs explicit connections: ${problem}`);
+      project.plan = readProjectPlan(raw.plan, {
+        classes: validVenueClasses(draft.classes) ? draft.classes : ["other"],
+      } as VillageVenue);
     }
-    return [];
+    return project;
   });
 }
+
 function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
   if (!Array.isArray(value)) return [];
   return value
     .flatMap((entry) => {
       const raw = asRecord(entry);
       const id = asTrimmedString(raw.id);
-      const title = boundText(raw.title, MAX_NOTICE_LENGTH);
+      const title = boundText(raw.title, MAX_EVENT_TEXT_LENGTH);
       const proposedAt = asIsoString(raw.proposedAt);
       if (!id || !title || !proposedAt) return [];
-      const kinds = ["residence", "project", "venue", "venue-upgrade", "departure", "other"] as const;
-      const draft = savedVenueClassRecord(raw.venueDraft);
-      const draftState = asRecord(draft.state);
+      const kinds = ["residence", "project", "venue", "departure", "other"] as const;
+      const draft = asRecord(raw.venueDraft);
       const requestName = boundText(draft.name, MAX_VENUE_NAME_LENGTH);
       const requestClasses = validVenueClasses(draft.classes) ? draft.classes : [];
       return [
@@ -1944,7 +1210,7 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
             ? (raw.kind as VillagePendingDecision["kind"])
             : "other",
           title,
-          detail: boundText(raw.detail, MAX_CHRONICLE_LENGTH),
+          detail: boundText(raw.detail, MAX_PHYSICAL_NARRATION_LENGTH),
           proposedAt,
           sourceOpportunityId: asTrimmedString(raw.sourceOpportunityId),
           status:
@@ -1956,25 +1222,18 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
                 venueDraft: {
                   name: requestName,
                   classes: requestClasses,
-                  description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
+                  description: readPlaceDescription(draft.description),
                   category: "",
                   position: { x: null, y: null },
                   occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
                   capabilities: [],
-                  state: {
-                    condition: boundText(draftState.condition, MAX_VENUE_NOTE_LENGTH),
-                    upgrades: coerceVenueStringList(draftState.upgrades),
-                    furniture: coerceVenueStringList(draftState.furniture),
-                    publicFacts: coerceVenueStringList(draftState.publicFacts),
-                    updatedAt: asIsoString(draftState.updatedAt) ?? "",
-                  },
+                  state: readPlaceContinuity(draft.state),
                 },
               }
             : {}),
           requesterCharacterId: asTrimmedString(raw.requesterCharacterId),
           venueId: asTrimmedString(raw.venueId),
-          proposedHomeKind: isHomeBuildingKind(raw.proposedHomeKind) ? raw.proposedHomeKind : undefined,
-          requesterName: boundText(raw.requesterName, MAX_NOTICE_AUTHOR_LENGTH),
+          requesterName: boundText(raw.requesterName, MAX_REQUESTER_NAME_LENGTH),
           requestQuote: boundText(raw.requestQuote, MAX_VENUE_NOTE_LENGTH),
           source: raw.source === "chat" ? ("chat" as const) : ("background" as const),
           sourceKey: asTrimmedString(raw.sourceKey),
@@ -1983,95 +1242,210 @@ function coercePendingDecisions(value: unknown): VillagePendingDecision[] {
     })
     .slice(-MAX_SIMULATION_RECORDS);
 }
-function coerceVenueMail(value: unknown): VillageVenueMail[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((entry) => {
-      const row = savedVenueClassRecord(entry);
-      if (!asTrimmedString(row.id) || !asTrimmedString(row.venueId)) return [];
+/** Native runtime values and their exact JSON storage representation share one strict schema. */
+function memoryField(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new Error("Invalid saved Memories JSON.");
+  }
+}
+function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value))
+    throw new Error("The saved Village catch-up could not be read.");
+  const record = value as Record<string, unknown>;
+  if (record.capture !== undefined) {
+    if (!record.capture || typeof record.capture !== "object" || Array.isArray(record.capture))
+      throw new Error("The saved Village departure capture could not be read.");
+    const capture = record.capture as Record<string, unknown>;
+    if (!capture.world || typeof capture.world !== "object" || Array.isArray(capture.world))
+      throw new Error("The saved Village departure capture could not be read.");
+    const world = capture.world as Record<string, unknown>;
+    if (Object.hasOwn(world, "relationshipHead"))
+      throw new Error("Departure history was not loaded for this operation.");
+    if (
+      typeof capture.at !== "string" ||
+      !Number.isFinite(Date.parse(capture.at)) ||
+      !Number.isSafeInteger(capture.memoryRevision) ||
+      Number(capture.memoryRevision) < 0 ||
+      ![
+        "seed",
+        "setupAt",
+        "foundedAt",
+        "timeZone",
+        "name",
+        "setting",
+        "worldName",
+        "playerPersonaId",
+        "playerPersonaName",
+        "playerPersonaIdentity",
+      ].every((key) => typeof world[key] === "string") ||
+      typeof world.playerPersonaMissing !== "boolean" ||
+      !["villagers", "venues", "residences", "projects"].every((key) => Array.isArray(world[key])) ||
+      (world.timeZone !== "" && !validTimeZone(world.timeZone)) ||
+      !(world.villagers as unknown[]).every((value) => {
+        const resident = asRecord(value),
+          card = asRecord(resident.cardSnapshot);
+        return (
+          typeof resident.characterId === "string" &&
+          typeof resident.addedAt === "string" &&
+          typeof card.capturedAt === "string" &&
+          (resident.agenda == null || (typeof resident.agenda === "object" && !Array.isArray(resident.agenda)))
+        );
+      }) ||
+      !(world.venues as unknown[]).every((value) => {
+        const venue = asRecord(value);
+        return (
+          typeof venue.id === "string" &&
+          !!venue.occupancy &&
+          typeof venue.occupancy === "object" &&
+          !!venue.state &&
+          typeof venue.state === "object" &&
+          (venue.zones === undefined || Array.isArray(venue.zones))
+        );
+      }) ||
+      (world.opening !== undefined &&
+        world.opening !== null &&
+        (typeof world.opening !== "object" ||
+          Array.isArray(world.opening) ||
+          (asRecord(world.opening).stage === "conversations" &&
+            (!Array.isArray(asRecord(world.opening).residentIds) || !Array.isArray(asRecord(world.opening).reveals)))))
+    )
+      throw new Error("The saved Village departure capture could not be read.");
+  }
+  function validateBatch(value: unknown, historical = false) {
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new Error("The saved Village catch-up batch could not be read.");
+    const batch = value as Record<string, unknown>;
+    if (
+      typeof batch.id !== "string" ||
+      !/^[a-zA-Z0-9-]{1,100}$/.test(batch.id) ||
+      !["queued", "running", "failed", "recovering", "completed", "cancelled"].includes(String(batch.status))
+    )
+      throw new Error("The saved Village catch-up batch could not be read.");
+    if (historical && !["completed", "cancelled"].includes(String(batch.status)))
+      throw new Error("The saved Village catch-up history contains unfinished work.");
+    if (
+      (batch.budgetDate !== undefined &&
+        (typeof batch.budgetDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(batch.budgetDate))) ||
+      (batch.opportunityLimit !== undefined &&
+        (!Number.isSafeInteger(batch.opportunityLimit) ||
+          Number(batch.opportunityLimit) < 0 ||
+          Number(batch.opportunityLimit) > 6)) ||
+      (batch.budgetDate === undefined) !== (batch.opportunityLimit === undefined)
+    )
+      throw new Error("The saved Village catch-up allowance could not be read.");
+    if (batch.labels !== undefined) {
+      const labels = asRecord(batch.labels);
       if (
-        row.kind !== "change" &&
-        row.kind !== "player-move" &&
-        row.kind !== "counteroffer" &&
-        row.kind !== "villager-change" &&
-        row.kind !== "villager-move" &&
-        row.kind !== "project-approval"
+        !["residents", "venues", "zones"].every((key) => {
+          const values = labels[key];
+          return (
+            !!values &&
+            typeof values === "object" &&
+            !Array.isArray(values) &&
+            Object.values(values).every((entry) => typeof entry === "string")
+          );
+        })
       )
-        return [];
-      const proposedClasses = validVenueClasses(row.proposedClasses) ? row.proposedClasses : undefined;
-      const proposedCapacity =
-        Number.isInteger(row.proposedCapacity) && Number(row.proposedCapacity) >= 1 && Number(row.proposedCapacity) <= 4
-          ? Number(row.proposedCapacity)
-          : undefined;
-      const proposedImprovement = asRecord(row.improvement);
-      const improvement =
-        row.improvement === null
-          ? null
-          : asTrimmedString(proposedImprovement.id)
-            ? {
-                id: asTrimmedString(proposedImprovement.id),
-                title: boundText(proposedImprovement.title, MAX_VENUE_NOTE_LENGTH),
-                description: boundText(proposedImprovement.description, MAX_VENUE_DESCRIPTION_LENGTH),
-                spaceId: asTrimmedString(proposedImprovement.spaceId) || null,
-                extraBeds: Number.isInteger(proposedImprovement.extraBeds)
-                  ? Math.max(0, Math.min(3, Number(proposedImprovement.extraBeds)))
-                  : 0,
-                approvedAt: asIsoString(proposedImprovement.approvedAt) ?? "",
-              }
-            : undefined;
-      return [
-        {
-          id: asTrimmedString(row.id),
-          venueId: asTrimmedString(row.venueId),
-          title: boundText(row.title, MAX_VENUE_NOTE_LENGTH),
-          detail: boundText(row.detail, MAX_VENUE_DESCRIPTION_LENGTH),
-          kind: row.kind,
-          projectId: asTrimmedString(row.projectId) || undefined,
-          status:
-            row.status === "approved" || row.status === "declined" || row.status === "pending-player"
-              ? row.status
-              : "awaiting-villagers",
-          createdAt: asIsoString(row.createdAt) ?? "",
-          dueAt: asIsoString(row.dueAt) ?? "",
-          resolvedAt: asIsoString(row.resolvedAt) ?? "",
-          requesterCharacterId: asTrimmedString(row.requesterCharacterId),
-          movingCharacterId: asTrimmedString(row.movingCharacterId) || undefined,
-          proposedPrivateZoneId: asTrimmedString(row.proposedPrivateZoneId) || undefined,
-          counterofferRequestId: asTrimmedString(row.counterofferRequestId) || undefined,
-          counterofferDraft: (() => {
-            const draft = savedVenueClassRecord(row.counterofferDraft);
-            return asTrimmedString(draft.name) && asTrimmedString(draft.description)
-              ? {
-                  name: boundText(draft.name, MAX_VENUE_NAME_LENGTH),
-                  classes: validVenueClasses(draft.classes) ? draft.classes : ["community"],
-                  description: boundText(draft.description, MAX_VENUE_DESCRIPTION_LENGTH),
-                }
-              : undefined;
-          })(),
-          ...(proposedClasses ? { proposedClasses } : {}),
-          ...(proposedCapacity ? { proposedCapacity } : {}),
-          improvementSlot: Number.isInteger(row.improvementSlot) ? Number(row.improvementSlot) : undefined,
-          improvement,
-          affectedIds: coerceVenueIds(row.affectedIds),
-          decisions: Array.isArray(row.decisions)
-            ? row.decisions
-                .map((decision) => ({
-                  characterId: asTrimmedString(asRecord(decision).characterId),
-                  accepted: asRecord(decision).accepted === true,
-                  reply: boundText(asRecord(decision).reply, MAX_VENUE_NOTE_LENGTH),
-                }))
-                .filter((decision) => decision.characterId)
-            : [],
-          error: boundText(row.error, MAX_VENUE_NOTE_LENGTH),
-        } satisfies VillageVenueMail,
-      ];
-    })
-    .slice(-256);
+        throw new Error("The saved Village catch-up labels could not be read.");
+    }
+    if (
+      (batch.from !== undefined && (typeof batch.from !== "string" || !Number.isFinite(Date.parse(batch.from)))) ||
+      (batch.until !== undefined && (typeof batch.until !== "string" || !Number.isFinite(Date.parse(batch.until)))) ||
+      (typeof batch.from === "string" &&
+        typeof batch.until === "string" &&
+        Date.parse(batch.until) < Date.parse(batch.from))
+    )
+      throw new Error("The saved Village catch-up interval could not be read.");
+    if (batch.opportunities !== undefined) {
+      if (
+        !Array.isArray(batch.opportunities) ||
+        batch.opportunities.length > 6 ||
+        (batch.opportunityLimit !== undefined && batch.opportunities.length > Number(batch.opportunityLimit)) ||
+        typeof batch.from !== "string" ||
+        typeof batch.until !== "string"
+      )
+        throw new Error("The saved Village catch-up opportunities could not be read.");
+      for (const value of batch.opportunities) {
+        const row = asRecord(value);
+        if (
+          typeof row.id !== "string" ||
+          !/^[a-zA-Z0-9-]{1,100}$/.test(row.id) ||
+          !["encounter", "routine", "world"].includes(String(row.kind)) ||
+          typeof row.startsAt !== "string" ||
+          !Number.isFinite(Date.parse(row.startsAt)) ||
+          row.endsAt !== row.startsAt ||
+          Date.parse(row.startsAt) < Date.parse(batch.from) ||
+          Date.parse(row.startsAt) > Date.parse(batch.until) ||
+          !Array.isArray(row.actorIds) ||
+          (row.kind === "world" ? row.actorIds.length !== 0 : row.actorIds.length < 1) ||
+          row.actorIds.length > 4 ||
+          row.actorIds.some((id) => typeof id !== "string" || !id || id === "player") ||
+          new Set(row.actorIds).size !== row.actorIds.length ||
+          typeof row.venueId !== "string" ||
+          (row.kind === "encounter" &&
+            (row.actorIds.length < 2 || !row.venueId || typeof row.zoneId !== "string" || !row.zoneId)) ||
+          (row.kind === "routine" && (row.actorIds.length !== 1 || !!row.venueId)) ||
+          (row.kind === "world" && (!row.venueId || typeof row.zoneId !== "string" || !row.zoneId)) ||
+          !Array.isArray(row.facts) ||
+          row.facts.some((fact) => typeof fact !== "string")
+        )
+          throw new Error("The saved Village catch-up opportunities could not be read.");
+      }
+    }
+    if (batch.records !== undefined) {
+      if (
+        !Array.isArray(batch.records) ||
+        !Array.isArray(batch.opportunities) ||
+        batch.records.length !== batch.opportunities.length
+      )
+        throw new Error("The saved Village catch-up records could not be read.");
+      const ids = new Set((batch.opportunities as Record<string, unknown>[]).map((row) => row.id));
+      const recorded = new Set<string>();
+      for (const value of batch.records) {
+        const row = asRecord(value);
+        if (
+          typeof row.opportunityId !== "string" ||
+          !ids.has(row.opportunityId) ||
+          recorded.has(row.opportunityId) ||
+          !["pending", "queued", "settling", "settled", "rejected", "held"].includes(String(row.status)) ||
+          (row.heldStage !== undefined && !["queued", "settling"].includes(String(row.heldStage))) ||
+          (row.error !== undefined && typeof row.error !== "string")
+        )
+          throw new Error("The saved Village catch-up records could not be read.");
+        recorded.add(row.opportunityId);
+      }
+    }
+  }
+  if (record.batch !== undefined) validateBatch(record.batch);
+  if (record.history !== undefined) {
+    if (!Array.isArray(record.history) || record.history.length > RETURN_CATCHUP_HISTORY_LIMIT)
+      throw new Error("The saved Village catch-up history could not be read.");
+    const ids = new Set<string>();
+    if (record.batch) ids.add(String(asRecord(record.batch).id));
+    for (const entry of record.history) {
+      validateBatch(entry, true);
+      const id = String(asRecord(entry).id);
+      if (ids.has(id)) throw new Error("The saved Village catch-up history contains a duplicate period.");
+      ids.add(id);
+    }
+  }
+  const { capture, ...tracking } = record;
+  const result = structuredClone(tracking) as NonNullable<VillageState["returnCatchup"]>;
+  if (capture) result.capture = cloneReturnCapture(capture as import("../models/world.js").ReturnCatchupCapture);
+  return result;
 }
 export function coerceVillageState(value: unknown): VillageState {
   const raw = asRecord(value);
-  if (raw.progressEngineVersion === 0)
-    throw new Error("This Village uses a retired Project engine format. No data was migrated or reset.");
+  if (value != null && raw.version !== 15) throw new Error("Unsupported Village format. Start a fresh Village.");
+  if (value != null) memoryRequire(raw.memories && raw.memoryScenes, "current Village memory data is missing");
+  if (raw.foundedAt && raw.socialContractVersion !== 2)
+    throw new Error(
+      "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
+    );
   const fallback = defaultVillageState();
   const venues = coerceVenues(raw.venues);
   const villagers = Array.isArray(raw.villagers)
@@ -2080,57 +1454,75 @@ export function coerceVillageState(value: unknown): VillageState {
         .filter((entry): entry is VillageVillager => entry !== null)
     : [];
   const seen = new Set<string>();
-  const townMapImage = coerceTownMapImage(raw.townMapImage);
-  const legacyCanvas =
-    raw.townMapCanvasWidth === undefined &&
-    (townMapImage.length > 0 || (typeof raw.setupAt === "string" && raw.setupAt.length > 0));
-  const townMapCanvas = coerceTownMapCanvas(raw, legacyCanvas);
+
   const foundedAt = asIsoString(raw.foundedAt) ?? "";
+  const memories = readMemoryCollection(memoryField(raw.memories ?? fallback.memories));
+  const memoryReceipts = readMemoryReceipts(raw.memoryReceipts === undefined ? {} : memoryField(raw.memoryReceipts));
+  for (const id of Object.keys(memoryReceipts)) {
+    memoryRequire(!Object.hasOwn(asRecord(raw.exchangeReceipts), id), "duplicate memory receipt");
+  }
+  const exchangeReceipts = copyExchangeReceipts(asRecord(raw.exchangeReceipts) as VillageState["exchangeReceipts"]);
+  for (const [id, receipt] of Object.entries(exchangeReceipts)) {
+    if (receipt?.domain !== "physical") continue;
+    if (
+      receipt.id !== id ||
+      !receipt.sceneId ||
+      !receipt.submissionId ||
+      !["applied", "rejected"].includes(String(receipt.status)) ||
+      !asIsoString(receipt.at) ||
+      !asIsoString(receipt.committedAt)
+    )
+      throw new Error("Invalid saved physical receipt; its bytes are preserved.");
+    if (receipt.physicalOutcome !== undefined) {
+      if (receipt.status !== "applied")
+        throw new Error("Rejected physical outcome cannot carry applied proof; its bytes are preserved.");
+      const outcome = coerceVenueEvent(receipt.physicalOutcome);
+      if (!outcome?.actionReceipt || outcome.id !== id || outcome.actionReceipt.submissionId !== receipt.submissionId)
+        throw new Error("Invalid saved physical proof; its bytes are preserved.");
+      receipt.physicalOutcome = outcome;
+    }
+  }
   const state: VillageState = {
-    version: 2,
+    worldPlaces: readPlaceRegistry(raw.worldPlaces),
+    version: 15,
+    memories,
+    memoryScenes: readMemorySceneStates(memoryField(raw.memoryScenes ?? {}), memories),
     backgroundReceipts: Object.fromEntries(
       Object.entries(asRecord(raw.backgroundReceipts)).filter(
         (entry): entry is [string, string] => typeof entry[1] === "string",
       ),
     ),
-    exchangeReceipts: structuredClone(asRecord(raw.exchangeReceipts)) as VillageState["exchangeReceipts"],
+    memoryReceipts,
+    exchangeReceipts,
     noticeSequence: Math.max(0, Math.floor(Number(raw.noticeSequence) || 0)),
     dismissedNoticeIds: [...new Set(asStringArray(raw.dismissedNoticeIds))],
-    wishSystemVersion: raw.wishSystemVersion === WISH_SYSTEM_VERSION ? WISH_SYSTEM_VERSION : 0,
-    wishResetPending: [...new Set(asStringArray(raw.wishResetPending))].filter((id) =>
-      villagers.some((resident) => resident.characterId === id),
-    ),
-    wishKnowledge: coerceWishKnowledge(raw.wishKnowledge),
-    projectWishOutbox: Array.isArray(raw.projectWishOutbox)
-      ? (raw.projectWishOutbox as VillageState["projectWishOutbox"])
+    socialContractVersion: 2,
+    socialMailOutbox: Array.isArray(raw.socialMailOutbox)
+      ? (structuredClone(raw.socialMailOutbox) as VillageState["socialMailOutbox"])
       : [],
-    wishRefillIntents: Object.fromEntries(
-      Object.entries(asRecord(raw.wishRefillIntents)).flatMap(([id, value]) => {
-        const row = asRecord(value);
-        return typeof row.id === "string" && typeof row.settled === "string"
-          ? [[id, { id: row.id, settled: row.settled }]]
-          : [];
-      }),
-    ),
+    socialClarifications: Array.isArray(raw.socialClarifications)
+      ? (raw.socialClarifications as VillageState["socialClarifications"])
+      : [],
+    socialPublications: raw.socialPublications
+      ? (structuredClone(raw.socialPublications) as VillageState["socialPublications"])
+      : {},
+    eventAttempts: raw.eventAttempts
+      ? (structuredClone(raw.eventAttempts) as VillageState["eventAttempts"])
+      : undefined,
+    returnCatchup: decodeReturnCatchup(raw.returnCatchup),
+    narrative: readNarrativeState(raw.narrative),
     progressEngineVersion: 1,
     name: asTrimmedString(raw.name) || fallback.name,
     narrationStyle: coerceVillageNarrationStyle(raw.narrationStyle),
     characterSpeechColors: raw.characterSpeechColors !== false,
     sendOnEnter: raw.sendOnEnter === true,
     spriteCardFlipEnabled: raw.spriteCardFlipEnabled !== false,
+    spriteVariantsEnabled: raw.spriteVariantsEnabled !== false,
     setting: boundText(raw.setting, MAX_SETTING_LENGTH),
-    foundingReason: boundText(raw.foundingReason, 40),
-    foundingDetails: boundText(raw.foundingDetails, 2_000),
-    foundingGuidance: boundText(raw.foundingGuidance, 500),
-    playerRole: coercePlayerRole(raw.playerRole),
-    scenarioImprint: coerceScenarioImprint(raw.scenarioImprint),
-    worldFacts: coerceWorldFacts(raw.worldFacts),
-    venueCapacityPolicy:
-      raw.venueCapacityPolicy === "sixteen-total-v1" || raw.venueCapacityPolicy === "legacy-v1"
-        ? raw.venueCapacityPolicy
-        : asTrimmedString(raw.setupAt) || villagers.length || venues.some(isHousePlace)
-          ? "legacy-v1"
-          : "sixteen-total-v1",
+    worldRules: boundText(raw.worldRules, MAX_SETTING_LENGTH),
+    worldName: readWorldName(raw.worldName) ?? "",
+    communityVenueId: asTrimmedString(raw.communityVenueId),
+    playerBackground: coercePlayerBackground(raw.playerBackground),
     selectedLorebookIds: coerceSelectedLorebookIds(raw.selectedLorebookIds),
     sceneryArtStyle: boundText(raw.sceneryArtStyle, 600),
     sceneryStyleProfileId:
@@ -2138,6 +1530,10 @@ export function coerceVillageState(value: unknown): VillageState {
         ? raw.sceneryStyleProfileId
         : null,
     automaticZonePictures: raw.automaticZonePictures !== false,
+    zonePictureBudget: {
+      startedAt: asIsoString(asRecord(raw.zonePictureBudget).startedAt) ?? "",
+      used: Math.max(0, Math.min(6, Math.floor(Number(asRecord(raw.zonePictureBudget).used) || 0))),
+    },
     zonePictureEpoch: Number.isSafeInteger(raw.zonePictureEpoch) ? Number(raw.zonePictureEpoch) : 0,
     personalizeVenueImagesByDefault: raw.personalizeVenueImagesByDefault !== false,
     useVisualLoreByDefault: raw.useVisualLoreByDefault !== false,
@@ -2165,6 +1561,7 @@ export function coerceVillageState(value: unknown): VillageState {
     residences: coerceResidences(raw.residences),
     // Left empty rather than stamped with "now": a record that predates the
     // setup flow should open the wizard, not claim it has been set up.
+    opening: readOpening(raw.opening),
     setupAt: asIsoString(raw.setupAt) ?? "",
     foundingPreparation: (() => {
       const preparation = asRecord(raw.foundingPreparation);
@@ -2172,8 +1569,18 @@ export function coerceVillageState(value: unknown): VillageState {
         return null;
       return {
         status: preparation.status,
+        ...(preparation.tasksVersion === 1
+          ? {
+              tasksVersion: 1 as const,
+              tasks: coerceFoundingTasks(preparation.tasks),
+              retryActions: asStringArray(preparation.retryActions).slice(-32),
+              selectedTasks: asStringArray(preparation.selectedTasks),
+              ...(preparation.currentTask === "routine" || preparation.currentTask === "wish"
+                ? { currentTask: preparation.currentTask }
+                : {}),
+            }
+          : {}),
         completedIds: asStringArray(preparation.completedIds).slice(0, 12),
-        venueDetailsSeeded: preparation.venueDetailsSeeded === true,
         currentId: asTrimmedString(preparation.currentId),
         error: boundText(preparation.error, 300),
         ...(["venues", "private-spaces", "residents"].includes(String(preparation.phase))
@@ -2212,49 +1619,59 @@ export function coerceVillageState(value: unknown): VillageState {
     // pretend it has been running since the upgrade.
     foundedAt,
     seed: asTrimmedString(raw.seed),
-    noticeboard: coerceNotices(raw.noticeboard),
-    happenings: coerceHappenings(raw.happenings, foundedAt),
-    chronicle: coerceChronicle(raw.chronicle, foundedAt),
-    recollections: coerceRecollections(raw.recollections),
-    correctedWishMemoryIds: [...new Set(asStringArray(raw.correctedWishMemoryIds).filter(Boolean))],
     simulatedThrough: asIsoString(raw.simulatedThrough) ?? legacySimulatedThrough(foundedAt, raw.lastHappeningKey),
     lastKnownTimeZone: boundText(raw.lastKnownTimeZone, 100),
     timeZone: validTimeZone(raw.timeZone) ? raw.timeZone : "",
     clock: decodeVillageClock(raw.clock),
-    storyPace: coerceStoryPace(raw),
-    lastCreativeDate: boundText(raw.lastCreativeDate, 10),
-    processedOpportunityIds: asStringArray(raw.processedOpportunityIds)
+    backgroundPace: coerceBackgroundPace(raw),
+    narrativeConsequence: ["gentle", "moderate", "dramatic"].includes(String(raw.narrativeConsequence))
+      ? (raw.narrativeConsequence as "gentle" | "moderate" | "dramatic")
+      : "gentle",
+    lastPlanningDate: boundText(raw.lastPlanningDate ?? raw.lastCreativeDate, 10),
+    planningUsage: coercePlanningUsage(raw),
+    processedActionIds: asStringArray(raw.processedActionIds ?? raw.processedOpportunityIds)
       .map((id) => id.trim())
       .filter(Boolean)
       .slice(-MAX_SIMULATION_RECORDS),
-    opportunities: coerceOpportunities(raw.opportunities),
-    scheduledEvents: coerceScheduledEvents(raw.scheduledEvents),
-    relationships: coerceRelationships(raw.relationships),
+    ...(raw.semanticRequestReceipts
+      ? {
+          semanticRequestReceipts: Object.fromEntries(
+            Object.entries(asRecord(raw.semanticRequestReceipts)).filter(([, value]) => typeof value === "string"),
+          ) as Record<string, string>,
+        }
+      : {}),
+    ...(asRecord(raw.semanticStartingTies).sourceHash
+      ? { semanticStartingTies: structuredClone(raw.semanticStartingTies) as VillageState["semanticStartingTies"] }
+      : {}),
+    ...(raw.semanticContinuations
+      ? {
+          semanticContinuations: Object.fromEntries(
+            Object.entries(asRecord(raw.semanticContinuations)).filter(
+              ([, value]) =>
+                Array.isArray(value) &&
+                value.every((domain) => ["memories", "relationships", "wishes", "projects"].includes(String(domain))),
+            ),
+          ) as VillageState["semanticContinuations"],
+        }
+      : {}),
     socialOutbox: Array.isArray(raw.socialOutbox)
       ? (structuredClone(raw.socialOutbox) as VillageState["socialOutbox"])
       : [],
-    projects: coerceProjects(raw.projects),
+    projects: coerceProjects(raw.projects ?? []),
+    wishFollowing: Object.fromEntries(
+      Object.entries(asRecord(raw.wishFollowing)).filter(([, v]) => typeof v === "boolean"),
+    ) as Record<string, boolean>,
     progressTasks: coerceProgressTasks(raw.progressTasks),
-    narrativeItems: Array.isArray(raw.narrativeItems)
-      ? raw.narrativeItems.flatMap((value) => {
-          const item = asRecord(value);
-          const venueId = asTrimmedString(item.venueId);
-          const itemName = boundText(item.itemName, MAX_VENUE_NOTE_LENGTH);
-          return venueId && itemName ? [{ venueId, zoneId: asTrimmedString(item.zoneId) || undefined, itemName }] : [];
-        })
-      : [],
-    projectSourceClaims: Array.isArray(raw.projectSourceClaims)
-      ? raw.projectSourceClaims.flatMap((value) => {
-          const item = asRecord(value);
-          const key = asTrimmedString(item.key);
-          const projectId = asTrimmedString(item.projectId);
-          const sourceId = asTrimmedString(item.sourceId);
-          const submissionId = asTrimmedString(item.submissionId);
-          return key && projectId && sourceId && submissionId ? [{ key, projectId, sourceId, submissionId }] : [];
-        })
-      : [],
     pendingDecisions: coercePendingDecisions(raw.pendingDecisions),
-    venueMail: coerceVenueMail(raw.venueMail),
+    ...(raw.formerLetterFonts
+      ? {
+          formerLetterFonts: Object.fromEntries(
+            Object.entries(asRecord(raw.formerLetterFonts)).filter(
+              (entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length <= 120,
+            ),
+          ),
+        }
+      : {}),
     villagers: villagers
       .filter((entry) => {
         if (seen.has(entry.characterId)) return false;
@@ -2303,30 +1720,24 @@ export function coerceVillageState(value: unknown): VillageState {
       boundText(raw.playerPersonaId, MAX_PLAYER_PERSONA_ID_LENGTH).length > 0
         ? raw.playerPersonaMissing === true
         : false,
-    townMapImage,
-    townMapCanvasWidth: townMapCanvas.width,
-    townMapCanvasHeight: townMapCanvas.height,
-    // Dropped along with the image it describes, rather than keeping a stamp
-    // that claims a map which is not there.
-    townMapImageSetAt: townMapImage.length > 0 ? (asIsoString(raw.townMapImageSetAt) ?? "") : "",
-    // Likewise dropped with the picture it frames. A framing is a framing OF
-    // something, so a village with no picture of its own must draw the map the
-    // package ships the way it was drawn before anyone picked a picture.
-    townMapView: coerceTownMapView(townMapImage.length > 0 ? raw.townMapView : {}),
+    maps: Array.isArray(raw.maps)
+      ? raw.maps.map((entry) => {
+          const map = asRecord(entry);
+          const artwork = coerceVenueImage(map.artwork);
+          if (!asTrimmedString(map.id) || !asTrimmedString(map.name) || !artwork)
+            throw new Error("A saved map is incomplete.");
+          return {
+            id: asTrimmedString(map.id),
+            name: asTrimmedString(map.name),
+            artwork,
+            width: Number(map.width),
+            height: Number(map.height),
+            view: coerceTownMapView(map.view),
+            revision: Number(map.revision),
+          };
+        })
+      : [],
   };
-  // Legacy supply and physical-effect records refer to the old primary Class interior.
-  for (const item of [
-    ...state.narrativeItems,
-    ...state.venueEvents,
-    ...state.projects.flatMap((project) => [
-      ...(project.lifecycle?.recordedItems ?? []),
-      ...(project.lifecycle?.sources ?? []),
-    ]),
-  ]) {
-    const venue = state.venues.find((entry) => entry.id === item.venueId);
-    if (venue) item.zoneId ??= legacyZoneId(venue, "public");
-  }
-  // Zone migration retains unfinished Projects, work sites, builder shifts and acquired supply receipts.
   for (const villager of state.villagers) {
     for (const move of villager.remap?.moves ?? []) {
       const venue = state.venues.find((entry) => entry.id === move.venueId);
@@ -2349,6 +1760,7 @@ export function coerceVillageState(value: unknown): VillageState {
         block.zoneId = chooseAgendaZone(venue, villager.characterId, block.activity, block.zoneId, state).id;
     }
   }
-  resetLegacyWishRecords(state);
+
+  projectAgendaReservations(state);
   return state;
 }

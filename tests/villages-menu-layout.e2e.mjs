@@ -1,12 +1,11 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
+import { mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const tag = "marinara-capability-villages";
 const snapshot = {
@@ -29,16 +28,12 @@ const snapshot = {
     dayIndex: 1,
     nextTransitionAt: "2026-09-28T18:00:00.000Z",
   },
-  noticeboard: [],
   venueRequests: [],
   projects: [],
-  upgradeRequests: [],
   residences: [],
   venueMail: [],
-  happenings: [],
   villagers: [],
   foundingPreparation: null,
-  recap: null,
   settings: {
     characterSpeechColors: false,
     visitRetention: { mode: "forever", value: 0 },
@@ -46,26 +41,20 @@ const snapshot = {
     defaultPromptKnowledge: "",
     promptBoxMaxLength: 2000,
     macros: [],
-    storyPace: "off",
-    storyPaces: ["off"],
+    backgroundPace: "off",
+    backgroundPaces: ["off", "quiet", "balanced", "lively"],
     villageNameMaxLength: 80,
     playerPersonaId: "",
     playerPersonaName: "",
     playerPersonaMissing: false,
-    maxNoticeboardNotes: 12,
-    maxNoticeLength: 500,
     setting: "A quiet village",
     settingMaxLength: 2000,
-    foundingReason: "",
-    foundingDetails: "",
     foundingGuidance: "",
-    scenarioImprint: null,
     worldFacts: [],
     selectedLorebookIds: [],
     loreTokenBudget: 1600,
     loreTokenBudgetMin: 200,
     loreTokenBudgetMax: 3200,
-    foundingDetailsMaxLength: 2000,
     foundingGuidanceMaxLength: 500,
     townMapLayoutPrompt: "",
     townMapNegativePrompt: "",
@@ -84,7 +73,17 @@ const snapshot = {
     setupPlaceCount: 5,
     setupMinVillagerCount: 0,
     setupMaxVillagerCount: 3,
-    townMapImageSetAt: "",
+    maps: [
+      {
+        id: "map-house",
+        name: "Village map",
+        artwork: { ref: "map", url: mapImage },
+        width: 1500,
+        height: 1000,
+        view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+        revision: 1,
+      },
+    ],
     townMapImageMaxLength: 100000,
     townMapView: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
     townMapExpectedWidth: 1280,
@@ -98,15 +97,15 @@ const snapshot = {
 };
 
 const pages = [
-  [/^Venue Requests \(/, "venueRequests"],
-  [/^Projects \(/, "projects"],
-  [/^Village Settings$/, "village"],
-  [/^General settings$/, "general"],
-  [/^DEBUG: Scenes/, "chatlogs"],
-  [/^DEBUG: Progress$/, "progress"],
+  ["General Preferences", "general"],
+  ["World Configuration", "village"],
+  ["Visual Settings", "visual"],
+  ["Advanced", "advanced"],
+  ["Venue Requests", "venueRequests"],
+  ["Debug", "progress"],
 ];
 
-try {
+await withBrowser(browser, async () => {
   for (const { width, height, foreground, surface } of [
     { width: 1366, height: 768, foreground: "#f4f0e8", surface: "#171b25" },
     { width: 1366, height: 500, foreground: "#f4f0e8", surface: "#171b25" },
@@ -115,15 +114,29 @@ try {
   ]) {
     const mobile = width <= 704;
     const page = await browser.newPage({ viewport: { width, height } });
+    await mockEngineLookups(page);
     const errors = [];
     let progressReads = 0;
+    let consequence = "gentle";
     let progressFails = false;
+    let holdWorldSave = false,
+      heldWorldSave,
+      holdMapSave = false,
+      heldMapSave;
     page.on("pageerror", (error) => errors.push(error.message));
     await page.route("**/api/villages**", (route) => {
       const path = new URL(route.request().url()).pathname;
+      if (holdWorldSave && path.endsWith("/settings") && route.request().method() === "PATCH") {
+        heldWorldSave = route;
+        return;
+      }
+      if (holdMapSave && path.endsWith("/maps/map-house") && route.request().method() === "PUT") {
+        heldMapSave = route;
+        return;
+      }
       if (path.endsWith("/progress/debug")) {
         progressReads += 1;
-        return route.fulfill({
+        return fulfill(route, {
           status: progressFails ? 503 : 200,
           contentType: "application/json",
           body: JSON.stringify(
@@ -137,6 +150,10 @@ try {
                 },
           ),
         });
+      }
+      if (path.endsWith("/settings") && route.request().method() === "PATCH") {
+        const body = route.request().postDataJSON();
+        if (body.narrativeConsequence) consequence = body.narrativeConsequence;
       }
       const response = path.endsWith("/connections")
         ? { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" }
@@ -171,18 +188,18 @@ try {
                           }
                         : path.endsWith("/rooms/active")
                           ? { session: null, debugDiscardEnabled: true }
-                          : snapshot;
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
+                          : { ...snapshot, settings: { ...snapshot.settings, narrativeConsequence: consequence } };
+      return fulfill(route, { status: 200, contentType: "application/json", body: JSON.stringify(response) });
     });
     await page.route("**/api/connections", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: "[]",
       }),
     );
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:${surface};--foreground:${foreground};--popover:${surface};--border:#ccc;--primary:#8a64ff;--muted-foreground:#888}html,body{margin:0;width:100%;height:100%;font-family:Arial,sans-serif}${tag}{display:block;width:100%;height:100%}</style><${tag}></${tag}>`,
@@ -194,21 +211,107 @@ try {
     const root = page.locator(`.${tag}-sectioned-menu`);
     await page.getByRole("button", { name: "More" }).click();
     await expect(root).toBeVisible();
-    await expect(root.locator(`.${tag}-menu-welcome`)).toBeVisible();
-    const nav = root.getByRole("navigation", { name: "Village menu pages" });
+    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    await expect(root.getByRole("button", { name: "Events", exact: true })).toHaveCount(0);
+    await expect(root.getByRole("button", { name: "Force Village Update", exact: true })).toHaveCount(0);
+    const nav = page.getByRole("navigation", { name: "More sections" });
+    const picker = page.getByRole("combobox", { name: "Section" });
+    const selectSection = async (key) => {
+      if (mobile) await picker.selectOption(key);
+      else await nav.getByRole("button", { name: pages.find((entry) => entry[1] === key)[0], exact: true }).click();
+    };
     const main = root.locator(`.${tag}-menu-content`);
-    await expect(nav).toBeVisible();
+    if (mobile) await expect(picker).toBeVisible();
+    else await expect(nav).toBeVisible();
     await expect(main).toBeVisible();
     if (process.env.VILLAGES_MENU_SCREENSHOTS) {
       await page.screenshot({ path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `menu-index-${width}-${height}.png`) });
     }
     for (const [name, key] of pages) {
-      await nav.getByRole("button", { name }).click();
+      await selectSection(key);
       await expect(root).toHaveAttribute("data-page", key);
       await expect(main).toBeVisible();
+      if (key === "general") {
+        const pace = main.getByRole("combobox", { name: "Pace", exact: true });
+        await expect(pace).toBeVisible();
+        assert.deepEqual(await pace.locator("option").allTextContents(), ["Off", "Quiet", "Average", "Busy"]);
+        const consequenceControl = main.getByRole("combobox", { name: "Consequence", exact: true });
+        assert.deepEqual(await consequenceControl.locator("option").allTextContents(), [
+          "Gentle",
+          "Moderate",
+          "Dramatic",
+        ]);
+        await expect(consequenceControl).toHaveValue("gentle");
+        await consequenceControl.selectOption("moderate");
+        await expect(consequenceControl).toHaveValue("moderate");
+      }
       if (key === "village") {
-        await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toBeVisible();
+        await expect(main.getByRole("textbox", { name: "Additional writing guidance" })).toHaveCount(0);
         await expect(nav.getByRole("button", { name: "DEBUG: Villager reply guidance" })).toHaveCount(0);
+        const worldName = main.getByRole("textbox", { name: "Village world", exact: true });
+        const original = await worldName.inputValue();
+        await worldName.fill("An unsaved world name");
+        await selectSection("visual");
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
+          .click();
+        await expect(worldName).toHaveValue("An unsaved world name");
+        if (mobile) await expect(picker).toHaveValue("village");
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "Map", exact: true })
+          .click();
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
+          .click();
+        await expect(worldName).toHaveValue("An unsaved world name");
+        holdWorldSave = true;
+        await worldName.locator("..").locator("..").getByRole("button", { name: "Save", exact: true }).click();
+        await expect.poll(() => !!heldWorldSave).toBe(true);
+        if (mobile) await expect(picker).toBeDisabled();
+        else await expect(nav.getByRole("button", { name: "Visual Settings", exact: true })).toBeDisabled();
+        await expect(
+          page
+            .getByRole("navigation", { name: "Village navigation" })
+            .getByRole("button", { name: "Map", exact: true }),
+        ).toBeDisabled();
+        await fulfill(heldWorldSave, { json: snapshot });
+        holdWorldSave = false;
+        await expect(worldName).toBeEnabled();
+        await worldName.fill(original);
+        await main.getByRole("button", { name: "Edit map", exact: true }).click();
+        const mapName = main.getByRole("textbox", { name: "Map name", exact: true });
+        await expect(mapName).toBeEnabled();
+        await mapName.fill("An unsaved map name");
+        await selectSection("advanced");
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
+          .click();
+        await expect(mapName).toHaveValue("An unsaved map name");
+        if (mobile) await expect(picker).toHaveValue("village");
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "Projects", exact: true })
+          .click();
+        await page
+          .getByRole("dialog", { name: "Confirm", exact: true })
+          .getByRole("button", { name: "Cancel", exact: true })
+          .click();
+        await expect(mapName).toHaveValue("An unsaved map name");
+        holdMapSave = true;
+        await main.getByRole("button", { name: "Save map", exact: true }).click();
+        await expect.poll(() => !!heldMapSave).toBe(true);
+        await expect(
+          page
+            .getByRole("navigation", { name: "Village navigation" })
+            .getByRole("button", { name: "Projects", exact: true }),
+        ).toBeDisabled();
+        await fulfill(heldMapSave, { json: snapshot });
+        holdMapSave = false;
+        await expect(mapName).toHaveCount(0);
       }
       if (key === "progress") {
         await expect(main.getByText("Engine version: synthetic-1", { exact: true })).toBeVisible();
@@ -227,8 +330,15 @@ try {
         assert.equal(progressReads, 4, "explicit refresh recovers with one read");
         await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
         progressFails = true;
-        await nav.getByRole("button", { name: /^Projects \(/ }).click();
-        await nav.getByRole("button", { name: /^DEBUG: Progress$/ }).click();
+        await page
+          .getByRole("navigation", { name: "Village navigation" })
+          .getByRole("button", { name: "Projects" })
+          .click();
+        await page
+          .getByRole("main", { name: "Projects" })
+          .getByRole("button", { name: /^Close/ })
+          .click();
+        await selectSection("progress");
         await expect(main.getByText("Engine version: loading", { exact: true })).toBeVisible();
         await expect(main.getByRole("alert")).toHaveText("Diagnostics are offline.");
         assert.equal(progressReads, 5, "navigation retains its single-read error policy");
@@ -239,61 +349,40 @@ try {
         });
       }
       assert.ok((await main.innerText()).trim().length > 10, `${key} has visible content`);
-      await expect(nav.getByRole("button", { name })).toHaveAttribute("data-active", "true");
-      const { color, background, area } = await main.evaluate((element) => {
+      if (mobile) await expect(picker).toHaveValue(key);
+      else await expect(nav.getByRole("button", { name, exact: true })).toHaveAttribute("aria-current", "page");
+      const { contrast, area } = await main.evaluate((element) => {
         const style = getComputedStyle(element);
         const rect = element.getBoundingClientRect();
+        const surface = getComputedStyle(element.closest(".marinara-capability-villages-sectioned-menu"));
+        const luminance = (value) =>
+          value
+            .match(/[\d.]+/g)
+            .slice(0, 3)
+            .map(Number)
+            .map((channel) => {
+              const v = channel / 255;
+              return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+            })
+            .reduce((total, channel, i) => total + channel * [0.2126, 0.7152, 0.0722][i], 0);
+        const a = luminance(style.color),
+          b = luminance(surface.backgroundColor);
         return {
-          color: style.color,
-          background: getComputedStyle(element.closest(".marinara-capability-villages-sectioned-menu")).backgroundImage,
+          contrast: (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
           area: rect.width * rect.height,
         };
       });
-      assert.equal(color, "rgb(243, 244, 255)", `${key} has readable menu text`);
-      assert.match(background, /gradient/, `${key} has the menu surface`);
+      assert.ok(contrast >= 4.5, `${key} has readable menu text`);
       assert.ok(area > 1000, `${key} occupies a visible area`);
     }
-    await root.getByRole("button", { name: "Back to menu" }).click();
-    await expect(root).toHaveAttribute("data-page", "index");
-    await expect(root.locator(`.${tag}-menu-welcome`)).toBeVisible();
-    await nav.getByRole("button", { name: /^Villagers \(/ }).click();
-    await expect(page.getByRole("main", { name: "Villagers directory" })).toBeVisible();
-    await expect(nav).toHaveCount(0);
-    await expect(page.getByRole("searchbox", { name: "Search villagers" })).toBeVisible();
-    await page.getByRole("button", { name: "Back to menu" }).click();
-    await page.evaluate(() => document.getElementById("marinara-capability-villages-styles").remove());
-    await expect.poll(() => page.locator("#marinara-capability-villages-styles").count()).toBe(1);
-    await root.getByRole("button", { name: "Back to the village" }).click();
-    await page.getByRole("button", { name: /^Notices \(/ }).click();
-    await expect(root).toHaveAttribute("data-page", "noticeboard");
-    await expect(nav).toBeVisible();
-    if (process.env.VILLAGES_MENU_SCREENSHOTS) {
-      await page.screenshot({
-        path: join(process.env.VILLAGES_MENU_SCREENSHOTS, `menu-noticeboard-${width}-${height}.png`),
-      });
-    }
-    await page.evaluate((elementName) => {
-      const old = document.querySelector(elementName);
-      old.replaceWith(document.createElement(elementName));
-    }, tag);
-    await page.getByRole("button", { name: "More" }).click();
-    await expect(root).toHaveAttribute("data-page", "index");
-    await expect(nav).toBeVisible();
-    await expect(nav.getByRole("button", { name: /^Homes \(/ })).toHaveCount(0);
-    if (width > 700 && height > 700) {
-      await root.getByRole("button", { name: "Back to the village" }).click();
-      await page.getByRole("button", { name: "Use the whole screen" }).click();
-      await expect.poll(() => page.evaluate(() => document.fullscreenElement?.tagName.toLowerCase())).toBe(tag);
-      await page.getByRole("button", { name: "More" }).click();
-      await expect(root).toBeVisible();
-      await expect(nav).toBeVisible();
-      await expect(main).toBeVisible();
-      await page.evaluate(() => document.exitFullscreen());
-    }
+    await selectSection("general");
+    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "Map" }).click();
+    await expect(page.getByRole("button", { name: /^Notices \(/ })).toHaveCount(0);
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();
     assert.deepEqual(errors, [], `no browser errors at ${width}×${height}`);
     await page.close();
   }
   console.log("Villages Menu: all pages visible across desktop and phone layouts.");
-} finally {
-  await browser.close();
-}
+});

@@ -4,6 +4,9 @@ const binding = createActivationBinding<Residences>("Residence commands are not 
 export function configureResidences(service: Residences): () => void {
   return binding.configure(bindActivationService(service));
 }
+export async function movePlayerToResidence(...args: Parameters<Residences["movePlayerToResidence"]>) {
+  return binding.get().movePlayerToResidence(...args);
+}
 export async function proposeVillageResidence(...args: Parameters<Residences["proposeVillageResidence"]>) {
   return binding.get().proposeVillageResidence(...args);
 }
@@ -15,9 +18,4 @@ export async function decideVillageResidence(...args: Parameters<Residences["dec
 }
 export async function completeVillageResidence(...args: Parameters<Residences["completeVillageResidence"]>) {
   return binding.get().completeVillageResidence(...args);
-}
-export async function retryResidencePrivateSpaceAdaptation(
-  ...args: Parameters<Residences["retryResidencePrivateSpaceAdaptation"]>
-) {
-  return binding.get().retryResidencePrivateSpaceAdaptation(...args);
 }

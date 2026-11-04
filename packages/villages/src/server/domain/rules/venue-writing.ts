@@ -1,7 +1,7 @@
+import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
 import type { VillagerCard } from "../models/catalog-model.js";
 import { badRequest } from "./errors.js";
-import { renderResidentFoundingContext } from "./resident-founding-context.js";
-import type { CapabilityLanguageModelMessage, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
+import { renderResidentAdmission } from "./resident-admission.js";
 
 /** The authored person is complete; circumstances are supplied separately. */
 export function venueCardProfile(
@@ -26,14 +26,14 @@ export function venueCardProfile(
       .filter(([, value]) => value?.trim())
       .map(([label, value]) => `${label}:\n${expand(value!)}`)
       .join("\n\n") +
-    (card.foundingContext ? "\n\n" + renderResidentFoundingContext(card.name, card.foundingContext) : "")
+    (card.admission ? "\n\n" + renderResidentAdmission(card.name, card.admission) : "")
   );
 }
 
 export const EVENT_MEMORY_GUIDANCE =
   "Record what was said or done in this encounter, with its context. A pause, reserved delivery, temporary uncertainty, or the narrator's interpretation is not a stable personality trait. Preserve explicit preferences and commitments without generalizing a moment into who the character is.";
 
-export type VenueWritingBlock = { text: string; optional?: "history" | "memory" | "lore" };
+export type VenueWritingBlock = { text: string; optional?: "wish" | "history" | "memory" | "lore" };
 
 export type VenueWritingSections = {
   direction: VenueWritingBlock[];
@@ -50,7 +50,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
     direction: "Writing direction",
     identity: "Complete authored character identity",
     circumstances: "Current Scene circumstances",
-    conversation: "Witnessed conversation and contextual recollections",
+    conversation: "Witnessed conversation and recalled memories",
     authoredInstructions: "Authored post-history direction",
     metadata: "Response format and evidence metadata",
   };
@@ -61,7 +61,7 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
 }
 
 export const VENUE_RESIDENT_REQUESTS =
-  "Capture spontaneous resident proposals only when they actually occur in spoken dialogue, using speakerId and an exact quote. residenceRequest also needs an available venueId for a requested move; residenceDecision needs approved for acceptance/refusal of a pending player move request. upgradeRequest identifies one concrete structural improvement to this Venue. venueRequest needs name and classes (one or two of workplace, community, other) for a NEW public venue, rather than an upgrade here. If a required resident approves or declines a listed exact edit proposal, editApproval needs proposalId and approved. Omit unused fields. Player requests, hypothetical speech, silence, or a different speaker are never resident consent. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.";
+  "Capture spontaneous resident proposals only when they actually occur in spoken dialogue, using speakerId and an exact quote. residenceRequest also needs an available venueId for a requested move; residenceDecision needs the incoming characterId and approved for the speaker’s agreement or withdrawal to the exact captured move. Only the incoming person or a current housemate may agree; silence is not consent. venueRequest needs name and classes (one or two of workplace, community, other) for a NEW public venue. Omit unused fields. Player requests, hypothetical speech, silence, or a different speaker are never resident consent. Approval starts planning, not construction. Existing accepted commitments remain binding until explicitly withdrawn.";
 
 export const VENUE_DEPARTURE_METADATA =
   'For an explicitly departing resident return departures:[{speakerId,quote:"exact spoken departure"}]. Return sceneEnded:{speakerId,quote:"exact spoken ending"} only when dialogue ends the whole encounter, never for player silence or ordinary company.';
@@ -88,15 +88,20 @@ export function fitVenueWritingMessages(
   connectionName = "Narration",
 ) {
   const kept = [...blocks];
-  // Old history first, then optional recollections/lore. Essential blocks and the
+  // Old history first, then optional memories/lore. Essential blocks and the
   // latest player input must survive fitting byte-for-byte before any paid call.
   for (;;) {
     const messages = assembleVenueWritingMessages(kept, input);
     const fitted = model.fitContext(messages, { maxTokens });
-    if (JSON.stringify(fitted.messages) === JSON.stringify(messages)) return fitted;
+    if (JSON.stringify(fitted.messages) === JSON.stringify(messages))
+      return { ...fitted, loreEntries: kept.filter((block) => block.optional === "lore").map((block) => block.text) };
     const optional =
-      ["history", "memory", "lore"]
-        .map((kind) => kept.findIndex((block) => block.optional === kind))
+      ["wish", "history", "memory", "lore"]
+        .map((kind) =>
+          kind === "lore"
+            ? kept.findLastIndex((block) => block.optional === kind)
+            : kept.findIndex((block) => block.optional === kind),
+        )
         .find((index) => index >= 0) ?? -1;
     if (optional < 0)
       throw badRequest(

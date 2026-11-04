@@ -1,20 +1,22 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { preparePrivateSpaces } from "../packages/villages/src/server/jobs/private-space-preparation.js";
 import {
   createPrivateSpacePreparation,
   type PrivateSpacePreparationPorts,
 } from "../packages/villages/src/server/jobs/private-space-service.js";
-import { preparePrivateSpaces } from "../packages/villages/src/server/jobs/private-space-preparation.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function waitForDispatch(entered: Promise<void>, work: Promise<void>) {
   return Promise.race([
@@ -27,16 +29,18 @@ function waitForDispatch(entered: Promise<void>, work: Promise<void>) {
 function world(name: string) {
   const stamp = new Date().toISOString();
   return coerceVillageState({
+    ...defaultVillageState(),
+
     seed: "same-seed",
     name,
     setting: name,
     wishSystemVersion: 3,
     setupAt: stamp,
     foundedAt: stamp,
-    storyPace: "off",
+    backgroundPace: "off",
     villagers: [],
     venues: [
-      {
+      venueFixture({
         id: "same-venue",
         name: "Office",
         form: "Station",
@@ -57,7 +61,7 @@ function world(name: string) {
             preparation: { status: "pending" },
           },
         ],
-      },
+      }),
     ],
   });
 }
@@ -136,6 +140,7 @@ function fixture(name: string) {
   };
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
   const ports: PrivateSpacePreparationPorts = {
+    mutateDocument: createDocumentMutator(() => documents),
     readVillageState: async () => structuredClone(state()),
     mutateVillageState: async (mutator) => {
       // A failed CAS re-evaluates the callback on a fresh copy, without sending a second request.
@@ -149,8 +154,19 @@ function fixture(name: string) {
     villagesLogger: () => logger,
     villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
     villagesConnectionIdFor: async () => "same-connection",
-    completeWithRoom: async (selected, messages, maxTokens, options) =>
-      selected.chatComplete(messages, { ...options, maxTokens }),
+    completeWithRoom: async (selected, messages, maxTokens, options) => {
+      const completion = await selected.chatComplete(messages, { ...options, maxTokens });
+      assert.equal(options.savedRequest!.valid!(completion), true);
+      const replay = { ...completion, content: options.savedRequest!.replayContent!(completion) };
+      assert.equal(options.savedRequest!.valid!(replay), true);
+      assert.deepEqual(Object.keys(JSON.parse(replay.content!).rooms[0]).sort(), [
+        "description",
+        "id",
+        "name",
+        "venueId",
+      ]);
+      return replay;
+    },
     reportFoundingProgress: async (_seed, progress) => {
       stages.push(progress.stage!);
     },
@@ -162,7 +178,7 @@ function fixture(name: string) {
     logger,
     getAgentConfig: async () => ({ connectionId: "same-connection" }),
     resources: { listCharacters: async () => [], listLorebooks: async () => [] },
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     languageModels: { resolveForRequest: async () => model },
   } as any;
   return { service, state, privateZone, gate, entered, calls, stages, host };

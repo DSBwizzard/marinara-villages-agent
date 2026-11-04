@@ -1,15 +1,16 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import { checkReadingSessionLifecycle } from "./fixtures/villages-reading-session.fixture.mjs";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const sentences = Array.from(
   { length: 12 },
@@ -18,7 +19,7 @@ const sentences = Array.from(
 const prose = `**${sentences.join(" ")}**`;
 const expected = sentences.join(" ");
 mkdirSync("artifacts", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   await checkReadingSessionLifecycle(browser);
   for (const { width, height } of [
     { width: 320, height: 568 },
@@ -28,6 +29,7 @@ try {
   ]) {
     const mobile = width !== 1440;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(() => {
@@ -37,7 +39,7 @@ try {
       window.sceneViewport = viewport;
     });
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       memoryMode: "live",
       id: "reading-pages",
@@ -75,30 +77,57 @@ try {
       submissions: [],
     };
     let events = [{ id: "heart", kind: "relationship-up", text: "Mara's warmth toward you increased (0 → 2)." }];
+    const closedCursors = [];
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = snapshot;
       if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
-      else if (path.endsWith("/changes"))
+      else if (path.endsWith("/changes") && session.status === "closed") {
+        const cursor = new URL(route.request().url()).searchParams.get("cursor");
+        closedCursors.push(cursor);
+        const first = cursor !== "2:0:0";
+        value = {
+          changes: [
+            {
+              notices: [
+                {
+                  id: first ? "recovered-older" : "recovered-final",
+                  kind: "memory",
+                  text: first ? "Earlier turn recovered during close." : "Final recovery notice.",
+                },
+              ],
+            },
+          ],
+          notices: [],
+          dismissedNoticeIds: [],
+          nextCursor: first ? "2:0:0" : "3:0:0",
+          hasMore: first,
+          processingSummary: { pending: 0, failed: 0, rejected: 0 },
+        };
+      } else if (path.endsWith("/changes"))
         value = {
           changes: [],
           notices: events,
           dismissedNoticeIds: [],
-          nextCursor: "",
+          nextCursor: "1:0:0",
           processingSummary: { pending: 0, failed: 0, rejected: 0 },
         };
       else if (path.endsWith("/rooms/close") || path.endsWith("/rooms/end")) {
         session.status = "closed";
         session.endedAt = now;
         session.memoryReview = { status: "complete", decisions: [] };
-        value = { session, recordEvents: events };
+        value = { session, recordEvents: [] };
       } else if (path.endsWith("/interpretation-settings"))
         value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
       else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.route("http://reading.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial}[data-component=HomeBrowserHub],.shell{height:100%;display:flex;flex-direction:column}.mari-home-browser-chrome{height:80px;flex-shrink:0}main{flex:1;min-height:0;overflow:auto}${tag}{display:block;width:100%;height:100%}</style><div data-component="HomeBrowserHub"><div class="shell"><header class="mari-home-browser-chrome">Home</header><main data-component="HomeBrowserHub.Content"><${tag}></${tag}></main></div></div>`,
@@ -113,7 +142,7 @@ try {
     const previous = page.getByRole("button", { name: "Previous paragraph" });
     const draft = page.getByRole("textbox", { name: "Message at The Mill" });
     const dock = page.locator(`.${tag}-chat-vn`);
-    const tray = page.getByRole("button", { name: /village notice/ });
+    const tray = page.getByRole("button", { name: /World changes?/ });
     const visitVenueAndReturn = async () => {
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
@@ -135,9 +164,10 @@ try {
       );
     }
     await expect(tray).toHaveAttribute("aria-expanded", "true");
-    await expect(page.getByLabel("Village events")).toBeVisible();
+    await expect(page.getByLabel("World changes", { exact: true })).toBeVisible();
     events.push({ id: "memory", kind: "memory", text: "Mara remembered the exchange." });
-    await expect(tray).toHaveAccessibleName("2 village notices");
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(tray).toHaveAccessibleName("2 World changes");
     await expect(tray).toHaveAttribute("aria-expanded", "true");
     await tray.click();
     await expect(tray).toHaveAttribute("aria-expanded", "false");
@@ -160,12 +190,13 @@ try {
       detail: { text: "Wish update" },
       wishUpdate: { actorId: "mara", wishId: "swim" },
     });
-    await expect(tray).toHaveAccessibleName("3 village notices");
-    await expect(page.getByLabel("Village events")).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(tray).toHaveAccessibleName("3 World changes");
+    await expect(page.getByLabel("World changes", { exact: true })).toBeVisible();
     // Exercise navigation independently of the mobile dialogue overlay's pointer layout.
     await page.getByRole("button", { name: /View .*Inspect Mara's wish/ }).evaluate((button) => button.click());
     await expect(page.getByRole("region", { name: "Mara profile", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+    await page.getByRole("button", { name: "Close ×", exact: true }).click();
     await expect(text).toHaveText("A quiet afternoon.");
     await expect(draft).toHaveCount(0);
     await tray.click();
@@ -284,21 +315,25 @@ try {
     await page.getByRole("menuitem", { name: "End Scene now" }).click();
     await expect(draft).toHaveCount(0);
     await expect(page.getByText("Review complete. No durable memories were made from this Scene.")).toHaveCount(0);
-    await expect(tray).toHaveAttribute("aria-expanded", "false");
+    await expect(tray).toHaveAccessibleName("5 World changes");
+    assert.deepEqual(
+      closedCursors,
+      ["1:0:0", "2:0:0"],
+      "Closing drains new pages after the existing cursor exactly once",
+    );
+    if ((await tray.getAttribute("aria-expanded")) !== "true") await tray.click();
+    await expect(page.getByText("Earlier turn recovered during close.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Final recovery notice.", { exact: true })).toBeVisible();
+    await tray.click();
     const box = await dock.boundingBox();
     assert.ok(Math.abs(box.y + box.height - height) <= 1, "ended dialogue dock reaches the bottom");
     await page.screenshot({ path: `artifacts/compact-scene-ended-${width}x${height}.png` });
     await page.getByRole("button", { name: "Venue actions" }).click();
     await page.getByRole("menuitem", { name: "Scene settings" }).click();
-    await expect(page.getByRole("dialog", { name: "Scene settings" })).toContainText(
-      "Ending the Scene does not run another review",
-    );
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
     "villages-reading-pages: mobile paging, formatting, sprites, keyboard, notices, hide/restore, reflow and ended docking passed",
   );
-} finally {
-  await browser.close();
-}
+});

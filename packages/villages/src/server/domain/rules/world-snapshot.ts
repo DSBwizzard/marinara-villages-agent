@@ -1,6 +1,8 @@
+import { zonePictureBaseline, zonePictureContext } from "./zone-picture.js";
 import { copyDate } from "../../../shared/helpers/zoned-date.js";
+import { legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
 import { residentSignature } from "../../../shared/helpers/resident-signature.js";
-import { isPrivateInterior, privateInteriorKey } from "./private-interior.js";
+import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
 import type {
   VillageMomentView,
   VillagePlaceView,
@@ -16,8 +18,6 @@ import {
   DEFAULT_HOME_BUILDING,
   homeBuildingOptions,
   isHousePlace,
-  MAX_NOTICE_LENGTH,
-  MAX_NOTICEBOARD_NOTES,
   MAX_SETTING_LENGTH,
   MAX_TOWN_MAP_IMAGE_LENGTH,
   MAX_VENUE_IMAGE_BYTES,
@@ -42,14 +42,14 @@ import { relationshipZoneController } from "./relationship-rules.js";
 import { DEFAULT_TOWN_MAP_LAYOUT_PROMPT, DEFAULT_TOWN_MAP_NEGATIVE_PROMPT } from "./town-map-prompts.js";
 import { projectVenueAccess, projectZoneAccess } from "./venue-access.js";
 import { villageVenueLimit } from "./venue-capacity.js";
-import { legacyZoneId, venueZones, zoneClosed } from "./venue-zones.js";
+import { venueZones, zoneClosed } from "./venue-zones.js";
 import { deriveVillageMoment } from "./village-clock.js";
 import { villagerPlaceView } from "./village-projections.js";
 
 export function projectVillager(
   villager: VillageVillager,
   cardName: string | null,
-  cardSummary: string,
+  _cardSummary: string,
   cardTags: string[],
   nameColor: string,
   dialogueColor: string,
@@ -57,6 +57,7 @@ export function projectVillager(
 ): VillageVillagerView {
   return {
     characterId: villager.characterId,
+    letterFontId: villager.letterFontId ?? legacyLetterFont(villager.characterId),
     signatureFallback: residentSignature(villager.cardSnapshot),
     ...(villager.signature ? { signature: villager.signature } : {}),
     nameColor,
@@ -73,9 +74,12 @@ export function projectVillager(
           })),
         }
       : null,
-    ...(villager.foundingContext ? { foundingContext: villager.foundingContext } : {}),
     name: cardName ?? villager.cardSnapshot.name,
-    summary: cardSummary,
+    summary: villager.identityDescription?.text ?? "",
+    identityDescription: {
+      text: villager.identityDescription?.text ?? "",
+      revision: villager.identityDescription?.revision ?? "",
+    },
     tags: cardTags,
     missing: cardName === null,
     place,
@@ -91,6 +95,7 @@ export function projectVillager(
 export function villageMomentView(village: VillageState, now: Date, nextTransitionAt?: string): VillageMomentView {
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
+    environment: village.narrative,
     seed: village.seed,
     timeZone: village.timeZone || undefined,
     now,
@@ -116,6 +121,7 @@ export function villageMomentView(village: VillageState, now: Date, nextTransiti
 export function exactSnapshotTransition(village: VillageState, now: Date): string {
   const moment = deriveVillageMoment({
     foundedAt: village.foundedAt,
+    environment: village.narrative,
     seed: village.seed,
     timeZone: village.timeZone || undefined,
     now,
@@ -151,18 +157,20 @@ export function villageSettings(
     zoneId?: string;
   } | null,
   accessContext?: import("../../domain/rules/venue-access.js").AccessContext,
+  now = new Date(),
 ): VillageSettingsView {
   return {
-    visitRetention: village.visitRetention,
     promptKnowledge: village.promptKnowledge,
     defaultPromptKnowledge: VILLAGES_DEFAULT_KNOWLEDGE,
     promptBoxMaxLength: VILLAGES_PROMPT_BOX_MAX_LENGTH,
     macros: VILLAGE_PRESET_MACROS,
-    storyPace: village.storyPace,
-    storyPaces: ["off", "quiet", "balanced", "lively"],
+    backgroundPace: village.backgroundPace,
+    narrativeConsequence: village.narrativeConsequence ?? "gentle",
+    backgroundPaces: ["off", "quiet", "balanced", "lively"],
     characterSpeechColors: village.characterSpeechColors,
     sendOnEnter: village.sendOnEnter,
     spriteCardFlipEnabled: village.spriteCardFlipEnabled,
+    spriteVariantsEnabled: village.spriteVariantsEnabled,
     villageNameMaxLength: MAX_VILLAGE_NAME_LENGTH,
     playerPersonaId: village.playerPersonaId,
     // The cached name travels even when the link is broken, so the panel can
@@ -171,15 +179,12 @@ export function villageSettings(
     // beside it is what tells a panel whether to draw a choice or a notice.
     playerPersonaName: player.name,
     playerPersonaMissing: player.missing,
-    maxNoticeboardNotes: MAX_NOTICEBOARD_NOTES,
-    maxNoticeLength: MAX_NOTICE_LENGTH,
     setting: village.setting,
-    foundingReason: village.foundingReason,
-    foundingDetails: village.foundingDetails,
-    foundingGuidance: village.foundingGuidance,
-    playerRole: village.playerRole,
-    scenarioImprint: village.scenarioImprint,
-    worldFacts: village.worldFacts,
+    worldRules: village.worldRules,
+    communityVenueId: village.communityVenueId,
+    worldName: village.worldName ?? null,
+    playerBackground: village.playerBackground,
+    circumstances: structuredClone(village.narrative?.situations ?? []),
     selectedLorebookIds: village.selectedLorebookIds,
     sceneryArtStyle: village.sceneryArtStyle,
     sceneryStyleProfileId: village.sceneryStyleProfileId ?? null,
@@ -189,13 +194,11 @@ export function villageSettings(
     loreTokenBudget: village.loreTokenBudget,
     loreTokenBudgetMin: MIN_LORE_TOKEN_BUDGET,
     loreTokenBudgetMax: MAX_LORE_TOKEN_BUDGET,
-    foundingDetailsMaxLength: 2_000,
-    foundingGuidanceMaxLength: 500,
     townMapLayoutPrompt: DEFAULT_TOWN_MAP_LAYOUT_PROMPT,
     townMapNegativePrompt: DEFAULT_TOWN_MAP_NEGATIVE_PROMPT,
     settingMaxLength: MAX_SETTING_LENGTH,
     venues: village.venues.map((venue) => {
-      const previewAt = accessContext?.at ?? new Date();
+      const previewAt = now;
       const context =
         residenceAccess?.placeId === venue.id
           ? accessContext
@@ -207,8 +210,12 @@ export function villageSettings(
                     village,
                     resident,
                     null,
-                    deriveVillageMoment({ foundedAt: village.foundedAt, seed: village.seed, now: previewAt })
-                      .minuteOfDay,
+                    deriveVillageMoment({
+                      foundedAt: village.foundedAt,
+                      environment: village.narrative,
+                      seed: village.seed,
+                      now: previewAt,
+                    }).minuteOfDay,
                     previewAt,
                   );
                   return destination?.id === venue.id && destination.zoneId
@@ -217,15 +224,21 @@ export function villageSettings(
                 }),
               ),
             };
-      const blankState = { condition: "", items: [], publicFacts: [], features: [], traces: [], updatedAt: "" };
       const zones = venueZones(venue).map((originalZone) => {
         const zone = {
           ...originalZone,
-          lastObserved: undefined,
-          imageInteriorKey: undefined,
           picture: undefined,
           pictureRevision: undefined,
           pictureRetryAvailable: originalZone.picture?.failed === true,
+          pictureUpdateAvailable:
+            !originalZone.image ||
+            originalZone.picture?.dirty === true ||
+            (originalZone.picture?.context || originalZone.picture?.baseline
+              ? zonePictureBaseline(originalZone.picture.context ?? originalZone.picture.baseline!) !==
+                zonePictureContext(village, venue, originalZone)
+              : false),
+          pictureProblem: originalZone.picture?.problem,
+          pictureUpdating: !!originalZone.picture?.claim && originalZone.picture?.failed !== true,
           preparation: originalZone.preparation
             ? { status: originalZone.preparation.status, error: originalZone.preparation.error }
             : undefined,
@@ -237,6 +250,7 @@ export function villageSettings(
                 sceneId: context?.sceneId ?? "next-visit-preview",
                 accepting: true,
                 unavailable: zoneClosed(village, venue, originalZone),
+                environment: village.narrative,
                 relationships: village.relationshipContext,
               })
             : undefined,
@@ -248,106 +262,42 @@ export function villageSettings(
             "player",
           ),
         };
-        const visible =
-          zone.kind === "exterior" ||
-          zone.seen ||
-          (zone.kind === "shared-residence" && venue.occupancy.playerHome) ||
-          (residenceAccess?.placeId === venue.id && residenceAccess.zoneId === zone.id);
-        const observed = isPrivateInterior(originalZone) ? originalZone.lastObserved : undefined;
-        return visible
-          ? {
-              ...zone,
-              ...(observed
-                ? { description: observed.description, state: observed.state, observedAt: observed.observedAt }
-                : {}),
-              imageOutdated: !!(
-                observed &&
-                zone.image &&
-                originalZone.imageInteriorKey &&
-                originalZone.imageInteriorKey !== privateInteriorKey(observed)
-              ),
-              closed: zoneClosed(village, venue, zone),
-            }
-          : {
-              ...zone,
-              closed: zoneClosed(village, venue, zone),
-              description: "",
-              image: null,
-              pictureRetryAvailable: false,
-              state: blankState,
-              initialImageAttemptedAt: undefined,
-              adaptationPending: undefined,
-              adaptationSourceArchiveAt: undefined,
-            };
+        return {
+          ...zone,
+          ...(venue.discovered && !zone.seen
+            ? {
+                description: "",
+                roomSpecification: undefined,
+                purpose: "",
+                image: null,
+                pictureRetryAvailable: false,
+                pictureUpdateAvailable: false,
+                pictureProblem: undefined,
+                pictureUpdating: false,
+                preparation: undefined,
+              }
+            : {}),
+          state: {
+            ...(venue.discovered && !zone.seen ? { revision: 0, updatedAt: "", recent: null } : zone.state),
+            recent:
+              (!venue.discovered || zone.seen) && recentPlaceText(zone.state, now.getTime()) ? zone.state.recent : null,
+          },
+          closed: zoneClosed(village, venue, zone),
+        };
       });
-      const visibleIds = new Set(
-        zones
-          .filter(
-            (zone) =>
-              zone.kind === "exterior" ||
-              zone.seen ||
-              (residenceAccess?.placeId === venue.id && residenceAccess.zoneId === zone.id) ||
-              (zone.kind === "shared-residence" && venue.occupancy.playerHome),
-          )
-          .map((zone) => zone.id),
-      );
-      const primary = zones.find(
-        (zone) =>
-          !zone.upgradeId && zone.kind !== "exterior" && zone.kind !== "private-residence" && visibleIds.has(zone.id),
-      );
+      const primary = zones.find((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence");
       return {
         ...venue,
         access: undefined,
-        accessView: projectVenueAccess(venue, "player"),
+        accessView: projectVenueAccess(venue, "player", village.communityVenueId),
         zones,
         archivedZones: [],
         archivedPrivateSpaces: [],
-        state: primary
-          ? {
-              ...venue.state,
-              condition: primary.state.condition,
-              furniture: primary.state.items,
-              publicFacts: primary.state.publicFacts,
-              features: primary.state.features,
-              traces: primary.state.traces,
-            }
-          : { ...venue.state, condition: "", furniture: [], publicFacts: [], features: [], traces: [] },
-        spaces: zones.filter(
-          (zone) => !zone.upgradeId && zone.kind !== "exterior" && zone.kind !== "private-residence",
-        ),
+        state: primary?.state ?? { revision: 0, updatedAt: "", recent: null },
+        spaces: zones.filter((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence"),
         privateSpaces: zones
           .filter((zone) => zone.kind === "private-residence")
           .map((zone) => ({ ...zone, ownerId: zone.ownerId! })),
-        improvements: venue.improvements?.map((upgrade) =>
-          upgrade
-            ? {
-                ...upgrade,
-                zones: upgrade.zones?.map((zone) => ({
-                  ...zone,
-                  access: undefined,
-                  controllerIds: venue.access ? undefined : zone.controllerIds,
-                  description: zones.find((observed) => observed.id === zone.id)?.description ?? "",
-                })),
-              }
-            : null,
-        ),
-        editProposals: venue.editProposals
-          ?.filter((proposal) =>
-            visibleIds.has(proposal.zoneId ?? legacyZoneId(venue, proposal.target, "residence", proposal.ownerId)),
-          )
-          .map((proposal) => ({
-            ...proposal,
-            proposed: {
-              ...proposal.proposed,
-              access: undefined,
-              accessView: undefined,
-              controllerIds: undefined,
-              lastObserved: undefined,
-              imageInteriorKey: undefined,
-              picture: undefined,
-              pictureRevision: undefined,
-            },
-          })),
       };
     }),
     homeBuildingNames: village.homeBuildingNames,
@@ -364,18 +314,10 @@ export function villageSettings(
     setupPlaceCount: 2 + SETUP_MAX_VILLAGER_COUNT,
     setupMinVillagerCount: SETUP_MIN_VILLAGER_COUNT,
     setupMaxVillagerCount: SETUP_MAX_VILLAGER_COUNT,
-    // The stamp, not the image: the tab holds the picture and refetches it from
-    // `/town-map` when this changes, which keeps a megabyte off every snapshot.
-    townMapImageSetAt: village.townMapImageSetAt,
+    maps: village.maps,
     townMapImageMaxLength: MAX_TOWN_MAP_IMAGE_LENGTH,
-    townMapCanvasWidth: village.townMapCanvasWidth,
-    townMapCanvasHeight: village.townMapCanvasHeight,
-    townMapView: village.townMapView,
-    // The shape, and the picture size it is authored against. The tab lays its
-    // frame out from these rather than owning a ratio of its own, so the shape
-    // the map is drawn in and the shape the panel describes are one number.
-    townMapExpectedWidth: village.townMapCanvasWidth,
-    townMapExpectedHeight: village.townMapCanvasHeight,
+    townMapExpectedWidth: TOWN_MAP_EXPECTED_WIDTH,
+    townMapExpectedHeight: TOWN_MAP_EXPECTED_HEIGHT,
     townMapGenerationWidth: TOWN_MAP_EXPECTED_WIDTH,
     townMapGenerationHeight: TOWN_MAP_EXPECTED_HEIGHT,
     townMapZoomMin: TOWN_MAP_ZOOM_MIN,

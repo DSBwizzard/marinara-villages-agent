@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "../helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityRuntimeHost } from "@marinara-engine/shared";
 import {
@@ -7,12 +8,12 @@ import {
 } from "../../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { defaultVillageState } from "../../packages/villages/src/server/domain/decoding/village-codec.js";
 import { configureVillagesRuntime } from "../../packages/villages/src/server/entry/runtime.js";
+import { backgroundRevision } from "../../packages/villages/src/server/domain/rules/background-revision.js";
+export const settingsJobId = "villages-background-" + backgroundRevision(["agenda", "same-resident"]);
 
 type Row = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function unused<T extends object>(seed: Partial<T> = {}): T {
   return new Proxy(seed, {
@@ -98,7 +99,7 @@ function graph(label: "A" | "B") {
     narrationConnectionId: "same-connection",
     imageConnectionId: "same-connection",
   });
-  seed("same-job", "background-work", {
+  seed(settingsJobId, "background-work", {
     id: "same-job",
     seed: "same-seed",
     kind: "agenda",
@@ -179,7 +180,7 @@ function graph(label: "A" | "B") {
     };
   };
   const host: CapabilityRuntimeHost = {
-    persistence: unused<CapabilityRuntimeHost["persistence"]>({ documents }),
+    persistence: unused<CapabilityRuntimeHost["persistence"]>({ documents: villageFixtureDocuments(documents) }),
     resources: unused(),
     achievements: unused(),
     embeddings: unused(),

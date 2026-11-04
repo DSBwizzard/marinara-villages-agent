@@ -10,54 +10,54 @@ export async function createNewVenueProject(
 ): Promise<void> {
   return binding.get().createNewVenueProject(...args);
 }
-export async function placeNewVenueProject(
-  ...args: Parameters<ProjectLifecycle["placeNewVenueProject"]>
-): Promise<void> {
-  return binding.get().placeNewVenueProject(...args);
-}
 export async function createRenovationProject(
   ...args: Parameters<ProjectLifecycle["createRenovationProject"]>
 ): Promise<void> {
   return binding.get().createRenovationProject(...args);
 }
-export async function requestProjectMailbox(
-  ...args: Parameters<ProjectLifecycle["requestProjectMailbox"]>
+export async function saveProjectPlan(...args: Parameters<ProjectLifecycle["saveProjectPlan"]>): Promise<void> {
+  return binding.get().saveProjectPlan(...args);
+}
+export async function placeNewVenueProject(
+  ...args: Parameters<ProjectLifecycle["placeNewVenueProject"]>
 ): Promise<void> {
-  return binding.get().requestProjectMailbox(...args);
-}
-export async function lockProjectBuilder(...args: Parameters<ProjectLifecycle["lockProjectBuilder"]>): Promise<void> {
-  return binding.get().lockProjectBuilder(...args);
-}
-export async function acceptProjectRequirements(
-  ...args: Parameters<ProjectLifecycle["acceptProjectRequirements"]>
-): Promise<void> {
-  return binding.get().acceptProjectRequirements(...args);
-}
-export async function deliverProjectMaterial(
-  ...args: Parameters<ProjectLifecycle["deliverProjectMaterial"]>
-): Promise<void> {
-  return binding.get().deliverProjectMaterial(...args);
-}
-export async function startProjectConstruction(
-  ...args: Parameters<ProjectLifecycle["startProjectConstruction"]>
-): Promise<void> {
-  return binding.get().startProjectConstruction(...args);
-}
-export async function debugCompleteProjectConstruction(
-  ...args: Parameters<ProjectLifecycle["debugCompleteProjectConstruction"]>
-): Promise<void> {
-  return binding.get().debugCompleteProjectConstruction(...args);
-}
-export async function openFinishedProject(...args: Parameters<ProjectLifecycle["openFinishedProject"]>): Promise<void> {
-  return binding.get().openFinishedProject(...args);
+  return binding.get().placeNewVenueProject(...args);
 }
 export async function reviseRenovationProject(
   ...args: Parameters<ProjectLifecycle["reviseRenovationProject"]>
 ): Promise<void> {
   return binding.get().reviseRenovationProject(...args);
 }
+export async function lockProjectBuilder(...args: Parameters<ProjectLifecycle["lockProjectBuilder"]>): Promise<void> {
+  return binding.get().lockProjectBuilder(...args);
+}
+export async function startProjectConstruction(
+  ...args: Parameters<ProjectLifecycle["startProjectConstruction"]>
+): Promise<void> {
+  return binding.get().startProjectConstruction(...args);
+}
+export async function resumeProject(...args: Parameters<ProjectLifecycle["resumeProject"]>): Promise<void> {
+  return binding.get().resumeProject(...args);
+}
+export async function cancelProject(...args: Parameters<ProjectLifecycle["cancelProject"]>): Promise<void> {
+  return binding.get().cancelProject(...args);
+}
+export async function debugCompleteProjectConstruction(
+  ...args: Parameters<ProjectLifecycle["debugCompleteProjectConstruction"]>
+): Promise<void> {
+  return binding.get().debugCompleteProjectConstruction(...args);
+}
 export async function renewRenovationApprovals(
   ...args: Parameters<ProjectLifecycle["renewRenovationApprovals"]>
 ): Promise<void> {
   return binding.get().renewRenovationApprovals(...args);
+}
+
+export async function createEstablishmentProject(...args: Parameters<ProjectLifecycle["createEstablishmentProject"]>) {
+  return binding.get().createEstablishmentProject(...args);
+}
+export async function completeEstablishmentProject(
+  ...args: Parameters<ProjectLifecycle["completeEstablishmentProject"]>
+) {
+  return binding.get().completeEstablishmentProject(...args);
 }

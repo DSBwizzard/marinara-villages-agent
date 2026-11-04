@@ -1,15 +1,16 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+import { mockEngineLookups, fulfill, abort } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
-try {
+await withBrowser(browser, async () => {
   mkdirSync(".build-tmp/attention-preview", { recursive: true });
   for (const width of [1366, 390, 320]) {
     const snapshot = structuredClone(fixture);
@@ -20,7 +21,7 @@ try {
       placeName: "The Mill",
       area: "public",
       zoneId: "hall",
-      version: 1,
+      version: 2,
       sceneRevision: 1,
       status: "active",
       memoryMode: "live",
@@ -46,10 +47,11 @@ try {
       errors = [];
     let loseClarification = width === 320;
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width < 500 });
+    await mockEngineLookups(context);
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
     await context.route("http://attention.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -87,7 +89,7 @@ try {
           };
           if (loseClarification) {
             loseClarification = false;
-            return route.abort("failed");
+            return abort(route, "failed");
           }
         } else {
           assert.equal(body.attentionChoice.id, scene.attentionClarification.id);
@@ -120,7 +122,11 @@ try {
         }
         value = { session: scene, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.goto("http://attention.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -136,6 +142,10 @@ try {
     const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname.endsWith("/rooms/active"));
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await refreshed;
+    await expect(page.getByRole("status").filter({ hasText: "Passage unavailable." })).toBeVisible();
+    await page.getByRole("button", { name: "1 Scene error", exact: true }).click();
+    await page.locator("summary").filter({ hasText: "Scene reading" }).click();
+    await page.getByRole("button", { name: "Latest", exact: true }).click();
     await expect(page.getByText("The Scene refreshed.", { exact: true })).toBeVisible();
     await expect(composer).toHaveValue("");
     await expect(page.getByRole("group", { name: "Clarify who to reach" })).toHaveCount(0);
@@ -167,6 +177,4 @@ try {
   console.log(
     "Natural attention browser: desktop and two phones, saved choices, draft edits, reload, lost response and fresh continuation identity passed",
   );
-} finally {
-  await browser.close();
-}
+});

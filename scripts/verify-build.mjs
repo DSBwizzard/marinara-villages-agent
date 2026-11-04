@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const operation = await acquireCheckoutOperation(root);
 try {
+  if (process.argv.length > 2) throw Error("verify:build takes no options");
   const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
   async function snapshot() {
     const names = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" })

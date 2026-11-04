@@ -187,6 +187,28 @@ try {
   await assert.rejects(requestFoundingSuggestions(clientPorts, {}, {}), /Storage unavailable/);
   assert.equal(requests.length, before);
   assert.equal(workspace.suggestionRequest, undefined);
+  // Leaving a visible founding view cancels GET observation and retains its admitted identity.
+  const observation = new AbortController();
+  workspace = {
+    ...emptyFoundingWorkspace(),
+    suggestionRequest: { id: "waiting", sourceKey: "setting-1", quickStart: false },
+  };
+  globalThis.window.setTimeout = ((done: () => void) => {
+    observation.abort();
+    done();
+  }) as any;
+  const beforeCancelled = requests.length;
+  globalThis.fetch = async (url, init) => {
+    requests.push(`${init?.method ?? "GET"} ${url}`);
+    return Response.json({ id: "waiting", sourceKey: "setting-1", status: "running", result: null, error: "" });
+  };
+  await assert.rejects(
+    requestFoundingSuggestions({ ...clientPorts, setupWorkspace: workspace, signal: observation.signal }, {}, {}),
+    /Check suggestions/,
+  );
+  assert.equal(workspace.suggestionRequest?.id, "waiting");
+  assert.equal(requests.length, beforeCancelled + 1);
+  assert(requests.at(-1)!.startsWith("GET"), "hidden-view cancellation never resubmits generation");
   lost = false;
 } finally {
   globalThis.fetch = originalFetch;

@@ -1,22 +1,129 @@
+import type { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
+import { badRequest } from "../../domain/rules/errors.js";
 import {
   buildVillageAgendas,
   clearVillagerAgenda,
-  correctCompletedWish,
   setVillagerScheduleInfluence,
 } from "../residents/resident-agendas.js";
-import { previewVillagerRefresh, applyVillagerRefresh } from "./resident-cards.js";
-import { type CharacterParams, fail, readCharacterId } from "../../adapters/http/route-support.js";
-import { badRequest } from "../../domain/rules/errors.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { addVillager, removeVillager } from "./resident-roster.js";
-import { changeRelationshipCreator, readRelationshipsView } from "./relationships.js";
+import { readVillageState } from "../world/village-store.js";
+import { recoverSocialOutbox } from "./relationship-social.js";
+import { clarifyRelationships, readRelationshipsInspect, readRelationshipsView } from "./relationships.js";
+import { applyVillagerRefresh, previewVillagerRefresh } from "./resident-cards.js";
+import { addVillager, editIdentityDescription, removeVillager } from "./resident-roster.js";
 import { generateResidentSignature, readResidentSignature } from "./resident-signature.js";
-import { readWishHistoryPage } from "./wishes/wish-archive.js";
-import { retireResidentWish } from "./wishes/wish-lifecycle.js";
-import type { FastifyInstance } from "fastify";
+import { socialMail } from "./social-mail.js";
+import { wishes } from "./wishes/service.js";
 
 export function registerRelationshipRoutes(engine: FastifyInstance) {
-  const app = engine;
+  engine.get<{ Params: { characterId: string } }>("/villagers/:characterId/wishes/inspect", async (request, reply) => {
+    try {
+      const state = await readVillageState({ wishes: [request.params.characterId] });
+      const resident = state.villagers.find((r) => r.characterId === request.params.characterId);
+      if (!resident) throw badRequest("Choose a resident.");
+      return { wishes: resident.wishes };
+    } catch (error) {
+      return fail(reply, error, "inspect Wishes");
+    }
+  });
+  engine.patch<{ Params: { characterId: string; wishId: string }; Body: { followed: boolean } }>(
+    "/villagers/:characterId/wishes/:wishId/follow",
+    async (request, reply) => {
+      try {
+        if (typeof request.body?.followed !== "boolean") throw badRequest("Choose following.");
+        await wishes().setWishFollowing(
+          readCharacterId(request.params.characterId),
+          request.params.wishId,
+          request.body.followed,
+        );
+        return await readRelationshipsView();
+      } catch (error) {
+        return fail(reply, error, "following Wish");
+      }
+    },
+  );
+  engine.get("/mailbox", async (request, reply) => {
+    try {
+      return await socialMail().readMailbox(request.query);
+    } catch (error) {
+      return fail(reply, error, "read Mailbox");
+    }
+  });
+  engine.post("/mailbox/threads", async (request, reply) => {
+    try {
+      return await socialMail().send(request.body);
+    } catch (error) {
+      return fail(reply, error, "send personal mail");
+    }
+  });
+  engine.get<{ Params: { threadId: string; messageId: string }; Querystring: { scope?: string; token?: string } }>(
+    "/mailbox/threads/:threadId/messages/:messageId",
+    async (request, reply) => {
+      try {
+        const { scope, token } = z
+          .object({ scope: z.string().regex(/^[a-f0-9]{64}$/), token: z.string().regex(/^[a-f0-9]{64}$/) })
+          .parse(request.query);
+        return await socialMail().getLetter(request.params.threadId, request.params.messageId, scope, token);
+      } catch (error) {
+        return fail(reply, error, "read personal letter");
+      }
+    },
+  );
+  engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/messages", async (request, reply) => {
+    try {
+      return await socialMail().send(request.body, request.params.threadId);
+    } catch (error) {
+      return fail(reply, error, "reply to personal mail");
+    }
+  });
+  engine.post<{ Params: { threadId: string } }>("/mailbox/threads/:threadId/read", async (request, reply) => {
+    try {
+      const { messageId, scope, token } = z
+        .object({
+          messageId: z.string().min(1),
+          scope: z.string().regex(/^[a-f0-9]{64}$/),
+          token: z.string().regex(/^[a-f0-9]{64}$/),
+        })
+        .parse(request.body);
+      return await socialMail().readLetter(request.params.threadId, messageId, scope, token);
+    } catch (error) {
+      return fail(reply, error, "read personal thread");
+    }
+  });
+  engine.post<{ Params: { threadId: string; messageId: string } }>(
+    "/mailbox/threads/:threadId/messages/:messageId/retry",
+    async (request, reply) => {
+      try {
+        const { requestId, scope, token } = z
+          .object({
+            requestId: z.string(),
+            scope: z.string().regex(/^[a-f0-9]{64}$/),
+            token: z.string().regex(/^[a-f0-9]{64}$/),
+          })
+          .parse(request.body);
+        return await socialMail().retry(request.params.threadId, request.params.messageId, requestId, scope, token);
+      } catch (error) {
+        return fail(reply, error, "retry personal mail");
+      }
+    },
+  );
+  engine.post<{ Params: { id: string } }>("/relationships/outbox/:id/recovery", async (request, reply) => {
+    try {
+      await recoverSocialOutbox(request.params.id, request.body);
+      return readRelationshipsInspect();
+    } catch (error) {
+      return fail(reply, error, "recover encounter");
+    }
+  });
+  engine.post("/relationships/clarifications", async (request, reply) => {
+    try {
+      return await clarifyRelationships(request.body);
+    } catch (error) {
+      return fail(reply, error, "clarify starting history");
+    }
+  });
   engine.get("/relationships", async (_request, reply) => {
     try {
       return await readRelationshipsView();
@@ -24,35 +131,43 @@ export function registerRelationshipRoutes(engine: FastifyInstance) {
       return fail(reply, error, "read relationships");
     }
   });
-  engine.post<{ Params: { characterId: string; wishId: string } }>(
-    "/villagers/:characterId/wishes/:wishId/retire",
-    async (request, reply) => {
-      try {
-        await retireResidentWish(readCharacterId(request.params.characterId), request.params.wishId);
-        return await readRelationshipsView();
-      } catch (error) {
-        return fail(reply, error, "retiring wish");
-      }
-    },
-  );
-  engine.post("/relationships/creator", async (request, reply) => {
+
+  engine.get("/relationships/inspect", async (_request, reply) => {
     try {
-      return await changeRelationshipCreator(request.body);
+      return await readRelationshipsInspect();
     } catch (error) {
-      return fail(reply, error, "relationship creator");
+      return fail(reply, error, "inspect relationships");
     }
   });
 }
 export function registerResidentRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.post<{ Body: { characterId?: unknown } }>("/villagers", async (request, reply) => {
-    try {
-      await addVillager(readCharacterId(request.body?.characterId));
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "adding a villager");
-    }
-  });
+  app.patch<{ Params: CharacterParams; Body: unknown }>(
+    "/villagers/:characterId/description",
+    async (request, reply) => {
+      try {
+        await editIdentityDescription(readCharacterId(request.params.characterId), request.body);
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "editing a Villager description");
+      }
+    },
+  );
+  app.post<{ Body: { characterId?: unknown; admission?: unknown; spriteSetupRevision?: number } }>(
+    "/villagers",
+    async (request, reply) => {
+      try {
+        await addVillager(
+          readCharacterId(request.body?.characterId),
+          request.body?.spriteSetupRevision,
+          request.body?.admission,
+        );
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "adding a villager");
+      }
+    },
+  );
   app.get<{ Params: CharacterParams }>("/villagers/:characterId/refresh", async (request, reply) => {
     try {
       return await previewVillagerRefresh(readCharacterId(request.params.characterId));
@@ -92,16 +207,7 @@ export function registerResidentRoutes(engine: FastifyInstance) {
 }
 export function registerAgendaRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.get<{ Params: CharacterParams; Querystring: { cursor?: string } }>(
-    "/agendas/:characterId/history",
-    async (request, reply) => {
-      try {
-        return await readWishHistoryPage(readCharacterId(request.params.characterId), request.query.cursor);
-      } catch (error) {
-        return fail(reply, error, "reading wish history");
-      }
-    },
-  );
+
   app.get("/agendas", async (_request, reply) => {
     try {
       return { villagers: await buildVillageAgendas() };
@@ -122,17 +228,7 @@ export function registerAgendaRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{ Params: CharacterParams & { wishId: string } }>(
-    "/agendas/:characterId/completed/:wishId/correct",
-    async (request, reply) => {
-      try {
-        await correctCompletedWish(readCharacterId(request.params.characterId), request.params.wishId);
-        return { villagers: await buildVillageAgendas() };
-      } catch (error) {
-        return fail(reply, error, "correcting a completed wish");
-      }
-    },
-  );
+
   app.patch<{ Params: CharacterParams; Body: unknown }>("/agendas/:characterId/influence", async (request, reply) => {
     try {
       await setVillagerScheduleInfluence(readCharacterId(request.params.characterId), request.body);

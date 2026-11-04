@@ -5,7 +5,12 @@ import { type SetStateAction, useReducer } from "react";
 export function useSceneRecord() {
   return useReducer((current: SceneView | null, next: SetStateAction<SceneView | null>) => {
     const candidate = typeof next === "function" ? next(current) : next;
-    if (current?.id && current.id === candidate?.id && (current.sceneRevision ?? 0) > (candidate.sceneRevision ?? 0))
+    if (
+      current?.id &&
+      current.id === candidate?.id &&
+      current.playback.scope === candidate.playback.scope &&
+      (current.sceneRevision ?? 0) > (candidate.sceneRevision ?? 0)
+    )
       return current;
     return candidate;
   }, null);

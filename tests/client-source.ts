@@ -1,14 +1,29 @@
-import { readFileSync, existsSync } from "node:fs";
-import { dirname, resolve, extname } from "node:path";
+import { readFileSync, existsSync, realpathSync } from "node:fs";
+import { dirname, resolve, extname, relative, isAbsolute, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../packages/villages/src/client");
+const allowedRoots = [root, resolve(root, "../shared"), resolve(root, "../../../../sources")].map((path) =>
+  realpathSync(path),
+);
+export function clientSourcePath(file: string) {
+  const canonical = realpathSync(file);
+  if (
+    !allowedRoots.some((directory) => {
+      const path = relative(directory, canonical);
+      return path === "" || (path !== ".." && !path.startsWith(".." + sep) && !isAbsolute(path));
+    })
+  )
+    throw new Error("Client structural traversal escapes reviewed sources: " + file);
+  return canonical;
+}
 /** Structural assertions follow the actual maintained import graph. Browser tests exercise its behavior. */
 export function clientImplementation() {
   const seen = new Set<string>();
   const sources: string[] = [];
   function visit(file: string) {
+    file = clientSourcePath(file);
     if (seen.has(file)) return;
     seen.add(file);
     const text = readFileSync(file, "utf8");

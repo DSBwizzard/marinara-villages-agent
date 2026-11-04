@@ -1,34 +1,35 @@
-import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import { normalizeSparseSceneReply } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
-import { buildVenueResponseContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { bindLiveProposals, liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
+import { sceneEvidencePerception } from "../packages/villages/src/server/domain/rules/scene-evidence-perception.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
+import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
 import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import { normalizeSparseSceneReply } from "../packages/villages/src/server/domain/rules/scene-writing-contract.js";
+import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import {
-  zoneEventScene,
-  zoneEventReply,
   routeZoneEvents,
   ZONE_EVENT_CONTRACT,
   zoneEventHearingContext,
+  zoneEventReply,
+  zoneEventScene,
+  zoneEventContract,
 } from "../packages/villages/src/server/domain/rules/zone-events.js";
-import { appendLine, heardLines } from "../packages/villages/src/server/domain/rules/scene-record.js";
-import { publicSceneResponse } from "../packages/villages/src/server/domain/rules/scene-public.js";
-import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
-import { liveEvidence } from "../packages/villages/src/server/domain/rules/live-exchange.js";
-import { createSceneWriting } from "../packages/villages/src/server/features/scenes/writing-service.js";
 
 const at = "2026-10-15T12:00:00Z";
 const world = defaultVillageState();
 world.seed = "zone-events";
 world.foundedAt = world.setupAt = at;
 world.venues = [
-  {
+  venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: "house",
     name: "House",
     classes: ["other"],
@@ -37,7 +38,7 @@ world.venues = [
       { ...defaultVenueSpace("other"), id: "hall", kind: "public", name: "Hall", connectedTo: ["exterior", "bedroom"] },
       { ...defaultVenueSpace("other"), id: "bedroom", kind: "restricted", name: "Bedroom", connectedTo: ["hall"] },
     ],
-  },
+  }),
 ] as typeof world.venues;
 world.villagers = ["local", "near", "far"].map((id) => ({
   characterId: id,
@@ -50,11 +51,12 @@ world.villagers = ["local", "near", "far"].map((id) => ({
     sourceStatus: "available",
   },
   addedAt: at,
-  completedWishes: [],
+  wishes: [],
 })) as typeof world.villagers;
 const village = coerceVillageState(world);
 const venue = village.venues[0];
 const base = coerceSession({
+  version: 3,
   id: "events",
   villageSeed: world.seed,
   placeId: "house",
@@ -80,6 +82,84 @@ const base = coerceSession({
   submissions: [],
 });
 const scene = zoneEventScene(base, venue);
+
+// New connection sound rules apply only to new admissions. Retained work keeps its purchased contract.
+{
+  const chain = structuredClone(venue);
+  chain.zones!.find((zone) => zone.id === "bedroom")!.connectedTo!.push("attic");
+  chain.zones!.push({
+    ...defaultVenueSpace("other"),
+    id: "attic",
+    kind: "public",
+    name: "Attic",
+    connectedTo: ["bedroom"],
+  });
+  const marked = structuredClone(scene);
+  marked.operation = { kind: "turn", input: { interactionScopeVersion: 6, soundHopVersion: 1 } } as any;
+  marked.sceneAttendance!.layout = captureSceneLayout(chain);
+  marked.sceneAttendance!.occupants.push({
+    characterId: "veryFar",
+    name: "Distant resident",
+    doing: "Reading",
+    zoneId: "attic",
+  } as any);
+  marked.contactGeneration!.venue = chain;
+  marked.contactGeneration!.actorIds = ["local", "near", "far", "veryFar"];
+  const route = (raw: Record<string, unknown>, context = marked) => {
+    const normalized = zoneEventReply(raw, "");
+    const parsed = parseVenueReply(normalized, ["local", "near", "far", "veryFar", "player"]);
+    routeZoneEvents(raw, context, parsed, []);
+    return parsed.lines[0];
+  };
+  const event = (segment: unknown) => ({
+    segments: [segment],
+    wishChanges: [],
+    memoryChanges: [],
+    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+  });
+  const ordinary = route(event({ kind: "dialogue", speakerId: "local", text: "PRIVATE ORDINARY WORDS" }));
+  assert.deepEqual(ordinary.heardBy, ["local"]);
+  assert.deepEqual(ordinary.soundOnly?.characterIds, ["near"]);
+  assert.ok(!ordinary.soundOnly?.text.includes("PRIVATE"));
+  const loud = route(event({ kind: "sound", speakerId: "local", text: "A crash.", loud: true }));
+  assert.deepEqual(loud.heardBy, ["local", "near", "far"]);
+  const shout = route(event({ kind: "dialogue", speakerId: "local", text: "A shouted warning!", delivery: "shout" }));
+  assert.deepEqual(shout.heardBy, ["local", "near"]);
+  assert.deepEqual(shout.soundOnly?.characterIds, ["far"]);
+  assert.equal(
+    route(event({ kind: "sound", speakerId: "veryFar", text: "Distant crash", loud: true })).contactHidden,
+    true,
+  );
+  const voice = route(event({ kind: "dialogue", speakerId: "near", text: "PRIVATE NEARBY WORDS" }));
+  assert.equal(voice.contactHidden, true);
+  assert.equal(voice.soundOnly?.player, true);
+  assert.throws(
+    () =>
+      route(
+        event({
+          kind: "narration",
+          text: "A crash is heard.",
+          sound: { sourceId: "veryFar", text: "A crash.", loud: true },
+        }),
+      ),
+    /outside hearing range/,
+  );
+  assert.match(zoneEventContract(marked), /at most two connections/);
+  const relationships = JSON.parse(zoneEventHearingContext(marked, chain).split(": ").slice(1).join(": "));
+  assert.deepEqual(relationships.find((row: any) => row.source === "player").alertOnly, ["far"]);
+  const retained = structuredClone(marked);
+  delete retained.operation!.input.soundHopVersion;
+  assert.deepEqual(
+    route(event({ kind: "sound", speakerId: "local", text: "A crash.", loud: true }), retained).heardBy,
+    ["local", "near", "far", "veryFar"],
+  );
+  assert.deepEqual(route(event({ kind: "dialogue", speakerId: "local", text: "Retained words" }), retained).heardBy, [
+    "local",
+    "near",
+  ]);
+  assert.equal(zoneEventContract(retained), ZONE_EVENT_CONTRACT);
+  assert.equal(coerceSession(marked).operation!.input.soundHopVersion, 1);
+}
 const message = 'I privately think SECRET. "Aqua, help!" I turn around.';
 const response = (segments: unknown[]) => ({
   segments,
@@ -167,6 +247,7 @@ for (const delivery of ["ordinary", "whisper", "shout"] as const) {
       "visible bubbles anchor to visible moments, never hidden player speech",
     );
     const restored = coerceSession({
+      version: 2,
       ...base,
       lines: reply.lines.map((item, index) => ({ ...item, id: String(index), at, name: "" })),
     });
@@ -287,11 +368,19 @@ assert.match(heardLines(restored, "far")[0].content, /indistinct/);
 const publicView = publicSceneResponse(restored);
 assert.doesNotMatch(JSON.stringify(publicView), /PRIVATE DISTANT WORDS|soundOnly|heardHistory|heardBy|"far"/);
 assert.match(JSON.stringify(publicView), /indistinct/);
-const evidence = liveEvidence(restored, {
-  playerLineId: "none",
-  replyLineIds: restored.lines.map((line) => line.id),
-  earlierLineIds: [],
-} as any);
+const evidence = liveEvidence(
+  restored,
+  bindLiveProposals(
+    {
+      playerLineId: "none",
+      replyLineIds: restored.lines.map((line) => line.id),
+      earlierLineIds: [],
+    } as any,
+    "none",
+    restored.lines.map((line) => line.id),
+    restored.lines,
+  ),
+);
 assert.equal(evidence[2].playerHeard, false, "a distant voice cannot establish player-heard words or permission");
 assert(!evidence[0].heardBy.includes("far"), "a loud player call gives far listeners no word evidence");
 
@@ -354,12 +443,65 @@ const embeddedPublic = JSON.stringify(publicSceneResponse(embeddedRestored));
 assert(embeddedPublic.includes(prose));
 assert(!embeddedPublic.includes(cue), "routing text is not a duplicate public paragraph");
 assert.doesNotMatch(embeddedPublic, /sourceId|soundOnly/);
-const embeddedEvidence = liveEvidence(embeddedRestored, {
-  playerLineId: "none",
-  replyLineIds: ["embedded-0", "embedded-1"],
-  earlierLineIds: [],
-} as any);
+const embeddedEvidence = liveEvidence(
+  embeddedRestored,
+  bindLiveProposals(
+    {
+      playerLineId: "none",
+      replyLineIds: ["embedded-0", "embedded-1"],
+      earlierLineIds: [],
+    } as any,
+    "none",
+    ["embedded-0", "embedded-1"],
+    embeddedRestored.lines,
+  ),
+);
 assert.deepEqual(embeddedEvidence[0].heardBy, ["local"], "remote sound is not evidence of a handoff");
+
+// Ambient narration has no actor position; even a narrator-tagged loud cue stays local.
+const ambientProse = "A pipe ticks beside the open doorway.";
+for (const loud of [false, true]) {
+  const ambient = routed(
+    response([
+      {
+        kind: "narration",
+        text: ambientProse,
+        sound: { sourceId: "__venue_scene__", text: "A metallic tick.", loud },
+        staging: [{ characterId: "far", position: "center" }],
+      },
+    ]),
+  );
+  assert.equal(ambient.lines[0].content, ambientProse);
+  assert.equal(ambient.lines[0].zoneId, "exterior");
+  assert.deepEqual(ambient.lines[0].heardBy, ["local"]);
+  assert.equal(ambient.lines[0].soundOnly, undefined);
+  assert.deepEqual(ambient.lines[0].staging, []);
+}
+const emptyScene = zoneEventScene(
+  coerceSession({
+    version: 2,
+    ...base,
+    activeIds: [],
+    participants: [],
+    sceneAttendance: { ...base.sceneAttendance, occupants: [] },
+  }),
+  venue,
+);
+const alone = routed(
+  response([
+    {
+      kind: "narration",
+      text: ambientProse,
+      sound: { sourceId: "__venue_scene__", text: "A metallic tick." },
+    },
+  ]),
+  "I walk over to investigate without leaving this space.",
+  [],
+  emptyScene,
+);
+assert.equal(alone.lines[0].content, ambientProse);
+assert.deepEqual(alone.lines[0].heardBy, []);
+assert.equal(alone.lines[0].soundOnly, undefined);
 
 const offscreenProse = "A clatter carries from nearby, briefly interrupting the conversation.";
 const offscreen = routed(
@@ -404,6 +546,8 @@ for (const sound of [
   null,
   {},
   { sourceId: "unknown", text: "A click." },
+  { sourceId: "__venue_scene__", text: "x".repeat(301) },
+  { sourceId: "__venue_scene__", text: "A click.", loud: "true" },
   { sourceId: "local", text: "" },
   { sourceId: "local", text: "x".repeat(301) },
   { sourceId: "local", text: "A click.", loud: "true" },
@@ -416,12 +560,49 @@ assert.throws(
         {
           kind: "dialogue",
           speakerId: "local",
-          text: "Hello.",
-          sound: { sourceId: "local", text: "A click." },
+          text: "I'm stuck. There's a wheel on my arm.",
+          sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
         },
       ]),
     ),
   /invalid narrated sound/,
+);
+const separateSound = routed(
+  response([
+    { kind: "dialogue", speakerId: "local", text: "I'm stuck. There's a wheel on my arm." },
+    {
+      kind: "narration",
+      text: "The motor grinds, then a wheel squeaks.",
+      sound: { sourceId: "local", text: "A metallic grinding, a squeaking wheel, then feedback." },
+    },
+  ]),
+);
+assert.equal(separateSound.lines.length, 2, "actual narration owns its own sound without synthesizing a segment");
+assert.deepEqual(separateSound.lines[0].heardBy, ["local", "near"]);
+assert.deepEqual(separateSound.lines[1].heardBy, ["local"]);
+assert.deepEqual(separateSound.lines[1].soundOnly?.characterIds, ["near"]);
+assert.throws(
+  () => routed(response([{ kind: "narration", text: "", sound: { sourceId: "local", text: "A motor rattles." } }])),
+  /unreadable speaker or line/,
+  "a routing cue cannot silently replace missing narration text",
+);
+assert.throws(
+  () =>
+    routed(
+      response([
+        {
+          kind: "dialogue",
+          speakerId: "local",
+          text: "Hello.",
+          sound: { sourceId: "__venue_scene__", text: "A click." },
+        },
+      ]),
+    ),
+  /invalid narrated sound/,
+);
+assert.throws(
+  () => routed(response([{ kind: "sound", speakerId: "__venue_scene__", text: "A click." }])),
+  /unknown sound source/,
 );
 const movingSound = routed(
   response([
@@ -492,294 +673,6 @@ const broadcast = routed(
 );
 assert.equal(broadcast.lines[0].soundOnly!.characterIds.length, 13, "a cast limit never limits sound delivery");
 
-// Exercise the actual writer: exactly one completion, with no hearing interpreter or repair request.
-let writingVersion: unknown;
-let capturedManifest: unknown = {
-  management: false,
-  movement: true,
-  residences: false,
-  residenceDecision: false,
-  editApproval: false,
-};
-let wireOverride: string | undefined;
-let narrationFinish = "stop";
-let allowRejection = false;
-let completions = 0;
-let sentPrompt = "";
-let memoryProposals: unknown[] = [];
-let verificationStatus: unknown = "supported";
-let verificationFinish = "stop";
-let checkCalls = 0;
-let proposedRelationships: unknown[] = [];
-let lastVerificationPayload: any;
-const writing = createSceneWriting({
-  refreshZoneParticipants: async () => scene,
-  readEffectiveVillagerCard: (resident: any) => resident.cardSnapshot,
-  readVillageLore: async () => [],
-  villagesLogger: () => ({ warn() {} }),
-  villagesLanguageModels: () => ({
-    resolveForRequest: async () => ({
-      model: "fixture",
-      connectionId: "fixture",
-      maxOutputTokens: 4096,
-      fitContext: (messages: any[], options: any) => ({ messages, ...options }),
-    }),
-  }),
-  measurePipeline: async (_name: any, _detail: any, run: any) => run(),
-  runtimeDebug() {},
-  venueOperationId: () => "turn",
-  venueOperationInput: () => ({
-    interactionScopeVersion: 6,
-    ...(writingVersion === undefined
-      ? {}
-      : { writingContractVersion: writingVersion, writingCapabilities: capturedManifest }),
-  }),
-  venueOperationSignal: () => undefined,
-  rejectVenueCompletion: async () => {
-    if (allowRejection) return;
-    throw Error("unexpected rejection");
-  },
-  completeWithRoom: async (_model: any, messages: any[], _tokens: any, options: any) => {
-    completions++;
-    if (messages[0].content.startsWith("Verify consequential Scene proposals")) {
-      checkCalls++;
-      assert.equal(options.reasoningEffort, "low");
-      lastVerificationPayload = JSON.parse(messages[1].content);
-      const { proposals } = lastVerificationPayload;
-      return {
-        finishReason: verificationFinish,
-        content: JSON.stringify({ results: proposals.map((row: any) => ({ id: row.id, status: verificationStatus })) }),
-      };
-    }
-    sentPrompt = messages.map((item) => item.content).join("\n");
-    return {
-      finishReason: narrationFinish,
-      content:
-        wireOverride ??
-        JSON.stringify({
-          ...response([
-            { kind: "dialogue", speakerId: "player", text: "Aqua, help!" },
-            { kind: "narration", text: prose, sound: { sourceId: "local", text: cue } },
-            { kind: "dialogue", speakerId: "near", text: "I'm right here, what happened?" },
-          ]),
-          memoryChanges: memoryProposals,
-          relationshipChanges: { changes: proposedRelationships, permissions: [], disclosures: [] },
-        }),
-    };
-  },
-  wishFingerprint: () => "none",
-  villagesConnectionIdFor: async () => null,
-  readVillageState: async () => village,
-  interpretRoomReply: async () => null,
-} as any);
-const written = await writing.generate(scene, message, "chat", "", null);
-assert.equal(written.lines[1].content, prose);
-assert.deepEqual(written.lines[1].heardBy, ["local"]);
-assert.equal(written.lines[1].soundOnly?.text, cue);
-assert.equal(written.lines.length, 3);
-assert.equal(completions, 1);
-assert.match(sentPrompt, /ZONE EVENTS/);
-assert.doesNotMatch(sentPrompt, /ACTION-BASED SOUND|Required top-level attentionWitnesses|acousticReplies:\[\{/);
-assert(sentPrompt.includes(ZONE_EVENT_CONTRACT));
-assert.doesNotMatch(sentPrompt, /Scene sound map|"positions"|far \(far\) at bedroom|"fromZoneId"/);
-assert.match(sentPrompt, /source-private activity|Hearing relationships/);
-assert.match(sentPrompt, /Each key occurs ONCE/);
-console.log(
-  "Zone events: adjacent speech/sounds, Venue-wide loud cues, player extraction, NPC initiative, private history/projection, movement, restart and single-completion writer passed (provider-free).",
-);
-
-// Contract capabilities omit unavailable jobs without changing parser/saved schemas.
-const responseContext = {
-  opening: false,
-  conversational: true,
-  liveMemory: true,
-  residentControlled: false,
-  recapNeeded: false,
-  staging: false,
-  contactFacts: "",
-  invitationZones: "none",
-  presentation: "",
-  expressions: [],
-  projects: false,
-  zoneEventContract: ZONE_EVENT_CONTRACT,
-};
-const withoutWishes = buildVenueResponseContract({ ...responseContext, wishes: false }).join("\n");
-assert.match(withoutWishes, /wishChanges:\[\]/);
-assert.doesNotMatch(withoutWishes, /intent:\"reveal\|progress\|check\"/);
-assert.match(buildVenueResponseContract({ ...responseContext, wishes: true }).join("\n"), /reveal\|progress\|check/);
-assert.match(
-  buildVenueResponseContract(responseContext).join("\n"),
-  /reveal\|progress\|check/,
-  "legacy callers retain Wish schema",
-);
-assert.doesNotMatch(withoutWishes, /heardPlayerBy and segments FIRST|Segments:.*heardBy/);
-assert.match(withoutWishes, /Every knower must witness every citation/);
-assert.match(withoutWishes, /Conditional willingness is not unconditional commitment/);
-
-const memoryProposal = {
-  kind: "durable",
-  text: "Local is permanently timid.",
-  category: "personal-fact",
-  subjectCharacterIds: ["local"],
-  knownByCharacterIds: ["local"],
-  evidence: [1],
-  memoryIds: [],
-  systemVerification: "supported",
-};
-for (const [status, finish, expected] of [
-  ["rejected", "stop", "rejected"],
-  [["rejected"], "stop", "unresolved"],
-  ["supported", "length", "unresolved"],
-  ["supported", "stop", "supported"],
-] as const) {
-  memoryProposals = [{ ...memoryProposal }];
-  verificationStatus = status;
-  verificationFinish = finish;
-  const before = checkCalls;
-  const checked = await writing.generate(scene, message, "chat", "", null);
-  assert.equal((checked.memoryChanges as any[])[0].systemVerification, expected);
-  assert.equal(checkCalls, before + 1, "consequential proposals use one batched check");
-}
-memoryProposals = [{ ...memoryProposal, kind: "passing" }];
-const beforePassing = checkCalls;
-const passing = await writing.generate(scene, message, "chat", "", null);
-assert.equal(checkCalls, beforePassing, "passing recollections require no System call");
-assert.equal((passing.memoryChanges as any[])[0].systemVerification, undefined, "Narration cannot forge verification");
-
-memoryProposals = [];
-proposedRelationships = [
-  {
-    fromId: "local",
-    toId: "player",
-    dimension: "trust",
-    strength: "major",
-    direction: "decrease",
-    ordinary: false,
-    reason: "Boundary violation",
-    lineIds: [2],
-    evidence: [1],
-  },
-];
-await writing.generate(scene, message, "chat", "", null);
-assert.equal(
-  lastVerificationPayload.proposals[0].evidence[0].id,
-  2,
-  "relationship verification uses exactly settlement lineIds",
-);
-assert.equal(lastVerificationPayload.proposals[0].evidence[0].content, "I'm right here, what happened?");
-assert.equal(lastVerificationPayload.proposals[0].evidence[0].playerPerception, "full");
-assert(!lastVerificationPayload.proposals[0].evidence[0].heardBy.includes("player"));
-
-// Actual v2 writer: a complete sparse reply gains defaults, while failed or corrupt output never does.
-writingVersion = 2;
-memoryProposals = [];
-proposedRelationships = [];
-wireOverride = JSON.stringify({
-  segments: [
-    { kind: "dialogue", speakerId: "player", text: "Aqua, help!" },
-    { kind: "narration", text: prose },
-  ],
-});
-const sparseBefore = completions;
-const sparseReply = await writing.generate(scene, message, "chat", "", null);
-assert.equal(completions, sparseBefore + 1);
-assert.deepEqual(sparseReply.memoryChanges, []);
-assert.deepEqual(sparseReply.relationshipChanges, { changes: [], permissions: [], disclosures: [] });
-assert.deepEqual(sparseReply.responseDiagnostics?.missingFields, []);
-assert.doesNotMatch(sentPrompt, /include them even when empty|Return wishChanges:\[\]/i);
-allowRejection = true;
-narrationFinish = "length";
-await assert.rejects(writing.generate(scene, message, "chat", "", null), /failed validation/);
-narrationFinish = "stop";
-wireOverride = JSON.stringify({ segments: [{ kind: "narration", text: prose }], memoryChanges: null });
-await assert.rejects(writing.generate(scene, message, "chat", "", null), /failed validation/);
-const beforeInvalidAdmission = completions;
-capturedManifest = { management: true };
-await assert.rejects(writing.generate(scene, message, "chat", "", null), /invalid writing capability/);
-writingVersion = 99;
-await assert.rejects(writing.generate(scene, message, "chat", "", null), /unsupported writing contract/);
-assert.equal(completions, beforeInvalidAdmission, "invalid saved contracts never dispatch a provider");
-
-// v2 discards validated local no-ops without granting movement or additional witnesses.
-writingVersion = 2;
-capturedManifest = {
-  management: false,
-  movement: true,
-  residences: false,
-  residenceDecision: false,
-  editApproval: false,
-};
-const step = "He crosses the courtyard to stand a little closer.";
-const noopWire = (moves: unknown[], text = step) =>
-  JSON.stringify({
-    segments: [
-      { kind: "dialogue", speakerId: "player", text: "Aqua, help!" },
-      { kind: "narration", text },
-    ],
-    contactMoves: moves,
-  });
-wireOverride = noopWire([{ characterId: "local", zoneId: "exterior", segment: 1 }]);
-const beforeNoopAttendance = structuredClone(scene.sceneAttendance);
-const noMove = await writing.generate(scene, message, "chat", "", null);
-assert.deepEqual(noMove.contactMoves, []);
-assert.deepEqual(scene.sceneAttendance, beforeNoopAttendance);
-assert.deepEqual(noMove.lines.find((line) => line.content === step)?.heardBy, ["local"]);
-for (const [moves, text] of [
-  [[{ characterId: "local", zoneId: "exterior", segment: 99 }], step],
-  [[{ characterId: "stranger", zoneId: "exterior", segment: 1 }], step],
-  [[{ characterId: "near", zoneId: "hall", segment: 1 }], "near takes a step beside the table."],
-  [[{ characterId: "local", zoneId: "exterior", segment: 1 }], "He would cross the courtyard if invited."],
-  [[{ characterId: "local", zoneId: "exterior", segment: 1 }], "He enters the Hall through its door."],
-  [
-    [
-      { characterId: "local", zoneId: "exterior", segment: 1 },
-      { characterId: "local", zoneId: "exterior", segment: 1 },
-    ],
-    step,
-  ],
-  [[{ characterId: "local", zoneId: "hall", segment: 1 }], "He steps through the door."],
-] as const) {
-  wireOverride = noopWire([...moves], text);
-  await assert.rejects(
-    writing.generate(scene, message, "chat", "", null),
-    /failed validation|unsupported resident movement/,
-  );
-}
-wireOverride = JSON.stringify({
-  segments: [
-    { kind: "dialogue", speakerId: "player", text: "Aqua, help!" },
-    { kind: "narration", text: step },
-    { kind: "narration", text: "near steps outside into the Exterior." },
-  ],
-  contactMoves: [
-    { characterId: "local", zoneId: "exterior", segment: 1 },
-    { characterId: "near", zoneId: "exterior", segment: 2 },
-  ],
-});
-const mixedMoves = await writing.generate(scene, message, "chat", "", null);
-assert.equal(mixedMoves.contactMoves.length, 1);
-assert.equal(mixedMoves.contactMoves[0].characterId, "near");
-assert.deepEqual(mixedMoves.lines[2].physicalIdsAfter, ["local", "near"]);
-writingVersion = undefined;
-wireOverride = noopWire([{ characterId: "local", zoneId: "exterior", segment: 1, quote: step }]);
-await assert.rejects(writing.generate(scene, message, "chat", "", null), /unsupported resident movement/);
-
-writingVersion = 2;
-wireOverride = noopWire(
-  [{ characterId: "local", zoneId: "exterior", segment: 1, quote: "He crosses the courtyard." }],
-  "If invited, He crosses the courtyard.",
-);
-await assert.rejects(writing.generate(scene, message, "chat", "", null), /unsupported resident movement/);
-wireOverride = noopWire(
-  [{ characterId: "local", zoneId: "exterior", segment: 1 }],
-  "He crosses the courtyard with a challenging grin.",
-);
-assert.deepEqual(
-  (await writing.generate(scene, message, "chat", "", null)).contactMoves,
-  [],
-  "Hall is not a substring ban on challenging",
-);
-
 // Perception records only the saved player projection; model fields never grant access.
 {
   const speech: any = { role: "assistant", speakerId: "local", kind: "dialogue", heardBy: ["local"] };
@@ -827,3 +720,4 @@ assert.deepEqual(
     "saved perception does not depend on the player's new Zone",
   );
 }
+console.log("Zone event routing, private witnesses and captured movement passed.");

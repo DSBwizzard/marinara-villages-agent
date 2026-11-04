@@ -83,12 +83,14 @@ export function createInterpretationDiagnostics(ports: InterpretationDiagnostics
 
   async function removeInterpretationDiagnostics(sceneId: string) {
     const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, documentId(sceneId));
-    if (record) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision);
+    if (record && !(await villagesDocuments().remove(VILLAGES_PACKAGE_ID, record.id, record.revision)))
+      throw new Error("Scene interpretation diagnostics changed during cleanup.");
     const pending = await villagesDocuments().getById(
       VILLAGES_PACKAGE_ID,
       "villages-interpretation-context-" + sceneId,
     );
-    if (pending) await villagesDocuments().remove(VILLAGES_PACKAGE_ID, pending.id, pending.revision);
+    if (pending && !(await villagesDocuments().remove(VILLAGES_PACKAGE_ID, pending.id, pending.revision)))
+      throw new Error("Scene interpretation context changed during cleanup.");
   }
 
   return {

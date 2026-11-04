@@ -1,19 +1,3 @@
-import type { TownMapFit, TownMapView } from "../../../shared/contracts/village.js";
-import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
-import { clamp, round4 } from "../../shared/presentation.js";
-import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
-import { MobileMarkers } from "./villages-exploration";
-import {
-  focusedPhotoScale,
-  mobileCoverZoom,
-  mobileDoorPoint,
-  mobileGestureMoved,
-  mobileMapBox,
-  mobileMapGesture,
-  type MobileMapView,
-  mobilePhotoScale,
-} from "./villages-mobile-map";
-import { VenuePolaroid } from "./villages-venue-polaroid.js";
 import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
@@ -26,6 +10,23 @@ import {
   useRef,
   useState,
 } from "react";
+import type { TownMapFit, TownMapView } from "../../../shared/contracts/village.js";
+import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
+import { clamp, round4 } from "../../shared/presentation.js";
+import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
+import { ExplorationMarkers } from "./villages-exploration";
+export type { MobileMapView } from "./villages-mobile-map.js";
+import {
+  focusedPhotoScale,
+  mobileCoverZoom,
+  mobileDoorPoint,
+  mobileGestureMoved,
+  mobileMapBox,
+  mobileMapGesture,
+  type MobileMapView,
+  mobilePhotoScale,
+} from "./villages-mobile-map";
+import { VenuePolaroid } from "./villages-venue-polaroid.js";
 
 /**
  * How far under a place its people stack, as a fraction of the picture.
@@ -199,11 +200,15 @@ export function MapStage({
   fitToRoom,
   mobile,
   exploration = false,
+  navigationControlsWhilePlacing = false,
   navigationView,
   onNavigationView,
+  onViewportBounds,
   compactPhotos = false,
   onMovePin,
   onMoveInvalid,
+  onNudgePin,
+  keyboardPlacementId,
   placementCursor,
   children,
 }: {
@@ -242,8 +247,10 @@ export function MapStage({
   fitToRoom?: boolean;
   mobile?: boolean;
   exploration?: boolean;
+  navigationControlsWhilePlacing?: boolean;
   navigationView?: MobileMapView | null;
   onNavigationView?(next: MobileMapView | null): void;
+  onViewportBounds?(bounds: string): void;
   /** Show the village's photo cards while keeping desktop's fitted map. */
   photoPins?: boolean;
   compactPhotos?: boolean;
@@ -254,6 +261,8 @@ export function MapStage({
     size: { width: number; height: number; photoWidth: number; photoHeight: number },
   ): void;
   onMoveInvalid?(): void;
+  onNudgePin?(id: string, dx: number, dy: number): void;
+  keyboardPlacementId?: string;
   placementCursor?: { x: number; y: number };
   /**
    * Anything that belongs on the picture rather than beside it. Drawn inside the
@@ -267,6 +276,7 @@ export function MapStage({
   const framing = onView !== undefined;
   const stageRef = useRef<HTMLDivElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const pinDrag = useRef<{
     id: string;
     pointer: number;
@@ -323,6 +333,9 @@ export function MapStage({
     centerY: 0.5,
   };
   const mobileCurrent = (exploration ? navigationView : mobileView) ?? mobileInitial;
+  useLayoutEffect(() => {
+    if (exploration) mobileViewRef.current = navigationView ?? null;
+  }, [exploration, navigationView]);
   const updateMobileView = (next: MobileMapView | null) => {
     mobileViewRef.current = next;
     setMobileView(next);
@@ -330,7 +343,7 @@ export function MapStage({
   };
   const picture = useMemo(
     () =>
-      mobile
+      mobile || exploration
         ? mobileImage && frame
           ? mobileMapBox(mobileImage, frame, mobileCurrent)
           : null
@@ -341,8 +354,21 @@ export function MapStage({
           : frame
             ? { left: 0, top: 0, width: frame.width, height: frame.height }
             : null,
-    [decoded, frame, live, mobile, mobileImage, mobileCurrent, src],
+    [decoded, frame, live, mobile, exploration, mobileImage, mobileCurrent, src],
   );
+  useEffect(() => {
+    if (picture && frame && onViewportBounds)
+      onViewportBounds(
+        [
+          clamp(-picture.left / picture.width, 0, 1),
+          clamp(-picture.top / picture.height, 0, 1),
+          clamp((frame.width - picture.left) / picture.width, 0, 1),
+          clamp((frame.height - picture.top) / picture.height, 0, 1),
+        ]
+          .map((value) => Math.round(value * 10000) / 10000)
+          .join(","),
+      );
+  }, [picture, frame, onViewportBounds]);
   useEffect(() => {
     setMobileView(null);
     mobileViewRef.current = null;
@@ -356,11 +382,13 @@ export function MapStage({
   // A fitted frame is given both of its sides rather than a ratio, because a
   // ratio would still leave one of them to the room — and a frame whose height
   // is the room's height is a frame the map has to be cropped to fill.
-  const style: CSSProperties | undefined = shape
-    ? fitToRoom && fitted
-      ? { width: `${fitted.width}px`, height: `${fitted.height}px`, aspectRatio: `${shape.width} / ${shape.height}` }
-      : { aspectRatio: `${shape.width} / ${shape.height}` }
-    : undefined;
+  const style: CSSProperties | undefined = exploration
+    ? { width: "100%", height: "100%", aspectRatio: "auto" }
+    : shape
+      ? fitToRoom && fitted
+        ? { width: `${fitted.width}px`, height: `${fitted.height}px`, aspectRatio: `${shape.width} / ${shape.height}` }
+        : { aspectRatio: `${shape.width} / ${shape.height}` }
+      : undefined;
 
   const measure = useCallback(() => {
     const element = frameRef.current;
@@ -374,6 +402,22 @@ export function MapStage({
         : { width: rect.width, height: rect.height },
     );
   }, []);
+
+  const measureImage = useCallback(() => {
+    const image = imageRef.current;
+    if (!src || !image?.complete || image.getAttribute("src") !== src || !image.naturalWidth || !image.naturalHeight)
+      return;
+    const width = image.naturalWidth;
+    const height = image.naturalHeight;
+    setDecoded((previous) =>
+      previous?.src === src && previous.width === width && previous.height === height
+        ? previous
+        : { src, width, height },
+    );
+    measure();
+  }, [src, measure]);
+  // A restored data URL can already be loaded before React attaches its load handler.
+  useLayoutEffect(measureImage, [measureImage]);
 
   // The frame changes size with the window, the pane and the wizard's step.
   useEffect(() => {
@@ -526,7 +570,7 @@ export function MapStage({
   };
 
   const mobilePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!mobile || event.pointerType !== "touch") return;
+    if ((!mobile && !exploration) || (!exploration && event.pointerType !== "touch") || event.button > 0) return;
     if (event.isPrimary) {
       pointersRef.current.clear();
       suppressTouchClickRef.current = false;
@@ -541,7 +585,14 @@ export function MapStage({
   };
 
   const mobilePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!mobile || !pointersRef.current.has(event.pointerId) || !mobileImage || !frame || !frameRef.current) return;
+    if (
+      (!mobile && !exploration) ||
+      !pointersRef.current.has(event.pointerId) ||
+      !mobileImage ||
+      !frame ||
+      !frameRef.current
+    )
+      return;
     const rect = frameRef.current.getBoundingClientRect();
     pointersRef.current.set(event.pointerId, { x: event.clientX - rect.left, y: event.clientY - rect.top });
     const points = [...pointersRef.current.values()];
@@ -554,8 +605,11 @@ export function MapStage({
     if (!start) return;
     const moved = mobileGestureMoved(start, { x, y, distance });
     if (!moved && !suppressTouchClickRef.current) return;
-    if (!suppressTouchClickRef.current) onDismiss?.();
+    if (!suppressTouchClickRef.current && !exploration) onDismiss?.();
     suppressTouchClickRef.current = true;
+    if (exploration && event.pointerType === "mouse" && !event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     const next = mobileMapGesture(
       mobileImage,
       frame,
@@ -579,9 +633,11 @@ export function MapStage({
     window.setTimeout(() => document.removeEventListener("click", consume, true), 500);
   };
   const mobilePointerEnd = (event: ReactPointerEvent<HTMLDivElement>, cancelled = false) => {
-    if (!mobile || !pointersRef.current.has(event.pointerId)) return;
+    if ((!mobile && !exploration) || !pointersRef.current.has(event.pointerId)) return;
     const tapped = !cancelled && pointersRef.current.size === 1 && !suppressTouchClickRef.current;
     pointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
     if (pointersRef.current.size === 0) stageRef.current?.removeAttribute("data-mobile-gesturing");
     gestureAnchor();
     if (!tapped || !(event.target instanceof Element)) return;
@@ -618,6 +674,18 @@ export function MapStage({
     }
   };
 
+  const changeNavigationZoom = (factor: number) => {
+    if (!mobileImage || !frame) return;
+    const center = { x: frame.width / 2, y: frame.height / 2 };
+    const current = { ...mobileCurrent, zoom: Math.max(mobileCurrent.zoom, mobileCoverZoom(mobileImage, frame)) };
+    updateMobileView(mobileMapGesture(mobileImage, frame, current, center, center, factor));
+  };
+  const resetNavigation = () => {
+    mobileViewRef.current = null;
+    setMobileView(null);
+    onNavigationView?.(null);
+  };
+
   return (
     <div
       ref={stageRef}
@@ -626,14 +694,15 @@ export function MapStage({
       data-shaped={shape ? "true" : "false"}
       data-framing={framing && live.fit === "cover" ? "true" : "false"}
       data-mobile={mobile ? "true" : "false"}
+      data-exploration={exploration ? "true" : "false"}
       data-navigation-zoom={exploration ? mobileCurrent.zoom : undefined}
-      data-photo-pins="true"
+      data-photo-pins={exploration ? "false" : "true"}
       data-picture-width={picture?.width}
       data-picture-height={picture?.height}
       data-compact-photos={compactPhotos ? "true" : "false"}
       data-empty={src ? "false" : "true"}
       onPointerDownCapture={(event) => {
-        if (mobile) {
+        if (mobile || exploration) {
           mobilePointerDown(event);
           return;
         }
@@ -641,7 +710,7 @@ export function MapStage({
         touchStartRef.current = event.pointerType === "touch" ? { x: event.clientX, y: event.clientY } : null;
       }}
       onPointerMoveCapture={(event) => {
-        if (mobile) {
+        if (mobile || exploration) {
           mobilePointerMove(event);
           return;
         }
@@ -650,9 +719,9 @@ export function MapStage({
           suppressTouchClickRef.current = true;
         }
       }}
-      onPointerUpCapture={mobile ? mobilePointerEnd : undefined}
+      onPointerUpCapture={mobile || exploration ? mobilePointerEnd : undefined}
       onPointerCancelCapture={(event) => {
-        if (mobile) mobilePointerEnd(event, true);
+        if (mobile || exploration) mobilePointerEnd(event, true);
         if (touchStartRef.current) suppressTouchClickRef.current = true;
       }}
       onClickCapture={(event) => {
@@ -670,6 +739,38 @@ export function MapStage({
       <div
         ref={frameRef}
         className={`${ELEMENT_TAG}-canvas`}
+        tabIndex={exploration ? 0 : undefined}
+        role={exploration ? "group" : undefined}
+        aria-label={exploration ? "Map navigation" : undefined}
+        onKeyDown={
+          exploration
+            ? (event) => {
+                if (event.target !== event.currentTarget) return;
+                const deltas: Record<string, [number, number]> = {
+                  ArrowLeft: [-0.05, 0],
+                  ArrowRight: [0.05, 0],
+                  ArrowUp: [0, -0.05],
+                  ArrowDown: [0, 0.05],
+                };
+                const delta = deltas[event.key];
+                if (delta) {
+                  event.preventDefault();
+                  if (keyboardPlacementId && onNudgePin) {
+                    onNudgePin(keyboardPlacementId, delta[0] / 5, delta[1] / 5);
+                    return;
+                  }
+                  updateMobileView({
+                    ...mobileCurrent,
+                    centerX: clamp(mobileCurrent.centerX + delta[0], 0, 1),
+                    centerY: clamp(mobileCurrent.centerY + delta[1], 0, 1),
+                  });
+                } else if (event.key === "Home") {
+                  event.preventDefault();
+                  resetNavigation();
+                }
+              }
+            : undefined
+        }
         data-placing={picking && placing ? "true" : "false"}
         data-dragging={dragging ? "true" : "false"}
         onClick={picking && placing ? handleClick : onDismiss ? () => onDismiss() : undefined}
@@ -680,9 +781,10 @@ export function MapStage({
       >
         {src ? (
           <img
+            ref={imageRef}
             className={`${ELEMENT_TAG}-canvas-img`}
             style={
-              mobile && picture
+              (mobile || exploration) && picture
                 ? {
                     position: "absolute",
                     left: picture.left,
@@ -696,12 +798,7 @@ export function MapStage({
             src={src}
             alt={alt}
             draggable={false}
-            onLoad={(event) => {
-              const { naturalWidth, naturalHeight } = event.currentTarget;
-              if (naturalWidth <= 0 || naturalHeight <= 0) return;
-              setDecoded({ src, width: naturalWidth, height: naturalHeight });
-              measure();
-            }}
+            onLoad={measureImage}
             onError={() => setFailedSrc(src)}
           />
         ) : (
@@ -718,7 +815,7 @@ export function MapStage({
         )}
         {src && failedSrc === src ? (
           <span className={`${ELEMENT_TAG}-canvas-missing`}>
-            The map picture could not be loaded — choose another one in Village Settings → Village Map.
+            The map picture could not be loaded — choose another one in More → World Configuration → Maps.
           </span>
         ) : null}
         {picture && placementCursor && placing ? (
@@ -740,7 +837,9 @@ export function MapStage({
             }}
           />
         ) : null}
-        {exploration && picture && frame ? <MobileMarkers pins={pins} picture={picture} frame={frame} /> : null}
+        {exploration && picture && frame ? (
+          <ExplorationMarkers pins={pins} picture={picture} frame={frame} onNudge={onNudgePin} />
+        ) : null}
         {picture && !exploration
           ? pins.map((pin) => (
               <span
@@ -952,7 +1051,21 @@ export function MapStage({
             ))
         : null}
 
-      {framing && zoom && live.fit === "cover" ? (
+      {exploration && (!placing || navigationControlsWhilePlacing) ? (
+        !mobile && (
+          <div className={`${ELEMENT_TAG}-zoom ${ELEMENT_TAG}-map-camera-controls`} aria-label="Map zoom">
+            <button type="button" aria-label="Zoom out" onClick={() => changeNavigationZoom(1 / 1.25)}>
+              −
+            </button>
+            <button type="button" aria-label="Reset map view" onClick={resetNavigation}>
+              Reset
+            </button>
+            <button type="button" aria-label="Zoom in" onClick={() => changeNavigationZoom(1.25)}>
+              +
+            </button>
+          </div>
+        )
+      ) : framing && zoom && live.fit === "cover" ? (
         <div className={`${ELEMENT_TAG}-zoom`}>
           <button
             type="button"

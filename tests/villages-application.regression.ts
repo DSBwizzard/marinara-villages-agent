@@ -11,6 +11,7 @@ const shutdownOrder = [
   "progress",
   "refresh",
   "background",
+  "storage",
   "routes",
   "coordinator",
   "decisions",
@@ -51,6 +52,7 @@ function fixture(failure = "", cleanupFailures: string[] = []) {
     stopVenueCoordinator: cleanup("coordinator"),
     async routes() {},
     startBackgroundWork: () => start("background"),
+    startStorageCleanup: () => start("storage"),
     startRefreshScheduler: () => start("refresh"),
     startProgressRecovery: () => start("progress"),
     async startPrivateSpacePreparation() {
@@ -89,9 +91,10 @@ async function main() {
     decisions: ["map", "runtime"],
     recover: ["coordinator", "decisions", "map", "runtime"],
     routes: ["coordinator", "decisions", "map", "runtime"],
-    background: ["routes", "coordinator", "decisions", "map", "runtime"],
-    refresh: ["background", "routes", "coordinator", "decisions", "map", "runtime"],
-    progress: ["refresh", "background", "routes", "coordinator", "decisions", "map", "runtime"],
+    storage: ["routes", "coordinator", "decisions", "map", "runtime"],
+    background: ["storage", "routes", "coordinator", "decisions", "map", "runtime"],
+    refresh: ["background", "storage", "routes", "coordinator", "decisions", "map", "runtime"],
+    progress: ["refresh", "background", "storage", "routes", "coordinator", "decisions", "map", "runtime"],
     private: shutdownOrder.slice(1),
   };
   for (const [failure, expected] of Object.entries(failedAdmissions)) {
@@ -104,7 +107,7 @@ async function main() {
       app = await startVillagesApplication(f.context, f.services);
     assert.deepEqual(
       f.events.filter((event) => event.startsWith("start:")),
-      ["runtime", "map", "decisions", "routes", "background", "refresh", "progress", "private"].map(
+      ["runtime", "map", "decisions", "routes", "storage", "background", "refresh", "progress", "private"].map(
         (name) => "start:" + name,
       ),
     );

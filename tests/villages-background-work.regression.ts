@@ -1,28 +1,51 @@
-import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import assert from "node:assert/strict";
-import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
+import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
+import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
+import { villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
+import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import {
-  queueBackgroundJob,
-  registerBackgroundHandler,
-  settleBackgroundWork,
+  mutateVillageMemoryState,
+  mutateVillageState,
+  readVillageState,
+  readVillageAuthority,
+} from "../packages/villages/src/server/features/world/village-store.js";
+import {
   backgroundWorkSummaries,
+  cancelReturnCatchup,
+  hasVillagePresence,
+  queueBackgroundJob,
+  recoverBackgroundWork,
+  registerBackgroundHandler,
   retryBackgroundJob,
+  settleBackgroundWork,
   startBackgroundWork,
   villageBackgroundPresence,
-  hasVillagePresence,
-  recoverBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
-import type { BackgroundInput } from "../packages/villages/src/server/domain/models/background-model.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { addMemory } from "./helpers/memories-fixture.js";
+import { mutateRelationships } from "../packages/villages/src/server/features/residents/relationship-store.js";
+import { backgroundCalls } from "../packages/villages/src/server/adapters/operations/background-context.js";
+import { completionFailure, WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 
 const rows = new Map<string, any>();
 let writesFail = false;
 let conflictingWrites = 0;
+let rejectEffectReceipts = false;
 let delayClaim = false;
 let claimGate: (() => void) | null = null;
 let claimWrites = 0;
+let holdPendingTiming = false;
+let releasePendingTiming: (() => void) | null = null;
+let holdRequestCount = false;
+let releaseRequestCount: (() => void) | null = null;
+let holdAutomaticGeneration = false;
+let releaseAutomaticGeneration: (() => void) | null = null;
 const documents = {
   async list(packageId: string, kind: string) {
     return structuredClone([...rows.values()].filter((row) => row.packageId === packageId && row.kind === kind));
@@ -45,7 +68,34 @@ const documents = {
   },
   async update(input: any) {
     if (writesFail) throw new Error("disk unavailable");
+    if (
+      holdRequestCount &&
+      input.id.startsWith("villages-background-") &&
+      input.data?.requests === 1 &&
+      input.data?.steps?.some((step: any) => step.timing?.outcome === "pending" && !step.timing.hostStartedAt)
+    ) {
+      holdRequestCount = false;
+      await new Promise<void>((resolve) => {
+        releaseRequestCount = resolve;
+      });
+    }
+    if (
+      holdPendingTiming &&
+      input.id.startsWith("villages-background-") &&
+      input.data?.steps?.some((step: any) => step.timing?.outcome === "pending" && !step.timing.hostStartedAt)
+    ) {
+      holdPendingTiming = false;
+      await new Promise<void>((resolve) => {
+        releasePendingTiming = resolve;
+      });
+    }
     const row = rows.get(input.id);
+    if (
+      input.id === "villages-village" &&
+      rejectEffectReceipts &&
+      Object.keys(input.data?.backgroundReceipts ?? {}).length
+    )
+      return null;
     if (input.id === "villages-village" && conflictingWrites-- > 0) return null;
     if (!row || row.revision !== input.expectedRevision) return null;
     const next = { ...row, ...structuredClone(input), revision: row.revision + 1 };
@@ -61,11 +111,14 @@ let calls: string[] = [],
   active = 0,
   maximum = 0;
 let failStep = "";
+let failure = "401 Invalid API key";
 let translationMode = false;
 let translationFail = false;
 let translationCalls = 0;
 let providerGate: (() => void) | null = null;
 let blockStep = "";
+const responsePlans = new Map<string, { content: string; finishReason: string; hold?: boolean }[]>();
+const failedEffects: string[] = [];
 const model = {
   connectionId: "fixture",
   model: "fixture",
@@ -91,11 +144,17 @@ const model = {
     active++;
     maximum = Math.max(maximum, active);
     try {
-      if (text === blockStep)
+      if (text === blockStep || responsePlans.get(text)?.[0]?.hold)
         await new Promise<void>((resolve) => {
           providerGate = resolve;
         });
-      if (text === failStep) throw new Error("provider unavailable");
+      if (text === failStep) throw new Error(failure);
+      const plan = responsePlans.get(text);
+      if (plan) {
+        const response = plan.shift();
+        assert.ok(response, "No unplanned provider request is allowed.");
+        return { content: response.content, finishReason: response.finishReason, usage: { totalTokens: 11 } };
+      }
       await new Promise<void>((resolve) => setImmediate(resolve));
       return { content: text, finishReason: "stop", usage: { totalTokens: 11 } };
     } finally {
@@ -104,7 +163,7 @@ const model = {
   },
 };
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   languageModels: {
     async resolveForRequest() {
       return model;
@@ -123,12 +182,35 @@ let now = 0;
 const effects: string[] = [];
 registerBackgroundHandler("agenda", {
   async generate(input) {
+    if (
+      holdAutomaticGeneration &&
+      [...rows.values()].some(
+        (row) => row.kind === "background-work" && row.data.subjectId === input.subject && row.data.automaticRetryUsed,
+      )
+    ) {
+      holdAutomaticGeneration = false;
+      await new Promise<void>((resolve) => {
+        releaseAutomaticGeneration = resolve;
+      });
+    }
     const result: string[] = [];
+    if (input.optional)
+      await backgroundCalls.getStore()!.optionalCompletion!("uncertain-optional", async () => {
+        calls.push("optional-original");
+        await new Promise<void>((resolve) => {
+          providerGate = resolve;
+        });
+        throw new Error("Optional request outcome unavailable");
+      });
     for (const step of input.steps) {
       const reply = await completeWithRoom(model as any, [{ role: "user", content: step }], 100, {
         temperature: 0,
         debugMode: false,
       });
+      const incomplete = completionFailure(reply, "fixture", 100);
+      if (incomplete) throw new WorkFailureError(incomplete);
+      if (input.failure && reply.content === "bad")
+        throw new WorkFailureError({ cause: input.failure, stage: "fixture", message: "Fixture response rejected." });
       if (reply.content === "invalid") throw new Error("invalid response");
       result.push(reply.content!);
     }
@@ -138,6 +220,9 @@ registerBackgroundHandler("agenda", {
   apply(state, input, result) {
     effects.push(input.subject);
     state.setting = result.join("|");
+  },
+  async afterFailure(input) {
+    failedEffects.push(input.subject);
   },
 });
 registerBackgroundHandler("translation", {
@@ -151,6 +236,23 @@ registerBackgroundHandler("translation", {
     state.setting = "translated-" + result.moves.length;
   },
 });
+registerBackgroundHandler("resident-planning", {
+  async generate(input) {
+    const opening = await completeWithRoom(model as any, buildResidentPlanningMessages(input.context), 100, {
+      temperature: 0,
+      debugMode: false,
+    });
+    await completeWithRoom(model as any, [{ role: "user", content: "story-followup" }], 100, {
+      temperature: 0,
+      debugMode: false,
+    });
+    return opening.content;
+  },
+  valid: () => true,
+  apply() {
+    effects.push("legacy-story");
+  },
+});
 const work = (subject: string, steps: string[], finite = true): BackgroundInput => ({
   kind: "agenda",
   subjectId: subject,
@@ -160,6 +262,42 @@ const work = (subject: string, steps: string[], finite = true): BackgroundInput 
   label: subject,
   input: { subject, steps, expectedName: "Willowbrook" },
 });
+function capturedInput(kind: "resident-planning" | "personal-mail" | "social-recovery", input: any = {}) {
+  const capturedAt = "2026-09-01T00:00:00.000Z";
+  const admitted = {
+    seed: "fixture",
+    setupAt: capturedAt,
+    villagers: [{ characterId: "a", cardSnapshot: { name: "A", capturedAt }, wishes: [] }],
+  };
+  const opportunity = { actorIds: ["a"] };
+  if (kind === "personal-mail")
+    return { ...input, seed: "fixture", residentId: "a", incarnation: capturedAt, admitted };
+  if (kind === "social-recovery")
+    return { ...input, entry: { ...input.entry, seed: "fixture", admitted, opportunity } };
+  return {
+    ...input,
+    admitted,
+    opportunity,
+    actorIncarnations: { a: capturedAt },
+    context: {
+      ...input.context,
+      residents: [{ characterId: "a", capturedAt, wishes: [] }],
+      social: { state: undefined, candidates: [], relationships: [] },
+    },
+  };
+}
+function capturedOutbox(state: ReturnType<typeof defaultVillageState>, id: string, catchupBatchId?: string) {
+  const entry = capturedInput("social-recovery").entry;
+  return {
+    ...entry,
+    id,
+    catchupBatchId,
+    at: state.setupAt,
+    candidates: [],
+    proposal: {},
+    admitted: { ...entry.admitted, setupAt: state.setupAt },
+  };
+}
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function until(predicate: () => boolean) {
   for (let attempt = 0; attempt < 200 && !predicate(); attempt++) await tick();
@@ -170,16 +308,26 @@ async function reset() {
   await settleBackgroundWork();
   rows.clear();
   calls = [];
+  responsePlans.clear();
+  failedEffects.length = 0;
   effects.length = 0;
   maximum = 0;
   writesFail = false;
   conflictingWrites = 0;
+  rejectEffectReceipts = false;
   failStep = "";
   blockStep = "";
   providerGate = null;
+  holdPendingTiming = false;
+  releasePendingTiming = null;
+  holdRequestCount = false;
+  releaseRequestCount = null;
+  holdAutomaticGeneration = false;
+  releaseAutomaticGeneration = null;
   now = 0;
   await mutateVillageState((state) => {
     Object.assign(state, defaultVillageState());
+    state.name = "Willowbrook";
     state.seed = "fixture";
     state.villagers = [
       "same",
@@ -213,7 +361,7 @@ async function reset() {
             name: id,
             capturedAt: "2026-09-01T00:00:00.000Z",
           },
-          completedWishes: [],
+          wishes: [],
           addedAt: "2026-09-01T00:00:00.000Z",
         }) as any,
     );
@@ -224,7 +372,196 @@ async function summary(subject: string) {
   return (await backgroundWorkSummaries()).find((job) => job.subjectId === subject)!;
 }
 async function main() {
+  for (const message of [
+    "The selected language model connection has no model.",
+    "Language model connection not found: gone",
+    "The selected connection has no base URL.",
+    "Choose a language model connection before generating content.",
+    "No language model connection is available in the random pool.",
+  ])
+    assert.equal(connectionFailureKind(new Error(message)), "configuration", message);
+  for (const message of [
+    "429 Too many requests",
+    "502 upstream unavailable",
+    "Provider request exceeded 30 seconds.",
+    "Invalid JSON response",
+  ])
+    assert.equal(connectionFailureKind(new Error(message), true), "request", message);
   try {
+    await reset();
+    responsePlans.set("automatic", [
+      { content: "", finishReason: "stop" },
+      { content: "ready", finishReason: "stop", hold: true },
+    ]);
+    await queueBackgroundJob(work("a", ["automatic"]));
+    let settled = false;
+    const waiting = settleBackgroundWork().then(() => (settled = true));
+    await until(() => !!providerGate);
+    assert.equal(settled, false, "Settlement includes the replacement attempt.");
+    assert.deepEqual(failedEffects, [], "The first failure is not published as terminal.");
+    const retrying = await summary("a");
+    assert.equal(retrying.attempt, 2);
+    await assert.rejects(retryBackgroundJob(retrying.id, 1, "racing-manual", retrying.instanceId), /changed|finishing/);
+    providerGate!();
+    await waiting;
+    assert.equal((await summary("a")).status, "completed");
+    assert.equal((await summary("a")).requests, 2);
+    assert.equal((await summary("a")).tokens, 22);
+    assert.deepEqual(calls, ["automatic", "automatic"]);
+    assert.deepEqual(effects, ["a"]);
+    assert.deepEqual(failedEffects, []);
+    const completedAuto = [...rows.values()].find((row) => row.kind === "background-work")!;
+    assert.equal(completedAuto.data.automaticRetryUsed, true);
+
+    await reset();
+    await villageBackgroundPresence("automatic-pause", true);
+    responsePlans.set("automatic-pause", [
+      { content: "", finishReason: "stop" },
+      { content: "must not dispatch", finishReason: "stop" },
+    ]);
+    holdAutomaticGeneration = true;
+    try {
+      await queueBackgroundJob(work("a", ["automatic-pause"], false));
+      await until(() => !!releaseAutomaticGeneration);
+      failStep = "configuration-stop";
+      failure = "401 Invalid API key";
+      await queueBackgroundJob(work("b", [failStep]));
+      await until(() => [...rows.values()].some((row) => row.kind === "background-connection"));
+    } finally {
+      releaseAutomaticGeneration?.();
+    }
+    await settleBackgroundWork();
+    assert.deepEqual(
+      calls,
+      ["automatic-pause", "configuration-stop"],
+      "Automatic retry cannot bypass a newly paused connection.",
+    );
+    assert.equal((await summary("a")).status, "paused");
+    const pausedAutomatic = [...rows.values()].find(
+      (row) => row.kind === "background-work" && row.data.subjectId === "a",
+    )!;
+    assert.equal(pausedAutomatic.data.finite, false, "Automatic retry does not grant deliberate-run admission.");
+    assert.equal(pausedAutomatic.data.retrying, false);
+    assert.equal(pausedAutomatic.data.automaticRetryUsed, true);
+
+    for (const cause of ["invalid_json", "missing_result", "duplicate_result"] as const) {
+      await reset();
+      responsePlans.set("typed", [
+        { content: "bad", finishReason: "stop" },
+        { content: "ready", finishReason: "stop" },
+      ]);
+      const request = work("a", ["typed"]);
+      (request.input as any).failure = cause;
+      await queueBackgroundJob(request);
+      await settleBackgroundWork();
+      assert.equal((await summary("a")).status, "completed", cause);
+      assert.deepEqual(calls, ["typed", "typed"]);
+    }
+
+    await reset();
+    responsePlans.set("first", [
+      { content: "", finishReason: "stop" },
+      { content: "first ready", finishReason: "stop" },
+    ]);
+    responsePlans.set("second", [
+      { content: "", finishReason: "stop" },
+      { content: "", finishReason: "stop" },
+      { content: "second ready", finishReason: "stop" },
+    ]);
+    await queueBackgroundJob(work("a", ["first", "second"]));
+    await settleBackgroundWork();
+    assert.equal((await summary("a")).status, "failed");
+    assert.deepEqual(calls, ["first", "first", "second"], "One extra attempt belongs to the whole job.");
+    assert.deepEqual(failedEffects, ["a"]);
+    stop();
+    stop = startBackgroundWork({ now: () => now });
+    await recoverBackgroundWork();
+    await settleBackgroundWork();
+    assert.equal(calls.length, 3, "Restart does not grant another attempt or purchase historical failures.");
+    const exhausted = [...rows.values()].find((row) => row.kind === "background-work")!;
+    exhausted.data.retryActions = Array.from({ length: 32 }, (_, index) => "old-action-" + index);
+    exhausted.revision++;
+    const terminal = await summary("a");
+    await retryBackgroundJob(terminal.id, terminal.attempt, "manual-after-automatic", terminal.instanceId);
+    await settleBackgroundWork();
+    assert.equal((await summary("a")).status, "failed");
+    assert.deepEqual(
+      calls,
+      ["first", "first", "second", "second"],
+      "Manual retries retain the used allowance and valid earlier steps.",
+    );
+    const failedAgain = await summary("a");
+    await retryBackgroundJob(failedAgain.id, failedAgain.attempt, "manual-repair", failedAgain.instanceId);
+    await settleBackgroundWork();
+    assert.equal((await summary("a")).status, "completed");
+    assert.deepEqual(calls, ["first", "first", "second", "second", "second"]);
+
+    for (const cause of [
+      "output_limit",
+      "insufficient_budget",
+      "invalid_citation",
+      "unsupported_outcome",
+      "storage_application",
+      "unknown_request",
+      "provider_exception",
+    ] as const) {
+      await reset();
+      responsePlans.set("held", [{ content: "bad", finishReason: "stop" }]);
+      const request = work("a", ["held"]);
+      (request.input as any).failure = cause;
+      await queueBackgroundJob(request);
+      await settleBackgroundWork();
+      assert.equal((await summary("a")).status, "failed", cause);
+      assert.deepEqual(calls, ["held"], cause);
+    }
+    await reset();
+    const frozenStory = {
+      village: "Willowbrook",
+      setting: "Fields and trees. ".repeat(50) + "A flood is ongoing.",
+      moment: deriveVillageMoment({
+        seed: "fixture",
+        foundedAt: "2026-09-01T00:00:00Z",
+        now: new Date("2026-09-02T00:00:00Z"),
+      }),
+      residents: [],
+      recent: [],
+      venues: [],
+      opportunities: [],
+      lastSimulatedAt: "2026-09-01T00:00:00Z",
+      forced: false,
+    };
+    failStep = "story-followup";
+    failure = "503 Service Unavailable";
+    await queueBackgroundJob({
+      kind: "resident-planning",
+      subjectId: "saved-story",
+      seed: "fixture",
+      revision: "legacy-story",
+      finite: true,
+      label: "Saved story",
+      input: capturedInput("resident-planning", { context: frozenStory }),
+    });
+    await settleBackgroundWork();
+    const story = await summary("saved-story");
+    assert.equal(calls.length, 2, story.error);
+    assert.equal(calls[0].includes(frozenStory.setting), true, "planning keeps complete authored context");
+    stop();
+    stop = startBackgroundWork({ now: () => now });
+    await settleBackgroundWork();
+    assert.equal(calls.length, 2, "restart does not retry a failed story");
+    failStep = "";
+    await retryBackgroundJob(
+      story.id,
+      (await summary("saved-story")).attempt,
+      "resume-legacy-story",
+      (await summary("saved-story")).instanceId,
+    );
+    await settleBackgroundWork();
+    assert.equal((await summary("saved-story")).status, "completed");
+    assert.equal(calls.length, 3, "the purchased first story response replays without another call");
+    assert.deepEqual(effects, ["legacy-story"]);
+    failure = "401 Invalid API key";
+
     await reset();
     blockStep = "first";
     await Promise.all([queueBackgroundJob(work("same", ["first"])), queueBackgroundJob(work("same", ["first"]))]);
@@ -251,6 +588,34 @@ async function main() {
     await settleBackgroundWork();
     assert.deepEqual(calls, ["write-race"]);
 
+    for (const founding of [false, true]) {
+      await reset();
+      await mutateVillageState((state) => {
+        state.foundingPreparation = {
+          status: "failed",
+          completedIds: [],
+          currentId: "",
+          error: "Optional Wish failed",
+        };
+      });
+      delayClaim = true;
+      claimGate = null;
+      const queued = work("same", ["queued-before-restart"]);
+      if (founding) queued.input = { ...queued.input, foundingContract: 1 };
+      const admission = queueBackgroundJob(queued);
+      await until(() => !!claimGate);
+      stop();
+      delayClaim = false;
+      claimGate!();
+      await admission;
+      assert.deepEqual(calls, [], "The stored request has never been submitted");
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, founding ? [] : ["queued-before-restart"]);
+      assert.equal((await summary("same")).status, founding ? "interrupted" : "completed");
+    }
+
     await reset();
     failStep = "Wednesday";
     await queueBackgroundJob(work("week", ["routine", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]));
@@ -268,18 +633,46 @@ async function main() {
     );
     failStep = "";
     await Promise.all([
-      retryBackgroundJob(failed.id, failed.attempt, "retry-one"),
-      retryBackgroundJob(failed.id, failed.attempt, "retry-one"),
+      retryBackgroundJob(failed.id, failed.attempt, "retry-one", failed.instanceId),
+      retryBackgroundJob(failed.id, failed.attempt, "retry-one", failed.instanceId),
     ]);
     await settleBackgroundWork();
     assert.deepEqual(calls, ["routine", "Monday", "Tuesday", "Wednesday", "Wednesday", "Thursday", "Friday", "other"]);
     assert.equal((await summary("week")).status, "completed");
-    await retryBackgroundJob(failed.id, failed.attempt, "retry-one");
+    await retryBackgroundJob(failed.id, failed.attempt, "retry-one", failed.instanceId);
     await settleBackgroundWork();
     assert.equal(calls.length, 8, "lost retry HTTP response reuses the same action");
     await recoverBackgroundWork();
     await settleBackgroundWork();
     assert.equal(calls.at(-1), "other", "successful explicit retry resumes the connection");
+
+    await reset();
+    failure = "Provider request exceeded 30 seconds.";
+    failStep = "offline";
+    await queueBackgroundJob(work("offline", ["offline"]));
+    await settleBackgroundWork();
+    const timedOut = await summary("offline");
+    assert.equal(timedOut.connectionPaused, false);
+    assert.equal(timedOut.failure?.connectionIssue, "request");
+    const failedTiming = rows.get(timedOut.id).data.steps[0].timing;
+    assert.equal(failedTiming.outcome, "unknown");
+    assert.equal(failedTiming.firstResponseMs, null, "public host does not expose first-token timing");
+    assert.ok(failedTiming.hostMs >= 0 && failedTiming.queueMs >= 0);
+    await queueBackgroundJob(work("other", ["other"]));
+    await queueBackgroundJob(work("offline", ["offline"]));
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["offline", "other"], "transient failure blocks its own retry, not other work");
+    failStep = "";
+    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout", timedOut.instanceId);
+    await settleBackgroundWork();
+    const history = rows.get(timedOut.id).data.attemptHistory;
+    assert.equal(history.length, 1);
+    assert.equal(history[0].steps[0].timing.outcome, "unknown");
+    assert.equal(history[0].tokens, null);
+    assert.equal(history[0].steps[0].response, undefined);
+    await retryBackgroundJob(timedOut.id, timedOut.attempt, "retry-timeout", timedOut.instanceId);
+    assert.equal(rows.get(timedOut.id).data.attemptHistory.length, 1, "duplicate retry does not duplicate diagnostics");
+    failure = "401 Invalid API key";
 
     await reset();
     failStep = "offline";
@@ -295,7 +688,7 @@ async function main() {
     assert.equal(calls.length, 1, "connection pause survives replacement of the failed job and a restart");
     failStep = "";
     const pausedOffline = await summary("offline");
-    await retryBackgroundJob(pausedOffline.id, pausedOffline.attempt, "recover-offline");
+    await retryBackgroundJob(pausedOffline.id, pausedOffline.attempt, "recover-offline", pausedOffline.instanceId);
     await settleBackgroundWork();
     assert.equal(calls.length, 2);
 
@@ -318,6 +711,58 @@ async function main() {
     catchUpGate!();
     await slowPresence;
     assert.equal(hasVillagePresence(), false, "a late visible heartbeat cannot overwrite a newer hidden message");
+
+    await reset();
+    let confirmedBoundaries = 0;
+    const onHidden = async () => {
+      confirmedBoundaries++;
+    };
+    await villageBackgroundPresence("never-visible", false, { onHidden });
+    assert.equal(confirmedBoundaries, 0, "A hidden message cannot initialize tracking without confirmed visibility.");
+    await villageBackgroundPresence("confirmed-tab", true);
+    await villageBackgroundPresence("confirmed-tab", false, { onHidden });
+    assert.equal(confirmedBoundaries, 1, "The final confirmed session establishes a departure boundary.");
+    await villageBackgroundPresence("expired-tab", true);
+    now += 90_001;
+    await villageBackgroundPresence("expired-tab", false, { onHidden });
+    assert.equal(confirmedBoundaries, 1, "A late hidden message cannot move an expired departure boundary.");
+
+    await reset();
+    let finishResume: (() => void) | undefined;
+    let pendingBoundary = 0;
+    const firstReturn = villageBackgroundPresence("first-return", true, {
+      beforeResume: () =>
+        new Promise<void>((resolve) => {
+          finishResume = resolve;
+        }),
+      onVisible: async () => {
+        await villageBackgroundPresence("first-return", false, {
+          onHidden: async () => {
+            pendingBoundary++;
+          },
+        });
+        await villageBackgroundPresence("pending-return", false);
+      },
+    });
+    await until(() => !!finishResume);
+    const pendingReturn = villageBackgroundPresence("pending-return", true);
+    finishResume!();
+    await Promise.all([firstReturn, pendingReturn]);
+    assert.equal(pendingBoundary, 1, "A pending return cannot erase the last confirmed departure.");
+    assert.equal(hasVillagePresence(), false);
+
+    await reset();
+    let catchUps = 0;
+    const beforeResume = async () => {
+      catchUps++;
+    };
+    await villageBackgroundPresence("renewal-a", true, { beforeResume });
+    await villageBackgroundPresence("renewal-a", true, { beforeResume });
+    await villageBackgroundPresence("renewal-b", true, { beforeResume });
+    assert.equal(catchUps, 1, "Live heartbeat renewal and another visible tab do not repeat full catch-up.");
+    now += 90_001;
+    await villageBackgroundPresence("renewal-a", true, { beforeResume });
+    assert.equal(catchUps, 2, "Expired presence must catch up before admitting recurring work again.");
 
     await reset();
     await queueBackgroundJob(work("recurring", ["visible1", "visible2"], false));
@@ -370,7 +815,7 @@ async function main() {
     });
     providerGate!();
     await settleBackgroundWork();
-    assert.equal((await readVillageState()).setting, "");
+    assert.equal((await readVillageState({ memories: true })).setting, "");
     assert.equal((await summary("reset"))?.status, undefined, "old village work is hidden and cleaned");
 
     await reset();
@@ -380,7 +825,7 @@ async function main() {
     stop();
     providerGate!();
     await settleBackgroundWork();
-    assert.equal((await readVillageState()).setting, "");
+    assert.equal((await readVillageState({ memories: true })).setting, "");
     blockStep = "";
     stop = startBackgroundWork({ now: () => now });
     await tick();
@@ -388,9 +833,9 @@ async function main() {
     assert.equal((await summary("shutdown")).status, "interrupted");
     assert.deepEqual(calls, ["shutdown"], "teardown/restart never automatically repeats a dispatched request");
     const interrupted = await summary("shutdown");
-    await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-shutdown");
+    await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-shutdown", interrupted.instanceId);
     await settleBackgroundWork();
-    assert.equal(calls.length, 2);
+    assert.equal(calls.length, 1, "deliberate recovery reuses the reply saved after shutdown");
 
     await reset();
     await queueBackgroundJob(work("saved", ["saved"]));
@@ -419,7 +864,7 @@ async function main() {
       setting: "",
       lore: [],
       loreKey: "",
-      completedWishes: [],
+      wishes: [],
       venues: [],
       wishes: [],
       name: "Rosa",
@@ -456,18 +901,19 @@ async function main() {
     translationMode = false;
 
     await reset();
+    rejectEffectReceipts = true;
     await queueBackgroundJob(work("unapplied", ["unapplied"]));
     await settleBackgroundWork();
     const unapplied = rows.get((await summary("unapplied")).id);
+    rejectEffectReceipts = false;
+    const notApplied = await readVillageState({ memories: true });
+    assert.equal(notApplied.backgroundReceipts[unapplied.id], undefined, "the fixture never committed its effects");
+    assert.equal(notApplied.setting, "");
     unapplied.data.status = "running";
     unapplied.data.owner = "old-runtime";
     unapplied.data.input = { subject: "unapplied", steps: ["unapplied"], expectedName: "Willowbrook" };
     unapplied.data.hasResult = true;
     unapplied.data.result = ["recovered-local-result"];
-    await mutateVillageState((state) => {
-      delete state.backgroundReceipts[unapplied.id];
-      state.setting = "";
-    });
     effects.length = 0;
     stop();
     stop = startBackgroundWork({ now: () => now });
@@ -475,7 +921,7 @@ async function main() {
     await settleBackgroundWork();
     assert.deepEqual(calls, ["unapplied"]);
     assert.deepEqual(effects, ["unapplied"], "persisted generation is applied without another paid request");
-    assert.equal((await readVillageState()).setting, "recovered-local-result");
+    assert.equal((await readVillageState({ memories: true })).setting, "recovered-local-result");
 
     await reset();
     blockStep = "old-input";
@@ -486,7 +932,146 @@ async function main() {
     await settleBackgroundWork();
     assert.deepEqual(calls, ["old-input", "new-input"], "replacement drops remaining obsolete paid stages");
     assert.deepEqual(effects, ["replace"]);
-    assert.equal((await readVillageState()).setting, "new-input");
+    assert.equal((await readVillageState({ memories: true })).setting, "new-input");
+
+    await reset();
+    blockStep = "paid-first";
+    await queueBackgroundJob(work("replace", ["paid-first", "unsubmitted-second"]));
+    await until(() => !!providerGate);
+    holdPendingTiming = true;
+    providerGate!();
+    await until(() => !!releasePendingTiming);
+    await queueBackgroundJob({ ...work("replace", ["replacement-after-reservation"]), revision: "new" });
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["paid-first", "replacement-after-reservation"]);
+    const retainedPaid = [...rows.values()].filter((row) => row.kind === "background-history");
+    assert.equal(retainedPaid.length, 1, "The earlier purchased reply remains retained after supersession.");
+    assert.equal(
+      retainedPaid[0].data.steps.length,
+      1,
+      "The unsubmitted sibling cannot become an uncertain historical claim.",
+    );
+    assert.equal(retainedPaid[0].data.steps[0].status, "completed");
+    assert.equal(retainedPaid[0].data.requests, 1, "Only actual old request progress is retained.");
+
+    for (const status of ["completed", "running", "obsolete"] as const) {
+      await reset();
+      await queueBackgroundJob(work("replace", ["original-before-restart"]));
+      await settleBackgroundWork();
+      stop();
+      const parent = rows.get((await summary("replace")).id);
+      parent.data.status = status;
+      parent.data.owner = "former-activation";
+      parent.data.replacement = { ...work("replace", ["replacement-after-restart"]), revision: "new" };
+      if (status === "obsolete")
+        await mutateVillageState((state) => {
+          delete state.backgroundReceipts[parent.id];
+        });
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, ["original-before-restart", "replacement-after-restart"], status);
+      assert.deepEqual(effects, ["replace", "replace"], "An accepted replacement applies exactly once after restart.");
+      assert.equal(rows.get(parent.id).data.replacement, undefined);
+      assert.equal((await readVillageState()).setting, "replacement-after-restart");
+    }
+
+    await reset();
+    failStep = "held-original";
+    failure = "401 Invalid API key";
+    await queueBackgroundJob(work("replace", ["held-original"]));
+    await settleBackgroundWork();
+    stop();
+    const heldParent = rows.get((await summary("replace")).id);
+    heldParent.data.replacement = { ...work("replace", ["held-replacement"]), revision: "next" };
+    stop = startBackgroundWork({ now: () => now });
+    await recoverBackgroundWork();
+    await settleBackgroundWork();
+    assert.deepEqual(calls, ["held-original"], "A queued replacement cannot bypass a saved connection hold.");
+    assert.equal(rows.get(heldParent.id).data.replacement.revision, "next");
+
+    for (const optional of [false, true]) {
+      await reset();
+      blockStep = failStep = "uncertain-original";
+      failure = "Request outcome unavailable";
+      const original = work("replace", ["uncertain-original"]);
+      if (optional) original.input = { ...(original.input as object), optional: true };
+      await queueBackgroundJob(original);
+      await until(() => !!providerGate);
+      await queueBackgroundJob({ ...work("replace", ["replacement-must-wait"]), revision: "next" });
+      providerGate!();
+      await settleBackgroundWork();
+      const held = rows.get((await summary("replace")).id);
+      assert.equal(held.data.status, "interrupted", "Supersession preserves the uncertain original request.");
+      assert.equal(held.data.replacement.revision, "next");
+      if (optional) assert.equal(held.data.optionalAttempts["uncertain-optional"].status, "unknown");
+      else assert.equal(held.data.steps[0].status, "running");
+      const expectedCalls = [optional ? "optional-original" : "uncertain-original"];
+      assert.deepEqual(calls, expectedCalls, "A replacement cannot dispatch while the original remains uncertain.");
+      stop();
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, expectedCalls, "Restart preserves the original uncertainty hold.");
+      const interrupted = await summary("replace");
+      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement", interrupted.instanceId);
+      await settleBackgroundWork();
+      await retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-held-replacement", interrupted.instanceId);
+      await settleBackgroundWork();
+      assert.deepEqual(
+        calls,
+        [...expectedCalls, "replacement-must-wait"],
+        "Explicit Retry admits the replacement once.",
+      );
+      const retained = [...rows.values()].find(
+        (row) => row.kind === "background-history" && row.data.id === held.data.id,
+      );
+      assert.ok(retained, "Replacement Retry retains the original uncertain request and its captured source.");
+      if (optional) assert.equal(retained.data.optionalAttempts["uncertain-optional"].status, "unknown");
+      else assert.equal(retained.data.steps[0].status, "running");
+    }
+
+    for (const status of ["running", "completed"] as const) {
+      await reset();
+      await queueBackgroundJob(work("replace", ["committed-original"]));
+      await settleBackgroundWork();
+      stop();
+      const parent = rows.get((await summary("replace")).id);
+      parent.data.status = status;
+      parent.data.input = work("replace", ["committed-original"]).input;
+      parent.data.optionalAttempts = { review: { status: "unknown", elapsedMs: 10 } };
+      parent.data.replacement = { ...work("replace", ["committed-replacement-must-wait"]), revision: "next" };
+      stop = startBackgroundWork({ now: () => now });
+      await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(calls, ["committed-original"], "A committed main effect does not settle optional uncertainty.");
+      assert.equal(rows.get(parent.id).data.status, "interrupted");
+      assert.equal(rows.get(parent.id).data.optionalAttempts.review.status, "unknown");
+      assert.equal(rows.get(parent.id).data.replacement.revision, "next");
+    }
+
+    for (const replacement of [{}, { ...work("other", ["wrong-slot"]), revision: "foreign" }]) {
+      await reset();
+      await queueBackgroundJob(work("replace", ["valid-parent"]));
+      await settleBackgroundWork();
+      stop();
+      const parent = rows.get((await summary("replace")).id);
+      parent.data.replacement = replacement;
+      const before = structuredClone([...rows.entries()]);
+      stop = startBackgroundWork({ now: () => now });
+      if (!("kind" in replacement)) await assert.rejects(recoverBackgroundWork(), /invalid replacement capture scope/);
+      else await recoverBackgroundWork();
+      await settleBackgroundWork();
+      assert.deepEqual(
+        [...rows.entries()],
+        before,
+        "Invalid or foreign-slot replacement cannot write over its parent.",
+      );
+      assert.deepEqual(calls, ["valid-parent"]);
+    }
 
     await reset();
     await queueBackgroundJob(work("invalid", ["invalid"]));
@@ -517,7 +1102,7 @@ async function main() {
             name: "Cycle",
             capturedAt: new Date().toISOString(),
           },
-          completedWishes: [],
+          wishes: [],
         } as any,
       ];
     });
@@ -527,10 +1112,347 @@ async function main() {
     await queueBackgroundJob({ ...work("cycle", ["cycle-39"]), revision: "39" });
     await settleBackgroundWork();
     assert.equal(calls.length, beforePrune, "compact receipt protects a live subject after payload record pruning");
+    for (const kind of ["personal-mail", "social-recovery"] as const) {
+      registerBackgroundHandler(kind, {
+        valid: () => true,
+        generate: async () => {
+          throw Error("Retained social failure");
+        },
+        apply: () => {},
+      });
+      await queueBackgroundJob({
+        kind,
+        subjectId: kind + ":message-source",
+        seed: (await readVillageState()).seed,
+        revision: "source",
+        finite: true,
+        label: "Social recovery",
+        input: capturedInput(kind),
+      });
+      await settleBackgroundWork();
+      for (let read = 0; read < 2; read++) {
+        const retained = (await backgroundWorkSummaries()).find((job) => job.kind === kind);
+        assert.equal(retained?.status, "failed", "A social message/encounter source is not a resident ID");
+        assert(rows.has(retained!.id), "Inspect polling preserves failed work for deliberate recovery");
+      }
+    }
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "balanced";
+      state.eventAttempts = undefined;
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("return-session", true);
+    await queueBackgroundJob(work("recurring", ["ordinary-during-return"], false));
+    await settleBackgroundWork();
+    assert.equal(calls.includes("ordinary-during-return"), false, "The active return holds unrelated recurring work.");
+    registerBackgroundHandler("resident-planning", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        return {};
+      },
+      valid: () => true,
+      apply(_state, input) {
+        effects.push(input.step);
+      },
+    });
+    const currentDate = localDateKey(villageNow());
+    const catchupWork = (subject: string, step: string): BackgroundInput => ({
+      kind: "resident-planning",
+      subjectId: subject,
+      seed: "fixture",
+      revision: subject,
+      finite: false,
+      label: "Catch-up",
+      automaticDate: currentDate,
+      input: capturedInput("resident-planning", { context: { catchup: true }, catchupBatchId: "return-batch", step }),
+    });
+    await queueBackgroundJob(catchupWork("return-one", "return-one"));
+    await settleBackgroundWork();
+    assert.ok(effects.includes("return-one"), "Catch-up can run while ordinary work is held.");
+    blockStep = "return-late";
+    await queueBackgroundJob(catchupWork("return-late", "return-late"));
+    await until(() => providerGate !== null);
+    await cancelReturnCatchup("return-batch");
+    providerGate!();
+    await settleBackgroundWork();
+    assert.equal(effects.includes("return-late"), false, "A late response cannot apply after cancellation.");
+    assert.equal((await readVillageState()).eventAttempts!.attempts.length, 2, "Cancelled dispatch remains charged.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await queueBackgroundJob(catchupWork("retry-before-dispatch", "retry-before-dispatch"));
+    await settleBackgroundWork();
+    let pending = await summary("retry-before-dispatch");
+    assert.equal(pending.status, "paused");
+    await retryBackgroundJob(pending.id, pending.attempt, "retry-before-visible", pending.instanceId);
+    await settleBackgroundWork();
+    assert.equal(calls.includes("retry-before-dispatch"), false, "An explicit retry cannot dispatch while hidden.");
+    await villageBackgroundPresence("retry-session", true);
+    await settleBackgroundWork();
+    assert.ok(calls.includes("retry-before-dispatch"));
+    assert.equal(
+      (await readVillageState()).eventAttempts!.attempts.length,
+      1,
+      "The first retried dispatch reserves its allowance.",
+    );
+    await villageBackgroundPresence("retry-session", false);
+    await villageBackgroundPresence("retry-session", true);
+    await queueBackgroundJob(catchupWork("quiet-second", "quiet-second"));
+    await settleBackgroundWork();
+    assert.ok(calls.includes("quiet-second"), "Quiet permits a second review in its shared daily allowance.");
+    await villageBackgroundPresence("retry-session", false);
+    await queueBackgroundJob(catchupWork("retry-over-budget", "retry-over-budget"));
+    await settleBackgroundWork();
+    pending = await summary("retry-over-budget");
+    await retryBackgroundJob(pending.id, pending.attempt, "retry-without-allowance", pending.instanceId);
+    await settleBackgroundWork();
+    await villageBackgroundPresence("retry-session", true);
+    await settleBackgroundWork();
+    assert.equal(calls.includes("retry-over-budget"), false, "A retry cannot bypass an exhausted daily allowance.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("admission-session", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(catchupWork("cancel-before-dispatch", "cancel-before-dispatch"));
+    await until(() => releasePendingTiming !== null);
+    await cancelReturnCatchup("return-batch");
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.equal(
+      calls.includes("cancel-before-dispatch"),
+      false,
+      "Cancellation before admission prevents a paid request.",
+    );
+    assert.equal(
+      (await summary("cancel-before-dispatch")).requests,
+      0,
+      "No request is counted before provider dispatch.",
+    );
+    const cancelledRecord = rows.get((await summary("cancel-before-dispatch")).id).data;
+    assert.equal(cancelledRecord.status, "obsolete");
+    assert.deepEqual(
+      cancelledRecord.steps,
+      [],
+      "Cancelled undispatched work cannot leave a running-step restore hold.",
+    );
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "cancel-before-dispatch",
+      ),
+      false,
+      "An explicitly undispatched cancellation needs no recovery history.",
+    );
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("hide-before-admission", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(catchupWork("hidden-before-dispatch", "hidden-before-dispatch"));
+    await until(() => releasePendingTiming !== null);
+    await villageBackgroundPresence("hide-before-admission", false);
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    const hidden = await summary("hidden-before-dispatch");
+    assert.equal(hidden.status, "paused", "No request began, so hiding is a pause rather than an interruption.");
+    assert.equal(hidden.requests, 0);
+    assert.deepEqual(rows.get(hidden.id).data.steps, []);
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "hidden-before-dispatch",
+      ),
+      false,
+    );
+    await villageBackgroundPresence("hide-before-admission", true);
+    await settleBackgroundWork();
+    assert.ok(
+      calls.includes("hidden-before-dispatch"),
+      "Visibility resumes the unstarted request without explicit retry.",
+    );
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("hide-during-count", true);
+    holdRequestCount = true;
+    await queueBackgroundJob(catchupWork("hidden-during-count", "hidden-during-count"));
+    await until(() => releaseRequestCount !== null);
+    await villageBackgroundPresence("hide-during-count", false);
+    releaseRequestCount!();
+    await settleBackgroundWork();
+    const countPaused = await summary("hidden-during-count");
+    assert.equal(countPaused.status, "paused");
+    assert.equal(countPaused.requests, 0, "A pre-dispatch hide does not count a provider request.");
+    assert.equal(calls.includes("hidden-during-count"), false);
+    assert.equal(
+      [...rows.values()].some(
+        (row) => row.kind === "background-history" && row.data.subjectId === "hidden-during-count",
+      ),
+      false,
+    );
+    await villageBackgroundPresence("hide-during-count", true);
+    await settleBackgroundWork();
+    assert.ok(calls.includes("hidden-during-count"), "The unstarted request resumes after visibility returns.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("stale-saved-response", true);
+    registerBackgroundHandler("resident-planning", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        await mutateVillageState((state) => {
+          state.setting = "Source changed after response storage";
+        });
+        return {};
+      },
+      valid: (state) => state.setting !== "Source changed after response storage",
+      apply() {
+        throw new Error("An obsolete source cannot apply");
+      },
+    });
+    await queueBackgroundJob(catchupWork("stale-after-response", "stale-after-response"));
+    await settleBackgroundWork();
+    assert.equal(calls.filter((step) => step === "stale-after-response").length, 1);
+    assert.equal(
+      (await summary("stale-after-response")).status,
+      "obsolete",
+      "A saved reply is already dispatched work",
+    );
+    const staleAttempt = [...rows.values()].find(
+      (row) => row.kind === "background-history" && row.data.subjectId === "stale-after-response",
+    );
+    assert.equal(staleAttempt.data.steps[0].status, "completed");
+    assert.ok(staleAttempt.data.steps[0].responseRef);
+    assert.equal(staleAttempt.data.hasResult, true, "The paid result remains owned after its source becomes obsolete");
+    await reset();
+    await mutateVillageMemoryState((state) => {
+      state.backgroundPace = "quiet";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.memories = addMemory(state.memories, { sourceId: "before-return" });
+    });
+    registerBackgroundHandler("resident-planning", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        return {};
+      },
+      valid: (state) => state.memories.revision > 0,
+      apply(state, input) {
+        assert.ok(state.memories.revision > 0, "Application receives the committed Memory payload.");
+        effects.push(input.step);
+      },
+    });
+    await villageBackgroundPresence("memory-session", true);
+    await queueBackgroundJob(catchupWork("loaded-memory", "loaded-memory"));
+    await settleBackgroundWork();
+    assert.ok(effects.includes("loaded-memory"), "Catch-up validates and applies with a real persisted Memory head.");
+    await reset();
+    await mutateVillageMemoryState((state) => {
+      state.returnCatchup = { batch: { id: "return-batch", status: "recovering" } };
+      state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
+    });
+    registerBackgroundHandler("social-recovery", {
+      async generate(input) {
+        await completeWithRoom(model as any, [{ role: "user", content: input.step }], 100, { debugMode: false });
+        return {};
+      },
+      valid: (state) => state.memories.revision > 0,
+      apply(_state, input) {
+        effects.push(input.step);
+      },
+    });
+    const reinterpret = (step: string): BackgroundInput => ({
+      kind: "social-recovery",
+      subjectId: step,
+      seed: "fixture",
+      revision: step,
+      finite: true,
+      label: "Encounter meaning",
+      input: capturedInput("social-recovery", { entry: { catchupBatchId: "return-batch" }, step }),
+    });
+    await villageBackgroundPresence("interpretation-session", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(reinterpret("cancel-interpretation"));
+    await until(() => releasePendingTiming !== null);
+    await cancelReturnCatchup("return-batch");
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.equal(calls.includes("cancel-interpretation"), false, "Cancelled interpretation does not dispatch.");
+    await reset();
+    await mutateVillageMemoryState((state) => {
+      state.returnCatchup = { batch: { id: "return-batch", status: "recovering" } };
+      state.memories = addMemory(state.memories, { sourceId: "before-interpretation" });
+    });
+    await villageBackgroundPresence("interpretation-hidden", true);
+    holdPendingTiming = true;
+    await queueBackgroundJob(reinterpret("hidden-interpretation"));
+    await until(() => releasePendingTiming !== null);
+    await villageBackgroundPresence("interpretation-hidden", false);
+    releasePendingTiming!();
+    await settleBackgroundWork();
+    assert.equal(calls.includes("hidden-interpretation"), false, "Hidden interpretation does not dispatch.");
+    await villageBackgroundPresence("interpretation-hidden", true);
+    await settleBackgroundWork();
+    assert.ok(effects.includes("hidden-interpretation"), "Interpretation resumes with the persisted Memory payload.");
+    await reset();
+    await mutateVillageState((state) => {
+      const instant = villageNow().toISOString();
+      state.returnCatchup = {
+        batch: {
+          id: "return-batch",
+          status: "running",
+          from: instant,
+          until: instant,
+          opportunities: [
+            {
+              id: "safe",
+              kind: "routine",
+              startsAt: instant,
+              endsAt: instant,
+              actorIds: ["a"],
+              venueId: "",
+              facts: [],
+            },
+          ],
+          records: [{ opportunityId: "safe", status: "settling" }],
+        },
+      };
+      state.socialOutbox = [
+        capturedOutbox(state, "safe:social", "return-batch"),
+        capturedOutbox(state, "unrelated:social"),
+      ] as any;
+    });
+    await cancelReturnCatchup("return-batch");
+    const skipped = await readVillageAuthority();
+    assert.deepEqual(
+      skipped.socialOutbox?.map((row) => row.id),
+      ["unrelated:social"],
+      "Continue discards only the uncommitted return source.",
+    );
+    assert.equal(skipped.returnCatchup?.batch?.records?.[0]?.status, "rejected");
+    await reset();
+    await mutateRelationships("fixture", (state) => {
+      state.applied["partial:social"] = true;
+    });
+    await mutateVillageState((state) => {
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      state.socialOutbox = [capturedOutbox(state, "partial:social", "return-batch")] as any;
+    });
+    await assert.rejects(() => cancelReturnCatchup("return-batch"), /recovering the saved encounter/);
     console.log(
       "villages-background-work: concurrency, checkpoint retry, fairness, presence, recovery, stale results, bounded storage ok",
     );
   } finally {
+    releaseAutomaticGeneration?.();
     stop?.();
     await settleBackgroundWork();
     release();

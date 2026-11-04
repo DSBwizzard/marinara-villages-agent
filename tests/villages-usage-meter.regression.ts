@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
@@ -52,7 +53,7 @@ let calls = 0,
 const release = configureVillagesRuntime({
   isDebugAgentsEnabled: () => false,
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async list(_p: string, kind: string) {
         return [...records.values()].filter((r) => r.kind === kind);
       },
@@ -72,7 +73,7 @@ const release = configureVillagesRuntime({
         records.set(input.id, next);
         return next;
       },
-    },
+    }),
   },
   languageModels: {
     async resolve() {

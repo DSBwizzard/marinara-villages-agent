@@ -1,36 +1,38 @@
+import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import {
   boundedRejectedText,
   privateRejectedText,
   REJECTED_RESPONSE_TEXT_LIMIT,
 } from "../packages/villages/src/server/domain/rules/rejected-response.js";
-import { createHash } from "node:crypto";
-import {
-  coordinateVenue,
-  rejectVenueCompletion,
-  readVenueOperation,
-} from "../packages/villages/src/server/jobs/venue-coordinator.js";
-import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
-import { proposeHappenings } from "../packages/villages/src/server/features/founding/village-bootstrap.js";
-import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
-import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
 import {
   responseDiagnostics,
   sceneMissingFields,
 } from "../packages/villages/src/server/domain/rules/response-diagnostics.js";
-import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { extractSceneReply } from "../packages/villages/src/server/domain/rules/scene-reply-json.js";
+import { buildVenueTextContract } from "../packages/villages/src/server/domain/rules/venue-response-contract.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
 import {
-  registerBackgroundHandler,
-  queueBackgroundJob,
-  startBackgroundWork,
-  settleBackgroundWork,
   backgroundWorkSummaries,
+  backgroundJobSnapshot,
+  queueBackgroundJob,
   recoverBackgroundWork,
+  registerBackgroundHandler,
+  settleBackgroundWork,
+  startBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
+import {
+  coordinateVenue,
+  readVenueOperation,
+  rejectVenueCompletion,
+} from "../packages/villages/src/server/jobs/venue-coordinator.js";
+import { buildResidentPlanningMessages, proposeResidentChoices } from "./fixtures/resident-planning.fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 async function main() {
   const state = defaultVillageState();
@@ -54,7 +56,7 @@ async function main() {
       return structuredClone(row);
     },
     async update(input: any) {
-      if (input.id === "villages-rejected-responses") {
+      if (input.id === "villages-private-diagnostics") {
         if (failDiagnostics) throw Error("fixture diagnostic failure");
         if (conflictDiagnostics) {
           conflictDiagnostics = false;
@@ -92,7 +94,7 @@ async function main() {
   };
   const release = configureVillagesRuntime({
     isDebugAgentsEnabled: () => false,
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     languageModels: { resolveForRequest: async () => model },
     getAgentConfig: async () => null,
     logger: { debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} },
@@ -102,7 +104,7 @@ async function main() {
     setting: "A village",
     moment: deriveVillageMoment({ foundedAt: state.foundedAt, seed: state.seed, now: new Date() }),
     residents: [
-      { characterId: "a", name: "Ada", summary: "Ada", doing: "Resting", profile: "Ada", agenda: { wishes: [] } },
+      { characterId: "a", name: "Ada", summary: "Ada", doing: "Resting", profile: "Ada", wishes: [], agenda: {} },
     ],
     venues: [],
     opportunities: [{ id: "opportunity", kind: "wish", actorIds: ["a"], venueId: "park", facts: ["A quiet morning"] }],
@@ -134,10 +136,10 @@ async function main() {
     ).parseStatus,
     "salvaged",
   );
-  const prompt = buildTickMessages(context);
-  assert.match(prompt[1].content, /Generate the supplied opportunity/);
+  const prompt = buildResidentPlanningMessages(context);
+  assert.match(prompt[1].content, /Review the supplied resident choices/);
   assert.ok(!prompt[1].content.includes("What appears in Events?"));
-  assert.match(prompt[0].content, /"opportunityId":"opportunity"/);
+  assert.match(prompt[0].content, /"id":"opportunity"/);
   const stop = startBackgroundWork();
   try {
     await completeWithRoom(model as any, [{ role: "user", content: "JSON" }], 3000, jsonOptions);
@@ -159,6 +161,7 @@ async function main() {
         kind: "venue-visit",
         revision: 1,
         data: {
+          version: 3,
           id,
           status: "active",
           sceneRevision: 0,
@@ -265,7 +268,7 @@ async function main() {
       }),
       /fixture validation rejection/,
     );
-    const diagnostic = rows.get("villages-rejected-responses").data.entries.at(-1);
+    const diagnostic = readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries.at(-1);
     assert.equal(diagnostic.content, "not JSON");
     assert.equal(diagnostic.reason, "invalid-json");
     assert.equal(diagnostic.model, "fixture");
@@ -281,7 +284,7 @@ async function main() {
       !JSON.stringify(await readVenueOperation("legacy-paid")).includes("not JSON"),
       "public recovery summary never exposes rejected text",
     );
-    for (let index = 0; index < 7; index++) {
+    for (let index = 0; index < 107; index++) {
       const id = "diagnostic-bound-" + index;
       makeLegacy(id, "rejected");
       await assert.rejects(
@@ -294,11 +297,14 @@ async function main() {
       );
     }
     assert.equal(
-      rows.get("villages-rejected-responses").data.entries.length,
-      5,
+      readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries.length,
+      100,
       "diagnostics bounded globally across Scenes",
     );
-    assert.equal(rows.get("villages-rejected-responses").data.entries[0].sceneId, "diagnostic-bound-2");
+    assert.equal(
+      readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries[0].sceneId,
+      "diagnostic-bound-7",
+    );
     const capture = async (id: string) => {
       makeLegacy(id, "rejected");
       await assert.rejects(
@@ -312,10 +318,10 @@ async function main() {
     };
     conflictDiagnostics = true;
     await Promise.all([capture("concurrent-diagnostic-a"), capture("concurrent-diagnostic-b")]);
-    const concurrent = rows.get("villages-rejected-responses").data.entries;
+    const concurrent = readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries;
     assert.ok(concurrent.some((entry: any) => entry.sceneId === "concurrent-diagnostic-a"));
     assert.ok(concurrent.some((entry: any) => entry.sceneId === "concurrent-diagnostic-b"));
-    assert.equal(concurrent.length, 5);
+    assert.equal(concurrent.length, 100);
     failDiagnostics = true;
     await capture("diagnostic-write-failed");
     failDiagnostics = false;
@@ -323,7 +329,7 @@ async function main() {
       rows.get("villages-venue-visit-diagnostic-write-failed").data.operation.attempts["turn:0:" + formatHash].status,
       "rejected",
     );
-    assert.equal(rows.get("villages-rejected-responses").data.entries.length, 5);
+    assert.equal(readPrivateDiagnostics(rows.get("villages-private-diagnostics").data).entries.length, 100);
     const afterDiagnosticFixtures = calls;
     const paidAttempts = rows.get("villages-venue-visit-legacy-paid").data.operation.attempts;
     assert.equal(paidAttempts["turn:0:" + formatHash].status, "rejected", "rejection targets the exact paid retry");
@@ -332,7 +338,7 @@ async function main() {
       "complete",
       "legacy response is not incorrectly rejected",
     );
-    assert.equal(afterDiagnosticFixtures - beforePaid, 11);
+    assert.equal(afterDiagnosticFixtures - beforePaid, 111);
     await assert.rejects(
       coordinateVenue(
         "legacy-paid",
@@ -360,7 +366,7 @@ async function main() {
       output = content;
       finishReason = finish;
       const before = calls;
-      await assert.rejects(proposeHappenings(context), (error: any) => {
+      await assert.rejects(proposeResidentChoices(context), (error: any) => {
         assert.ok(error instanceof WorkFailureError, String(error.stack));
         assert.equal(error.failure.cause, cause);
         assert.equal(error.failure.responseDiagnostics.responseLength, content.trim().length);
@@ -372,7 +378,7 @@ async function main() {
     output = "No entries yet — Events is empty.";
     finishReason = "stop";
     registerBackgroundHandler("agenda", {
-      generate: () => proposeHappenings(context),
+      generate: () => proposeResidentChoices(context),
       valid: () => true,
       apply() {
         throw Error("Invalid output cannot apply");
@@ -390,7 +396,7 @@ async function main() {
     };
     await queueBackgroundJob(input);
     await settleBackgroundWork();
-    const job = [...rows.values()].find((row) => row.kind === "background-work")!.data;
+    const job = (await backgroundJobSnapshot("agenda", "format"))!;
     assert.equal(job.failure.cause, "invalid_json");
     assert.equal(job.steps[0].response.content, output);
     assert.equal(job.steps[0].responseDiagnostics.model, "fixture");
@@ -409,7 +415,15 @@ async function main() {
     const social = { planId: "offered-plan" };
     const supportedContext = {
       ...context,
-      venues: [{ id: "destination", name: "Open home", occupancy: { playerHome: false, residentCharacterId: null } }],
+      venues: [
+        {
+          id: "destination",
+          name: "Open home",
+          classes: ["residence"],
+          residentIds: [],
+          occupancy: { playerHome: false, residentCharacterId: null },
+        },
+      ],
       social: { candidates: [{ id: "offered-plan" }], relationships: [] },
     };
     output = JSON.stringify({
@@ -432,9 +446,8 @@ async function main() {
       lapsed: [{ who: "Ada", wish: "An invented loss" }],
     });
     const beforeValid = calls;
-    const valid = await proposeHappenings(supportedContext);
-    assert.equal(valid.happenings.length, 1);
-    assert.equal(valid.happenings[0].text, "Ada rests beside the gate.");
+    const valid = await proposeResidentChoices(supportedContext);
+    assert.equal(Object.hasOwn(valid, "happenings"), false);
     assert.equal(calls - beforeValid, 1, "supported Events use one completion without repair");
     assert.deepEqual(valid.housingRequests, [{ characterId: "a", kind: "move", venueId: "destination" }]);
     assert.deepEqual(valid.routineIdea, routineIdea);

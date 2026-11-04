@@ -101,22 +101,45 @@ export function materializePlayerSpeech(raw: Record<string, unknown>, input: str
     const row = asRecord(value);
     const resolve = (value: unknown) => {
       const source = asRecord(value);
+      // A supplied quote ID is an exact source reference, not newly authored speech.
+      if (source.quote === undefined && source.id !== undefined && source.text === undefined) {
+        if (source.occurrence !== undefined || !Number.isSafeInteger(source.id) || !quotes[Number(source.id)])
+          return fail();
+        const quote = quotes[Number(source.id)];
+        return { text: quote.text, occurrence: quote.occurrence };
+      }
       if (source.quote !== undefined) {
         if (!Number.isSafeInteger(source.quote) || !quotes[Number(source.quote)]) return fail();
         const quote = quotes[Number(source.quote)];
         return { text: quote.text, occurrence: quote.occurrence };
       }
       if (typeof source.text !== "string" || !source.text.trim()) return fail();
+      let text = source.text;
       let occurrence = source.occurrence;
+      if (!input.includes(text)) {
+        // Quote typography is formatting. Restore the unique original span;
+        // never accept changed words, ambiguous matches or a guessed occurrence.
+        const typography = (value: string) => value.replace(/[‘’]/gu, "'").replace(/[“”]/gu, '"');
+        const normalizedInput = typography(input),
+          normalizedText = typography(text);
+        const start = normalizedInput.indexOf(normalizedText);
+        if (
+          start < 0 ||
+          normalizedInput.indexOf(normalizedText, start + 1) >= 0 ||
+          (occurrence !== undefined && occurrence !== 1)
+        )
+          return fail();
+        text = input.slice(start, start + text.length);
+      }
       // Unique literal spans have exactly one possible provenance. Search every
       // input character, including overlapping matches and private/recalled text.
       if (occurrence === undefined) {
-        const first = input.indexOf(source.text);
-        if (first < 0 || input.indexOf(source.text, first + 1) >= 0) return fail();
+        const first = input.indexOf(text);
+        if (first < 0 || input.indexOf(text, first + 1) >= 0) return fail();
         occurrence = 1;
       }
       if (!Number.isSafeInteger(occurrence)) return fail();
-      return { text: source.text, occurrence: Number(occurrence) };
+      return { text, occurrence: Number(occurrence) };
     };
     const sources = Array.isArray(row.sources) ? row.sources.map(resolve) : [resolve(row)];
     return {
@@ -196,7 +219,7 @@ export function recoverPlayerSpeech(saved: Record<string, unknown>, metadata: Re
     return Object.fromEntries(
       Object.entries(value).map(([key, value]) => [
         key,
-        ["source", "segment"].includes(key) ? reference(value) : remap(value, key),
+        ["source", "segment", "lineId"].includes(key) ? reference(value) : remap(value, key),
       ]),
     );
   };

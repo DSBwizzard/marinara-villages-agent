@@ -1,27 +1,39 @@
+import { chooseLetterFont, legacyLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import { MAX_IDENTITY_DESCRIPTION_LENGTH } from "../../../shared/contracts/resident-description.js";
+import { EMPTY_RESIDENT_ADMISSION, readResidentAdmission } from "../../../shared/helpers/resident-admission.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VillagerCard } from "../../domain/models/catalog-model.js";
 import type { VillageState } from "../../domain/models/world.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
-import { badRequest, notFound } from "../../domain/rules/errors.js";
+import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { influenceSettings } from "../../domain/rules/owned-routine.js";
-import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
+import { initialIdentityDescription } from "../../domain/rules/resident-description.js";
 import { venueResidentIds } from "../../domain/rules/venue-model.js";
 import { venueZones } from "../../domain/rules/venue-zones.js";
+import { randomVillageSeed } from "../../domain/rules/village-clock.js";
+import { MAX_VILLAGERS } from "../../domain/rules/village-limits.js";
 
 export interface ResidentRosterPorts {
+  preparedSpriteManager?(
+    id: string,
+    revision?: number,
+  ): Promise<import("../../../shared/contracts/sprites.js").SpriteManagerState | null>;
   readVillageState(): Promise<VillageState>;
   mutateVillageState(update: (state: VillageState) => void): Promise<VillageState>;
   findVillagerCard(id: string): Promise<VillagerCard | null>;
   queueVillagerAgenda(characterId: string): Promise<void>;
+  queueStartingTies?(): Promise<void>;
   retireBackgroundResident(state: VillageState, characterId: string): void;
 }
 
 /** Roster commands own their saved-world, library and background connections. Construction is inert. */
 export function createResidentRoster({
+  preparedSpriteManager,
   readVillageState,
   mutateVillageState,
   findVillagerCard,
   queueVillagerAgenda,
+  queueStartingTies,
   retireBackgroundResident,
 }: ResidentRosterPorts) {
   /**
@@ -34,7 +46,15 @@ export function createResidentRoster({
    * change from how this used to work: the card's own opening line is NOT the
    * villager's greeting any more. See `greetVillager` for why.
    */
-  async function addVillager(characterId: string): Promise<void> {
+  async function addVillager(
+    characterId: string,
+    spriteSetupRevision?: number,
+    admissionValue?: unknown,
+  ): Promise<void> {
+    const admission =
+      admissionValue === undefined ? { ...EMPTY_RESIDENT_ADMISSION } : readResidentAdmission(admissionValue);
+    if (!admission)
+      throw badRequest("Use a homeworld within 120 characters and starting situation within 1,200 characters.");
     const card = await findVillagerCard(characterId);
     if (!card) throw notFound("That character is not in your library.");
 
@@ -45,7 +65,9 @@ export function createResidentRoster({
     }
 
     if (!alreadyResident) {
+      const spriteManager = await preparedSpriteManager?.(characterId, spriteSetupRevision);
       const addedAt = villageNow().toISOString();
+      const letterFontId = chooseLetterFont(randomVillageSeed());
       await mutateVillageState((state) => {
         if (state.villagers.some((villager) => villager.characterId === characterId)) return;
         if (state.villagers.length >= MAX_VILLAGERS) {
@@ -63,6 +85,13 @@ export function createResidentRoster({
         // what lets the tab tell those two apart.
         state.villagers.push({
           characterId,
+          letterFontId:
+            (state.formerLetterFonts && Object.hasOwn(state.formerLetterFonts, characterId)
+              ? state.formerLetterFonts[characterId]
+              : undefined) ?? letterFontId,
+          admission,
+          spriteManager,
+          identityDescription: initialIdentityDescription(),
           agendaGeneration: "arrival-" + addedAt,
           cardSnapshot: {
             id: card.id,
@@ -85,8 +114,8 @@ export function createResidentRoster({
             capturedAt: addedAt,
           },
           addedAt,
-          agenda: unwrittenVillageAgenda(state.venues, card.name),
-          completedWishes: [],
+          agenda: unwrittenVillageAgenda(state.venues, card.name, villageNow()),
+          wishes: [],
           ingestSchedule: false,
           scheduleInfluence: influenceSettings(null),
           remap: null,
@@ -101,6 +130,7 @@ export function createResidentRoster({
     // next part of the day.
     if (!alreadyResident) {
       await queueVillagerAgenda(characterId);
+      await queueStartingTies?.();
     }
   }
 
@@ -108,12 +138,22 @@ export function createResidentRoster({
   async function removeVillager(characterId: string): Promise<void> {
     let removed = false;
     await mutateVillageState((state) => {
+      const departing = state.villagers.find((villager) => villager.characterId === characterId);
+      if (departing) {
+        state.formerLetterFonts ??= {};
+        Object.defineProperty(state.formerLetterFonts, characterId, {
+          value: departing.letterFontId ?? legacyLetterFont(characterId),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+      }
       const remaining = state.villagers.filter((villager) => villager.characterId !== characterId);
       removed = remaining.length !== state.villagers.length;
       if (removed)
         for (const project of state.projects) {
           if (
-            project.lifecycle?.phase === "construction" &&
+            project.lifecycle?.phase === "working" &&
             project.lifecycle.builderId === characterId &&
             project.lifecycle.workOrder &&
             !project.lifecycle.workOrder.pausedAt
@@ -124,8 +164,8 @@ export function createResidentRoster({
               Date.parse(project.lifecycle.workOrder.completesAt) - now.getTime(),
             );
             project.lifecycle.workOrder.pausedAt = now.toISOString();
-            project.lifecycle.blockedReason = "The Builder left. Choose another willing Villager to finish the work.";
-            project.status = "blocked";
+            project.lifecycle.blockedReason = "Choose a willing resident lead, then Resume.";
+            project.status = project.lifecycle.phase = "paused";
             project.updatedAt = now.toISOString();
           }
         }
@@ -149,20 +189,6 @@ export function createResidentRoster({
               zone.access.inviterIds = [];
               zone.access.memberIds = [];
             }
-            zone.seen = false;
-            zone.lastObserved = undefined;
-            zone.initialImageAttemptedAt = undefined;
-            zone.imageInteriorKey = undefined;
-            zone.preparation = undefined;
-            zone.adaptationPending = false;
-            zone.adaptationSourceArchiveAt = "";
-            zone.description = zone.roomSpecification || zone.purpose || "Vacant residential Private Space.";
-            zone.image = null;
-            zone.state.publicFacts = [];
-            zone.state.items = [];
-            zone.state.features = zone.state.features.filter((feature) => feature.sourceCharacterId !== characterId);
-            zone.state.traces = [];
-            venue.editProposals = venue.editProposals?.filter((proposal) => proposal.zoneId !== zone.id);
           }
           venue.residentIds = venueResidentIds(venue).filter((id) => id !== characterId);
           venue.occupancy.residentCharacterId = venue.residentIds[0] ?? null;
@@ -178,6 +204,23 @@ export function createResidentRoster({
     });
     if (!removed) throw notFound("That villager does not live here.");
   }
-  return { addVillager, removeVillager };
+  async function editIdentityDescription(characterId: string, value: unknown): Promise<void> {
+    const body = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+    if (
+      typeof body.text !== "string" ||
+      body.text.length > MAX_IDENTITY_DESCRIPTION_LENGTH ||
+      typeof body.revision !== "string"
+    )
+      throw badRequest("Use a description of at most 240 characters.");
+    const text = body.text.trim();
+    await mutateVillageState((state) => {
+      const resident = state.villagers.find((row) => row.characterId === characterId);
+      if (!resident) throw notFound("That villager does not live here.");
+      if ((resident.identityDescription?.revision ?? "") !== body.revision)
+        throw conflict("Description changed. Reopen the editor to try again.");
+      resident.identityDescription = { text, revision: randomVillageSeed(), initialGenerationComplete: true };
+    });
+  }
+  return { addVillager, removeVillager, editIdentityDescription };
 }
 export type ResidentRoster = ReturnType<typeof createResidentRoster>;

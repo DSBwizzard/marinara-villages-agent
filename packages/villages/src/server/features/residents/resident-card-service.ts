@@ -7,6 +7,7 @@ import type {
 } from "../../domain/models/world.js";
 import { badRequest, notFound } from "../../domain/rules/errors.js";
 import { unwrittenVillageAgenda } from "../../domain/rules/agenda-plan.js";
+import { villageNow } from "../../adapters/time/clock-gate.js";
 import { snapshotContent, snapshotFromCard } from "../../domain/rules/resident-card-snapshot.js";
 
 export interface ResidentCardPorts {
@@ -75,7 +76,7 @@ export function createResidentCards({
         ...proposed,
       };
       if (proseChanged) {
-        resident.agenda = unwrittenVillageAgenda(state.venues, card.name);
+        resident.agenda = unwrittenVillageAgenda(state.venues, card.name, villageNow());
         resident.remap = null;
         resident.remapFailure = null;
       }

@@ -9,6 +9,7 @@ export type VenueTiming = {
   stages: { stage: string; elapsedMs: number; reused: boolean }[];
 };
 export type VenueOperation = {
+  turnOutcome?: import("../../../shared/contracts/scene-turn-outcome.js").SceneTurnOutcome;
   timing?: VenueTiming;
   failure?: WorkFailure;
   interpretationSettings?: InterpretationSettings;
@@ -27,9 +28,15 @@ export type VenueOperation = {
   sceneRevision: number;
   snapshot: Record<string, unknown> | null;
   checkpoints: Record<string, unknown>;
+  checkpointClaims?: Record<string, { token: string; bodyId: string }>;
   attempts: Record<
     string,
-    { status: "dispatching" | "complete" | "interrupted" | "rejected"; elapsedMs?: number; result?: unknown }
+    {
+      status: "dispatching" | "complete" | "interrupted" | "rejected";
+      elapsedMs?: number;
+      result?: unknown;
+      response?: { id: string; digest: string; claim: string };
+    }
   >;
   error: string;
 };

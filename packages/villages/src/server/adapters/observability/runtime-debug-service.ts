@@ -1,4 +1,5 @@
-import { badRequest } from "../../domain/rules/errors.js";
+import { badRequest, VillagesRequestError } from "../../domain/rules/errors.js";
+import type { LoreDiagnostic, LoreInspection } from "../../../shared/contracts/lore.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import type { villagesDebugAgentsEnabled, villagesDocuments, villagesLogger } from "../engine/runtime-host.js";
 import type { venueDebugContext } from "../operations/operation-context.js";
@@ -24,10 +25,12 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
   let verbose = false;
   let showUsageMeter = true;
   let loaded = false;
+  let loreInspections: LoreDiagnostic[] = [];
   function resetRuntimeDebug(): void {
     verbose = false;
     showUsageMeter = true;
     loaded = false;
+    loreInspections = [];
   }
   function engineEnabled(): boolean {
     try {
@@ -74,6 +77,7 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
       },
     );
     if (typeof value === "boolean") verbose = value;
+    if (!verbose) loreInspections = [];
     if (typeof meter === "boolean") showUsageMeter = meter;
     loaded = true;
     runtimeDebug("logging settings", view());
@@ -83,6 +87,18 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
   function runtimeDebug(event: string, detail: unknown): void {
     if (!view().effective) return;
     try {
+      if (verbose && event === "lore inspection") {
+        const report = detail as LoreInspection;
+        loreInspections.unshift({
+          ...structuredClone(report),
+          entries: report.entries.slice(0, 100).map((entry) => ({ ...entry, name: entry.name.slice(0, 160) })),
+          at: new Date().toISOString(),
+          ...(typeof venueDebugContext().operationId === "string"
+            ? { operationId: String(venueDebugContext().operationId) }
+            : {}),
+        });
+        loreInspections = loreInspections.slice(0, 10);
+      }
       const text = JSON.stringify({ ...venueDebugContext(), event, detail }, (key, value) => {
         if (/^(?:api[_-]?key|authorization|access[_-]?token|secret)$/iu.test(key)) return "[redacted]";
         if (typeof value !== "string") return value;
@@ -97,6 +113,12 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
     }
   }
 
-  return { resetRuntimeDebug, readRuntimeDebug, saveRuntimeDebug, runtimeDebug };
+  async function readLoreInspections() {
+    if (!(await readRuntimeDebug()).verbose)
+      throw new VillagesRequestError(403, "Enable verbose runtime logging to inspect lorebooks.");
+    return { reports: structuredClone(loreInspections) };
+  }
+
+  return { resetRuntimeDebug, readRuntimeDebug, saveRuntimeDebug, runtimeDebug, readLoreInspections };
 }
 export type RuntimeDebug = ReturnType<typeof createRuntimeDebug>;

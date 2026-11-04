@@ -1,5 +1,10 @@
-import assert from "node:assert/strict";
 import type { CapabilityDocumentStore, CapabilityResolvedLanguageModel } from "@marinara-engine/shared";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import {
+  backgroundResponseClaim,
+  retainBackgroundJob,
+} from "../packages/villages/src/server/adapters/storage/background-responses.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -23,13 +28,10 @@ import {
   settleBackgroundWork,
   startBackgroundWork,
 } from "../packages/villages/src/server/jobs/background-work.js";
+import { authorWorldWishFixture, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 async function until(predicate: () => boolean) {
@@ -66,12 +68,16 @@ function fixture(label: string) {
           backstory: "",
           tags: [],
         },
-        completedWishes: [],
+        wishes: [],
         agenda: null,
       }) as any,
   );
   const logger = { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} };
-  const gate = deferred();
+  const gate = deferred(),
+    timingGate = deferred();
+  let holdTiming = false,
+    timingEntered = false;
+  let optionalHold: "before" | "after" | undefined;
   const calls: string[] = [],
     signals: AbortSignal[] = [];
   const settings: string[] = [];
@@ -91,11 +97,27 @@ function fixture(label: string) {
       return structuredClone(row);
     },
     async update(value: any) {
+      const hold =
+        optionalHold &&
+        Object.values(value.data?.optionalAttempts ?? {}).some((row: any) => row.status === "dispatching")
+          ? optionalHold
+          : undefined;
+      if (hold) {
+        optionalHold = undefined;
+        timingEntered = true;
+      }
+      if (hold === "before") await timingGate.promise;
+      if (holdTiming && value.data?.steps?.some((step: any) => step.timing?.outcome === "pending")) {
+        timingEntered = true;
+        holdTiming = false;
+        await timingGate.promise;
+      }
       const old = records.get(value.id);
       if (value.id.startsWith("villages-background-") && conflicts-- > 0) return null;
       if (!old || old.revision !== value.expectedRevision) return null;
       const row = { ...old, ...structuredClone(value), revision: old.revision + 1 };
       records.set(value.id, row);
+      if (hold === "after") await timingGate.promise;
       return structuredClone(row);
     },
     async remove(_packageId: string, id: string, revision: number) {
@@ -120,7 +142,7 @@ function fixture(label: string) {
       calls.push(text);
       signals.push(options.signal);
       await gate.promise;
-      if (fail) throw new Error("synthetic provider unavailable");
+      if (fail) throw new Error("401 Invalid API key");
       return { content: label + ":" + text, finishReason: "stop", usage: { totalTokens: 11 } };
     },
   } as CapabilityResolvedLanguageModel;
@@ -144,7 +166,31 @@ function fixture(label: string) {
     };
   }
   const suppliedHandlers = new Map<"agenda", Handler>([["agenda", handler()]]);
+  let beforeCurrentWrite: (() => Promise<void>) | undefined;
+  function seedRuntimeWorld() {
+    const native = structuredClone(world) as any;
+    delete native.memories;
+    delete native.memoryScenes;
+    delete native.memoryReceipts;
+    delete native.worldPlaces;
+    records.set("villages-village", {
+      id: "villages-village",
+      packageId: "villages",
+      kind: "village",
+      name: label,
+      description: "",
+      revision: (records.get("villages-village")?.revision ?? 0) + 1,
+      data: authorWorldWishFixture(records, { ...native, memoryHead: null }),
+    });
+  }
+  seedRuntimeWorld();
   const service = createBackgroundWork({
+    withCurrentJobWrite: async (work) => {
+      const before = beforeCurrentWrite;
+      beforeCurrentWrite = undefined;
+      await before?.();
+      return work();
+    },
     villagesDocuments: () => documents,
     villagesLogger: () => logger,
     async readVillageState() {
@@ -154,6 +200,7 @@ function fixture(label: string) {
       const next = structuredClone(world);
       await mutate(next);
       world = next;
+      seedRuntimeWorld();
       return structuredClone(world);
     },
     withUsagePurpose: (_purpose, work) => work(),
@@ -163,6 +210,14 @@ function fixture(label: string) {
     handlers: suppliedHandlers,
   });
   return {
+    holdTiming: () => {
+      holdTiming = true;
+    },
+    holdOptional: (stage: "before" | "after") => {
+      optionalHold = stage;
+    },
+    timingEntered: () => timingEntered,
+    timingGate,
     context,
     service,
     documents,
@@ -182,18 +237,108 @@ function fixture(label: string) {
     conflictOnce() {
       conflicts = 1;
     },
-    seedRuntimeWorld() {
-      records.set("villages-village", {
-        id: "villages-village",
-        packageId: "villages",
-        kind: "village",
-        name: label,
-        description: "",
-        revision: 1,
-        data: structuredClone(world),
-      });
+    seedRuntimeWorld,
+    beforeCurrentWrite: (work: () => Promise<void>) => {
+      beforeCurrentWrite = work;
     },
   };
+}
+
+async function dispatchPreflight() {
+  for (const outcome of ["reject", "stop", "replay", "limit", 0, -1, 0.5, NaN, Infinity, 101] as const) {
+    const f = fixture("preflight-" + outcome);
+    const entered = deferred(),
+      release = deferred();
+    let checks = 0,
+      loseEnclosingResult = outcome === "replay";
+    const complete = f.model.chatComplete.bind(f.model);
+    f.model.chatComplete = async (messages, options) => {
+      assert.equal(
+        options?.maxTokens,
+        outcome === "limit" ? 37 : 100,
+        "The provider receives the fitted output allowance",
+      );
+      if (outcome === "limit") {
+        const current = [...f.records.values()].find((row) => row.kind === "background-work")!.data;
+        assert.equal(current.steps[0].timing.requestedOutputTokens, 37, "Fitted timing is durable before dispatch");
+      }
+      return complete(messages, options);
+    };
+    const update = f.documents.update;
+    f.documents.update = async (value) => {
+      if (loseEnclosingResult && (value.data as any)?.hasResult) {
+        loseEnclosingResult = false;
+        throw Error("Enclosing result publication interrupted");
+      }
+      return update(value);
+    };
+    f.gate.resolve();
+    f.service.registerBackgroundHandler("agenda", {
+      valid: () => true,
+      generate: async (value) => {
+        const response = await f.context.backgroundCalls.getStore()!(
+          f.model,
+          [{ role: "user", content: value.text }],
+          100,
+          {
+            temperature: 0,
+            checkpointId: "purchased-stage",
+            beforeBackgroundDispatch: async () => {
+              checks++;
+              if (checks > 1) throw Error("A completed stage must replay without current context preflight");
+              if (outcome === "reject") throw Error("Required System evidence does not fit");
+              if (outcome === "limit") return 37;
+              if (typeof outcome === "number") return outcome;
+              if (outcome === "stop") {
+                entered.resolve();
+                await release.promise;
+              }
+            },
+          },
+        );
+        return response.content;
+      },
+      apply(state, _input, result) {
+        state.setting = result;
+      },
+    });
+    let stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob(input());
+      if (outcome === "stop") {
+        await entered.promise;
+        stop();
+        release.resolve();
+      }
+      await f.service.settleBackgroundWork();
+      const saved = [...f.records.values()].find((row) => row.kind === "background-work")!.data;
+      if (outcome === "reject" || outcome === "stop" || typeof outcome === "number") {
+        assert.equal(f.calls.length, 0);
+        assert.equal(saved.requests, 0, "Failed/cancelled preflight must not count a purchased request");
+        assert.deepEqual(saved.steps, [], "Failed/cancelled preflight leaves no uncertain provider reservation");
+      } else if (outcome === "limit") {
+        assert.equal(f.calls.length, 1);
+        assert.equal(saved.requests, 1);
+        assert.equal(f.world().setting, "preflight-limit:same");
+      } else {
+        assert.equal(saved.steps[0].status, "completed");
+        assert.equal(saved.hasResult, false);
+        stop();
+        loseEnclosingResult = false;
+        stop = f.service.startBackgroundWork();
+        const held = (await f.service.backgroundWorkSummaries())[0];
+        await f.service.retryBackgroundJob(held.id, held.attempt, "recover-enclosing-result", held.instanceId);
+        await f.service.settleBackgroundWork();
+        assert.equal(checks, 1, "Restarted recovery bypasses a new-purchase guard for the saved response");
+        assert.equal(f.calls.length, 1);
+        assert.equal(f.world().setting, "preflight-replay:same");
+      }
+    } finally {
+      stop();
+      release.resolve();
+      await f.service.settleBackgroundWork();
+    }
+  }
 }
 
 async function independentQueues() {
@@ -373,10 +518,16 @@ async function scopedDispatch() {
   const ownerA = createActivationScope(),
     ownerB = createActivationScope();
   const releaseA = ownerA.run(() =>
-    configureVillagesRuntime({ persistence: { documents: a.documents }, logger: a.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(a.documents) },
+      logger: a.logger,
+    } as any),
   );
   const releaseB = ownerB.run(() =>
-    configureVillagesRuntime({ persistence: { documents: b.documents }, logger: b.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(b.documents) },
+      logger: b.logger,
+    } as any),
   );
   const ownedHandler = (f: ReturnType<typeof fixture>): Handler => ({
     generate: async (value) => {
@@ -431,9 +582,351 @@ async function scopedDispatch() {
     ownerB.dispose();
   }
 }
+async function replacedInstanceCallbacks() {
+  for (const stage of [
+    "provider",
+    "setting",
+    "optional",
+    "optional-owner",
+    "optional-reset",
+    "optional-closed",
+    "result",
+    "owner",
+  ] as const) {
+    const f = fixture("recreated-" + stage),
+      entered = deferred(),
+      release = deferred();
+    let optionalCalls = 0,
+      parsed = 0;
+    if (stage !== "provider")
+      f.service.registerBackgroundHandler("agenda", {
+        valid: () => true,
+        async generate() {
+          const complete = f.context.backgroundCalls.getStore()!;
+          const delayed = async () => {
+            entered.resolve();
+            await release.promise;
+            return "old purchased value";
+          };
+          if (stage === "setting") return complete.setting!("delayed-setting", delayed);
+          if (stage.startsWith("optional"))
+            return complete.optionalCompletion!("delayed-optional", async () => {
+              optionalCalls++;
+              return delayed();
+            });
+          return delayed();
+        },
+        recoverSavedResult() {
+          parsed++;
+          return "must not parse";
+        },
+        apply(state, _input, result) {
+          state.setting = result;
+        },
+      });
+    const stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob(input());
+      if (stage === "provider") await until(() => f.calls.length === 1);
+      else await entered.promise;
+      const old = [...f.records.values()].find((row) => row.kind === "background-work")!;
+      if (stage !== "optional-owner" && stage !== "optional-closed") await retainBackgroundJob(f.documents, old.data);
+      const replacement = structuredClone(old);
+      if (stage === "owner" || stage === "optional-owner") replacement.data.owner = randomUUID();
+      else replacement.data.instanceId = randomUUID();
+      replacement.revision++;
+      Object.assign(replacement.data, {
+        status: "interrupted",
+        steps: [],
+        optionalAttempts: stage === "optional-owner" ? replacement.data.optionalAttempts : {},
+        settings: {},
+        requests: 0,
+        tokens: null,
+        hasResult: false,
+        result: undefined,
+      });
+      f.records.set(old.id, replacement);
+      if (stage === "optional-reset") f.records.get("villages-village").data.seed = "explicitly-reset-world";
+      const expected = structuredClone(replacement);
+      release.resolve();
+      f.gate.resolve();
+      await f.service.settleBackgroundWork();
+      assert.deepEqual(
+        f.records.get(old.id),
+        expected,
+        stage + " cannot alter a replacement with the same logical ID and counter",
+      );
+      assert.equal(f.world().setting, "", "Old results cannot commit a World effect");
+      if (stage === "provider") {
+        const body = [...f.records.values()].find((row) => row.kind === "generation-response");
+        assert.equal(
+          body.data.instanceId,
+          old.data.instanceId,
+          "Late purchased evidence remains owned by its original instance",
+        );
+      }
+      if (stage.startsWith("optional")) {
+        assert.equal(optionalCalls, 1);
+        assert.equal(
+          [...f.records.values()].some(
+            (row) =>
+              row.kind === "background-history" &&
+              row.data.instanceId === old.data.instanceId &&
+              row.data.optionalAttempts?.["delayed-optional"]?.result === "old purchased value",
+          ),
+          stage === "optional" || stage === "optional-owner",
+          "Only a durable same-world reservation may retain a known optional result",
+        );
+      }
+      if (stage !== "owner" && stage !== "optional-owner") {
+        await assert.rejects(
+          f.service.retryBackgroundJob(old.id, old.data.attempt, "stale-instance", old.data.instanceId),
+          /changed/,
+        );
+        assert.equal(parsed, 0, "Stale Retry fails before parsing or dispatching work");
+      }
+    } finally {
+      stop();
+      release.resolve();
+      f.gate.resolve();
+      await f.service.settleBackgroundWork();
+    }
+  }
+}
+async function reusedNativeRevisions() {
+  for (const stage of ["update", "remove"] as const) {
+    const f = fixture("revision-reuse-" + stage),
+      entered = deferred(),
+      release = deferred();
+    if (stage === "remove") f.gate.resolve();
+    const stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob(input(stage === "remove" ? "gone" : "same"));
+      if (stage === "remove") await f.service.settleBackgroundWork();
+      else await until(() => f.calls.length === 1);
+      const old = [...f.records.values()].find((row) => row.kind === "background-work")!;
+      old.revision = 1;
+      f.beforeCurrentWrite(async () => {
+        entered.resolve();
+        await release.promise;
+      });
+      const removal = stage === "remove" ? f.service.backgroundWorkSummaries() : undefined;
+      if (stage === "update") f.gate.resolve();
+      await entered.promise;
+      await retainBackgroundJob(f.documents, old.data);
+      assert.equal(await f.documents.remove("villages", old.id, 1), true);
+      const data = {
+        ...structuredClone(old.data),
+        instanceId: randomUUID(),
+        status: "interrupted",
+        steps: [],
+        settings: {},
+        hasResult: false,
+        result: undefined,
+      };
+      const replacement = await f.documents.create({ ...old, data });
+      assert.equal(replacement.revision, 1, "Native create reuses the deleted row's revision");
+      release.resolve();
+      await removal;
+      await f.service.settleBackgroundWork();
+      assert.deepEqual(
+        f.records.get(old.id),
+        replacement,
+        "Stale " + stage + " cannot act on a recreated revision-1 row",
+      );
+      if (stage === "update") assert.equal(f.world().setting, "");
+    } finally {
+      release.resolve();
+      f.gate.resolve();
+      stop();
+      await f.service.settleBackgroundWork();
+    }
+  }
+  for (const stage of ["dispatch", "founding"] as const) {
+    const f = fixture("recovery-snapshot-" + stage),
+      entered = deferred(),
+      release = deferred();
+    const stop = f.service.startBackgroundWork();
+    try {
+      await f.service.queueBackgroundJob({ ...input(), legacyError: "Hold without purchasing" });
+      await f.service.settleBackgroundWork();
+      const old = [...f.records.values()].find((row) => row.kind === "background-work")!;
+      Object.assign(old.data, { owner: "previous-activation", status: "queued", requests: 0 });
+      if (stage === "dispatch") {
+        old.data.steps = [{ fingerprint: "unknown-request", status: "running" }];
+        old.data.steps[0].responseClaim = backgroundResponseClaim(old.data, 0);
+      } else old.data.input = { foundingContract: 1 };
+      const list = f.documents.list;
+      let once = true;
+      f.documents.list = async (pkg, kind) => {
+        const records = await list(pkg, kind);
+        if (kind === "background-work" && once) {
+          once = false;
+          entered.resolve();
+          await release.promise;
+        }
+        return records;
+      };
+      const recovery = f.service.recoverBackgroundWork();
+      const failed = assert.rejects(recovery, /recovery ownership changed/);
+      await entered.promise;
+      assert.equal(await f.documents.remove("villages", old.id, old.revision), true);
+      const replacement = await f.documents.create({
+        ...old,
+        data: {
+          ...structuredClone(old.data),
+          instanceId: randomUUID(),
+          steps: [],
+          input: {},
+          status: "failed",
+        },
+      });
+      release.resolve();
+      await failed;
+      assert.deepEqual(
+        f.records.get(old.id),
+        replacement,
+        "A listed old " + stage + " cannot interrupt a different instance",
+      );
+      assert.equal(f.calls.length, 0);
+    } finally {
+      release.resolve();
+      stop();
+      await f.service.settleBackgroundWork();
+    }
+  }
+}
 async function main() {
+  await replacedInstanceCallbacks();
+  await reusedNativeRevisions();
+  const admittedRetry = fixture("explicit-admission-replay");
+  admittedRetry.fail(true);
+  admittedRetry.gate.resolve();
+  const stopAdmittedRetry = admittedRetry.service.startBackgroundWork();
+  try {
+    await admittedRetry.service.queueBackgroundJob({ ...input(), retryActionId: "founding-admission-action" });
+    await admittedRetry.service.settleBackgroundWork();
+    const held = (await admittedRetry.service.backgroundWorkSummaries())[0];
+    await admittedRetry.service.retryBackgroundJob(held.id, held.attempt, "founding-admission-action", held.instanceId);
+    await admittedRetry.service.settleBackgroundWork();
+    assert.equal(
+      admittedRetry.calls.length,
+      1,
+      "Replaying the explicit action which created this job never purchases another request",
+    );
+    assert.equal((await admittedRetry.service.backgroundWorkSummaries())[0].attempt, held.attempt);
+  } finally {
+    stopAdmittedRetry();
+    await admittedRetry.service.settleBackgroundWork();
+  }
+  await dispatchPreflight();
   await independentQueues();
   await connectionAndPresenceIsolation();
+  const admission = fixture("superseded-admission");
+  admission.gate.resolve();
+  admission.holdTiming();
+  const stopAdmission = admission.service.startBackgroundWork({ now: () => 0 });
+  try {
+    await admission.service.queueBackgroundJob(input());
+    await until(admission.timingEntered);
+    await admission.service.queueBackgroundJob({ ...input(), revision: "replacement" });
+    admission.timingGate.resolve();
+    await admission.service.settleBackgroundWork();
+    assert.deepEqual(
+      admission.calls,
+      ["same"],
+      "supersession during timing persistence dispatches only the replacement",
+    );
+    assert.equal((await admission.service.backgroundWorkSummaries())[0].status, "completed");
+  } finally {
+    stopAdmission();
+    admission.timingGate.resolve();
+    await admission.service.settleBackgroundWork();
+  }
+  for (const stage of ["before", "after"] as const) {
+    const pending = fixture("unsubmitted-optional-" + stage);
+    pending.holdOptional(stage);
+    let calls = 0;
+    pending.service.registerBackgroundHandler("agenda", {
+      generate: async () =>
+        pending.context.backgroundCalls.getStore()!.optionalCompletion!("decision", async () => {
+          calls++;
+          return "done";
+        }),
+      valid: () => true,
+      apply(state, _input, result) {
+        state.setting = result;
+      },
+    });
+    const stop = pending.service.startBackgroundWork();
+    try {
+      await pending.service.queueBackgroundJob(input());
+      await until(pending.timingEntered);
+      await pending.service.queueBackgroundJob({ ...input(), revision: "replacement" });
+      pending.timingGate.resolve();
+      await pending.service.settleBackgroundWork();
+      assert.equal(calls, 1, "A superseded unsubmitted optional reservation never invokes its provider.");
+      assert.equal((await pending.service.backgroundWorkSummaries())[0].status, "completed");
+      assert.equal(
+        [...pending.records.values()].filter((row) => row.kind === "background-history").length,
+        0,
+        "Unsubmitted optional work cannot become uncertain history.",
+      );
+    } finally {
+      stop();
+      pending.timingGate.resolve();
+      await pending.service.settleBackgroundWork();
+    }
+  }
+  const replaced = fixture("late-config");
+  const stopReplaced = replaced.service.startBackgroundWork({ now: () => 0 });
+  try {
+    replaced.fail(true);
+    await replaced.service.queueBackgroundJob(input());
+    await until(() => replaced.calls.length === 1);
+    await replaced.service.queueBackgroundJob({ ...input(), revision: "new-input" });
+    replaced.gate.resolve();
+    await replaced.service.settleBackgroundWork();
+    assert.equal(
+      replaced.calls.length,
+      1,
+      "An uncertain superseded request holds replacement work for explicit Retry.",
+    );
+    assert.equal(
+      [...replaced.records.values()].filter((row) => row.kind === "background-connection").length,
+      0,
+      "The old failed callback cannot impose a connection pause.",
+    );
+    const held = (await replaced.service.backgroundWorkSummaries())[0];
+    assert.equal(held.status, "interrupted");
+    await replaced.service.retryBackgroundJob(held.id, held.attempt, "retry-held-replacement", held.instanceId);
+    await replaced.service.settleBackgroundWork();
+    assert.equal(replaced.calls.length, 2, "Explicit Retry authorizes the separately admitted replacement.");
+    const replacement = (await replaced.service.backgroundWorkSummaries())[0];
+    assert.notEqual(replacement.instanceId, held.instanceId);
+    await replaced.service.retryBackgroundJob(held.id, held.attempt, "retry-held-replacement", held.instanceId);
+    await replaced.service.retryBackgroundJob(
+      replacement.id,
+      replacement.attempt,
+      "retry-held-replacement",
+      replacement.instanceId,
+    );
+    await replaced.service.settleBackgroundWork();
+    assert.equal(
+      replaced.calls.length,
+      2,
+      "Lost replacement acknowledgements and its original admission action replay without another purchase",
+    );
+    assert.equal(
+      [...replaced.records.values()].filter((row) => row.kind === "background-connection").length,
+      1,
+      "Only the replacement's own failure can pause its connection.",
+    );
+  } finally {
+    stopReplaced();
+    replaced.gate.resolve();
+    await replaced.service.settleBackgroundWork();
+  }
   await nestedContexts();
   await defaultContextDispatch();
   await scopedDispatch();

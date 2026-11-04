@@ -5,15 +5,41 @@ import { parseFoundingVenueSuggestions } from "../packages/villages/src/server/d
 import { arrangeQuickStartVenues } from "../packages/villages/src/client/features/founding/quick-start-placement.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import { calculateSetupBeginningSourceKey } from "../packages/villages/src/client/features/founding/calculations.js";
-import { mergeQuickStartSpaces } from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import {
+  quickStartTemplates,
+  replaceQuickStartVenue,
+} from "../packages/villages/src/client/features/founding/quick-start-drafts.js";
+import { addFoundingZone } from "../packages/villages/src/client/features/founding/founding-template.js";
+import { foundingZoneProblem } from "../packages/villages/src/client/features/founding/villages-founding-zones.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { extractFoundingVenueReply } from "../packages/villages/src/server/domain/rules/founding-venue-reply.js";
 
 const rows = [
-  { id: "player", venueClass: "residence", residentCharacterId: "", form: "Stolen hearse" },
-  { id: "buster", venueClass: "residence", residentCharacterId: "buster", form: "Dumpster" },
-  { id: "community", venueClass: "community", residentCharacterId: "", form: "Covered market" },
+  {
+    id: "player",
+    residentIds: [],
+    playerHome: true,
+    venueClass: "residence",
+    residentCharacterId: "",
+    form: "Stolen hearse",
+  },
+  {
+    id: "buster",
+    residentIds: ["buster"],
+    playerHome: false,
+    venueClass: "residence",
+    residentCharacterId: "buster",
+    form: "Dumpster",
+  },
+  {
+    id: "community",
+    residentIds: [],
+    playerHome: false,
+    venueClass: "community",
+    residentCharacterId: "",
+    form: "Covered market",
+  },
 ];
 const suggestions = rows.map((row) => ({
   id: row.id,
@@ -34,7 +60,7 @@ const suggestions = rows.map((row) => ({
   commonDescription: "A bench beside the opening.",
   privateName: row.venueClass === "community" ? "" : "Resting nook",
   privatePurpose: row.venueClass === "community" ? "" : "Resting and storing belongings",
-  privateDescription: row.id === "player" ? "A berth behind a curtain." : "Secret must never leave the server",
+  privateDescription: row.id === "player" ? "A berth behind a curtain." : "A resident berth with a blue blanket.",
 }));
 const parsed = parseFoundingVenueSuggestions(
   { venues: suggestions },
@@ -44,49 +70,94 @@ const parsed = parseFoundingVenueSuggestions(
 );
 assert.equal(parsed[0].privateDescription, "A berth behind a curtain.");
 const draft = newSetupVenue("player", "residence", 0.2, 0.3, true);
-draft.name = parsed[0].name;
-draft.form = parsed[0].form;
-draft.description = parsed[0].description;
+draft.name = "Authored name";
+draft.form = "Authored form";
 draft.spaces![0].name = "My authored cabin";
-const complete = mergeQuickStartSpaces(draft, structuredClone(draft), parsed[0], ["spaces"]);
-assert.equal(complete.spaces![0].name, "My authored cabin");
-assert.equal(
-  complete.spaces![0].description,
-  parsed[0].commonDescription,
-  "generation fills missing fields even after another field is authored",
+draft.spaces![0].image = { id: "photo", ref: "global-gallery:photo", url: "/photo.webp" };
+draft.spaces!.push({ ...draft.spaces![0], id: "extra", name: "Extra" });
+draft.destinations = { player: { sleep: "extra" } };
+draft.zoneLayout = { exterior: { x: 0, y: 0 }, extra: { x: 3, y: 0 } };
+const before = structuredClone(draft);
+const fresh = quickStartTemplates([draft])[0];
+const complete = replaceQuickStartVenue(fresh, parsed[0]);
+assert.deepEqual(draft, before, "preparing fresh inputs never mutates the draft");
+assert.equal(complete.name, parsed[0].name);
+assert.equal(complete.form, parsed[0].form);
+assert.equal(complete.spaces![0].name, parsed[0].commonName);
+assert.equal(complete.spaces!.length, 1);
+assert.equal(complete.privateSpaces!.length, 1);
+assert.equal(complete.spaces![0].image, null);
+assert.equal(complete.destinations, undefined);
+assert.equal(complete.zoneLayout, undefined);
+assert.deepEqual(foundingVenueIssues([complete]), []);
+assert.doesNotThrow(() => parsePlace(complete, true));
+for (const personal of [false, true]) {
+  const added = addFoundingZone(complete, personal, "zone:new");
+  assert.equal(foundingZoneProblem(added), "", "New Zones have usable, editable defaults");
+  const zone = (personal ? added.privateSpaces! : added.spaces!).at(-1)!;
+  assert.ok(zone.purpose);
+  assert.ok(zone.description);
+  assert.doesNotThrow(() => parsePlace(added, true));
+  zone.purpose = "";
+  assert.match(foundingZoneProblem(added), /describe what it is used for/);
+  assert.throws(() => parsePlace(added, true), /name and purpose/);
+  zone.purpose = "Authored purpose";
+  zone.description = "Authored appearance";
+  assert.equal(foundingZoneProblem(added), "");
+  assert.doesNotThrow(() => parsePlace(added, true));
+}
+const templates = quickStartTemplates([
+  draft,
+  {
+    ...draft,
+    id: "npc",
+    residentIds: ["buster"],
+    occupancy: { ...draft.occupancy, playerHome: false, residentCharacterId: "buster" },
+  },
+  newSetupVenue("community", "community", 0.5, 0.5),
+]);
+assert.deepEqual(
+  templates.map((row) => [row.spaces!.length, row.privateSpaces!.length]),
+  [
+    [1, 1],
+    [1, 1],
+    [1, 0],
+  ],
 );
-assert.deepEqual(foundingVenueIssues([complete], false, true), []);
-assert.doesNotThrow(() => parsePlace(complete, true), "Quick Start produces a server-valid founding Residence");
-const singleSpace = { ...draft, layout: "common" as const, privateSpaces: [] };
+assert.equal(templates[1].privateSpaces![0].ownerId, "buster");
 assert.equal(
-  mergeQuickStartSpaces(singleSpace, structuredClone(singleSpace), parsed[0], ["layout"]).privateSpaces?.length,
-  1,
-  "explicit Quick Start completes a pre-existing single-space draft",
+  replaceQuickStartVenue(templates[1], parsed[1]).privateSpaces![0].description,
+  "A resident berth with a blue blanket.",
 );
-assert.equal(
-  mergeQuickStartSpaces(singleSpace, draft, parsed[0], ["layout"]),
-  singleSpace,
-  "a layout changed while generation was pending is preserved",
-);
-const editedDuringRequest = structuredClone(complete);
-editedDuringRequest.spaces![0].description = "";
-assert.equal(
-  mergeQuickStartSpaces(editedDuringRequest, complete, parsed[0], ["spaces"]).spaces![0].description,
-  "",
-  "even an empty in-flight field edit is retained",
-);
-assert.equal(Object.hasOwn(parsed[1], "privateDescription"), false, "villager interior is not returned to the client");
-for (const layout of ["common", "private", "exterior"])
-  assert.throws(
-    () =>
-      parseFoundingVenueSuggestions(
-        { venues: [{ ...suggestions[0], layout }, ...suggestions.slice(1)] },
-        rows.map((row) => row.id),
-        rows,
-        true,
-      ),
-    /both Common Space and Private Space/,
+assert.equal(templates[2].category, "public-center");
+assert.equal(parsed[1].privateDescription, "A resident berth with a blue blanket.");
+for (const layout of ["common", "private"]) {
+  const suggestion = {
+    ...suggestions[0],
+    layout,
+    connections: layout === "common" ? [["exterior", "common:base"]] : [["exterior", "private:base"]],
+  };
+  assert.equal(
+    parseFoundingVenueSuggestions(
+      { venues: [suggestion, ...suggestions.slice(1)] },
+      rows.map((row) => row.id),
+      rows,
+      true,
+    )[0].layout,
+    layout,
+    "a private sleeping room is optional",
   );
+}
+assert.throws(
+  () =>
+    parseFoundingVenueSuggestions(
+      { venues: [{ ...suggestions[0], layout: "exterior" }, ...suggestions.slice(1)] },
+      rows.map((row) => row.id),
+      rows,
+      true,
+    ),
+  /Common or Private/,
+);
 assert.throws(
   () =>
     parseFoundingVenueSuggestions(
@@ -172,13 +243,10 @@ const request = {
   mode: "quick-start",
   villageName: "Tidebreak",
   setting: "A coastal settlement made of salvaged shelters",
-  foundingDetails: "We have rented space beside the docks",
-  worldFacts: ["The tide floods the lower street"],
-  scenarioImprint: {
-    origin: "Dockside shelter",
-    worldFacts: ["The railway is abandoned"],
-    openingConditions: [],
-    visualCues: [],
+  communityVenueId: "community",
+  context: {
+    rules: "The tide floods the lower street",
+    circumstances: [{ scope: "village", summary: "The railway is abandoned" }],
   },
   playerPersonaId: "driver",
   selectedLorebookIds: ["coast"],
@@ -188,13 +256,13 @@ const request = {
 const generated = await service.suggestStartingVenues(request);
 assert.deepEqual(generated.venues, parsed);
 assert.equal(calls, 1, "one explicit generation makes one model request");
-assert.match(system, /EVERY Residence MUST have layout both/);
+assert.match(system, /single-person Residence/);
 assert.match(system, /dumpster.*train car.*stolen hearse/);
 assert.match(system, /Sleeps in a stolen hearse/);
 assert.match(system, /discarded shelters/);
 assert.match(system, /old market/);
-assert.deepEqual(input.worldFacts, request.worldFacts);
-assert.deepEqual(input.scenario, request.scenarioImprint);
+assert.equal(input.worldRules, request.context.rules);
+assert.deepEqual(input.currentCircumstances, ["The railway is abandoned"]);
 assert.equal(input.villageName, "Tidebreak");
 assert.match(loreQuery, /tide floods/);
 assert.match(loreQuery, /railway is abandoned/);
@@ -216,9 +284,94 @@ await assert.rejects(
 );
 await assert.rejects(service.suggestStartingVenues({ ...request, mode: "automatic" }), /valid Venue suggestion mode/);
 assert.equal(calls, 2, "invalid requests never reach the model");
-replyState.override = { venues: suggestions.map((row) => (row.id === "buster" ? { ...row, layout: "private" } : row)) };
-await assert.rejects(service.suggestStartingVenues(request), /both Common Space and Private Space/);
-assert.equal(calls, 3, "invalid model output is rejected without an automatic paid retry");
+const scoped = await service.suggestStartingVenues({ ...request, mode: undefined, targetVenueId: "buster" });
+assert.deepEqual(
+  scoped.venues.map((venue) => venue.id),
+  ["buster"],
+  "Ordinary selected-Venue details require one response row",
+);
+assert.match(system, /keeps all existing Zones/);
+const beforeInvalidModel = calls;
+replyState.override = {
+  venues: suggestions.map((row) => (row.id === "buster" ? { ...row, layout: "exterior" } : row)),
+};
+await assert.rejects(service.suggestStartingVenues(request), /Common or Private/);
+assert.equal(calls, beforeInvalidModel + 1, "invalid model output is rejected without an automatic paid retry");
+
+{
+  replyState.override = undefined;
+  const selectedPlace = {
+    ...request,
+    venues: rows.map((row) => (row.id === "community" ? { ...row, venueClass: "other" } : row)),
+  };
+  await service.suggestStartingVenues(selectedPlace);
+  assert.equal(input.communityVenueId, "community");
+  assert.equal(
+    input.responseTemplate.venues.find((row: any) => row.id === "community").layout,
+    "common",
+    "The Community designation is independent of a Venue's class",
+  );
+  replyState.override = {
+    venues: suggestions.map((row) =>
+      row.id === "community"
+        ? {
+            ...row,
+            layout: "private",
+            commonName: "",
+            commonPurpose: "",
+            commonDescription: "",
+            privateName: "Closed room",
+            privatePurpose: "Private use",
+            privateDescription: "An enclosed room",
+            connections: [["exterior", "private:base"]],
+          }
+        : row,
+    ),
+  };
+  await assert.rejects(
+    service.suggestStartingVenues(selectedPlace),
+    /Common only/,
+    "The designated place needs a public common space even when its Class is Other",
+  );
+  replyState.override = undefined;
+}
+
+{
+  const priorCommunity = suggestions.find((row) => row.id === "community")!;
+  replyState.override = {
+    venues: [
+      ...suggestions.map((row) =>
+        row.id === "community"
+          ? {
+              ...row,
+              layout: "both",
+              privateName: "Archive",
+              privatePurpose: "Storage",
+              privateDescription: "A quiet archive",
+              connections: [
+                ["exterior", "common:base"],
+                ["common:base", "private:base"],
+              ],
+            }
+          : row,
+      ),
+      { ...priorCommunity, id: "courtyard", name: "New courtyard" },
+    ],
+  };
+  const moved = {
+    ...request,
+    communityVenueId: "courtyard",
+    venues: [...rows, { ...rows.find((row) => row.id === "community")!, id: "courtyard", venueClass: "other" }],
+  };
+  const result = await service.suggestStartingVenues(moved);
+  assert.equal(
+    result.venues.find((row) => row.id === "community")!.layout,
+    "both",
+    "A former Community Venue can have an ordinary layout",
+  );
+  assert.equal(result.venues.find((row) => row.id === "courtyard")!.layout, "common");
+  replyState.override = undefined;
+}
 
 // Recover complete values locally; formatting never authorizes another model request.
 const reply = JSON.stringify({ venues: suggestions });
@@ -260,6 +413,10 @@ for (const content of [
   `Example {"venues":[]}\nFinal ${reply}`,
   `{"venues":[${JSON.stringify(suggestions[0])},,]}`,
   "{'venues':[]}",
+  `${reply}, action: null`,
+  `{true} ${reply}`,
+  `${reply} {null}`,
+  `${reply} {false}`,
 ]) {
   assert.equal(
     extractFoundingVenueReply(content),
@@ -304,7 +461,7 @@ assert.equal(calls, beforeTruncation + 1);
 delete replyState.content;
 delete replyState.finishReason;
 
-for (const count of [3, 4, 5]) {
+for (const count of [3, 4, 5, 16]) {
   const venues = Array.from({ length: count }, (_, index) => {
     const venue = newSetupVenue(String(index), index === count - 1 ? "community" : "residence", 0.2, 0.3, index === 0);
     venue.presentation.x = index === 0 ? 0.22 : null;
@@ -320,18 +477,17 @@ for (const count of [3, 4, 5]) {
 const context: any = {
   personaDraft: "driver",
   setupSetting: request.setting,
-  setupFoundingDetails: request.foundingDetails,
   setupLorebookDraft: [],
-  selectedResidentContexts: {},
-  setupWorldFacts: request.worldFacts,
+  selectedResidentAdmissions: {},
+  setupContext: request.context,
   setupName: "Tidebreak",
-  setupImprint: request.scenarioImprint,
 };
 const key = calculateSetupBeginningSourceKey(context);
 for (const patch of [
-  { setupWorldFacts: ["Changed fact"] },
+  { setupContext: { ...request.context, rules: "Changed rule" } },
   { setupName: "Changed name" },
-  { setupImprint: { origin: "Changed origin" } },
+  { setupSetting: "A thriving farm" },
+  { setupWorldName: "Othiras" },
 ])
   assert.notEqual(
     calculateSetupBeginningSourceKey({ ...context, ...patch }),
@@ -339,5 +495,24 @@ for (const patch of [
     "changed context fences old suggestions",
   );
 console.log(
-  "Quick Start: complete context, enforced spaces, hidden villager interiors, one-call regeneration and preserved placement pass (synthetic model).",
+  "Quick Start: fresh replacement, template defaults, visible villager interiors and one-call generation pass (synthetic model).",
 );
+
+{
+  let paid = 0;
+  const drafts = createFoundingDrafts({
+    villagesLanguageModels: () => {
+      paid++;
+      throw Error("Unexpected model lookup");
+    },
+  } as any);
+  await assert.rejects(
+    drafts.suggestStartingVenues({
+      setting: "A local community",
+      context: {},
+      venues: Array.from({ length: 17 }, (_, i) => ({ id: String(i) })),
+    }),
+    /sixteen/,
+  );
+  assert.equal(paid, 0, "Capacity rejects before any generation");
+}

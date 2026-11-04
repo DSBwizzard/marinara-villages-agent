@@ -1,27 +1,34 @@
+import type { FastifyInstance } from "fastify";
+import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
+import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
+import { createRenovationProject } from "../projects/project-lifecycle.js";
 import {
   approveVillageResidence,
   completeVillageResidence,
   decideVillageResidence,
+  movePlayerToResidence,
   proposeVillageResidence,
-  retryResidencePrivateSpaceAdaptation,
 } from "../venues/residences.js";
-import { fail, readPlaceId, readVenueId } from "../../adapters/http/route-support.js";
-import { retryPrivateSpaces } from "../../jobs/private-space-preparation.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
-import { decideVillageHomeUpgrade, decideVillageVenueRequest } from "./venue-requests.js";
-import { proposeResidenceSpaceEdit, updateVillageZone } from "./zone-edits.js";
 import {
   changeVenueAccess,
-  createVillageVenue,
   deleteVillageVenue,
   previewVillageVenueDeletion,
   updateVillageVenue,
+  renameVillageZone,
+  updateVenueZoneLayout,
 } from "./services.js";
-import { decideVillagerVenueImprovement, proposePlayerMove, proposeVenueChange } from "./venue-mailbox.js";
-import type { FastifyInstance } from "fastify";
+import { decideVillageVenueRequest } from "./venue-requests.js";
 
 export function registerVenueAccessRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.put<{ Params: { venueId: string }; Body: unknown }>("/venues/:venueId/layout", async (request, reply) => {
+    try {
+      return await updateVenueZoneLayout(readPlaceId(request.params.venueId), request.body);
+    } catch (error) {
+      return fail(reply, error, "editing the Zone layout");
+    }
+  });
   app.post("/private-spaces/retry", async (_request, reply) => {
     try {
       await retryPrivateSpaces();
@@ -38,10 +45,10 @@ export function registerVenueAccessRoutes(engine: FastifyInstance) {
     }
   });
   app.put<{ Params: { venueId: string; zoneId: string }; Body: unknown }>(
-    "/venues/:venueId/zones/:zoneId",
+    "/venues/:venueId/zones/:zoneId/name",
     async (request, reply) => {
       try {
-        return await updateVillageZone(
+        return await renameVillageZone(
           readPlaceId(request.params.venueId),
           readPlaceId(request.params.zoneId),
           request.body,
@@ -51,16 +58,6 @@ export function registerVenueAccessRoutes(engine: FastifyInstance) {
       }
     },
   );
-}
-export function registerVenueCreationRoutes(engine: FastifyInstance) {
-  const app = engine;
-  app.post<{ Body: unknown }>("/locations/venue", async (request, reply) => {
-    try {
-      return await createVillageVenue(request.body);
-    } catch (error) {
-      return fail(reply, error, "creating a place");
-    }
-  });
 }
 export function registerVenueManagementRoutes(engine: FastifyInstance) {
   const app = engine;
@@ -81,20 +78,6 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       return fail(reply, error, "denying a venue request");
     }
   });
-  app.post<{ Params: { requestId: string } }>("/venue-upgrades/:requestId/approve", async (request, reply) => {
-    try {
-      return await decideVillageHomeUpgrade(readVenueId(request.params.requestId), true);
-    } catch (error) {
-      return fail(reply, error, "approving a home upgrade");
-    }
-  });
-  app.post<{ Params: { requestId: string } }>("/venue-upgrades/:requestId/deny", async (request, reply) => {
-    try {
-      return await decideVillageHomeUpgrade(readVenueId(request.params.requestId), false);
-    } catch (error) {
-      return fail(reply, error, "denying a home upgrade");
-    }
-  });
   app.put<{ Params: { venueId: string }; Body: unknown }>("/locations/venue/:venueId", async (request, reply) => {
     try {
       return await updateVillageVenue(readVenueId(request.params.venueId), request.body);
@@ -102,16 +85,6 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       return fail(reply, error, "updating a place");
     }
   });
-  app.post<{ Params: { venueId: string }; Body: unknown }>(
-    "/locations/venue/:venueId/edit-proposals",
-    async (request, reply) => {
-      try {
-        return await proposeResidenceSpaceEdit(readVenueId(request.params.venueId), request.body);
-      } catch (error) {
-        return fail(reply, error, "proposing a Residence edit");
-      }
-    },
-  );
   app.get<{ Params: { venueId: string } }>("/locations/venue/:venueId/dependencies", async (request, reply) => {
     try {
       return await previewVillageVenueDeletion(readVenueId(request.params.venueId));
@@ -149,7 +122,7 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
     "/locations/venue/:venueId/proposals",
     async (request, reply) => {
       try {
-        await proposeVenueChange(readVenueId(request.params.venueId), request.body);
+        await createRenovationProject(readVenueId(request.params.venueId), request.body);
         return await buildVillageSnapshot();
       } catch (error) {
         return fail(reply, error, "proposing a Venue change");
@@ -160,7 +133,7 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
     "/locations/venue/:venueId/player-move",
     async (request, reply) => {
       try {
-        await proposePlayerMove(
+        await movePlayerToResidence(
           readVenueId(request.params.venueId),
           typeof request.body?.privateZoneId === "string" ? request.body.privateZoneId : "",
         );
@@ -170,47 +143,38 @@ export function registerVenueManagementRoutes(engine: FastifyInstance) {
       }
     },
   );
-  app.post<{
-    Params: { mailId: string };
-    Body: { approved?: unknown; title?: unknown; description?: unknown; extraBeds?: unknown; slot?: unknown };
-  }>("/venue-mail/:mailId/decision", async (request, reply) => {
-    try {
-      await decideVillagerVenueImprovement(
-        readVenueId(request.params.mailId),
-        request.body?.approved === true,
-        request.body,
-      );
-      return await buildVillageSnapshot();
-    } catch (error) {
-      return fail(reply, error, "deciding a Venue improvement");
-    }
-  });
-  app.post<{ Body: { characterId?: unknown } }>("/residences/approvals", async (request, reply) => {
-    try {
-      return await approveVillageResidence(request.body?.characterId);
-    } catch (error) {
-      return fail(reply, error, "approving a residence");
-    }
-  });
-  app.post<{ Body: { characterId?: unknown } }>("/residences/denials", async (request, reply) => {
-    try {
-      return await decideVillageResidence(request.body?.characterId, false, "player");
-    } catch (error) {
-      return fail(reply, error, "denying a residence change");
-    }
-  });
+  app.post<{ Body: { characterId?: unknown; expectedScope?: string } }>(
+    "/residences/approvals",
+    async (request, reply) => {
+      try {
+        return await approveVillageResidence(request.body?.characterId, request.body?.expectedScope);
+      } catch (error) {
+        return fail(reply, error, "approving a residence");
+      }
+    },
+  );
+  app.post<{ Body: { characterId?: unknown; expectedScope?: string } }>(
+    "/residences/denials",
+    async (request, reply) => {
+      try {
+        return await decideVillageResidence(
+          request.body?.characterId,
+          false,
+          "player",
+          undefined,
+          undefined,
+          request.body?.expectedScope,
+        );
+      } catch (error) {
+        return fail(reply, error, "denying a residence change");
+      }
+    },
+  );
   app.post<{ Body: { characterId?: unknown } }>("/residences/debug/complete-now", async (request, reply) => {
     try {
       return await completeVillageResidence(request.body?.characterId, true);
     } catch (error) {
       return fail(reply, error, "completing a residence change");
-    }
-  });
-  app.post<{ Body: { characterId?: unknown } }>("/residences/private-space/retry", async (request, reply) => {
-    try {
-      return await retryResidencePrivateSpaceAdaptation(request.body?.characterId);
-    } catch (error) {
-      return fail(reply, error, "adapting a private space");
     }
   });
 }

@@ -26,10 +26,9 @@ export function useVenuesState() {
   const [venueProposalDraft, setVenueProposalDraft] = useState<{
     classes: VenueClass[];
     capacity: number;
-    slot: number;
+
     title: string;
     description: string;
-    extraBeds: number;
   } | null>(null);
 
   const [venueEditBusy, setVenueEditBusy] = useState(false);
@@ -54,7 +53,7 @@ export function useVenuesState() {
    *
    * Its own flag rather than the panel's shared `busy`, because drawing is the
    * one thing in this tab that can take a minute. A shared flag would grey out
-   * the map, the noticeboard and every save button for as long as a model takes,
+   * the map and every save button for as long as a model takes,
    * and the panel would be unusable for exactly as long as it is most worth
    * using. Only the row being worked on goes quiet.
    */

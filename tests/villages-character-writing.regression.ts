@@ -1,26 +1,30 @@
+import { context } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import assert from "node:assert/strict";
 import {
-  readVillagerCard,
   readEffectiveVillagerCard,
+  readVillagerCard,
   villagerCardFromSnapshot,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
-import { buildTickMessages } from "../packages/villages/src/server/domain/rules/village-bootstrap-rules.js";
-import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
-import {
-  previewVillagerRefresh,
-  applyVillagerRefresh,
-} from "../packages/villages/src/server/features/residents/resident-cards.js";
 import {
   fitVenueWritingMessages,
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import {
+  applyVillagerRefresh,
+  previewVillagerRefresh,
+} from "../packages/villages/src/server/features/residents/resident-cards.js";
+import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
+import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 
 const stamp = new Date().toISOString();
 const source = {
@@ -38,25 +42,22 @@ const source = {
 const card = readVillagerCard(source as any);
 const snapshot = { ...card, revision: 1, sourceStatus: "available", capturedAt: stamp };
 const state = defaultVillageState();
+state.seed = "character-writing";
 state.foundedAt = state.setupAt = stamp;
 state.visitMemoryBackfilled = true;
-state.foundingDetails = "FOUNDING PREMISE: arrive to establish a new life";
 state.narrationStyle.writingGuidance = "Make everyone cheerful, compliant, and timid.";
 state.villagers = [
   {
     characterId: card.id,
-    foundingContext: {
-      historyMode: "continue",
-      storyRole: "new-arrival",
-      customDescription: "",
-      background: "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED. NARRATOR SECRET IS UNKNOWN TO RESIDENT.",
+    admission: {
+      homeworld: "Othiras",
+      startingSituation: "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED. NARRATOR SECRET IS UNKNOWN TO RESIDENT.",
     },
     cardSnapshot: snapshot,
     addedAt: stamp,
-    completedWishes: [],
+    wishes: [fixtureWish({ wish: "See a concert" }, "concert", stamp)],
     ingestSchedule: false,
     agenda: {
-      wishes: [{ id: "wish", wish: "See a concert", tell: "SCRIPTED TELL SECRET", intensity: 1 }],
       day: [],
       week: {},
       routineSummary: "",
@@ -66,11 +67,18 @@ state.villagers = [
   },
 ] as any;
 let row: any = { id: "villages-village", kind: "village", data: coerceVillageState(state), revision: 1 };
+const historyRows = new Map<string, any>();
 let paidCalls = 0;
 const model: any = {
   model: "fixture",
   maxOutputTokens: 4096,
-  fitContext: (messages: any, options: any) => ({ messages, ...options }),
+  fitContext: (messages: any, options: any) => ({
+    messages,
+    ...options,
+    estimatedTokensBefore: Math.ceil(JSON.stringify(messages).length / 4),
+    estimatedTokensAfter: Math.ceil(JSON.stringify(messages).length / 4),
+    trimmed: false,
+  }),
   chatComplete: () => {
     paidCalls++;
     throw Error("Not permitted in prompt test");
@@ -81,21 +89,34 @@ const release = configureVillagesRuntime({
   getAgentConfig: async () => ({ connectionId: "fixture" }),
   resources: { listCharacters: async () => [source], listLorebooks: async () => [] },
   persistence: {
-    documents: {
-      getById: async (_p: any, id: string) => (id === row.id ? row : null),
-      list: async () => [],
+    documents: villageFixtureDocuments({
+      getById: async (_p: any, id: string) => (id === row.id ? row : (historyRows.get(id) ?? null)),
+      list: async (_pkg: string, kind: string) => [...historyRows.values()].filter((entry) => entry.kind === kind),
       update: async (input: any) => {
+        if (input.id !== row.id) {
+          const current = historyRows.get(input.id);
+          if (!current || current.revision !== input.expectedRevision) return null;
+          const next = { ...current, ...input, revision: current.revision + 1 };
+          historyRows.set(input.id, next);
+          return next;
+        }
         row = { ...row, ...input, revision: row.revision + 1 };
         return row;
       },
-      create: async (input: any) => input,
-    },
+      create: async (input: any) => {
+        const saved = { ...input, revision: 1 };
+        historyRows.set(input.id, saved);
+        return saved;
+      },
+    }),
   },
   languageModels: { resolveForRequest: async () => model },
 } as any);
 async function run() {
   try {
     const session: any = {
+      version: 3,
+      semanticVersion: 2,
       id: "fixture",
       placeId: "camp",
       placeName: "Camp",
@@ -112,6 +133,18 @@ async function run() {
     };
     const prepared = await prepareVenueTurnMessages(session, "What is your vision for our future?", "chat", "", null);
     const prompt = String(prepared.fitted.messages[0].content);
+    const capturedWorld = coerceVillageState(state);
+    capturedWorld.villagers[0].wishes = [fixtureWish({ wish: "Exact captured desire" }, "captured")];
+    const capturedScene = { ...session, version: 3, villageSeed: state.seed, status: "closed" };
+    capturedScene.continuity = captureSceneContinuity(capturedWorld, capturedScene, Date.parse(stamp));
+    const captured = await prepareVenueTurnMessages(capturedScene, "A frozen Wish context", "chat", "", null);
+    assert.equal(
+      captured.wishContexts[0].wishes[0].id,
+      "captured",
+      "Recovery captures the same Wish authority as the frozen writing context",
+    );
+    assert.equal(Object.isFrozen(captured.wishContexts[0].wishes), true);
+    assert.equal(paidCalls, 0, "Exact Wish context is captured before purchasing work");
     for (const fragment of [
       "DESCRIPTION TAIL",
       "SYSTEM TAIL",
@@ -119,7 +152,6 @@ async function run() {
       "BACKSTORY TAIL",
       "Appearance:\nFeathered arms; no wings",
       "Example dialogue:\nResident: Your move,",
-      "FOUNDING PREMISE",
       "REMEMBERED MECCA; CURRENT LOCATION UNDECIDED",
       "narrator-only truths are not resident knowledge",
     ])
@@ -133,11 +165,7 @@ async function run() {
     assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
     assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Recent scene history:"));
-    row.data.playerRole = {
-      enabled: true,
-      title: "Local organizer",
-      explanation: "People know the player coordinates shared plans.",
-    };
+    row.data.playerBackground = "Neighbors know me through harbor projects.";
     for (const spaceClass of ["community", "residence"]) {
       const exterior = {
         ...session,
@@ -153,24 +181,11 @@ async function run() {
       const outsidePrompt = String(outside.fitted.messages[0].content);
       assert.match(outsidePrompt, /player is in this (?:Venue|Residence)'s Exterior Zone/);
       assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
-      assert.ok(outsidePrompt.includes("Local organizer"));
-      assert.ok(outsidePrompt.includes("People know the player coordinates shared plans."));
+      assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));
       assert.ok(!outsidePrompt.includes("look to them to coordinate Projects"));
       assert.match(outsidePrompt, /Activity captured at Scene start: Checking a map/);
       assert.match(outsidePrompt, /witnessed developments establish what is happening now/i);
-      assert.match(
-        outsidePrompt,
-        /Shared historical background, separate from the current activity and individual ambitions/,
-      );
-      assert.ok(outsidePrompt.includes("FOUNDING PREMISE"), "history is retained in ordinary conversation");
-      assert.ok(outsidePrompt.includes("Every knower must directly witness EVERY cited line"));
-      assert.ok(outsidePrompt.includes("Dialogue, side and whisper text contain only that speaker's audible words"));
-      assert.ok(outsidePrompt.includes("unconditional standing invitations are distinct"));
-      assert.ok(
-        outsidePrompt.includes(
-          "Speech about deeds, unsupported elsewhere-claims, promises, and impossible attempts have no physical effect",
-        ),
-      );
+
       for (const fragment of ["DESCRIPTION TAIL", "SYSTEM TAIL", "POST TAIL", "Appearance:\nFeathered arms; no wings"])
         assert.ok(outsidePrompt.includes(fragment), fragment);
       const greeting = await prepareVenueTurnMessages(exterior, "", "greet", "", null);
@@ -186,7 +201,7 @@ async function run() {
         );
       } else assert.match(outsidePrompt, /do not describe them entering an interior/);
     }
-    const background = buildTickMessages({
+    const background = buildResidentPlanningMessages({
       village: "Camp",
       setting: "Clearing",
       moment: deriveVillageMoment({ foundedAt: stamp, seed: state.seed, now: new Date(stamp) }),
@@ -198,6 +213,7 @@ async function run() {
           summary: "",
           doing: "Talking",
           agenda: state.villagers[0].agenda,
+          wishes: state.villagers[0].wishes,
         },
       ],
       venues: [],
@@ -211,6 +227,8 @@ async function run() {
     assert.ok(!String(background[0].content).includes("SCRIPTED TELL SECRET"));
     assert.equal(paidCalls, 0);
     const legacy = coerceVillageState({
+      ...defaultVillageState(),
+
       wishSystemVersion: 3,
       ...state,
       villagers: [{ ...state.villagers[0], cardSnapshot: { ...snapshot, postHistoryInstructions: undefined } }],
@@ -226,7 +244,7 @@ async function run() {
     assert.equal(preview.proposed?.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
     await applyVillagerRefresh(card.id);
     assert.equal(row.data.villagers[0].cardSnapshot.postHistoryInstructions, "REFRESHED AUTHOR INSTRUCTION");
-    assert.match(row.data.villagers[0].foundingContext.background, /CURRENT LOCATION UNDECIDED/);
+    assert.match(row.data.villagers[0].admission.startingSituation, /CURRENT LOCATION UNDECIDED/);
     const removed: string[] = [];
     const budgetModel: any = {
       fitContext(messages: any, options: any) {
@@ -270,4 +288,20 @@ async function run() {
   }
   console.log("Complete cards, live prompts, refresh, legacy snapshots, wish privacy and context protection passed.");
 }
-void run();
+void context.run(
+  {
+    controller: new AbortController(),
+    operation: {
+      id: "prompt",
+      input: {
+        writingContractVersion: 3,
+        semanticPipelineVersion: 3,
+        residentActionsVersion: 2,
+        interactionScopeVersion: 6,
+        writingCapabilities: { management: false, movement: false, residences: false, residenceDecision: false },
+      },
+      checkpoints: {},
+    },
+  } as any,
+  run,
+);

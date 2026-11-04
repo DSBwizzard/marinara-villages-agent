@@ -11,9 +11,3 @@ export async function recordVillageVenueRequest(...args: Parameters<VenueRequest
 export async function decideVillageVenueRequest(...args: Parameters<VenueRequests["decideVillageVenueRequest"]>) {
   return binding.get().decideVillageVenueRequest(...args);
 }
-export async function requestVillageHomeUpgrade(...args: Parameters<VenueRequests["requestVillageHomeUpgrade"]>) {
-  return binding.get().requestVillageHomeUpgrade(...args);
-}
-export async function decideVillageHomeUpgrade(...args: Parameters<VenueRequests["decideVillageHomeUpgrade"]>) {
-  return binding.get().decideVillageHomeUpgrade(...args);
-}

@@ -1,20 +1,21 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors, closeSceneErrors } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot as fixture, now, mapImage } from "./fixtures/villages-scene-browser.fixture.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 await mkdir(".build-tmp/doorway-continuity", { recursive: true });
-try {
+await withBrowser(browser, async () => {
   for (const width of [1440, 390, 320]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     const snapshot = structuredClone(fixture);
@@ -42,6 +43,7 @@ try {
       ...extra,
     });
     const session = {
+      version: 2,
       id: "doorway-browser",
       placeId: "mill",
       placeName: "The Mill",
@@ -70,7 +72,7 @@ try {
       ],
     };
     await page.route("http://villages.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: "<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
@@ -96,7 +98,11 @@ try {
             : path.endsWith("/town-map")
               ? { image: mapImage }
               : snapshot;
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, snapshot.worldScope)),
+      });
     });
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
@@ -104,9 +110,10 @@ try {
     await expect(chip).toBeVisible();
     await expect(page.getByText("not witnessed by everyone", { exact: false })).toHaveCount(0);
     let status = await openSceneErrors(page);
-    await expect(status).toContainText("memories update not saved");
+    await expect(status).toContainText("World change not saved · memories");
     await expect(status).toContainText("Not saved");
-    await expect(status).toContainText("not witnessed by everyone");
+    await expect(status).toContainText("residents saw or heard");
+    await expect(status).toContainText("conversation is still in the transcript");
     await expect(status.getByRole("button", { name: /Retry|Replay/ })).toHaveCount(0);
     await page.screenshot({ path: `.build-tmp/doorway-continuity/errors-${width}.png` });
     await closeSceneErrors(page);
@@ -144,23 +151,23 @@ try {
       },
     ];
     summary = { pending: 1, failed: 1, rejected: 1 };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
     status = await openSceneErrors(page);
-    await expect(status).toContainText("relationships update failed");
-    await expect(status).not.toContainText("wishes update failed");
-    await expect(status.getByRole("button", { name: /Retry relationships interpretation/ })).toBeVisible();
-    await expect(status.getByRole("button", { name: /Retry memories interpretation/ })).toHaveCount(0);
-    await expect(status.getByRole("button", { name: /Retry wishes interpretation/ })).toHaveCount(0);
+    await expect(status).toContainText("World change failed · relationships");
+    await expect(status).not.toContainText("World change failed · wishes");
+    await expect(status.getByRole("button", { name: /Retry relationships/ })).toBeVisible();
+    await expect(status.getByRole("button", { name: /Retry memories/ })).toHaveCount(0);
+    await expect(status.getByRole("button", { name: /Retry wishes/ })).toHaveCount(0);
     issues = [];
     summary = { pending: 0, failed: 0, rejected: 1 };
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await closeSceneErrors(page);
     status = await openSceneErrors(page);
-    await expect(status).toContainText("saved diagnostics for the remaining results");
+    await expect(status).toContainText("World change diagnostics for details");
     assert.equal(mutatingRequests, 0, "reading feedback never retries interpretation or replays saved work");
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log("Doorway arrival/departure playback and nonempty save feedback passed on desktop and phones.");
-} finally {
-  await browser.close();
-}
+});

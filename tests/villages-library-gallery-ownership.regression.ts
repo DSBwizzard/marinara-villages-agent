@@ -1,3 +1,4 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -17,11 +18,7 @@ import {
 } from "../packages/villages/src/server/adapters/engine/global-gallery.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const now = new Date("2026-10-05T10:00:00");
 const ids = ["same-character"];
@@ -69,7 +66,7 @@ function library(name: string) {
   const host: any = {
     resources,
     logger,
-    persistence: { documents: { getById: async () => null, list: async () => [] } },
+    persistence: { documents: villageFixtureDocuments({ getById: async () => null, list: async () => [] }) },
     isDebugAgentsEnabled: () => false,
   };
   return {

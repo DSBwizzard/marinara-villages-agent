@@ -1,9 +1,10 @@
+import { useCallback, useEffect, useState } from "react";
 import type {
   ResidentSignature,
   ResidentSignatureImage,
   ResidentSignatureView,
 } from "../../../shared/helpers/resident-signature.js";
-import { useEffect, useState } from "react";
+import { useFocusRevision, useVillageActivity, useVisibleInterval } from "../../shared/activity.js";
 
 const P = "marinara-capability-villages";
 const flourishes = [
@@ -30,33 +31,35 @@ export function VillagerSignature({
   const [view, setView] = useState<ResidentSignatureView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [broken, setBroken] = useState("");
   const [refresh, setRefresh] = useState(0);
   const path = `/villagers/${encodeURIComponent(actorId)}/signature`;
   const running = view?.status === "running";
-  useEffect(() => {
-    const controller = new AbortController();
-    const read = async () => {
+  const { visible } = useVillageActivity();
+  const focusRevision = useFocusRevision(visible);
+  const savedRevision = JSON.stringify([signature, saved]);
+  const read = useCallback(
+    async (signal: AbortSignal) => {
       try {
-        const result = await request<ResidentSignatureView>(path, { signal: controller.signal });
-        if (!controller.signal.aborted) {
+        const result = await request<ResidentSignatureView>(path, { signal });
+        if (!signal.aborted) {
           setView(result);
+          setError("");
         }
       } catch (cause) {
-        if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Signature could not be read.");
+        if (!signal.aborted) setError(cause instanceof Error ? cause.message : "Signature could not be read.");
       }
-    };
-    void read();
-    const timer = window.setInterval(() => void read(), running ? 2_000 : 30_000);
-    return () => {
-      controller.abort();
-      window.clearInterval(timer);
-    };
-  }, [path, request, refresh, running, signature, saved]);
+    },
+    [path, request],
+  );
+  useEffect(() => {
+    if (!visible) return;
+    const controller = new AbortController();
+    void read(controller.signal);
+    return () => controller.abort();
+  }, [visible, read, refresh, savedRevision, focusRevision]);
+  useVisibleInterval((signal) => read(signal), running ? 2_000 : null);
   const local = view?.fallback ?? signature ?? { name, hand: "flowing", slant: 0, spacing: 0, flourish: 0 };
   const image = view?.saved ?? saved;
-  const url = image?.image.url;
   const draw = async () => {
     if (!view || busy || running) return;
     setBusy(true);
@@ -83,30 +86,7 @@ export function VillagerSignature({
   };
   return (
     <div className={`${P}-signature`}>
-      <div
-        className={`${P}-signature-art`}
-        role="img"
-        aria-label={`${url && broken !== url ? image?.name : local.name}'s signature`}
-      >
-        {url && broken !== url ? (
-          <img className={`${P}-signature-image`} src={url} alt="" onError={() => setBroken(url)} />
-        ) : (
-          <>
-            <span
-              className={`${P}-signature-name`}
-              data-hand={local.hand}
-              aria-hidden="true"
-              dir="auto"
-              style={{ transform: `rotate(${local.slant}deg)`, letterSpacing: `${local.spacing}px` }}
-            >
-              {local.name}
-            </span>
-            <svg className={`${P}-signature-flourish`} viewBox="0 0 220 32" aria-hidden="true">
-              <path d={flourishes[local.flourish] ?? flourishes[0]} />
-            </svg>
-          </>
-        )}
-      </div>
+      <SignatureArt name={name} signature={local} saved={image} />
       <div className={`${P}-signature-controls`}>
         {view?.available || view?.recoverable ? (
           <button type="button" disabled={busy || running} onClick={() => void draw()}>
@@ -133,17 +113,52 @@ export function VillagerSignature({
           </button>
         ) : null}
       </div>
-      {view?.available && !view.recoverable && !busy && !running ? (
-        <p>One image request. Saved signatures are reused.</p>
-      ) : null}
-      {view?.recoverable && !busy && !running ? (
-        <p>The generated image is saved. Retry saving uses it without another image request.</p>
-      ) : null}
-      {view && !view.available ? <p>{view.unavailableReason} The local signature is available.</p> : null}
+      {view?.recoverable && !busy && !running ? <p>Image saved · retry saving available.</p> : null}
+      {view && !view.available ? <p>{view.unavailableReason}</p> : null}
       {view?.status === "interrupted" ? (
         <p role="status">Generation was interrupted and may have been charged. Retry is deliberate.</p>
       ) : null}
       {error || view?.error ? <p role="alert">{error || view?.error}</p> : null}
+    </div>
+  );
+}
+
+export function SignatureArt({
+  name,
+  signature,
+  saved,
+}: {
+  name: string;
+  signature?: ResidentSignature;
+  saved?: ResidentSignatureImage | null;
+}) {
+  const [broken, setBroken] = useState("");
+  const local = signature ?? { name, hand: "flowing", slant: 0, spacing: 0, flourish: 0 };
+  const url = saved?.image.url;
+  return (
+    <div
+      className={`${P}-signature-art`}
+      role="img"
+      aria-label={`${url && broken !== url ? saved?.name : local.name}'s signature`}
+    >
+      {url && broken !== url ? (
+        <img className={`${P}-signature-image`} src={url} alt="" onError={() => setBroken(url)} />
+      ) : (
+        <>
+          <span
+            className={`${P}-signature-name`}
+            data-hand={local.hand}
+            aria-hidden="true"
+            dir="auto"
+            style={{ transform: `rotate(${local.slant}deg)`, letterSpacing: `${local.spacing}px` }}
+          >
+            {local.name}
+          </span>
+          <svg className={`${P}-signature-flourish`} viewBox="0 0 220 32" aria-hidden="true">
+            <path d={flourishes[local.flourish] ?? flourishes[0]} />
+          </svg>
+        </>
+      )}
     </div>
   );
 }

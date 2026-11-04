@@ -27,19 +27,34 @@ import {
   retrySceneChangeInterpretation,
   sendVenueTurn,
 } from "./venue-session.js";
-import { dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
+import { continueSceneChange, dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
-import { deleteAllVenueVisits, deleteVenueVisit, listVenueVisitSummaries, readVenueVisit } from "./archive.js";
+import { readVenueVisit } from "./archive.js";
+import { sceneQueries } from "./services.js";
 import type { FastifyInstance } from "fastify";
 
 export function registerSceneEntryRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get<{ Params: { id: string }; Querystring: unknown }>("/rooms/:id/playback", async (request, reply) => {
+    try {
+      return await sceneQueries().readPlaybackPage(readChatId(request.params.id), request.query);
+    } catch (error) {
+      return fail(reply, error, "reading Scene playback");
+    }
+  });
+  app.get<{ Params: { id: string }; Querystring: unknown }>("/rooms/:id/history", async (request, reply) => {
+    try {
+      return await sceneQueries().readHistoryPage(readChatId(request.params.id), request.query);
+    } catch (error) {
+      return fail(reply, error, "reading Scene history");
+    }
+  });
   app.get("/rooms/active", async (_request, reply) => {
     try {
       const session = await activeVenueSession();
       return {
         session,
-        operation: operationSummary(session?.operation),
+        operation: operationSummary(session?.operation, session?.rejectedSubmissions),
         debugDiscardEnabled: villagesDebugAgentsEnabled(),
       };
     } catch (error) {
@@ -122,14 +137,23 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
 }
 export function registerSceneOperationRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.post<{ Body: { sessionId?: unknown; retryOfAttemptId?: string } }>("/rooms/greet", async (request, reply) => {
-    try {
-      await assertFoundedVillageReady();
-      return { session: await greetVenue(readChatId(request.body?.sessionId), request.body?.retryOfAttemptId) };
-    } catch (error) {
-      return fail(reply, error, "opening a venue scene");
-    }
-  });
+  app.post<{ Body: { sessionId?: unknown; retryOfAttemptId?: string; recovery?: boolean } }>(
+    "/rooms/greet",
+    async (request, reply) => {
+      try {
+        await assertFoundedVillageReady();
+        return {
+          session: await greetVenue(
+            readChatId(request.body?.sessionId),
+            request.body?.retryOfAttemptId,
+            request.body?.recovery === true,
+          ),
+        };
+      } catch (error) {
+        return fail(reply, error, "opening a venue scene");
+      }
+    },
+  );
   app.post<{ Body: { sessionId?: unknown } }>("/rooms/continue", async (request, reply) => {
     try {
       await assertFoundedVillageReady();
@@ -215,6 +239,24 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       }
     },
   );
+  app.post<{ Params: { id: string; submissionId: string }; Body: { domain: string } }>(
+    "/rooms/:id/changes/:submissionId/continue",
+    { bodyLimit: 2048 },
+    async (request, reply) => {
+      try {
+        const domain = request.body?.domain;
+        if (!["memories", "relationships", "wishes", "projects"].includes(domain))
+          throw badRequest("Choose a saved domain.");
+        return await continueSceneChange(
+          readChatId(request.params.id),
+          readChatId(request.params.submissionId),
+          domain as "memories" | "relationships" | "wishes" | "projects",
+        );
+      } catch (error) {
+        return fail(reply, error, "continuing after a failed semantic update");
+      }
+    },
+  );
   app.post<{ Params: { id: string } }>("/rooms/:id/changes/replay", async (request, reply) => {
     try {
       return await replaySceneChanges(readChatId(request.params.id));
@@ -261,6 +303,8 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       const mode = request.body?.mode;
       if (mode !== "chat" && mode !== "ask" && mode !== "fulfill" && mode !== "act" && mode !== "contact")
         throw badRequest("Choose Chat, Ask, Fulfill, Act, or Knock / Call.");
+      if (mode === "contact" && request.body?.contact?.delivery === "device")
+        throw badRequest("Device links are not supported by Contact.");
       return await sendVenueTurn({
         sessionId: readChatId(request.body?.sessionId),
         message: readMessage(request.body?.message),
@@ -282,10 +326,6 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
                   typeof request.body?.contact?.boundaryZoneId === "string" ? request.body.contact.boundaryZoneId : "",
                 targetId: typeof request.body?.targetId === "string" ? request.body.targetId : "",
                 quote: readMessage(request.body?.message),
-                ...(request.body?.contact?.delivery === "device" ? { delivery: "device" as const } : {}),
-                ...(typeof request.body?.contact?.deviceFeatureId === "string"
-                  ? { deviceFeatureId: request.body.contact.deviceFeatureId }
-                  : {}),
               },
             }
           : {}),
@@ -308,6 +348,7 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
       message?: unknown;
       expectedSceneRevision?: unknown;
       retryOfAttemptId?: string;
+      replaceOfOperationId?: unknown;
     };
   }>("/rooms/leave", async (request, reply) => {
     try {
@@ -317,61 +358,38 @@ export function registerSceneOperationRoutes(engine: FastifyInstance) {
         typeof request.body?.message === "string" ? request.body.message : "",
         readSceneRevision(request.body?.expectedSceneRevision),
         request.body?.retryOfAttemptId,
+        request.body?.replaceOfOperationId === undefined
+          ? undefined
+          : readSubmissionId(request.body.replaceOfOperationId),
       );
     } catch (error) {
       return fail(reply, error, "leaving a venue naturally");
     }
   });
-  app.post<{ Body: { sessionId?: unknown; expectedSceneRevision?: unknown; retryOfAttemptId?: string } }>(
-    "/rooms/end",
-    async (request, reply) => {
-      try {
-        return await closeVenueSessionWithReceipts(
-          readChatId(request.body?.sessionId),
-          readSceneRevision(request.body?.expectedSceneRevision),
-          request.body?.retryOfAttemptId,
-        );
-      } catch (error) {
-        return fail(reply, error, "ending a Scene");
-      }
-    },
-  );
-  app.get<{ Querystring: { venueId?: string; characterId?: string; offset?: string; limit?: string } }>(
-    "/rooms/archive",
-    async (request, reply) => {
-      try {
-        return await listVenueVisitSummaries({
-          placeId: request.query?.venueId,
-          characterId: request.query?.characterId,
-          offset: Number(request.query?.offset ?? 0),
-          limit: Number(request.query?.limit ?? 20),
-        });
-      } catch (error) {
-        return fail(reply, error, "listing Scenes");
-      }
-    },
-  );
-  app.get<{ Params: { id: string } }>("/rooms/archive/:id", async (request, reply) => {
+  app.post<{
+    Body: {
+      sessionId?: unknown;
+      expectedSceneRevision?: unknown;
+      retryOfAttemptId?: string;
+      abandonOperationId?: unknown;
+    };
+  }>("/rooms/end", async (request, reply) => {
+    try {
+      return await closeVenueSessionWithReceipts(
+        readChatId(request.body?.sessionId),
+        readSceneRevision(request.body?.expectedSceneRevision),
+        request.body?.retryOfAttemptId,
+        request.body?.abandonOperationId === undefined ? undefined : readSubmissionId(request.body.abandonOperationId),
+      );
+    } catch (error) {
+      return fail(reply, error, "ending a Scene");
+    }
+  });
+  app.get<{ Params: { id: string } }>("/rooms/:id/recovery", async (request, reply) => {
     try {
       return { visit: await readVenueVisit(request.params.id) };
     } catch (error) {
       return fail(reply, error, "reading a Scene");
-    }
-  });
-  app.delete<{ Params: { id: string } }>("/rooms/archive/:id", async (request, reply) => {
-    try {
-      await deleteVenueVisit(request.params.id);
-      return { deleted: true };
-    } catch (error) {
-      return fail(reply, error, "deleting a Scene");
-    }
-  });
-  app.delete("/rooms/archive", async (_request, reply) => {
-    try {
-      await deleteAllVenueVisits();
-      return { deleted: true };
-    } catch (error) {
-      return fail(reply, error, "deleting Scenes");
     }
   });
 }

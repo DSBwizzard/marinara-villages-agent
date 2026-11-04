@@ -2,21 +2,20 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 import type { InactiveFoundingZones } from "./founding-template.js";
 
 export type FoundingWorkspaceState = {
-  mode?: "quick" | "advanced";
-  suggestionRequest?: { id: string; sourceKey: string; quickStart: boolean; venueId?: string };
+  suggestionRequest?: { id: string; sourceKey: string; quickStart: boolean; venueId?: string; sourceInputs?: string };
 
   view: "map" | "details";
   paused: boolean;
   sections: Record<string, "venue" | "zones">;
   zones: Record<string, string>;
-  inactive?: Record<string, InactiveFoundingZones>;
+  inactive: Record<string, InactiveFoundingZones>;
 };
 export const emptyFoundingWorkspace = (): FoundingWorkspaceState => ({
-  mode: "quick",
   view: "map",
   paused: false,
   sections: {},
   zones: {},
+  inactive: {},
 });
 export type FoundingIssue = {
   venueId: string;
@@ -35,11 +34,7 @@ export type FoundingIssue = {
   message: string;
 };
 /** The existing founding requirements, collected rather than stopping at the first field. */
-export function foundingVenueIssues(
-  venues: readonly VillageVenue[],
-  existing = false,
-  quickStart = false,
-): FoundingIssue[] {
+export function foundingVenueIssues(venues: readonly VillageVenue[], existing = false): FoundingIssue[] {
   return venues.flatMap((venue) => {
     const issues: FoundingIssue[] = [];
     const add = (field: FoundingIssue["field"], message: string, zoneId?: string) =>
@@ -49,23 +44,12 @@ export function foundingVenueIssues(
     if (!venue.name.trim()) add("name", "Add a Venue name.");
     if (!venue.form?.trim()) add("form", "Add its physical form.");
     if (!venue.description.trim()) add("description", "Describe the Exterior.", "exterior");
-    if (quickStart && venue.classes?.includes("residence")) {
-      if (!venue.spaces?.length) add("layout", "Quick Start requires Common Space in every Residence.", "common");
-      if (!venue.privateSpaces?.length)
-        add("layout", "Quick Start requires Private Space in every Residence.", "private");
-    }
     if (!existing && venue.layoutVersion === 1 && !venue.layout) add("layout", "Choose the Venue’s Zones.");
-    if (!existing && venue.classes?.includes("residence") && !venue.spaces?.length && !venue.privateSpaces?.length)
-      add("layout", "Include Common or Private Space.", "common");
-    if (!existing && venue.category === "public-center" && (!venue.spaces?.length || venue.privateSpaces?.length))
-      add("layout", "The starting Community Place requires Common Space and has no Private Space.", "common");
-    if (venue.classes?.includes("residence") && !venue.occupancy.playerHome && !venue.occupancy.residentCharacterId)
-      add("assignment", "Assign a resident.");
     if (
-      venue.occupancy.residentCharacterId &&
-      venues.some(
-        (row) => row.id !== venue.id && row.occupancy.residentCharacterId === venue.occupancy.residentCharacterId,
-      )
+      (venue.residentIds ?? []).some((id) =>
+        venues.some((row) => row.id !== venue.id && row.residentIds?.includes(id)),
+      ) ||
+      (venue.occupancy.playerHome && venues.some((row) => row.id !== venue.id && row.occupancy.playerHome))
     )
       add("assignment", "Assign this resident to only one home.");
     for (const zone of [...(venue.spaces ?? []), ...(venue.privateSpaces ?? [])]) {
@@ -74,7 +58,7 @@ export function foundingVenueIssues(
         if (!zone.name?.trim()) add("zone-name", "Give the Zone a name.", zone.id);
         if (!zone.purpose?.trim()) add("zone-purpose", "Describe what the Zone is used for.", zone.id);
       }
-      if ((!privateZone || (!existing && zone.ownerId === "player")) && !zone.description.trim())
+      if ((!existing || !privateZone || zone.venueClass !== "residence") && !zone.description.trim())
         add("zone-appearance", "Describe the Zone appearance.", zone.id);
       if (
         privateZone &&

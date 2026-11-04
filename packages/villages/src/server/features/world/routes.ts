@@ -1,18 +1,18 @@
-import { resolveVillageClock } from "../../adapters/time/clock-gate.js";
-import { buildVillageCatalog } from "../residents/resident-cards.js";
-import { addNotice, removeNoticeAt } from "../settings/village-settings.js";
+import type { FastifyInstance } from "fastify";
+import type { VillageTimeAdvance } from "../../../shared/contracts/clock.js";
 import { fail } from "../../adapters/http/route-support.js";
+import { observeVillageClock, resolveVillageClock } from "../../adapters/time/clock-gate.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { listVenueVisitSummaries } from "../scenes/archive.js";
+import { buildVillageCatalog } from "../residents/resident-cards.js";
+import { readVillageAuthority } from "./village-store.js";
 import { buildVillageSnapshot } from "./snapshot.js";
 import {
   buildVillageMemories,
-  buildVillageStory,
+  correctMemory,
+  forgetMemory,
+  readVillageMemoryEvidence,
   reconcileVillage,
-  removeChronicleEntry,
-  removeVillageRecollection,
 } from "./village.js";
-import type { FastifyInstance } from "fastify";
 
 export function registerSnapshotCatalogRoutes(engine: FastifyInstance) {
   const app = engine;
@@ -33,6 +33,29 @@ export function registerSnapshotCatalogRoutes(engine: FastifyInstance) {
 }
 export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get<{ Querystring: { actionId?: string } }>("/clock", async (request, reply) => {
+    try {
+      const view = await observeVillageClock();
+      if (!view || !request.query.actionId) return view;
+      const state = await readVillageAuthority();
+      if (JSON.stringify([state.seed, state.setupAt]) !== view.worldId) return await observeVillageClock();
+      const receipt =
+        state.clock?.advanceReceipts?.find((entry) => entry.actionId === request.query.actionId) ??
+        (state.clock?.lastAdvance?.actionId === request.query.actionId ? state.clock.lastAdvance : undefined);
+      return receipt ? { ...view, advanceReceipt: receipt } : view;
+    } catch (error) {
+      return fail(reply, error, "reading Village time");
+    }
+  });
+  // Development control: remove this route and its UI before admitting active playtesters.
+  app.post<{ Body: VillageTimeAdvance }>("/clock/advance", async (request, reply) => {
+    try {
+      if (!request.body || typeof request.body !== "object") throw badRequest("Choose a time advance.");
+      return await reconcileVillage({ advanceTime: request.body });
+    } catch (error) {
+      return fail(reply, error, "advancing Village time");
+    }
+  });
   app.post<{ Body: { revision?: unknown; choice?: unknown } }>("/clock/recover", async (request, reply) => {
     try {
       const { revision, choice } = request.body ?? {};
@@ -44,92 +67,80 @@ export function registerWorldMaintenanceRoutes(engine: FastifyInstance) {
       return fail(reply, error, "resolving the village clock");
     }
   });
-  app.post<{ Body: { notice?: unknown } }>("/noticeboard", async (request, reply) => {
-    try {
-      return await addNotice(request.body?.notice);
-    } catch (error) {
-      return fail(reply, error, "pinning up a notice");
-    }
-  });
-  app.delete<{ Params: { index: string } }>("/noticeboard/:index", async (request, reply) => {
-    try {
-      return await removeNoticeAt(request.params.index);
-    } catch (error) {
-      return fail(reply, error, "taking a notice down");
-    }
-  });
   app.post<{ Body: { forceStory?: unknown; actionId?: unknown; expectedAttempt?: unknown } }>(
     "/reconcile",
     async (request, reply) => {
       try {
-        const forced = request.body?.forceStory === true;
-        if (
-          forced &&
-          (typeof request.body?.actionId !== "string" ||
-            !/^[a-zA-Z0-9-]{1,100}$/.test(request.body.actionId) ||
-            !Number.isInteger(request.body.expectedAttempt))
-        )
-          throw badRequest("Refresh before requesting a village event.");
-        return await reconcileVillage({
-          forceStory: forced,
-          actionId: request.body?.actionId as string,
-          expectedAttempt: request.body?.expectedAttempt as number,
-        });
+        if (request.body?.forceStory === true)
+          throw badRequest("Force Village Update has been removed. Refresh the Village.");
+        return await reconcileVillage();
       } catch (error) {
         return fail(reply, error, "writing down what has been happening");
       }
     },
   );
 }
-export function registerHistoryRoutes(engine: FastifyInstance) {
-  const app = engine;
-  app.get<{ Querystring: { offset?: string; limit?: string } }>("/story", async (request, reply) => {
+type MemoryQuery = { characterId?: string; query?: string; limit?: string; afterId?: string; revision?: string };
+function memoryQuery(query: MemoryQuery) {
+  return {
+    characterId: query.characterId,
+    query: query.query,
+    ...(query.limit ? { limit: Number(query.limit) } : {}),
+    ...(query.afterId ? { cursor: { revision: Number(query.revision), afterId: query.afterId } } : {}),
+  };
+}
+export function registerHistoryRoutes(app: FastifyInstance) {
+  app.get<{ Querystring: MemoryQuery }>("/memories", async (request, reply) => {
     try {
-      const entries = await buildVillageStory();
-      const offset = Math.max(0, Number(request.query?.offset ?? 0) || 0);
-      const limit = Math.min(100, Math.max(1, Number(request.query?.limit ?? 50) || 50));
-      return { entries: entries.slice(offset, offset + limit), total: entries.length };
+      return await buildVillageMemories(memoryQuery(request.query));
     } catch (error) {
-      return fail(reply, error, "reading the village story");
+      return fail(reply, error, "reading Memories");
     }
   });
-  app.get("/memories", async (_request, reply) => {
+  app.get<{ Querystring: MemoryQuery }>("/memories/inspect", async (request, reply) => {
     try {
-      const archive = await listVenueVisitSummaries({ limit: 100 });
-      return {
-        ...(await buildVillageMemories()),
-        archive: {
-          total: archive.total,
-          recent: archive.visits.slice(0, 6),
-        },
-      };
+      return await buildVillageMemories({ ...memoryQuery(request.query), inspection: true });
     } catch (error) {
-      return fail(reply, error, "reading villager memories");
+      return fail(reply, error, "inspecting Memories");
     }
   });
-  app.delete<{ Params: { id: string } }>("/memories/durable/:id", async (request, reply) => {
+  app.get<{ Params: { id: string } }>("/memories/:id/evidence", async (request, reply) => {
     try {
-      await removeChronicleEntry(request.params.id);
-      return buildVillageMemories();
+      return await readVillageMemoryEvidence(request.params.id);
     } catch (error) {
-      return fail(reply, error, "forgetting a durable memory");
+      return fail(reply, error, "reading memory evidence");
     }
   });
-  app.delete<{ Params: { id: string } }>("/memories/recollections/:id", async (request, reply) => {
-    try {
-      await removeVillageRecollection(request.params.id);
-      return buildVillageMemories();
-    } catch (error) {
-      return fail(reply, error, "letting go of a passing recollection");
-    }
-  });
-  app.delete<{ Params: { id: string } }>("/story/:id", async (request, reply) => {
-    try {
-      await removeChronicleEntry(request.params.id);
-      const entries = await buildVillageStory();
-      return { entries: entries.slice(0, 50), total: entries.length };
-    } catch (error) {
-      return fail(reply, error, "forgetting a memory");
-    }
-  });
+  app.get<{ Params: { id: string }; Querystring: { characterId?: string } }>(
+    "/memories/inspect/:id",
+    async (request, reply) => {
+      try {
+        return await readVillageMemoryEvidence(request.params.id, true, request.query.characterId);
+      } catch (error) {
+        return fail(reply, error, "inspecting memory evidence");
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body: import("../../../shared/contracts/village.js").MemoryForgetRequest }>(
+    "/memories/:id/forget",
+    async (request, reply) => {
+      try {
+        await forgetMemory(request.params.id, request.body);
+        return { forgotten: true };
+      } catch (error) {
+        return fail(reply, error, "forgetting memory");
+      }
+    },
+  );
+  app.post<{ Params: { id: string }; Body: import("../../../shared/contracts/village.js").MemoryCorrectRequest }>(
+    "/memories/:id/correct",
+    async (request, reply) => {
+      try {
+        await correctMemory(request.params.id, request.body);
+        return { corrected: true };
+      } catch (error) {
+        return fail(reply, error, "correcting memory");
+      }
+    },
+  );
 }

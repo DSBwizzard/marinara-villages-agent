@@ -1,14 +1,15 @@
+import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
+import type { FastifyInstance } from "fastify";
+import Fastify from "fastify";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
-import { registerAgendaRoutes } from "../packages/villages/src/server/features/residents/routes.js";
-import { configureResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
-import type { ResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { WRITING_GUIDANCE_MAX_LENGTH } from "../packages/villages/src/server/domain/rules/narration-style.js";
-import type { CapabilityRuntimeHost } from "@marinara-engine/shared";
-import Fastify from "fastify";
-import type { FastifyInstance } from "fastify";
+import { villagesRoutes } from "../packages/villages/src/server/entry/routes.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import type { ResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agenda-service.js";
+import { configureResidentAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { registerAgendaRoutes } from "../packages/villages/src/server/features/residents/routes.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 async function agendaHttpAdmission() {
   const commands: unknown[] = [];
@@ -25,9 +26,6 @@ async function agendaHttpAdmission() {
     },
     async clearVillagerAgenda(characterId, actionId) {
       commands.push(["regenerate", characterId, actionId]);
-    },
-    async correctCompletedWish(characterId, wishId) {
-      commands.push(["correct", characterId, wishId]);
     },
     async setVillagerScheduleInfluence(characterId, value) {
       commands.push(["influence", characterId, value]);
@@ -112,11 +110,10 @@ async function main() {
     baseline.routes,
     "host collector methods, paths, body limits and order match the maintained route contract",
   );
-  assert.equal(routes.length, 140);
   await agendaHttpAdmission();
   await currentSceneAndWritingHttp();
   console.log(
-    "Villages route registration regression: all 140 maintained definitions and limits match; actual Agenda HTTP rejects retired routes and unidentified regeneration before command admission (mocked service).",
+    `Villages route registration regression: all ${routes.length} maintained definitions and limits match; actual Agenda HTTP rejects retired routes and unidentified regeneration before command admission (mocked service).`,
   );
 }
 
@@ -162,7 +159,7 @@ async function currentSceneAndWritingHttp() {
     },
   };
   const host = {
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: {},
     languageModels: {
       async resolveForRequest() {
@@ -189,6 +186,14 @@ async function currentSceneAndWritingHttp() {
       await villagesRoutes(app);
       for (const url of ["/spinoffs/prompts", "/presets/preset-1/variables", "/spinoffs/chat-1"]) {
         assert.equal((await app.inject({ method: "GET", url })).statusCode, 404, `${url} is retired`);
+      }
+      for (const [method, url] of [
+        ["GET", "/spinoffs/active"],
+        ["POST", "/spinoffs/begin"],
+        ["POST", "/spinoffs/prepare"],
+        ["POST", "/spinoffs/resolve"],
+      ] as const) {
+        assert.equal((await app.inject({ method, url })).statusCode, 404, `${method} ${url} is retired`);
       }
       const scene = await app.inject({ method: "GET", url: "/rooms/active" });
       assert.equal(scene.statusCode, 200);

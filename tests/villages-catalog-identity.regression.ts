@@ -1,18 +1,19 @@
 import assert from "node:assert/strict";
 import {
-  findVillagerCard,
   findPlayerPersona,
+  findVillagerCard,
   readVillagerCard,
 } from "../packages/villages/src/server/adapters/engine/catalog.js";
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { snapshotFromCard } from "../packages/villages/src/server/domain/rules/resident-card-snapshot.js";
-import { readLinkedPersona } from "../packages/villages/src/server/features/settings/personas.js";
-import { refreshPlayerPersona } from "../packages/villages/src/server/features/settings/persona-cache.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
-  previewVillagerRefresh,
   applyVillagerRefresh,
+  previewVillagerRefresh,
 } from "../packages/villages/src/server/features/residents/resident-cards.js";
+import { refreshPlayerPersona } from "../packages/villages/src/server/features/settings/persona-cache.js";
+import { readLinkedPersona } from "../packages/villages/src/server/features/settings/personas.js";
 import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 const unrelatedCharacter = {
   id: "other",
@@ -58,7 +59,7 @@ const documents = {
   },
 };
 const release = configureVillagesRuntime({
-  persistence: { documents },
+  persistence: { documents: villageFixtureDocuments(documents) },
   resources: {
     async listCharacters(ids?: string[]) {
       reads.push({ kind: "characters", ids });
@@ -110,7 +111,7 @@ try {
         agenda: null,
         remap: null,
         remapFailure: null,
-        completedWishes: [],
+        wishes: [],
       },
     ];
   });
@@ -119,9 +120,9 @@ try {
   assert.equal(preview.proposed, null);
   assert.equal(preview.current.name, "Adopted resident");
   await assert.rejects(applyVillagerRefresh("requested"), /no longer in your library/);
-  assert.equal((await readVillageState()).villagers[0]!.cardSnapshot.name, "Adopted resident");
+  assert.equal((await readVillageState({ memories: true })).villagers[0]!.cardSnapshot.name, "Adopted resident");
   assert.equal(await refreshPlayerPersona(), true);
-  let state = await readVillageState();
+  let state = await readVillageState({ memories: true });
   assert.equal(state.playerPersonaMissing, true);
   assert.equal(state.playerPersonaName, "Cached player");
   assert.equal(state.playerPersonaIdentity, "Cached private identity");
@@ -137,7 +138,7 @@ try {
     identity: "Selected private identity",
   });
   assert.equal(await refreshPlayerPersona(), true);
-  state = await readVillageState();
+  state = await readVillageState({ memories: true });
   assert.equal(state.playerPersonaMissing, false);
   assert.equal(state.playerPersonaIdentity, "Selected private identity");
   mode = "empty";

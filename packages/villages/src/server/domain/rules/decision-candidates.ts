@@ -1,7 +1,6 @@
 import type { InterpretationCheck, InterpretationResult } from "../models/interpretation-check-model.js";
 import { asRecord } from "./coerce.js";
 import { fingerprint } from "./interpretation-rules.js";
-import { validateWishInterpretation } from "./wish-interpretation-rules.js";
 
 export type DecisionCandidate = {
   outcome: string;
@@ -67,47 +66,6 @@ export function decisionCandidates(check: InterpretationCheck): DecisionCandidat
       open: facts.openRoutes,
       local: facts.localRecipients,
       ...(facts.sourceReferences === true ? { speakers: facts.openSpeakers } : {}),
-    };
-  } else if (check.domain === "wish") {
-    const criteria = asRecord(facts.criteria);
-    // History-dependent fulfillment needs System; old evidence cannot be rebound to a new unrelated line.
-    if (
-      evidence.some(
-        (line) =>
-          !line.current ||
-          (facts.wishAddedAt &&
-            (!line.at ||
-              !Number.isFinite(Date.parse(line.at)) ||
-              Date.parse(line.at) < Date.parse(String(facts.wishAddedAt)))),
-      )
-    )
-      return null;
-    if (
-      !facts.admission ||
-      !(
-        ["conversation", "transfer", "action"].includes(String(criteria.kind)) ||
-        (facts.physicalOnly &&
-          criteria.requiresPhysical &&
-          !/\b(?:and|then|after|before|unless|until)\b/iu.test(String(facts.wishText)))
-      ) ||
-      (Array.isArray(facts.conditions) && facts.conditions.length) ||
-      (Array.isArray(facts.discoveries) && facts.discoveries.length)
-    )
-      return null;
-    proofKind = criteria.requiresPhysical ? "physical" : "conversation";
-    supporting = supporting.filter((line) =>
-      proofKind === "physical"
-        ? line.kind === "receipt" &&
-          !line.id.startsWith("receipt:completed-project:") &&
-          Array.isArray(facts.matchingReceiptIds) &&
-          facts.matchingReceiptIds.includes(line.id.replace(/^receipt:/u, ""))
-        : line.speakerId === "player" && line.kind !== "receipt",
-    );
-    target = {
-      wish: facts.wishText,
-      for: facts.actorName ?? facts.actorId,
-      since: facts.wishAddedAt,
-      proof: proofKind,
     };
   } else {
     supporting = supporting.filter((line) => line.speakerId === facts.actorId && line.kind !== "narration");
@@ -224,7 +182,6 @@ export function validDecisionEvidence(check: InterpretationCheck, result: Interp
   return (
     !!candidate &&
     JSON.stringify(candidate.evidenceIds) === JSON.stringify(result.evidenceIds) &&
-    candidate.proofKind === asRecord(result.details).proofKind &&
-    (check.domain !== "wish" || !validateWishInterpretation(check, result))
+    candidate.proofKind === asRecord(result.details).proofKind
   );
 }

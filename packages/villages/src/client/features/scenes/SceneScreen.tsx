@@ -1,31 +1,57 @@
-import { recordTurnTiming } from "../../shared/turn-timing.js";
-import { useCallback, useState } from "react";
-import type { RoomOperation, VillageSnapshot } from "../../../shared/contracts/village.js";
-import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  isSceneTurnOutcome,
+  isSceneTurnOutcomeMessage,
+  sceneTurnOutcomeMessage,
+} from "../../../shared/contracts/scene-turn-outcome.js";
+import type { RoomOperation, SceneView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { playerDisplayName, venuePictureOf } from "../../shared/presentation.js";
-import type { SceneScreenController } from "./screen-contracts.js";
+import { recordTurnTiming } from "../../shared/turn-timing.js";
 import { DecisionsControl } from "../settings/villages-decisions-control.js";
 import { SavedChangesDiagnostics } from "../settings/villages-saved-changes.js";
-import { MailboxImprovementEditor } from "../venues/VenuePanels.js";
-import { RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
-import { useContext, useEffect } from "react";
 import type { SceneErrorItem } from "./scene-errors.js";
-import { SpinoffActionContext, SpinoffErrorContext } from "./SpinoffPanel.js";
+import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
+import type { SceneScreenController } from "./screen-contracts.js";
+import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
+import { ModalDialog } from "../../shared/ModalDialog.js";
+import type { PlaceDetail } from "../../../shared/contracts/places.js";
+
+const requestErrorIds = new Set(["room", "operation", "greeting"]);
 
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
-  const displayedSubmissionId = controller.room?.submissions?.at(-1)?.id;
+  const [showPlace, setShowPlace] = useState(false);
+  const displayedSubmissionId = controller.room?.latestTurn?.published ? controller.room.latestTurn.id : undefined;
   useEffect(() => {
     if (displayedSubmissionId && controller.room?.id)
       recordTurnTiming(controller.room.id, displayedSubmissionId, "displayed");
   }, [controller.room?.id, displayedSubmissionId]);
-  const startSpinoff = useContext(SpinoffActionContext);
-  const spinoffError = useContext(SpinoffErrorContext);
   const [reportedErrors, setReportedErrors] = useState<
     { sceneId: string; id: string; title: string; message: string }[]
   >([]);
   const sceneId = controller.room?.id;
+  const sceneLifetime = useRef<string | undefined>(sceneId);
+  const [legacyReviewBusy, setLegacyReviewBusy] = useState(false);
+  const legacyReviewPending = useRef(false);
+  const legacyReviewGeneration = useRef(0);
+  const heldRecovery = useRef(controller.legacyRecovery);
+  heldRecovery.current = controller.legacyRecovery;
+  useEffect(() => {
+    sceneLifetime.current = sceneId;
+    legacyReviewPending.current = false;
+    legacyReviewGeneration.current++;
+    setLegacyReviewBusy(false);
+    return () => {
+      sceneLifetime.current = undefined;
+    };
+  }, [sceneId]);
+  const sceneVenues =
+    controller.snapshot?.sceneVenue && controller.snapshot.sceneVenue.sceneId === sceneId
+      ? [controller.snapshot.sceneVenue.venue]
+      : controller.room?.capturedContext
+        ? []
+        : (controller.snapshot?.settings.venues ?? []);
   const reportSettingsError = useCallback(
     (id: string, title: string, message: string) => {
       if (!sceneId) return;
@@ -47,6 +73,19 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
   const clarificationId = controller.room?.attentionClarification?.id;
   const clarificationMessage = controller.room?.attentionClarification?.message;
   const restoreRoomDraft = controller.setRoomDraft;
+  const currentOperation = controller.room?.operation;
+  const editVersionRef = controller.composerEditVersionRef;
+  const showInformation = controller.setRoomRuling;
+  const restoredInformation = useRef("");
+  useEffect(() => {
+    const operation = currentOperation;
+    const key = `${sceneId}:${operation?.id}`;
+    if (!operation || !isSceneTurnOutcome(operation.turnOutcome) || restoredInformation.current === key) return;
+    restoredInformation.current = key;
+    if (editVersionRef.current !== 0) return;
+    restoreRoomDraft((current) => current || operation.input?.message || "");
+    showInformation(sceneTurnOutcomeMessage(operation.turnOutcome));
+  }, [sceneId, currentOperation, editVersionRef, showInformation, restoreRoomDraft]);
   useEffect(() => {
     if (clarificationId && clarificationMessage) restoreRoomDraft((current) => current || clarificationMessage);
   }, [controller.room?.id, clarificationId, clarificationMessage, restoreRoomDraft]);
@@ -61,10 +100,8 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     greetRoom,
     leaveRoom,
     loadSnapshot,
-    mailboxOpen,
     mobile,
     moveRoom,
-    nameOfCharacter,
     openMenu,
     openPerson,
     openRoom,
@@ -75,7 +112,6 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     room,
     roomBusy,
     roomChangeStatus,
-    roomContactBoundary,
     roomDraft,
     roomEnded,
     roomError,
@@ -83,29 +119,22 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
     roomGreetingNotice,
     roomLeaveSubmissionIdRef,
     roomMode,
+    legacyRecovery,
+    setLegacyRecovery,
     roomNotices,
     roomOpen,
     roomRuling,
     roomSubmissionIdRef,
-    roomTargetId,
     roomUnresolvedChanges,
-    saveSpriteCardFlip,
     sendRoom,
     setMailboxOpen,
     setRoom,
     setRoomBusy,
-    setRoomContactBoundary,
-    setRoomContactKind,
     setRoomDraft,
     setRoomError,
     setRoomMode,
-    setRoomTargetId,
-    setSnapshot,
     openVenue,
     snapshot,
-    spriteFlipDraft,
-    spriteFlipError,
-    spriteFlipSaving,
   } = controller;
 
   return (
@@ -113,55 +142,61 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
       {room ? (
         <RoomPanel
           room={room}
+          worldScope={snapshot?.worldScope ?? ""}
           sceneErrors={[
             ...[
+              {
+                id: "operation",
+                title:
+                  room.operation?.status === "interrupted"
+                    ? room.operation.kind === "turn"
+                      ? "Message failed"
+                      : "Saved request interrupted"
+                    : "Saved request failed",
+                message:
+                  room.operation?.error ||
+                  (room.operation?.status === "interrupted"
+                    ? "The saved request was interrupted. Retry it when you are ready."
+                    : ""),
+                actions:
+                  room.operation?.status === "interrupted" && room.status !== "opening" ? (
+                    <button
+                      type="button"
+                      disabled={roomBusy || legacyReviewBusy}
+                      onClick={() =>
+                        void retrySavedScene(
+                          room.operation?.kind === "turn" && legacyRecovery?.sceneId === room.id
+                            ? legacyRecovery
+                            : undefined,
+                        )
+                      }
+                    >
+                      {room.operation.kind === "turn" ? "Retry original message" : "Retry saved request"}
+                    </button>
+                  ) : undefined,
+              },
               {
                 id: "room",
                 title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
                 message: roomError,
               },
               {
-                id: "operation",
-                title: "Saved request failed",
-                message: room.operation?.status === "interrupted" ? "" : room.operation?.error,
-              },
-              {
                 id: "greeting",
                 title: "Scene opening failed",
                 message: roomGreetingError?.sessionId === room.id ? roomGreetingError.message : "",
               },
-              { id: "sprite-setting", title: "Scene setting could not be saved", message: spriteFlipError },
               ...reportedErrors
                 .filter((entry) => entry.sceneId === room.id)
                 .map(({ sceneId: _sceneId, ...entry }) => entry),
-              ...(spinoffError ? [{ id: "spinoff", title: "Spinoff request failed", message: spinoffError }] : []),
             ]
               .filter(
                 (entry, index, all) =>
-                  !!entry.message && all.findIndex((other) => other.message === entry.message) === index,
+                  !!entry.message &&
+                  (!requestErrorIds.has(entry.id) ||
+                    all.findIndex((other) => requestErrorIds.has(other.id) && other.message === entry.message) ===
+                      index),
               )
               .map((entry): SceneErrorItem => ({ ...entry, message: entry.message! })),
-            ...(room.operation?.status === "interrupted"
-              ? [
-                  {
-                    id: "interrupted-" + room.operation.id,
-                    title: "Saved request interrupted",
-                    message: [
-                      room.operation.error,
-                      room.operation.kind === "turn"
-                        ? "The previous request may have been billed. Review your draft and press Send to resend when ready."
-                        : "The previous request may have been billed. Retry the saved request when ready.",
-                    ]
-                      .filter(Boolean)
-                      .join("\n\n"),
-                    actions: (
-                      <button type="button" disabled={roomBusy} onClick={() => void retrySavedScene()}>
-                        {room.operation.kind === "turn" ? "Recover saved request" : "Retry saved request"}
-                      </button>
-                    ),
-                  },
-                ]
-              : []),
           ]}
           turnRecovery={controller.turnRecovery}
           onCheckSavedReply={() => void controller.checkSavedReply?.()}
@@ -177,28 +212,100 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               ? Object.fromEntries(snapshot.villagers.map((villager) => [villager.characterId, villager.dialogueColor]))
               : {}
           }
-          picture={venuePictureOf(snapshot?.settings.venues ?? [], room)}
+          picture={venuePictureOf(room.status === "closed" ? sceneVenues : (snapshot?.settings.venues ?? []), room)}
           draft={roomDraft}
           mode={roomMode}
-          targetId={roomTargetId}
-          contactDoors={(() => {
-            const zones = snapshot?.settings.venues.find((venue) => venue.id === room.placeId)?.zones ?? [];
-            return contactNeighborIds(room.connectionMap ?? zones, room.zoneId ?? "exterior").map((id) => {
-              const zone = zones.find((entry) => entry.id === id);
-              return {
-                id,
-                label: zone ? sceneZoneLabel(zone) : "Interior entrance",
-              };
-            });
+          legacyRecovery={legacyRecovery?.sceneId === room.id ? legacyRecovery : null}
+          legacyDestination={(() => {
+            const input = legacyRecovery?.sceneId === room.id ? legacyRecovery.operation.input : undefined;
+            const recipient = input?.targetId
+              ? (room.participants.find((person) => person.characterId === input.targetId)?.name ?? "saved recipient")
+              : "";
+            if (input?.mode !== "contact") return recipient || "saved recipient";
+            const zone = sceneVenues
+              .find((venue) => venue.id === room.placeId)
+              ?.zones?.find((entry) => entry.id === input.contact?.boundaryZoneId);
+            return [zone ? sceneZoneLabel(zone) : "saved Zone", recipient].filter(Boolean).join(" · ");
           })()}
-          contactBoundary={roomContactBoundary}
-          onContactBoundary={(id) => {
-            composerEditVersionRef.current++;
-            roomSubmissionIdRef.current = null;
-            setRoomContactBoundary(id);
+          onRetryLegacy={() => {
+            if (legacyRecovery?.sceneId === room.id) void retrySavedScene(legacyRecovery);
+          }}
+          onReplaceLegacy={() => {
+            if (legacyRecovery?.sceneId === room.id) void sendRoom(undefined, legacyRecovery);
+          }}
+          onReviewLegacy={() => {
+            if (legacyReviewPending.current || roomBusy || !legacyRecovery) return;
+            const id = room.id;
+            const held = legacyRecovery;
+            legacyReviewPending.current = true;
+            const generation = ++legacyReviewGeneration.current;
+            setLegacyReviewBusy(true);
+            void (async () => {
+              try {
+                const { session } = await request<{ session: SceneView | null }>("/rooms/active");
+                if (
+                  sceneLifetime.current !== id ||
+                  heldRecovery.current !== held ||
+                  legacyReviewGeneration.current !== generation
+                )
+                  return;
+                if (!session || session.id !== id) throw new Error("This Scene changed. Reopen it before continuing.");
+                const summary = session.operation;
+                if (summary?.status === "running")
+                  throw new Error("The saved action is still processing. Check again before continuing.");
+                let latest: RoomOperation | null = null;
+                if (
+                  summary &&
+                  (summary.status === "interrupted" || summary.error) &&
+                  !hasPublishedRoomSubmission(session, summary.id)
+                ) {
+                  latest = (
+                    await request<{ operation: RoomOperation | null }>(
+                      `/rooms/${encodeURIComponent(id)}/operations/${encodeURIComponent(summary.id)}`,
+                    )
+                  ).operation;
+                  if (
+                    sceneLifetime.current !== id ||
+                    heldRecovery.current !== held ||
+                    legacyReviewGeneration.current !== generation
+                  )
+                    return;
+                  if (
+                    !latest ||
+                    latest.id !== summary.id ||
+                    latest.attemptId !== summary.attemptId ||
+                    latest.status !== summary.status
+                  )
+                    throw new Error("The saved action changed again. Review it before continuing.");
+                }
+                if (latest && !["contact", "fulfill"].includes(latest.input?.mode ?? ""))
+                  throw new Error(
+                    "A different saved action needs attention. Review its Scene error before continuing.",
+                  );
+                setRoom(currentRoom(session));
+                setLegacyRecovery(
+                  latest && ["contact", "fulfill"].includes(latest.input?.mode ?? "")
+                    ? { sceneId: id, operation: latest }
+                    : null,
+                );
+                setRoomError("");
+              } catch (cause) {
+                if (
+                  sceneLifetime.current === id &&
+                  heldRecovery.current === held &&
+                  legacyReviewGeneration.current === generation
+                )
+                  setRoomError(messageFrom(cause, "The saved action could not be checked."));
+              } finally {
+                if (legacyReviewGeneration.current === generation) {
+                  legacyReviewPending.current = false;
+                  if (sceneLifetime.current === id) setLegacyReviewBusy(false);
+                }
+              }
+            })();
           }}
           movementZones={(() => {
-            const venue = snapshot?.settings.venues.find((entry) => entry.id === room.placeId);
+            const venue = sceneVenues.find((entry) => entry.id === room.placeId);
             return (venue?.zones ?? [])
               .filter((zone) => {
                 if (zone.id === room.zoneId) return true;
@@ -221,11 +328,9 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           })()}
           onMovementTarget={(zoneId) => void moveRoom(zoneId)}
           currentZoneLabel={sceneZoneLabel(
-            snapshot?.settings.venues
-              .find((venue) => venue.id === room.placeId)
-              ?.zones?.find((zone) => zone.id === room.zoneId),
+            sceneVenues.find((venue) => venue.id === room.placeId)?.zones?.find((zone) => zone.id === room.zoneId),
           )}
-          busy={roomBusy || controller.replyPending || room.operation?.status === "running"}
+          busy={roomBusy || legacyReviewBusy || controller.replyPending || room.operation?.status === "running"}
           error={
             roomError ||
             room.operation?.error ||
@@ -236,31 +341,24 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           ruling={roomRuling}
           open={roomOpen}
           ended={roomEnded}
-          playerName={playerDisplayName(snapshot)}
+          playerName={room.playerName ?? playerDisplayName(snapshot)}
           playerPortrait={personaPortrait ?? undefined}
           portraits={portraits}
           sprites={Object.fromEntries(
             (snapshot?.villagers ?? []).map((villager) => [villager.characterId, villager.sprite]),
           )}
           onDraft={(value) => {
+            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             roomLeaveSubmissionIdRef.current = null;
             setRoomDraft(value);
           }}
           onMode={(value) => {
+            if (isSceneTurnOutcomeMessage(roomRuling)) controller.setRoomRuling("");
             composerEditVersionRef.current++;
             roomSubmissionIdRef.current = null;
             setRoomMode(value);
-            if (value === "contact") {
-              setRoomTargetId("");
-              setRoomContactKind("call");
-            }
-          }}
-          onTarget={(value) => {
-            composerEditVersionRef.current++;
-            roomSubmissionIdRef.current = null;
-            setRoomTargetId(value);
           }}
           sendOnEnter={snapshot?.settings.sendOnEnter === true}
           onSend={() => void (roomMode === "conclude" ? leaveRoom() : sendRoom())}
@@ -268,10 +366,10 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);
+            else setShowPlace(true);
             void loadSnapshot();
           }}
           onEnd={() => void closeRoom()}
-          onStartSpinoff={startSpinoff}
           notices={roomNotices}
           onDismissNotice={dismissRoomNotice}
           onOpenWish={(actorId, wishId) => {
@@ -279,6 +377,16 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           }}
           changeStatus={room?.memoryMode === "live" ? roomChangeStatus : undefined}
           unresolvedChanges={roomUnresolvedChanges}
+          onContinueChange={(submissionId, domain) => {
+            if (!room?.id || roomBusy) return;
+            setRoomBusy(true);
+            void request(`/rooms/${encodeURIComponent(room.id)}/changes/${encodeURIComponent(submissionId)}/continue`, {
+              method: "POST",
+              body: JSON.stringify({ domain }),
+            })
+              .catch((cause) => setRoomError(messageFrom(cause, "Could not continue.")))
+              .finally(() => setRoomBusy(false));
+          }}
           onRetryChangeInterpretation={(submissionId, domain) => {
             if (!room?.id || roomBusy) return;
             setRoomBusy(true);
@@ -304,54 +412,48 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onReplayChanges={() => {
             if (!room?.id) return;
             void request(`/rooms/${encodeURIComponent(room.id)}/changes/replay`, { method: "POST" }).catch((cause) =>
-              setRoomError(messageFrom(cause, "Saved changes could not be replayed.")),
+              setRoomError(messageFrom(cause, "World changes could not be replayed.")),
             );
           }}
           debugDiscardEnabled={debugDiscardEnabled}
           onDebugDiscard={() => void discardRoomDebug()}
           onRetryGreeting={() => {
-            if (room.id) void greetRoom(room.id);
+            if (
+              room.id &&
+              (room.operation?.status === "interrupted" ||
+                (room.operation?.kind === "greet" && room.operation.status === "complete" && room.operation.error))
+            )
+              void retrySavedScene();
+            else if (room.id) void greetRoom(room.id);
             else {
               const place = snapshot?.settings.venues.find((candidate) => candidate.id === room.placeId);
               if (place) void openRoom(place);
+              else
+                void request<PlaceDetail>("/places/" + encodeURIComponent(room.placeId))
+                  .then((detail) => {
+                    if (sceneLifetime.current === room.id) void openRoom(detail.location);
+                  })
+                  .catch((cause) => setRoomError(messageFrom(cause, "Could not reopen this Place.")));
             }
           }}
           onContinueWithoutGreeting={() => {
             if (room.id) void continueRoomWithoutGreeting(room.id);
           }}
-          onUseMailbox={
-            snapshot?.settings.venues.some(
-              (venue) =>
-                venue.id === room.placeId &&
-                venue.occupancy.playerHome &&
-                (!room.spaceClass || room.spaceClass === "residence"),
-            )
-              ? () => setMailboxOpen(true)
-              : undefined
-          }
+          onUseMailbox={() => setMailboxOpen(true)}
+          onMap={goHome}
           onProjects={() => openMenu("projects")}
           onProposals={() => openMenu("venueRequests")}
           spriteCardFlipEnabled={snapshot?.settings.spriteCardFlipEnabled !== false}
           sceneSettings={
             <>
-              <label className={ELEMENT_TAG + "-row"}>
-                <input
-                  type="checkbox"
-                  checked={spriteFlipDraft ?? snapshot?.settings.spriteCardFlipEnabled !== false}
-                  disabled={spriteFlipSaving}
-                  onChange={(event) => void saveSpriteCardFlip(event.target.checked)}
+              {room.semanticVersion !== 2 ? (
+                <DecisionsControl
+                  sceneId={room.id}
+                  onError={reportDecisionsError}
+                  busy={roomBusy || room.operation?.status === "running"}
+                  api={request}
                 />
-                Card-flip sprite changes
-              </label>
-              <p className={ELEMENT_TAG + "-hint"}>
-                Flip when facing or artwork changes. Saved for this Village on every device.
-              </p>
-              <DecisionsControl
-                sceneId={room.id}
-                onError={reportDecisionsError}
-                busy={roomBusy || room.operation?.status === "running"}
-                api={request}
-              />
+              ) : null}
               {room.memoryMode === "live" ? (
                 <SavedChangesDiagnostics
                   key={room.id}
@@ -368,104 +470,31 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           Back to village
         </button>
       )}
-      {/* Future flavor: let a village present this Mailbox as a crystal, terminal, messenger bird, or email. */}
-      {mailboxOpen && snapshot ? (
-        <div className={`${ELEMENT_TAG}-mailbox-backdrop`} onClick={() => setMailboxOpen(false)}>
-          <section
-            className={`${ELEMENT_TAG}-mailbox`}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Mailbox"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className={`${ELEMENT_TAG}-row`} style={{ justifyContent: "space-between" }}>
-              <h2 className={`${ELEMENT_TAG}-panel-title`}>Mailbox</h2>
-              <button type="button" className={`${ELEMENT_TAG}-button`} onClick={() => setMailboxOpen(false)}>
-                Close
-              </button>
-            </div>
-            <p className={`${ELEMENT_TAG}-hint`}>Venue decisions and replies from the people affected by them.</p>
-            <div className={`${ELEMENT_TAG}-mailbox-list`}>
-              {[...(snapshot.venueMail ?? [])].reverse().map((entry) => (
-                <article className={`${ELEMENT_TAG}-mailbox-item`} key={entry.id}>
-                  <strong>{entry.title}</strong>
-                  <p>{entry.detail}</p>
-                  <p className={`${ELEMENT_TAG}-hint`}>
-                    {entry.status === "awaiting-villagers"
-                      ? `Awaiting replies · due ${new Date(entry.dueAt).toLocaleString()}`
-                      : entry.status === "pending-player"
-                        ? "Awaiting your decision"
-                        : entry.status === "approved"
-                          ? "Approved"
-                          : "Declined"}
-                  </p>
-                  {entry.decisions.map((decision) => (
-                    <p key={decision.characterId}>
-                      <strong>{nameOfCharacter(decision.characterId)}:</strong> {decision.reply}
-                    </p>
-                  ))}
-                  {entry.status === "pending-player" && entry.kind === "villager-change" ? (
-                    <MailboxImprovementEditor
-                      entry={entry}
-                      onDecide={async (approved, value) => {
-                        setSnapshot(
-                          await request<VillageSnapshot>(`/venue-mail/${encodeURIComponent(entry.id)}/decision`, {
-                            method: "POST",
-                            body: JSON.stringify({ approved, ...value }),
-                          }),
-                        );
-                      }}
-                    />
-                  ) : null}
-                  {entry.error ? <p className={`${ELEMENT_TAG}-hint`}>Reply delayed: {entry.error}</p> : null}
-                </article>
-              ))}
-              {(snapshot.venueMail?.length ?? 0) === 0 &&
-              snapshot.venueRequests.length === 0 &&
-              snapshot.upgradeRequests.length === 0 ? (
-                <p className={`${ELEMENT_TAG}-empty`}>No Venue mail yet.</p>
-              ) : null}
-              {snapshot.venueRequests.map((entry) => (
-                <article className={`${ELEMENT_TAG}-mailbox-item`} key={entry.id}>
-                  <strong>
-                    {entry.requesterName || "A villager"} suggests {entry.venueDraft.name}
-                  </strong>
-                  <p>
-                    {entry.venueDraft.classes
-                      .map((venueClass) => venueClass[0].toUpperCase() + venueClass.slice(1))
-                      .join(" / ")}
-                  </p>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    onClick={() => {
-                      setMailboxOpen(false);
-                      openMenu("venueRequests");
-                    }}
-                  >
-                    Review request
-                  </button>
-                </article>
-              ))}
-              {snapshot.upgradeRequests.map((entry) => (
-                <article className={`${ELEMENT_TAG}-mailbox-item`} key={entry.id}>
-                  <strong>{entry.requesterName} suggests a home change</strong>
-                  <p>{entry.detail}</p>
-                  <button
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    onClick={() => {
-                      setMailboxOpen(false);
-                      openMenu("venueRequests");
-                    }}
-                  >
-                    Review request
-                  </button>
-                </article>
-              ))}
-            </div>
-          </section>
-        </div>
+      {showPlace && room ? (
+        <ModalDialog title={room.placeName} onClose={() => setShowPlace(false)} scrollBody>
+          <div className="villages-founding-editor-body villages-places-directory">
+            <p>{sceneVenues.find((place) => place.id === room.placeId)?.description}</p>
+            <ul>
+              {sceneVenues
+                .find((place) => place.id === room.placeId)
+                ?.zones?.map((zone) => (
+                  <li key={zone.id}>
+                    {zone.name}
+                    {zone.seen ? <p>{zone.description}</p> : null}
+                  </li>
+                ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPlace(false);
+                goHome();
+              }}
+            >
+              Map
+            </button>
+          </div>
+        </ModalDialog>
       ) : null}
     </div>
   );

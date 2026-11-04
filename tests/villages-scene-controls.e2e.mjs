@@ -1,17 +1,17 @@
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import { openSceneErrors } from "./fixtures/villages-scene-errors.fixture.mjs";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
-try {
+await withBrowser(browser, async () => {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
@@ -21,6 +21,7 @@ try {
     for (const count of [1, 2, 3, 4]) {
       const mobile = width !== 1440;
       const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+      await mockEngineLookups(page);
       const errors = [];
       page.on("pageerror", (error) => errors.push(error.message));
       await page.addInitScript(() => {
@@ -34,7 +35,7 @@ try {
       fixture.settings.venues[0].occupancy.playerHome = home;
       fixture.settings.venues[0].classes = home ? ["residence"] : ["workplace"];
       const session = {
-        version: 1,
+        version: 2,
         stagingVersion: 1,
         id: "scene-controls",
         placeId: "mill",
@@ -82,33 +83,71 @@ try {
       ];
       let turns = 0;
       let failDecisionSave = true;
+      const interpretationReads = { settings: 0, diagnostics: 0 };
       await page.route("**/api/villages**", async (route) => {
         const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/interpretation-settings") && route.request().method() === "GET")
+          interpretationReads.settings++;
+        if (path.includes("/interpretation-diagnostics/")) interpretationReads.diagnostics++;
         let value = fixture;
-        if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+        if (path.endsWith("/connections"))
+          value = { systemConnectionId: "", narrationConnectionId: "", imageConnectionId: "" };
+        else if (path.endsWith("/mailbox"))
+          value = {
+            scope: snapshot.worldScope,
+            folder: "inbox",
+            letters: [],
+            total: 0,
+            recovery: [],
+            recoveryTotal: 0,
+          };
+        else if (path.endsWith("/rooms/archive")) value = { visits: [], total: 0 };
+        else if (path.endsWith("/rooms/" + session.id + "/history")) {
+          assert.equal(new URL(route.request().url()).searchParams.get("scope"), fixture.worldScope);
+          value = { scope: fixture.worldScope, sceneId: session.id, version: "a".repeat(64), lines: session.lines };
+        } else if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
         else if (
           path.endsWith("/interpretation-settings") &&
           route.request().method() === "PATCH" &&
           failDecisionSave
         ) {
           failDecisionSave = false;
-          return route.fulfill({ status: 500, json: { error: "Server could not persist the Decisions setting." } });
+          return fulfill(route, { status: 500, json: { error: "Server could not persist the Decisions setting." } });
         } else if (path.endsWith("/interpretation-settings"))
           value = { settings: { decisionsEnabled: false, compareSystem: true }, status: { available: false } };
         else if (path.includes("/interpretation-diagnostics/")) value = { checks: [] };
         else if (path.endsWith("/rooms/end")) {
+          const endBody = route.request().postDataJSON();
+          if (count === 1) {
+            assert.equal(endBody.abandonOperationId, "failed-turn");
+            assert.equal(endBody.retryOfAttemptId, "failed-attempt");
+            assert.equal(endBody.expectedSceneRevision, session.sceneRevision);
+          }
           session.status = "closed";
           value = { session, recordEvents: [] };
         } else if (path.endsWith("/rooms/turn")) {
           turns++;
           const { message } = route.request().postDataJSON();
           session.lines.push({ id: "player", role: "user", speakerId: "", name: "", content: message, at: now });
+          if (count === 1)
+            session.operation = {
+              id: "failed-turn",
+              attemptId: "failed-attempt",
+              kind: "turn",
+              status: "interrupted",
+              input: {},
+              error: "Request interrupted",
+            };
           value = { session, recordEvents: [] };
         }
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+        await fulfill(route, {
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+        });
       });
       await page.route("http://scene-controls.test/", (route) =>
-        route.fulfill({
+        fulfill(route, {
           status: 200,
           contentType: "text/html",
           body: `<style>:root{--background:#101726;--foreground:#f2f2f5;--popover:#202938;--border:#4d5870;--primary:#af91eb;--secondary:#303b50;--muted-foreground:#bac4d7}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial} [data-component=HomeBrowserHub],.shell{height:100%;display:flex;flex-direction:column}.mari-home-browser-chrome{height:80px;flex-shrink:0}main{flex:1;min-height:0;overflow:auto}${tag}{display:block;width:100%;height:100%}</style><div data-component="HomeBrowserHub"><div class="shell"><header class="mari-home-browser-chrome">Marinara · Professor Mari · Villages</header><main data-component="HomeBrowserHub.Content"><${tag}></${tag}></main></div></div>`,
@@ -142,6 +181,12 @@ try {
       await expect(send).toHaveCount(0);
       await page.getByRole("button", { name: "History", exact: true }).click();
       await expect(page.getByRole("log", { name: "Scene history" })).toBeVisible();
+      await expect(page.getByRole("log", { name: "Scene history" })).toContainText("Rain taps against the window.");
+      const historyPages = page.getByRole("navigation", { name: "Scene history pages" });
+      assert.equal(
+        (await historyPages.getByRole("button", { name: "Refresh", exact: true }).boundingBox()).height,
+        mobile ? 44 : 32,
+      );
       await expect(page.getByRole("region", { name: "Current paragraph" })).toBeHidden();
       await expect(composer).toHaveCount(0);
       await expect(send).toHaveCount(0);
@@ -150,19 +195,21 @@ try {
       await expect(send).toBeEnabled();
       await expect(composer).toHaveValue("Tea sounds perfect.");
       await page.getByRole("button", { name: "Mode: Say / Do. Choose mode" }).click();
-      for (const mode of ["Say / Do", "Move", "Contact", "Conclude"])
+      for (const mode of ["Say / Do", "Move", "Conclude"])
         await expect(page.getByRole("menuitemradio", { name: mode, exact: true })).toBeVisible();
-      await expect(page.getByRole("menuitemradio", { name: "Fulfill", exact: true })).toHaveCount(0);
+      for (const removed of ["Contact", "Fulfill"])
+        await expect(page.getByRole("menuitemradio", { name: removed, exact: true })).toHaveCount(0);
       await expect(page.getByRole("menuitemradio", { name: "Knock / Call", exact: true })).toHaveCount(0);
       await page.getByRole("menuitemradio", { name: "Say / Do", exact: true }).click();
       await page.getByRole("button", { name: "Venue actions" }).click();
       await expect(page.getByRole("menuitem", { name: "Projects", exact: true })).toBeVisible();
       await expect(page.getByRole("menuitem", { name: "Proposals", exact: true })).toBeVisible();
-      await expect(page.getByRole("menuitem", { name: "View Mailbox" })).toHaveCount(home ? 1 : 0);
+      await expect(page.getByRole("menuitem", { name: "View Mailbox" })).toHaveCount(1);
       assert.equal(await dock.getByRole("button", { name: /Mailbox|Projects|Proposals/ }).count(), 0);
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
       await expect(page.getByRole("switch", { name: "Use Decisions" })).toBeVisible();
       const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
+      await expect(decisionSwitch).toBeEnabled();
       await decisionSwitch.click();
       await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
       await expect(page.getByText("The switch could not be saved.", { exact: false })).toHaveCount(0);
@@ -199,12 +246,12 @@ try {
       }
       await venueProfile.getByRole("button", { name: "Back to Scene", exact: true }).click();
       await expect(composer).toHaveValue(draftBeforeVenue);
-      if (home) {
+      {
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "View Mailbox" }).click();
         const mailbox = page.getByRole("dialog", { name: "Mailbox", exact: true });
-        await expect(mailbox.getByRole("button", { name: "Review request" })).toBeEnabled();
-        await mailbox.getByRole("button", { name: "Close", exact: true }).click();
+        await expect(mailbox.getByText("Venue decisions", { exact: true })).toHaveCount(0);
+        await mailbox.getByRole("button", { name: "Close Mailbox", exact: true }).click();
       }
 
       for (const menu of ["Projects", "Proposals"]) {
@@ -212,7 +259,22 @@ try {
         await page.getByRole("menuitem", { name: menu, exact: true }).click();
         await expect(page.locator("." + tag + "-room-screen")).toBeHidden();
         await expect(page.locator("." + tag + "-home")).toHaveCount(0);
-        await page.getByRole("button", { name: "Back to menu", exact: true }).click();
+        if (menu === "Projects") await page.getByRole("button", { name: /^Close/ }).click();
+        await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
+        await expect(composer).toHaveValue(draftBeforeVenue);
+      }
+
+      for (const [key, label] of [
+        ["general", "General Preferences"],
+        ["village", "World Configuration"],
+        ["visual", "Visual Settings"],
+        ["advanced", "Advanced"],
+      ]) {
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: "Proposals", exact: true }).click();
+        if (mobile) await page.getByRole("combobox", { name: "Section" }).selectOption(key);
+        else await page.getByRole("button", { name: label, exact: true }).click();
+        await expect(page.getByRole("heading", { name: label, level: 1 })).toBeVisible();
         await page.getByRole("button", { name: "Back to Scene", exact: true }).click();
         await expect(composer).toHaveValue(draftBeforeVenue);
       }
@@ -321,6 +383,44 @@ try {
         await expect(host).not.toHaveAttribute("data-scene-keyboard", "");
         await expect.poll(() => host.evaluate((el) => el.clientHeight)).toBe(height - 80);
       }
+      if (count === 1) {
+        // Advance timers after the keyboard/animation checks, which use the real browser clock.
+        await page.getByRole("button", { name: "Venue actions" }).click();
+        await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
+        await expect(decisionSwitch).toBeEnabled();
+        const settingsReads = interpretationReads.settings;
+        await page.clock.install();
+        const idle = async () => {
+          await page.clock.fastForward(10_000);
+          // Allow dispatched requests to reach the fixture after advancing past the former polling interval.
+          await page.waitForTimeout(100);
+        };
+        await idle();
+        assert.deepEqual(
+          interpretationReads,
+          { settings: settingsReads, diagnostics: 0 },
+          "closed checks do no background reads",
+        );
+        await page.getByRole("button", { name: "0 checks", exact: true }).click();
+        const checksPanel = page.getByRole("region", { name: "Interpretation checks" });
+        await expect(checksPanel).toBeVisible();
+        await expect.poll(() => interpretationReads.diagnostics).toBe(1);
+        await idle();
+        assert.deepEqual(interpretationReads, { settings: settingsReads, diagnostics: 1 }, "open checks do not poll");
+        if (process.env.VILLAGES_VISUAL_OUTPUT)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `scene-checks-${width}x${height}.png`),
+          });
+        await checksPanel.getByRole("button", { name: "Close interpretation checks", exact: true }).click();
+        await idle();
+        assert.deepEqual(interpretationReads, { settings: settingsReads, diagnostics: 1 });
+        await page.getByRole("button", { name: "0 checks", exact: true }).click();
+        await expect(checksPanel).toBeVisible();
+        await expect.poll(() => interpretationReads.diagnostics).toBe(2);
+        await page.keyboard.press("Escape");
+        await expect(checksPanel).toHaveCount(0);
+        await page.getByRole("button", { name: "Close Scene settings" }).click();
+      }
       if (process.env.VILLAGES_VISUAL_OUTPUT && count === 1)
         await page.screenshot({
           path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, `scene-controls-${width}x${height}.png`),
@@ -361,6 +461,4 @@ try {
   console.log(
     "Scene controls passed: icons, narration, history drafts, modes, utilities, shell restoration, and stable sprites across keyboard viewport changes.",
   );
-} finally {
-  await browser.close();
-}
+});

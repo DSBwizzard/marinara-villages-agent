@@ -61,6 +61,8 @@ export type SceneScreenController = {
   readonly roomGreetingNotice: ScenesState["roomGreetingNotice"];
   readonly roomLeaveSubmissionIdRef: ScenesState["roomLeaveSubmissionIdRef"];
   readonly roomMode: ScenesState["roomMode"];
+  readonly legacyRecovery: ScenesState["legacyRecovery"];
+  readonly setLegacyRecovery: ScenesState["setLegacyRecovery"];
   readonly roomMoveOperationIdRef: ScenesState["roomMoveOperationIdRef"];
   readonly roomMoveZoneId: ScenesState["roomMoveZoneId"];
   readonly roomNotices: ScenesState["roomNotices"];
@@ -69,7 +71,6 @@ export type SceneScreenController = {
   readonly roomSubmissionIdRef: ScenesState["roomSubmissionIdRef"];
   readonly roomTargetId: ScenesState["roomTargetId"];
   readonly roomUnresolvedChanges: ScenesState["roomUnresolvedChanges"];
-  readonly saveSpriteCardFlip: (spriteCardFlipEnabled: boolean) => Promise<void>;
   readonly sendRoom: ReturnType<typeof useSendRoom>["sendRoom"];
   readonly turnRecovery?: string;
   readonly replyPending?: boolean;
@@ -82,6 +83,7 @@ export type SceneScreenController = {
   readonly setRoomContactBoundary: ScenesState["setRoomContactBoundary"];
   readonly setRoomContactKind: ScenesState["setRoomContactKind"];
   readonly setRoomDraft: ScenesState["setRoomDraft"];
+  readonly setRoomRuling: ScenesState["setRoomRuling"];
   readonly setRoomError: ScenesState["setRoomError"];
   readonly setRoomMode: ScenesState["setRoomMode"];
   readonly setRoomMoveZoneId: ScenesState["setRoomMoveZoneId"];
@@ -95,7 +97,4 @@ export type SceneScreenController = {
   readonly setVenueEditDraft: React.Dispatch<React.SetStateAction<VillageVenue | null>>;
   readonly setVenueId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-  readonly spriteFlipDraft: boolean | null;
-  readonly spriteFlipError: string;
-  readonly spriteFlipSaving: boolean;
 };

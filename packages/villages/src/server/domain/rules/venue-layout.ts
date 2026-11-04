@@ -16,6 +16,63 @@ import { badRequest, conflict } from "./errors.js";
 import { readZonePolicy } from "./venue-access.js";
 import { defaultVenueSpace, venueResidentIds } from "./venue-model.js";
 import { venueZones, zoneClosed } from "./venue-zones.js";
+import { readZoneLayout, zoneLayoutKey } from "../../../shared/helpers/zone-layout.js";
+import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
+import { managesAccess } from "./venue-access.js";
+
+/** Cosmetic positioning and explicit passages never edit access or an active Scene's captured layout. */
+export function applyVenueZoneLayout(state: VillageState, venue: VillageVenue, value: unknown): void {
+  const row = asRecord(value),
+    zones = venueZones(venue);
+  const ids = zones.map((zone) => zone.id);
+  if (ids.length > 7) throw conflict("A Venue may have at most six Zones besides Entrance.");
+  if (Object.keys(row).some((key) => !["base", "positions", "connections"].includes(key)))
+    throw badRequest("Only Zone positions and connections may be edited here.");
+  const positions = readZoneLayout(row.positions, ids);
+  if (!positions || Object.keys(positions).length !== ids.length)
+    throw badRequest("Place every Zone on the map without overlapping.");
+  const connections = row.connections;
+  if (
+    !Array.isArray(connections) ||
+    connections.length !== zones.length ||
+    new Set(connections.map((item) => asRecord(item).id)).size !== zones.length ||
+    connections.some((item) => !ids.includes(asRecord(item).id as string))
+  )
+    throw badRequest("Include each current Zone exactly once.");
+  const next = connections.map((item) => ({
+    id: asRecord(item).id as string,
+    connectedTo: asRecord(item).connectedTo as string[],
+  }));
+  const problem = connectionProblem(next);
+  if (problem) throw badRequest(problem.replaceAll("Exterior", "Entrance"));
+  const changed = zones.filter(
+    (zone) => JSON.stringify(contactNeighborIds(zones, zone.id)) !== JSON.stringify(contactNeighborIds(next, zone.id)),
+  );
+  if (changed.length) {
+    if (
+      !managesAccess(venue, null, "player") ||
+      changed.some((zone) => zone.id !== "exterior" && !managesAccess(venue, zone.id, "player"))
+    )
+      throw conflict("Only the Venue and affected Zone managers may change these connections.");
+    if (
+      state.projects.some(
+        (project) => project.venueId === venue.id && project.lifecycle && project.lifecycle.phase !== "complete",
+      )
+    )
+      throw conflict("Finish the current Venue project before changing its connections.");
+  }
+  if (typeof row.base !== "string" || row.base !== zoneLayoutKey(zones, venue.zoneLayout))
+    throw conflict("The layout changed. Reload the Venue before saving.");
+  if (venue.constructionStatus === "worksite") throw conflict("The worksite layout belongs to its build project.");
+  venue.zoneLayout = positions;
+  if (changed.length) {
+    venue.zones = zones.map((zone) => ({ ...zone, connectedTo: contactNeighborIds(next, zone.id) }));
+    venue.spaces = venue.zones.filter((zone) => ["public", "shared-residence"].includes(zone.kind));
+    venue.privateSpaces = venue.zones
+      .filter((zone) => zone.kind === "private-residence")
+      .map((zone) => ({ ...zone, ownerId: zone.ownerId! }));
+  }
+}
 
 export const VENUE_LAYOUTS = ["exterior", "common", "private", "both"] as const;
 export function readBaseVenueLayout(
@@ -23,6 +80,7 @@ export function readBaseVenueLayout(
   classes: VillageVenueClass[],
   residentId: string,
   image: (value: unknown) => VillageVenueImage | null,
+  options: { founding?: boolean } = {},
 ): VillageVenueZone[] {
   const row = asRecord(value);
   if (!VENUE_LAYOUTS.includes(row.layout as (typeof VENUE_LAYOUTS)[number]))
@@ -37,9 +95,9 @@ export function readBaseVenueLayout(
     (common && !spaces.length) ||
     (!personal && rooms.length) ||
     (personal && !rooms.length) ||
-    spaces.length + rooms.length > 24
+    spaces.length + rooms.length > 6
   )
-    throw badRequest("Provide Zones matching its selected layout, with at most 24 Zones.");
+    throw badRequest("Provide Zones matching its selected layout, with at most six Zones besides Entrance.");
   const result: VillageVenueZone[] = [
     {
       ...defaultVenueSpace(classes[0]!),
@@ -61,10 +119,14 @@ export function readBaseVenueLayout(
     if (!classes.includes(role)) throw badRequest("Choose one of this venue's Classes for each area.");
     const description = asTrimmedString(area.description);
     const roomSpecification = asTrimmedString(area.roomSpecification ?? (isPrivate ? area.description : ""));
-    if (roomSpecification.length > 1000) throw badRequest("Room specification must be at most 1000 characters.");
-    if (description.length > 1000 || (!isPrivate && !description))
-      throw badRequest("Describe the Common Space in at most 1000 characters.");
-    const ownerId = isPrivate && role === "residence" ? residentId || undefined : undefined;
+    if (roomSpecification.length > 4000) throw badRequest("Room specification must be at most 4000 characters.");
+    if (description.length > 4000 || (!isPrivate && !description))
+      throw badRequest("Describe the Common Space in at most 4000 characters.");
+    const ownerId =
+      isPrivate && role === "residence"
+        ? (options.founding ? asTrimmedString(area.ownerId) : asTrimmedString(area.ownerId) || residentId) || undefined
+        : undefined;
+    const prepareInterior = isPrivate && ownerId !== "player" && !options.founding;
     const controllers = Array.isArray(area.controllerIds)
       ? [...new Set(area.controllerIds.filter((id): id is string => typeof id === "string" && !!id))]
       : [];
@@ -72,7 +134,7 @@ export function readBaseVenueLayout(
       throw badRequest("Choose controllers for the Private Space.");
     result.push({
       ...defaultVenueSpace(role, description),
-      ...(isPrivate && ownerId !== "player" ? { roomSpecification, description: "" } : {}),
+      ...(prepareInterior ? { roomSpecification } : {}),
       id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
       connectedTo: Array.isArray(area.connectedTo) ? (area.connectedTo as string[]) : undefined,
       name: asTrimmedString(area.name).slice(0, 100) || "Zone",
@@ -91,14 +153,14 @@ export function readBaseVenueLayout(
           : "public",
       ownerId,
       controllerIds: controllers,
-      image: isPrivate && ownerId !== "player" ? null : image(area.image),
+      image: image(area.image),
       seen: ownerId === "player",
-      preparation: isPrivate && ownerId !== "player" ? { status: "pending" } : undefined,
+      preparation: prepareInterior ? { status: "pending" } : undefined,
     });
   }
   if (new Set(result.map((zone) => zone.id)).size !== result.length)
     throw badRequest("Every area needs a distinct ID.");
-  // Older drafts retain their inferred layout. Explicit drafts must be valid.
+  // New authoring gets an initial graph; explicit passages must be valid.
   const connected = materializeConnections(result);
   const problem = connectionProblem(connected);
   if (problem) throw badRequest(problem);
@@ -111,6 +173,7 @@ export function validateLayoutZones(
   classes: VillageVenueClass[],
   state: VillageState,
 ): void {
+  if (drafts.length > 6) throw badRequest("A Venue may have at most six Zones besides Entrance.");
   if (new Set(drafts.map((zone) => zone.id)).size !== drafts.length)
     throw badRequest("Every physical zone must have a distinct ID.");
   const allowed = new Set(["exterior", ...drafts.map((zone) => zone.id)]);
@@ -123,16 +186,16 @@ export function validateLayoutZones(
     )
       throw badRequest("Connections must reference other included spaces, without duplicates.");
   }
-  const currentLayout = materializeConnections(venueZones(venue));
+  const currentLayout = venueZones(venue);
   for (const zone of drafts) if (zone.connectedTo) zone.connectedTo = zone.connectedTo.filter((id) => allowed.has(id));
   const entrance = currentLayout.find((zone) => zone.id === "exterior")!;
   const combined = [entrance, ...drafts];
-  // Old API clients may omit connections; retain exact current connections, or the legacy layout for old new-zone drafts.
+  // Partial renovations preserve unchanged passages.
   const resolved = combined.map((zone) => ({
     ...zone,
     connectedTo: zone.connectedTo ?? currentLayout.find((old) => old.id === zone.id)?.connectedTo,
   }));
-  const problem = connectionProblem(materializeConnections(applyConnectionEdits(resolved, drafts)));
+  const problem = connectionProblem(applyConnectionEdits(resolved, drafts));
   if (problem) throw badRequest(problem);
   for (const zone of drafts) {
     if (zone.ownerId && zone.kind !== "private-residence")

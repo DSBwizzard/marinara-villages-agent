@@ -1,9 +1,9 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState, VillageSnapshot } from "../packages/villages/src/server/domain/models/world.js";
-import { MAX_NOTICEBOARD_NOTES } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -22,11 +22,7 @@ import { configureVillagesRuntime } from "../packages/villages/src/server/entry/
 import { registerVillageSettingsRoutes } from "../packages/villages/src/server/features/settings/routes.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 const hall = () => venueDraft({ name: "Hall", description: "A public meeting place", classes: ["community"] }, null);
 function fixture(name: string) {
@@ -54,8 +50,7 @@ function fixture(name: string) {
       events.push("snapshot");
       return {
         village: { name: state.name },
-        settings: { sendOnEnter: state.sendOnEnter, storyPace: state.storyPace },
-        noticeboard: structuredClone(state.noticeboard),
+        settings: { sendOnEnter: state.sendOnEnter, backgroundPace: state.backgroundPace },
       } as VillageSnapshot;
     },
     async readLinkedPersona(id) {
@@ -108,7 +103,7 @@ async function main() {
   await a.service.setVillageName("  New name  ");
   await a.service.setVillagePromptKnowledge("Public knowledge");
   await a.service.setVillageLoreSettings([" book ", "book"], 800);
-  await a.service.setVillageStoryPace("quiet");
+  await a.service.setVillageBackgroundPace("quiet");
   await a.service.setVillageSendOnEnter(true);
   await a.service.setVillageSpriteCardFlipEnabled(true);
   await a.service.setVillageCharacterSpeechColors(false);
@@ -130,66 +125,42 @@ async function main() {
   assert.equal(a.bootstrapCalls, 0);
   for (const invalid of [
     () => a.service.setVillageName(""),
-    () => a.service.setVillageStoryPace("normal"),
+    () => a.service.setVillageBackgroundPace("normal"),
     () => a.service.setVillageSendOnEnter("true"),
     () => a.service.setVillageSpriteCardFlipEnabled(1),
     () => a.service.setVillageCharacterSpeechColors(null),
     () => a.service.setVillagePromptKnowledge(1),
     () => a.service.setVillageLoreSettings([""], 800),
-    () => a.service.setVillageLoreSettings(undefined, 10),
+    () => a.service.setVillageLoreSettings(undefined, -1),
   ]) {
     const before = structuredClone(a.state);
     await assert.rejects(invalid);
     assert.deepEqual(a.state, before);
   }
+  await a.service.setVillageLoreSettings(undefined, 0);
+  assert.equal(a.state.loreTokenBudget, 0);
+  assert.deepEqual(a.state.selectedLorebookIds, ["book"], "zero budget retains the selected books");
+  await a.service.setVillageLoreSettings(undefined, 10);
+  assert.equal(a.state.loreTokenBudget, 10);
   const originalStyle = a.state.sceneryArtStyle;
   await assert.rejects(() =>
     a.service.setScenerySettings({ sceneryArtStyle: "ink", personalizeVenueImagesByDefault: "invalid" }),
   );
   assert.equal(a.state.sceneryArtStyle, originalStyle, "invalid multi-field mutation publishes no partial state");
 
-  const bootstrap = fixture("Bootstrap");
-  bootstrap.state.venues = [venueDraft({ name: "Home", description: "Residence", classes: ["residence"] }, null)];
-  bootstrap.retryWith((state) => {
-    state.venues.push(hall());
-  });
-  await bootstrap.service.setVillageSetting("First setting");
-  assert.equal(bootstrap.bootstrapCalls, 0, "a losing empty-destination attempt cannot trigger a paid proposal");
-  bootstrap.retryWith((state) => {
-    state.venues = [];
-  });
-  await bootstrap.service.setVillageSetting("Second setting");
-  assert.equal(bootstrap.bootstrapCalls, 1, "the final successful attempt determines eligibility");
-  bootstrap.failBootstrap();
-  await bootstrap.service.setVillageSetting("Third setting");
-  assert.equal(bootstrap.state.setting, "Third setting");
-  assert.deepEqual(bootstrap.warnings, ["Error: provider unavailable"]);
-  assert.equal(bootstrap.bootstrapCalls, 2, "failed proposal is not automatically repeated");
-  await bootstrap.service.setVillageSetting("");
-  assert.equal(bootstrap.bootstrapCalls, 2);
-
-  const board = fixture("Board");
-  board.state.noticeboard = Array.from({ length: MAX_NOTICEBOARD_NOTES - 1 }, () => ({ author: "", text: "existing" }));
-  board.retryWith((state) => {
-    state.noticeboard.push({ author: "", text: "concurrent" });
-  });
-  await assert.rejects(() => board.service.addNotice("new"), /holds at most/);
-  assert.equal(board.state.noticeboard.length, MAX_NOTICEBOARD_NOTES);
-  assert(!board.state.noticeboard.some((note) => note.text === "new"));
-  board.state.noticeboard = [
-    { author: "First", text: "same" },
-    { author: "Second", text: "same" },
-  ];
-  await board.service.removeNoticeAt("0");
-  assert.deepEqual(board.state.noticeboard, [{ author: "Second", text: "same" }]);
-  board.retryWith((state) => {
-    state.noticeboard = [];
-  });
-  await assert.rejects(() => board.service.removeNoticeAt(0), /no longer/);
-  await assert.rejects(() => board.service.removeNoticeAt(-1), /not a notice/);
-  await assert.rejects(() => board.service.addNotice("  "), /Write something/);
-  await board.service.addNotice("hello");
-  assert.deepEqual(board.state.noticeboard, [{ author: "", text: "hello" }]);
+  const loreOnly = fixture("Lore only");
+  loreOnly.state.venues = [];
+  loreOnly.state.setting = "A saved world";
+  loreOnly.state.promptKnowledge = "Saved player knowledge";
+  loreOnly.state.playerPersonaId = "saved-persona";
+  loreOnly.state.narrationStyle.writingGuidance = "Saved writing guidance";
+  await loreOnly.service.setVillageLoreSettings(["book"], 800);
+  assert.equal(loreOnly.state.setting, "A saved world");
+  assert.equal(loreOnly.state.promptKnowledge, "Saved player knowledge");
+  assert.equal(loreOnly.state.playerPersonaId, "saved-persona");
+  assert.equal(loreOnly.state.narrationStyle.writingGuidance, "Saved writing guidance");
+  assert.equal(loreOnly.bootstrapCalls, 0, "saving Lorebooks does not bootstrap an empty world");
+  assert.equal(loreOnly.personaReads, 0, "saving Lorebooks does not resolve or replace the Persona");
 
   const scopeA = createActivationScope(),
     scopeB = createActivationScope();
@@ -254,7 +225,7 @@ async function main() {
     },
   };
   const releaseRuntime = configureVillagesRuntime({
-    persistence: { documents },
+    persistence: { documents: villageFixtureDocuments(documents) },
     resources: { listCharacters: async () => [] },
     logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
     isDebugAgentsEnabled: () => false,
@@ -269,8 +240,7 @@ async function main() {
       payload: {
         name: "Routed name",
         promptKnowledge: "Known",
-        setting: "New setting",
-        storyPace: "balanced",
+        backgroundPace: "balanced",
         sendOnEnter: true,
         characterSpeechColors: true,
       },
@@ -278,12 +248,11 @@ async function main() {
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(response.json().village.name, "Routed name");
     assert.equal(routed.state.promptKnowledge, "Known");
-    assert.equal(routed.state.setting, "New setting");
     assert.equal(routed.state.sendOnEnter, true);
     assert.equal(routed.bootstrapCalls, 0);
     assert.deepEqual(
       routed.events.filter((event) => event === "mutate" || event === "snapshot"),
-      Array.from({ length: 6 }, () => ["mutate", "snapshot"]).flat(),
+      Array.from({ length: 5 }, () => ["mutate", "snapshot"]).flat(),
     );
     const rejected = await app.inject({ method: "PATCH", url: "/settings", payload: { sendOnEnter: "true" } });
     assert.equal(rejected.statusCode, 400);

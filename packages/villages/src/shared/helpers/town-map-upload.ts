@@ -1,5 +1,5 @@
 /** Guidance and validation for new map images; saved maps keep their existing shape. */
-export const MAP_UPLOAD_GUIDANCE = "Use a 3:2 landscape orientation image. Recommended image size is 1536 x 1024px.";
+export const MAP_UPLOAD_GUIDANCE = "Use a landscape image. Recommended size is 2560 x 1440px (16:9).";
 
 export const MAP_UPLOAD_UNREADABLE =
   "A Villages map should be a readable image. We couldn't open this file. Try a PNG, JPG or WebP copy.";

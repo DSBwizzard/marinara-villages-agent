@@ -1,0 +1,207 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
+import Fastify from "fastify";
+import assert from "node:assert/strict";
+import {
+  readEffectiveVillagerCard,
+  readVillagerCard,
+} from "../packages/villages/src/server/adapters/engine/catalog.js";
+import {
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { agendaRevision } from "../packages/villages/src/server/domain/rules/agenda-revision.js";
+import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
+import { readFoundingResidentAdmissions } from "../packages/villages/src/server/domain/rules/resident-admission.js";
+import { sceneryImageKey, sceneryPrompt } from "../packages/villages/src/server/domain/rules/scenery-context.js";
+import {
+  fitVenueWritingMessages,
+  venueCardProfile,
+} from "../packages/villages/src/server/domain/rules/venue-writing.js";
+import { projectVillager } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
+import { createResidentCards } from "../packages/villages/src/server/features/residents/resident-card-service.js";
+import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
+import { registerResidentRoutes } from "../packages/villages/src/server/features/residents/routes.js";
+import { privatePreparationKey } from "../packages/villages/src/server/jobs/private-space-service.js";
+import {
+  admissionLoreContext,
+  EMPTY_RESIDENT_ADMISSION,
+  readResidentAdmission,
+  readWorldName,
+  renderResidentAdmission,
+  sameWorld,
+  sharedWorldContext,
+} from "../packages/villages/src/shared/helpers/resident-admission.js";
+
+assert.deepEqual(readResidentAdmission({ homeworld: " Koront ", startingSituation: " Already living here. " }), {
+  homeworld: "Koront",
+  startingSituation: "Already living here.",
+});
+for (const value of [
+  null,
+  [],
+  {},
+  { homeworld: 3, startingSituation: "" },
+  { homeworld: "x".repeat(121), startingSituation: "" },
+  { homeworld: "", startingSituation: false },
+  { homeworld: "", startingSituation: "x".repeat(1201) },
+])
+  assert.equal(readResidentAdmission(value), null);
+assert.equal(readWorldName(" Othiras "), "Othiras");
+assert.equal(readWorldName(false), null);
+assert.equal(readWorldName("x".repeat(121)), null);
+assert.deepEqual({ ...readFoundingResidentAdmissions(undefined, ["buster"]).buster }, EMPTY_RESIDENT_ADMISSION);
+assert.throws(() => readFoundingResidentAdmissions({ stranger: EMPTY_RESIDENT_ADMISSION }, ["buster"]), /selected/);
+assert.throws(() => readFoundingResidentAdmissions({ buster: {} }, ["buster"]), /120/);
+assert.ok(sameWorld(" OTHIRAS ", "Othiras"));
+assert.ok(!sameWorld("", ""));
+assert.ok(!sameWorld("Korant", "Koront"));
+const shared = sharedWorldContext("Othiras", [
+  { name: "A", admission: { homeworld: " othiras ", startingSituation: "" } },
+  { name: "B", admission: { homeworld: "Othiras", startingSituation: "" } },
+  { name: "C", admission: { ...EMPTY_RESIDENT_ADMISSION } },
+]);
+assert.match(shared, /A, B: homeworld/);
+assert.match(shared, /the Village's world/);
+assert.ok(!shared.includes("C:"));
+assert.equal(
+  admissionLoreContext("Othiras", [{ homeworld: "Koront", startingSituation: "PRIVATE-UNRELATED" }]),
+  "Othiras\nKoront",
+);
+
+const state = defaultVillageState();
+state.worldName = "Othiras";
+state.playerName = "Player";
+let card = readVillagerCard({
+  id: "buster",
+  data: {
+    name: "Buster",
+    description: "Buster is best friends with Felix",
+    extensions: {
+      backstory:
+        "Born in Koront. Buster currently inhabits Othiras. He arrived after exploring a Stardust facility, with minor amnesia.",
+    },
+  },
+});
+const original = structuredClone(card);
+let agendas = 0,
+  ties = 0;
+const revisions: unknown[] = [];
+const service = createResidentRoster({
+  readVillageState: async () => structuredClone(state),
+  mutateVillageState: async (change) => {
+    change(state);
+    return structuredClone(state);
+  },
+  findVillagerCard: async () => structuredClone(card),
+  preparedSpriteManager: async (_id, revision) => {
+    revisions.push(revision);
+    if (revision === 99) throw Error("Sprite revision changed");
+    return null;
+  },
+  queueVillagerAgenda: async () => {
+    agendas++;
+  },
+  queueStartingTies: async () => {
+    ties++;
+  },
+  retireBackgroundResident() {},
+});
+await assert.rejects(service.addVillager("buster", 1, { homeworld: 3, startingSituation: "" }), /120/);
+await assert.rejects(service.addVillager("buster", 99), /Sprite revision/);
+assert.equal(state.villagers.length, 0);
+await service.addVillager("buster", 1, { homeworld: " Koront ", startingSituation: " Visiting the Village. " });
+assert.deepEqual(state.villagers[0].admission, { homeworld: "Koront", startingSituation: "Visiting the Village." });
+assert.equal(state.villagers[0].cardSnapshot.backstory, original.backstory);
+assert.deepEqual(card, original, "admission never rewrites source material");
+await service.addVillager("buster", 1, { homeworld: "Another world", startingSituation: "Overwrite attempt" });
+assert.equal(state.villagers.length, 1);
+assert.equal(state.villagers[0].admission.homeworld, "Koront", "duplicate admission never overwrites saved context");
+assert.equal(agendas, 1);
+assert.equal(ties, 1);
+const reloaded = coerceVillageState(structuredClone(state));
+assert.equal(reloaded.worldName, "Othiras");
+assert.deepEqual(reloaded.villagers[0].admission, state.villagers[0].admission);
+const profile = venueCardProfile(readEffectiveVillagerCard(reloaded.villagers[0]));
+assert.ok(profile.includes(original.backstory));
+assert.match(profile, /Visiting the Village/);
+assert.match(profile, /amnesia/);
+assert.throws(
+  () => fitVenueWritingMessages({ fitContext: () => ({ messages: [] }) } as any, [{ text: profile }], "Hello", 1000),
+  /No reply was requested/,
+);
+const projected = projectVillager(state.villagers[0], "Buster", "", [], "", "", null);
+assert.ok(!JSON.stringify(projected).includes("Visiting the Village"));
+assert.ok(!Object.hasOwn(projected, "admission"));
+const before = agendaRevision(state, "buster");
+state.worldName = "Othiras revised";
+assert.notEqual(agendaRevision(state, "buster"), before);
+const contextBefore = agendaRevision(state, "buster");
+state.villagers[0].admission.startingSituation = "Settled here.";
+assert.notEqual(agendaRevision(state, "buster"), contextBefore);
+const venue = parsePlace(
+  venueFixture({
+    residentIds: ["buster"].filter((id) => typeof id === "string" && !!id),
+    id: "home",
+    name: "Home",
+    classes: ["residence"],
+    form: "Apartment",
+    description: "A doorway",
+    layoutVersion: 1,
+    layout: "common",
+    occupancy: { residentCharacterId: "buster", playerHome: false },
+    presentation: { x: 0.5, y: 0.5 },
+  }),
+  0,
+) as any;
+const zone = {
+  id: "room",
+  name: "Private room",
+  purpose: "Rest",
+  kind: "private-residence",
+  ownerId: "buster",
+  controllerIds: ["felix"],
+  state: { updatedAt: "now" },
+  preparation: { mode: "initial" },
+} as any;
+const preparationKey = privatePreparationKey(venue, zone, state);
+assert.ok(!preparationKey.includes("Settled here"), "private recovery keys never embed private notes");
+state.villagers[0].admission.startingSituation = "Owner's revised private context.";
+assert.notEqual(
+  privatePreparationKey(venue, zone, state),
+  preparationKey,
+  "the actual room owner fences generation even with a different controller",
+);
+const visualKey = sceneryImageKey(state, venue);
+state.worldName = "Another setting";
+assert.notEqual(sceneryImageKey(state, venue), visualKey);
+const requiredNote = "START " + "a".repeat(1200) + " END";
+assert.ok(
+  sceneryPrompt(["A room", "A long description ".repeat(300)], ["optional ".repeat(300)], "", [requiredNote]).includes(
+    requiredNote,
+  ),
+  "starting circumstances survive visual prompt fitting intact",
+);
+assert.throws(() => sceneryPrompt(["A room"], [], "", ["x".repeat(8001)]), /No image was requested/);
+const refresh = createResidentCards({
+  readVillageState: async () => structuredClone(state),
+  mutateVillageState: async (change) => {
+    change(state);
+    return structuredClone(state);
+  },
+  buildVillageSnapshot: async () => ({}) as any,
+  listVillagerCards: async () => [card],
+  findVillagerCard: async () => card,
+  toCatalogEntry: () => ({}) as any,
+});
+card = { ...card, personality: "Patient" };
+await refresh.applyVillagerRefresh("buster");
+assert.equal(state.villagers[0].admission.startingSituation, "Owner's revised private context.");
+assert.equal(state.villagers[0].cardSnapshot.personality, "Patient");
+assert.match(renderResidentAdmission("Buster", EMPTY_RESIDENT_ADMISSION), /Preserve complete source identity/);
+const app = Fastify();
+registerResidentRoutes(app);
+assert.equal((await app.inject({ method: "POST", url: "/villagers/background/draft", payload: {} })).statusCode, 404);
+await app.close();
+console.log(
+  "Source-preserving admission: validation, no history rewriting, persistence, required context, private projections, refresh, revisions and directional source relationships passed.",
+);

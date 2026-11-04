@@ -4,6 +4,19 @@ import {
   sceneAsideAvailableHeight,
 } from "../packages/villages/src/client/features/scenes/villages-aside-layout.js";
 import { VENUE_SCENE_WRITING_FOUNDATION } from "../packages/villages/src/server/domain/rules/narration-style.js";
+import { groupSceneMoments } from "../packages/villages/src/shared/helpers/scene-speech.js";
+
+const main = { id: "main" },
+  future = { id: "future" };
+const leading = { id: "leading", presentation: "aside" as const, asideFor: "future" };
+const orphan = { id: "orphan", kind: "whisper", asideFor: "missing" };
+const trailing = { id: "trailing", kind: "side", asideFor: "main" };
+assert.deepEqual(groupSceneMoments([leading, main, orphan, future, trailing]), [
+  { line: main, asides: [orphan, trailing] },
+  { line: future, asides: [leading] },
+]);
+assert.deepEqual(groupSceneMoments([orphan, leading]), [{ line: orphan, asides: [leading] }]);
+assert.deepEqual(groupSceneMoments([]), []);
 
 const asides = [
   { speakerId: "left-outer", text: "One" },

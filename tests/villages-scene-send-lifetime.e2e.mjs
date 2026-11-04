@@ -1,8 +1,12 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
-import { build } from "esbuild";
-import { chromium, expect } from "@playwright/test";
+import { build } from "../scripts/esbuild.mjs";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
+const encode = (value) => JSON.stringify(authorSceneResponse(value, snapshot.worldScope));
 const bundle = await build({
   stdin: {
     contents: `
@@ -10,9 +14,10 @@ import {createRoot} from 'react-dom/client';
 import {StrictMode,useEffect,useRef,useState} from 'react';
 import {useSceneRecord} from './packages/villages/src/client/features/scenes/useSceneRecord.js';
 import {useSendRoom} from './packages/villages/src/client/features/scenes/actions.js';
+import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 const noop=()=>{};
-function scene(id){return {id,version:1,sceneRevision:0,placeId:'mill',placeName:id,zoneId:'exterior',area:'public',
-status:'active',startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:00:00Z',endedAt:'',participants:[],activeIds:[],lines:[],submissions:[]};}
+function scene(id){return authorSceneView({id,version:1,sceneRevision:0,placeId:'mill',placeName:id,zoneId:'exterior',area:'public',
+status:'active',startedAt:'2026-10-07T00:00:00Z',lastActivityAt:'2026-10-07T00:00:00Z',endedAt:'',participants:[],activeIds:[],lines:[],submissions:[]},window.snapshot?.worldScope??window.loadedSnapshot.worldScope);}
 function Harness(){
  const [room,setRoom]=useSceneRecord();
  const [draft,setDraft]=useState('A draft'),[busy,setBusy]=useState(false),[error,setError]=useState(''),[ended,setEnded]=useState(false);
@@ -47,7 +52,7 @@ const browser = await chromium.launch({
 function scene(id, submissions = []) {
   return {
     id,
-    version: 1,
+    version: 2,
     sceneRevision: 2,
     placeId: "mill",
     placeName: id,
@@ -79,40 +84,36 @@ async function mount({
     held = [],
     errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  await mockEngineLookups(page);
   const submissions = new Map();
   let holdB = false;
   let activeReads = 0;
   await page.route("http://send-hooks.test/", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+    fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
   );
   await page.route("**/api/villages**", (route) => {
     const path = new URL(route.request().url()).pathname,
       body = route.request().postDataJSON();
-    const id =
-      body?.sessionId ??
-      (path.includes("/archive/") ? path.split("/").at(-1) : /\/rooms\/([^/]+)\//.exec(path)?.[1]) ??
-      "A";
+    const id = body?.sessionId ?? /\/rooms\/([^/]+)\//.exec(path)?.[1] ?? "A";
     if (path.endsWith("/turn")) submissions.set(id, body.submissionId);
     requests.push({ path, id, body });
-    const kind = path.endsWith("/activity")
-      ? "activity"
-      : path.endsWith("/turn")
-        ? "turn"
-        : path.endsWith("/operation")
-          ? "operation"
-          : path.includes("/operations/")
-            ? "recovery-operation"
-            : path.endsWith("/active")
-              ? "active"
-              : path.includes("/archive/")
-                ? "archive"
-                : "unknown";
+    const kind = path.endsWith("/turn")
+      ? "turn"
+      : path.endsWith("/operation")
+        ? "operation"
+        : path.includes("/operations/")
+          ? "recovery-operation"
+          : path.endsWith("/active")
+            ? "active"
+            : path.endsWith("/recovery")
+              ? "archive"
+              : "unknown";
     if ((id === "A" && kind === hold) || (id === "B" && kind === "turn" && holdB)) {
       held.push({ route, id, kind });
       return;
     }
     if (kind === "turn" && rejectTurn)
-      return route.fulfill({
+      return fulfill(route, {
         status: 502,
         contentType: "application/json",
         body: JSON.stringify({ error: "Synthetic lost reply" }),
@@ -120,22 +121,22 @@ async function mount({
     if (learnedRecovery && kind === "active") {
       activeReads++;
       if (activeReads > 1 && learnedRecovery === "unavailable")
-        return route.fulfill({
+        return fulfill(route, {
           status: 502,
           contentType: "application/json",
           body: '{"error":"Synthetic read failure"}',
         });
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ session: { ...scene(id), sceneRevision: activeReads === 1 ? 10 : 2 } }),
+        body: encode({ session: { ...scene(id), sceneRevision: activeReads === 1 ? 10 : 2 } }),
       });
     }
     if (learnedRecovery && kind === "archive")
-      return route.fulfill({
+      return fulfill(route, {
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({
+        body: encode({
           visit: {
             ...scene(id, learnedRecovery === "recovered-older" ? [{ id: submissions.get(id) }] : []),
             status: learnedRecovery === "recovered-older" ? "closed" : "active",
@@ -154,7 +155,7 @@ async function mount({
             : kind === "archive"
               ? { visit: missingClosed ? { ...saved, status: "closed" } : saved }
               : {};
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(answer) });
+    return fulfill(route, { status: 200, contentType: "application/json", body: encode(answer) });
   });
   await page.goto("http://send-hooks.test/");
   await page.evaluate(
@@ -199,7 +200,7 @@ async function mount({
             : item.kind === "archive"
               ? { visit: missingClosed ? { ...saved, status: "closed" } : saved }
               : {};
-    await item.route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
+    await fulfill(item.route, { status, contentType: "application/json", body: encode(body) });
   };
   return {
     page,
@@ -216,10 +217,11 @@ async function mount({
     },
   };
 }
-try {
-  for (const width of [390, 1440])
+await withBrowser(browser, async () => {
+  // Hook state is viewport-independent; packaged layout suites retain desktop/phone coverage.
+  for (const width of [1366])
     for (const strict of [false, true]) {
-      for (const stage of ["activity", "operation", "turn", "recovery-operation", "active", "archive"]) {
+      for (const stage of ["operation", "turn", "recovery-operation", "active", "archive"]) {
         const f = await mount({
           width,
           strict,
@@ -251,7 +253,7 @@ try {
           await f.page.close();
         }
       }
-      for (const stage of ["activity", "turn"]) {
+      for (const stage of ["operation", "turn"]) {
         const f = await mount({ width, strict, hold: stage });
         try {
           const old = await f.send();
@@ -293,11 +295,12 @@ try {
         await callback.settle(pending);
         assert.equal((await callback.state()).busy, false);
         assert.equal(callback.requests.filter((row) => row.path.endsWith("/turn")).length, 1);
+        assert.equal(callback.requests.filter((row) => row.path.endsWith("/activity")).length, 0);
       } finally {
         await callback.page.close();
       }
       for (const retirement of ["reset", "unmount"]) {
-        const f = await mount({ width, strict, hold: "activity" });
+        const f = await mount({ width, strict, hold: "operation" });
         try {
           const pending = await f.send();
           await expect.poll(() => f.held.length).toBe(1);
@@ -399,7 +402,7 @@ try {
           await learned.page.close();
         }
       }
-      const duplicate = await mount({ width, strict, hold: "activity" });
+      const duplicate = await mount({ width, strict, hold: "operation" });
       try {
         await duplicate.page.evaluate(() => {
           window.h.send();
@@ -420,6 +423,4 @@ try {
   console.log(
     "PASS mocked mounted Scene sends: selection tokens, preflight/recovery fences, independent pending owners, reset/disposal and ordinary admission",
   );
-} finally {
-  await browser.close();
-}
+});

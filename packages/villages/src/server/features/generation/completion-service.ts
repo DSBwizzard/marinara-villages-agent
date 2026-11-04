@@ -1,3 +1,5 @@
+import { carryLateProviderResponse, retainLateProviderResponse } from "../../adapters/models/provider-deadline.js";
+import type { mutateDocument } from "../../adapters/storage/document-store.js";
 import { isVillageClockError } from "../../adapters/time/clock-gate.js";
 import type { inferredPurpose, withUsagePurpose } from "../../adapters/models/usage-ledger.js";
 import type { readRuntimeDebug, runtimeDebug } from "../../adapters/observability/runtime-debug.js";
@@ -13,8 +15,10 @@ import type {
   CapabilityRuntimeLogger,
 } from "@marinara-engine/shared";
 import { createHash } from "node:crypto";
+import { claimSavedResponse } from "./saved-response.js";
 
 export type ModelCompletionPorts = {
+  mutateDocument?: typeof mutateDocument;
   readRuntimeDebug: typeof readRuntimeDebug;
   runtimeDebug: typeof runtimeDebug;
   backgroundCalls: { getStore(): BackgroundCompletion | undefined };
@@ -37,15 +41,23 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
     villagesLogger,
     bindCallback,
   } = ports;
-  const RETRY_FLOOR = 1_600;
-
-  const RETRY_CEILING = 8_192;
-
-  function answered(completion: CapabilityLanguageModelCompletion): boolean {
-    return (completion.content ?? "").trim().length > 0;
+  const pending = new Map<string, { fingerprint: string; task: Promise<CapabilityLanguageModelCompletion> }>();
+  function completeWithRoom(...args: Parameters<typeof completeOnce>): ReturnType<typeof completeOnce> {
+    const key = args[3].savedRequest?.key;
+    if (!key) return completeOnce(...args);
+    const fingerprint = JSON.stringify(args[1]);
+    const running = pending.get(key);
+    if (running)
+      return running.fingerprint === fingerprint
+        ? running.task
+        : Promise.reject(new Error("Saved generation inputs changed."));
+    const task = completeOnce(...args).finally(() => {
+      if (pending.get(key)?.task === task) pending.delete(key);
+    });
+    pending.set(key, { fingerprint, task });
+    return task;
   }
-
-  async function completeWithRoom(
+  async function completeOnce(
     model: CapabilityResolvedLanguageModel,
     messages: CapabilityLanguageModelMessage[],
     maxTokens: number,
@@ -121,7 +133,7 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                 const unsupported =
                   /response[_ ]?format|json[_ ]?(?:object|mode|schema)/iu.test(message) &&
                   /unsupported|not support|invalid|unknown|not allowed|unrecognized/iu.test(message);
-                throw new WorkFailureError({
+                const failure = new WorkFailureError({
                   cause: "provider_exception",
                   stage: "dispatch",
                   requestedOutputTokens: tokens,
@@ -129,6 +141,8 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                     ? "The selected connection rejected JSON mode. Choose a connection supporting JSON responses, then explicitly retry. No fallback request was made."
                     : message,
                 });
+                carryLateProviderResponse(error, failure);
+                throw failure;
               }),
           ),
         ),
@@ -141,12 +155,20 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                   messages,
                   tokens,
                   options.temperature,
-                  options.reasoningEffort,
+                  options.replayReasoningEffort ?? options.reasoningEffort,
                   options.verbosity,
+                  ...(options.replayReasoningEffort ? [options.responseFormat] : []),
                 ]),
               )
               .digest("hex")
           : undefined,
+        {
+          inputTokens:
+            (typeof model.fitContext === "function"
+              ? model.fitContext(messages, { maxTokens: tokens }).estimatedTokensBefore
+              : undefined) ?? Buffer.byteLength(JSON.stringify(messages), "utf8"),
+          outputTokens: tokens,
+        },
       ).catch((error) => {
         try {
           villagesLogger().warn(
@@ -173,25 +195,26 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
       return completion;
     };
 
-    const first = await ask(maxTokens);
-    if (answered(first) || options.retryEmpty === false) return first;
-
-    const ceiling = model.maxOutputTokens ?? RETRY_CEILING;
-    const roomier = Math.min(Math.max(maxTokens * 2, RETRY_FLOOR), ceiling);
-    if (roomier <= maxTokens) return first;
-
-    // The messages were fitted against the SMALLER number, so this knowingly asks
-    // for more output room than the fit reserved. On a context too small to hold
-    // both, the provider says so and the caller reports that — which is still a
-    // better outcome for the player than an empty room and no explanation.
-    villagesLogger().debug(
-      "[villages] %s answered nothing at %d tokens (finish reason %s); asking again with %d",
-      model.model,
-      maxTokens,
-      first.finishReason,
-      roomier,
-    );
-    return ask(roomier);
+    // An empty result is still a purchased response; replacement requires explicit authorization.
+    if (!options.savedRequest) return ask(maxTokens);
+    if (!ports.mutateDocument) throw new Error("Saved model request storage is unavailable.");
+    const receipt = await claimSavedResponse(ports.mutateDocument, options.savedRequest, messages, () => {
+      try {
+        villagesLogger().warn("[villages] Could not retain rejected generation diagnostics");
+      } catch {
+        /* Diagnostics cannot replace the request outcome. */
+      }
+    });
+    if (receipt.cached) return receipt.cached;
+    try {
+      const result = await ask(maxTokens);
+      return await receipt.retain(result, true);
+    } catch (error) {
+      retainLateProviderResponse(error, async (value) => {
+        await receipt.retain(value as CapabilityLanguageModelCompletion, false);
+      });
+      throw error;
+    }
   }
   return { completeWithRoom };
 }

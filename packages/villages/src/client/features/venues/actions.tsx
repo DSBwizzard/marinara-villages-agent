@@ -1,3 +1,5 @@
+import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
+import { useConfirmation } from "../../shared/confirmation.js";
 import type { VenueClass, VenueRequest, VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { useVillageMutationLifetime } from "../../shared/mutation-lifetime.js";
@@ -5,7 +7,6 @@ import { destinationPlaces, freshRowKey } from "../../shared/presentation.js";
 import type { MenuPage } from "../../shared/types.js";
 import { venueClassesFor, venueSpaceFor } from "../../shared/venue.js";
 import type { ExplorationSheet, ExplorationTab } from "../exploration/villages-exploration.js";
-import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
 
 export function useOpenVenue(ports: {
   openPlace: (place: VillageVenue) => void;
@@ -38,7 +39,14 @@ export function useOpenVenue(ports: {
       }
       openPlace(place);
     },
-    [openPlace],
+    [
+      explorationOrigin,
+      explorationReturnTab,
+      openPlace,
+      setExploreSheet,
+      setMovePrivateZoneId,
+      setPlayerMovePrivateZoneId,
+    ],
   );
 }
 
@@ -61,14 +69,15 @@ export function useLeaveVenue(ports: {
     SetStateAction<{
       classes: VenueClass[];
       capacity: number;
-      slot: number;
+
       title: string;
       description: string;
-      extraBeds: number;
     }>
   >;
   setVenueZoneKey: React.Dispatch<SetStateAction<string>>;
 }) {
+  const { screen, element, explorationReturnTab, venueId, explorationOrigin, venueReturnTo } = ports;
+
   const {
     setExploreSheet,
     setOpenPlaceId,
@@ -81,8 +90,7 @@ export function useLeaveVenue(ports: {
   } = ports;
   const focusSelector = useRef("");
   useLayoutEffect(() => {
-    if (ports.screen !== "home" || !focusSelector.current) return;
-    const element = ports.element;
+    if (screen !== "home" || !focusSelector.current) return;
     if (!element) return;
     const restore = () => {
       if (!focusSelector.current) return true;
@@ -99,12 +107,10 @@ export function useLeaveVenue(ports: {
     });
     observer.observe(element, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [ports.screen, ports.element]);
+  }, [screen, element]);
   return useCallback(() => {
     const pinId =
-      ports.explorationReturnTab?.current === "map"
-        ? ports.venueId
-        : ports.explorationOrigin?.current?.getAttribute("data-pin-id");
+      explorationReturnTab?.current === "map" ? venueId : explorationOrigin?.current?.getAttribute("data-pin-id");
     setExploreSheet(null);
     setVenueId(null);
     setVenuePage("view");
@@ -112,12 +118,25 @@ export function useLeaveVenue(ports: {
     setVenueEditDraft(null);
     setVenueProposalDraft(null);
     setOpenPlaceId(null);
-    setScreen(ports.venueReturnTo ?? "home");
-    if (!ports.venueReturnTo || ports.venueReturnTo === "home")
+    setScreen(venueReturnTo ?? "home");
+    if (!venueReturnTo || venueReturnTo === "home")
       focusSelector.current = pinId
         ? `[data-pin-id="${CSS.escape(pinId)}"]`
-        : `[data-explore-tab="${ports.explorationReturnTab?.current ?? "map"}"]`;
-  }, [ports.venueReturnTo, ports.venueId]);
+        : `[data-explore-tab="${explorationReturnTab?.current ?? "map"}"]`;
+  }, [
+    explorationReturnTab,
+    venueId,
+    explorationOrigin,
+    setExploreSheet,
+    setVenueId,
+    setVenuePage,
+    setVenueZoneKey,
+    setVenueEditDraft,
+    setVenueProposalDraft,
+    setOpenPlaceId,
+    setScreen,
+    venueReturnTo,
+  ]);
 }
 
 export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateAction<VillageVenue>> }) {
@@ -131,15 +150,15 @@ export function useAddVenue(ports: { setVenueEditDraft: React.Dispatch<SetStateA
       spaces: [],
       residenceCapacity: 1,
       residentIds: [],
-      improvements: [null, null],
+
       description: "",
       category: "",
-      presentation: { image: null, x: null, y: null },
+      presentation: { mapId: "", image: null, x: null, y: null },
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
       capabilities: [],
-      state: { condition: "", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
+      state: { revision: 0, updatedAt: "", recent: null },
     });
-  }, []);
+  }, [setVenueEditDraft]);
 }
 
 export function useSaveVenue(ports: {
@@ -208,6 +227,7 @@ export function useRemoveVenue(ports: {
   setVenuesDraft: React.Dispatch<SetStateAction<VillageVenue[]>>;
   snapshot: VillageSnapshot;
 }) {
+  const confirmVillages = useConfirmation();
   const { setBusy, setSettingsError, setSnapshot, setVenuesDraft, snapshot } = ports;
   const lifetime = useVillageMutationLifetime(snapshot?.isFounded, setBusy);
   return useCallback(
@@ -230,34 +250,26 @@ export function useRemoveVenue(ports: {
           residentCharacterIds: string[];
           playerHome: boolean;
           workerCharacterIds: string[];
-          pendingMailCount: number;
           pendingResidenceCharacterIds: string[];
           remapCount: number;
           roomPresent: boolean;
           eventCount: number;
         }>(`/locations/venue/${encodeURIComponent(id)}/dependencies`);
         if (!lifetime.owns(claim)) return;
-        if (
-          dependencies.roomPresent ||
-          dependencies.playerHome ||
-          dependencies.residentCharacterIds.length ||
-          dependencies.pendingMailCount
-        ) {
+        if (dependencies.roomPresent || dependencies.playerHome || dependencies.residentCharacterIds.length) {
           setSettingsError(
             dependencies.roomPresent
               ? "End the active Scene before deleting this Venue."
-              : dependencies.pendingMailCount
-                ? "Resolve pending Venue decisions before deleting this Venue."
-                : "Move every resident, including yourself, before deleting this Residence.",
+              : "Move every resident, including yourself, before deleting this Residence.",
           );
           return;
         }
         const affected = dependencies.residentCharacterIds.length + dependencies.pendingResidenceCharacterIds.length;
         const note =
           affected || dependencies.workerCharacterIds.length || dependencies.remapCount || dependencies.eventCount
-            ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, ${dependencies.remapCount} schedule moves, and ${dependencies.eventCount} events. Delete it?`
+            ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, ${dependencies.remapCount} schedule moves, and ${dependencies.eventCount} World changes. Delete it?`
             : `Delete ${existing.name}?`;
-        if (!window.confirm(note) || !lifetime.owns(claim)) return;
+        if (!(await confirmVillages(note)) || !lifetime.owns(claim)) return;
         const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(id)}`, {
           method: "DELETE",
           body: JSON.stringify({ confirmed: true }),
@@ -271,7 +283,7 @@ export function useRemoveVenue(ports: {
         if (lifetime.finish(claim)) setBusy(false);
       }
     },
-    [snapshot, setBusy, setSettingsError, setSnapshot, setVenuesDraft, lifetime],
+    [snapshot, setBusy, setSettingsError, setSnapshot, setVenuesDraft, lifetime, confirmVillages],
   );
 }
 

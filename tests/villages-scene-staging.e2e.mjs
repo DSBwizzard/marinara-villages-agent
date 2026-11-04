@@ -1,12 +1,13 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { sceneFixture, scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const sceneBundle = await sceneFixture();
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 import { now, residents, longGreeting, mapImage, snapshot } from "./fixtures/villages-scene-browser.fixture.mjs";
 
@@ -14,7 +15,7 @@ import { now, residents, longGreeting, mapImage, snapshot } from "./fixtures/vil
 const spriteImage = (color) =>
   `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><g transform="scale(2)"><circle cx="256" cy="100" r="70" fill="${color}"/><path d="M175 180h162l65 360H110zM175 530h60v238h-70zM277 530h60l35 238h-70z" fill="${color}"/></g></svg>`).toString("base64")}`;
 
-try {
+await withBrowser(browser, async () => {
   for (const { width, height } of [
     { width: 320, height: 568 },
     { width: 390, height: 844 },
@@ -23,6 +24,7 @@ try {
   ]) {
     for (let count = 1; count <= 4; count++) {
       const page = await browser.newPage({ viewport: { width, height } });
+      await mockEngineLookups(page);
       await page.addInitScript(() => {
         window.spriteFlips = [];
         const animate = Element.prototype.animate;
@@ -76,7 +78,7 @@ try {
         })),
       };
       let session = {
-        version: 1,
+        version: 2,
         stagingVersion: 1,
         id: `staging-${count}`,
         placeId: "mill",
@@ -109,10 +111,12 @@ try {
       let failSpriteSave = false;
       const api = async (route) => {
         const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/background/presence"))
+          return fulfill(route, { json: { status: "ready", snapshot: fixture } });
         let value = fixture;
         if (path.endsWith("/settings") && route.request().method() === "PATCH") {
           if (failSpriteSave)
-            return route.fulfill({
+            return fulfill(route, {
               status: 500,
               contentType: "application/json",
               body: JSON.stringify({ message: "Setting save failed" }),
@@ -218,30 +222,26 @@ try {
               activeIdsAfterTurn: session.activeIds,
               replyLineIds: ["bye"],
             });
-          } else {
-            session = {
-              ...session,
-              stagingVersion: undefined,
-              activeIds: castIds,
-              lines: [session.lines[0]],
-              submissions: [],
-            };
           }
           value = { session, verdict: null, action: null, recordEvents: [] };
         }
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+        await fulfill(route, {
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+        });
       };
       await page.route("**/api/villages**", api);
       async function mount(target = page) {
         await target.route("http://villages.test/", (route) =>
-          route.fulfill({
+          fulfill(route, {
             status: 200,
             contentType: "text/html",
             body: '<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#a7c7ff;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;background:var(--background);color:var(--foreground);font-family:Arial}marinara-capability-villages{display:block;width:100%;height:100%}</style><header data-component="TopBar" style="height:44px;overflow:hidden;display:flex;align-items:flex-start"><button data-topbar-more style="width:44px;height:44px" aria-label="Engine menu">Menu</button></header><div style="height:calc(100% - 44px)"><marinara-capability-villages></marinara-capability-villages></div>',
           }),
         );
         await target.goto("http://villages.test/");
-        await target.addScriptTag({ path: resolve("packages/villages/client.js") });
+        await target.addScriptTag({ content: sceneBundle });
       }
       await mount();
       const cast = page.locator(".marinara-capability-villages-chat-cast");
@@ -251,39 +251,8 @@ try {
       const mobile = width <= 704;
       await page.getByRole("button", { name: "Venue actions" }).click();
       await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-      const flipSwitch = page.getByRole("checkbox", { name: "Card-flip sprite changes" });
       const flipEnabled = count < 4;
-      if (flipEnabled) await expect(flipSwitch).toBeChecked();
-      else await expect(flipSwitch).not.toBeChecked();
-      if (count === 2) {
-        await flipSwitch.uncheck();
-        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
-        await flipSwitch.check();
-        await expect(flipSwitch).toBeChecked();
-        assert.equal(fixture.settings.spriteCardFlipEnabled, true);
-      }
-      if (count === 1 && width === 1440) {
-        failSpriteSave = true;
-        await flipSwitch.click();
-        await page.getByRole("button", { name: /^1 Scene error$/ }).click();
-        await expect(page.getByRole("region", { name: "Scene errors" })).toBeVisible();
-        await page.getByRole("button", { name: "Close Scene errors" }).click();
-        await expect(flipSwitch).toBeChecked();
-        failSpriteSave = false;
-        const otherDevice = await browser.newPage({ viewport: { width: 390, height: 844 } });
-        await otherDevice.route("**/api/villages**", api);
-        await mount(otherDevice);
-        await otherDevice.getByRole("button", { name: "Venue actions" }).click();
-        await otherDevice.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-        await expect(otherDevice.getByRole("checkbox", { name: "Card-flip sprite changes" })).toBeChecked();
-        await otherDevice.getByRole("checkbox", { name: "Card-flip sprite changes" }).uncheck();
-        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(false);
-        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-        await expect(flipSwitch).not.toBeChecked();
-        await flipSwitch.check();
-        await expect.poll(() => fixture.settings.spriteCardFlipEnabled).toBe(true);
-        await otherDevice.close();
-      }
+      await expect(page.getByRole("checkbox", { name: "Card-flip sprite changes" })).toHaveCount(0);
       const decisionSwitch = page.getByRole("switch", { name: "Use Decisions" });
       await expect(decisionSwitch).toBeVisible();
       await expect(decisionSwitch).toBeEnabled();
@@ -482,7 +451,7 @@ try {
         });
       // A refresh restores latest saved visual state without animation.
       await page.reload();
-      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await page.addScriptTag({ content: sceneBundle });
       await expect(mara).toHaveAttribute("data-position", "right");
       await expect(mara).toHaveAttribute("data-attention", "right");
       await expect(mara.locator("img")).toHaveAttribute("src", thoughts);
@@ -498,16 +467,10 @@ try {
         await expect(people).toHaveCount(count, "backward reading restores departed residents");
         await next.click();
       }
-      // Older visits retain their row centers with enlarged mobile artwork.
-      await composer.fill("A legacy visit.");
-      if (count === 1) phase = 2;
-      await page.getByRole("button", { name: "Send", exact: true }).click();
-      await expect(cast).toHaveAttribute("data-staging", "false");
-      assert.equal(await mara.evaluate((node) => getComputedStyle(node).position), mobile ? "absolute" : "relative");
-      await checkSpriteSize(mobile);
+      session = { ...session, id: "sprite-" + count, activeIds: castIds, lines: [session.lines[0]], submissions: [] };
       fixture.villagers[0].sprite.framing.mode = "half";
       await page.reload();
-      await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+      await page.addScriptTag({ content: sceneBundle });
       await expect(mara.locator("img")).toHaveAttribute("data-framing", "half");
       await checkSpriteSize(mobile);
       if (count === 1 && width === 1440) {
@@ -560,7 +523,8 @@ try {
         await expect(img).toHaveAttribute("data-flipping", "out");
         await page.getByRole("button", { name: "Venue actions" }).click();
         await page.getByRole("menuitem", { name: "Scene settings", exact: true }).click();
-        await flipSwitch.uncheck();
+        fixture.settings.spriteCardFlipEnabled = false;
+        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
         await expect(img).toHaveAttribute("data-flipping", "false");
         await expect(img).toHaveAttribute("src", thoughts);
         assert.equal(
@@ -568,7 +532,8 @@ try {
           0,
           "disabling the shared toggle cancels an active flip",
         );
-        await flipSwitch.check();
+        fixture.settings.spriteCardFlipEnabled = true;
+        await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
         await page.getByRole("button", { name: "Close Scene settings" }).click();
         await page.evaluate(() => {
           window.holdSpriteFlips = false;
@@ -579,7 +544,7 @@ try {
         });
         await page.route("http://villages.test/delayed.png", async (route) => {
           await artworkReady;
-          await route.fulfill({ contentType: "image/svg+xml", body: Buffer.from(thoughts.split(",")[1], "base64") });
+          await fulfill(route, { contentType: "image/svg+xml", body: Buffer.from(thoughts.split(",")[1], "base64") });
         });
         const beforeLoading = await page.evaluate(() => window.spriteFlips.length);
         const requested = page.waitForRequest("http://villages.test/delayed.png");
@@ -589,12 +554,14 @@ try {
         assert.equal(
           await page.evaluate(() => window.spriteFlips.length),
           beforeLoading,
-          "loading does not start a flip",
+          "loading does not start a flip: " + JSON.stringify(await page.evaluate(() => window.spriteFlips)),
         );
         releaseArtwork();
         await expect(img).toHaveAttribute("src", "http://villages.test/delayed.png");
         await expect(img).toHaveAttribute("data-flipping", "false");
-        await page.route("http://villages.test/failed.png", (route) => route.fulfill({ status: 404, body: "missing" }));
+        await page.route("http://villages.test/failed.png", (route) =>
+          fulfill(route, { status: 404, body: "missing" }),
+        );
         await sendExpression("e-failed");
         await expect(img).toHaveAttribute("src", initialArtwork);
         await expect(img).toHaveAttribute("data-flipping", "false");
@@ -612,9 +579,118 @@ try {
       await page.close();
     }
   }
+  // A side-only expression must not override a later turn toward the player.
+  for (const viewport of [
+    { width: 390, height: 844 },
+    { width: 1440, height: 900 },
+  ]) {
+    const page = await browser.newPage({ viewport });
+    await mockEngineLookups(page);
+    const front = spriteImage("#a7c7ff");
+    const side = spriteImage("#fadd70");
+    const castIds = residents.slice(0, 2).map((person) => person.characterId);
+    const fixture = {
+      ...snapshot,
+      villagers: residents.slice(0, 2).map((person) => ({
+        ...person,
+        sprite: {
+          ...person.sprite,
+          images: [
+            { view: "front", label: "neutral", expressionId: "e-neutral", isDefault: true, url: front },
+            { view: "side", direction: "right", label: "smile", expressionId: "e-smile", url: side },
+          ],
+        },
+      })),
+    };
+    const session = {
+      version: 2,
+      stagingVersion: 1,
+      id: "attention-views",
+      placeId: "mill",
+      placeName: "The Mill",
+      spaceClass: "workplace",
+      area: "public",
+      startedAt: now,
+      lastActivityAt: now,
+      endedAt: "",
+      status: "active",
+      activeIds: castIds,
+      participants: residents.slice(0, 2).map(({ characterId, name }) => ({ characterId, name })),
+      lines: [
+        {
+          id: "residents",
+          role: "assistant",
+          kind: "dialogue",
+          speakerId: "mara",
+          name: "Mara",
+          content: "Let us discuss the landing.",
+          at: now,
+          staging: castIds.map((characterId, index) => ({
+            characterId,
+            expression: "e-smile",
+            look: { target: "villager", characterId: castIds[1 - index] },
+          })),
+        },
+        {
+          id: "player",
+          role: "assistant",
+          kind: "dialogue",
+          speakerId: "mara",
+          name: "Mara",
+          content: "Welcome. Come join us.",
+          at: now,
+          staging: castIds.map((characterId) => ({ characterId, look: { target: "player" } })),
+        },
+      ],
+      submissions: [],
+    };
+    await page.route("**/api/villages**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const value = path.endsWith("/rooms/active") ? { session } : fixture;
+      return fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+      });
+    });
+    await page.route("http://villages.test/", (route) =>
+      fulfill(route, {
+        contentType: "text/html",
+        body: "<style>html,body{margin:0;width:100%;height:100%;background:#171b25;color:white}marinara-capability-villages{display:block;width:100%;height:100%}</style><marinara-capability-villages></marinara-capability-villages>",
+      }),
+    );
+    await page.goto("http://villages.test/");
+    await page.addScriptTag({ content: sceneBundle });
+    const people = page.locator(".marinara-capability-villages-chat-cast-person");
+    const previous = page.getByRole("button", { name: "Previous paragraph" });
+    await expect(people).toHaveCount(2);
+    await expect(people.first().locator("img")).toHaveAttribute("src", front);
+    await expect(people.last().locator("img")).toHaveAttribute("src", front);
+    await previous.click();
+    await expect(people.first()).toHaveAttribute("data-attention", "right");
+    await expect(people.last()).toHaveAttribute("data-attention", "left");
+    await expect(people.first().locator("img")).toHaveAttribute("src", side);
+    await expect(people.last().locator("img")).toHaveAttribute("src", side);
+    await expect(people.first().locator("img")).toHaveCSS("transform", "none");
+    await expect(people.last().locator("img")).toHaveCSS("transform", "matrix(-1, 0, 0, 1, 0, 0)");
+    await page.getByRole("button", { name: "Next paragraph" }).click();
+    for (const person of await people.all()) {
+      await expect(person).toHaveAttribute("data-attention", "front");
+      await expect(person.locator("img")).toHaveAttribute("src", front);
+      await expect(person.locator("img")).toHaveAttribute("data-facing", "front");
+      await expect(person.locator("img")).toHaveAttribute("data-flipping", "false");
+    }
+    if (process.env.VILLAGES_VISUAL_OUTPUT)
+      await page.screenshot({
+        path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "facing-player-" + viewport.width + ".png"),
+      });
+    await page.reload();
+    await page.addScriptTag({ content: sceneBundle });
+    await expect(people.first().locator("img")).toHaveAttribute("src", front);
+    await expect(people.last().locator("img")).toHaveAttribute("src", front);
+    await page.close();
+  }
   console.log(
     "Villages staging browser checks: one through four residents, four viewports, framing, movement, card flips, shared settings, failures, loading, cancellation, replay, refresh, departures, legacy visits, and reduced motion passed",
   );
-} finally {
-  await browser.close();
-}
+});

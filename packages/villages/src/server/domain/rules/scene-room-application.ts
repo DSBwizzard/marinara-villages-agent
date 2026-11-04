@@ -1,4 +1,5 @@
 import { validDecisionEvidence } from "./decision-candidates.js";
+import { sceneAccessState } from "./scene-layout.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState } from "../models/world.js";
@@ -12,6 +13,7 @@ export function applyInterpretedRoomEvents(
   village: VillageState,
 ): void {
   if (!batch) return;
+  village = sceneAccessState(village, session);
   session.pendingRoomQuestions = batch.checks
     .filter((_check, index) => batch.results[index].outcome === "unresolved")
     .map((check) => check.question)
@@ -48,6 +50,20 @@ export function applyInterpretedRoomEvents(
       continue;
     }
     if (["invite-now", "invite-later"].includes(result.outcome)) {
+      if (facts.semanticVersion === 2 && result.outcome === "invite-now" && venue.id === session.placeId) {
+        session.dismissedZoneIds = session.dismissedZoneIds?.filter((id) => id !== zone.id);
+        session.grantedZoneIds = [...new Set([...(session.grantedZoneIds ?? []), zone.id])];
+        session.zoneGrants = [
+          ...(session.zoneGrants ?? []).filter((row) => row.zoneId !== zone.id),
+          { zoneId: zone.id, controllerId: actor },
+        ];
+        session.entryOffers = [
+          ...(session.entryOffers ?? []).filter((row) => row.zoneId !== zone.id),
+          { zoneId: zone.id, label: zone.name, controllerId: actor, accompanies: facts.accompanies === true },
+        ];
+        trace.applied = "Current System entry offer prepared; awaiting authority receipt";
+        continue;
+      }
       if (invitationCount !== 1) {
         trace.applied = "Unresolved: multiple invitation targets; clarification is needed";
         continue;

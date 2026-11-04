@@ -1,41 +1,46 @@
-import {
-  clearVillagerAgenda,
-  setVillagerScheduleInfluence,
-  buildVillageAgendas,
-} from "../packages/villages/src/server/features/residents/resident-agendas.js";
-import { routineRevision, routineRevisionMatches } from "../packages/villages/src/server/domain/rules/wish-policy.js";
-import { adoptedProfile } from "../packages/villages/src/server/domain/rules/owned-routine.js";
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
-  influenceSettings,
-  deriveInfluence,
-  routineDay,
-  compressAgendaBlocks,
+  coerceVillageState,
+  defaultVillageState,
+} from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import {
   addRoutineIdea,
+  adoptedProfile,
   agendaPromptDay,
+  compressAgendaBlocks,
+  deriveInfluence,
+  influenceSettings,
+  routineDay,
   validateRoutineDay,
 } from "../packages/villages/src/server/domain/rules/owned-routine.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { readVillageState, mutateVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { villagePresence } from "../packages/villages/src/server/domain/rules/village-projections.js";
+import { routineRevision, routineRevisionMatches } from "../packages/villages/src/server/domain/rules/wish-policy.js";
+import {
+  buildVillageAgendas,
+  clearVillagerAgenda,
+  setVillagerScheduleInfluence,
+} from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { mutateVillageState, readVillageState } from "../packages/villages/src/server/features/world/village-store.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { reconcileVillage } from "../packages/villages/src/server/features/world/village.js";
-import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import {
-  startBackgroundWork,
-  settleBackgroundWork,
-  backgroundWorkSummaries,
-} from "../packages/villages/src/server/jobs/background-work.js";
-import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
-import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
-import {
-  agendaDateKey,
   agendaBlocksFor,
+  agendaDateKey,
   completeAgendaWeek,
 } from "../packages/villages/src/server/domain/rules/agenda-week.js";
-import { wishSlots } from "../packages/villages/src/server/domain/rules/wish-lifecycle-rules.js";
-import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import { parseCompactFounding } from "../packages/villages/src/server/domain/rules/compact-founding-rules.js";
 import { VILLAGE_WEEKDAYS } from "../packages/villages/src/server/domain/rules/village-clock.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { rollActiveAgendas } from "../packages/villages/src/server/features/residents/resident-agendas.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
+import { reconcileVillage } from "../packages/villages/src/server/features/world/village.js";
+import {
+  backgroundWorkSummaries,
+  settleBackgroundWork,
+  startBackgroundWork,
+} from "../packages/villages/src/server/jobs/background-work.js";
 
 const today = new Date(),
   dateKey = agendaDateKey(today),
@@ -53,6 +58,7 @@ const palette = ["Tending herbs", "Reading", "Walking", "Painting", "Playing mus
   venue: 0,
   status: "idle",
   flexible: true,
+  essential: false,
   duration: 180,
   parts: [0, 1, 2, 3],
 }));
@@ -70,7 +76,7 @@ const context = {
   home: "Home",
   venues: [],
   lore: [],
-  completedWishes: [],
+  wishes: [],
   activeWishes: [],
   schedule: null,
 };
@@ -87,9 +93,13 @@ const block = {
 const legacyWeek = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [block]]));
 const translated = Object.fromEntries(VILLAGE_WEEKDAYS.map((day) => [day, [{ ...block, activity: "Tending herbs" }]]));
 const raw = {
+  ...defaultVillageState(),
+  memories: { format: 1, revision: 0, records: [] },
+  memoryScenes: {},
+
   seed: "owned-test",
   setting: "Quiet valley",
-  storyPace: "off",
+  backgroundPace: "off",
   selectedLorebookIds: [],
   venues: [],
   villagers: [
@@ -98,8 +108,8 @@ const raw = {
       addedAt: "2026-09-01",
       ingestSchedule: true,
       cardSnapshot: { ...card, revision: 1, sourceStatus: "available", capturedAt: "2026-09-01T00:00:00.000Z" },
+      wishes: [],
       agenda: {
-        wishes: [],
         generatedAt: "2026-09-01T00:00:00.000Z",
         routineSummary: "Existing life",
         week: legacyWeek,
@@ -133,7 +143,7 @@ const release = configureVillagesRuntime({
   logger: { debugOverride() {}, debug() {}, warn() {}, error() {}, info() {} },
   getAgentConfig: async () => ({ connectionId: "mock" }),
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_package: string, id: string) {
         return structuredClone(records.get(id) ?? null);
       },
@@ -154,7 +164,7 @@ const release = configureVillagesRuntime({
         records.set(value.id, saved);
         return saved;
       },
-    },
+    }),
   },
   resources: {
     async listCharacters() {
@@ -435,7 +445,10 @@ async function main() {
       max: 0,
     });
     assert.equal((await previewVillageBurst({ action: "agenda", characterId: "a" })).requests, 1);
-    const persisted = await readVillageState();
+    await mutateVillageState((value) => {
+      value.villagers[0]!.agenda!.activeDay!.scheduleInformed = true;
+    });
+    const persisted = await readVillageState({ memories: true });
     assert.ok(
       Object.keys(persisted.villagers[0]!.agenda!.plannedDays!).length >= 7,
       "resolved future days survive coercion/reload",
@@ -452,10 +465,14 @@ async function main() {
       1,
       "one generation request, no translation afterwards: " + JSON.stringify(await backgroundWorkSummaries()),
     );
+    assert.ok(
+      (await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "completed"),
+      "the valid response actually completes Routine generation",
+    );
     assert.ok(lastOptions.maxTokens <= 4000);
     assert.equal(lastOptions.reasoningEffort, "none");
     assert.deepEqual(
-      (await readVillageState()).villagers[0]!.agenda!.activeDay,
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.activeDay,
       before,
       "regeneration preserves today",
     );
@@ -464,11 +481,11 @@ async function main() {
     assert.equal(calls, 1);
     const next = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1, 12);
     await rollActiveAgendas(next);
-    const nextDay = (await readVillageState()).villagers[0]!.agenda!.activeDay;
+    const nextDay = (await readVillageState({ memories: true })).villagers[0]!.agenda!.activeDay;
     await rollActiveAgendas(next);
-    assert.deepEqual((await readVillageState()).villagers[0]!.agenda!.activeDay, nextDay);
+    assert.deepEqual((await readVillageState({ memories: true })).villagers[0]!.agenda!.activeDay, nextDay);
     assert.equal(calls, 1);
-    const state = await readVillageState(),
+    const state = await readVillageState({ memories: true }),
       actor = state.villagers[0]!;
     actor.agenda!.activeDay = {
       dateKey: agendaDateKey(next),
@@ -476,25 +493,30 @@ async function main() {
       blocks: [block],
       scheduleInformed: false,
     };
-    const slots = wishSlots(actor, state, new Date(next.getFullYear(), next.getMonth(), next.getDate(), 8));
-    assert.ok(
-      slots.length && slots.every((slot) => slot.endMinute - slot.startMinute <= 60),
-      "long optional activities contain opportunities",
-    );
     source = null;
     resetNativeScheduleCache();
     await buildVillageAgendas();
     assert.equal(calls, 1);
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.scheduleInfluenceSnapshot!.available, false);
-    const safeVenue = {
+    assert.equal(
+      (await readVillageState({ memories: true })).villagers[0]!.agenda!.scheduleInfluenceSnapshot!.available,
+      false,
+    );
+    const safeVenue = venueFixture({
+      residentIds: [null].filter((id) => typeof id === "string" && !!id),
       id: "library",
       name: "Library",
       classes: ["other"],
       occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      state: { condition: "sound", publicFacts: [] },
+      state: { revision: 0, updatedAt: "", recent: null },
       presentation: { image: null, x: 0.2, y: 0.2 },
-    };
-    const access = coerceVillageState({ wishSystemVersion: 3, ...raw, venues: [safeVenue] });
+    });
+    const access = coerceVillageState({
+      ...defaultVillageState(),
+
+      wishSystemVersion: 3,
+      ...raw,
+      venues: [safeVenue],
+    });
     resident.scheduleInfluence = influenceSettings({ enabled: true });
     assert.ok(
       deriveInfluence(
@@ -512,6 +534,8 @@ async function main() {
     access.venues[0]!.constructionStatus = "worksite";
     assert.equal(validateRoutineDay([destination], resident, access)[0]!.venueId, "");
     const crowd = coerceVillageState({
+      ...defaultVillageState(),
+
       wishSystemVersion: 3,
       ...raw,
       venues: [safeVenue],
@@ -529,39 +553,42 @@ async function main() {
     });
     records.set("villages-village", { ...records.get("villages-village"), data: crowd });
     await rollActiveAgendas(today);
-    const capacity = (await readVillageState()).villagers;
-    for (let minute = 0; minute < 1440; minute += 30)
-      assert.ok(
-        capacity.filter((person) =>
-          person.agenda!.activeDay!.blocks.some(
-            (row) => row.venueId === "library" && row.startMinute <= minute && row.endMinute > minute,
-          ),
-        ).length <= 4,
-        "capacity checked locally",
-      );
+    const capacity = await readVillageState({ memories: true });
+    for (let minute = 0; minute < 1440; minute += 30) {
+      const positions = [...villagePresence(capacity, minute, today).values()];
+      assert.equal(positions.length, 6);
+      for (const position of positions)
+        assert.ok(
+          positions.filter((other) => other.id === position.id && other.zoneId === position.zoneId).length <= 4,
+          "all agenda overlays resolve to capacity-bounded Zones",
+        );
+    }
     assert.equal(calls, 1);
     records.set("villages-village", { ...records.get("villages-village"), data: state });
     fail = true;
     await clearVillagerAgenda("a", "bad-output");
     await settleBackgroundWork();
-    assert.equal(calls, 2);
+    assert.equal(calls, 3, "malformed output receives one eligible replacement request");
+    const failed = (await backgroundWorkSummaries()).find((job) => job.kind === "agenda" && job.status === "failed");
+    assert.equal(failed?.attempt, 3, "successful generation, explicit regeneration, then one automatic retry");
+    assert.equal(failed?.requests, 2);
     await buildVillageAgendas();
     await settleBackgroundWork();
-    assert.equal(calls, 2, "invalid output never automatically retries");
+    assert.equal(calls, 3, "local reads cannot purchase another retry after the allowance is spent");
     assert.ok((await backgroundWorkSummaries()).some((job) => job.kind === "agenda" && job.status === "failed"));
     await mutateVillageState((value) => {
       value.villagers[0]!.scheduleInfluence = influenceSettings({ enabled: false });
     });
-    assert.ok(agendaBlocksFor((await readVillageState()).villagers[0]!.agenda!, false, next).length);
+    assert.ok(agendaBlocksFor((await readVillageState({ memories: true })).villagers[0]!.agenda!, false, next).length);
     await mutateVillageState((value) => {
       value.villagers[0]!.agenda = null;
-      value.storyPace = "off";
+      value.backgroundPace = "off";
       value.setupAt = today.toISOString();
     });
     await reconcileVillage({ now: today });
     await settleBackgroundWork();
-    assert.equal(calls, 2, "entire missing legacy agendas are repaired locally, never a paid migration");
-    assert.equal((await readVillageState()).villagers[0]!.agenda!.personalizationPending, false);
+    assert.equal(calls, 3, "entire missing legacy agendas are repaired locally, never a paid migration");
+    assert.equal((await readVillageState({ memories: true })).villagers[0]!.agenda!.personalizationPending, false);
   } finally {
     stop();
     release();

@@ -1,0 +1,125 @@
+import type {
+  FoundingResidentTasks,
+  FoundingTask,
+  FoundingTaskKind,
+} from "../../../shared/contracts/founding-tasks.js";
+import type { VillageState } from "../models/world.js";
+import { agendaRevision } from "./agenda-revision.js";
+import { backgroundRevision } from "./background-revision.js";
+import { asRecord } from "./coerce.js";
+import { venueZones } from "./venue-zones.js";
+import { foundingIdentity } from "./founding-requests.js";
+
+export function foundingReadyForPlay(
+  state: Pick<VillageState, "setupAt" | "venues" | "villagers" | "foundingPreparation">,
+): boolean {
+  if (!state.foundingPreparation || state.foundingPreparation.status === "ready") return true;
+  return (
+    !!state.setupAt &&
+    state.venues.some((venue) =>
+      venueZones(venue).some((zone) => zone.kind === "exterior" && !!zone.description.trim()),
+    ) &&
+    state.villagers.every((resident) => !!resident.agenda)
+  );
+}
+
+export function foundingTaskRevision(
+  state: VillageState,
+  id: string,
+  kind: FoundingTaskKind,
+  capturedContext?: unknown,
+): string {
+  const resident = state.villagers.find((row) => row.characterId === id);
+  const captured = asRecord(asRecord(capturedContext).circumstances);
+  return backgroundRevision([
+    1,
+    state.seed,
+    kind,
+    kind === "routine" ? state.opening?.id : null,
+    agendaRevision(state, id),
+    // Already admitted work retains its original source ingredient; new requests do not author it.
+    ...(Object.hasOwn(captured, "details") ? [captured.details] : []),
+    state.worldRules,
+    state.narrative?.situations,
+    state.playerBackground,
+    state.playerPersonaName,
+    foundingIdentity({ ...resident?.cardSnapshot, admission: resident?.admission }),
+    resident?.scheduleInfluence,
+    state.venues.map((venue) => [venue.id, venueZones(venue).map((zone) => [zone.id, zone.description, zone.state])]),
+    kind === "wish" ? resident?.wishes : null,
+  ]);
+}
+export const foundingSlot = (kind: FoundingTaskKind, id: string) =>
+  "villages-background-" + backgroundRevision([kind === "routine" ? "agenda" : "wish", id]);
+export function ownsFoundingTask(
+  state: VillageState,
+  id: string,
+  kind: FoundingTaskKind,
+  revision: string,
+  capturedContext?: unknown,
+): boolean {
+  const marker = state.foundingPreparation,
+    task = marker?.tasks?.[id]?.[kind];
+  return (
+    !!task &&
+    marker?.tasksVersion === 1 &&
+    marker.status !== "ready" &&
+    task.status !== "completed" &&
+    task.revision === revision &&
+    foundingTaskRevision(state, id, kind, capturedContext) === revision
+  );
+}
+export function completeFoundingTask(state: VillageState, id: string, kind: FoundingTaskKind, revision: string): void {
+  const task = state.foundingPreparation?.tasks?.[id]?.[kind];
+  if (task?.revision === revision) {
+    task.status = "completed";
+    task.receipt = revision;
+    task.error = "";
+  }
+}
+export function coerceFoundingTasks(value: unknown): FoundingResidentTasks {
+  return Object.fromEntries(
+    Object.entries(asRecord(value))
+      .slice(0, 12)
+      .map(([id, row]) => [
+        id,
+        Object.fromEntries(
+          (["routine", "wish"] as const).flatMap((kind) => {
+            const raw = asRecord(asRecord(row)[kind]);
+            if (
+              raw.contract !== 1 ||
+              typeof raw.revision !== "string" ||
+              typeof raw.jobId !== "string" ||
+              !["pending", "running", "failed", "completed"].includes(String(raw.status))
+            )
+              return [];
+            const task: FoundingTask = {
+              contract: 1,
+              revision: raw.revision,
+              jobId: raw.jobId,
+              status: raw.status as FoundingTask["status"],
+              attempt: Number.isInteger(raw.attempt) ? Math.max(0, Number(raw.attempt)) : 0,
+              error: typeof raw.error === "string" ? raw.error.slice(0, 300) : "",
+              ...(typeof raw.receipt === "string" ? { receipt: raw.receipt } : {}),
+              ...(typeof raw.allowanceId === "string" ? { allowanceId: raw.allowanceId } : {}),
+            };
+            return [[kind, task]];
+          }),
+        ),
+      ]),
+  );
+}
+
+/** Derive the visible counter from the same receipts as the resident rows. */
+export function foundingCompletedIds(state: Pick<VillageState, "villagers" | "foundingPreparation">): string[] {
+  const marker = state.foundingPreparation;
+  return state.villagers
+    .filter((row) =>
+      marker?.tasksVersion === 1
+        ? ["routine", "wish"].every(
+            (kind) => marker.tasks?.[row.characterId]?.[kind as FoundingTaskKind]?.status === "completed",
+          )
+        : marker?.completedIds.includes(row.characterId),
+    )
+    .map((row) => row.characterId);
+}

@@ -1,30 +1,25 @@
+import type { FastifyInstance } from "fastify";
+import { createEstablishmentProject, completeEstablishmentProject } from "./project-lifecycle.js";
 import { villagesDebugAgentsEnabled } from "../../adapters/engine/runtime-host.js";
 import { fail, readVenueId } from "../../adapters/http/route-support.js";
 import { notFound } from "../../domain/rules/errors.js";
-import { progressBacklog } from "../scenes/services.js";
+import { sceneQueries } from "../scenes/services.js";
 import { buildVillageSnapshot } from "../world/snapshot.js";
 import { readVillageState } from "../world/village-store.js";
+import { listProjectEvidenceCandidates, recordProjectSpokenEvidence } from "./project-evidence.js";
 import {
-  listProjectEvidenceCandidates,
-  reallocateHeldProjectSupply,
-  recordExistingProjectSource,
-  recordProjectSpokenEvidence,
-} from "./project-evidence.js";
-import {
-  acceptProjectRequirements,
+  cancelProject,
   createNewVenueProject,
   createRenovationProject,
   debugCompleteProjectConstruction,
-  deliverProjectMaterial,
   lockProjectBuilder,
-  openFinishedProject,
   placeNewVenueProject,
   renewRenovationApprovals,
-  requestProjectMailbox,
+  resumeProject,
   reviseRenovationProject,
+  saveProjectPlan,
   startProjectConstruction,
 } from "./project-lifecycle.js";
-import type { FastifyInstance } from "fastify";
 
 export function registerProjectRoutes(engine: FastifyInstance) {
   const app = engine;
@@ -49,19 +44,17 @@ export function registerProjectRoutes(engine: FastifyInstance) {
       },
     );
   };
+  projectAction("plan", saveProjectPlan);
   projectAction("place", placeNewVenueProject);
-  projectAction("request-approval", (projectId) => requestProjectMailbox(projectId));
   projectAction("builder", lockProjectBuilder);
-  projectAction("requirements", (projectId) => acceptProjectRequirements(projectId));
-  projectAction("deliver", deliverProjectMaterial);
-  projectAction("start", (projectId) => startProjectConstruction(projectId));
-  projectAction("debug-complete", (projectId) => debugCompleteProjectConstruction(projectId));
-  projectAction("open", openFinishedProject);
+  projectAction("start", startProjectConstruction);
+  projectAction("complete", completeEstablishmentProject);
+  projectAction("resume", resumeProject);
+  projectAction("cancel", cancelProject);
+  projectAction("debug-complete", debugCompleteProjectConstruction);
   projectAction("revise", reviseRenovationProject);
-  projectAction("renew-approvals", (id) => renewRenovationApprovals(id));
+  projectAction("renew-approvals", renewRenovationApprovals);
   projectAction("record", recordProjectSpokenEvidence);
-  projectAction("existing-source", recordExistingProjectSource);
-  projectAction("reallocate-held", reallocateHeldProjectSupply);
   app.get<{ Params: { projectId: string } }>("/projects/:projectId/evidence", async (request, reply) => {
     try {
       return { candidates: await listProjectEvidenceCandidates(readVenueId(request.params.projectId)) };
@@ -79,12 +72,23 @@ export function registerProjectRoutes(engine: FastifyInstance) {
         speechProofs: village.projects.flatMap((project) =>
           (project.lifecycle?.spokenProofs ?? []).map((proof) => ({ projectId: project.id, ...proof })),
         ),
-        backlog: await progressBacklog(),
+        backlog: await sceneQueries().progressBacklog(),
       };
     } catch (error) {
       return fail(reply, error, "reading Progress Engine diagnostics");
     }
   });
+  app.post<{ Params: { placeId: string }; Body: unknown }>(
+    "/projects/establishments/:placeId",
+    async (request, reply) => {
+      try {
+        await createEstablishmentProject(readVenueId(request.params.placeId), request.body);
+        return await buildVillageSnapshot();
+      } catch (error) {
+        return fail(reply, error, "establishing a Place");
+      }
+    },
+  );
   app.post<{ Params: { venueId: string }; Body: unknown }>("/projects/renovations/:venueId", async (request, reply) => {
     try {
       await createRenovationProject(readVenueId(request.params.venueId), request.body);

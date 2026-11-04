@@ -1,0 +1,68 @@
+import type { RelationshipDisclosure, RelationshipHead, RelationshipReview } from "./relationship-types.js";
+import type { CapturedAdmission } from "./captured-admission-model.js";
+export type SocialMailMessage = {
+  id: string;
+  requestId: string;
+  fromId: string;
+  toId: string;
+  text: string;
+  at: string;
+  status: "pending" | "applying" | "delivered" | "cancelled" | "undeliverable";
+  sourceHash?: string;
+  incarnation?: string;
+  readAt?: string;
+  replyTo?: string;
+  replyStatus?: "pending" | "complete";
+  disclosures?: RelationshipDisclosure[];
+  wishDisclosures?: import("../../../shared/contracts/wishes.js").WishDisclosure[];
+  error?: string;
+  admissionFailed?: boolean;
+  replyUnavailable?: boolean;
+};
+export type SocialMailThread = {
+  id: string;
+  participantIds: string[];
+  revision: number;
+  messages: SocialMailMessage[];
+};
+export type SocialMailInterpretation = {
+  source: RelationshipReview;
+  reply: RelationshipReview;
+  replyText: string;
+  sourceMemoryChanges?: unknown[];
+  sourceWishChanges?: unknown[];
+  replyWishChanges?: unknown[];
+  replyMemoryChanges?: unknown[];
+};
+export type SocialMailInput = {
+  mode?: "player" | "resident";
+  seed: string;
+  threadId: string;
+  messageId: string;
+  residentId: string;
+  sourceText: string;
+  sourceAt: string;
+  admittedAt?: string;
+  sourceHash: string;
+  incarnation: string;
+  admitted: import("./world.js").VillageState;
+  retainedReply?: string;
+  narrationMemories?: string;
+  systemMemory?: ReturnType<typeof import("../rules/scene-memories.js").sceneMemoryContext>;
+  sourceDelivered: boolean;
+};
+export type SocialMailOutbox = {
+  id: string;
+  input: SocialMailInput;
+  result: SocialMailInterpretation;
+  error?: string;
+  reinterpretRequired?: boolean;
+  retryClaim?: string;
+  retryAdmitted?: string;
+};
+export type CapturedSocialMailInput = Omit<SocialMailInput, "admitted"> & {
+  admitted: CapturedAdmission<SocialMailInput["admitted"]> & { relationshipHead: RelationshipHead | null };
+};
+export type WorldSocialMailOutbox = Omit<SocialMailOutbox, "input"> & {
+  input: SocialMailInput | CapturedSocialMailInput;
+};

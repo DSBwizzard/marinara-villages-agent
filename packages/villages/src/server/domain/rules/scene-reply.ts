@@ -1,9 +1,9 @@
-import { validDecisionEvidence } from "./decision-candidates.js";
-import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import { isSceneAside } from "../../../shared/helpers/scene-speech.js";
+import { readStagingCues } from "../../../shared/helpers/scene-staging.js";
 import type { InterpretationBatch } from "../models/interpretation-model.js";
 import type { SavedAccessEvent, VenueReplyLine } from "../models/scene-model.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
+import { validDecisionEvidence } from "./decision-candidates.js";
 import type { MovementIntent } from "./venue-movement.js";
 
 export function parseVenueReply(
@@ -103,6 +103,14 @@ export function parseVenueReply(
 }
 export function quietContactReply(text: string, localIds: string[]) {
   return {
+    npcAdmissions: [] as import("./npc-participation.js").NpcAdmission[],
+    placeDiscoveries: [] as unknown[],
+    establishmentProgress: [] as unknown[],
+    residentActionReceipt: undefined as import("./resident-actions.js").ResidentActionReceipt | undefined,
+    semanticAccess: undefined as InterpretationBatch | null | undefined,
+    semanticProvenance: undefined as import("../models/semantic-model.js").SemanticProvenance | undefined,
+    semanticPlayerMoves: [] as import("./semantic-timeline.js").SemanticPlayerMove[],
+    physicalContext: undefined as import("../models/scene-model.js").VenueSubmission["physicalContext"],
     lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }] as ReturnType<
       typeof parseVenueReply
     >["lines"],
@@ -114,24 +122,20 @@ export function quietContactReply(text: string, localIds: string[]) {
     roomEvents: undefined,
     projectContexts: [],
     projectSpeech: [],
-    sceneChange: null,
+    placeUpdate: null,
     movementIntent: null as MovementIntent | null,
     residenceSignal: null,
-    upgradeSignal: null,
     venueRequestSignal: null,
     invitationSignal: null,
-    editApprovalSignal: null,
     recap: "",
     departures: [],
     sceneEnded: false,
-    recollections: [],
     wishChanges: [],
     wishContexts: [],
     responseDiagnostics: undefined,
     memoryChanges: [],
     relationshipChanges: { changes: [], permissions: [], disclosures: [] },
     earlierLineIds: [],
-    memoryVersions: {},
     contactIntent: null,
     contactMoves: [],
     contactRelay: null,
@@ -159,6 +163,8 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
               venueId: String(facts.venueId),
               zoneId: typeof facts.zoneId === "string" ? facts.zoneId : null,
               accessRevision: Number(facts.accessRevision),
+              ...(facts.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
+              ...(facts.semanticVersion === 2 ? { accompanies: facts.accompanies === true } : {}),
               ...(facts.accessCommand
                 ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
                 : {}),

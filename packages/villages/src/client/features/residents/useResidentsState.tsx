@@ -1,13 +1,13 @@
+import { useRef, useState } from "react";
 import type {
   CatalogEntry,
-  PersonaEntry,
   MemoryLibrary,
+  PersonaEntry,
   VillagerAgendaView,
   VillagerRefreshPreview,
 } from "../../../shared/contracts/village.js";
 import type { Portrait, PortraitMap } from "../../shared/types.js";
 import type { DossierNavigation, DossierSection } from "./villages-dossier.js";
-import { useRef, useState } from "react";
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useResidentsState() {
@@ -45,8 +45,6 @@ export function useResidentsState() {
 
   const [profileInspection, setProfileInspection] = useState<DossierSection | null>(null);
 
-  const [rosterSearch, setRosterSearch] = useState("");
-
   const profileOrigin = useRef<{ selector: string; scroll: Array<{ selector: string; top: number }> }>({
     selector: "",
     scroll: [],
@@ -54,7 +52,7 @@ export function useResidentsState() {
 
   const [spriteManagerId, setSpriteManagerId] = useState<string | null>(null);
 
-  const spriteLeaveGuard = useRef<(() => boolean) | null>(null);
+  const spriteLeaveGuard = useRef<(() => Promise<boolean>) | null>(null);
 
   const spriteProfileScroll = useRef(0);
 
@@ -91,11 +89,6 @@ export function useResidentsState() {
    * That is what keeps a switch from showing a setting the village did not
    * accept.
    */
-  const [spriteFlipSaving, setSpriteFlipSaving] = useState(false);
-
-  const [spriteFlipDraft, setSpriteFlipDraft] = useState<boolean | null>(null);
-
-  const [spriteFlipError, setSpriteFlipError] = useState("");
 
   /**
    * Portraits already asked about, including the ones the Engine had none of.
@@ -126,8 +119,6 @@ export function useResidentsState() {
     setPersonProfile,
     profileInspection,
     setProfileInspection,
-    rosterSearch,
-    setRosterSearch,
     profileOrigin,
     spriteManagerId,
     setSpriteManagerId,
@@ -139,12 +130,6 @@ export function useResidentsState() {
     setRefreshPreviews,
     refreshBusyId,
     setRefreshBusyId,
-    spriteFlipSaving,
-    setSpriteFlipSaving,
-    spriteFlipDraft,
-    setSpriteFlipDraft,
-    spriteFlipError,
-    setSpriteFlipError,
     portraitsAsked,
   };
 }

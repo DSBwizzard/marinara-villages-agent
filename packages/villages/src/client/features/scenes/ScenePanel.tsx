@@ -1,43 +1,41 @@
-import type {
-  ResidentSprite,
-  RoomLine,
-  RoomRecordEvent,
-  SceneView,
-  SceneChangeIssue,
-} from "../../../shared/contracts/village.js";
-import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-speech.js";
 import {
-  initialStaging,
-  lineStagingCues,
-  replayStaging,
-  stagingBoundaries,
-  stagingLayout,
-} from "../../../shared/helpers/scene-staging.js";
-import { messageFrom, request } from "../../shared/api.js";
-import { ELEMENT_TAG } from "../../shared/constants.js";
-import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
-import type { Portrait, PortraitMap, RoomStep, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
-import { AvatarFace } from "../residents/ResidentPanels.js";
-import { SceneErrorChip, type SceneErrorItem } from "./scene-errors.js";
-import { CardFlipSprite } from "./villages-card-flip-sprite.js";
-import { classifyVillagesParagraph, villagesWalk } from "./villages-chat-paragraphs";
-import { mobileReadingCounter, mobileSceneLayout } from "./villages-mobile-scene.js";
-import { useReadingPages } from "./villages-reading-viewport.js";
-import type { SceneReadingSession } from "./reading-session.js";
-import { hasCompletedRoomSubmission, nextRoomReadIndex } from "./villages-room-reading";
-import { SceneAsides } from "./villages-scene-asides.js";
-import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
-import { shouldSubmitVenueKey } from "./villages-venue-send";
-import {
-  type CSSProperties,
-  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
+  type ReactNode,
 } from "react";
+import { isSceneTurnOutcomeMessage } from "../../../shared/contracts/scene-turn-outcome.js";
+import type { ScenePlaybackWindow } from "../../../shared/contracts/scene-playback.js";
+import type {
+  ResidentSprite,
+  RoomRecordEvent,
+  RoomOperation,
+  SceneChangeIssue,
+  SceneView,
+} from "../../../shared/contracts/village.js";
+import { createStagingCursor, stagingPresentation } from "../../../shared/helpers/scene-staging.js";
+import { messageFrom, request } from "../../shared/api.js";
+import { ELEMENT_TAG } from "../../shared/constants.js";
+import { drawVillagesNodes, renderVillagesMarkdown, villagesSpeechPaintStyle } from "../../shared/presentation.js";
+import type { Portrait, PortraitMap, SceneComposerMode, VillageBeatRegister } from "../../shared/types.js";
+import { AvatarFace } from "../residents/ResidentPanels.js";
+import type { SceneReadingSession } from "./reading-session.js";
+import { SceneErrorChip, SceneInformationChip, type SceneErrorItem } from "./scene-errors.js";
+import { CardFlipSprite } from "./villages-card-flip-sprite.js";
+import { classifyVillagesParagraph } from "../../../shared/helpers/scene-paragraphs.js";
+import { scenePlaybackSteps } from "./scene-playback.js";
+import { useScenePlayback } from "./useScenePlayback.js";
+import { mobileReadingCounter } from "./villages-mobile-scene.js";
+import { useReadingPages } from "./villages-reading-viewport.js";
+import { hasCompletedRoomSubmission } from "./villages-room-reading";
+import { SceneAsides } from "./villages-scene-asides.js";
+import { SceneHistory } from "./SceneHistory.js";
+import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
+import { shouldSubmitVenueKey } from "./villages-venue-send";
 
 /** Unseen Zone names remain private. */
 export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boolean }): string {
@@ -60,8 +58,23 @@ function roomNoticeLabel(kind: RoomRecordEvent["kind"]): string {
   }[kind];
 }
 
-function roomNoticeIcon(kind: RoomRecordEvent["kind"]): string {
-  return kind === "relationship-up" ? "♥" : kind === "relationship-down" ? "♡" : "★";
+function roomNoticeIcon(notice: RoomRecordEvent): ReactNode {
+  // Pictogrammers exit-run (Apache-2.0); see icon-licenses.txt.
+  if (notice.id.startsWith("presence:"))
+    return (
+      <svg
+        viewBox="0 0 24 24"
+        width="20"
+        height="20"
+        fill="currentColor"
+        aria-hidden="true"
+        data-icon="presence"
+        style={{ display: "inline-block", verticalAlign: "middle", stroke: "none" }}
+      >
+        <path d="M13.34,8.17C12.41,8.17 11.65,7.4 11.65,6.47A1.69,1.69 0 0,1 13.34,4.78C14.28,4.78 15.04,5.54 15.04,6.47C15.04,7.4 14.28,8.17 13.34,8.17M10.3,19.93L4.37,18.75L4.71,17.05L8.86,17.9L10.21,11.04L8.69,11.64V14.5H7V10.54L11.4,8.67L12.07,8.59C12.67,8.59 13.17,8.93 13.5,9.44L14.36,10.79C15.04,12 16.39,12.82 18,12.82V14.5C16.14,14.5 14.44,13.67 13.34,12.4L12.84,14.94L14.61,16.63V23H12.92V17.9L11.14,16.21L10.3,19.93M21,23H19V3H6V16.11L4,15.69V1H21V23M6,23H4V19.78L6,20.2V23Z" />
+      </svg>
+    );
+  return notice.kind === "relationship-up" ? "♥" : notice.kind === "relationship-down" ? "♡" : "★";
 }
 
 export function currentRoom(session: SceneView): SceneView {
@@ -90,27 +103,17 @@ export async function completedGreetingAfterFailure(sessionId: string, owns = ()
 
 export async function refreshSceneAfterFailure(
   sessionId: string,
-  submissionId?: string,
+  _submissionId?: string,
   owns = () => true,
 ): Promise<SceneView | null> {
   try {
-    if (!owns()) return null;
-    if (submissionId)
-      try {
-        await request(`/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`, {
-          signal: AbortSignal.timeout(5_000),
-        });
-      } catch {
-        // Operation diagnostics can be missing or unavailable after a lost POST.
-        // The saved Scene and submission receipt still establish completion.
-      }
     if (!owns()) return null;
     const { session } = await request<{ session: SceneView | null }>("/rooms/active", {
       signal: AbortSignal.timeout(5_000),
     });
     if (!owns()) return null;
     if (session?.id === sessionId) return session;
-    const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+    const { visit } = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(sessionId)}/recovery`, {
       signal: AbortSignal.timeout(5_000),
     });
     if (!owns()) return null;
@@ -127,11 +130,20 @@ export async function completedRoomAfterFailure(
 ): Promise<SceneView | null> {
   try {
     if (!owns()) return null;
-    const { visit } = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(sessionId)}`, {
+    const { visit } = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(sessionId)}/recovery`, {
       signal: AbortSignal.timeout(5_000),
     });
     if (!owns()) return null;
-    return hasCompletedRoomSubmission(visit, submissionId) ? currentRoom(visit) : null;
+    if (hasCompletedRoomSubmission(visit, submissionId)) return currentRoom(visit);
+    if (visit.status !== "closed") return null;
+    const { operation } = await request<{ operation: RoomOperation | null }>(
+      `/rooms/${encodeURIComponent(sessionId)}/operations/${encodeURIComponent(submissionId)}`,
+      { signal: AbortSignal.timeout(5_000) },
+    );
+    if (!owns()) return null;
+    return operation?.id === submissionId && operation.committed === true && operation.replyReady === true
+      ? currentRoom(visit)
+      : null;
   } catch {
     return null;
   }
@@ -145,11 +157,7 @@ export function openingFailureMessage(cause: unknown): string {
 }
 
 /** Same Send geometry and stroke as Engine's lucide-react composer icon (ISC). */
-function SceneControlIcon({
-  name,
-}: {
-  name: "send" | "sending" | "chat" | "knock" | "fulfill" | "conclude" | "up" | "down" | "narrator";
-}) {
+function SceneControlIcon({ name }: { name: "send" | "sending" | "chat" | "conclude" | "up" | "down" | "narrator" }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -173,17 +181,7 @@ function SceneControlIcon({
       ) : name === "up" ? (
         <path d="m6 15 6-6 6 6" />
       ) : name === "down" ? (
-        <path d="m6 9 6 6-6" />
-      ) : name === "knock" ? (
-        <>
-          <path d="M10 3h10v18H10V3Z M4 10h4 M2 6l4 2 M2 16l4-2" />
-          <path d="M16 12h.01" />
-        </>
-      ) : name === "fulfill" ? (
-        <>
-          <path d="m9 12 2 2 4-4" />
-          <rect x="4" y="3" width="16" height="18" rx="2" />
-        </>
+        <path d="m6 9 6 6 6-6" />
       ) : name === "conclude" ? (
         <>
           <path d="M9 21H5V3h4 M12 12h10 m-4-4 4 4-4 4" />
@@ -201,6 +199,7 @@ function SceneControlIcon({
 /** The single Visit surface for an empty, solo, or group cast. */
 export function RoomPanel({
   room,
+  worldScope,
   sceneReading,
   mobile,
   nameColors,
@@ -208,7 +207,11 @@ export function RoomPanel({
   picture,
   draft,
   mode,
-  targetId,
+  legacyDestination,
+  legacyRecovery,
+  onRetryLegacy,
+  onReplaceLegacy,
+  onReviewLegacy,
   busy,
   error,
   greetingNotice,
@@ -225,14 +228,12 @@ export function RoomPanel({
   sprites,
   onDraft,
   onMode,
-  onTarget,
   onSend,
   onAttentionChoice,
   sendOnEnter,
   spriteCardFlipEnabled,
   onViewVenue,
   onEnd,
-  onStartSpinoff,
   onRetryGreeting,
   onContinueWithoutGreeting,
   notices,
@@ -242,20 +243,20 @@ export function RoomPanel({
   onReplayChanges,
   unresolvedChanges,
   onRetryChangeInterpretation,
+  onContinueChange,
   debugDiscardEnabled,
   onDebugDiscard,
   onUseMailbox,
+  onMap,
   onProjects,
   onProposals,
   sceneSettings,
-  contactDoors,
-  contactBoundary,
-  onContactBoundary,
   movementZones,
   onMovementTarget,
   currentZoneLabel,
 }: {
   room: SceneView;
+  worldScope: string;
   sceneReading: SceneReadingSession;
   mobile: boolean;
   nameColors: Record<string, string>;
@@ -264,7 +265,11 @@ export function RoomPanel({
   picture: string;
   draft: string;
   mode: SceneComposerMode;
-  targetId: string;
+  legacyDestination: string;
+  legacyRecovery: import("./useScenesState.js").LegacySceneRecovery | null;
+  onRetryLegacy: () => void;
+  onReplaceLegacy: () => void;
+  onReviewLegacy: () => void;
   busy: boolean;
   error: string;
   greetingNotice: string;
@@ -281,14 +286,12 @@ export function RoomPanel({
   sprites: Record<string, ResidentSprite | null>;
   onDraft: (value: string) => void;
   onMode: (value: SceneComposerMode) => void;
-  onTarget: (value: string) => void;
   onSend: () => void;
   onAttentionChoice?: (zoneId: string) => void;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
   onViewVenue: () => void;
   onEnd: () => void;
-  onStartSpinoff?: () => void;
   onRetryGreeting: () => void;
   onContinueWithoutGreeting: () => void;
   notices: RoomRecordEvent[];
@@ -297,6 +300,7 @@ export function RoomPanel({
   changeStatus?: { pending: number; failed: number; rejected: number };
   onReplayChanges?: () => void;
   unresolvedChanges?: SceneChangeIssue[];
+  onContinueChange?: (submissionId: string, domain: string) => void;
   onRetryChangeInterpretation?: (
     submissionId: string,
     domain: "memories" | "relationships" | "wishes" | "projects",
@@ -304,24 +308,24 @@ export function RoomPanel({
   debugDiscardEnabled: boolean;
   onDebugDiscard: () => void;
   onUseMailbox?: () => void;
+  onMap?: () => void;
   onProjects?: () => void;
   onProposals?: () => void;
   sceneSettings: ReactNode;
-  contactDoors: { id: string; label: string }[];
-  contactBoundary: string;
-  onContactBoundary: (id: string) => void;
   movementZones: { id: string; label: string; closed?: boolean }[];
   onMovementTarget: (id: string) => void;
   currentZoneLabel: string;
 }) {
   /** The current paragraph in this Scene's ordered reading. */
-  const { checkpoint, reset, isFounded, previousReading } = sceneReading;
+  const { checkpoint, reset, isFounded } = sceneReading;
   const [readStep, setReadStep] = useState(() => checkpoint.current.readStep);
+  const playback = useScenePlayback(room, worldScope, sceneReading);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement | null>(null);
   const [noticesOpen, setNoticesOpen] = useState(false);
+  const [informationOpen, setInformationOpen] = useState(false);
   const [errorsOpen, setErrorsOpen] = useState(false);
   const [modeMenuOpen, setModeMenuOpen] = useState(false);
   const [openMemory, setOpenMemory] = useState<RoomRecordEvent | null>(null);
@@ -336,6 +340,7 @@ export function RoomPanel({
   const [dialogueHidden, setDialogueHidden] = useState(false);
   const [failedSpriteUrls, setFailedSpriteUrls] = useState<ReadonlySet<string>>(() => new Set());
   const previousNoticeIds = useRef(new Set<string>());
+  const presenceNotice = notices.find((notice) => notice.id.startsWith("presence:"));
 
   useEffect(() => {
     if (settingsOpen) settingsRef.current?.focus();
@@ -417,6 +422,7 @@ export function RoomPanel({
 
   const requestFields = [
     { label: "Scene", value: room.placeName },
+    { label: "Scene ID", value: room.id },
     ...(room.operation
       ? [
           { label: "Request", value: room.operation.id },
@@ -433,7 +439,7 @@ export function RoomPanel({
           Back to map
         </button>
         <button type="button" onClick={onRetryGreeting} disabled={busy}>
-          Retry opening
+          {room.operation?.recoverable ? "Recover saved opening" : "Retry opening"}
         </button>
         {room.id ? (
           <button type="button" onClick={onContinueWithoutGreeting} disabled={busy}>
@@ -445,7 +451,7 @@ export function RoomPanel({
   const errorItems: SceneErrorItem[] = sceneErrors.map((item) => ({
     ...item,
     fields:
-      item.id === "sprite-setting" || item.id === "decisions" || item.id === "diagnostics" || item.id === "spinoff"
+      item.id === "sprite-setting" || item.id === "decisions" || item.id === "diagnostics"
         ? [{ label: "Scene", value: room.placeName }, ...(item.fields ?? [])]
         : [...requestFields, ...(item.fields ?? [])],
     actions: item.actions ?? (["room", "greeting", "operation"].includes(item.id) ? openingActions : undefined),
@@ -477,17 +483,33 @@ export function RoomPanel({
       message: greetingNotice,
       fields: requestFields,
     });
+  if (playback.error)
+    errorItems.push({
+      id: "reading",
+      title: "Scene reading",
+      message: playback.error,
+      actions: (
+        <>
+          <button type="button" onClick={() => void playback.retry()}>
+            Retry
+          </button>
+          <button type="button" onClick={playback.newest}>
+            Latest
+          </button>
+        </>
+      ),
+    });
   for (const change of unresolvedChanges ?? []) {
     if (change.status === "pending") continue;
     errorItems.push({
       id: change.submissionId + ":" + change.domain,
-      title: change.domain + (change.status === "rejected" ? " update not saved" : " update failed"),
-      message:
-        change.reason ?? "The proposed world update could not be saved. See saved change diagnostics for details.",
+      title: "World change" + (change.status === "rejected" ? " not saved" : " failed") + " · " + change.domain,
+      message: change.reason ?? "World change could not be saved.",
       fields: [
         { label: "Scene", value: room.placeName },
-        { label: "Request", value: change.submissionId },
-        { label: "World update", value: change.domain },
+        { label: "Scene ID", value: room.id },
+        { label: "Message ID", value: change.submissionId },
+        { label: "World change", value: change.domain },
         { label: "Result", value: change.status === "rejected" ? "Not saved" : "Needs attention" },
         ...(change.at ? [{ label: "Time", value: new Date(change.at).toLocaleString() }] : []),
       ],
@@ -496,7 +518,16 @@ export function RoomPanel({
           <>
             {onReplayChanges ? (
               <button type="button" disabled={busy} onClick={onReplayChanges}>
-                Replay saved work · no model request
+                Replay
+              </button>
+            ) : null}
+            {onContinueChange && change.canContinue && !change.continued && change.status === "failed" ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onContinueChange(change.submissionId, change.domain)}
+              >
+                Continue
               </button>
             ) : null}
             {onRetryChangeInterpretation &&
@@ -511,7 +542,7 @@ export function RoomPanel({
                   )
                 }
               >
-                Retry {change.domain} interpretation · may use model requests
+                Retry {change.domain}
               </button>
             ) : null}
           </>
@@ -525,9 +556,9 @@ export function RoomPanel({
   )
     errorItems.push({
       id: "other-world-updates",
-      title: "Other world updates need attention",
+      title: "Other World changes need attention",
       message:
-        "Some proposed world changes weren’t saved or could not be processed. See this Scene’s saved diagnostics for the remaining results.",
+        "Some proposed world changes weren’t saved or could not be processed. See World change diagnostics for details.",
       fields: [
         { label: "Failed", value: String(changeStatus.failed) },
         { label: "Not saved", value: String(changeStatus.rejected) },
@@ -556,91 +587,57 @@ export function RoomPanel({
    * is the whole defence this drawing needs against a player writing somebody
    * else's name into the room's record.
    */
-  const steps = useMemo<RoomStep[]>(() => {
-    const built: RoomStep[] = [];
-    const boundaries = stagingBoundaries(room.lines, room.submissions ?? []);
-    const mainLines = room.lines.filter((line) => !isSceneAside(line));
-    if (!mainLines.length && room.lines.length) mainLines.push(room.lines[0]!);
-    const stageAsides = new Map<RoomLine, RoomLine[]>();
-    const attached = new Map<RoomLine, RoomStep["asides"]>();
-    for (const [index, line] of room.lines.entries()) {
-      if (!isSceneAside(line) || mainLines.includes(line)) continue;
-      // Also repair orphaned anchors in already-saved Scenes, without changing evidence.
-      const anchor =
-        mainLines.find((main) => main.id && main.id === line.asideFor) ??
-        mainLines.findLast((main) => room.lines.indexOf(main) < index) ??
-        mainLines[0];
-      if (!anchor) continue;
-      const list = attached.get(anchor) ?? [];
-      list.push({
-        register: speechDelivery(line) === "ordinary" ? "side" : (speechDelivery(line) as "whisper" | "shout"),
-        text: line.content,
-        ...(line.targetId
-          ? {
-              target:
-                line.targetId === "player"
-                  ? playerName
-                  : (room.participants.find((person) => person.characterId === line.targetId)?.name ?? line.targetId),
-            }
-          : {}),
-        speakerId: line.speakerId,
-        name: line.name,
-        expression: line.expression,
-        gazeAt: line.gazeAt,
-      });
-      attached.set(anchor, list);
-      stageAsides.set(anchor, [...(stageAsides.get(anchor) ?? []), line]);
-    }
-    for (const line of room.lines) {
-      if (!mainLines.includes(line)) continue;
-      const player = line.speakerId.length === 0;
-      const walk = villagesWalk(line.content, line.beats ?? null);
-      const asideLines = stageAsides.get(line) ?? [];
-      const momentBoundaries = [line, ...asideLines].map((item) => boundaries.get(item.id ?? ""));
-      const beforeIds = momentBoundaries.find((item) => item?.beforeIds)?.beforeIds;
-      const afterIds = momentBoundaries.find((item) => item?.afterIds)?.afterIds;
-      walk.paragraphs.forEach((paragraph, index) => {
-        built.push({
-          key: `${built.length}`,
-          ...(room.stagingVersion === 1
-            ? {
-                stagingEvent: {
-                  cues: [
-                    ...(index === 0 ? lineStagingCues(line) : []),
-                    ...(index === walk.paragraphs.length - 1 ? asideLines.flatMap(lineStagingCues) : []),
-                  ],
-                  ...(index === 0 && beforeIds ? { beforeIds } : {}),
-                  ...(index === walk.paragraphs.length - 1 && afterIds ? { afterIds } : {}),
-                },
-              }
-            : {}),
-          speakerId: player ? "" : line.speakerId,
-          name: player ? playerName : line.name,
-          player,
-          text: paragraph,
-          delivery: speechDelivery(line),
-          asides: [
-            ...(walk.asides[index] ?? []),
-            ...(index === walk.paragraphs.length - 1 ? (attached.get(line) ?? []) : []),
-          ],
-          ...(line.kind ? { register: line.kind === "narration" ? "narration" : "speech" } : {}),
-          ...(line.expression ? { expression: line.expression } : {}),
-          ...(line.gazeAt ? { gazeAt: line.gazeAt } : {}),
-        });
-      });
-    }
-    return built;
-  }, [playerName, room.lines, room.participants, room.stagingVersion, room.submissions]);
-
+  const steps = useMemo(
+    () => scenePlaybackSteps(playback.window, playerName, room.activeIds),
+    [playback.window, playerName, room.activeIds],
+  );
+  const targetStep = useRef<string | null>(null);
+  const positionedWindow = useRef<ScenePlaybackWindow | null>(null);
   /** A new visit opens at its latest line; each append opens at its first new paragraph. */
   useLayoutEffect(() => {
+    const select = (index: number) => {
+      targetStep.current = steps[index]?.key ?? null;
+      setReadStep(index);
+    };
     if (isFounded === false) {
+      positionedWindow.current = null;
       setReadStep(0);
       return;
     }
-    setReadStep((current) => nextRoomReadIndex(previousReading.current, room.id, steps.length, current));
-    previousReading.current = { roomId: room.id, stepCount: steps.length };
-  }, [room.id, steps.length, previousReading, reset, isFounded]);
+    if (playback.restoring || positionedWindow.current === playback.window) return;
+    const bookmark = checkpoint.current.bookmark;
+    positionedWindow.current = playback.window;
+    if (playback.entry === "first")
+      select(
+        Math.max(
+          0,
+          playback.advanceOwned && bookmark ? steps.findIndex((step) => step.momentIndex > bookmark.momentIndex) : 0,
+        ),
+      );
+    else if (playback.entry === "last") select(Math.max(0, steps.length - 1));
+    else if (bookmark?.scope === worldScope && bookmark.sceneId === room.id) {
+      const saved = steps.findIndex((step) => step.lineId === bookmark.lineId && step.paragraph === bookmark.paragraph);
+      const newer =
+        bookmark.atEnd || playback.advanceFrom !== undefined
+          ? steps.findIndex((step) => step.momentIndex > (playback.advanceFrom ?? bookmark.momentIndex))
+          : -1;
+      if (newer >= 0) select(newer);
+      else if (saved >= 0) select(saved);
+      else if (!playback.restoring) select(Math.max(0, steps.length - 1));
+    } else select(Math.max(0, steps.length - 1));
+  }, [
+    room.id,
+    steps,
+    reset,
+    isFounded,
+    worldScope,
+    checkpoint,
+    playback.entry,
+    playback.restoring,
+    playback.advanceOwned,
+    playback.advanceFrom,
+    playback.window,
+  ]);
 
   useLayoutEffect(() => {
     if (isFounded !== false) checkpoint.current.readStep = readStep;
@@ -648,42 +645,70 @@ export function RoomPanel({
 
   const at = Math.min(readStep, Math.max(0, steps.length - 1));
   const step = steps[at];
-  const readingPages = useReadingPages(step?.text ?? "", `${room.id}:${at}`, readingRef, sceneReading);
-  const stagingFrames = useMemo(
-    () =>
-      room.stagingVersion === 1
-        ? replayStaging(
-            room.participants.map((person) => person.characterId),
-            steps.map((item) => item.stagingEvent ?? {}),
-          )
-        : [],
-    [room.stagingVersion, room.participants, steps],
+  const readingOrdinal = step?.paragraphIndex ?? 0;
+  const readingTotal = Math.max(1, room.playback.totalParagraphs, (steps.at(-1)?.paragraphIndex ?? -1) + 1);
+  const stageRoomId = JSON.stringify([worldScope, room.id]);
+  const readingPages = useReadingPages(
+    step?.text ?? "",
+    step?.key ?? JSON.stringify([worldScope, room.id, "empty"]),
+    readingRef,
+    sceneReading,
   );
-  const stagingFrame = stagingFrames[at];
-  const stagingState = {
-    ...initialStaging(room.participants.map((person) => person.characterId)),
-    ...stagingFrame?.state,
-  };
-  const previousStageReading = useRef<{ roomId: string; at: number; restoring: boolean } | null>(null);
+  const emptyFrame = useMemo(
+    () => stagingPresentation(createStagingCursor(room.activeIds, room.activeIds)),
+    [room.activeIds],
+  );
+  const tailMoment = playback.window.moments.at(-1);
+  const stagingFrame = playback.restoring
+    ? emptyFrame
+    : (playback.atLatest && at === steps.length - 1) || !step
+      ? (tailMoment?.end ?? step?.presentation ?? emptyFrame)
+      : step.presentation;
+  const stagingState = stagingFrame.state;
+  const previousStageReading = useRef<{ roomId: string; key?: string; at: number; restoring: boolean } | null>(null);
   const animateStaging = useMemo(
     () =>
-      previousStageReading.current?.roomId === room.id &&
+      previousStageReading.current?.roomId === stageRoomId &&
+      previousStageReading.current.key !== step?.key &&
       !previousStageReading.current.restoring &&
-      at > previousStageReading.current.at,
-    [room.id, at],
+      readingOrdinal > previousStageReading.current.at,
+    [stageRoomId, readingOrdinal, step?.key],
   );
   useLayoutEffect(() => {
-    const initialRead = previousStageReading.current?.roomId !== room.id;
+    const initialRead = previousStageReading.current?.roomId !== stageRoomId;
     previousStageReading.current = {
-      roomId: room.id,
-      at,
-      restoring: initialRead && at !== Math.max(0, steps.length - 1),
+      roomId: stageRoomId,
+      key: step?.key,
+      at: readingOrdinal,
+      restoring: initialRead && readingOrdinal !== readingTotal - 1,
     };
-  }, [room.id, at, steps.length]);
-  const canReadPrevious = at > 0 || readingPages.index > 0;
-  const canReadNext = at < steps.length - 1 || readingPages.index < readingPages.count - 1;
+  }, [stageRoomId, readingOrdinal, readingTotal, step?.key]);
+  const canReadPrevious = at > 0 || readingPages.index > 0 || !!playback.window.olderCursor;
+  const canReadNext =
+    at < steps.length - 1 ||
+    readingPages.index < readingPages.count - 1 ||
+    (!playback.atLatest && !!playback.window.newerCursor);
+  useLayoutEffect(() => {
+    if (isFounded === false || playback.restoring) return;
+    if (!step) {
+      checkpoint.current.window = playback.window;
+      return;
+    }
+    if (targetStep.current && targetStep.current !== step.key) return;
+    targetStep.current = null;
+    checkpoint.current.bookmark = {
+      scope: worldScope,
+      sceneId: room.id,
+      lineId: step.lineId,
+      paragraph: step.paragraph,
+      momentIndex: step.momentIndex,
+      anchorCursor: step.anchorCursor,
+      atEnd: !canReadNext,
+    };
+    checkpoint.current.window = playback.window;
+  }, [checkpoint, worldScope, room.id, step, canReadNext, isFounded, playback.window, playback.restoring]);
   const canDraft = !ended && room.status === "active";
-  const canCompose = canDraft && !busy && !canReadNext && !historyOpen;
+  const canCompose = canDraft && !busy && !canReadNext && !historyOpen && !playback.busy && !playback.restoring;
   const resizeComposer = useCallback(() => {
     const field = composerRef.current;
     if (!field) return;
@@ -717,11 +742,11 @@ export function RoomPanel({
   const submitComposer = () => {
     if (
       !canCompose ||
+      !!legacyRecovery ||
+      (room.semanticVersion === 2 && !!changeStatus && changeStatus.pending + changeStatus.failed > 0) ||
       mode === "move" ||
       busy ||
-      (mode !== "conclude" && mode !== "contact" && !draft.trim()) ||
-      (mode === "fulfill" && !targetId) ||
-      (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary))
+      (mode !== "conclude" && !draft.trim())
     )
       return;
     setModeMenuOpen(false);
@@ -746,32 +771,15 @@ export function RoomPanel({
   const cast =
     !canReadNext && !historyOpen && !ended
       ? activeParticipants
-      : room.stagingVersion === 1
-        ? room.participants.filter((person) => (stagingFrame?.activeIds ?? room.activeIds).includes(person.characterId))
-        : room.status === "closed" && activeParticipants.length === 0
-          ? room.participants
-          : activeParticipants;
+      : playback.window.participants.filter((person) => stagingFrame.activeIds.includes(person.characterId));
   const speaker = cast.find((person) => person.characterId === step?.speakerId);
   const speechStyle = (speakerId: string) => villagesSpeechPaintStyle(speechColors[speakerId]);
   const nameStyle = (speakerId: string) => villagesSpeechPaintStyle(nameColors[speakerId]);
   const displayed = cast.slice(0, 4);
   const rest = cast.filter((person) => !displayed.some((shown) => shown.characterId === person.characterId));
-  const mobileLayout = mobileSceneLayout(
-    displayed.map((person) => person.characterId),
-    stagingState,
-    steps.slice(0, at + 1).map((item) => item.stagingEvent ?? {}),
-  );
-  const stageLayout = stagingLayout(
-    displayed.map((person) => person.characterId),
-    stagingState,
-  );
-  const asideSide = (
-    room.stagingVersion === 1
-      ? (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5
-      : displayed.findIndex((person) => person.characterId === speaker?.characterId) >= 2
-  )
-    ? "left"
-    : "right";
+  const mobileLayout = stagingFrame.mobile;
+  const stageLayout = stagingFrame.desktop;
+  const asideSide = (stageLayout[speaker?.characterId ?? ""]?.x ?? 0) > 0.5 ? "left" : "right";
 
   /**
    * The wait, in the room's own words.
@@ -783,45 +791,6 @@ export function RoomPanel({
    * to in the settings, so the sentence that carries the information here is that
    * the room is answering at all, and that it may take one call or several.
    */
-  const [progress, setProgress] = useState("");
-  useEffect(() => {
-    if (!busy || !room.id) {
-      setProgress("");
-      return;
-    }
-    let stopped = false;
-    let reading = false;
-    const poll = async () => {
-      if (stopped || reading || document.hidden) return;
-      reading = true;
-      try {
-        const { operation } = await request<{
-          operation: import("../../../shared/contracts/village.js").RoomOperation | null;
-        }>("/rooms/" + encodeURIComponent(room.id) + "/operation", { signal: AbortSignal.timeout(5000) });
-        if (!stopped)
-          setProgress(
-            operation?.status === "running"
-              ? /routing|attention|acoustic/.test(operation.stage ?? "")
-                ? "Working out who can hear…"
-                : /interpret/.test(operation.stage ?? "")
-                  ? "Checking the reply and its effects…"
-                  : /reply|response/.test(operation.stage ?? "")
-                    ? "Writing the reply…"
-                    : "Processing the Scene…"
-              : "",
-          );
-      } catch {
-        /* Progress is optional; never replace the request's result. */
-      } finally {
-        reading = false;
-      }
-    };
-    const timer = window.setInterval(() => void poll(), 1500);
-    return () => {
-      stopped = true;
-      window.clearInterval(timer);
-    };
-  }, [room.id, busy]);
   const waiting = (
     <p className={`${ELEMENT_TAG}-chat-pending`} role="status">
       <span className={`${ELEMENT_TAG}-chat-spinner ${ELEMENT_TAG}-spin`} aria-hidden="true" />
@@ -832,7 +801,7 @@ export function RoomPanel({
             ? "Saving this Scene…"
             : mode === "move"
               ? "Moving…"
-              : progress || "This Scene is responding. Your draft stays here."}
+              : "This Scene is responding. Your draft stays here."}
       </span>
     </p>
   );
@@ -877,7 +846,10 @@ export function RoomPanel({
       </div>
 
       <div className={`${ELEMENT_TAG}-chat-head`}>
-        <span className={`${ELEMENT_TAG}-room-place`}>{room.placeName}</span>
+        <span className={`${ELEMENT_TAG}-room-place`}>
+          {room.placeName}
+          {room.currentTime ? <time className={`${ELEMENT_TAG}-room-time`}>{room.currentTime}</time> : null}
+        </span>
         <span ref={actionsRef} className={`${ELEMENT_TAG}-chat-actions`}>
           <button
             type="button"
@@ -914,17 +886,16 @@ export function RoomPanel({
                   View Mailbox
                 </button>
               ) : null}
-              {onStartSpinoff ? (
+              {onMap ? (
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={busy || ended}
                   onClick={() => {
                     setActionsOpen(false);
-                    onStartSpinoff();
+                    onMap();
                   }}
                 >
-                  Start a spinoff
+                  Map
                 </button>
               ) : null}
               {onProjects ? (
@@ -1048,10 +1019,6 @@ export function RoomPanel({
                 ×
               </button>
             </div>
-            <p className={ELEMENT_TAG + "-hint"} role="status">
-              Changes and Wish updates are saved during replies. Ending the Scene does not run another review. See saved
-              changes below for pending or failed work.
-            </p>
             <div className={`${ELEMENT_TAG}-scene-modal-errors`}>
               <SceneErrorChip items={errorItems} open={errorsOpen} onOpen={setErrorsOpen} />
             </div>
@@ -1067,12 +1034,24 @@ export function RoomPanel({
         </p>
       ) : null}
       <div className={`${ELEMENT_TAG}-scene-notice-chips`}>
+        <SceneInformationChip
+          items={isSceneTurnOutcomeMessage(ruling) ? [{ id: "held-turn", title: "Information", message: ruling }] : []}
+          open={informationOpen}
+          onOpen={(value) => {
+            setInformationOpen(value);
+            if (value) {
+              setErrorsOpen(false);
+              setNoticesOpen(false);
+            }
+          }}
+        />
         {!settingsOpen ? (
           <SceneErrorChip
             items={errorItems}
             open={errorsOpen}
             onOpen={(value) => {
               setErrorsOpen(value);
+              if (value) setInformationOpen(false);
               if (value) setNoticesOpen(false);
             }}
           />
@@ -1085,17 +1064,18 @@ export function RoomPanel({
               onClick={() => {
                 setNoticesOpen((value) => !value);
                 setErrorsOpen(false);
+                setInformationOpen(false);
               }}
               aria-expanded={noticesOpen}
-              aria-label={`${notices.length} village ${notices.length === 1 ? "notice" : "notices"}`}
+              aria-label={`${notices.length} ${notices.length === 1 ? "World change" : "World changes"}`}
             >
-              ✦ {notices.length}
+              <span aria-hidden="true">{presenceNotice ? roomNoticeIcon(presenceNotice) : "✦"}</span> {notices.length}
             </button>
             {noticesOpen ? (
-              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="Village events">
+              <div className={`${ELEMENT_TAG}-room-stars`} aria-live="polite" aria-label="World changes">
                 {notices.map((notice) => (
                   <div key={notice.id} className={`${ELEMENT_TAG}-room-star`}>
-                    <span aria-hidden="true">{roomNoticeIcon(notice.kind)}</span>
+                    <span aria-hidden="true">{roomNoticeIcon(notice)}</span>
                     {(notice.kind === "memory" ||
                       notice.kind === "wish" ||
                       notice.kind === "relationship-up" ||
@@ -1205,7 +1185,7 @@ export function RoomPanel({
       <div className={`${ELEMENT_TAG}-chat-stage`} aria-hidden="true">
         <div
           className={`${ELEMENT_TAG}-chat-cast`}
-          data-staging={room.stagingVersion === 1 ? "true" : "false"}
+          data-staging="true"
           data-animate={animateStaging ? "true" : "false"}
         >
           {displayed.map((villager, index) => {
@@ -1213,7 +1193,7 @@ export function RoomPanel({
             const isSpeaker = villager.characterId === speaker?.characterId;
             const mobileSlot = mobileLayout[villager.characterId];
             const aside = step?.asides.find((item) => item.speakerId === villager.characterId);
-            const slot = room.stagingVersion === 1 ? stageLayout[villager.characterId] : undefined;
+            const slot = stageLayout[villager.characterId];
             const wanted = slot
               ? stagingState[villager.characterId].expression
               : isSpeaker
@@ -1259,7 +1239,7 @@ export function RoomPanel({
                     framing={sprite?.framing.mode ?? "full"}
                     enabled={spriteCardFlipEnabled}
                     animate={animateStaging}
-                    stepKey={room.id + ":" + at}
+                    stepKey={step?.key ?? stageRoomId}
                     onError={(url) => setFailedSpriteUrls((previous) => new Set([...previous, url]))}
                   />
                 ) : (
@@ -1325,6 +1305,7 @@ export function RoomPanel({
               className={ELEMENT_TAG + "-chat-history-toggle"}
               aria-label={historyOpen ? "Hide history" : "History"}
               aria-expanded={historyOpen}
+              disabled={!worldScope}
               title={historyOpen ? "Return to Visual Novel" : "Show chat history"}
               onClick={() => setHistoryOpen((value) => !value)}
             >
@@ -1345,33 +1326,14 @@ export function RoomPanel({
               window.requestAnimationFrame(() => historyTriggerRef.current?.focus());
             }}
           >
-            {room.lines.map((line, index) => (
-              <p key={line.id ?? index} className={`${ELEMENT_TAG}-chat-vn-text`}>
-                <strong
-                  style={line.role === "assistant" && line.kind !== "narration" ? nameStyle(line.speakerId) : undefined}
-                >
-                  {line.role === "user"
-                    ? playerName
-                    : line.kind === "narration" || line.speakerId === "__venue_scene__"
-                      ? "Narration"
-                      : line.name || "Resident"}
-                  {isSceneAside(line) ? " · aside" : ""}
-                  {speechDelivery(line) === "whisper"
-                    ? " · whisper"
-                    : speechDelivery(line) === "shout"
-                      ? " · shout"
-                      : ""}
-                  : {line.viaDoorway ? "Through the doorway · " : ""}
-                </strong>
-                <span
-                  style={
-                    line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined
-                  }
-                >
-                  {renderVillagesMarkdown(line.content, `history-${index}-`)}
-                </span>
-              </p>
-            ))}
+            <SceneHistory
+              key={worldScope + ":" + room.id}
+              sceneId={room.id}
+              scope={worldScope}
+              playerName={playerName}
+              nameStyle={nameStyle}
+              speechStyle={speechStyle}
+            />
           </div>
         ) : null}
         {step && step.asides.length > 0 ? (
@@ -1460,19 +1422,10 @@ export function RoomPanel({
                       · 📣
                     </span>
                   ) : null}
-                  {room.lines.some(
-                    (line) =>
-                      line.viaDoorway && line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
-                  )
-                    ? room.lines.find(
-                        (line) => line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
-                      )?.remoteDelivery === "device"
-                      ? " · over the intercom"
-                      : room.lines.find(
-                            (line) => line.speakerId === step?.speakerId && line.content.includes(step?.text ?? ""),
-                          )?.remoteDelivery === "loud"
-                        ? " · calling from inside"
-                        : " · through the doorway"
+                  {step?.viaDoorway
+                    ? step.remoteDelivery === "loud"
+                      ? " · calling from inside"
+                      : " · through the doorway"
                     : ""}
                 </p>
               )}
@@ -1484,7 +1437,9 @@ export function RoomPanel({
                 aria-live="polite"
                 tabIndex={0}
               >
-                {step ? (
+                {playback.restoring ? (
+                  <p role="status">{playback.error ? "Passage unavailable." : "Loading…"}</p>
+                ) : step ? (
                   register === "narration" ? (
                     <p className={`${ELEMENT_TAG}-chat-vn-beat`} data-register="narration">
                       {drawVillagesNodes(readingPages.nodes, "vn-beat-")}
@@ -1515,19 +1470,24 @@ export function RoomPanel({
             </div>
           </div>
           <div className={`${ELEMENT_TAG}-room-panel-tools`}>
-            <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
-              {mobile
-                ? mobileReadingCounter(at, steps.length, readingPages.index, readingPages.count)
-                : `${at + 1} / ${Math.max(1, steps.length)}`}
-            </span>
+            {step ? (
+              <span className={`${ELEMENT_TAG}-chat-vn-counter`}>
+                {mobile
+                  ? mobileReadingCounter(readingOrdinal, readingTotal, readingPages.index, readingPages.count)
+                  : `${readingOrdinal + 1} / ${readingTotal}`}
+              </span>
+            ) : null}
             <span className={`${ELEMENT_TAG}-chat-vn-nav`}>
               <button
                 type="button"
                 className={`${ELEMENT_TAG}-chat-vn-button`}
                 onClick={() => {
-                  if (!readingPages.move(-1)) setReadStep(at - 1);
+                  if (!readingPages.move(-1)) {
+                    if (at > 0) setReadStep(at - 1);
+                    else if (playback.window.olderCursor) void playback.load(playback.window.olderCursor, "last");
+                  }
                 }}
-                disabled={!canReadPrevious}
+                disabled={!canReadPrevious || playback.busy}
                 aria-label="Previous paragraph"
               >
                 ‹ <span>Previous</span>
@@ -1537,9 +1497,13 @@ export function RoomPanel({
                   type="button"
                   className={`${ELEMENT_TAG}-chat-vn-button`}
                   onClick={() => {
-                    if (!readingPages.move(1)) setReadStep(at + 1);
+                    if (!readingPages.move(1)) {
+                      if (at < steps.length - 1) setReadStep(at + 1);
+                      else if (!playback.atLatest && playback.window.newerCursor)
+                        void playback.load(playback.window.newerCursor, "first");
+                    }
                   }}
-                  disabled={!canReadNext}
+                  disabled={!canReadNext || playback.busy}
                   aria-label="Next paragraph"
                 >
                   <span>Next</span> ›
@@ -1552,89 +1516,47 @@ export function RoomPanel({
             </span>
           </div>
         </div>
-        {ruling ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
+        {ruling && !isSceneTurnOutcomeMessage(ruling) ? <p className={`${ELEMENT_TAG}-empty`}>{ruling}</p> : null}
         {room.status === "closing" ? <p className={ELEMENT_TAG + "-hint"}>Closing this Scene…</p> : null}
 
-        {canCompose && mode === "fulfill" && activeParticipants.length === 0 ? (
-          <p className={`${ELEMENT_TAG}-hint`}>Nobody is here whose wish you can fulfill.</p>
-        ) : null}
         {canCompose ? (
           <div className={`${ELEMENT_TAG}-composer`}>
-            {mode === "contact" ? (
-              <div className={`${ELEMENT_TAG}-contact-controls`}>
-                <select
-                  className={`${ELEMENT_TAG}-select`}
-                  aria-label="Contact Zone"
-                  value={contactBoundary}
-                  disabled={busy}
-                  onChange={(event) => onContactBoundary(event.target.value)}
-                >
-                  <option value="">Choose an adjacent Zone</option>
-                  {contactDoors.map((door) => (
-                    <option key={door.id} value={door.id}>
-                      {door.label}
-                    </option>
-                  ))}
-                </select>
+            {legacyRecovery ? (
+              <div role="status">
+                <p>
+                  Saved {legacyRecovery.operation.input?.mode === "contact" ? "Contact" : "Fulfill"} action ·{" "}
+                  {legacyDestination}
+                </p>
+                <p>{legacyRecovery.operation.input?.message || "Saved action"}</p>
+                <button type="button" disabled={busy} onClick={onRetryLegacy}>
+                  Retry original action
+                </button>
+                <button type="button" disabled={busy || !draft.trim()} onClick={onReplaceLegacy}>
+                  Replace with Say / Do
+                </button>
+                <button type="button" disabled={busy} onClick={onReviewLegacy}>
+                  Review latest saved action
+                </button>
               </div>
             ) : null}
-            {mode === "fulfill" && activeParticipants.length > 0 ? (
-              <select
-                value={targetId}
-                onChange={(event) => onTarget(event.target.value)}
-                aria-label="Whose wish you fulfilled"
-                disabled={busy || ended || room.status !== "active"}
-              >
-                <option value="">Choose one villager</option>
-                {activeParticipants.map((person) => (
-                  <option key={person.characterId} value={person.characterId}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
-            ) : null}
             <div className={`${ELEMENT_TAG}-composer-row`}>
-              {mode === "contact" ? (
-                <p className={`${ELEMENT_TAG}-scene-scope`} role="status" data-scene-scope>
-                  Contacting {contactDoors.find((door) => door.id === contactBoundary)?.label ?? "an adjacent Zone"}
-                </p>
-              ) : null}
               <span className={`${ELEMENT_TAG}-chat-input`}>
                 <span ref={modeAnchorRef} className={`${ELEMENT_TAG}-room-mode-anchor`}>
                   <button
                     type="button"
                     className={`${ELEMENT_TAG}-room-mode-toggle`}
                     onClick={() => setModeMenuOpen((value) => !value)}
-                    aria-label={`Mode: ${mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : mode === "contact" ? "Contact" : "Say / Do"}. Choose mode`}
+                    disabled={!!legacyRecovery}
+                    aria-label={`Mode: ${mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : "Say / Do"}. Choose mode`}
                     aria-haspopup="menu"
                     aria-expanded={modeMenuOpen}
-                    title={
-                      mode === "chat"
-                        ? "Say / Do"
-                        : mode === "move"
-                          ? "Move"
-                          : mode === "contact"
-                            ? "Contact"
-                            : mode === "fulfill"
-                              ? "Fulfill"
-                              : "Conclude"
-                    }
+                    title={mode === "conclude" ? "Conclude" : mode === "move" ? "Move" : "Say / Do"}
                   >
-                    <SceneControlIcon
-                      name={
-                        mode === "chat" || mode === "move"
-                          ? "chat"
-                          : mode === "contact"
-                            ? "knock"
-                            : mode === "fulfill"
-                              ? "fulfill"
-                              : "conclude"
-                      }
-                    />
+                    <SceneControlIcon name={mode === "conclude" ? "conclude" : "chat"} />
                   </button>
                   {modeMenuOpen ? (
                     <span className={`${ELEMENT_TAG}-room-mode-menu`} role="menu" aria-label="Scene mode">
-                      {(["chat", "move", "contact", "conclude"] as const).map((option) => (
+                      {(["chat", "move", "conclude"] as const).map((option) => (
                         <button
                           key={option}
                           type="button"
@@ -1642,7 +1564,7 @@ export function RoomPanel({
                           aria-checked={mode === option}
                           disabled={
                             busy ||
-                            (option === "contact" && contactDoors.length === 0) ||
+                            !!legacyRecovery ||
                             (option === "move" &&
                               !movementZones.some((zone) => zone.id !== room.zoneId && !zone.closed))
                           }
@@ -1651,22 +1573,17 @@ export function RoomPanel({
                             setModeMenuOpen(false);
                           }}
                         >
-                          {option === "chat"
-                            ? "Say / Do"
-                            : option === "move"
-                              ? "Move"
-                              : option === "contact"
-                                ? "Contact"
-                                : "Conclude"}
+                          {option === "chat" ? "Say / Do" : option === "move" ? "Move" : "Conclude"}
                         </button>
                       ))}
                     </span>
                   ) : null}
                 </span>
-                {mode === "move" ? (
+                {mode === "move" && !legacyRecovery ? (
                   <select
                     className={`${ELEMENT_TAG}-select ${ELEMENT_TAG}-zone-navigation`}
                     aria-label="Move to Zone"
+                    disabled={busy || !!legacyRecovery}
                     value=""
                     onChange={(event) => onMovementTarget(event.target.value)}
                   >
@@ -1705,6 +1622,7 @@ export function RoomPanel({
                       </span>
                     ) : null}
                     <textarea
+                      autoComplete="off"
                       ref={composerRef}
                       data-villages-scene-composer
                       className={`${ELEMENT_TAG}-textarea`}
@@ -1719,15 +1637,7 @@ export function RoomPanel({
                           submitComposer();
                         }
                       }}
-                      placeholder={
-                        mode === "contact"
-                          ? "Optional knock, call, or message…"
-                          : mode === "fulfill"
-                            ? "What did you do for them?"
-                            : mode === "conclude"
-                              ? "Final line (optional)…"
-                              : "Say or do something…"
-                      }
+                      placeholder={mode === "conclude" ? "Final line (optional)…" : "Say or do something…"}
                       aria-label={`Message at ${room.placeName}`}
                       disabled={(busy && !draftWhilePending) || ended || room.status !== "active"}
                     />
@@ -1737,12 +1647,14 @@ export function RoomPanel({
                       onClick={submitComposer}
                       disabled={
                         !canCompose ||
+                        !!legacyRecovery ||
+                        (room.semanticVersion === 2 &&
+                          !!changeStatus &&
+                          changeStatus.pending + changeStatus.failed > 0) ||
                         busy ||
                         ended ||
                         room.status !== "active" ||
-                        (mode !== "conclude" && mode !== "contact" && draft.trim().length === 0) ||
-                        (mode === "fulfill" && !targetId) ||
-                        (mode === "contact" && !contactDoors.some((door) => door.id === contactBoundary))
+                        (mode !== "conclude" && draft.trim().length === 0)
                       }
                       aria-label={busy ? "Sending" : "Send"}
                       title={busy ? "Sending" : "Send"}

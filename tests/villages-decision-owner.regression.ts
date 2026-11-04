@@ -12,11 +12,7 @@ import {
 } from "../packages/villages/src/server/adapters/engine/decisions-adapter.js";
 
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 const answer: CapabilityDecisionResult = { model: null, threshold: 0.5, answers: { yes: 1 }, choices: {} };
 const request = { messages: [], questions: [{ id: "yes", question: "Witnessed?" }] };

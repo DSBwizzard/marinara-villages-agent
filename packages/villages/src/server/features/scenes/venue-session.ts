@@ -6,8 +6,6 @@ export type {
   VenueParticipant,
   SceneAttendance,
   VenueSubmission,
-  VenueMemory,
-  VenueRecollection,
   VenueRecordEvent,
   VenueScene,
   VenueSession,
@@ -77,4 +75,7 @@ export async function recoverVenueSceneWork(...args: Parameters<SceneCommands["r
 }
 export function sceneReplayEffects(...args: Parameters<SceneCommands["sceneReplayEffects"]>) {
   return binding.get().sceneReplayEffects(...args);
+}
+export async function finishSemanticScene(...args: Parameters<SceneCommands["finishSemanticScene"]>) {
+  return binding.get().finishSemanticScene(...args);
 }

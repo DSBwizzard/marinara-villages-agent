@@ -3,35 +3,53 @@ import type {
   RelationshipReceipt,
   RelationshipReview,
   RelationshipState,
+  RelationshipUpdate,
 } from "../models/relationship-types.js";
+import type { VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
+import { findLocation } from "./places.js";
 import { asRecord } from "./coerce.js";
-import {
-  localRelationshipDate,
-  RELATIONSHIP_POLICY,
-  relationshipScore,
-  relationshipThreshold,
-} from "./relationship-policy.js";
-import { canInviteToZone, resolveVenueZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { immutableMemoryValue } from "./memory-integrity.js";
+import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
+export class SocialRevisionConflict extends Error {}
 export const relationshipKey = (fromId: string, toId: string): string => JSON.stringify([fromId, toId]);
+
+/** Captured relationships plus only this Scene's accepted relationship receipts. */
+export function sceneRelationshipView(
+  current: RelationshipState | undefined,
+  scene: Pick<VenueScene, "id" | "continuity" | "submissions">,
+) {
+  if (!scene.continuity) return current;
+  const captured = scene.continuity.facts.relationshipContext;
+  const view = captured ? coerceRelationshipState(captured.seed, captured) : undefined;
+  if (!view || !current) return view;
+  replaySceneRelationships(view, current, scene);
+  return view;
+}
 export const permissionKey = (controllerId: string, visitorId: string, venueId: string, zoneId: string): string =>
   JSON.stringify([controllerId, visitorId, venueId, zoneId]);
 export function defaultRelationshipState(seed: string): RelationshipState {
   return {
-    version: 1,
+    version: 3,
     noticeSequence: 0,
+    eventSequence: 0,
     seed,
     edges: {},
+    intentions: {},
+    intentionRevisions: {},
+    intentionReceipts: {},
     grants: {},
     receipts: {},
     applied: {},
-    disclosures: {},
-    knowledge: {},
+    disclosureReceipts: {},
+    sharedRecords: {},
     reviewedActorIds: [],
     startingTies: [],
     startingActorIds: [],
-    spoilers: false,
+    initializationConflicts: [],
+    mailThreads: {},
+    mailDeliveries: {},
     socialPlans: [],
     socialEncounters: [],
   };
@@ -40,157 +58,143 @@ export function neutralRelationship(fromId: string, toId: string): RelationshipE
   return {
     fromId,
     toId,
-    warmth: 0,
-    trust: 0,
-    familiarity: 0,
-    lastContactAt: "",
-    decayAnchorAt: "",
-    knowledgeBlockedUntilContact: false,
-    decayThrough: 0,
-    decayAmount: 0,
-    playerContactAt: "",
+    revision: 0,
+    connection: "",
+    stance: "",
+    expectations: [],
+    concerns: [],
+    experiences: [],
+    records: {},
     updatedAt: "",
-    friend: false,
-    close: false,
-    ordinaryGains: {},
   };
 }
 export function relationshipFor(state: RelationshipState | undefined, fromId: string, toId: string): RelationshipEdge {
   return state?.edges[relationshipKey(fromId, toId)] ?? neutralRelationship(fromId, toId);
 }
-export function coerceRelationshipState(seed: string, value: unknown): RelationshipState {
-  const raw = asRecord(structuredClone(value)),
-    result = defaultRelationshipState(seed);
-  if (raw.seed !== seed) return result;
-  result.clockShiftMs =
-    typeof raw.clockShiftMs === "number" && Number.isFinite(raw.clockShiftMs) ? raw.clockShiftMs : 0;
-  for (const row of Object.values(asRecord(raw.edges))) {
-    const edge = asRecord(row);
-    if (
-      typeof edge.fromId !== "string" ||
-      !edge.fromId ||
-      edge.fromId === "player" ||
-      typeof edge.toId !== "string" ||
-      !edge.toId ||
-      edge.fromId === edge.toId
-    )
-      continue;
-    const base = neutralRelationship(edge.fromId, edge.toId);
-    result.edges[relationshipKey(edge.fromId, edge.toId)] = {
-      ...base,
-      warmth: relationshipScore(edge.warmth),
-      trust: relationshipScore(edge.trust),
-      familiarity: typeof edge.familiarity === "number" ? Math.max(0, Math.trunc(edge.familiarity)) : 0,
-      lastContactAt: typeof edge.lastContactAt === "string" ? edge.lastContactAt : "",
-      decayAnchorAt: typeof edge.decayAnchorAt === "string" ? edge.decayAnchorAt : "",
-      decayTimerAt: typeof edge.decayTimerAt === "string" ? edge.decayTimerAt : undefined,
-      knowledgeBlockedUntilContact: edge.knowledgeBlockedUntilContact === true,
-      decayThrough: typeof edge.decayThrough === "number" ? Math.max(0, Math.trunc(edge.decayThrough)) : 0,
-      decayAmount: relationshipScore(edge.decayAmount),
-      playerContactAt: typeof edge.playerContactAt === "string" ? edge.playerContactAt : "",
-      updatedAt: typeof edge.updatedAt === "string" ? edge.updatedAt : "",
-      friend: edge.friend === true,
-      close: edge.close === true,
-      ordinaryGains: asRecord(edge.ordinaryGains) as Record<string, number>,
-    };
-  }
-  // Package-owned documents are not a model output boundary. Their writer validates each receipt.
-  result.grants = asRecord(raw.grants) as RelationshipState["grants"];
-  result.receipts = asRecord(raw.receipts) as RelationshipState["receipts"];
-  result.noticeSequence = Object.values(result.receipts).reduce(
-    (sequence, receipt) => Math.max(sequence, receipt.noticeSequence ?? 0),
-    Math.max(0, Number(raw.noticeSequence) || 0),
+function validatedRelationshipState(seed: string, value: unknown): RelationshipState {
+  const raw = asRecord(value);
+  if (value === undefined) return defaultRelationshipState(seed);
+  if (raw.seed !== seed)
+    throw new Error("The saved relationships belong to another Village. Their history is preserved.");
+  if (raw.version !== 3)
+    throw new Error(
+      "This Village uses an unsupported relationship contract. Create an independent new Village; its saved data has not been changed.",
+    );
+  // Package-owned documents have already passed the source and schema validator.
+  const state = { ...defaultRelationshipState(seed), ...raw, seed, version: 3 } as RelationshipState;
+  // Header field order must survive warm publication, cold hydration and inline capture comparisons.
+  state.edges = Object.fromEntries(
+    Object.entries(state.edges).map(([id, edge]) => [id, { ...neutralRelationship(edge.fromId, edge.toId), ...edge }]),
   );
-  result.applied = asRecord(raw.applied) as RelationshipState["applied"];
-  result.disclosures = asRecord(raw.disclosures) as RelationshipState["disclosures"];
-  result.knowledge = asRecord(raw.knowledge) as RelationshipState["knowledge"];
-  result.reviewedActorIds = Array.isArray(raw.reviewedActorIds)
-    ? raw.reviewedActorIds.filter((id): id is string => typeof id === "string")
-    : [];
-  result.startingTies = Array.isArray(raw.startingTies) ? (raw.startingTies as RelationshipState["startingTies"]) : [];
-  result.startingActorIds = Array.isArray(raw.startingActorIds) ? (raw.startingActorIds as string[]) : [];
-  result.spoilers = raw.spoilers === true;
-  result.socialPlans = Array.isArray(raw.socialPlans) ? (raw.socialPlans as RelationshipState["socialPlans"]) : [];
-  result.socialEncounters = Array.isArray(raw.socialEncounters)
-    ? (raw.socialEncounters as RelationshipState["socialEncounters"])
-    : [];
-  return result;
+  state.mailThreads = Object.fromEntries(
+    Object.entries(state.mailThreads).map(([id, thread]) => [
+      id,
+      {
+        id: thread.id,
+        participantIds: thread.participantIds,
+        revision: thread.revision,
+        messages: thread.messages,
+        ...thread,
+      },
+    ]),
+  );
+  const sequences = new Set<number>();
+  if (
+    !Number.isSafeInteger(raw.eventSequence) ||
+    Number(raw.eventSequence) < 0 ||
+    !raw.receipts ||
+    Array.isArray(raw.receipts) ||
+    typeof raw.receipts !== "object"
+  )
+    throw new Error("The saved relationship event directory is unreadable. Its history is preserved.");
+  for (const [id, receipt] of Object.entries(state.receipts)) {
+    validateReceipt(receipt);
+    if (receipt.id !== id || receipt.sequence > state.eventSequence || sequences.has(receipt.sequence))
+      throw new Error("The saved relationship event order is unreadable. Its history is preserved.");
+    sequences.add(receipt.sequence);
+  }
+  return state;
 }
+const immutableStates = new WeakSet<object>();
+export function isImmutableRelationshipState(value: unknown): value is RelationshipState {
+  return !!value && typeof value === "object" && immutableStates.has(value);
+}
+/** Captured relationships are exact immutable values, not authority for a later live mutation. */
+export function immutableRelationshipState(seed: string, value: unknown): RelationshipState {
+  if (value && typeof value === "object" && immutableStates.has(value) && (value as RelationshipState).seed === seed)
+    return value as RelationshipState;
+  const state = immutableMemoryValue(validatedRelationshipState(seed, value));
+  immutableStates.add(state);
+  return state;
+}
+export function coerceRelationshipState(seed: string, value: unknown): RelationshipState {
+  // Only mutable containers detach. Published history leaves remain immutable and retain page identity.
+  const source = immutableRelationshipState(seed, value);
+  return {
+    ...source,
+    edges: Object.fromEntries(
+      Object.entries(source.edges).map(([id, edge]) => [
+        id,
+        {
+          ...edge,
+          expectations: [...edge.expectations],
+          concerns: [...edge.concerns],
+          experiences: [...edge.experiences],
+          records: { ...edge.records },
+        },
+      ]),
+    ),
+    intentions: { ...source.intentions },
+    intentionRevisions: { ...source.intentionRevisions },
+    intentionReceipts: { ...source.intentionReceipts },
+    grants: { ...source.grants },
+    receipts: { ...source.receipts },
+    applied: { ...source.applied },
+    disclosureReceipts: { ...source.disclosureReceipts },
+    sharedRecords: { ...source.sharedRecords },
+    reviewedActorIds: [...source.reviewedActorIds],
+    startingTies: [...source.startingTies],
+    startingActorIds: [...source.startingActorIds],
+    initializationConflicts: [...source.initializationConflicts],
+    mailDeliveries: { ...source.mailDeliveries },
+    mailThreads: Object.fromEntries(
+      Object.entries(source.mailThreads).map(([id, thread]) => [
+        id,
+        {
+          ...thread,
+          participantIds: [...thread.participantIds],
+          messages: [...thread.messages],
+        },
+      ]),
+    ),
+    socialPlans: [...source.socialPlans],
+    socialEncounters: [...source.socialEncounters],
+  };
+}
+/** Absence and elapsed time are not social events. Only explicit permissions affect access. */
 export function reconcileRelationships(
   state: RelationshipState,
   village: Pick<VillageState, "villagers" | "venues" | "projects"> & Partial<Pick<VillageState, "clock">>,
-  now = Date.now(),
-): void {
-  const clockShift = village.clock?.shiftTotalMs ?? 0;
-  const difference = clockShift - (state.clockShiftMs ?? 0);
-  state.clockShiftMs = clockShift;
-  for (const edge of Object.values(state.edges)) {
-    if (difference) {
-      const at = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
-      if (Number.isFinite(at)) edge.decayTimerAt = new Date(at + difference).toISOString();
-    }
-    const last = Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt);
-    if (Number.isFinite(last)) {
-      const days = Math.max(
-        0,
-        Math.floor((now - last) / RELATIONSHIP_POLICY.dayMs) - RELATIONSHIP_POLICY.decayGraceDays,
-      );
-      const loss = Math.max(0, days - edge.decayThrough);
-      if (loss) {
-        const amount = Math.sign(edge.warmth) * Math.min(Math.abs(edge.warmth), loss);
-        edge.warmth -= amount;
-        edge.decayAmount += amount;
-        edge.decayThrough = days;
-      }
-    }
-    edge.friend = relationshipThreshold(edge.warmth, edge.trust, edge.friend, "friend");
-    edge.close = relationshipThreshold(edge.warmth, edge.trust, edge.close, "close");
-  }
+  _now = Date.now(),
+): boolean {
   const residents = new Set(village.villagers.map((person) => person.characterId));
-  for (const grant of Object.values(state.grants)) {
+  let changed = false;
+  for (const [id, grant] of Object.entries(state.grants)) {
     const venue = village.venues.find((place) => place.id === grant.venueId);
     const zone = venue && resolveVenueZone(venue, grant.zoneId);
-    if (
-      !venue ||
-      !zone ||
-      !residents.has(grant.controllerId) ||
-      (grant.visitorId !== "player" && !residents.has(grant.visitorId)) ||
-      !canInviteToZone(venue, zone, grant.controllerId)
-    ) {
-      grant.revoked = true;
-      grant.active = false;
-      continue;
+    const active =
+      !grant.revoked &&
+      !!venue &&
+      !!zone &&
+      residents.has(grant.controllerId) &&
+      (grant.visitorId === "player" || residents.has(grant.visitorId)) &&
+      canInviteToZone(venue, zone, grant.controllerId);
+    if (active !== grant.active) {
+      state.grants[id] = { ...grant, active };
+      changed = true;
     }
-    const edge = relationshipFor(state, grant.controllerId, grant.visitorId);
-    const level = zone.kind === "shared-residence" ? "friend" : zone.kind === "private-residence" ? "close" : "staff";
-    grant.active = !grant.revoked && relationshipThreshold(edge.warmth, edge.trust, grant.active, level);
   }
-  for (const venue of village.venues)
-    for (const zone of venueZones(venue)) {
-      if (venue.access || zone.kind !== "shared-residence") continue;
-      for (const edge of Object.values(state.edges)) {
-        if (
-          !residents.has(edge.fromId) ||
-          (edge.toId !== "player" && !residents.has(edge.toId)) ||
-          !canInviteToZone(venue, zone, edge.fromId)
-        )
-          continue;
-        const key = permissionKey(edge.fromId, edge.toId, venue.id, zone.id);
-        const previous = state.grants[key];
-        if (!previous && edge.friend)
-          state.grants[key] = {
-            id: key,
-            controllerId: edge.fromId,
-            visitorId: edge.toId,
-            venueId: venue.id,
-            zoneId: zone.id,
-            active: true,
-            automatic: true,
-            revoked: false,
-            at: new Date(now).toISOString(),
-          };
-      }
-    }
+  return changed;
 }
 export function relationshipZoneController(
   state: RelationshipState | undefined,
@@ -212,6 +216,100 @@ export function relationshipZoneController(
     )?.controllerId ?? null
   );
 }
+function project(base: RelationshipEdge, update: RelationshipUpdate, receiptId: string, at: string): RelationshipEdge {
+  const after = { ...base, records: { ...base.records }, experiences: [...base.experiences] };
+  Object.assign(after, {
+    connection: update.connection,
+    stance: update.stance,
+    expectations: [...update.expectations],
+    concerns: [...update.concerns],
+    revision: base.revision + 1,
+    updatedAt: at,
+  });
+  for (const record of update.records) after.records[record.id] = structuredClone(record);
+  after.experiences = [...new Set([...after.experiences, receiptId])];
+  return after;
+}
+function validateReceipt(receipt: RelationshipReceipt) {
+  const update = (value: RelationshipUpdate) =>
+    value &&
+    typeof value.connection === "string" &&
+    typeof value.stance === "string" &&
+    Array.isArray(value.expectations) &&
+    Array.isArray(value.concerns) &&
+    Array.isArray(value.records) &&
+    !Object.hasOwn(value, "experiences");
+  if (
+    !receipt ||
+    !Number.isSafeInteger(receipt.sequence) ||
+    receipt.sequence < 1 ||
+    ![receipt.beforeRevision, receipt.sceneBeforeRevision].every(
+      (value) => Number.isSafeInteger(value) && value >= 0,
+    ) ||
+    !update(receipt.liveAfter) ||
+    (receipt.sceneAfter !== undefined && !update(receipt.sceneAfter))
+  )
+    throw new Error("The saved relationship event is unreadable. Its history is preserved.");
+}
+/** Extend only the captured predecessor with this event's exact accepted Scene interpretation. */
+export function replaySceneRelationships(
+  state: RelationshipState,
+  current: RelationshipState,
+  scene: Pick<VenueScene, "id" | "submissions">,
+): void {
+  if (state.seed !== current.seed)
+    throw new Error("Captured relationships belong to another Village. Their history is preserved.");
+  const submissions = new Set(scene.submissions.map((turn) => turn.id));
+  const pending = Object.values(current.receipts)
+    .filter(
+      (receipt) =>
+        receipt.sceneId === scene.id &&
+        !!receipt.submissionId &&
+        submissions.has(receipt.submissionId) &&
+        !state.receipts[receipt.id],
+    )
+    .sort((a, b) => a.sequence - b.sequence);
+  const revisions = new Map<string, number>(),
+    sequences = new Set<number>();
+  // Validate the entire event chain before changing the disposable captured view.
+  for (const receipt of pending) {
+    validateReceipt(receipt);
+    const key = relationshipKey(receipt.fromId, receipt.toId),
+      expected = revisions.get(key) ?? relationshipFor(state, receipt.fromId, receipt.toId).revision;
+    if (
+      expected !== receipt.sceneBeforeRevision ||
+      receipt.sequence <= state.eventSequence ||
+      sequences.has(receipt.sequence)
+    )
+      throw new SocialRevisionConflict(
+        "The captured relationship predecessor is missing or forked. Its saved event is preserved.",
+      );
+    revisions.set(key, expected + 1);
+    sequences.add(receipt.sequence);
+  }
+  for (const receipt of pending) {
+    const key = relationshipKey(receipt.fromId, receipt.toId),
+      update = structuredClone(receipt.sceneAfter ?? receipt.liveAfter);
+    const edge = (state.edges[key] ??= neutralRelationship(receipt.fromId, receipt.toId));
+    Object.assign(edge, {
+      connection: update.connection,
+      stance: update.stance,
+      expectations: update.expectations,
+      concerns: update.concerns,
+      revision: receipt.sceneBeforeRevision + 1,
+      updatedAt: receipt.at,
+    });
+    for (const record of update.records) {
+      edge.records[record.id] = record;
+      if (record.kind === "agreement" || record.kind === "commitment")
+        state.sharedRecords[record.id] = structuredClone(record);
+    }
+    edge.experiences.push(receipt.id);
+    state.receipts[receipt.id] = structuredClone(receipt);
+    state.eventSequence = receipt.sequence;
+  }
+}
+/** One atomic write records exact event updates, without copying the predecessor's entire history. */
 export function applyRelationshipReview(
   state: RelationshipState,
   review: RelationshipReview,
@@ -219,141 +317,154 @@ export function applyRelationshipReview(
   sourceId: string,
   at: string,
   now = Date.now(),
+  sceneState: RelationshipState | undefined = state,
 ): RelationshipReceipt[] {
-  // Pending reviews may settle out of order. Reconcile through their event date,
-  // then through the present once the new contact clock has been recorded.
-  reconcileRelationships(state, village, Date.parse(at));
   const residents = new Set(village.villagers.map((person) => person.characterId));
-  const dateKey = localRelationshipDate(at, village.timeZone);
-  const contactPairs = new Set<string>();
+  // Preflight every live revision before changing anything, including disclosures and permissions.
+  for (const entry of review.intentions ?? []) {
+    const id = sourceId + ":intentions:" + entry.actorId;
+    if (state.applied[id]) continue;
+    if (!residents.has(entry.actorId) || entry.items.length > 3 || entry.sceneItems.length > 3)
+      throw new Error("Invalid social intentions.");
+    if ((state.intentionRevisions[entry.actorId] ?? 0) !== entry.expectedRevision)
+      throw new SocialRevisionConflict("Social intentions changed during interpretation.");
+  }
+  for (const permission of review.permissions) {
+    if (state.applied[permission.id]) continue;
+    const venue = findLocation(village, permission.venueId),
+      zone = venue && resolveVenueZone(venue, permission.zoneId);
+    if (
+      !venue ||
+      !zone ||
+      !(permission.action === "revoke"
+        ? canRevokeZonePermission(venue, zone, permission.controllerId)
+        : canInviteToZone(venue, zone, permission.controllerId))
+    )
+      throw new Error("Standing permission authority changed.");
+  }
+  const pairs = new Set<string>();
+  const sharedUpdates = new Map<string, string>();
+  const sharedSceneUpdates = new Map<string, string>();
   for (const change of review.changes) {
     if (state.applied[change.id]) continue;
+    const key = relationshipKey(change.fromId, change.toId);
     if (
       !residents.has(change.fromId) ||
+      change.fromId === change.toId ||
       (change.toId !== "player" && !residents.has(change.toId)) ||
-      change.fromId === change.toId
+      pairs.has(key)
     )
-      continue;
-    const key = relationshipKey(change.fromId, change.toId);
-    const edge = (state.edges[key] ??= neutralRelationship(change.fromId, change.toId));
-    const contactEvidenceKeys = change.lineIds.map((id) =>
-      JSON.stringify(["contact-evidence", change.fromId, change.toId, id]),
-    );
-    const freshContact = change.contact && contactEvidenceKeys.some((id) => !state.applied[id]);
-    if (change.contact) for (const id of contactEvidenceKeys) state.applied[id] = true;
-    if (freshContact && (!edge.lastContactAt || Date.parse(at) > Date.parse(edge.decayTimerAt || edge.lastContactAt))) {
-      // A saved review can arrive after absence was already reconciled. Restore
-      // only the decay after this actual contact; retain the earlier elapsed loss.
-      const elapsedBeforeContact = Math.max(
-        0,
-        Math.floor(
-          (Date.parse(at) - Date.parse(edge.decayTimerAt || edge.lastContactAt || edge.decayAnchorAt)) /
-            RELATIONSHIP_POLICY.dayMs,
-        ) - RELATIONSHIP_POLICY.decayGraceDays,
+      throw new Error("Invalid or repeated social perspective.");
+    pairs.add(key);
+    if (relationshipFor(state, change.fromId, change.toId).revision !== change.expectedRevision)
+      throw new SocialRevisionConflict(
+        "The live relationship changed during interpretation. Reinterpret against current relationships before exposing this exchange.",
       );
-      const origin = edge.warmth + edge.decayAmount;
-      const beforeContact = Number.isFinite(elapsedBeforeContact)
-        ? Math.sign(origin) * Math.min(Math.abs(origin), elapsedBeforeContact)
-        : 0;
-      edge.warmth = relationshipScore(origin - beforeContact);
-      edge.lastContactAt = at;
-      edge.decayTimerAt = at;
-      edge.decayThrough = 0;
-      edge.decayAmount = 0;
+    for (const record of change.liveAfter.records) {
+      if (record.kind !== "agreement" && record.kind !== "commitment") continue;
+      const fingerprint = JSON.stringify({
+        ...record,
+        participants: [...record.participants].sort(),
+        evidenceIds: [...record.evidenceIds].sort(),
+      });
+      if (sharedUpdates.has(record.id) && sharedUpdates.get(record.id) !== fingerprint)
+        throw new Error("Conflicting interpretations of the same shared social terms.");
+      sharedUpdates.set(record.id, fingerprint);
+      const current = state.sharedRecords[record.id];
+      if ((current?.revision ?? 0) !== record.revision - 1)
+        throw new SocialRevisionConflict("Shared social terms changed during interpretation.");
     }
-    const evidenceKeys = change.lineIds.map((id) =>
-      JSON.stringify(["evidence", change.fromId, change.toId, change.dimension, id]),
-    );
-    let amount = evidenceKeys.some((id) => state.applied[id]) ? 0 : change.amount;
-    if (!change.contactOnly) for (const id of evidenceKeys) state.applied[id] = true;
-    if (change.ordinary && change.dimension === "warmth" && amount > 0) {
-      const used = edge.ordinaryGains[dateKey] ?? 0;
-      amount = Math.min(amount, Math.max(0, RELATIONSHIP_POLICY.ordinaryDailyWarmth - used));
-      edge.ordinaryGains[dateKey] = used + amount;
-      // Old daily caps cannot be needed by a pending review because its date is retained in the receipt.
+    for (const record of change.sceneAfter.records) {
+      if (record.kind !== "agreement" && record.kind !== "commitment") continue;
+      const fingerprint = JSON.stringify({
+        ...record,
+        participants: [...record.participants].sort(),
+        evidenceIds: [...record.evidenceIds].sort(),
+      });
+      if (sharedSceneUpdates.has(record.id) && sharedSceneUpdates.get(record.id) !== fingerprint)
+        throw new Error("Conflicting interpretations of the same captured shared social terms.");
+      sharedSceneUpdates.set(record.id, fingerprint);
+      if ((sceneState?.sharedRecords[record.id]?.revision ?? 0) !== record.revision - 1)
+        throw new SocialRevisionConflict("Captured shared social terms changed during interpretation.");
     }
-    const before = edge[change.dimension];
-    edge[change.dimension] = relationshipScore(before + amount);
-    if (amount && !edge.lastContactAt && !edge.decayAnchorAt) edge.decayAnchorAt = at;
-    if (freshContact && !contactPairs.has(key) && !state.applied[`${sourceId}:contact:${key}`]) {
-      edge.familiarity += 1;
-      if (change.toId === "player" && (!edge.playerContactAt || Date.parse(at) > Date.parse(edge.playerContactAt))) {
-        edge.playerContactAt = at;
-        edge.knowledgeBlockedUntilContact = false;
-      }
-      contactPairs.add(key);
-      state.applied[`${sourceId}:contact:${key}`] = true;
-    }
-    if (!edge.updatedAt || Date.parse(at) > Date.parse(edge.updatedAt)) edge.updatedAt = at;
+  }
+  for (const change of review.changes) {
+    if (state.applied[change.id]) continue;
+    const before = relationshipFor(state, change.fromId, change.toId);
+    const sceneBeforeRevision = relationshipFor(sceneState, change.fromId, change.toId).revision;
+    const liveAfter = project(before, change.liveAfter, change.id, at);
+    state.edges[relationshipKey(change.fromId, change.toId)] = liveAfter;
+    for (const record of change.liveAfter.records)
+      if (record.kind === "agreement" || record.kind === "commitment")
+        state.sharedRecords[record.id] = structuredClone(record);
     state.receipts[change.id] = {
       id: change.id,
       fromId: change.fromId,
       toId: change.toId,
-      dimension: change.dimension,
-      before,
-      after: edge[change.dimension],
+      beforeRevision: before.revision,
+      sequence: ++state.eventSequence,
+      sceneBeforeRevision,
+      ...(JSON.stringify(change.sceneAfter) === JSON.stringify(change.liveAfter)
+        ? {}
+        : { sceneAfter: structuredClone(change.sceneAfter) }),
+      liveAfter: structuredClone(change.liveAfter),
       reason: change.reason,
       at,
       sourceId,
       lineIds: change.lineIds,
+      evidence: change.evidence,
     };
     state.applied[change.id] = true;
-    if (change.disclosed)
-      state.disclosures[change.id] = {
-        id: change.id,
-        fromId: change.fromId,
-        toId: change.toId,
-        text: change.reason,
-        kind: "explanation",
-        lineIds: change.lineIds,
-        at,
-        sourceId,
-      };
+  }
+  for (const entry of review.intentions ?? []) {
+    if (!residents.has(entry.actorId) || entry.items.length > 3) throw new Error("Invalid social intentions.");
+    const receipt = sourceId + ":intentions:" + entry.actorId;
+    if (state.applied[receipt]) continue;
+    const sceneBeforeRevision = sceneState?.intentionRevisions[entry.actorId] ?? 0;
+    state.intentions[entry.actorId] = structuredClone(entry.items);
+    state.intentionRevisions[entry.actorId] = entry.expectedRevision + 1;
+    state.intentionReceipts[receipt] = {
+      sourceId,
+      actorId: entry.actorId,
+      at,
+      sceneAfter: structuredClone(entry.sceneItems),
+      liveAfter: structuredClone(entry.items),
+      sceneRevision: sceneBeforeRevision + 1,
+      liveRevision: entry.expectedRevision + 1,
+      evidence: entry.evidence,
+    };
+    state.applied[receipt] = true;
   }
   for (const disclosure of review.disclosures) {
-    if (state.applied[disclosure.id] || !residents.has(disclosure.fromId)) continue;
-    state.disclosures[disclosure.id] = { ...disclosure, at, sourceId };
+    if (state.applied[disclosure.id]) continue;
+    // Disclosure prose is published in native Memories only after source acknowledgment.
     state.applied[disclosure.id] = true;
   }
+  // Conversational disclosures are written only through screened memoryChanges.
   for (const permission of review.permissions) {
     if (state.applied[permission.id]) continue;
-    const venue = village.venues.find((place) => place.id === permission.venueId);
+    const venue = findLocation(village, permission.venueId);
     const zone = venue && resolveVenueZone(venue, permission.zoneId);
-    if (venue?.access) continue;
     if (
       !venue ||
       !zone ||
-      !residents.has(permission.controllerId) ||
-      (permission.visitorId !== "player" && !residents.has(permission.visitorId)) ||
-      !canInviteToZone(venue, zone, permission.controllerId)
+      !(permission.action === "revoke"
+        ? canRevokeZonePermission(venue, zone, permission.controllerId)
+        : canInviteToZone(venue, zone, permission.controllerId))
     )
-      continue;
+      throw new Error("Standing permission authority changed.");
+    if (venue.access) continue; // Modern standing access settles in the owning Venue authority transaction.
     const key = permissionKey(permission.controllerId, permission.visitorId, venue.id, zone.id);
-    // Replaying an older invitation must not undo a later boundary.
     const previous = state.grants[key];
-    if (
-      previous &&
-      (Date.parse(previous.at) > Date.parse(at) ||
-        (previous.at === at && (previous.revoked || permission.action === "grant")))
-    ) {
-      state.applied[permission.id] = true;
-      continue;
-    }
-    state.grants[key] = {
-      id: permission.id,
-      controllerId: permission.controllerId,
-      visitorId: permission.visitorId,
-      venueId: venue.id,
-      zoneId: zone.id,
-      active: false,
-      revoked: permission.action === "revoke",
-      automatic: false,
-      at,
-    };
+    if (!previous || Date.parse(previous.at) <= Date.parse(at))
+      state.grants[key] = {
+        ...permission,
+        active: permission.action === "grant",
+        revoked: permission.action === "revoke",
+        at,
+      };
     state.applied[permission.id] = true;
   }
   reconcileRelationships(state, village, now);
-  return Object.values(state.receipts).filter(
-    (receipt) => receipt.sourceId === sourceId && receipt.before !== receipt.after,
-  );
+  return review.changes.flatMap((change) => (state.receipts[change.id] ? [state.receipts[change.id]!] : []));
 }

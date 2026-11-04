@@ -2,7 +2,9 @@ import type { VillageAgenda, VillageAgendaBlock, VillageState, VillageVillager }
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import type { NativeWeekSchedule } from "./schedule-rules.js";
 import { canOccupyZone, chooseAgendaZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { semanticHash } from "./semantic-contract.js";
 import { hashString, VILLAGE_WEEKDAYS } from "./village-clock.js";
+import { calendarAt } from "../../../shared/helpers/zoned-date.js";
 
 export const INFLUENCE_CATEGORIES = [
   "rhythm",
@@ -32,6 +34,9 @@ export type RoutineActivity = Omit<VillageAgendaBlock, "startMinute" | "endMinut
   essential: boolean;
 };
 export type RoutineProfile = {
+  semanticVersion?: 2;
+  influence?: InfluenceSnapshot;
+  influenceSource?: string;
   version: 1;
   activities: RoutineActivity[];
   days: number[][];
@@ -39,6 +44,67 @@ export type RoutineProfile = {
   /** Legacy life is adopted without a paid rewrite. */
   seedWeek?: Record<string, VillageAgendaBlock[]>;
 };
+
+/** Weekly refresh dates are not authored schedule changes. */
+export const scheduleSemanticSource = (schedule: NativeWeekSchedule | null, settings: ScheduleInfluence) =>
+  semanticHash([schedule?.characterId, schedule?.days, settings]);
+
+export function readPreparedInfluence(value: unknown): InfluenceSnapshot | undefined {
+  const raw = record(value);
+  const list = (value: unknown): value is string[] =>
+    Array.isArray(value) && value.length <= 64 && value.every((item) => typeof item === "string" && item.length <= 320);
+  if (
+    raw.version !== 1 ||
+    typeof raw.enabled !== "boolean" ||
+    typeof raw.available !== "boolean" ||
+    typeof raw.signature !== "string" ||
+    !Array.isArray(raw.rhythms) ||
+    raw.rhythms.length > 21 ||
+    !Array.isArray(raw.busy) ||
+    raw.busy.length > 28 ||
+    ![raw.interests, raw.entities, raw.adopted, raw.unresolved].every(list)
+  )
+    return undefined;
+  if (
+    raw.patterns !== undefined &&
+    (!Array.isArray(raw.patterns) ||
+      raw.patterns.length > 2 ||
+      raw.patterns.some(
+        (value) => typeof record(value).weekend !== "boolean" || typeof record(value).busy !== "boolean",
+      ))
+  )
+    return undefined;
+  if (
+    raw.rhythms.some((value) => {
+      const row = record(value);
+      return (
+        !VILLAGE_WEEKDAYS.includes(row.weekday as any) ||
+        !Number.isInteger(row.startMinute) ||
+        !Number.isInteger(row.endMinute) ||
+        Number(row.startMinute) < 0 ||
+        Number(row.startMinute) >= 1440 ||
+        Number(row.endMinute) < 0 ||
+        Number(row.endMinute) > 1440 ||
+        row.startMinute === row.endMinute
+      );
+    })
+  )
+    return undefined;
+  if (
+    raw.busy.some((value) => {
+      const row = record(value);
+      return (
+        !VILLAGE_WEEKDAYS.includes(row.weekday as any) ||
+        !Number.isInteger(row.part) ||
+        Number(row.part) < 0 ||
+        Number(row.part) > 3 ||
+        typeof row.free !== "boolean"
+      );
+    })
+  )
+    return undefined;
+  return structuredClone(raw) as InfluenceSnapshot;
+}
 
 const record = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -100,8 +166,49 @@ export function deriveInfluence(
   schedule: NativeWeekSchedule | null,
   resident: VillageVillager,
   state: VillageState,
+  now = new Date(),
 ): InfluenceSnapshot {
   const settings = influenceSettings(resident.scheduleInfluence, resident.ingestSchedule === true);
+  const profile = resident.agenda?.routineProfile;
+  if (profile?.semanticVersion === 2) {
+    const source = scheduleSemanticSource(schedule, settings);
+    const saved = profile.influenceSource === source ? profile.influence : undefined;
+    return saved && settings.enabled
+      ? {
+          ...saved,
+          enabled: true,
+          available: !!schedule,
+          rhythms: settings.categories.rhythm
+            ? saved.rhythms
+                .filter((row) => settings.categories.weekdayWeekend || row.weekday === "Monday")
+                .flatMap((row) =>
+                  settings.categories.weekdayWeekend ? [row] : VILLAGE_WEEKDAYS.map((weekday) => ({ ...row, weekday })),
+                )
+            : [],
+          busy: settings.categories.busyFree
+            ? saved.busy
+                .filter((row) => settings.categories.weekdayWeekend || row.weekday === "Monday")
+                .flatMap((row) =>
+                  settings.categories.weekdayWeekend ? [row] : VILLAGE_WEEKDAYS.map((weekday) => ({ ...row, weekday })),
+                )
+            : [],
+          interests: settings.categories.interests ? saved.interests : [],
+          patterns: settings.categories.weekdayWeekend ? saved.patterns : [],
+          entities: settings.categories.establishedEntities ? saved.entities : [],
+        }
+      : {
+          version: 1,
+          signature: source,
+          available: !!schedule,
+          enabled: settings.enabled,
+          rhythms: [],
+          busy: [],
+          interests: [],
+          entities: [],
+          adopted: [],
+          unresolved: settings.enabled && schedule ? ["Schedule interpretation pending"] : [],
+        };
+  }
   const result: InfluenceSnapshot = {
     version: 1,
     signature: "",
@@ -146,7 +253,7 @@ export function deriveInfluence(
         if (
           venueZones(venue).some(
             (zone) =>
-              canOccupyZone(venue, zone, resident.characterId, { relationships: state.relationshipContext }) &&
+              canOccupyZone(venue, zone, resident.characterId, { at: now, relationships: state.relationshipContext }) &&
               !zoneClosed(state, venue, zone),
           ) &&
           venue.constructionStatus !== "worksite"
@@ -321,6 +428,13 @@ export function coerceRoutineProfile(value: unknown): RoutineProfile | undefined
   if (rhythm.length !== raw.rhythm.length || !validRoutineRhythm(rhythm)) return undefined;
   return {
     version: 1,
+    ...(raw.semanticVersion === 2
+      ? {
+          semanticVersion: 2 as const,
+          influence: readPreparedInfluence(raw.influence),
+          influenceSource: text(raw.influenceSource),
+        }
+      : {}),
     activities,
     days,
     rhythm,
@@ -387,9 +501,14 @@ export function routineDay(
         const prior = retained[index - 1]!,
           next = retained[index]!;
         const desired =
-          rest.test(prior.activity) && flexibleAgendaBlock(next)
+          (profile.semanticVersion === 2
+            ? profile.rhythm.some((row) => profile.activities[row.activity]?.activity === prior.activity)
+            : rest.test(prior.activity)) && flexibleAgendaBlock(next)
             ? preference.endMinute
-            : flexibleAgendaBlock(prior) && rest.test(next.activity)
+            : flexibleAgendaBlock(prior) &&
+                (profile.semanticVersion === 2
+                  ? profile.rhythm.some((row) => profile.activities[row.activity]?.activity === next.activity)
+                  : rest.test(next.activity))
               ? preference.startMinute
               : undefined;
         if (desired === undefined) continue;
@@ -493,7 +612,7 @@ export function validateRoutineDay(
     const venue = state.venues.find((item) => item.id === block.venueId);
     const accessContext = {
       relationships: state.relationshipContext,
-      at: new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, block.startMinute),
+      at: calendarAt(date, dayKey(date), block.startMinute),
     };
     const zone =
       venue &&
@@ -524,12 +643,14 @@ export function addRoutineIdea(
   value: unknown,
   resident: VillageVillager,
   state: VillageState,
+  now = new Date(),
 ): boolean {
   const row = record(value),
     profile = agenda.routineProfile;
-  if (!profile || row.flexible !== true || !text(row.activity) || agenda.projectWork) return false;
+  if (!profile || row.flexible !== true || !text(row.activity)) return false;
   // Optional repertoire entries cannot create employment, assets or world effects.
   if (
+    profile.semanticVersion !== 2 &&
     /\b(?:buy|bought|acquir\w*|purchas\w*|own(?:s|ed|ing)?|new vehicle|employ\w*|hired|promis\w*|contract|paid|debt|injur\w*|destroy\w*|repair\w*|build\w*|deliver\w*|ship|spaceship|aircraft|train|car)\b/iu.test(
       text(row.activity),
     )
@@ -545,7 +666,7 @@ export function addRoutineIdea(
     parts: [1, 2, 3],
   };
   if (candidate.venueId) {
-    const checked = validateRoutineDay([{ ...candidate, startMinute: 0, endMinute: 90 }], resident, state)[0]!;
+    const checked = validateRoutineDay([{ ...candidate, startMinute: 0, endMinute: 90 }], resident, state, now)[0]!;
     if (checked.venueId !== candidate.venueId) return false;
   }
   if (profile.activities.some((item) => item.activity.toLowerCase() === candidate.activity.toLowerCase())) return false;

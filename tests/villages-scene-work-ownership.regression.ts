@@ -1,41 +1,48 @@
 import assert from "node:assert/strict";
 import {
-  createActivationScope,
-  installDefaultActivation,
   activationScope,
   bindActivationService,
+  createActivationScope,
+  installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
-import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
-import { configureSceneWork, sceneWork } from "../packages/villages/src/server/features/scenes/scene-work.js";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { bindLiveProposals } from "../packages/villages/src/server/domain/rules/live-exchange.js";
+import { venueDraftFixture as venueDraft } from "./helpers/venues.fixture.js";
+import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import {
-  greetVenue,
-  enterVenue,
-  enterResidencePrivateSpace,
-  sendVenueTurn,
-  retrySceneChangeInterpretation,
-  moveVenueZone,
-  configureSceneCommands,
-  sceneReplayEffects,
-} from "../packages/villages/src/server/features/scenes/venue-session.js";
 import {
   createSceneCommands,
   type SceneCommandPorts,
 } from "../packages/villages/src/server/features/scenes/command-service.js";
-import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
-import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import { createSceneWork } from "../packages/villages/src/server/features/scenes/scene-work-service.js";
+import { configureSceneWork, sceneWork } from "../packages/villages/src/server/features/scenes/scene-work.js";
+import {
+  configureSceneCommands,
+  enterResidencePrivateSpace,
+  enterVenue,
+  greetVenue,
+  moveVenueZone,
+  sceneReplayEffects,
+  sendVenueTurn,
+} from "../packages/villages/src/server/features/scenes/venue-session.js";
 import { VENUE_REPLY_MAX_TOKENS } from "../packages/villages/src/server/features/scenes/writing.js";
-import { WISH_PROPOSAL_INSTRUCTION } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { coordinateVenue } from "../packages/villages/src/server/jobs/venue-coordinator.js";
-import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { venueDraft } from "../packages/villages/src/server/domain/rules/venue-authoring.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
+import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
+import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
+import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import {
+  captureSceneContinuity,
+  captureSceneWishEffect,
+} from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { mutableSocialWish } from "../packages/villages/src/server/domain/rules/social-wishes.js";
+import { reserveMemoryScene } from "../packages/villages/src/server/domain/rules/village-memories.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function commandFixture(
   label: string,
@@ -62,6 +69,7 @@ function commandFixture(
     notice: { id: "same-notice", kind: "venue", text: label + " saved effect" },
   };
   const scene = coerceSession({
+    version: 3,
     id: "same-scene",
     villageSeed: world.seed,
     placeId: "same-place",
@@ -119,6 +127,7 @@ function commandFixture(
     }
   }
   const supplied: Partial<SceneCommandPorts> = {
+    sceneNarrative: undefined,
     activationScope,
     bindReplayEffects: bindActivationService,
     VENUE_REPLY_MAX_TOKENS,
@@ -178,6 +187,14 @@ function commandFixture(
     },
   };
   Object.assign(supplied, configure?.({ scene, world, touch, stamp }));
+  for (const turn of scene.submissions)
+    if (turn.liveProposals)
+      turn.liveProposals = bindLiveProposals(
+        turn.liveProposals,
+        turn.liveProposals.playerLineId,
+        turn.liveProposals.replyLineIds,
+        scene.lines,
+      );
   // Unused typed connections fail if this replay unexpectedly enters another command path.
   const ports = new Proxy(supplied, {
     get(target, property) {
@@ -226,8 +243,11 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
       "villages-venue-visit-same",
       {
         id: "villages-venue-visit-same",
+        kind: "venue-visit",
+        packageId: "villages",
         revision: 1,
         data: {
+          version: 3,
           id: "same",
           placeId: "same-place",
           placeName: name,
@@ -242,7 +262,13 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
     ],
     [
       "villages-active-venue",
-      { id: "villages-active-venue", revision: 1, data: { sessionId: "same", placeId: "same-place" } },
+      {
+        id: "villages-active-venue",
+        packageId: "villages",
+        kind: "venue-active",
+        revision: 1,
+        data: { sessionId: "same", placeId: "same-place" },
+      },
     ],
   ]);
   let reads = 0,
@@ -290,7 +316,7 @@ function fixture(name: string, pause = false, navigationIdentity?: object) {
   const release = scope.run(() =>
     configureVillagesRuntime(
       {
-        persistence: { documents },
+        persistence: { documents: villageFixtureDocuments(documents) },
         resources: { listCharacters: async () => [] },
         logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
         isDebugAgentsEnabled: () => false,
@@ -437,9 +463,10 @@ for (const canonical of [false, true]) {
   const shared = fixture("Shared", false, identity);
   shared.rows.clear();
   const world = defaultVillageState();
+  world.seed = "shared-world";
   const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
   world.venues = [venue];
-  world.storyPace = "off";
+  world.backgroundPace = "off";
   shared.rows.set("villages-village", { id: "villages-village", revision: 1, data: world });
   shared.pauseSceneCreation();
   const sharedB = createActivationScope();
@@ -448,7 +475,7 @@ for (const canonical of [false, true]) {
   const releaseSharedB = sharedB.run(() =>
     configureVillagesRuntime(
       {
-        persistence: { documents: documentsB },
+        persistence: { documents: villageFixtureDocuments(documentsB) },
         resources: { listCharacters: async () => [] },
         get languageModels() {
           providerAccess++;
@@ -518,7 +545,7 @@ for (const canonical of [false, true]) {
       const after = shared.rows.get(`villages-venue-visit-${sceneA.id}`).data;
       assert.equal(after.operation.token, before.token);
       assert.equal(after.operation.status, "running");
-      assert.equal(after.submissions.length, 0);
+      assert.equal(after.submissionHistory.count, 0);
       assert.equal(providerAccess, 0, "persisted admission refuses B before requesting any model");
     } finally {
       moveGate.resolve();
@@ -688,101 +715,6 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
     second.owner.dispose();
   }
 }
-// Wish recovery keeps its lazy loader and loaded retry command under the initiating owner.
-{
-  const terminal = new Error("Saved notices ready");
-  const first = commandFixture("Retry A", ({ scene, world, touch, stamp }) => {
-    const turn = scene.submissions[0];
-    turn.processing!.domains.wishes.status = "failed";
-    turn.liveProposals = {
-      version: 1,
-      memoryChanges: [],
-      relationshipChanges: {},
-      memoryVersions: {},
-      earlierLineIds: [],
-      playerLineId: "player-line",
-      replyLineIds: [],
-    };
-    return {
-      coordinateVenue: async (_id, id, kind, input, _expected, _retry, run) => {
-        assert.equal(id, "change:same-turn:wishes");
-        assert.equal(kind, "change-interpretation");
-        assert.deepEqual(input, { submissionId: "same-turn", domain: "wishes" });
-        return run();
-      },
-      readVillageState: async () => world,
-      villagesDocuments: () => ({
-        list: async () => [
-          {
-            id: "same-job",
-            packageId: "villages",
-            kind: "background-work",
-            name: "Wish retry",
-            description: "",
-            revision: 1,
-            createdAt: stamp,
-            updatedAt: stamp,
-            data: {
-              kind: "wish-check",
-              seed: world.seed,
-              input: { sceneId: scene.id, submissionId: turn.id },
-              status: "failed",
-              attempt: 2,
-            },
-          },
-        ],
-        getById: async () => assert.fail("Wish retry does not read arbitrary documents"),
-        remove: async () => assert.fail("Wish retry does not remove documents"),
-      }),
-      loadBackgroundRetry: async () => {
-        await touch("retry-loader");
-        return {
-          retryBackgroundJob: async (id, attempt, actionId) => {
-            assert.equal(id, "same-job");
-            assert.equal(attempt, 2);
-            assert.match(actionId, /^[a-f0-9]{64}$/);
-            await touch("retry-command");
-          },
-        };
-      },
-      venueOperationId: () => "Retry A operation",
-      venueCheckpoint: async (_id, run) => run(),
-      outsideVenueOperation: (run) => run(),
-      readSceneChanges: async () => {
-        await touch("changes");
-        throw terminal;
-      },
-    };
-  });
-  const second = commandFixture("Retry B");
-  first.pause("retry-loader");
-  const releaseFirst = first.owner.run(() => configureSceneCommands(first.service));
-  const releaseSecond = second.owner.run(() => configureSceneCommands(second.service));
-  const clearFirst = installDefaultActivation(first.owner, () => {});
-  const pending = retrySceneChangeInterpretation("same-scene", "same-turn", "wishes");
-  const checked = assert.rejects(pending, (error) => error === terminal);
-  await first.entered.promise;
-  const clearSecond = installDefaultActivation(second.owner, () => {});
-  releaseFirst();
-  clearFirst();
-  first.gate.resolve();
-  try {
-    await checked;
-    assert.equal(first.calls.filter((stage) => stage === "retry-command").length, 1);
-    assert.equal(first.calls.filter((stage) => stage === "progress").length, 2);
-    assert(first.owners.every((owner) => owner === first.owner));
-    assert.deepEqual(second.calls, []);
-    assert.equal(first.modelAccess + second.modelAccess, 0);
-  } finally {
-    releaseFirst();
-    releaseSecond();
-    clearFirst();
-    clearSecond();
-    first.owner.dispose();
-    second.owner.dispose();
-  }
-}
-
 // Free navigation replay retains its owner and never starts image work.
 {
   const first = commandFixture("Image A", ({ scene, world, touch, stamp }) => {
@@ -818,7 +750,7 @@ for (const stage of ["session", "admission", "snapshot", "persistence"]) {
       loadPrivateSpaceImages: async () => {
         await touch("image-loader");
         return {
-          generateFirstPrivateSpaceImage: async (placeId, zoneId) => {
+          generateFirstZoneImage: async (placeId, zoneId) => {
             assert.equal(placeId, scene.placeId);
             assert.equal(zoneId, "staff-zone");
             await touch("image-command");
@@ -862,7 +794,10 @@ console.log(
 {
   let worldWrites = 0;
   const pending = commandFixture("Pending access", ({ scene, world, stamp }) => {
-    const home = venueDraft({ name: "Home", description: "A small home", classes: ["residence"] }, null);
+    const home = venueDraft(
+      { name: "Home", description: "A small home", classes: ["residence"], residentIds: ["ada"] },
+      null,
+    );
     home.id = scene.placeId;
     home.residentIds = ["ada"];
     world.venues = [home];
@@ -900,8 +835,8 @@ console.log(
     assert.equal(worldWrites, 0);
     assert(pending.scene.pendingRoomQuestions?.some((question) => question.includes("lacks validated")));
     assert.equal(pending.world.venues[0].playerInvitations?.length ?? 0, 0);
-    await effects.recordSpokenInvitation(pending.scene, { ...invitation, interpretationVersion: 1 });
-    assert.equal(pending.world.venues[0].playerInvitations?.length, 1, "validated saved invitations still replay");
+    await effects.recordSpokenInvitation(pending.scene, { ...invitation, interpretationVersion: 1, accessRevision: 0 });
+    assert.equal(pending.world.venues[0].access!.permissions.length, 1, "validated saved invitations still replay");
     const before = worldWrites;
     await effects.applySavedAccessEvents(pending.scene, {
       ...pending.scene.submissions[0],
@@ -995,4 +930,221 @@ try {
 } finally {
   AbortSignal.timeout = originalGreetingTimeout;
   process.off("unhandledRejection", captureGreetingUnhandled);
+}
+
+// A saved interpretation retry exposes truncation and never dispatches an automatic second request.
+{
+  let calls = 0;
+  const current = commandFixture("Truncated wish recovery", ({ scene, world }) => {
+    const turn = scene.submissions[0];
+    turn.processing!.domains.wishes.status = "failed";
+    turn.wishContexts = [];
+    turn.semanticProvenance = { version: 2 } as any;
+    turn.liveProposals = {
+      version: 1,
+      memoryChanges: [],
+      relationshipChanges: {},
+      memoryVersions: {},
+      earlierLineIds: [],
+      playerLineId: "",
+      replyLineIds: [],
+    };
+    const model = {
+      connectionId: "fake",
+      model: "fake",
+      fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
+    };
+    return {
+      coordinateVenue: async (_id, _request, _kind, _input, _expected, _retry, run) => run(),
+      readVillageState: async () => world,
+      villagesDocuments: () => ({ list: async () => [] }) as any,
+      villagesConnectionIdFor: async () => "fake",
+      villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
+      venueCheckpoint: async (_key, run) => run(),
+      venueOperationSignal: () => new AbortController().signal,
+      completeWithRoom: async () => {
+        calls++;
+        return { content: "", finishReason: "length" };
+      },
+      rejectVenueCompletion: async () => {},
+    };
+  });
+  const before = JSON.stringify(current.scene);
+  await assert.rejects(
+    current.owner.run(() => current.service.retrySceneChangeInterpretation("same-scene", "same-turn", "wishes")),
+    (error: any) => error.failure?.cause === "output_limit" && /output limit/.test(error.message),
+  );
+  assert.equal(calls, 1);
+  assert.equal(JSON.stringify(current.scene), before, "A truncated retry preserves the saved exchange");
+  current.owner.dispose();
+}
+
+// Relationship Retry uses only social context, even when an unrelated exact Wish body is unavailable.
+{
+  const storage = sceneHistoryFixture(),
+    repository = createVillageRepository(() => storage.gate.documents);
+  let current: ReturnType<typeof commandFixture> | undefined;
+  try {
+    const initial = wishWorld();
+    initial.seed = "same-seed";
+    initial.villagers[0].wishes = [fixtureWish({ wish: "Original private desire" })];
+    await repository.mutateAuthority((state) => {
+      Object.assign(state, initial);
+    });
+    const frozen = await repository.readAuthority({ memories: true, wishes: true });
+    frozen.relationshipContext = defaultRelationshipState(frozen.seed);
+    let completions = 0,
+      wishReads = 0;
+    current = commandFixture("Relationship retry with a prior Wish effect", ({ scene, world }) => {
+      Object.assign(world, frozen);
+      scene.activeIds = ["a"];
+      scene.participants = [{ characterId: "a", name: "Ada" }] as any;
+      scene.continuity = captureSceneContinuity(world, scene, Date.parse(scene.startedAt));
+      const turn = scene.submissions[0];
+      turn.processing!.domains.relationships.status = "failed";
+      turn.liveProposals = {
+        version: 1,
+        memoryChanges: [],
+        relationshipChanges: {},
+        memoryVersions: {},
+        earlierLineIds: [],
+        playerLineId: "",
+        replyLineIds: [],
+      };
+      const model = {
+        connectionId: "synthetic",
+        model: "synthetic",
+        fitContext: (messages: any, options: any) => ({ messages, maxTokens: options.maxTokens }),
+      };
+      return {
+        coordinateVenue: async (_id, _request, _kind, _input, _expected, _retry, run) => run(),
+        readVillageState: async (options) => ({
+          ...(await repository.readAuthority({ memories: true, ...options })),
+          relationshipContext: frozen.relationshipContext,
+        }),
+        villagesDocuments: () => storage.gate.documents,
+        villagesConnectionIdFor: async () => "synthetic",
+        villagesLanguageModels: () => ({ resolveForRequest: async () => model }) as any,
+        venueCheckpoint: async (_key, run) => run(),
+        venueOperationSignal: () => new AbortController().signal,
+        venueRequestMetrics: () => [],
+        readSceneChanges: async () => ({}) as any,
+        completeWithRoom: async (_model, messages) => {
+          completions++;
+          const input = JSON.parse(messages[1].content);
+          assert.ok(input.social.capturedAndScene);
+          assert.ok(input.social.live);
+          assert.doesNotMatch(JSON.stringify(input), /Original private desire|Latest exact private desire/);
+          return {
+            content: JSON.stringify({ relationshipChanges: { changes: [], permissions: [], disclosures: [] } }),
+            finishReason: "stop",
+          };
+        },
+      };
+    });
+    await repository.mutateAuthority(
+      (state) => {
+        reserveMemoryScene(state, "same-scene", current!.scene.continuity!.capturedAt);
+        const wish = mutableSocialWish(state.villagers[0].wishes[0]);
+        wish.wish = "Latest exact private desire";
+        wish.revision++;
+        state.villagers[0].wishes[0] = wish;
+        state.exchangeReceipts["wish-effect"] = {
+          id: "wish-effect",
+          sceneId: "same-scene",
+          submissionId: "same-turn",
+          domain: "wishes",
+          status: "applied",
+          at: initial.foundedAt,
+          reason: "Earlier accepted effect",
+          evidenceIds: [],
+          sceneFacts: captureSceneWishEffect(state, "a", wish.id),
+        };
+      },
+      { memories: true, wishes: ["a"] },
+    );
+    const head = storage.rows.get("villages-village").data.exchangeReceipts["wish-effect"].sceneFacts.wish.head;
+    storage.rows.delete(head.root.id);
+    const get = storage.documents.getById;
+    storage.documents.getById = async (pkg: string, id: string) => {
+      if (id === head.root.id) wishReads++;
+      return get(pkg, id);
+    };
+    await current.owner.run(() =>
+      current!.service.retrySceneChangeInterpretation("same-scene", "same-turn", "relationships"),
+    );
+    await current.owner.run(() =>
+      current!.service.retrySceneChangeInterpretation("same-scene", "same-turn", "relationships"),
+    );
+    assert.equal(completions, 1, "One explicit Retry purchases once; a now-pending interpretation is not repeated");
+    assert.equal(wishReads, 0, "Relationship context never loads unrelated private Wish evidence");
+    assert.equal(storage.rows.has(head.root.id), false, "Retry does not fabricate the missing body");
+  } finally {
+    current?.owner.dispose();
+    storage.release();
+  }
+}
+
+// Conclude must admit the same current writing/privacy contract as an ordinary new turn.
+for (const legacy of [false, true]) {
+  let admitted: any;
+  const terminal = new Error("Admission observed");
+  const frozen = { message: "Good night.", mode: "leave", targetId: "", semanticBudget: { maxRequests: 4 } };
+  const current = commandFixture("Conclude admission", ({ scene, world }) => {
+    const venue = venueDraft({ name: "Shared hall", description: "A public hall", classes: ["community"] }, null);
+    venue.id = scene.placeId;
+    world.venues = [venue];
+    scene.semanticVersion = 2;
+    scene.submissions = [];
+    if (legacy) scene.operation = { id: "conclude", input: frozen } as any;
+    return {
+      requireLiveVenueSession: async () => scene,
+      readVillageState: async () => world,
+      coordinateVenue: async (_id, _submission, _kind, input) => {
+        admitted = input;
+        throw terminal;
+      },
+    };
+  });
+  await assert.rejects(
+    current.owner.run(() => current.service.leaveVenueSession("same-scene", "conclude", "Good night.")),
+    (error) => error === terminal,
+  );
+  if (legacy) assert.deepEqual(admitted, frozen, "Frozen legacy Conclude input is not upgraded on retry");
+  else {
+    assert.equal(admitted.interactionScopeVersion, 6);
+    assert.equal(admitted.writingContractVersion, 3);
+    assert.equal(admitted.semanticPipelineVersion, 3);
+    assert.equal(admitted.residentActionsVersion, 2);
+    assert(admitted.writingCapabilities);
+  }
+  assert.equal(current.modelAccess, 0);
+  current.owner.dispose();
+}
+
+// Missing live Venue authority must preserve the Scene and offer ordinary End before admission.
+{
+  let admitted = 0;
+  const current = commandFixture("Removed Venue Conclude", ({ scene, world }) => {
+    scene.semanticVersion = 2;
+    scene.submissions = [];
+    world.venues = [];
+    return {
+      requireLiveVenueSession: async () => scene,
+      readVillageState: async () => world,
+      coordinateVenue: async () => {
+        admitted++;
+        throw new Error("Unexpected admission");
+      },
+    };
+  });
+  const before = JSON.stringify(current.scene);
+  await assert.rejects(
+    current.owner.run(() => current.service.leaveVenueSession("same-scene", "conclude", "Good night.")),
+    /Venue is no longer available\. End the Scene/,
+  );
+  assert.equal(admitted, 0);
+  assert.equal(current.modelAccess, 0);
+  assert.equal(JSON.stringify(current.scene), before);
+  current.owner.dispose();
 }

@@ -1,33 +1,30 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   createActivationScope,
   installDefaultActivation,
   scopedActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { readVillagerCard } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
-  defaultVillageState,
   coerceVillageState,
+  defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageState } from "../packages/villages/src/server/domain/models/world.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { MAX_VILLAGERS } from "../packages/villages/src/server/domain/rules/village-limits.js";
-import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
-import { retireBackgroundResident } from "../packages/villages/src/server/jobs/background-work.js";
-import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
 import { createResidentRoster } from "../packages/villages/src/server/features/residents/resident-roster-service.js";
 import {
   addVillager,
-  removeVillager,
   configureResidentRoster,
+  removeVillager,
 } from "../packages/villages/src/server/features/residents/resident-roster.js";
+import { retireBackgroundResident } from "../packages/villages/src/server/jobs/background-work.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const state = defaultVillageState();
@@ -184,9 +181,11 @@ assert(queueFailure.state.villagers[0]!.agenda!.activeDay!.blocks.length > 0);
 const departed = fixture("Departed");
 await departed.service.addVillager("same");
 const home = coerceVillageState({
+  ...defaultVillageState(),
+
   venues: [
     parsePlace(
-      {
+      venueFixture({
         id: "home",
         layoutVersion: 1,
         layout: "private",
@@ -196,8 +195,9 @@ const home = coerceVillageState({
         description: "A cabin",
         occupancy: { playerHome: false, residentCharacterId: "same", homeKind: null },
         residentIds: ["same"],
-        workerIds: ["same", "other"],
+        workerIds: [],
         spaces: [],
+        zones: undefined,
         privateSpaces: [
           {
             ...defaultVenueSpace("residence", "Secret writing"),
@@ -208,7 +208,7 @@ const home = coerceVillageState({
             purpose: "Rest",
           },
         ],
-      },
+      }),
       true,
     ),
   ],
@@ -220,11 +220,7 @@ zone.seen = true;
 zone.preparation = { status: "ready" };
 zone.description = "Secret writing";
 home.privateSpaces![0].description = "Secret writing";
-zone.adaptationPending = true;
-zone.adaptationSourceArchiveAt = "previous";
 zone.controllerIds = ["same", "other"];
-zone.state.publicFacts = ["Private fact"];
-zone.state.traces = [];
 zone.access = {
   mode: "permission-required",
   managerIds: ["same"],
@@ -240,7 +236,6 @@ home.playerInvitations = [
   { residentId: "other", recordedAt: "earlier" },
 ];
 departed.state.venues = [home];
-departed.state.wishRefillIntents.same = { id: "refill", settled: "" };
 const receiptId = "villages-background-" + backgroundRevision(["agenda", "same"]);
 departed.state.backgroundReceipts[receiptId] = "receipt";
 await departed.service.removeVillager("same");
@@ -250,13 +245,11 @@ assert.equal(departed.state.villagers.length, 0);
 assert.deepEqual(emptied.residentIds, []);
 assert.equal(emptied.occupancy.residentCharacterId, null);
 assert.equal(vacant.ownerId, undefined);
-assert.equal(vacant.preparation, undefined);
-assert.equal(vacant.adaptationPending, false);
-assert.equal(vacant.adaptationSourceArchiveAt, "");
-assert.equal(vacant.seen, false);
-assert.equal(vacant.description, "A garden-facing window", "vacancy keeps the known shell rather than personal prose");
+assert.deepEqual(vacant.preparation, { status: "ready" });
+assert.equal(vacant.seen, true);
+assert.equal(vacant.description, "Secret writing", "vacancy preserves established physical truth");
 assert.equal(vacant.image, null);
-assert.deepEqual(vacant.state.publicFacts, []);
+assert.equal(vacant.state.recent, null);
 assert.deepEqual(vacant.access!.managerIds, null);
 assert.deepEqual(vacant.access!.inviterIds, []);
 assert.deepEqual(vacant.access!.memberIds, []);
@@ -268,9 +261,20 @@ assert(
     (archive) => archive.ownerId === "same" && archive.space.description === "Secret writing",
   ),
 );
-assert.equal(departed.state.wishRefillIntents.same, undefined);
 assert.equal(departed.state.backgroundReceipts[receiptId], undefined);
 await assert.rejects(departed.service.removeVillager("same"), /does not live here/);
+const letters = fixture("Letters");
+await letters.service.addVillager("same");
+letters.state.villagers[0]!.letterFontId = "caveat";
+await letters.service.removeVillager("same");
+assert.equal(
+  coerceVillageState(letters.state).formerLetterFonts?.same,
+  "caveat",
+  "A departed writer retains their repaired style",
+);
+await letters.service.addVillager("same");
+assert.equal(letters.state.villagers[0]!.letterFontId, "caveat", "Returning the same character preserves their style");
+
 const retryRemoval = fixture("Retry removal");
 await retryRemoval.service.addVillager("same");
 retryRemoval.retryWith((state) => {
@@ -318,4 +322,46 @@ await assert.rejects(
 );
 console.log(
   "Resident roster ownership: inert connections, local arrival/capacity retry, departure privacy, existing failure ordering, originating activation and cleanup passed (mocked storage/library/Agenda admission).",
+);
+
+// A description belongs to the resident, never their source card or later incarnation.
+const descriptions = fixture("Descriptions");
+await descriptions.service.addVillager("same");
+const freshDescription = descriptions.state.villagers[0]!.identityDescription!;
+assert.equal(freshDescription.initialGenerationComplete, false);
+const originalCard = structuredClone(descriptions.state.villagers[0]!.cardSnapshot);
+await descriptions.service.editIdentityDescription("same", {
+  text: "A quiet collector.",
+  revision: freshDescription.revision,
+});
+const editedDescription = descriptions.state.villagers[0]!.identityDescription!;
+assert.equal(editedDescription.text, "A quiet collector.");
+assert.equal(editedDescription.initialGenerationComplete, true);
+assert.deepEqual(descriptions.state.villagers[0]!.cardSnapshot, originalCard);
+assert.deepEqual(coerceVillageState(descriptions.state).villagers[0]!.identityDescription, editedDescription);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "Stale", revision: freshDescription.revision }),
+  /Description changed/,
+);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "x".repeat(241), revision: editedDescription.revision }),
+  /at most 240/,
+);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: null, revision: editedDescription.revision }),
+  /at most 240/,
+);
+await descriptions.service.editIdentityDescription("same", { text: "", revision: editedDescription.revision });
+assert.equal(descriptions.state.villagers[0]!.identityDescription!.text, "");
+const removedRevision = descriptions.state.villagers[0]!.identityDescription!.revision;
+await descriptions.service.removeVillager("same");
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "Absent", revision: removedRevision }),
+  /does not live here/,
+);
+await descriptions.service.addVillager("same");
+assert.notEqual(descriptions.state.villagers[0]!.identityDescription!.revision, removedRevision);
+await assert.rejects(
+  descriptions.service.editIdentityDescription("same", { text: "Old incarnation", revision: removedRevision }),
+  /Description changed/,
 );

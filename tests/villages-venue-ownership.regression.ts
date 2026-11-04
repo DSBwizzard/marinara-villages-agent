@@ -1,6 +1,8 @@
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createVenueCoordinator } from "../packages/villages/src/server/jobs/venue-coordinator-service.js";
+import { createSceneWorkFence } from "../packages/villages/src/server/jobs/scene-work-fence.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
 import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
@@ -15,11 +17,7 @@ import {
 } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 
 function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<T>();
 }
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture(label: string, decisionsEnabled: boolean) {
@@ -35,6 +33,7 @@ function fixture(label: string, decisionsEnabled: boolean) {
         description: "",
         revision: 1,
         data: {
+          version: 3,
           id: "same-scene",
           status: "active",
           sceneRevision: 0,
@@ -45,7 +44,7 @@ function fixture(label: string, decisionsEnabled: boolean) {
       },
     ],
   ]);
-  const documents = {
+  const backing = {
     async create(input: any) {
       const row = { ...structuredClone(input), revision: 1 };
       records.set(input.id, row);
@@ -65,6 +64,7 @@ function fixture(label: string, decisionsEnabled: boolean) {
       return structuredClone(saved);
     },
   } as unknown as CapabilityDocumentStore;
+  const documents = villageFixtureDocuments(backing);
   const logger = { debug() {}, info() {}, warn() {}, error() {} };
   const operations = createVenueOperationContext(() => logger);
   const service = createVenueCoordinator({
@@ -194,16 +194,65 @@ async function nestedOwners() {
   }
 }
 
+async function queuedCancellation() {
+  const a = fixture("shared", true);
+  const fence = createSceneWorkFence();
+  const make = () =>
+    createVenueCoordinator({
+      operations: createVenueOperationContext(() => a.logger),
+      villagesDocuments: () => a.documents,
+      villagesLogger: () => a.logger,
+      runtimeDebug() {},
+      readInterpretationSettings: async () => ({ decisionsEnabled: true, compareSystem: false }),
+      withSceneWork: fence.run,
+      sceneWorkBusy: fence.isBusy,
+    });
+  const first = make(),
+    second = make();
+  const entered = deferred<void>(),
+    finish = deferred<string>();
+  const original = first.coordinateVenue("same-scene", "first", "turn", {}, 0, undefined, async () => {
+    entered.resolve();
+    return finish.promise;
+  });
+  await entered.promise;
+  const token = a.row().data.operation.token;
+  let recovered = false;
+  await second.recoverVenueOperations(async () => {
+    recovered = true;
+  });
+  assert.equal(recovered, false, "another activation does not recover a live Scene operation");
+  assert.equal(a.row().data.operation.token, token);
+  assert.equal(a.row().data.operation.status, "running");
+  const waiting = second.coordinateVenue("same-scene", "second", "turn", {}, 0, undefined, async () => "wrong");
+  const cancelled = assert.rejects(waiting, (error: any) => error.code === "OPERATION_INTERRUPTED");
+  await tick();
+  await second.cancelVenueOperation("same-scene");
+  await cancelled;
+  assert.equal(a.row().data.operation.token, token);
+  assert.equal(a.row().data.operation.status, "running");
+  finish.resolve("first result");
+  assert.equal(await original, "first result");
+  await first.stopVenueCoordinator();
+  await second.stopVenueCoordinator();
+}
+
 async function actualDispatch() {
   const a = fixture("dispatch-A", false),
     b = fixture("dispatch-B", false);
   const ownerA = createActivationScope(),
     ownerB = createActivationScope();
   const releaseA = ownerA.run(() =>
-    configureVillagesRuntime({ persistence: { documents: a.documents }, logger: a.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(a.documents) },
+      logger: a.logger,
+    } as any),
   );
   const releaseB = ownerB.run(() =>
-    configureVillagesRuntime({ persistence: { documents: b.documents }, logger: b.logger } as any),
+    configureVillagesRuntime({
+      persistence: { documents: villageFixtureDocuments(b.documents) },
+      logger: b.logger,
+    } as any),
   );
   try {
     const reply = await ownerA.run(() =>
@@ -248,6 +297,7 @@ async function actualDispatch() {
 async function main() {
   await independentRequests();
   await nestedOwners();
+  await queuedCancellation();
   await actualDispatch();
   console.log(
     "Scene coordinator owners passed: independent same-ID requests/receipts/settings, nested contexts and actual scoped helpers, duplicate joins, shutdown and revoked late completion (synthetic ports).",

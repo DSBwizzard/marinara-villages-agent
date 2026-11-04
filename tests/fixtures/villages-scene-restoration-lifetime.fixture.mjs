@@ -1,9 +1,12 @@
+import { scenePlaybackFixtures } from "./scene-browser.fixture.mjs";
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "@playwright/test";
 
 /** Mounted startup restoration and real replacement actions, with synthetic HTTP. */
 export async function verifySceneRestorationLifetimes(browser) {
+  const { authorSceneView } = await scenePlaybackFixtures();
   const bundle = await build({
     stdin: {
       loader: "tsx",
@@ -12,10 +15,11 @@ export async function verifySceneRestorationLifetimes(browser) {
 import {createRoot} from 'react-dom/client';
 import {StrictMode,useCallback,useEffect,useState} from 'react';
 import {useSceneRecord} from './packages/villages/src/client/features/scenes/useSceneRecord.js';
+import {authorSceneView} from './tests/helpers/scene-playback.fixture.ts';
 import {useScenesState} from './packages/villages/src/client/features/scenes/useScenesState.js';
 import {useActiveSceneRestoration} from './packages/villages/src/client/features/scenes/controller-hooks.js';
 import {useContinueRoomWithoutGreeting,useCloseRoom,useOpenRoom,useGreetRoom} from './packages/villages/src/client/features/scenes/actions.js';
-function scene(id,status='active',revision=0){return {id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,status,activeIds:[],participants:[],lines:[],submissions:[],startedAt:'',endedAt:''};}
+function scene(id,status='active',revision=0){return authorSceneView({id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,status,activeIds:[],participants:[],lines:[],submissions:[],startedAt:'',endedAt:''},'b'.repeat(64));}
 function Restore(ports){useActiveSceneRestoration(ports);return null}
 function Harness(){
  const [room,writeRoom]=useSceneRecord(),[ready,setReady]=useState(false),[founded,setFounded]=useState(window.options.hydrate?undefined:true),
@@ -57,23 +61,27 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     jsx: "automatic",
   });
   function scene(id, status = "active", revision = 2) {
-    return {
-      id,
-      version: 1,
-      sceneRevision: revision,
-      placeId: "mill",
-      placeName: id,
-      status,
-      activeIds: [],
-      participants: [],
-      lines: [],
-      submissions: [],
-      startedAt: "",
-      endedAt: "",
-    };
+    return authorSceneView(
+      {
+        id,
+        version: 2,
+        sceneRevision: revision,
+        placeId: "mill",
+        placeName: id,
+        status,
+        activeIds: [],
+        participants: [],
+        lines: [],
+        submissions: [],
+        startedAt: "",
+        endedAt: "",
+      },
+      "b".repeat(64),
+    );
   }
   async function mount(strict, width, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: width === 390 });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       held = [],
       requests = [],
@@ -81,7 +89,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     let greeted = false;
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://restoration-lifetimes.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) => {
       const request = route.request(),
@@ -125,7 +133,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         (request.method() === "POST" && options.holdPosts)
       )
         held.push(entry);
-      else return route.fulfill(reply);
+      else return fulfill(route, reply);
     });
     await page.goto("http://restoration-lifetimes.test/");
     await page.evaluate(
@@ -140,7 +148,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     await expect.poll(async () => typeof (await page.evaluate(() => window.h))).toBe("object");
     const release = async (entry) => {
       try {
-        await entry.route.fulfill(entry.reply);
+        await fulfill(entry.route, entry.reply);
       } catch (cause) {
         if (!/closed|cancel|abort/i.test(cause.message)) throw cause;
       }
@@ -179,7 +187,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.deepEqual((await f.refs()).completion, { roomId: "A", submissionId: "prior-marker" });
         assert.equal(f.requests.filter((r) => r.method === "POST").length, restored === "opening" ? 1 : 0);
         assert.equal(await f.page.evaluate(() => window.loads), 0);
-        assert.deepEqual(await f.page.evaluate(() => window.timeouts), restored === "opening" ? [30_000] : []);
+        assert.deepEqual(await f.page.evaluate(() => window.timeouts), []);
         if (!strict) assert.equal(f.requests.filter((r) => r.kind === "active").length, 1);
         if (restored !== null) {
           assert.equal((await f.state()).screen, "room");
@@ -210,7 +218,11 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       assert.equal((await failedRead.refs()).flight, false);
       await failedRead.finish();
       for (const kind of ["continue", "open"]) {
-        const f = await mount(strict, width, { holdRead: true, holdPosts: true });
+        const f = await mount(strict, width, {
+          initial: kind === "open" ? "blank" : "A",
+          holdRead: true,
+          holdPosts: true,
+        });
         await expect.poll(() => f.held.some((h) => h.kind === "active")).toBe(true);
         await f.run(kind);
         await expect.poll(() => f.held.some((h) => h.kind === (kind === "open" ? "rooms" : kind))).toBe(true);
@@ -314,7 +326,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal(value.status, ["active", "closed"].includes(recovered) ? recovered : "opening");
         assert.equal(value.greetingError === null, ["active", "closed"].includes(recovered));
         assert.equal(f.requests.filter((r) => r.method === "POST").length, 1);
-        assert.deepEqual(await f.page.evaluate(() => window.timeouts), [30_000, 5_000]);
+        assert.deepEqual(await f.page.evaluate(() => window.timeouts), [5_000]);
         assert.equal(await f.page.evaluate(() => window.loads), 0);
         await f.finish();
       }

@@ -1,72 +1,29 @@
 import type { TownMapView, VillageVillagerView } from "../../../shared/contracts/village.js";
 import { pinText, pinTone, placeSpot, playerDisplayName } from "../../shared/presentation.js";
-import type { MapFrameShape, MapPin, MapZoomRange } from "../../shared/types.js";
+import type { MapFrameShape, MapPin } from "../../shared/types.js";
 import { isHouse } from "../../shared/venue.js";
-import { defaultView, pictureAdvice, PROJECT_BLUEPRINT_IMAGE, STANDING_PIN_STEP } from "./MapStage.js";
+import { defaultView, PROJECT_BLUEPRINT_IMAGE, STANDING_PIN_STEP } from "./MapStage.js";
 
 export function calculateSavedTownMapView(ports: {
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
+  selectedMap?: import("../../../shared/contracts/village").VillageMap;
 }): TownMapView {
-  const { snapshot } = ports;
-  return snapshot?.settings.townMapView ?? defaultView("cover");
+  return ports.selectedMap?.view ?? defaultView("cover");
 }
 export function calculateSavedTownMapShape(ports: {
   snapshot: import("../../../shared/contracts/village").VillageSnapshot;
+  selectedMap?: import("../../../shared/contracts/village").VillageMap;
 }): MapFrameShape | null {
-  const { snapshot } = ports;
-  return snapshot
-    ? { width: snapshot.settings.townMapExpectedWidth, height: snapshot.settings.townMapExpectedHeight }
-    : null;
-}
-export function calculateTownMapShape(ports: {
-  savedTownMapShape: import("../../shared/types").MapFrameShape;
-  townMapPick: { image: string; size: { width: number; height: number } };
-}): MapFrameShape | null {
-  const { savedTownMapShape, townMapPick } = ports;
-  return townMapPick?.size ?? savedTownMapShape;
-}
-export function calculateTownMapZoom(ports: {
-  snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-}): MapZoomRange {
-  const { snapshot } = ports;
+  const { snapshot, selectedMap } = ports;
   return snapshot
     ? {
-        min: snapshot.settings.townMapZoomMin,
-        max: snapshot.settings.townMapZoomMax,
-        step: snapshot.settings.townMapZoomStep,
+        width: selectedMap?.width ?? snapshot.settings.townMapExpectedWidth,
+        height: selectedMap?.height ?? snapshot.settings.townMapExpectedHeight,
       }
-    : { min: 1, max: 1, step: 0.1 };
-}
-export function calculateTownMapSrc(ports: {
-  mapRemoveDraft: boolean;
-  townMapImage: string;
-  townMapPick: { image: string; size: { width: number; height: number } };
-}) {
-  const { mapRemoveDraft, townMapImage, townMapPick } = ports;
-  return mapRemoveDraft ? null : townMapPick ? townMapPick.image : townMapImage || null;
-}
-export function calculateFramingMap(ports: {
-  reframingMap: boolean;
-  townMapPick: { image: string; size: { width: number; height: number } };
-}) {
-  const { reframingMap, townMapPick } = ports;
-  return townMapPick !== null || reframingMap;
-}
-export function calculatePanelMapView(ports: {
-  framingMap: boolean;
-  savedTownMapView: import("../../../shared/contracts/village").TownMapView;
-  townMapDraft: import("../../../shared/contracts/village").TownMapView;
-}): TownMapView {
-  const { framingMap, savedTownMapView, townMapDraft } = ports;
-  return framingMap ? (townMapDraft ?? savedTownMapView) : savedTownMapView;
-}
-export function calculateTownMapAdvice(ports: {
-  townMapPick: { image: string; size: { width: number; height: number } };
-}) {
-  const { townMapPick } = ports;
-  return townMapPick ? pictureAdvice(townMapPick.size) : null;
+    : null;
 }
 export function calculateSavedPins(ports: {
+  mapId?: string;
   mobile: boolean;
   nameOfCharacter: (characterId: string) => string;
   openPlaceId: string;
@@ -75,7 +32,7 @@ export function calculateSavedPins(ports: {
 }): MapPin[] {
   const { mobile, nameOfCharacter, openPlaceId, openVenue, snapshot } = ports;
   return (() => {
-    const places = snapshot?.settings.venues ?? [];
+    const places = (snapshot?.settings.venues ?? []).filter((venue) => venue.presentation.mapId === ports.mapId);
     const pins: MapPin[] = [];
     // Everybody's current place, grouped by which place it is, so that two people
     // at the harbour hang under the harbour rather than on top of each other.

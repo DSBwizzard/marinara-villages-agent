@@ -1,11 +1,35 @@
-import type { InterpretationCheck, InterpretationResult } from "./interpretation-check-model.js";
-import type { WishFactCandidate } from "../rules/wish-journal.js";
-import type { WorkFailure } from "../rules/work-failure.js";
 import type { VenueRecordEvent } from "./scene-model.js";
-import type { WishCriteria, WishInterpretationContext } from "./wish-interpretation-model.js";
 import type { VillageWish } from "./world.js";
 
+export type WishHistoryReference = {
+  format: 1;
+  world: string;
+  count: number;
+  root: { id: string; digest: string; height: number };
+};
+export type CapturedWishOwner = {
+  actorId: string;
+  wishId: string;
+  fingerprint: string;
+  capturedAt: string;
+  wishes: VillageWish[];
+};
+export type CapturedWishSnapshot = {
+  format: 1;
+  sceneId: string;
+  seed: string;
+  setupAt: string;
+  owners: (Omit<CapturedWishOwner, "wishes"> & { head: WishHistoryReference | null })[];
+};
+export type CapturedWishContexts = CapturedWishOwner[] | CapturedWishSnapshot;
+
 export type ExchangeEffectReceipt = {
+  wishOutcome?: "fulfilled" | "corrected";
+  wishDisclosures?: import("../../../shared/contracts/wishes.js").WishDisclosure[];
+  wishGoal?: string;
+  wishAudience?: string[];
+  wishDisclosure?: true;
+  memoryProposal?: import("./memories.js").MemoryProposal;
   committedAt?: string;
   noticeSequence?: number;
   status?: "applied" | "rejected";
@@ -14,48 +38,15 @@ export type ExchangeEffectReceipt = {
   id: string;
   sceneId: string;
   submissionId: string;
-  domain: "wishes" | "memories" | "physical";
+  domain: "wishes" | "memories" | "physical" | "development" | "relationships";
+  /** Stable action/source identity for idempotent offscreen physical settlement. */
+  sourceHash?: string;
   physicalOutcome?: import("./world.js").VillageVenueEvent;
+  /** Immutable private writing context from this exact effect, never live authority. */
+  sceneFacts?: import("../rules/scene-continuity.js").SceneEffectFacts;
   at: string;
   evidenceIds: string[];
   reason: string;
   notice?: VenueRecordEvent;
 };
-export type WishProposal = {
-  conditionRevision?: number;
-  conditionAt?: string;
-  facts?: WishFactCandidate[];
-  receiptIds?: string[];
-  actorId: string;
-  wishId: string;
-  fingerprint: string;
-  intent: "reveal" | "journal" | "progress" | "check";
-  lineIds: string[];
-};
-export type WishCheckInput = {
-  contractVersion?: 2 | 3;
-  sceneId: string;
-  submissionId: string;
-  seed: string;
-  proposal: WishProposal;
-  wish: VillageWish;
-  at: string;
-  context: WishInterpretationContext;
-};
-export type PreparedWishVerdict = {
-  decision?: { check: InterpretationCheck; result: InterpretationResult };
-  criteria: WishCriteria;
-  outcome: string;
-  evidenceIds: string[];
-  reason: string;
-  memory: string;
-  receiptIds: string[];
-};
-export type WishBatchInput = {
-  contractVersion?: 2 | 3;
-  sceneId: string;
-  submissionId: string;
-  seed: string;
-  items: WishCheckInput[];
-};
-export type PreparedWishBatch = { items: { id: string; verdict: PreparedWishVerdict }[]; failures?: WorkFailure[] };
+export type WishProposal = import("../rules/social-wishes.js").SocialWishChange;

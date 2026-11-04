@@ -1,18 +1,35 @@
-import type { StagingCue } from "../helpers/scene-staging.js";
 import type { SpeechDelivery, SpeechPresentation } from "../helpers/scene-speech.js";
-import type { PlayerRole } from "./player-role.js";
+import type { StagingCue } from "../helpers/scene-staging.js";
+import type { PlayerBackground } from "./player-background.js";
 import type { VillagesWalkBeat } from "./scene-beat.js";
 
 /** Client-visible wire data. Private saved-world and Scene records stay on the server. */
 
-export type ScenarioImprint = {
-  origin: string;
-  worldFacts: string[];
-  openingConditions: string[];
-  visualCues: string[];
+export type VillageCircumstance = {
+  scope: "village" | "zone";
+  id: string;
+  revision: number;
+  title: string;
+  summary: string;
+  status: "active" | "resolved";
+  targets: { venueId: string; zoneId: string }[];
+  updatedAt: string;
+};
+
+export type FoundingCircumstance = { scope: "village" | "zone"; summary: string; venueId: string; zoneId: string };
+
+export type ResidenceAgreement = {
+  requestId: string;
+  requiredIds: string[];
+  scope: string;
+  householdIds: string[];
+  sleepZoneId: string;
+  approvals: Record<string, boolean>;
 };
 
 export type VillageVillagerView = {
+  letterFontId?: string;
+  identityDescription?: import("./resident-description.js").ResidentIdentityDescription;
   signature?: import("../helpers/resident-signature.js").ResidentSignatureImage;
   signatureFallback?: import("../helpers/resident-signature.js").ResidentSignature;
   characterId: string;
@@ -71,53 +88,23 @@ export type VillagerRefreshPreview = {
   sourceAvailable: boolean;
   changed: boolean;
 };
-export /**
- * One note pinned to the noticeboard, and who wrote it.
- *
- * An empty author is your own note. The villagers sign theirs, because the point
- * of the board is that it is written in their voices rather than in the
- * narrator's; yours needs no name, since everyone here knows who you are.
- */
-type VillageNotice = {
-  author: string;
-  text: string;
-};
-
-/**
- * One thing the village did, as the narrator wrote it down.
- *
- * Filed against the village's own clock rather than a wall-clock stamp, so the
- * day and the part of the day are what the entry is keyed on. `clock` is always
- * one of the four parts of a day.
- */
-export type VillageHappening = {
-  socialOutcome?: { id: string; changes: string[] };
-  id: string;
-  kind: string;
-  actorIds: string[];
-  venueId: string;
-  dayIndex: number;
-  clock: string;
-  occurredAt: string;
-  timePrecision: "exact" | "phase";
-  sourceOpportunityId: string;
-  narration: string;
-  text: string;
-};
-
-export type VillageStoryPace = "off" | "quiet" | "balanced" | "lively";
-
-export type VillageRecap = {
-  from: string;
-  through: string;
-  details: VillageHappening[];
-  summaries: string[];
-  pendingDecisionCount: number;
-};
+export type VillageBackgroundPace = "off" | "quiet" | "balanced" | "lively";
+export type VillageNarrativeConsequence = "gentle" | "moderate" | "dramatic";
 
 export type BackgroundWork = {
   id: string;
-  kind: "story" | "agenda" | "translation" | "wish" | "wish-check" | "mail" | "adaptation";
+  instanceId: string;
+  kind:
+    | "story" // Retired saved job identity; no generation or retry.
+    | "resident-planning"
+    | "world-development"
+    | "agenda"
+    | "translation"
+    | "wish"
+    | "personal-mail"
+    | "social-recovery"
+    | "starting-ties"
+    | "schedule-influence";
   subjectId: string;
   label: string;
   status: "queued" | "running" | "paused" | "failed" | "interrupted" | "completed" | "obsolete";
@@ -138,7 +125,22 @@ export type BackgroundWork = {
   };
 };
 
+export type ReturnCatchupView = {
+  id: string;
+  status: "queued" | "running" | "failed" | "recovering" | "completed" | "cancelled";
+  from?: string;
+  until?: string;
+  completed: number;
+  total: number;
+  settlementRequired: boolean;
+  issue: "generation" | "interpretation" | "settlement" | "authority" | null;
+};
+
 export type VillageSnapshot = {
+  worldScope: string;
+  sceneChanges?: { sceneId: string; revision: string };
+  sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
+  opening?: import("./opening.js").OpeningView;
   clock?: import("./clock.js").VillageClockView;
   backgroundWork?: BackgroundWork[];
   status: string;
@@ -159,18 +161,11 @@ export type VillageSnapshot = {
     dayIndex: number;
     nextTransitionAt: string;
   };
-  noticeboard: VillageNotice[];
   venueRequests: VenueRequest[];
   projects: BuildProject[];
-  upgradeRequests: {
-    id: string;
-    venueId?: string;
-    requesterCharacterId?: string;
-    requesterName?: string;
-    detail: string;
-    proposedHomeKind?: string;
-  }[];
   residences: {
+    agreement?: ResidenceAgreement;
+    holdReason?: string;
     characterId: string;
     venueId: string;
     proposedVenueId: string;
@@ -179,24 +174,6 @@ export type VillageSnapshot = {
     requestedBy?: "player" | "villager";
     completesAt?: string;
   }[];
-  venueMail: Array<{
-    id: string;
-    venueId: string;
-    title: string;
-    detail: string;
-    kind: "change" | "player-move" | "counteroffer" | "villager-change" | "villager-move" | "project-approval";
-    status: "pending-player" | "awaiting-villagers" | "approved" | "declined";
-    createdAt: string;
-    dueAt: string;
-    resolvedAt: string;
-    affectedIds: string[];
-    decisions: { characterId: string; accepted: boolean; reply: string }[];
-    error: string;
-    improvementSlot?: number;
-    improvement?: NonNullable<VillageVenue["improvements"]>[number] | null;
-  }>;
-  /** What the village has been doing, newest first. Empty until it does something. */
-  happenings: VillageHappening[];
   villagers: VillageVillagerView[];
   relationshipStartingPending?: boolean;
   /**
@@ -206,9 +183,14 @@ export type VillageSnapshot = {
   isFounded: boolean;
   progressEngineVersion: 1;
   foundingPreparation: {
+    canPlay: boolean;
     status: "pending" | "failed" | "ready";
     completedIds: string[];
-    venueDetailsSeeded?: boolean;
+    tasksVersion?: 1;
+    tasks?: import("./founding-tasks.js").FoundingResidentTasks;
+    retryActions?: string[];
+    selectedTasks?: string[];
+    currentTask?: "routine" | "wish";
     currentId: string;
     error: string;
     phase?: "venues" | "private-spaces" | "residents";
@@ -223,7 +205,6 @@ export type VillageSnapshot = {
     modelName?: string;
   } | null;
   settings: VillageSettings;
-  recap: VillageRecap | null;
 };
 
 export type VenueRequest = {
@@ -237,66 +218,60 @@ export type VenueRequest = {
 };
 
 export type BuildProject = {
+  actorNames?: Record<string, string>;
   id: string;
-  requesterCharacterId?: string;
-  participantIds?: string[];
-  updatedAt: string;
-  kind: "new-venue" | "renovation";
+  kind: "new-venue" | "renovation" | "establishment";
+  establishment?: import("./places.js").Establishment;
+  place?: VillageVenue;
   title: string;
   venueId: string;
-  status: "draft" | "active" | "building" | "blocked" | "finishing" | "complete" | "abandoned";
+  updatedAt: string;
+  requesterCharacterId?: string;
+  participantIds?: string[];
+  status: "planning" | "working" | "paused" | "complete" | "cancelled";
   progress: number;
   venueDraft?: {
     name: string;
     description: string;
     classes: VenueClass[];
-    position?: { x: number | null; y: number | null };
+    position?: { mapId?: string; x: number | null; y: number | null };
   };
+  plan?: {
+    capacity: number;
+    form: string;
+    venueType: string;
+    exteriorDescription: string;
+    imageContext?: { useAssignedVillagerContext: boolean; useVisualLore: boolean };
+    layoutVersion: 1;
+    layout: "exterior" | "common" | "private" | "both";
+    spaces: NonNullable<VillageVenue["zones"]>;
+    privateSpaces: NonNullable<VillageVenue["zones"]>;
+    exteriorImage: VillageVenueImage | null;
+  };
+  opening?: { established: boolean; provenance: string; work: string; firstUse: string };
   lifecycle?: {
-    phase:
-      "concept" | "approval" | "builder" | "requirements" | "materials" | "construction" | "finishing" | "complete";
+    phase: BuildProject["status"];
+    revision: number;
     targetVenueId: string;
     change: {
+      form?: string;
+      exteriorDescription?: string;
       classes?: VenueClass[];
       capacity?: number;
-      baseZones?: VillageZoneDraft[];
-      slot?: number;
-      improvement?: NonNullable<VillageVenue["improvements"]>[number] | null;
+      zones?: VillageZoneDraft[];
       detail: string;
     } | null;
     affectedIds: string[];
-    approvals: { residentId: string; source: "conversation" | "mailbox" }[];
+    approvals: { residentId: string; source: "conversation" }[];
     candidates: { residentId: string }[];
     builderId: string;
-    requirements: {
-      id: string;
-      category: "structure" | "equipment" | "finish";
-      title: string;
-      needed: boolean;
-      carriedAt: string;
-      deliveredAt: string;
-    }[];
-    requirementsEvidenceId: string;
-    requirementsAcceptedAt: string;
-    recordedItems: { venueId: string; zoneId?: string; itemName: string }[];
-    sources: {
-      requirementId: string;
-      kind: "existing-item" | "resident-offer" | "held-supply";
-      venueId: string;
-      itemName: string;
-      supplierId: string;
-      evidenceId: string;
-      at: string;
-      acquiredAt: string;
-    }[];
-    heldSupplies: {
-      id: string;
-      itemName: string;
-      acquiredAt: string;
-      deliveredAt: string;
-      assignedRequirementId: string;
-    }[];
-    workOrder: { startsAt: string; completesAt: string; pausedAt: string } | null;
+    workOrder: {
+      startsAt: string;
+      completesAt: string;
+      pausedAt: string;
+      remainingMs: number;
+      focus?: { minutes: number; nextPeriod: { startsAt: string; endsAt: string } | null };
+    } | null;
     blockedReason: string;
     completedAt: string;
   };
@@ -407,6 +382,7 @@ export type VillageVenueImage = {
  * somewhere somebody lives.
  */
 export type VillageVenue = {
+  zoneLayout?: import("../helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
   accessView?: import("../helpers/venue-access.js").VenueAccessView;
   destinations?: Record<string, { home?: string; sleep?: string; work?: string }>;
@@ -419,14 +395,12 @@ export type VillageVenue = {
   name: string;
   form?: string;
   classes?: Array<"residence" | "workplace" | "community" | "other">;
-  baseClasses?: Array<"residence" | "workplace" | "community" | "other">;
   zones?: Array<
     NonNullable<VillageVenue["spaces"]>[number] & {
       name: string;
       relationshipAccess?: boolean;
       kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
       closed?: boolean;
-      upgradeId?: string;
       ownerId?: string;
       purpose?: string;
       access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
@@ -440,8 +414,6 @@ export type VillageVenue = {
     connectedTo?: string[];
     id: string;
     roomSpecification?: string;
-    imageOutdated?: boolean;
-    observedAt?: string;
     name?: string;
     ownerId?: string;
     purpose?: string;
@@ -452,15 +424,11 @@ export type VillageVenue = {
     description: string;
     freezePicture?: boolean;
     pictureRetryAvailable?: boolean;
+    pictureUpdateAvailable?: boolean;
+    pictureProblem?: string;
+    pictureUpdating?: boolean;
     image: VillageVenueImage | null;
-    state: {
-      condition: string;
-      items: string[];
-      publicFacts: string[];
-      features: NonNullable<VillageVenue["state"]["features"]>;
-      traces: NonNullable<VillageVenue["state"]["traces"]>;
-      updatedAt: string;
-    };
+    state: import("./place-continuity.js").PlaceContinuity;
   }>;
   residenceCapacity?: number;
   residentIds?: string[];
@@ -481,49 +449,16 @@ export type VillageVenue = {
       access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
       accessView?: import("../helpers/venue-access.js").ZoneAccessView;
       controllerIds?: string[];
-      adaptationPending?: boolean;
       initialImageAttemptedAt?: string;
     }
   >;
-  editProposals?: Array<{
-    id: string;
-    target: "shared" | "private";
-    privateSpaceId?: string;
-    zoneId?: string;
-    ownerId: string;
-    proposed: NonNullable<VillageVenue["spaces"]>[number];
-    requiredIds: string[];
-    approvedIds: string[];
-    declined: boolean;
-  }>;
   playerSeenShared?: boolean;
   playerSeenPublic?: boolean;
   playerSeenPrivateIds?: string[];
-  improvements?: Array<{
-    id: string;
-    title: string;
-    description: string;
-    spaceId: string | null;
-    classContribution?: "residence" | "workplace" | "community" | "other";
-    zones?: Array<{
-      connectedTo?: string[];
-      id?: string;
-      name: string;
-      kind: "exterior" | "public" | "shared-residence" | "private-residence" | "staff" | "restricted";
-      ownerId?: string;
-      purpose?: string;
-      access?: import("../helpers/venue-access.js").ZoneAccessPolicy;
-      accessView?: import("../helpers/venue-access.js").ZoneAccessView;
-      controllerIds?: string[];
-      description: string;
-      venueClass: "residence" | "workplace" | "community" | "other";
-    }>;
-    extraBeds: number;
-    approvedAt: string;
-  } | null>;
   description: string;
   category: string;
   presentation: {
+    mapId: string;
     image: VillageVenueImage | null;
     x: number | null;
     y: number | null;
@@ -535,15 +470,7 @@ export type VillageVenue = {
   };
   capabilities: string[];
   workerIds?: string[];
-  state: {
-    condition: string;
-    upgrades: string[];
-    furniture: string[];
-    publicFacts: string[];
-    features?: { id: string; text: string; sourceCharacterId: string; locked: boolean; updatedAt: string }[];
-    traces?: { id: string; kind: string; text: string; recipientId: string; createdAt: string }[];
-    updatedAt: string;
-  };
+  state: import("./place-continuity.js").PlaceContinuity;
 };
 
 /**
@@ -607,13 +534,14 @@ export type VillageSettings = {
   characterSpeechColors: boolean;
   sendOnEnter: boolean;
   spriteCardFlipEnabled: boolean;
-  visitRetention: { mode: "forever" | "count" | "days"; value: number };
+  spriteVariantsEnabled: boolean;
   promptKnowledge: string;
   defaultPromptKnowledge: string;
   promptBoxMaxLength: number;
   macros: readonly PresetMacro[];
-  storyPace: VillageStoryPace;
-  storyPaces: readonly VillageStoryPace[];
+  backgroundPace: VillageBackgroundPace;
+  narrativeConsequence?: VillageNarrativeConsequence;
+  backgroundPaces: readonly VillageBackgroundPace[];
   /** How long the village's own name may be, as the founding wizard asks for it. */
   villageNameMaxLength: number;
   /** The Persona the village is linked to, or "" for none. */
@@ -622,27 +550,22 @@ export type VillageSettings = {
   playerPersonaName: string;
   /** True when the link is to a Persona that is no longer in the library. */
   playerPersonaMissing: boolean;
-  maxNoticeboardNotes: number;
-  maxNoticeLength: number;
   setting: string;
   settingMaxLength: number;
-  foundingReason: string;
-  foundingDetails: string;
-  foundingGuidance: string;
-  playerRole?: PlayerRole | null;
-  scenarioImprint: ScenarioImprint | null;
-  worldFacts: string[];
+  worldRules: string;
+  communityVenueId: string;
+  worldName: string | null;
+  playerBackground: PlayerBackground | null;
+  circumstances: VillageCircumstance[];
   selectedLorebookIds: string[];
-  sceneryArtStyle?: string;
-  sceneryStyleProfileId?: string | null;
-  automaticZonePictures?: boolean;
-  personalizeVenueImagesByDefault?: boolean;
-  useVisualLoreByDefault?: boolean;
+  sceneryArtStyle: string;
+  sceneryStyleProfileId: string | null;
+  automaticZonePictures: boolean;
+  personalizeVenueImagesByDefault: boolean;
+  useVisualLoreByDefault: boolean;
   loreTokenBudget: number;
   loreTokenBudgetMin: number;
   loreTokenBudgetMax: number;
-  foundingDetailsMaxLength: number;
-  foundingGuidanceMaxLength: number;
   townMapLayoutPrompt: string;
   townMapNegativePrompt: string;
   /**
@@ -687,11 +610,8 @@ export type VillageSettings = {
    * The stamp of the current town map, not the picture. Empty means there is no
    * map; a change means the tab should fetch `/town-map` again.
    */
-  townMapImageSetAt: string;
-  /** How large a stored town map may be, as the length of its data URL. */
+  maps: VillageMap[];
   townMapImageMaxLength: number;
-  /** How the drawn map is framed right now. */
-  townMapView: TownMapView;
   /**
    * The shape the map is drawn in, as the picture size it is authored against.
    * The frame is laid out from these rather than from a ratio of this file's
@@ -831,7 +751,8 @@ export type RoomLine = {
   viaDoorway?: boolean;
   /** Local cast after this line's completed movement; never unseen Zone attendance. */
   physicalIdsAfter?: string[];
-  remoteDelivery?: "loud" | "device";
+  presenceChange?: true;
+  remoteDelivery?: "loud";
   /** The registers of this line's own paragraphs, on the same terms as a message's. */
   beats?: ChatBeat[];
   kind?: "narration" | "dialogue" | "side" | "whisper";
@@ -851,15 +772,14 @@ type RoomParticipant = {
   /** What they were doing at that hour, in this village's terms, or `""`. */
   doing: string;
 };
-export type RoomRecollection = {
-  id: string;
-  text: string;
-  subjectCharacterIds: string[];
-  knownByCharacterIds: string[];
-  lineIds: string[];
-};
-
 export type RoomOperation = {
+  committed?: boolean;
+  replyReady?: boolean;
+  /** The Scene has ended and its completed transcript is no longer retained. */
+  terminal?: boolean;
+  recordEvents?: RoomRecordEvent[];
+  turnOutcome?: import("./scene-turn-outcome.js").SceneTurnOutcome;
+  recoverable?: boolean;
   id: string;
   kind: string;
   attemptId: string;
@@ -877,6 +797,8 @@ export type RoomOperation = {
 };
 
 export type SceneChangeIssue = {
+  canContinue?: boolean;
+  continued?: boolean;
   submissionId: string;
   domain: string;
   status?: "pending" | "failed" | "rejected";
@@ -885,13 +807,18 @@ export type SceneChangeIssue = {
 };
 
 export type SceneView = {
+  liveSceneVersion?: 1;
+  currentTime?: string;
+  capturedContext?: true;
+  playerName?: string;
+  /** An existing handoff needs return/recovery controls; private context stays server-side. */
+  semanticVersion?: 2;
   connectionMap?: { id: string; connectedTo?: string[] }[];
   attentionClarification?: { id: string; message: string; question: string; choices: { id: string; label: string }[] };
   memoryMode?: "live";
   version: 1;
   sceneRevision?: number;
   operation?: RoomOperation | null;
-  stagingVersion?: 1;
   id: string;
   placeId: string;
   /** The name that place had when the room opened, for the plate. */
@@ -915,16 +842,8 @@ export type SceneView = {
   /** Residents encountered during this Scene; activeIds identifies the current Zone audience. */
   participants: RoomParticipant[];
   lines: RoomLine[];
-  submissions?: {
-    id: string;
-    activeIdsAtTurn?: string[];
-    activeIdsAfterTurn?: string[];
-    replyLineIds?: string[];
-    mode?: string;
-    at?: string;
-    action?: { happened: boolean; narration: string };
-    recollections?: RoomRecollection[];
-  }[];
+  playback: Omit<import("./scene-playback.js").ScenePlaybackWindow, "lines" | "participants">;
+  latestTurn?: { id: string; at: string; published: boolean };
 };
 
 export type RoomRecordEvent = {
@@ -957,110 +876,58 @@ export type WishVerdict = {
   reason: string;
 };
 
-/**
- * One thing the village remembers, as the story tab draws it.
- *
- * Three of these fields say almost the same thing and all three travel anyway.
- * `dayIndex` and `clock` are the village's own time and the only pair anything
- * reads. `dateLabel` is that day already turned into a calendar date by the
- * server, so the tab never does clock arithmetic and cannot disagree with the
- * village about what day it is. `at` is the exact instant, shown when it is
- * there and read by nothing at all.
- *
- * Both dates are here rather than only `at` because `at` cannot be trusted to
- * exist: memories written by older versions of the package have none, and a
- * record that has been through the coercion has an empty string where a stamp
- * used to be. A memory with no stamp still has a day, and that is the day it
- * is filed under.
- *
- * `favour` is the third kind and the one the tab goes out of its way to mark,
- * because it is the only entry in here the player caused: a tick is the village
- * living, a chat is a conversation filed away, and a favour is something the
- * player did for somebody and was believed about.
- */
-export type StoryEntry = {
-  id: string;
-  dayIndex: number;
-  clock: string;
-  occurredAt: string;
-  timePrecision: "exact" | "phase";
-  scope: "village" | "private";
-  actors: { id: string; name: string }[];
-  kind: "tick" | "chat" | "favour";
-  text: string;
-  dateLabel: string;
-};
-
 export type MemoryPerson = { id: string; name: string };
-
-export type MemoryCategory = "commitment" | "personal-fact" | "preference" | "relationship" | "shared-experience";
-export type MemoryDurable = StoryEntry & {
-  memoryCategory?: MemoryCategory;
-  subjects: MemoryPerson[];
-  knownBy: MemoryPerson[];
-  evidence: { visitId: string; lineIds: string[] } | null;
-  sourceRecollectionIds?: string[];
-  legacy: boolean;
-};
-export type MemoryRecollection = {
+export type MemoryCursor = { revision: number; afterId: string };
+export type MemoryListEntry = {
   id: string;
-  visitId: string;
-  occurredAt: string;
-  expiresAt: string;
+  rootId: string;
+  revision: number;
+  rootRevision: number;
+  kind: "experience" | "information" | "open-matter";
   text: string;
+  occurredAt: string;
+  recordedAt: string;
   subjects: MemoryPerson[];
   knownBy: MemoryPerson[];
-  reinforcementCount: number;
-  lastReinforcedAt: string;
-  evidence: { visitId: string; submissionId: string; lineIds: string[] }[];
+  forgotten: boolean;
+  playerCorrection: boolean;
 };
-
 export type MemoryLibrary = {
-  generatedAt: string;
+  inspection: boolean;
+  seed: string;
+  revision: number;
+  characterId: string;
+  query: string;
   residents: MemoryPerson[];
-  durable: MemoryDurable[];
-  recollections: MemoryRecollection[];
-  expiredRecollectionCount: number;
-  archive: { total: number; recent: ArchiveVisitSummary[] };
+  entries: MemoryListEntry[];
+  total: number;
+  next: MemoryCursor | null;
 };
-export /**
- * One thing a villager privately wishes for, as the debug panel shows it.
- *
- * `tell` is rendered beside the wish rather than apart from it, because the two
- * halves only mean anything together: the wish says what they are after and the
- * tell is the only way anybody would ever notice. `intensity` is drawn as words
- * for the same reason it is stored as a number — 1 to 3 is how much of the time
- * it is on their mind, and "barely" reads better than a bar chart.
- */
-type VillagerWish = {
-  id: string;
-  wish: string;
-  intensity: number;
-  tell: string;
-  /**
-   * When the village wrote this, ISO, or "" when nothing readable was stored.
-   *
-   * Shown because a wish is the one thing on this tab that gets OLDER while the
-   * player is not looking, and because it is the only field that says whether
-   * the village is still keeping a wish it wrote weeks ago. Optional rather than
-   * required because this tab must read a store written by an older version of
-   * itself without drawing a blank where a date would be.
-   */
-  addedAt?: string;
-  /**
-   * The instant this wish ages out and the village drops it, or "" when it
-   * never does.
-   *
-   * Rolled once, from the wish's own id, when the wish was written — see
-   * `wishLifetimeDays` on the server. Nothing about it is told to the villager
-   * and nothing in a prompt reads it: it is here so that a wish that goes
-   * missing between two visits can be seen to have been due to go, rather than
-   * read as a bug. An unreadable one never expires, which is the safe direction,
-   * and the tab says that rather than printing a date nobody wrote.
-   */
-  expiresAt?: string;
+export type MemoryInspection = {
+  seed: string;
+  revision: number;
+  entry: MemoryListEntry;
+  knowers: {
+    person: MemoryPerson;
+    basis: "observation" | "report" | "interpretation" | "validated-event";
+    attributedTo?: string;
+    learnedAt: string;
+    reinforcedAt: string;
+    forgotten: boolean;
+    playerCorrection: boolean;
+    text: string;
+    support: { sourceId: string; sceneId?: string; lineId: string; excerpt: string }[];
+  }[];
 };
-export type CompletedVillagerWish = { wish: VillagerWish; fulfilledAt: string; memoryId: string };
+export type MemoryForgetRequest = {
+  operationId: string;
+  seed: string;
+  expectedCollectionRevision: number;
+  target: { id: string; revision: number; rootRevision: number };
+  knowers: string[];
+};
+export type MemoryCorrectRequest = MemoryForgetRequest & { text: string };
+
 export /**
  * What one villager is after, or null when the village has not written for them.
  *
@@ -1070,7 +937,6 @@ export /**
  * from, and `generatedAt` is shown and never read.
  */
 type VillagerAgenda = {
-  wishes: VillagerWish[];
   routineSummary: string;
   day: { startMinute: number; endMinute: number; venueId: string; activity: string }[];
   week?: Record<string, AgendaBlock[]>;
@@ -1197,17 +1063,8 @@ type VillagePromptMessage = {
 
 /** Owned resolved Agenda and optional influence controls. Legacy remap fields are inert compatibility data. */
 export type VillagerAgendaView = {
+  canInterpretSchedule?: boolean;
   effectiveDays?: Record<string, AgendaBlock[]>;
-  wishHistoryCount?: number;
-  wishAttempt?: {
-    stage: string;
-    reason: string;
-    calls: number;
-    inputTokens: number | null;
-    outputTokens: number | null;
-    elapsedMs: number;
-    at: string;
-  };
   characterId: string;
   name: string;
   missing: boolean;
@@ -1223,7 +1080,6 @@ export type VillagerAgendaView = {
   weekUnreadable: boolean;
   addedAt: string;
   agenda: VillagerAgenda | null;
-  completedWishes: CompletedVillagerWish[];
   scheduleInfluence?: { version: 1; enabled: boolean; categories: Record<string, boolean> };
   ingestSchedule: boolean;
   nativeSchedule: {
@@ -1335,10 +1191,12 @@ export type SetupMapReceipt = {
  * thing the row lets them change.
  */
 export type VillageLorebookOption = { id: string; name: string; enabled: boolean; hiddenFromLibrary?: boolean };
-export type WishHistoryEntry = CompletedVillagerWish & {
-  sequence: number;
-  kind: "fulfilled" | "expired";
-  correctedAt?: string;
+export type VillageMap = {
+  id: string;
+  name: string;
+  artwork: VillageVenueImage;
+  width: number;
+  height: number;
+  view: TownMapView;
+  revision: number;
 };
-
-export type WishHistoryPage = { entries: WishHistoryEntry[]; nextCursor: string | null; total: number };

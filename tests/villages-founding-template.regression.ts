@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { readBaseVenueLayout } from "../packages/villages/src/server/domain/rules/venue-layout.js";
+import { chooseAgendaZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 import { newSetupVenue } from "../packages/villages/src/client/features/founding/FoundingPanels.js";
 import {
   includeFoundingZone,
-  resumeFoundingVenue,
+  startingZone,
 } from "../packages/villages/src/client/features/founding/founding-template.js";
 import { foundingVenueIssues } from "../packages/villages/src/client/features/founding/villages-founding-workspace-state.js";
 import { parsePlace } from "../packages/villages/src/server/domain/rules/founding-record.js";
@@ -11,6 +13,8 @@ import { defaultVillageState } from "../packages/villages/src/server/domain/deco
 import { villageSettings } from "../packages/villages/src/server/domain/rules/world-snapshot.js";
 
 const residence = newSetupVenue("home", "residence", 0.2, 0.3, true);
+residence.layout = "both";
+residence.privateSpaces = [startingZone(residence, true)];
 residence.form = "Cottage";
 residence.description = "Stone doorway";
 residence.spaces![0] = { ...residence.spaces![0], name: "Living room", purpose: "Meals", description: "A low table" };
@@ -28,9 +32,17 @@ residence.privateSpaces!.push({ ...residence.privateSpaces![0], id: "private:sec
 const disabled = includeFoundingZone(residence, {}, true, false);
 assert.equal(disabled.venue.layout, "common");
 assert.deepEqual(disabled.inactive.private, residence.privateSpaces);
-const refused = includeFoundingZone(disabled.venue, disabled.inactive, false, false);
-assert.match(refused.problem, /At least one/);
-assert.equal(refused.venue, disabled.venue);
+const entranceOnly = includeFoundingZone(disabled.venue, disabled.inactive, false, false);
+assert.equal(entranceOnly.problem, "");
+assert.equal(entranceOnly.venue.layout, "exterior");
+assert.deepEqual(foundingVenueIssues([entranceOnly.venue]), []);
+assert.doesNotThrow(() => parsePlace(entranceOnly.venue, true));
+for (const activity of ["sleep", "eat", "work"])
+  assert.equal(
+    chooseAgendaZone(parsePlace(entranceOnly.venue, true) as any, "player", activity).id,
+    "exterior",
+    "Entrance-only Venues remain usable without inventing Zones",
+  );
 const restored = includeFoundingZone(disabled.venue, structuredClone(disabled.inactive), true, true);
 assert.deepEqual(
   restored.venue.privateSpaces,
@@ -50,10 +62,7 @@ for (const layout of ["common", "private", "both"] as const) {
     layout === "private" ? undefined : "Meals",
   );
 }
-assert.throws(
-  () => parsePlace({ ...residence, layout: "exterior", spaces: [], privateSpaces: [] }, true),
-  /at least one/,
-);
+assert.doesNotThrow(() => parsePlace({ ...residence, layout: "exterior", spaces: [], privateSpaces: [] }, true));
 assert.doesNotThrow(
   () => parsePlace({ ...residence, layout: "exterior", spaces: [], privateSpaces: [] }, false),
   "existing map editing remains compatible",
@@ -76,27 +85,56 @@ community.spaces![0] = {
   description: "Trees and benches",
 };
 const parsedPark = parsePlace(community, true);
-assert.deepEqual(parsedPark.access?.managerIds, []);
+assert.deepEqual(
+  parsedPark.access?.managerIds,
+  ["player"],
+  "unselected infrastructure is player-managed; Community designation is validated separately",
+);
 assert.equal(parsedPark.zones?.find((zone) => zone.id === "common:base")?.access?.mode, "public");
-for (const changed of [
-  { ...community, classes: ["workplace"] },
-  { ...community, layout: "both", privateSpaces: residence.privateSpaces },
-  { ...community, spaces: [{ ...community.spaces![0], controllerIds: ["player"] }] },
+assert.doesNotThrow(() => parsePlace({ ...community, layout: "exterior", spaces: [], privateSpaces: [] }, true));
+const restricted = parsePlace(
   {
     ...community,
-    spaces: [{ ...community.spaces![0], access: { ...community.spaces![0].access!, mode: "permission-required" } }],
+    spaces: [
+      {
+        ...community.spaces![0],
+        access: {
+          ...community.spaces![0].access!,
+          mode: "permission-required",
+          managerIds: ["player"],
+          memberIds: ["player"],
+        },
+      },
+    ],
   },
-])
-  assert.throws(() => parsePlace(changed, true));
-const old = { ...community, layout: "both" as const, spaces: [], privateSpaces: residence.privateSpaces };
-const resumed = resumeFoundingVenue(old, {});
-assert.deepEqual(resumed.inactive.private, residence.privateSpaces);
-assert.equal(resumed.venue.privateSpaces?.length, 0);
-assert.equal(resumed.venue.spaces?.length, 1);
-assert.ok(
-  foundingVenueIssues([resumed.venue]).some((issue) => issue.field === "zone-purpose"),
-  "new mandatory details need completion",
+  true,
 );
+assert.deepEqual(restricted.zones?.find((zone) => zone.id === "common:base")?.access?.managerIds, ["player"]);
+const genericPrivate = {
+  ...residence.privateSpaces![0],
+  venueClass: "community",
+  ownerId: "",
+  access: { ...residence.privateSpaces![0].access!, managerIds: ["player"], memberIds: ["player"] },
+};
+const projectZones = readBaseVenueLayout(
+  {
+    ...community,
+    layout: "both",
+    privateSpaces: [{ ...genericPrivate, description: "", roomSpecification: "A staff quiet room" }],
+  },
+  ["community"],
+  "",
+  () => null,
+);
+assert.equal(projectZones.find((zone) => zone.id === genericPrivate.id)?.roomSpecification, "A staff quiet room");
+assert.equal(
+  projectZones.find((zone) => zone.id === genericPrivate.id)?.preparation?.status,
+  "pending",
+  "Project rooms retain their existing preparation contract",
+);
+const varied = parsePlace({ ...community, layout: "both", privateSpaces: [genericPrivate] }, true);
+assert.equal(varied.zones?.find((zone) => zone.id === genericPrivate.id)?.description, "A hammock");
+assert.equal(varied.zones?.find((zone) => zone.id === genericPrivate.id)?.image?.ref, artwork.ref);
 const suggestion = {
   id: "home",
   name: "Home",
@@ -131,9 +169,14 @@ assert.throws(() =>
 assert.equal(
   parseFoundingVenueSuggestions({ venues: [suggestion] }, ["home"], [{ ...template[0], residentCharacterId: "npc" }])[0]
     .privateDescription,
-  undefined,
+  "Hammock",
 );
-const npc = parsePlace({ ...residence, occupancy: { playerHome: false, residentCharacterId: "npc" } }, true);
+const npc = parsePlace({
+  ...residence,
+  residentIds: ["npc"],
+  privateSpaces: residence.privateSpaces!.map((room) => ({ ...room, ownerId: "npc", access: undefined })),
+  occupancy: { playerHome: false, residentCharacterId: null },
+});
 const world = defaultVillageState();
 world.venues = [npc as (typeof world.venues)[number]];
 const settings = villageSettings(
@@ -142,9 +185,9 @@ const settings = villageSettings(
   null,
 );
 assert.ok(
-  settings.venues[0].privateSpaces?.every((zone) => !zone.description && !zone.image && !zone.state.items.length),
-  "unseen private interiors never reach the client",
+  settings.venues[0].privateSpaces?.every((zone) => zone.description === "A hammock" && zone.state.recent === null),
+  "private interior details are visible before a visit",
 );
 console.log(
-  "Founding template: inclusion retention, legacy recovery, neutral access, contract validation, purpose round-trip and server privacy passed.",
+  "Founding template: optional Zones, inclusion retention, neutral access, contract validation, purpose round-trip and server privacy passed.",
 );

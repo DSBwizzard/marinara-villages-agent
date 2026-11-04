@@ -1,33 +1,15 @@
-import type {
-  ArchiveVisitSummary,
-  RoomRecordEvent,
-  SceneView,
-  SceneChangeIssue,
-} from "../../../shared/contracts/village.js";
-import type { SceneComposerMode } from "../../shared/types.js";
 import { useRef, useState } from "react";
+import type { RoomOperation, RoomRecordEvent, SceneChangeIssue } from "../../../shared/contracts/village.js";
+import type { SceneComposerMode } from "../../shared/types.js";
 import { useSceneReadingSession } from "./reading-session.js";
+
+export type LegacySceneRecovery = { sceneId: string; operation: RoomOperation };
 
 /** Always mounted by the application controller so navigation retains this feature state. */
 export function useScenesState(isFounded?: boolean) {
   const sceneReading = useSceneReadingSession(isFounded);
-  const [venueVisits, setVenueVisits] = useState<ArchiveVisitSummary[] | null>(null);
-
-  const [archiveTotal, setArchiveTotal] = useState(0);
-
-  const [archiveOffset, setArchiveOffset] = useState(0);
-
-  const [archiveVersion, setArchiveVersion] = useState(0);
-
-  const [openArchivedVisit, setOpenArchivedVisit] = useState<SceneView | null>(null);
 
   const [_endFailed, setEndFailed] = useState(false);
-
-  const [archiveVenueId, setArchiveVenueId] = useState("");
-
-  const [archiveVillagerId, setArchiveVillagerId] = useState("");
-
-  const [archiveError, setArchiveError] = useState("");
 
   const [mailboxOpen, setMailboxOpen] = useState(false);
 
@@ -37,6 +19,7 @@ export function useScenesState(isFounded?: boolean) {
   const [roomDraft, setRoomDraft] = useState("");
 
   const [roomMode, setRoomMode] = useState<SceneComposerMode>("chat");
+  const [legacyRecovery, setLegacyRecovery] = useState<LegacySceneRecovery | null>(null);
 
   const [roomContactBoundary, setRoomContactBoundary] = useState("");
 
@@ -61,10 +44,6 @@ export function useScenesState(isFounded?: boolean) {
   const [roomUnresolvedChanges, setRoomUnresolvedChanges] = useState<SceneChangeIssue[]>([]);
 
   const [debugDiscardEnabled, setDebugDiscardEnabled] = useState(false);
-
-  const lastRoomActivitySentRef = useRef(0);
-
-  const lastRoomDeliberateAtRef = useRef(0);
 
   const observedRoomIdRef = useRef("");
 
@@ -116,27 +95,10 @@ export function useScenesState(isFounded?: boolean) {
    * ordinary answer here is not a failure: a forced creative pass can genuinely
    * have nothing to add, and that reads as a mistake if it is shown in red.
    */
-  const [writeUpNote, setWriteUpNote] = useState("");
   return {
     sceneReading,
-    venueVisits,
-    setVenueVisits,
-    archiveTotal,
-    setArchiveTotal,
-    archiveOffset,
-    setArchiveOffset,
-    archiveVersion,
-    setArchiveVersion,
-    openArchivedVisit,
-    setOpenArchivedVisit,
     _endFailed,
     setEndFailed,
-    archiveVenueId,
-    setArchiveVenueId,
-    archiveVillagerId,
-    setArchiveVillagerId,
-    archiveError,
-    setArchiveError,
     mailboxOpen,
     setMailboxOpen,
     roomOpen,
@@ -145,6 +107,8 @@ export function useScenesState(isFounded?: boolean) {
     setRoomDraft,
     roomMode,
     setRoomMode,
+    legacyRecovery,
+    setLegacyRecovery,
     roomContactBoundary,
     setRoomContactBoundary,
     roomContactKind,
@@ -166,8 +130,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomUnresolvedChanges,
     debugDiscardEnabled,
     setDebugDiscardEnabled,
-    lastRoomActivitySentRef,
-    lastRoomDeliberateAtRef,
     observedRoomIdRef,
     lastSceneEnding,
     setLastSceneEnding,
@@ -188,8 +150,6 @@ export function useScenesState(isFounded?: boolean) {
     setRoomGreetingNotice,
     roomEnded,
     setRoomEnded,
-    writeUpNote,
-    setWriteUpNote,
   };
 }
 

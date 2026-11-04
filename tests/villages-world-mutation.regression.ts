@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
@@ -37,21 +38,22 @@ normalizeVillageMutation(
   },
   sources,
 );
-assert.deepEqual(events, ["mutation", "clock", "clock", "clock", "clock", "seed"]);
+assert.deepEqual(events, ["mutation", "clock", "clock", "clock", "seed"]);
 assert.equal(fresh.exchangeReceipts.first.noticeSequence, 1);
 assert.equal(fresh.exchangeReceipts.second.noticeSequence, 2);
 assert.equal(fresh.exchangeReceipts.first.committedAt, "2026-10-06T12:00:00.000Z");
 assert.equal(fresh.exchangeReceipts.second.committedAt, "2026-10-06T12:01:00.000Z");
-assert.equal(fresh.foundedAt, "2026-10-06T12:03:00.000Z");
+assert.equal(fresh.foundedAt, "2026-10-06T12:02:00.000Z");
 assert.equal(fresh.seed, "stable-world-seed");
 events.length = 0;
 normalizeVillageMutation(fresh, fresh.seed, () => {}, sources);
-assert.deepEqual(events, ["clock"], "existing notice order, founding stamp and seed are never regenerated");
+assert.deepEqual(events, [], "existing notice order, founding stamp and seed are never regenerated");
 assert.equal(fresh.noticeSequence, 2);
-assert.equal(fresh.foundedAt, "2026-10-06T12:03:00.000Z");
+assert.equal(fresh.foundedAt, "2026-10-06T12:02:00.000Z");
 
 function venue(index: number): VillageVenue {
-  return {
+  return venueFixture({
+    residentIds: [null].filter((id) => typeof id === "string" && !!id),
     id: `venue-${index}`,
     name: `Venue ${index}`,
     classes: ["residence"],
@@ -61,8 +63,8 @@ function venue(index: number): VillageVenue {
     presentation: { image: null, x: null, y: null },
     occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
     capabilities: [],
-    state: { condition: "standing", upgrades: [], furniture: [], publicFacts: [], updatedAt: "" },
-  };
+    state: { condition: "standing", furniture: [], publicFacts: [], updatedAt: "" },
+  });
 }
 const oversizedSave = {
   ...defaultVillageState(),

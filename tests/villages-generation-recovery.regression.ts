@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
+import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
-import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 let mode = "truncated",
   ceiling = 900,
   calls = 0;
@@ -10,7 +11,7 @@ const release = configureVillagesRuntime({
   logger: { debug() {}, info() {}, warn() {}, error() {}, debugOverride() {} },
   isDebugAgentsEnabled: () => false,
   getAgentConfig: async () => ({ connectionId: null }),
-  persistence: { documents: { getById: async () => null } },
+  persistence: { documents: villageFixtureDocuments({ getById: async () => null }) },
   languageModels: {
     async resolveForRequest() {
       return {
@@ -57,7 +58,7 @@ async function main() {
       home: "",
       lore: [],
       activeWishes: [],
-      completedWishes: [],
+      wishes: [],
       schedule: null,
       allowInitialWish: false,
     };
@@ -75,7 +76,7 @@ async function main() {
     mode = "complete";
     const { agenda } = await proposeCompactFounding(context, async () => {});
     assert.equal(calls, 2);
-    assert.equal(agenda.wishes.length, 0, "routine generation cannot manufacture Wishes");
+    assert.equal(Object.hasOwn(agenda, "wishes"), false, "routine generation cannot manufacture Wishes");
     assert.equal(agenda.personalizationPending, false);
     assert.equal(Object.keys(agenda.week!).length, 7);
     assert.ok(

@@ -1,35 +1,47 @@
 import { acquireCheckoutOperation } from "./checkout-operation.mjs";
-import { mkdir, writeFile, readFile, open, unlink } from "node:fs/promises";
+import { mkdir, writeFile, readFile, open, unlink, appendFile } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { testInventory } from "./test-inventory.mjs";
-import { scheduleTests } from "./test-scheduler.mjs";
+import { availableParallelism, totalmem, freemem } from "node:os";
+import { browserWorkerLimit, scheduleTests } from "./test-scheduler.mjs";
 import { caseMatches } from "./test-cases.mjs";
 
 const args = process.argv.slice(2);
-const group = args.find((arg) => !arg.startsWith("--")) ?? "regression";
+const group = args.find((arg) => !arg.startsWith("--")) ?? (args.includes("--list") ? "all" : "regression");
 const inventory = await testInventory();
-if (args.includes("--list")) {
-  console.log(JSON.stringify(inventory, null, 2));
-  process.exit(0);
-}
 if (!["regression", "browser", "engine", "review", "all"].includes(group))
   throw new Error(`Unknown test group: ${group}`);
 const filter = args.find((arg) => arg.startsWith("--filter="))?.slice(9);
 const selected = args.filter((arg) => arg.startsWith("--test=")).map((arg) => arg.slice(7));
+const shard = args.find((arg) => arg.startsWith("--shard="))?.slice(8);
+if (shard !== undefined && !/^[12]\/2$/.test(shard)) throw Error("Use --shard=1/2 or --shard=2/2");
 const cases = args.filter((arg) => arg.startsWith("--case=")).map((arg) => arg.slice(7));
 if (args.includes("--fail-fast") && args.includes("--keep-going")) throw new Error("Choose fail-fast or keep-going");
 const failFast = args.includes("--fail-fast") || (!args.includes("--keep-going") && process.env.CI !== "true");
 const jobs = Number(args.find((arg) => arg.startsWith("--jobs="))?.slice(7) ?? 4);
-const browserJobs = Number(args.find((arg) => arg.startsWith("--browser-jobs="))?.slice(15) ?? Math.min(2, jobs));
+const host = { cpuCount: availableParallelism(), memoryBytes: totalmem(), freeMemoryBytes: freemem() };
+const browserJobs = Number(
+  args.find((arg) => arg.startsWith("--browser-jobs="))?.slice(15) ??
+    browserWorkerLimit({ jobs, ci: process.env.CI === "true", ...host }),
+);
 for (const arg of args) {
+  if (
+    ["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs=", "--shard="].some(
+      (prefix) => arg.startsWith(prefix) && !arg.slice(prefix.length).trim(),
+    )
+  )
+    throw new Error("Empty test option: " + arg.split("=")[0]);
   if (
     arg !== group &&
     arg !== "--list" &&
     arg !== "--fail-fast" &&
     arg !== "--keep-going" &&
-    !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs="].some((prefix) => arg.startsWith(prefix))
+    !["--filter=", "--test=", "--case=", "--jobs=", "--browser-jobs=", "--shard="].some((prefix) =>
+      arg.startsWith(prefix),
+    )
   )
     throw new Error(`Unknown test option: ${arg}`);
 }
@@ -54,7 +66,7 @@ for (const name of cases)
     !inventory.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)))
   )
     throw new Error("Unknown test case: " + name);
-const tests = inventory.filter(
+const scoped = inventory.filter(
   (test) =>
     (group === "all" || (group === "review" ? test.group !== "engine" : test.group === group)) &&
     (!filter || test.path.includes(filter)) &&
@@ -62,10 +74,15 @@ const tests = inventory.filter(
     (!cases.length ||
       test.cases.some((entry) => cases.some((name) => caseMatches(entry, name) || caseMatches(name, entry)))),
 );
+const tests = shard ? scoped.filter((_, index) => index % 2 === Number(shard[0]) - 1) : scoped;
 if (!tests.length) throw new Error("No tests matched; validation cannot pass an empty selection.");
 for (const name of cases)
   if (!tests.some((test) => test.cases.some((entry) => caseMatches(entry, name) || caseMatches(name, entry))))
     throw new Error("Requested test case is outside the selected files/group: " + name);
+if (args.includes("--list")) {
+  console.log(JSON.stringify(tests, null, 2));
+  process.exit(0);
+}
 const operation = await acquireCheckoutOperation(process.cwd());
 try {
   const root = ".build-tmp/test-results";
@@ -96,6 +113,11 @@ try {
     await lock.writeFile(JSON.stringify({ pid: process.pid, runId, group, startedAt: new Date().toISOString() }));
     await mkdir(directory);
     const start = Date.now();
+    console.log(
+      `WORKERS total=${jobs} browsers=${browserJobs} cpus=${host.cpuCount} memoryGiB=${(host.memoryBytes / 1024 ** 3).toFixed(1)} freeGiB=${(host.freeMemoryBytes / 1024 ** 3).toFixed(1)}`,
+    );
+    const progress = join(directory, "progress.jsonl");
+    let firstFailure = false;
     const results = await scheduleTests(tests, {
       jobs,
       browserJobs,
@@ -111,6 +133,9 @@ try {
           const child = spawn(process.execPath, ["--import", "tsx", test.path], {
             env: {
               ...process.env,
+              ...(test.group === "engine"
+                ? { TSX_TSCONFIG_PATH: fileURLToPath(new URL("../tsconfig.engine-tests.json", import.meta.url)) }
+                : {}),
               VILLAGES_TEST_CASES: JSON.stringify(testCases),
               VILLAGES_TEST_CASE_REPORT: caseReport,
               ...(process.env.VILLAGES_SCREENSHOT_DIR
@@ -125,6 +150,7 @@ try {
           });
           children.add(child);
           let output = "",
+            stderr = "",
             spawnError,
             timedOut = false;
           const timer = setTimeout(
@@ -138,6 +164,7 @@ try {
             output += data;
           });
           child.stderr.on("data", (data) => {
+            stderr += data;
             output += data;
           });
           child.on("error", (error) => {
@@ -148,7 +175,8 @@ try {
             children.delete(child);
             resolve({
               ...test,
-              code: timedOut || spawnError ? 1 : code,
+              code: timedOut || spawnError || stderr.trim() ? 1 : code,
+              stderr,
               signal,
               timedOut,
               error: spawnError,
@@ -157,36 +185,83 @@ try {
             });
           });
         });
-        if (testCases.length && result.code === 0) {
+        const requiredCases = testCases.length
+          ? testCases.flatMap((name) => {
+              const declared = test.cases.filter((entry) => caseMatches(entry, name));
+              return declared.length ? declared : [name];
+            })
+          : test.cases;
+        if (requiredCases.length && result.code === 0) {
           try {
             const coverage = JSON.parse(await readFile(caseReport, "utf8"));
-            if (
-              !testCases.every((name) =>
-                coverage.completed.some((entry) => caseMatches(entry, name) || caseMatches(name, entry)),
-              )
-            )
-              throw new Error("A requested case did not execute");
+            if (!requiredCases.every((name) => coverage.completed.some((entry) => caseMatches(entry, name))))
+              throw new Error("A declared or requested case did not execute");
             result.cases = coverage.completed;
           } catch (error) {
             result.code = 1;
             result.output += "\nCase coverage verification failed: " + error.message + "\n";
           }
         }
+        try {
+          const coverage = JSON.parse(await readFile(caseReport, "utf8"));
+          result.caseTimings = coverage.timings;
+        } catch (error) {
+          if (error.code !== "ENOENT") {
+            result.code = 1;
+            result.output += "\nInvalid case diagnostics: " + error.message + "\n";
+          }
+        }
         await writeFile(join(directory, test.path.split("/").pop() + ".log"), result.output);
         console.log(`${result.code === 0 ? "PASS" : "FAIL"} ${test.path} (${result.durationMs}ms)`);
-        if (result.code !== 0) console.error(result.output.slice(-3500));
+        await appendFile(
+          progress,
+          JSON.stringify({
+            at: new Date().toISOString(),
+            path: test.path,
+            code: result.code,
+            durationMs: result.durationMs,
+          }) + "\n",
+        );
+        if (result.code !== 0) {
+          console.error(result.output.slice(-3500));
+          if (!firstFailure) {
+            firstFailure = true;
+            await writeFile(
+              join(directory, "first-failure.json"),
+              JSON.stringify({
+                path: test.path,
+                at: new Date().toISOString(),
+                log: join(directory, test.path.split("/").pop() + ".log"),
+              }) + "\n",
+            );
+            if (process.env.GITHUB_ACTIONS === "true") {
+              console.error(
+                `::error title=First actionable test failure::${test.path}; remaining coverage is still being collected`,
+              );
+              if (process.env.GITHUB_STEP_SUMMARY)
+                await appendFile(
+                  process.env.GITHUB_STEP_SUMMARY,
+                  `First failing suite: \`${test.path}\`. Remaining coverage continues; logs identify failures.\n`,
+                );
+            }
+          }
+        }
         return { ...result, output: undefined };
       },
     });
     const report = {
+      startedAt: new Date(start).toISOString(),
+      completedAt: new Date().toISOString(),
       runId,
       group,
       jobs,
       browserJobs,
+      host: { ...host, freeMemoryAtEnd: freemem() },
       failFast,
       cases,
+      shard,
       durationMs: Date.now() - start,
-      completeInventory: !filter && !selected.length && !cases.length && !results.some((row) => row.skipped),
+      completeInventory: !shard && !filter && !selected.length && !cases.length && !results.some((row) => row.skipped),
       passed:
         results.every((result) => result.code === 0) &&
         cases.every((name) =>
@@ -200,6 +275,13 @@ try {
     await writeFile(
       join(root, `${group}-latest.json`),
       JSON.stringify({ report: join(directory, "report.json") }, null, 2) + "\n",
+    );
+    const slowest = [...results]
+      .filter((row) => row.durationMs)
+      .sort((a, b) => b.durationMs - a.durationMs)
+      .slice(0, 5);
+    console.log(
+      "Slowest suites: " + slowest.map((row) => row.path + " " + (row.durationMs / 1000).toFixed(1) + "s").join(", "),
     );
     console.log(
       `Test report: ${directory}/report.json; wall ${(report.durationMs / 1000).toFixed(1)}s; workers ${jobs}/${browserJobs}`,

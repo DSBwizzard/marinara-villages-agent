@@ -74,8 +74,7 @@ export function CardFlipSprite({
           });
         }
         if (cancelled) return;
-        const transform = (angle: number, mirror: boolean) =>
-          `perspective(900px) rotateY(${angle}deg) scaleX(${mirror ? -1 : 1})`;
+        const transform = (angle: number, mirror: boolean) => `rotateY(${angle}deg) scaleX(${mirror ? -1 : 1})`;
         image.dataset.flipping = "out";
         rotation = image.animate(
           [{ transform: transform(0, shown.current.mirrored) }, { transform: transform(90, shown.current.mirrored) }],
@@ -122,7 +121,7 @@ export function CardFlipSprite({
       alt=""
       data-framing={framing}
       data-facing={initial.current.view === "front" ? "front" : initial.current.mirrored ? "left" : "right"}
-      style={{ transformOrigin: "center bottom" }}
+      style={{ transformOrigin: "center center" }}
       onError={(event) => errorHandler.current(event.currentTarget.getAttribute("src") ?? url)}
     />
   );

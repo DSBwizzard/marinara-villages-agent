@@ -3,26 +3,24 @@ import { messageFrom, request } from "../../shared/api.js";
 import { API_PATH } from "../../shared/constants.js";
 import type { SetupVenueDraft } from "../../shared/types.js";
 
-import { foundingScenario } from "./FoundingPanels.js";
-import type { FoundingScenarioId } from "./scenarios.js";
 import type { FoundingState } from "./useFoundingState.js";
-import { removeFoundingDraft } from "./villages-founding-draft.js";
-import { personalSpaceDraft } from "./villages-founding-editor";
-import { draftZonePolicy } from "./villages-founding-zones";
-import { playerRoleProblem } from "./villages-player-role.js";
+import { removeDeviceDraft } from "../../shared/device-drafts.js";
+import { playerBackgroundProblem } from "./villages-player-background.js";
 import { arrangeQuickStartVenues } from "./quick-start-placement.js";
-import { mergeQuickStartSpaces } from "./quick-start-drafts.js";
+import { quickStartIdentity, quickStartTemplates, replaceQuickStartVenue } from "./quick-start-drafts.js";
 import { requestFoundingSuggestions } from "./suggestion-request.js";
 import { useCallback } from "react";
 
 export function createFoundingSuggestSetupVenues(ports: {
+  signal?: AbortSignal;
   readonly setupWorkspace?: FoundingState["setupWorkspace"];
   readonly setSetupWorkspace?: FoundingState["setSetupWorkspace"];
   readonly persistSetupDraft?: (data: import("./draft-model.js").SetupDraftData) => Promise<void>;
   readonly setupDraftData?: import("./draft-model.js").SetupDraftData;
+  readonly onQuickStartApplied?: () => void;
   readonly personaDraft: string;
-  readonly selectedResidentContexts: {
-    [k: string]: import("../../../shared/helpers/resident-founding-context").ResidentFoundingContext;
+  readonly selectedResidentAdmissions: {
+    [k: string]: import("../../../shared/helpers/resident-admission").ResidentAdmission;
   };
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupSuggestionsBusy: FoundingState["setSetupSuggestionsBusy"];
@@ -31,23 +29,25 @@ export function createFoundingSuggestSetupVenues(ports: {
   readonly setupAuthoredFieldsRef: React.RefObject<Record<string, string[]>>;
   readonly setupBeginningSourceKey: string;
   readonly setupBeginningSourceKeyRef: React.RefObject<string>;
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
+
   readonly setupImageTargetRef: FoundingState["setupImageTargetRef"];
   readonly setupLorebookDraft: FoundingState["setupLorebookDraft"];
   readonly setupLoreTokenBudgetDraft: FoundingState["setupLoreTokenBudgetDraft"];
+  readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupName?: FoundingState["setupName"];
-  readonly setupWorldFacts?: FoundingState["setupWorldFacts"];
-  readonly setupImprint?: FoundingState["setupImprint"];
+  readonly setupContext?: FoundingState["setupContext"];
+
   readonly setupSuggestionsClaim: FoundingState["setupSuggestionsClaim"];
   readonly setupVenues: FoundingState["setupVenues"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
 }) {
   return async (options?: { quickStart?: boolean; venueId?: string }) => {
-    options ??= {};
+    const pending = ports.setupWorkspace?.suggestionRequest;
+    options = pending ? { quickStart: pending.quickStart, venueId: pending.venueId } : (options ?? {});
     const {
       personaDraft,
-      selectedResidentContexts,
+      selectedResidentAdmissions,
       setSetupProblem,
       setSetupSuggestionsBusy,
       setSetupSuggestionsKey,
@@ -55,7 +55,7 @@ export function createFoundingSuggestSetupVenues(ports: {
       setupAuthoredFieldsRef,
       setupBeginningSourceKey,
       setupBeginningSourceKeyRef,
-      setupFoundingDetails,
+
       setupImageTargetRef,
       setupLorebookDraft,
       setupLoreTokenBudgetDraft,
@@ -65,127 +65,101 @@ export function createFoundingSuggestSetupVenues(ports: {
       setupVenuesRef,
     } = ports;
 
-    if (setupSuggestionsClaim.current || !setupSetting.trim() || !setupFoundingDetails.trim()) return;
+    if (setupSuggestionsClaim.current || !setupSetting.trim()) return;
     setupSuggestionsClaim.current = true;
-    const source = setupBeginningSourceKey;
-    const rows = setupVenues;
+    const replacing = !!options.quickStart;
+    const identity = quickStartIdentity(setupVenues);
+    const source = replacing
+      ? JSON.stringify([setupBeginningSourceKey, identity])
+      : options.venueId
+        ? JSON.stringify([setupBeginningSourceKey, options.venueId])
+        : setupBeginningSourceKey;
+    const rows = replacing ? quickStartTemplates(setupVenues) : setupVenues;
     setSetupSuggestionsBusy(true);
     setSetupProblem("");
     try {
-      const result = await requestFoundingSuggestions(ports, options, {
+      const requestRows = (rows: typeof setupVenues) =>
+        rows.map((row) => ({
+          id: row.id,
+          name: replacing ? "" : row.name,
+          form: replacing ? "" : row.form,
+          description: replacing ? "" : row.description,
+          spaceDescription: replacing ? "" : (row.spaces?.[0]?.description ?? ""),
+          venueClass: row.classes?.[0] ?? "other",
+          residentIds: row.residentIds ?? [],
+          playerHome: row.occupancy.playerHome,
+        }));
+      const input = {
         setting: setupSetting,
-        ...(options?.quickStart ? { mode: "quick-start", targetVenueId: options.venueId } : {}),
+        worldName: ports.setupWorldName,
+        ...(options.quickStart ? { mode: "quick-start" } : {}),
+        targetVenueId: options.venueId,
         villageName: ports.setupName,
-        worldFacts: ports.setupWorldFacts,
-        scenarioImprint: ports.setupImprint,
-        foundingDetails: setupFoundingDetails,
+        context: ports.setupContext,
+        communityVenueId: ports.setupContext?.communityVenueId,
         playerPersonaId: personaDraft,
         selectedLorebookIds: setupLorebookDraft,
         loreTokenBudget: setupLoreTokenBudgetDraft,
-        foundingResidentContexts: selectedResidentContexts,
-        venues: rows.map((row) => ({
-          id: row.id,
-          name: row.name,
-          form: row.form,
-          description: row.description,
-          spaceDescription: row.spaces?.[0]?.description ?? "",
-          venueClass: row.category === "public-center" ? "community" : "residence",
-          residentCharacterId: row.occupancy.residentCharacterId ?? "",
-        })),
-      });
+        foundingResidentAdmissions: selectedResidentAdmissions,
+        venues: requestRows(rows),
+      };
+      const result = await requestFoundingSuggestions({ ...ports, setupBeginningSourceKey: source }, options, input);
+
       if (
-        setupBeginningSourceKeyRef.current !== source ||
-        rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id))
+        setupBeginningSourceKeyRef.current !== setupBeginningSourceKey ||
+        (!replacing &&
+          !!options.venueId &&
+          JSON.stringify(input.venues) !== JSON.stringify(requestRows(setupVenuesRef.current))) ||
+        (replacing && quickStartIdentity(setupVenuesRef.current) !== identity) ||
+        (!replacing && rows.some((row) => !setupVenuesRef.current.some((current) => current.id === row.id)))
       )
         throw new Error(
           "The people or setting changed while suggestions were prepared. Your existing draft is kept; request fresh suggestions when ready.",
         );
-      setSetupVenues((currentRows) => {
-        const nextRows = currentRows.map((row) => {
+      if (replacing) {
+        if (!options.quickStart || options.venueId)
+          throw new Error(
+            "The older suggestion attempt was checked. Use Suggest Venues again to generate all template Venues.",
+          );
+        const next = rows.map((row) => {
+          const proposal = result.venues.find((item) => item.id === row.id);
+          if (!proposal) throw new Error("Suggestions did not return every template Venue. Your draft is unchanged.");
+          return replaceQuickStartVenue(row, proposal);
+        });
+        setSetupVenues(arrangeQuickStartVenues(next, true));
+        ports.onQuickStartApplied?.();
+        ports.setSetupWorkspace?.((state) => ({
+          ...state,
+          view: "map",
+          paused: false,
+          sections: {},
+          zones: {},
+          inactive: {},
+        }));
+        setSetupSuggestionsKey(setupBeginningSourceKey);
+        return;
+      }
+      if (options.quickStart) throw new Error("Use Suggest Venues to confirm replacing Venue drafts.");
+      setSetupVenues((currentRows) =>
+        currentRows.map((row) => {
+          if (options.venueId && row.id !== options.venueId) return row;
           const proposal = result.venues.find((item) => item.id === row.id);
           const before = rows.find((item) => item.id === row.id);
           if (
             !proposal ||
             !before ||
             setupImageTargetRef.current?.venueId === row.id ||
-            JSON.stringify(row.occupancy) !== JSON.stringify(before.occupancy)
+            quickStartIdentity([row]) !== quickStartIdentity([before])
           )
             return row;
           const changed: SetupVenueDraft = { ...row };
+          // Explicit selected-Venue suggestions change text only; room and access records remain authoritative.
           for (const key of ["name", "venueType", "form", "description"] as const)
-            if (!setupAuthoredFieldsRef.current[row.id]?.includes(key) && row[key] === before[key])
+            if ((options.venueId || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
-          if (options?.quickStart)
-            return mergeQuickStartSpaces(changed, before, proposal, setupAuthoredFieldsRef.current[row.id] ?? []);
-          const layoutEdited = ["layout", "spaces", "privateSpaces"].some((key) =>
-            setupAuthoredFieldsRef.current[row.id]?.includes(key),
-          );
-          if (
-            !layoutEdited &&
-            ![...(row.spaces ?? []), ...(row.privateSpaces ?? [])].some(
-              (zone) => zone.image || !["common:base", "private:base"].includes(zone.id),
-            ) &&
-            JSON.stringify(row.spaces) === JSON.stringify(before.spaces) &&
-            JSON.stringify(row.privateSpaces) === JSON.stringify(before.privateSpaces) &&
-            row.layout === before.layout
-          ) {
-            const role = row.category === "public-center" ? "community" : "residence";
-            changed.layout = proposal.layout;
-            changed.spaces =
-              proposal.layout === "common" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "common:base",
-                      connectedTo:
-                        row.spaces?.find((zone) => zone.id === "common:base")?.connectedTo ??
-                        proposal.connections
-                          ?.filter((edge) => edge.includes("common:base"))
-                          .map((edge) => (edge[0] === "common:base" ? edge[1] : edge[0])),
-                      ownerId: "",
-                      venueClass: role,
-                      name: proposal.commonName,
-                      purpose:
-                        proposal.commonPurpose ||
-                        (role === "residence" ? "Everyday home activities" : "Community gatherings"),
-                      access: draftZonePolicy(row, { venueClass: role }),
-                      description: proposal.commonDescription,
-                    },
-                  ]
-                : [];
-            changed.privateSpaces =
-              proposal.layout === "private" || proposal.layout === "both"
-                ? [
-                    {
-                      ...personalSpaceDraft(),
-                      id: "private:base",
-                      connectedTo:
-                        row.privateSpaces?.find((zone) => zone.id === "private:base")?.connectedTo ??
-                        proposal.connections
-                          ?.filter((edge) => edge.includes("private:base"))
-                          .map((edge) => (edge[0] === "private:base" ? edge[1] : edge[0])),
-                      venueClass: role,
-                      ownerId: row.occupancy.playerHome ? "player" : (row.occupancy.residentCharacterId ?? ""),
-                      name: proposal.privateName,
-                      purpose: proposal.privatePurpose,
-                      description: row.occupancy.playerHome ? (proposal.privateDescription ?? "") : "",
-                      access: draftZonePolicy(
-                        row,
-                        {
-                          venueClass: role,
-                          ownerId: row.occupancy.playerHome ? "player" : row.occupancy.residentCharacterId || "",
-                        },
-                        true,
-                      ),
-                      controllerIds: role === "community" ? ["player"] : undefined,
-                    },
-                  ]
-                : [];
-          }
           return changed;
-        });
-        return options?.quickStart ? arrangeQuickStartVenues(nextRows) : nextRows;
-      });
+        }),
+      );
       if (!options?.venueId) setSetupSuggestionsKey(source);
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "Suggestions could not be prepared. You can write the details yourself."));
@@ -197,37 +171,12 @@ export function createFoundingSuggestSetupVenues(ports: {
 }
 
 // ── Founding the village ───────────────────────────────────────────────────
-// The wizard collects place, shared circumstances, map, and residents before
+// The wizard collects place, the description, map, and residents before
 // writing the village. A half-answered setup never claims to be founded.
-export function createFoundingChooseSetupScenario(ports: {
-  readonly setSetupFoundingDetails: FoundingState["setSetupFoundingDetails"];
-  readonly setSetupFoundingReason: FoundingState["setSetupFoundingReason"];
-  readonly setSetupProblem: FoundingState["setSetupProblem"];
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
-  readonly setupFoundingReason: FoundingState["setupFoundingReason"];
-  readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-}) {
-  return (value: FoundingScenarioId) => {
-    const {
-      setSetupFoundingDetails,
-      setSetupFoundingReason,
-      setSetupProblem,
-      setupFoundingDetails,
-      setupFoundingReason,
-      snapshot,
-    } = ports;
-
-    if (snapshot?.isFounded) return;
-    if (value === setupFoundingReason) return;
-    const previousStarter = foundingScenario(setupFoundingReason).premise;
-    const keepPlayerText = !!setupFoundingDetails.trim() && setupFoundingDetails !== previousStarter;
-    setSetupFoundingReason(value);
-    if (!keepPlayerText) setSetupFoundingDetails(foundingScenario(value).premise);
-    setSetupProblem("");
-  };
-}
-
 export function createFoundingGotoSetupStep(ports: {
+  readonly setupResidentAdmissions?: FoundingState["setupResidentAdmissions"];
+  readonly setSetupResidentAdmissions?: FoundingState["setSetupResidentAdmissions"];
+
   readonly catalog: import("../../../shared/contracts/village").CatalogEntry[];
   readonly connectionSetupProblem: FoundingState["connectionSetupProblem"];
   readonly loadCatalog: (signal?: AbortSignal) => Promise<void>;
@@ -235,20 +184,21 @@ export function createFoundingGotoSetupStep(ports: {
   readonly loadPersonas: (signal?: AbortSignal) => Promise<void>;
   readonly personaDraft: string;
   readonly personas: import("../../../shared/contracts/village").PersonaEntry[];
-  readonly residentContextProblem: "" | "Complete the highlighted resident background fields in People.";
+  readonly residentContextProblem: "" | "Check starting notes in People.";
   readonly setMovingSetupVenueId: FoundingState["setMovingSetupVenueId"];
   readonly setSetupEditorOpen: FoundingState["setSetupEditorOpen"];
   readonly setSetupProblem: FoundingState["setSetupProblem"];
   readonly setSetupStep: FoundingState["setSetupStep"];
   readonly setupBlocker: (reviewingMap?: boolean) => string;
   readonly setSetupMapReviewed: FoundingState["setSetupMapReviewed"];
-  readonly setupFoundingDetails: FoundingState["setupFoundingDetails"];
+
   readonly setupFoundingVillagerIds: FoundingState["setupFoundingVillagerIds"];
   readonly setupHomeCount: number;
   readonly setupMapBusy: FoundingState["setupMapBusy"];
   readonly setupMapSrc: string | null;
   readonly setupName: FoundingState["setupName"];
-  readonly setupPlayerRole: FoundingState["setupPlayerRole"];
+  readonly setupPlayerBackground: FoundingState["setupPlayerBackground"];
+  readonly setupWorldName?: string;
   readonly setupSetting: FoundingState["setupSetting"];
   readonly setupStep: FoundingState["setupStep"];
   readonly setupSuggestionsBusy: FoundingState["setupSuggestionsBusy"];
@@ -271,13 +221,13 @@ export function createFoundingGotoSetupStep(ports: {
       setSetupStep,
       setupBlocker,
       setSetupMapReviewed,
-      setupFoundingDetails,
+
       setupFoundingVillagerIds,
       setupHomeCount,
       setupMapBusy,
       setupMapSrc,
       setupName,
-      setupPlayerRole,
+      setupPlayerBackground,
       setupSetting,
       setupStep,
       setupSuggestionsBusy,
@@ -285,17 +235,16 @@ export function createFoundingGotoSetupStep(ports: {
       snapshot,
     } = ports;
 
-    if (step === 4 && (setupVenueBusy || setupSuggestionsBusy)) {
+    if (step === 3 && (setupVenueBusy || setupSuggestionsBusy)) {
       setSetupProblem("Wait for the pending Venue request before Review.");
       return;
     }
-    if (step > setupStep || step === 4) {
+    if (step > setupStep || step === 3) {
       const peopleProblem =
         !personaDraft || !personas?.some((persona) => persona.id === personaDraft)
           ? "Choose an available Persona."
           : residentContextProblem ||
-            connectionSetupProblem ||
-            (!snapshot?.isFounded ? playerRoleProblem(setupPlayerRole) : "") ||
+            (!snapshot?.isFounded ? playerBackgroundProblem(setupPlayerBackground) : "") ||
             (!snapshot?.isFounded &&
             (setupHomeCount < 1 ||
               setupHomeCount > 3 ||
@@ -305,21 +254,20 @@ export function createFoundingGotoSetupStep(ports: {
       const placeProblem = !setupName.trim()
         ? "Give the village a name."
         : !setupSetting.trim()
-          ? "Describe the place and world."
-          : !snapshot?.isFounded && !setupFoundingDetails.trim()
-            ? "Describe the starting circumstances."
-            : "";
+          ? "Describe the place."
+          : "";
       const mapProblem =
         !snapshot?.isFounded && !setupMapSrc && !setupMapBusy
           ? "Generate or upload map artwork on Map before continuing."
           : "";
       const problem =
         placeProblem ||
+        connectionSetupProblem ||
         (step >= 2 ? peopleProblem : "") ||
         (step >= 3 ? mapProblem : "") ||
-        (step >= 4 ? setupBlocker(step === 4) : "");
+        (step >= 3 ? setupBlocker(step === 3) : "");
       if (problem) {
-        if (placeProblem) setSetupStep(0);
+        if (placeProblem || problem === connectionSetupProblem) setSetupStep(0);
         else if (step >= 2 && peopleProblem) setSetupStep(1);
         else if (step >= 3 && mapProblem) setSetupStep(2);
         setSetupProblem(problem);
@@ -327,7 +275,7 @@ export function createFoundingGotoSetupStep(ports: {
       }
     }
     setSetupProblem("");
-    if (step === 4) setSetupMapReviewed(true);
+    if (step === 3) setSetupMapReviewed(true);
     setSetupStep(step);
     setSetupEditorOpen(false);
     void loadPersonas();
@@ -347,27 +295,27 @@ export function useFoundingStartOver(ports: {
   readonly setDraftReady: FoundingState["setDraftReady"];
   readonly setResetArmed: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSavedSetupDraft: React.Dispatch<
-    React.SetStateAction<import("./villages-founding-draft").SavedFoundingDraft<import("./draft-model").SetupDraftData>>
+    React.SetStateAction<import("../../shared/device-drafts").SavedDeviceDraft<import("./draft-model").SetupDraftData>>
   >;
   readonly setSettingsError: React.Dispatch<React.SetStateAction<string>>;
   readonly setSnapshot: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village").VillageSnapshot>
   >;
 }) {
-  return useCallback(async () => {
-    const {
-      draftRevision,
-      draftSaveQueue,
-      openSetup,
-      setBusy,
-      setCatalog,
-      setDraftReady,
-      setResetArmed,
-      setSavedSetupDraft,
-      setSettingsError,
-      setSnapshot,
-    } = ports;
+  const {
+    draftRevision,
+    draftSaveQueue,
+    openSetup,
+    setBusy,
+    setCatalog,
+    setDraftReady,
+    setResetArmed,
+    setSavedSetupDraft,
+    setSettingsError,
+    setSnapshot,
+  } = ports;
 
+  return useCallback(async () => {
     setBusy(true);
     setSettingsError("");
     try {
@@ -377,7 +325,7 @@ export function useFoundingStartOver(ports: {
       // The offer to found the village is made again by hand: the player asked
       // for the wizard by asking to start over.
       await draftSaveQueue.current;
-      await removeFoundingDraft(API_PATH);
+      await removeDeviceDraft(API_PATH);
       draftRevision.current = 0;
       setSavedSetupDraft(null);
       setDraftReady(true);
@@ -388,5 +336,16 @@ export function useFoundingStartOver(ports: {
       setBusy(false);
       setResetArmed(false);
     }
-  }, [ports.openSetup]);
+  }, [
+    draftRevision,
+    draftSaveQueue,
+    openSetup,
+    setBusy,
+    setCatalog,
+    setDraftReady,
+    setResetArmed,
+    setSavedSetupDraft,
+    setSettingsError,
+    setSnapshot,
+  ]);
 }

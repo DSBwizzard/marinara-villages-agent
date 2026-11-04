@@ -2,6 +2,7 @@ import { bindActivationService, createActivationBinding } from "../../adapters/e
 
 /** Server-only collaboration used by world reads and writes; bound during application setup. */
 export interface WorldRelationships {
+  processPersonalMailOutbox?: typeof import("../residents/social-mail.js").processPersonalMailOutbox;
   readRelationshipState: typeof import("../residents/relationship-store.js").readRelationshipState;
   reconcileRelationships: typeof import("../../domain/rules/relationship-rules.js").reconcileRelationships;
   persistRelationshipAuthority: typeof import("../residents/relationship-store.js").persistRelationshipAuthority;

@@ -5,7 +5,6 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
   const {
     busy,
     generateRequestDescription,
-    decideHomeUpgrade,
     completeResidenceMove,
     decideResidenceMove,
     decideVenueRequest,
@@ -19,7 +18,6 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
     ? {
         ...ports.snapshot,
         venueRequests: [],
-        upgradeRequests: [],
         residences: ports.snapshot.residences.filter(
           (entry) => entry.proposedVenueId === venueId || entry.venueId === venueId,
         ),
@@ -68,25 +66,11 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                       <span className={`${ELEMENT_TAG}-hint`}>
                         {` · ${entry.source === "chat" ? "Conversation" : "Village life"}`}
                       </span>
-                      <input
-                        className={`${ELEMENT_TAG}-notice-input`}
-                        value={draft.name}
-                        maxLength={snapshot.settings.maxVenueNameLength}
-                        aria-label={`Requested place name from ${entry.requesterName || "villager"}`}
-                        onChange={(event) => edit({ name: event.target.value })}
-                      />
-                      <select
-                        className={`${ELEMENT_TAG}-notice-input`}
-                        value={draft.classes[0] ?? "community"}
-                        aria-label={`Requested place class from ${entry.requesterName || "villager"}`}
-                        onChange={(event) => edit({ classes: [event.target.value as (typeof draft.classes)[number]] })}
-                      >
-                        <option value="residence">Residence</option>
-                        <option value="community">Community</option>
-                        <option value="workplace">Workplace</option>
-                        <option value="other">Other</option>
-                      </select>
+                      <p>
+                        <strong>{entry.venueDraft.name}</strong> · {entry.venueDraft.classes.join(" / ")}
+                      </p>
                       <textarea
+                        autoComplete="off"
                         className={`${ELEMENT_TAG}-textarea`}
                         value={draft.description ?? ""}
                         maxLength={1000}
@@ -110,10 +94,7 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                           }
                           onClick={() => void decideVenueRequest(entry, true)}
                         >
-                          {draft.name !== entry.venueDraft.name ||
-                          JSON.stringify(draft.classes) !== JSON.stringify(entry.venueDraft.classes)
-                            ? "Send counteroffer"
-                            : "Start planning project"}
+                          Start planning project
                         </button>
                         <button
                           type="button"
@@ -129,32 +110,6 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                 );
               })}
             </ul>
-          )}
-          <h3 className={`${ELEMENT_TAG}-panel-title`}>Home upgrade requests</h3>
-          {snapshot.upgradeRequests.length === 0 ? (
-            <p className={`${ELEMENT_TAG}-hint`}>No home upgrades requested.</p>
-          ) : (
-            snapshot.upgradeRequests.map((entry) => (
-              <div
-                key={entry.id}
-                className={`${ELEMENT_TAG}-notice-row`}
-                data-villager-request={"upgrade:" + entry.id}
-                tabIndex={-1}
-              >
-                <span>{entry.detail}</span>
-                {([true, false] as const).map((approved) => (
-                  <button
-                    key={String(approved)}
-                    type="button"
-                    className={`${ELEMENT_TAG}-button`}
-                    disabled={busy}
-                    onClick={() => void decideHomeUpgrade(entry, approved)}
-                  >
-                    {approved ? "Approve upgrade" : "Deny"}
-                  </button>
-                ))}
-              </div>
-            ))
           )}
         </>
       ) : null}
@@ -176,6 +131,30 @@ export function renderVenueRequestsPage(ports: VenueRequestsPagePorts) {
                 tabIndex={-1}
               >
                 <span>{`${name} → ${target}`}</span>
+                {entry.agreement ? (
+                  <span>
+                    Sleeping Zone:{" "}
+                    {snapshot.settings.venues
+                      .find((venue) => venue.id === entry.proposedVenueId)
+                      ?.zones?.find((zone) => zone.id === entry.agreement?.sleepZoneId)?.name ??
+                      entry.agreement.sleepZoneId}
+                    . Waiting for{" "}
+                    {entry.agreement.requiredIds
+                      .filter((id) => !entry.agreement!.approvals[id])
+                      .map((id) => (id === "player" ? "you" : nameOfCharacter(id)))
+                      .join(", ") || "final confirmation"}
+                    .
+                  </span>
+                ) : null}
+                {entry.holdReason ? <p role="status">{entry.holdReason}</p> : null}
+                {entry.status === "pending" ? (
+                  <button type="button" disabled={busy} onClick={() => void decideResidenceMove(entry, "review")}>
+                    Review changed move
+                  </button>
+                ) : null}
+                <button type="button" disabled={busy} onClick={() => void decideResidenceMove(entry, false)}>
+                  Cancel move request
+                </button>
                 {ports.openPlace && snapshot.settings.venues.find((venue) => venue.id === entry.proposedVenueId) ? (
                   <button
                     type="button"

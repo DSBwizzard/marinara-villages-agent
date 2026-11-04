@@ -46,8 +46,8 @@
     },
     {
       "label": "physical-handoff",
-      "player": "I hand Tina the recorded teapot.",
-      "expected": "Exact stock, recipient and local witnesses; doorway speech cannot deliver it."
+      "player": "I hand Tina the teapot.",
+      "expected": "Supported local action and actual participants; hearing doorway speech alone cannot establish a handoff."
     },
     {
       "label": "substantial-commitment",

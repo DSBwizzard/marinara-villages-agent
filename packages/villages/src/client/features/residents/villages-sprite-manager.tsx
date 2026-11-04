@@ -1,5 +1,6 @@
+import { useConfirmation } from "../../shared/confirmation.js";
+import { downloadSpriteImage } from "../../shared/image-download.js";
 import {
-  SPRITE_UPLOAD_GUIDANCE,
   type SpriteArtwork,
   type SpriteFrame,
   type SpriteLibraryItem,
@@ -8,6 +9,7 @@ import {
 } from "../../../shared/contracts/sprites.js";
 import { initialSpriteFrame, renderSpritePixels, type SpritePixels } from "../../../shared/helpers/sprite-framing.js";
 import { SPRITE_MANAGER_STYLES } from "./villages-sprite-manager-styles.js";
+import { SpriteSetupDialog } from "./SpriteSetupDialog.js";
 import { useEffect, useRef, useState } from "react";
 
 type Request = <T>(path: string, init?: RequestInit) => Promise<T>;
@@ -17,7 +19,7 @@ type Props = {
   onSaved: (snapshot: unknown) => void;
   onBack: () => void;
   backLabel?: string;
-  onLeaveGuard: (guard: (() => boolean) | null) => void;
+  onLeaveGuard: (guard: (() => Promise<boolean>) | null) => void;
 };
 type Saved = {
   manager: SpriteManagerState;
@@ -25,7 +27,12 @@ type Saved = {
   addedArtworkIds?: string[];
   selectedArtworkIds?: string[];
 };
-type Draft = { frame: SpriteFrame; expressionId: string; name: string; useWhen: string; view: SpriteView };
+type Draft = {
+  frame: SpriteFrame;
+  expressionId: string;
+  name: string;
+  view: SpriteView;
+};
 function savedDraft(
   art: SpriteArtwork,
   state: SpriteManagerState,
@@ -43,8 +50,7 @@ function savedDraft(
   return {
     frame: art.frame,
     expressionId: expression?.id ?? "",
-    name: expression?.name ?? art.name.replace(/\.[^.]+$/, "").replace(/^full_/, ""),
-    useWhen: expression?.useWhen ?? "",
+    name: expression?.name ?? "",
     view: assignment?.view ?? "front",
   };
 }
@@ -94,6 +100,7 @@ export function SpriteManager({
   onLeaveGuard,
   backLabel = "← Back to Villagers",
 }: Props) {
+  const confirmVillages = useConfirmation(villager.characterId);
   const base = `/villagers/${encodeURIComponent(villager.characterId)}/sprites/manager`;
   const [manager, setManager] = useState<SpriteManagerState | null>(null);
   const [busy, setBusy] = useState(false),
@@ -101,9 +108,66 @@ export function SpriteManager({
     [notice, setNotice] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0),
     [pixelAttempt, setPixelAttempt] = useState(0);
+  const [setupOpen, setSetupOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [contexts, setContexts] = useState<Record<string, Pick<Draft, "expressionId" | "view">>>({});
+  const [draftsReady, setDraftsReady] = useState(false);
+  const [draftStorageError, setDraftStorageError] = useState("");
+  const draftStorageKey = `villages-sprite-drafts:${villager.characterId}`;
+  useEffect(() => {
+    if (!manager || draftsReady) return;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(draftStorageKey) ?? "null");
+      const restored: Record<string, Draft> = {};
+      const restoredContexts: Record<string, Pick<Draft, "expressionId" | "view">> = {};
+      for (const artwork of manager.artwork) {
+        const row = saved?.[artwork.id];
+        const value = row?.draft;
+        if (!value || row.signature !== JSON.stringify([artwork.source.sha256, artwork.rendered.url, artwork.frame]))
+          continue;
+        if (
+          ![value.expressionId, value.name].every((item) => typeof item === "string") ||
+          !["front", "side"].includes(value.view) ||
+          !value.frame ||
+          !["x", "y", "width", "height", "scale", "offsetX", "offsetY"].every((key) =>
+            Number.isFinite(value.frame[key]),
+          )
+        )
+          continue;
+        restored[artwork.id] = value;
+        if (row.context && typeof row.context.expressionId === "string" && ["front", "side"].includes(row.context.view))
+          restoredContexts[artwork.id] = row.context;
+      }
+      setDrafts(restored);
+      setContexts(restoredContexts);
+    } catch {
+      setDraftStorageError("Saved Sprite Manager edits could not be restored on this device.");
+    }
+    setDraftsReady(true);
+  }, [manager, draftsReady, draftStorageKey]);
+  useEffect(() => {
+    if (!manager || !draftsReady) return;
+    try {
+      const saved = Object.fromEntries(
+        manager.artwork
+          .filter((artwork) => drafts[artwork.id])
+          .map((artwork) => [
+            artwork.id,
+            {
+              signature: JSON.stringify([artwork.source.sha256, artwork.rendered.url, artwork.frame]),
+              draft: drafts[artwork.id],
+              context: contexts[artwork.id],
+            },
+          ]),
+      );
+      if (Object.keys(saved).length) sessionStorage.setItem(draftStorageKey, JSON.stringify(saved));
+      else sessionStorage.removeItem(draftStorageKey);
+      setDraftStorageError("");
+    } catch {
+      setDraftStorageError("Sprite edits cannot be retained on this device. Keep this page open until they are saved.");
+    }
+  }, [manager, draftsReady, draftStorageKey, drafts, contexts]);
   const [pixels, setPixels] = useState<{ url: string; image: SpritePixels } | null>(null);
   const [pixelError, setPixelError] = useState("");
   const [preview, setPreview] = useState<{
@@ -200,26 +264,27 @@ export function SpriteManager({
     });
     return () => cancelAnimationFrame(task);
   }, [source, frame]);
-  function mayLeave() {
+  async function mayLeave() {
     if (inFlight.current) return false;
-    return (
-      !dirtyCount ||
-      window.confirm("Discard unsaved Sprite Manager changes and leave? Your saved artwork will stay in use.")
-    );
+    if (!dirtyCount) return true;
+    if (
+      !(await confirmVillages("Discard unsaved Sprite Manager changes and leave? Your saved artwork will stay in use."))
+    )
+      return false;
+    if (inFlight.current) return false;
+    try {
+      sessionStorage.removeItem(draftStorageKey);
+    } catch {
+      /* Saving remains available in this interface. */
+    }
+    setDrafts({});
+    setContexts({});
+    return true;
   }
   useEffect(() => {
     onLeaveGuard(mayLeave);
     return () => onLeaveGuard(null);
   });
-  useEffect(() => {
-    if (!dirtyCount && !busy) return;
-    const warn = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
-  }, [dirtyCount, busy]);
   useEffect(() => {
     if (libraryOpen) libraryDialog.current?.showModal();
     else if (libraryDialog.current?.open) {
@@ -284,7 +349,7 @@ export function SpriteManager({
     for (const file of files) images.push({ name: file.name, image: await readFile(file) });
     const saved = await call<Saved>("import", { images });
     accept(saved, saved.addedArtworkIds?.[0]);
-    setNotice("Artwork uploaded. Choose its expression and facing, then Save and use in Scenes.");
+    setNotice("Artwork imported.");
   }
   async function openLibrary() {
     setLibraryOpen(true);
@@ -326,6 +391,11 @@ export function SpriteManager({
   }
   const feedback = (
     <>
+      {draftStorageError ? (
+        <p role="alert" className="vsm-feedback vsm-feedback-error">
+          {draftStorageError}
+        </p>
+      ) : null}
       {error ? (
         <p role="alert" className="vsm-feedback vsm-feedback-error">
           {error}
@@ -340,13 +410,26 @@ export function SpriteManager({
   );
   return (
     <section className="vsm" aria-label={`${villager.name} Sprite Manager`}>
+      {setupOpen ? (
+        <SpriteSetupDialog
+          characterId={villager.characterId}
+          name={villager.name}
+          existing
+          onClose={() => setSetupOpen(false)}
+          onDone={async () => {
+            onSaved(await request(""));
+            setSetupOpen(false);
+            setLoadAttempt((prior) => prior + 1);
+          }}
+        />
+      ) : null}
       <style>{SPRITE_MANAGER_STYLES}</style>
       <header className="vsm-heading">
         <button
           aria-label={backLabel}
           disabled={busy}
-          onClick={() => {
-            if (mayLeave()) onBack();
+          onClick={async () => {
+            if (await mayLeave()) onBack();
           }}
         >
           {backLabel === "← Back to profile" ? "← Profile" : backLabel.replace("← Back to ", "← ")}
@@ -355,9 +438,16 @@ export function SpriteManager({
           <h2 ref={heading} tabIndex={-1}>
             {villager.name}’s Sprite Manager
           </h2>
-          <small>Artwork for every Scene</small>
         </div>
         <div className="vsm-toolbar">
+          <button
+            disabled={busy || !manager}
+            onClick={async () => {
+              if (await mayLeave()) setSetupOpen(true);
+            }}
+          >
+            Import Engine sprites
+          </button>
           <button className="vsm-primary" disabled={busy || !manager} onClick={() => fileInput.current?.click()}>
             Upload images
           </button>
@@ -367,6 +457,7 @@ export function SpriteManager({
         </div>
       </header>
       <input
+        autoComplete="off"
         className="vsm-file"
         ref={fileInput}
         type="file"
@@ -380,10 +471,6 @@ export function SpriteManager({
         }}
       />
       {manager && !(selected && draft && frame) ? feedback : null}
-      <details className="vsm-help">
-        <summary>Artwork tips</summary>
-        <p>{SPRITE_UPLOAD_GUIDANCE} PNG, WebP, or JPEG; up to 12 MB per image.</p>
-      </details>
       {!manager ? (
         <div className="vsm-empty">
           {error ? (
@@ -543,14 +630,10 @@ export function SpriteManager({
                           onClick={() => {
                             closeMoreActions();
                             void perform(async () => {
-                              const response = await fetch(selected.rendered.url);
-                              if (!response.ok) throw new Error("The saved PNG could not be downloaded.");
-                              const url = URL.createObjectURL(await response.blob());
-                              const link = document.createElement("a");
-                              link.href = url;
-                              link.download = `${(baseline?.name ?? selected.name).replace(/[^a-z0-9_-]/gi, "-") || "sprite"}-${baseline?.view ?? "front"}.png`;
-                              link.click();
-                              setTimeout(() => URL.revokeObjectURL(url), 30000);
+                              await downloadSpriteImage(
+                                selected.rendered.url,
+                                `${(baseline?.name ?? selected.name).replace(/[^a-z0-9_-]/gi, "-") || "sprite"}-${baseline?.view ?? "front"}.png`,
+                              );
                             });
                           }}
                         >
@@ -559,12 +642,12 @@ export function SpriteManager({
                         <button
                           className="vsm-danger"
                           disabled={busy}
-                          onClick={() => {
+                          onClick={async () => {
                             const count = manager.assignments.filter((item) => item.artworkId === selected.id).length;
                             if (
-                              !window.confirm(
+                              !(await confirmVillages(
                                 `Remove ${selected.name}? This removes its ${count} Scene ${count === 1 ? "assignment" : "assignments"} and any unsaved edits to this image.`,
-                              )
+                              ))
                             )
                               return;
                             closeMoreActions();
@@ -609,8 +692,7 @@ export function SpriteManager({
                           expression = manager.expressions.find((item) => item.id === id);
                         edit({
                           expressionId: id,
-                          name: expression?.name ?? selected.name.replace(/\.[^.]+$/, "").replace(/^full_/, ""),
-                          useWhen: expression?.useWhen ?? "",
+                          name: expression?.name ?? "",
                         });
                       }}
                     >
@@ -626,6 +708,7 @@ export function SpriteManager({
                   <label>
                     Expression name
                     <input
+                      autoComplete="off"
                       value={draft.name}
                       maxLength={100}
                       disabled={busy}
@@ -647,7 +730,7 @@ export function SpriteManager({
                       ))}
                     </div>
                   </div>
-                  <p className="vsm-hint">Side faces right; Scenes mirror it when looking left.</p>
+                  {draft.view === "side" ? <p className="vsm-hint">Side views must face right.</p> : null}
                   {manager.assignments.some((item) => item.artworkId === selected.id) ? (
                     <div className="vsm-assignments" role="group" aria-label="Saved assignments">
                       <p className="vsm-hint">Assignments</p>
@@ -696,21 +779,6 @@ export function SpriteManager({
                       </p>
                     </div>
                   ) : null}
-                  <label>
-                    Use when…
-                    <textarea
-                      aria-label="Use when…"
-                      value={draft.useWhen}
-                      maxLength={1000}
-                      disabled={busy}
-                      placeholder="For example: listening calmly or speaking with reassurance."
-                      onChange={(event) => edit({ useWhen: event.target.value })}
-                    />
-                  </label>
-                  <p className="vsm-hint">
-                    Guides the narration AI’s expression choice.
-                    {draft.expressionId ? " Name and description apply to every facing of this expression." : ""}
-                  </p>
                 </section>
                 <section aria-label="Framing">
                   <h3>Framing</h3>
@@ -725,6 +793,7 @@ export function SpriteManager({
                         </span>
                       </span>
                       <input
+                        autoComplete="off"
                         aria-label={{ scale: "Size", offsetX: "Horizontal position", offsetY: "Foot position" }[field]}
                         type="range"
                         min={field === "scale" ? 0.05 : field === "offsetX" ? -1024 : -1536}
@@ -773,6 +842,7 @@ export function SpriteManager({
                             ]
                           }
                           <input
+                            autoComplete="off"
                             type="number"
                             step={field === "scale" ? 0.05 : 1}
                             disabled={busy}
@@ -800,6 +870,7 @@ export function SpriteManager({
                             }[field]
                           }
                           <input
+                            autoComplete="off"
                             type="number"
                             step={1}
                             value={frame[field] ?? ""}
@@ -865,7 +936,6 @@ export function SpriteManager({
             Close library
           </button>
         </div>
-        <p className="vsm-hint">Independent copies of this character’s Engine sprites. Existing copies are reused.</p>
         {libraryLoading ? (
           <p role="status">Loading character sprites…</p>
         ) : libraryError ? (
@@ -885,6 +955,7 @@ export function SpriteManager({
                 <img src={item.url} alt="" loading="lazy" />
                 <span>
                   <input
+                    autoComplete="off"
                     type="checkbox"
                     disabled={busy || Boolean(item.adoptedArtworkId)}
                     checked={librarySelected.includes(item.filename)}
@@ -920,7 +991,7 @@ export function SpriteManager({
                 setLibraryOpen(false);
                 setNotice(
                   saved.addedArtworkIds?.length
-                    ? "Independent artwork copies added. Choose their expressions and facing."
+                    ? "Artwork imported."
                     : "Selected artwork is already in Sprite Manager.",
                 );
               })

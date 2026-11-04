@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
@@ -12,9 +13,9 @@ export async function createVenueScreenHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueScreenCommands} from './packages/villages/src/client/features/venues/screen-commands.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
-import {VenueZoneEditor} from './packages/villages/src/client/features/venues/VenuePanels.js';
 import {VenueAccessPanel} from './packages/villages/src/client/features/venues/villages-venue-access.js';
-import {useSaveStoryPace} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
+import {ConfirmationProvider} from './packages/villages/src/client/shared/confirmation.js';
 function Harness(){
 const [snapshot,rawSnapshot]=useState(window.seed),[screen,setScreen]=useState('venue'),[venueId,setVenueId]=useState('A / venue'),[venuePage,setVenuePage]=useState(window.page),[venueZoneKey,setVenueZoneKey]=useState(window.initialZone);
 const [busy,rawBusy]=useState(false),[settingsError,rawSettingsError]=useState(''),[venueEditBusy,rawEditBusy]=useState(false),[venueEditError,rawEditError]=useState(''),[venueEditNotice,rawNotice]=useState(''),
@@ -23,14 +24,12 @@ const setSnapshot=useCallback(v=>{window.calls.snapshot++;rawSnapshot(v)},[]),se
 setVenueEditBusy=useCallback(v=>{window.calls.editBusy++;rawEditBusy(v)},[]),setVenueEditError=useCallback(v=>{window.calls.editError++;rawEditError(v)},[]),setVenueEditNotice=useCallback(v=>{window.calls.notice++;rawNotice(v)},[]),
 setVenueEditDraft=useCallback(v=>{window.calls.draft++;rawDraft(v)},[]),setVenueProposalDraft=useCallback(v=>{window.calls.proposal++;rawProposal(v)},[]),setPlaceProblem=useCallback(v=>{window.calls.problem++;rawProblem(v)},[]);
 const ports={snapshot,screen,venueId,venuePage,venueZoneKey,venueEditDraft,venueProposalDraft,setSnapshot,setBusy,setSettingsError,setVenueEditBusy,setVenueEditError,setVenueEditNotice,setVenueEditDraft,setVenueProposalDraft,setPlaceProblem};
-const commands=useVenueScreenCommands(ports),pace=useSaveStoryPace(ports),place=snapshot.settings.venues.find(v=>v.id===venueId);
-const actions={name:()=>commands.saveVenueName(place,venueEditDraft.name),image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),details:()=>commands.saveVenueDetails(place,venueEditDraft,window.occupied,place.classes),
-shared:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'shared'),private:()=>commands.proposeRoomEdit(place,venueEditDraft,place.classes,'private','mara'),
-player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>commands.changeVenueAccess(place.id,window.accessCommand),retry:()=>commands.retryPrivateSpacePreparation(),
+const commands=useVenueScreenCommands(ports),pace=useSaveBackgroundPace(ports),place=snapshot.settings.venues.find(v=>v.id===venueId);
+const actions={name:()=>commands.saveVenueName(place,venueEditDraft.name),image:()=>commands.saveVenueImageContext(place,{useAssignedVillagerContext:false,useVisualLore:true}),player:()=>commands.requestPlayerMove(place.id,' private / target '),access:()=>commands.changeVenueAccess(place.id,window.accessCommand),retry:()=>commands.retryPrivateSpacePreparation(),
 zone:()=>commands.saveVenueZone(place.id,venueZoneKey,window.zoneBody),residence:()=>commands.proposeResidenceMove('resident / A','target / B',' private / target '),
-proposal:()=>commands.submitVenueProposal(place,venueProposalDraft),pace:()=>pace('quiet')};
+layout:()=>commands.commitVenueZoneLayout(place.id),discard:()=>commands.discardVenueZoneLayout(place.id),proposal:()=>commands.submitVenueProposal(place,venueProposalDraft),pace:()=>pace('quiet')};
 const capture=p=>{window.pending.push(Promise.resolve(p).then(value=>({value}),cause=>({error:cause.message})));return window.pending.length-1};
-const run=kind=>capture(actions[kind]());const ui=Object.fromEntries(Object.entries(commands).map(([key,fn])=>[key,(...args)=>{const p=fn(...args);capture(p);return p}]));
+const run=kind=>capture(actions[kind]());const ui=Object.fromEntries(Object.entries(commands).map(([key,fn])=>[key,typeof fn==='function'?(...args)=>{const p=fn(...args);capture(p);return p}:fn]));
 const jump=({id=venueId,page=venuePage,zone=venueZoneKey,active=true}={})=>flushSync(()=>{setVenueId(id);setVenuePage(page);setVenueZoneKey(zone);setScreen(active?'venue':'home');
 const v=window.seed.settings.venues.find(v=>v.id===id);rawDraft(v?{...structuredClone(v),name:'Draft '+id}:null);rawProposal(structuredClone(window.proposal));rawEditError('B marker');rawNotice('B marker');rawSettingsError('B marker');rawProblem({id,text:'B marker'});});
 window.h={run,cross:kinds=>kinds.forEach(run),retain:kind=>{window.old=actions[kind]},old:()=>capture(window.old()),jump,
@@ -42,16 +41,15 @@ removeVenue:()=>rawSnapshot(current=>({...current,settings:{...current.settings,
 revision:()=>rawSnapshot(current=>({...current,settings:{...current.settings,venues:current.settings.venues.map(v=>v.id===venueId?{...v,accessView:{...v.accessView,revision:v.accessView.revision+1}}:v)}})),
 read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,screen,venueId,venuePage,venueZoneKey,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem})};
 const editorZone=place?.zones.find(z=>z.id===venueZoneKey)??place?.zones[0];
-return <><pre id='state'>{JSON.stringify(window.h.read())}</pre><VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
+return <><pre id='state'>{JSON.stringify(window.h.read())}</pre>{window.accessPanel ? <VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /> : <VenueScreen controller={{...ports,...ui,busy,settingsError,venueEditBusy,venueEditError,venueEditNotice,venueEditDraft,venueProposalDraft,placeProblem,
 homeBuildings:[],room:null,roomBusy:false,drawPlaceImage:async()=>{},dropPlaceImage:async()=>{},keepPlaceImage:async()=>{},leaveVenue:()=>jump({id:null,active:false}),openRoom:async()=>{},retryWork:async()=>{},
 moveTargetId:'target / B',movePrivateZoneId:' private / target ',playerMovePrivateZoneId:' private / target ',setMoveTargetId:()=>{},setMovePrivateZoneId:()=>{},setPlayerMovePrivateZoneId:()=>{},
 placeBusyId:'',nameOfCharacter:id=>id??'',standingAt:()=>[],setScreen,setVenuePage,setVenueZoneKey,
-venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>
-{place && editorZone && venuePage==='view' ? <details><summary>Access options</summary><VenueAccessPanel key={JSON.stringify([place.id,editorZone.id,place.accessView.revision])} venue={place} zoneId={editorZone.id} people={[{id:'player',name:'Player'},{id:'mara',name:'Mara'}]} isFounded={snapshot.isFounded} onCommand={command=>ui.changeVenueAccess(place.id,command)} /></details> : null}
-{place && editorZone && venuePage!=='view' ? <section aria-label="Isolated Zone editor command contract"><VenueZoneEditor key={place.id+editorZone.id} zone={{...editorZone,key:editorZone.id,zoneId:editorZone.id,label:editorZone.name,area:'public',spaceClass:'community',ownerId:'',locked:false,canEnter:true,accessLabel:'Open to you'}} isFounded={snapshot.isFounded} onSave={body=>ui.saveVenueZone(place.id,editorZone.id,body)} /></section> : null}</>;
+venueSection:venuePage==='view'?'zones':'manage',setVenueSection:value=>setVenuePage(value==='zones'?'view':'edit'),planVenueRenovation:()=>{},openVenueRequests:()=>{}}}/>}
+</>;
 }
-window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};window.confirms=[];window.confirm=message=>{window.confirms.push(message);window.confirmHook?.();return window.confirmAnswer};
-const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
+window.pending=[];window.calls={snapshot:0,busy:0,settingsError:0,editBusy:0,editError:0,notice:0,draft:0,proposal:0,problem:0};
+const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><ConfirmationProvider><Harness/></ConfirmationProvider></StrictMode>:<ConfirmationProvider><Harness/></ConfirmationProvider>);
 `,
     },
     bundle: true,
@@ -66,6 +64,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       requests = [],
       errors = [];
     const seed = structuredClone(fixture);
+    await mockEngineLookups(context);
     seed.settings.setting = "A";
     seed.isFounded = options.founded ?? true;
     if (options.hydrate) delete seed.isFounded;
@@ -89,11 +88,8 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       canInvite: true,
     };
     const state = {
-      condition: "sound",
-      items: [],
-      publicFacts: [],
-      features: [{ id: "feature / A", text: "Known feature", locked: true }],
-      traces: [],
+      revision: 0,
+      recent: null,
       updatedAt: seed.village.instant,
     };
     seed.settings.venues = ["A / venue", "B / venue"].map((id, index) => ({
@@ -106,7 +102,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       layoutVersion: 1,
       workerIds: [],
       residentIds: ["mara"],
-      state: { ...seed.settings.venues[0].state, features: [] },
+      state: { ...seed.settings.venues[0].state },
       spaces: [{ id: "common", venueClass: "residence", description: "Common description", state, image: null }],
       privateSpaces: [{ ownerId: "mara", description: "Private description", state, image: null }],
       accessView: { revision: 1, canManage: true, managerIds: ["player"], visitorHours: null, bans: [], changes: [] },
@@ -129,15 +125,14 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         },
       })),
     }));
+    options.prepareSeed?.(seed);
     const draft = structuredClone(seed.settings.venues[0]);
     draft.name = " Draft A ";
     const proposal = {
       classes: ["residence", "community"],
       capacity: 2,
-      slot: 1,
       title: " Improvement ",
       description: " Raw proposed detail ",
-      extraBeds: 1,
     };
     const accessCommand = {
       action: "zone-policy",
@@ -146,15 +141,10 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       operationId: "operation / A",
       policy,
     };
-    const zoneBody = {
-      name: " Raw Zone ",
-      purpose: "Purpose",
-      description: " Raw description ",
-      state: { features: state.features },
-    };
+    const zoneBody = { name: " Raw Zone " };
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-screen.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
       requests.push({
@@ -173,6 +163,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       zoneBody,
       strict,
       page: options.page ?? "edit",
+      accessPanel: options.accessPanel ?? false,
       initialZone: options.zone ?? "zone / same",
       occupied: options.occupied ?? false,
       confirmAnswer: true,
@@ -189,7 +180,15 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
       accessCommand,
       zoneBody,
       read,
-      run: (kind) => page.evaluate((kind) => window.h.run(kind), kind),
+      run: async (kind, autoConfirm = true) => {
+        const index = await page.evaluate((kind) => window.h.run(kind), kind);
+        if (autoConfirm) {
+          await page.evaluate(() => new Promise(requestAnimationFrame));
+          const dialog = page.getByRole("dialog", { name: "Confirm", exact: true });
+          if (await dialog.count()) await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+        }
+        return index;
+      },
       settle: (index) => page.evaluate((index) => window.pending[index], index),
       reply: async (index, options = {}) => {
         const snapshot = structuredClone(seed);
@@ -197,7 +196,7 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
         snapshot.isFounded = options.founded ?? seed.isFounded ?? true;
         snapshot.settings.venues[0].name = "Saved A";
         snapshot.settings.venues[1].name = "Saved B";
-        await requests[index].route.fulfill({
+        await fulfill(requests[index].route, {
           status: options.fail ? 502 : 200,
           contentType: "application/json",
           body: JSON.stringify(options.fail ? { error: "synthetic Venue failure" } : snapshot),
@@ -214,29 +213,67 @@ const root=createRoot(document.getElementById('root'));window.unmount=()=>root.r
 /** Actual owner and delegated panels; HTTP is held independently and never reaches providers. */
 export async function verifyVenueScreenLifetimes(browser) {
   const mount = await createVenueScreenHarness(browser);
-  const kinds = [
-    "name",
-    "image",
-    "details",
-    "shared",
-    "private",
-    "player",
-    "access",
-    "retry",
-    "zone",
-    "residence",
-    "proposal",
-  ];
+  for (const width of [1366, 390]) {
+    const f = await mount(true, width, {
+      prepareSeed: (seed) => {
+        seed.isFounded = true;
+        seed.settings.communityVenueId = "B / venue";
+        for (const venue of seed.settings.venues) {
+          venue.classes = ["other"];
+          venue.residentIds = [];
+          venue.occupancy.playerHome = false;
+          venue.accessView = {
+            revision: 1,
+            canManage: false,
+            canRecover: false,
+            canDesignateCommunity: venue.id === "A / venue",
+          };
+        }
+      },
+    });
+    const choose = f.page.getByRole("button", { name: "Use as Community Venue", exact: true });
+    await expect(choose).toBeVisible();
+    await choose.click();
+    await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
+    await expect.poll(() => f.requests.length).toBe(1);
+    assert.equal(f.requests[0].path, "/api/villages/venues/A%20%2F%20venue/access");
+    assert.equal(f.requests[0].body.action, "community-venue");
+    assert.equal(f.requests[0].body.previousVenueId, "B / venue");
+    assert.equal(f.requests[0].body.previousRevision, 1);
+    assert.equal(f.requests[0].body.expectedRevision, 1);
+    const reply = structuredClone(f.seed);
+    reply.settings.communityVenueId = "A / venue";
+    reply.settings.venues[0].accessView = {
+      revision: 2,
+      canManage: false,
+      canRecover: false,
+      canDesignateCommunity: false,
+    };
+    reply.settings.venues[1].accessView = {
+      revision: 2,
+      canManage: false,
+      canRecover: true,
+      canDesignateCommunity: true,
+    };
+    await fulfill(f.requests[0].route, { status: 200, contentType: "application/json", body: JSON.stringify(reply) });
+    await expect(choose).toHaveCount(0);
+    await expect(
+      f.page.getByText(
+        "Public and unowned, with no bans or opening hours. Designate another Venue before changing its use or control.",
+        { exact: true },
+      ),
+    ).toBeVisible();
+    assert.equal(f.requests.length, 1, "Selecting a Community Venue sends one bounded access command");
+    await f.finish();
+  }
+  const kinds = ["name", "image", "player", "access", "retry", "zone", "residence", "proposal"];
   const paths = {
     name: "/locations/venue/A%20%2F%20venue",
     image: "/locations/venue/A%20%2F%20venue",
-    details: "/locations/venue/A%20%2F%20venue",
-    shared: "/locations/venue/A%20%2F%20venue/edit-proposals",
-    private: "/locations/venue/A%20%2F%20venue/edit-proposals",
     player: "/locations/venue/A%20%2F%20venue/player-move",
     access: "/venues/A%20%2F%20venue/access",
     retry: "/private-spaces/retry",
-    zone: "/venues/A%20%2F%20venue/zones/zone%20%2F%20same",
+    zone: "/venues/A%20%2F%20venue/zones/zone%20%2F%20same/name",
     residence: "/residences/proposals",
     proposal: "/locations/venue/A%20%2F%20venue/proposals",
   };
@@ -244,32 +281,18 @@ export async function verifyVenueScreenLifetimes(browser) {
     name: { name: "Draft A" },
     image: {
       name: "A / venue",
-      description: f.seed.settings.venues[0].description,
       imageContext: { useAssignedVillagerContext: false, useVisualLore: true },
     },
-    details: { name: " Draft A ", venueType: "Home", description: f.draft.description },
-    shared: {
-      target: "shared",
-      ownerId: "",
-      description: f.draft.spaces[0].description,
-      state: f.draft.spaces[0].state,
-    },
-    private: {
-      target: "private",
-      ownerId: "mara",
-      description: f.draft.privateSpaces[0].description,
-      state: f.draft.privateSpaces[0].state,
-    },
+
     player: { privateZoneId: " private / target " },
     access: f.accessCommand,
     retry: null,
     zone: f.zoneBody,
     residence: { characterId: "resident / A", venueId: "target / B", privateZoneId: " private / target " },
     proposal: {
+      requestId: f.requests[0].body?.requestId,
       classes: f.proposal.classes,
       capacity: 2,
-      slot: 1,
-      improvement: { title: f.proposal.title, description: f.proposal.description, extraBeds: 1 },
       title: f.proposal.title,
       detail: f.proposal.description,
     },
@@ -285,8 +308,6 @@ export async function verifyVenueScreenLifetimes(browser) {
     return outcome;
   }
   async function openAccess(f) {
-    const options = f.page.getByText("Access options", { exact: true });
-    if (!(await options.locator("..").evaluate((el) => el.open))) await options.click();
     await f.page.getByText("Manage access", { exact: true }).click();
     await f.page.getByText("Zone policy", { exact: true }).click();
   }
@@ -295,20 +316,36 @@ export async function verifyVenueScreenLifetimes(browser) {
     for (const strict of [true]) {
       {
         const f = await mount(strict, width, { page: "view" });
+        await f.page.getByRole("button", { name: /^Rename / }).click();
+        await f.page.getByLabel("Zone name", { exact: true }).fill("Retained name");
+        await f.page.getByLabel("Zone name", { exact: true }).press("Tab");
+        await expect.poll(() => f.requests.length).toBe(1);
+        await f.reply(0, { fail: true });
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toHaveValue("Retained name");
+        await expect(f.page.getByRole("alert").filter({ hasText: "The Zone name could not be saved" })).toBeVisible();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
+        await expect.poll(() => f.requests.length).toBe(2);
+        await f.reply(1);
+        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeFocused();
+        await f.finish();
+      }
+      {
+        const f = await mount(strict, width, { page: "view" });
+        await f.page.getByRole("button", { name: /^Rename / }).click();
         await f.page.getByLabel("Zone name", { exact: true }).fill("Renamed Zone");
-        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => {
           window.h.reset();
           window.h.refound();
         });
-        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
-        await f.page.getByRole("button", { name: "Save zone name", exact: true }).click();
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeEnabled();
+        await f.page.getByLabel("Zone name", { exact: true }).press("Enter");
         await expect.poll(() => f.requests.length).toBe(2);
         await f.reply(0);
-        await expect(f.page.getByRole("button", { name: "Saving�", exact: true })).toBeDisabled();
+        await expect(f.page.getByLabel("Zone name", { exact: true })).toBeDisabled();
         await f.reply(1);
-        await expect(f.page.getByRole("button", { name: "Save zone name", exact: true })).toBeEnabled();
+        await expect(f.page.getByRole("button", { name: /^Rename / })).toBeVisible();
         await f.finish();
       }
       for (const kind of kinds)
@@ -317,7 +354,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           await f.run(kind);
           await expect.poll(() => f.requests.length).toBe(1);
           assert.equal(f.requests[0].path, "/api/villages" + paths[kind]);
-          assert.equal(f.requests[0].method, ["name", "image", "details", "zone"].includes(kind) ? "PUT" : "POST");
+          assert.equal(f.requests[0].method, ["name", "image", "name", "zone"].includes(kind) ? "PUT" : "POST");
           assert.deepEqual(f.requests[0].body, bodies(f)[kind]);
           await f.reply(0, { fail });
           const outcome = await settled(f, 0),
@@ -331,7 +368,6 @@ export async function verifyVenueScreenLifetimes(browser) {
             } else if (kind === "access") assert.equal(outcome.error, "synthetic Venue failure");
             else assert.equal(s.venueEditError, "synthetic Venue failure");
           } else {
-            if (["details", "shared", "private"].includes(kind)) assert.equal(s.venueEditDraft.name, "Saved A");
             if (kind === "proposal") assert.equal(s.venueProposalDraft, null);
             if (["zone", "access"].includes(kind)) assert.equal(outcome.value, true);
           }
@@ -340,7 +376,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       // Each existing admission group rejects an immediate second command.
       for (const group of [
         ["image", "retry", "pace"],
-        ["name", "details", "shared", "private", "residence", "proposal"],
+        ["name", "residence", "proposal"],
         ["player", "player"],
         ["access", "access"],
         ["zone", "zone"],
@@ -373,7 +409,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           assert.equal((await f.read()).setting, "Reply 1");
           await f.finish();
         }
-      for (const kind of ["image", "details", "zone", "access"]) {
+      for (const kind of ["image", "name", "zone", "access"]) {
         const f = await mount(strict, width);
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
@@ -406,7 +442,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       }
       for (const transition of ["page", "zone"]) {
         const f = await mount(strict, width);
-        await f.page.evaluate((transition) => window.h.retain(transition === "page" ? "details" : "zone"), transition);
+        await f.page.evaluate((transition) => window.h.retain(transition === "page" ? "name" : "zone"), transition);
         await f.page.evaluate((transition) => {
           if (transition === "page") {
             window.h.jump({ page: "view" });
@@ -421,7 +457,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.equal(f.requests.length, 0);
         await f.finish();
       }
-      for (const kind of ["details", "shared", "private", "proposal"]) {
+      for (const kind of ["name", "proposal"]) {
         const f = await mount(strict, width);
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
@@ -436,38 +472,9 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.deepEqual(s.venueProposalDraft, before.venueProposalDraft);
         await f.finish();
       }
-      // Existing refused/cancelled edits and a confirmation that retires the owner issue no HTTP.
-      for (const mode of ["physical", "cancelDetails", "cancelZone", "retireConfirm"]) {
-        const f = await mount(strict, width, { occupied: true });
-        await f.page.evaluate((mode) => {
-          if (mode === "physical") window.h.edit({ form: "Changed physical form" });
-          if (mode === "cancelDetails")
-            window.h.edit({
-              privateSpaces: window.draft.privateSpaces.map((s) => ({ ...s, description: "Changed room" })),
-            });
-          if (mode.startsWith("cancel")) window.confirmAnswer = false;
-          if (mode === "retireConfirm") window.confirmHook = () => window.h.jump({ id: "B / venue" });
-        }, mode);
-        await f.run(["cancelZone", "retireConfirm"].includes(mode) ? "shared" : "details");
-        await f.settle(0);
-        assert.equal(f.requests.length, 0);
-        if (mode === "physical") assert.match((await f.read()).venueEditError, /Physical edits and map moves/);
-        else assert.equal((await f.page.evaluate(() => window.confirms)).length, 1);
-        await f.finish();
-      }
-      {
-        const f = await mount(strict, width);
-        await f.run("details");
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.page.evaluate(() => window.h.poll());
-        await f.reply(0);
-        await settled(f, 0);
-        assert.equal((await f.read()).venueEditDraft.name, "Saved A");
-        await f.finish();
-      }
       for (const hydrate of [false, true]) {
         const f = await mount(strict, width, hydrate ? { hydrate: true } : { founded: false });
-        await f.run("details");
+        await f.run("name");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => window.h.hydrate());
         await f.reply(0);
@@ -475,7 +482,7 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.equal((await f.read()).setting, hydrate ? "Reply 0" : "A");
         await f.finish();
       }
-      for (const kind of ["image", "details", "access", "zone", "player"]) {
+      for (const kind of ["image", "name", "access", "zone", "player"]) {
         const f = await mount(strict, width);
         await f.run(kind);
         await expect.poll(() => f.requests.length).toBe(1);
@@ -489,7 +496,7 @@ export async function verifyVenueScreenLifetimes(browser) {
       }
       {
         const f = await mount(strict, width);
-        await f.run("details");
+        await f.run("name");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => window.h.removeVenue());
         const before = await f.read();
@@ -498,40 +505,9 @@ export async function verifyVenueScreenLifetimes(browser) {
         assert.deepEqual(await f.read(), before);
         await f.finish();
       }
-      // Real Zone child retains newer raw input and does not acknowledge it as saved.
-      {
-        const f = await mount(strict, width);
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        assert.deepEqual(f.requests[0].body.state.features, f.seed.settings.venues[0].zones[0].state.features);
-        await f.page.getByRole("textbox", { name: "Appearance", exact: true }).fill(" Newer raw Zone ");
-        await f.reply(0);
-        await f.settle(0);
-        await expect(f.page.getByRole("textbox", { name: "Appearance", exact: true })).toHaveValue(" Newer raw Zone ");
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toHaveCount(0);
-        await expect(f.page.getByRole("button", { name: "Save zone details", exact: true })).toBeEnabled();
-        await f.finish();
-      }
-      for (const fail of [false, true]) {
-        const f = await mount(strict, width);
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.page.evaluate(() => window.h.jump({ id: "B / venue" }));
-        await expect(f.page.getByRole("textbox", { name: "Zone name", exact: true })).toHaveValue("B Zone");
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(2);
-        await f.reply(0, { fail });
-        await f.settle(0);
-        await expect(f.page.getByRole("button", { name: "Saving…", exact: true })).toBeDisabled();
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toHaveCount(0);
-        await f.reply(1);
-        await f.settle(1);
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toBeVisible();
-        await f.finish();
-      }
       for (const retirement of ["venue", "revision"])
         for (const fail of [false, true]) {
-          const f = await mount(strict, width, { page: "view" });
+          const f = await mount(strict, width, { page: "view", accessPanel: true });
           await openAccess(f);
           await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
           await expect.poll(() => f.requests.length).toBe(1);
@@ -558,19 +534,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           await f.finish();
         }
       {
-        const f = await mount(strict, width);
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        await f.reply(0, { fail: true });
-        await f.settle(0);
-        await expect(
-          f.page.getByText("The zone could not be saved. See the message above.", { exact: true }),
-        ).toBeVisible();
-        await expect(f.page.getByRole("button", { name: "Save zone details", exact: true })).toBeEnabled();
-        await f.finish();
-      }
-      {
-        const f = await mount(strict, width, { page: "view" });
+        const f = await mount(strict, width, { page: "view", accessPanel: true });
         await openAccess(f);
         await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(1);
@@ -580,9 +544,9 @@ export async function verifyVenueScreenLifetimes(browser) {
         await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeEnabled();
         await f.finish();
       }
-      for (const child of ["zone", "access"])
+      for (const child of ["access"])
         for (const fail of [false, true]) {
-          const f = await mount(strict, width, { page: child === "access" ? "view" : "edit" });
+          const f = await mount(strict, width, { page: "view", accessPanel: true });
           if (child === "access") await openAccess(f);
           const name = child === "access" ? "Save Zone policy" : "Save zone details";
           await f.page.getByRole("button", { name, exact: true }).click();
@@ -609,7 +573,7 @@ export async function verifyVenueScreenLifetimes(browser) {
           await f.finish();
         }
       {
-        const f = await mount(strict, width, { page: "view" });
+        const f = await mount(strict, width, { page: "view", accessPanel: true });
         await openAccess(f);
         await f.page.getByRole("button", { name: "Save Zone policy", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(1);
@@ -624,18 +588,8 @@ export async function verifyVenueScreenLifetimes(browser) {
         await expect(f.page.getByRole("button", { name: "Save Zone policy", exact: true })).toBeEnabled();
         await f.finish();
       }
-      {
-        const f = await mount(strict, width, { zone: "exterior" });
-        await f.page.getByRole("button", { name: "Save zone details", exact: true }).click();
-        await expect.poll(() => f.requests.length).toBe(1);
-        assert.equal(f.requests[0].path, "/api/villages" + paths.zone);
-        await f.reply(0);
-        await f.settle(0);
-        await expect(f.page.getByText("Zone saved.", { exact: true })).toBeVisible();
-        await f.finish();
-      }
     }
   console.log(
-    "Venue/Zone lifetimes: name-only saves, admission, replacement requests, draft acknowledgement, confirmations, ABA/reset/hydration/disposal and isolated legacy Zone/Access contracts passed (mounted client, synthetic HTTP, single-width state-only StrictMode harness).",
+    "Venue/Zone lifetimes: name-only saves, admission, replacement requests, draft acknowledgement, confirmations, ABA/reset/hydration/disposal and current Zone name/Access contracts passed (mounted client, synthetic HTTP, single-width state-only StrictMode harness).",
   );
 }

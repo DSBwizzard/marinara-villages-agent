@@ -1,10 +1,27 @@
-import type { VenueSubmission } from "../models/scene-model.js";
+import type { VenueScene, VenueSubmission } from "../models/scene-model.js";
 import { asRecord } from "./coerce.js";
-import { badGateway } from "./errors.js";
+import { badGateway, conflict } from "./errors.js";
+import { extractModelJsonObject, modelJsonWithinBounds } from "./json-reply.js";
 import { parseSceneObject } from "./scene-json-syntax.js";
 
 /** Model wire format only. Saved evidence and public Scene representations do not change. */
 export const SCENE_WRITING_CONTRACT = 3;
+
+/** Refuse before replacement handling can invalidate a retained paid draft. */
+export function assertCurrentSceneGeneration(
+  scene: VenueScene,
+  input: Record<string, unknown> | undefined,
+  mode: string,
+) {
+  if (
+    scene.semanticVersion !== 2 ||
+    input?.writingContractVersion !== SCENE_WRITING_CONTRACT ||
+    input.semanticPipelineVersion !== 3 ||
+    input.residentActionsVersion !== 2 ||
+    (input.interactionScopeVersion !== 6 && (mode !== "greet" || input.interactionScopeVersion !== undefined))
+  )
+    throw conflict("This saved request uses a retired generation contract. Its history and responses are preserved.");
+}
 
 const EFFECT_FIELDS = ["memoryChanges", "relationshipChanges", "wishChanges", "projectSpeech", "interpretationRouting"];
 
@@ -27,7 +44,14 @@ export function normalizeSceneEffectReferences(raw: Record<string, unknown>, ear
         if (Array.isArray(row[key])) row[key] = row[key].map(reference);
       }
   };
-  rows(result.memoryChanges, "evidence");
+  if (Array.isArray(result.memoryChanges))
+    for (const value of result.memoryChanges)
+      for (const learner of Object.values(asRecord(asRecord(value).learners)))
+        if (Array.isArray(asRecord(learner).support))
+          for (const citation of asRecord(learner).support as unknown[]) {
+            const row = asRecord(citation);
+            row.lineId = reference(row.lineId);
+          }
   rows(result.wishChanges, "evidence");
   const relationships = asRecord(result.relationshipChanges);
   for (const key of ["changes", "permissions", "disclosures"]) rows(relationships[key], "lineIds");
@@ -35,7 +59,8 @@ export function normalizeSceneEffectReferences(raw: Record<string, unknown>, ear
 }
 
 /** A finished reply sometimes closes its core before appending effect members.
- * Remove exactly that extra brace, never values, missing closers or competing objects.
+ * Remove that extra brace and at most one stray array closer at the same boundary,
+ * never values, missing closers or competing objects.
  */
 function parsePrematureEffectBoundary(text: string): Record<string, unknown> | null {
   if (!text.startsWith("{")) return null;
@@ -54,32 +79,37 @@ function parsePrematureEffectBoundary(text: string): Record<string, unknown> | n
     else if (char === "{") depth++;
     else if (char === "}" && --depth === 0) {
       const core = parseSceneObject(text.slice(0, index + 1));
+      const suffix = text.slice(index + 1).replace(/^\s*\](?=\s*,\s*")/u, "");
       if (
         !core ||
         Object.keys(core).length !== 2 ||
         !Object.hasOwn(core, "playerSpeechCapture") ||
         !Object.hasOwn(core, "segments") ||
         !Array.isArray(core.segments) ||
-        !/^\s*,\s*"/u.test(text.slice(index + 1))
+        !/^\s*,\s*"/u.test(suffix)
       )
         return null;
       // Strict whole-object parsing also rejects duplicate keys at every depth.
-      const combined = parseSceneObject(text.slice(0, index) + text.slice(index + 1));
+      const combined = parseSceneObject(text.slice(0, index) + suffix);
       if (!combined) return null;
       const tail = Object.keys(combined).filter((key) => !Object.hasOwn(core, key));
-      return tail.length && tail.every((key) => EFFECT_FIELDS.includes(key)) ? combined : null;
+      return tail.length && tail.every((key) => EFFECT_FIELDS.includes(key) || key === "residentActions")
+        ? combined
+        : null;
     }
   }
   return null;
 }
 
 export function completeSceneObject(content: string, finishReason?: string): Record<string, unknown> | null {
+  if (!modelJsonWithinBounds(content)) return null;
   if (finishReason !== "stop" && finishReason !== "end_turn") return null;
   const text = content
     .trim()
     .replace(/^```(?:json)?\s*\n/u, "")
     .replace(/\n```$/u, "");
-  return parseSceneObject(text) ?? parsePrematureEffectBoundary(text);
+  if (!text.startsWith("{") || !text.endsWith("}")) return null;
+  return extractModelJsonObject({ content: text, finishReason }) ?? parsePrematureEffectBoundary(text);
 }
 
 /** Only a complete current-contract response may omit optional metadata. Never repair a supplied value. */
@@ -153,15 +183,7 @@ export function normalizeSparseSceneReply(raw: Record<string, unknown>): Record<
     const { source: _source, ...rest } = row;
     return { ...rest, speakerId: line.speakerId, quote: line.text };
   };
-  for (const key of [
-    "invitation",
-    "residenceRequest",
-    "residenceDecision",
-    "upgradeRequest",
-    "venueRequest",
-    "editApproval",
-    "sceneEnded",
-  ])
+  for (const key of ["invitation", "residenceRequest", "residenceDecision", "venueRequest", "sceneEnded"])
     if (result[key] !== undefined) result[key] = speechSignal(result[key]);
   if (Array.isArray(result.departures)) result.departures = result.departures.map(speechSignal);
   if (Array.isArray(result.contactMoves))
@@ -240,7 +262,7 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
                 !row.projectId ||
                 typeof row.speakerId !== "string" ||
                 !row.speakerId ||
-                !["approval", "builder", "requirements"].includes(String(row.kind)) ||
+                !["approval", "builder", "withdrawal"].includes(String(row.kind)) ||
                 !Array.isArray(row.citations) ||
                 !row.citations.length ||
                 row.citations.length > 12
@@ -280,35 +302,32 @@ export function normalizeRecoverableSceneReply(raw: Record<string, unknown>) {
           if (key) malformedDetail = `${path}[${index}].${key} must be a nonempty string`;
           else if (array) malformedDetail = `${path}[${index}].${array} must be an array`;
           else if (path === "changes") {
-            const flag = ["ordinary", "disclosed"].find(
-              (key) => Object.hasOwn(row, key) && typeof row[key] !== "boolean",
-            );
-            if (flag) malformedDetail = `${path}[${index}].${flag} must be a boolean`;
-            else return false;
+            if (!Number.isInteger(row.expectedRevision) || Number(row.expectedRevision) < 0)
+              malformedDetail = `${path}[${index}].expectedRevision must be a nonnegative integer`;
+            else {
+              const projection = ["sceneAfter", "liveAfter"].find((key) => {
+                const value = asRecord(row[key]);
+                return (
+                  typeof value.connection !== "string" ||
+                  typeof value.stance !== "string" ||
+                  !["expectations", "concerns", "records"].every((field) => Array.isArray(value[field]))
+                );
+              });
+              if (projection) malformedDetail = `${path}[${index}].${projection} must be a social projection`;
+              else return false;
+            }
           } else return false;
           return true;
         });
       };
-      if (
-        domain === "memories" &&
-        malformed(
-          normalized.memoryChanges,
-          ["kind", "text", "category"],
-          ["subjectCharacterIds", "knownByCharacterIds", "evidence"],
-        )
-      )
-        throw new Error("Malformed memory proposal: " + malformedDetail);
+      if (domain === "memories" && (!Array.isArray(normalized.memoryChanges) || normalized.memoryChanges.length > 16))
+        throw new Error("Malformed memory proposal array");
       if (domain === "wishes" && malformed(normalized.wishChanges, ["actorId", "wishId", "intent"], ["evidence"]))
         throw new Error("Malformed Wish proposal: " + malformedDetail);
       if (domain === "relationships") {
         const relationship = asRecord(normalized.relationshipChanges);
         if (
-          malformed(
-            relationship.changes,
-            ["fromId", "toId", "dimension", "strength", "direction", "reason"],
-            ["lineIds"],
-            "changes",
-          ) ||
+          malformed(relationship.changes, ["fromId", "toId", "reason"], ["lineIds"], "changes") ||
           malformed(
             relationship.permissions,
             ["controllerId", "visitorId", "venueId", "zoneId", "action"],

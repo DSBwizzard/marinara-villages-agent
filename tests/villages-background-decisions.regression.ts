@@ -6,11 +6,7 @@ import { createBackgroundWork } from "../packages/villages/src/server/jobs/backg
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => {
-    resolve = done;
-  });
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(
   mode: "success" | "error" | "shutdown" | "storage",
@@ -59,10 +55,11 @@ function fixture(
     model: "synthetic",
     chatComplete: async () => {
       systemCalls++;
-      return { content: "system", usage: { totalTokens: 1 } };
+      return { content: "system", finishReason: "stop", usage: { totalTokens: 1 } };
     },
   };
   const service = createBackgroundWork({
+    withCurrentJobWrite: (work) => work(),
     villagesDocuments: () => documents,
     villagesLogger: () => ({ debug() {}, debugOverride() {}, info() {}, warn() {}, error() {} }),
     readVillageState: async () => structuredClone(world),
@@ -162,7 +159,7 @@ for (const mode of ["success", "error", "storage"] as const) {
     } else {
       assert.equal(status.status, "failed");
       assert.equal(f.counts().systemCalls, 0, "persistence failure forbids automatic fallback");
-      await f.service.retryBackgroundJob(status.id, status.attempt, "retry-storage");
+      await f.service.retryBackgroundJob(status.id, status.attempt, "retry-storage", status.instanceId);
       await f.service.settleBackgroundWork();
       assert.deepEqual(
         f.counts(),
@@ -190,7 +187,7 @@ try {
   const interrupted = (await f.service.backgroundWorkSummaries())[0];
   assert.equal(interrupted.status, "interrupted");
   assert.equal(f.counts().decisionCalls, 1, "restart cannot repeat a possibly billed capability request");
-  await f.service.retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-interrupted");
+  await f.service.retryBackgroundJob(interrupted.id, interrupted.attempt, "retry-interrupted", interrupted.instanceId);
   await f.service.settleBackgroundWork();
   assert.deepEqual(f.counts(), { decisionCalls: 1, systemCalls: 1, applied: 1 });
 } finally {

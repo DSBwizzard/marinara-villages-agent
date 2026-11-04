@@ -1,3 +1,4 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   defaultVillageState,
@@ -13,16 +14,17 @@ import {
 } from "../packages/villages/src/server/domain/rules/resident-movement.js";
 import { applyAttentionWitnesses } from "../packages/villages/src/server/domain/rules/attention-witnesses.js";
 import { readAttentionPlan } from "../packages/villages/src/server/domain/rules/scene-attention.js";
-import { replayStaging, stagingTranscriptEvents } from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { stagingTranscriptEvents } from "../packages/villages/src/shared/helpers/scene-staging.js";
+import { replayStaging } from "./helpers/scene-staging.fixture.js";
 import type { VenueReplyLine } from "../packages/villages/src/server/domain/models/scene-model.js";
 
 const state = defaultVillageState();
 state.venues = [
-  {
+  venueFixture({
     id: "home",
     name: "Home",
     classes: ["residence"],
-    residentIds: ["buster"],
+    residentIds: ["buster", "other"],
     zones: [
       { ...defaultVenueSpace("other"), id: "exterior", name: "Entrance", kind: "exterior", seen: true },
       { ...defaultVenueSpace("residence"), id: "common", name: "Main Room", kind: "shared-residence" },
@@ -34,11 +36,12 @@ state.venues = [
         ownerId: "other",
       },
     ],
-  },
+  }),
 ] as typeof state.venues;
 const village = coerceVillageState(state);
 const venue = village.venues[0];
 const scene = coerceSession({
+  version: 3,
   id: "doorway",
   placeId: "home",
   zoneId: "exterior",
@@ -207,7 +210,7 @@ assert.deepEqual(
   frames.map((frame) => frame.activeIds),
   [[], ["buster"], ["buster"]],
 );
-const reloaded = coerceSession({ ...scene, lines: stored });
+const reloaded = coerceSession({ version: 3, ...scene, lines: stored });
 assert.deepEqual(reloaded.lines[1].physicalIdsAfter, ["buster"], "paragraph timing survives reload");
 
 const localScene = {
@@ -330,7 +333,18 @@ const parsed = {
 };
 const raw = {
   attentionWitnesses: fragments.map((fragment) => ({ id: fragment.id, emitted: true, heardBy: ["buster"] })),
-  memoryChanges: [{ evidence: ["attention:0", "attention:1"] }],
+  memoryChanges: [
+    {
+      learners: {
+        buster: {
+          support: [
+            { lineId: "attention:0", excerpt: first },
+            { lineId: "attention:1", excerpt: second },
+          ],
+        },
+      },
+    },
+  ],
   wishChanges: [{ evidence: ["attention:0"] }],
   relationshipChanges: { changes: [{ lineIds: ["attention:1", 0] }], permissions: [], disclosures: [] },
 };
@@ -341,7 +355,10 @@ assert.deepEqual(
 );
 assert.ok(parsed.lines.slice(1).every((line) => line.heardBy.includes("buster")));
 assert.ok(!parsed.lines.slice(1).some((line) => line.content.includes("offer my hand")));
-assert.deepEqual(raw.memoryChanges[0].evidence, [1, 2]);
+assert.deepEqual(
+  raw.memoryChanges[0].learners.buster.support.map((row) => row.lineId),
+  [1, 2],
+);
 assert.deepEqual(raw.wishChanges[0].evidence, [1]);
 assert.deepEqual(raw.relationshipChanges.changes[0].lineIds, [2, 0]);
 assert.deepEqual(parsed.heardPlayerBy, [], "arrival or remote speech never grants the complete local input");

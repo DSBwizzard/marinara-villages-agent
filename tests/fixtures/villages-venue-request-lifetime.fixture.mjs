@@ -1,5 +1,6 @@
+import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
-import { build } from "esbuild";
+import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "./fast-browser-expect.mjs";
 import { snapshot as fixture } from "./villages-scene-browser.fixture.mjs";
 
@@ -13,16 +14,15 @@ export async function createVenueRequestHarness(browser) {
 import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {StrictMode,useState,useCallback} from 'react';
 import {useVenueRequestCommands} from './packages/villages/src/client/features/venues/request-commands.js';
 import {renderVenueRequestsPage} from './packages/villages/src/client/features/venues/VenueRequestsPage.js';
-import {useSaveStoryPace} from './packages/villages/src/client/features/settings/actions.js';
+import {useSaveBackgroundPace} from './packages/villages/src/client/features/settings/actions.js';
 function Harness(){
  const [snapshot,rawSnapshot]=useState(window.seed),[busy,rawBusy]=useState(false),[error,rawError]=useState(''),[edits,rawEdits]=useState(window.overrides);
  const setSnapshot=useCallback(v=>{window.calls.snapshot++;rawSnapshot(v)},[]),setBusy=useCallback(v=>{window.calls.busy++;rawBusy(v)},[]),
  setSettingsError=useCallback(v=>{window.calls.error++;rawError(v)},[]),setRequestEdits=useCallback(v=>{window.calls.edits++;rawEdits(v)},[]);
  const ports={snapshot,setSnapshot,setBusy,setSettingsError,setRequestEdits,requestEdits:edits};
- const commands=useVenueRequestCommands(ports),pace=useSaveStoryPace(ports);
+ const commands=useVenueRequestCommands(ports),pace=useSaveBackgroundPace(ports);
  const launch=fn=>{const promise=fn();window.pending.push(Promise.resolve(promise));return window.pending.length-1};
  const actions={description:()=>commands.generateRequestDescription(window.entry,edits[window.entry.id]??snapshot.venueRequests[0].venueDraft),
- upgradeApprove:()=>commands.decideHomeUpgrade({id:'upgrade / A'},true),upgradeDeny:()=>commands.decideHomeUpgrade({id:'upgrade / A'},false),
  complete:()=>commands.completeResidenceMove({characterId:'resident / A'}),
  residenceApprove:()=>commands.decideResidenceMove({characterId:'resident / A'},true),residenceDeny:()=>commands.decideResidenceMove({characterId:'resident / A'},false),pace:()=>pace('quiet')};
  const ui=Object.fromEntries(Object.entries(commands).map(([name,fn])=>[name,(...args)=>{const promise=fn(...args);window.pending.push(Promise.resolve(promise));return promise}]));
@@ -49,6 +49,7 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
   });
   return async function mount(strict = false, width = 1280, options = {}) {
     const context = await browser.newContext({ viewport: { width, height: 900 } });
+    await mockEngineLookups(context);
     const page = await context.newPage(),
       requests = [],
       errors = [];
@@ -62,14 +63,13 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
       venueDraft: { name: " Fallback ", classes: ["community"], description: "Fallback description" },
     };
     seed.venueRequests = [entry];
-    seed.upgradeRequests = [];
     seed.residences = [];
     const overrides = { unrelated: { name: "Keep", classes: ["other"], description: "Keep" } };
     if (!options.fallback)
       overrides[entry.id] = { name: " Counteroffer ", classes: ["workplace"], description: "Original description" };
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://venue-requests.test/", (route) =>
-      route.fulfill({ status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
+      fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
     );
     await page.route("**/api/villages**", (route) =>
       requests.push({
@@ -102,7 +102,7 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
           : requests[index].path.endsWith("/descriptions/draft")
             ? { descriptions: options.missing ? {} : { [entry.id]: "Generated description" } }
             : snapshot;
-        await requests[index].route.fulfill({
+        await fulfill(requests[index].route, {
           status: options.fail ? 502 : 200,
           contentType: "application/json",
           body: JSON.stringify(body),
@@ -118,11 +118,9 @@ window.unmount=()=>root.render(null);root.render(window.strict?<StrictMode><Harn
 
 export async function verifyVenueRequestLifetimes(browser) {
   const mount = await createVenueRequestHarness(browser);
-  const commands = ["description", "upgradeApprove", "upgradeDeny", "complete", "residenceApprove", "residenceDeny"];
+  const commands = ["description", "complete", "residenceApprove", "residenceDeny"];
   const paths = {
     description: "/locations/venue/descriptions/draft",
-    upgradeApprove: "/venue-upgrades/upgrade%20%2F%20A/approve",
-    upgradeDeny: "/venue-upgrades/upgrade%20%2F%20A/deny",
     complete: "/residences/debug/complete-now",
     residenceApprove: "/residences/approvals",
     residenceDeny: "/residences/denials",
@@ -183,12 +181,6 @@ export async function verifyVenueRequestLifetimes(browser) {
         const f = await mount(strict, width);
         await f.page.getByRole("button", { name: "Generate description draft", exact: true }).click();
         await expect.poll(() => f.requests.length).toBe(1);
-        await f.page
-          .getByRole("textbox", { name: "Requested place name from Resident", exact: true })
-          .fill("Newer name");
-        await f.page
-          .getByRole("combobox", { name: "Requested place class from Resident", exact: true })
-          .selectOption("other");
         await f.page
           .getByRole("textbox", { name: "Requested place description from Resident", exact: true })
           .fill(" Newer raw description ");
@@ -289,7 +281,7 @@ export async function verifyVenueRequestLifetimes(browser) {
       }
       for (const hydrate of [false, true]) {
         const f = await mount(strict, width, hydrate ? { hydrate: true } : { founded: false });
-        await f.run("upgradeApprove");
+        await f.run("complete");
         await expect.poll(() => f.requests.length).toBe(1);
         await f.page.evaluate(() => window.h.hydrate());
         await expect.poll(async () => (await f.state()).founded).toBe(true);

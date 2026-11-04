@@ -1,11 +1,11 @@
 import { agendaRevision } from "../../domain/rules/agenda-revision.js";
-import type { villagesDocuments } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { quoteUsageRate } from "../../adapters/models/usage-ledger.js";
-import { coerceVillageState } from "../../domain/decoding/village-codec.js";
+import { coerceVillageState, defaultVillageState } from "../../domain/decoding/village-codec.js";
+import type { VillageState } from "../../domain/models/world.js";
 import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { agendaRequestCount, remainingRequests, translationBatchSize } from "../../domain/rules/generation-budgets.js";
+import { agendaRequestCount, remainingRequests } from "../../domain/rules/generation-budgets.js";
 import { remapVenues } from "../../domain/rules/prompt-preset.js";
 import { VILLAGE_WEEKDAYS } from "../../domain/rules/village-clock.js";
 import type { previewBackgroundJobs } from "../../jobs/background-work.js";
@@ -23,8 +23,7 @@ export type BurstPreviewResult = {
 };
 
 export interface UsagePreviewPorts {
-  VILLAGES_PACKAGE_ID: string;
-  villagesDocuments(): Pick<ReturnType<typeof villagesDocuments>, "getById">;
+  readVillageAuthority(): Promise<VillageState>;
   villagesLanguageModels(): Pick<ReturnType<typeof villagesLanguageModels>, "resolveForRequest">;
   quoteUsageRate: typeof quoteUsageRate;
   previewBackgroundJobs: typeof previewBackgroundJobs;
@@ -34,8 +33,7 @@ export interface UsagePreviewPorts {
 
 /** Current settings composition owns explicit ports; construction starts no work. */
 export function createUsagePreview({
-  VILLAGES_PACKAGE_ID,
-  villagesDocuments,
+  readVillageAuthority,
   villagesLanguageModels,
   quoteUsageRate,
   previewBackgroundJobs,
@@ -48,9 +46,17 @@ export function createUsagePreview({
       action = String(args.action);
     if (!["agenda", "translation", "influence", "change", "images", "retry", "founding"].includes(action))
       throw badRequest("Choose a supported generation preview.");
-    const record = await villagesDocuments().getById(VILLAGES_PACKAGE_ID, "villages-village");
-    const original = coerceVillageState(record?.data);
-    const state = coerceVillageState(structuredClone(original));
+    // This inert estimator uses mechanical settings, never conversational history.
+    const snapshot = await readVillageAuthority();
+    const original = coerceVillageState({
+      ...snapshot,
+      villagers: snapshot.villagers.map((resident) => ({ ...resident, wishes: [] })),
+      returnCatchup: undefined,
+      memories: defaultVillageState().memories,
+      memoryScenes: {},
+      memoryReceipts: {},
+    });
+    const state = structuredClone(original);
     if (action === "change") {
       const patch = asRecord(args.settings);
       for (const key of ["setting", "selectedLorebookIds", "loreTokenBudget"] as const)
@@ -76,16 +82,15 @@ export function createUsagePreview({
     } catch {
       /* Show counts with unknown prices. */
     }
-    const batchSize = translationBatchSize(system?.maxOutputTokens);
-    const jobs = await previewBackgroundJobs(batchSize);
+    const jobs = await previewBackgroundJobs();
     const residents: Resident[] = [];
     const target = typeof args.characterId === "string" ? args.characterId : "";
     let languageRequests = bootstrap ? 1 : 0,
       imageRequests = 0;
     if (action === "founding" && original.foundingPreparation && original.foundingPreparation.status !== "ready")
-      languageRequests =
-        (original.foundingPreparation.venueDetailsSeeded ? 0 : 1) +
-        privatePreparationRooms(original).filter(({ zone }) => zone.preparation?.status !== "ready").length;
+      languageRequests = privatePreparationRooms(original).filter(
+        ({ zone }) => zone.preparation?.status !== "ready",
+      ).length;
     const active = (kind: string, id: string) =>
       jobs.find(
         (j) =>
@@ -100,13 +105,20 @@ export function createUsagePreview({
       let requests = 0;
       if (
         action === "founding" &&
-        proposed.foundingPreparation?.status !== "ready" &&
         proposed.foundingPreparation &&
-        !proposed.foundingPreparation.completedIds.includes(resident.characterId) &&
-        resident.agenda?.personalizationPending
+        proposed.foundingPreparation.status !== "ready" &&
+        !proposed.foundingPreparation.completedIds.includes(resident.characterId)
       ) {
-        const saved = active("agenda", resident.characterId);
-        requests = remainingRequests(1, saved?.completedSteps ?? 0);
+        const tasks = proposed.foundingPreparation.tasks?.[resident.characterId];
+        if (proposed.foundingPreparation.tasksVersion === 1 && !tasks) continue;
+        for (const [task, kind] of [
+          ["routine", "agenda"],
+          ["wish", "wish"],
+        ] as const) {
+          if (tasks?.[task]?.status === "completed") continue;
+          const saved = active(kind, resident.characterId);
+          requests += saved?.remainingRequests ?? remainingRequests(1, saved?.completedSteps ?? 0);
+        }
       }
       if (
         action === "change" &&
@@ -206,12 +218,9 @@ export function createUsagePreview({
             ? { min, max }
             : null,
       unknownCosts,
-      note:
-        (action === "founding"
-          ? "One request per unfinished private space, plus unfinished resident routines and initial venue details. "
-          : "") +
-        (bootstrap ? "Includes one public-Venue suggestion request. " : "") +
-        "Read-only forecast for current state. Routine generation uses one request. Schedule influence and daily variation are local and spend no tokens. Reused saved responses do not require new requests. Token prices use configured full-context/output budgets; actual replies usually use less. Unknown image/provider costs are excluded. No spending limit.",
+      note: languageRequests
+        ? "Base estimate excludes automatic retries; eligible background tasks can use one extra response. Saved responses are reused. Costs may be unknown."
+        : "Saved responses are reused. Costs may be unknown.",
     };
   }
 

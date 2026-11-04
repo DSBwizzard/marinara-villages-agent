@@ -47,26 +47,6 @@ export function useVenueRequestCommands(ports: {
     },
     [lifetime, setBusy, setSettingsError, setRequestEdits],
   );
-  const decideHomeUpgrade = useCallback(
-    async (entry: { id: string }, approved: boolean) => {
-      const claim = lifetime.begin();
-      if (!claim) return;
-      setBusy(true);
-      setSettingsError("");
-      try {
-        const next = await request<VillageSnapshot>(
-          `/venue-upgrades/${encodeURIComponent(entry.id)}/${approved ? "approve" : "deny"}`,
-          { method: "POST" },
-        );
-        if (lifetime.owns(claim)) setSnapshot(next);
-      } catch (cause) {
-        if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "The upgrade request could not be decided."));
-      } finally {
-        if (lifetime.finish(claim)) setBusy(false);
-      }
-    },
-    [lifetime, setBusy, setSettingsError, setSnapshot],
-  );
   const completeResidenceMove = useCallback(
     async (entry: { characterId: string }) => {
       const claim = lifetime.begin();
@@ -88,16 +68,27 @@ export function useVenueRequestCommands(ports: {
     [lifetime, setBusy, setSettingsError, setSnapshot],
   );
   const decideResidenceMove = useCallback(
-    async (entry: { characterId: string }, approved: boolean) => {
+    async (
+      entry: { characterId: string; proposedVenueId: string; agreement?: { scope: string; sleepZoneId: string } },
+      approved: boolean | "review",
+    ) => {
       const claim = lifetime.begin();
       if (!claim) return;
       setBusy(true);
       setSettingsError("");
       try {
-        const next = await request<VillageSnapshot>(`/residences/${approved ? "approvals" : "denials"}`, {
-          method: "POST",
-          body: JSON.stringify({ characterId: entry.characterId }),
-        });
+        const next = await request<VillageSnapshot>(
+          `/residences/${approved === "review" ? "proposals" : approved ? "approvals" : "denials"}`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              characterId: entry.characterId,
+              expectedScope: entry.agreement?.scope,
+              venueId: entry.proposedVenueId,
+              privateZoneId: entry.agreement?.sleepZoneId,
+            }),
+          },
+        );
         if (lifetime.owns(claim)) setSnapshot(next);
       } catch (cause) {
         if (lifetime.owns(claim)) setSettingsError(messageFrom(cause, "The move request could not be decided."));
@@ -107,5 +98,5 @@ export function useVenueRequestCommands(ports: {
     },
     [lifetime, setBusy, setSettingsError, setSnapshot],
   );
-  return { generateRequestDescription, decideHomeUpgrade, completeResidenceMove, decideResidenceMove };
+  return { generateRequestDescription, completeResidenceMove, decideResidenceMove };
 }

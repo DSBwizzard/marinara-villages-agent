@@ -1,166 +1,161 @@
-import type {
-  VillageProject,
-  VillageProjectLifecycle,
-  VillageState,
-  VillageVenue,
-  VillageVenueImage,
-} from "../models/world.js";
-import { asRecord, asTrimmedString } from "./coerce.js";
+import type { VillageProject, VillageProjectLifecycle, VillageState } from "../models/world.js";
 import { conflict, notFound } from "./errors.js";
-import { projectProgressPhase, recordProjectProgress } from "./project-progress.js";
-import { venueResidentIds } from "./venue-model.js";
-import { venueZones } from "./venue-zones.js";
+import { completeProject } from "./project-completion.js";
+import { cloneVillageContext } from "./world-context-copy.js";
+import {
+  allocateProjectFocus,
+  projectFocusValid,
+  trimProjectFocus,
+  projectAgendaReservations,
+} from "./project-focus.js";
+import { approvalScope, matchesProjectDesign, renovationAffectedIds } from "./project-terms.js";
+import { establishmentControllers, establishmentScope } from "./establishment.js";
+import { findLocation, placeRegistry } from "./places.js";
+export { renovationAffectedIds, validImage } from "./project-terms.js";
 
-export function active(state: VillageState, kind: "new-venue" | "renovation"): boolean {
+export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
+export function active(state: VillageState, kind?: VillageProject["kind"]): boolean {
   return state.projects.some(
-    (entry) => entry.kind === kind && entry.lifecycle?.phase !== "complete" && entry.status !== "abandoned",
+    (project) => (!kind || project.kind === kind) && ["working", "paused"].includes(project.status),
   );
 }
-
 export function projectFor(state: VillageState, id: string): VillageProject & { lifecycle: VillageProjectLifecycle } {
-  const project = state.projects.find(
-    (entry) => entry.id === id && (entry.kind === "new-venue" || entry.kind === "renovation"),
-  );
+  const project = state.projects.find((project) => project.id === id);
   if (!project?.lifecycle) throw notFound("That Project no longer exists.");
-  if (projectProgressPhase(state, project) !== project.lifecycle.phase)
-    throw conflict("Project phase and verified progress disagree. Check DEBUG: Progress before continuing.");
   return project as VillageProject & { lifecycle: VillageProjectLifecycle };
 }
-
 export function lifecycle(
-  phase: VillageProjectLifecycle["phase"],
   targetVenueId = "",
   change: VillageProjectLifecycle["change"] = null,
-  affectedIds: string[] = [],
 ): VillageProjectLifecycle {
   return {
-    version: 2,
-    phase,
+    phase: "planning",
+    revision: 1,
     targetVenueId,
     change,
-    affectedIds,
+    affectedIds: [],
     approvals: [],
     candidates: [],
     builderId: "",
-    requirements: [],
-    requirementsEvidenceId: "",
-    requirementsAcceptedAt: "",
-    recordedItems: [],
-    sources: [],
-    heldSupplies: [],
     spokenProofs: [],
     evidenceIds: [],
+    commandReceipts: {},
+    baseDesignHash: "",
+    changedZoneIds: [],
     workOrder: null,
     blockedReason: "",
     completedAt: "",
   };
 }
-
 export function sameName(state: VillageState, name: string): boolean {
   const key = name.toLocaleLowerCase();
-  return (
-    state.venues.some((entry) => entry.name.toLocaleLowerCase() === key) ||
-    state.projects.some(
-      (entry) =>
-        entry.status !== "abandoned" &&
-        entry.status !== "complete" &&
-        entry.venueDraft?.name.toLocaleLowerCase() === key,
-    )
+  return state.venues.some((venue) => venue.name.toLocaleLowerCase() === key);
+}
+export function missingProjectAgreements(state: VillageState, project: VillageProject): string[] {
+  const flow = project.lifecycle!;
+  if (project.kind === "establishment") {
+    flow.affectedIds = establishmentControllers(state, project);
+    return flow.affectedIds.filter(
+      (id) => !flow.approvals.some((row) => row.residentId === id && row.scope === establishmentScope(project)),
+    );
+  }
+  if (project.kind !== "renovation") return [];
+  const venue = state.venues.find((venue) => venue.id === project.venueId);
+  if (!venue) throw conflict("The Project Venue is missing.");
+  flow.affectedIds = renovationAffectedIds(venue, flow.change, flow.changedZoneIds);
+  return flow.affectedIds.filter(
+    (id) =>
+      !flow.approvals.some(
+        (approval) =>
+          approval.residentId === id && approval.scope === approvalScope(venue, flow.change!, id, flow.changedZoneIds),
+      ),
   );
 }
-
-export function applyProjectMailboxDecisions(
-  state: VillageState,
-  projectId: string,
-  mailId: string,
-  decisions: { characterId: string; accepted: boolean }[],
-  at: string,
-): void {
-  const project = state.projects.find((entry) => entry.id === projectId && entry.lifecycle?.phase === "approval");
-  if (!project?.lifecycle) return;
-  for (const decision of decisions) {
-    if (
-      !decision.accepted ||
-      !project.lifecycle.affectedIds.includes(decision.characterId) ||
-      project.lifecycle.approvals.some((entry) => entry.residentId === decision.characterId)
-    )
-      continue;
-    project.lifecycle.approvals.push({ residentId: decision.characterId, source: "mailbox", evidenceId: mailId, at });
-    recordProjectProgress(state, project, `approval:${decision.characterId}`, {
-      id: `mail:${mailId}:${decision.characterId}`,
-      kind: "project-approval",
-      at,
-      sourceId: mailId,
-      speakerId: decision.characterId,
-    });
+/** Refresh readiness from current authority without granting or manufacturing consent. */
+export function refreshProjectAgreements(state: VillageState): void {
+  for (const project of state.projects) {
+    const flow = project.lifecycle;
+    if (!flow || !["planning", "working", "paused"].includes(project.status)) continue;
+    if (project.kind === "establishment" && !placeRegistry(state)) continue;
+    const venue = findLocation(state, project.venueId);
+    if (project.kind === "new-venue" || !venue || !flow.change) continue;
+    missingProjectAgreements(state, project);
+    flow.approvals = flow.approvals.filter(
+      (approval) =>
+        flow.affectedIds.includes(approval.residentId) &&
+        approval.scope ===
+          (project.kind === "establishment"
+            ? establishmentScope(project)
+            : approvalScope(venue, flow.change!, approval.residentId, flow.changedZoneIds)),
+    );
   }
-  if (
-    project.lifecycle.affectedIds.every((id) => project.lifecycle!.approvals.some((entry) => entry.residentId === id))
-  )
-    project.lifecycle.phase = projectProgressPhase(state, project) as VillageProjectLifecycle["phase"];
+}
+export function pauseProject(project: VillageProject, at: string, reason: string): void {
+  const flow = project.lifecycle!;
+  trimProjectFocus(project, at);
+  if (flow.workOrder && !flow.workOrder.pausedAt) {
+    const pausedAt = Math.max(Date.parse(flow.workOrder.startsAt), Date.parse(at));
+    flow.workOrder.remainingMs = Math.max(
+      0,
+      Math.min(flow.workOrder.remainingMs, Date.parse(flow.workOrder.completesAt) - pausedAt),
+    );
+    flow.workOrder.pausedAt = new Date(pausedAt).toISOString();
+  }
+  project.status = flow.phase = "paused";
+  flow.blockedReason = reason;
   project.updatedAt = at;
 }
-
 export function finishConstruction(
   state: VillageState,
   project: VillageProject & { lifecycle: VillageProjectLifecycle },
   at: string,
 ): void {
-  const flow = project.lifecycle;
-  if (flow.phase !== "construction" || !flow.workOrder || flow.workOrder.pausedAt) return;
-  const builder = state.villagers.find((entry) => entry.characterId === flow.builderId);
-
-  flow.completedAt = at;
-  project.status = "finishing";
-  project.progress = 95;
-  project.updatedAt = at;
-  recordProjectProgress(state, project, "work-complete", {
-    id: `project:${project.id}:work-complete`,
-    kind: "work-order",
-    at,
-    sourceId: project.id,
-    speakerId: flow.builderId,
-    venueId: project.venueId,
-  });
-  if (builder?.agenda?.projectWork?.projectId === project.id) delete builder.agenda.projectWork;
-}
-
-export function validImage(value: unknown): VillageVenueImage | null {
-  const row = asRecord(value);
-  const ref = asTrimmedString(row.ref),
-    url = asTrimmedString(row.url),
-    id = asTrimmedString(row.id);
-  return /^global-gallery:[^\s]{1,200}$/u.test(ref) && url.startsWith("/") && id ? { ref, url, id } : null;
-}
-
-export function reconcileProjectLifecycles(state: VillageState, now: Date): void {
-  for (const entry of state.projects) {
-    if (!entry.lifecycle || entry.lifecycle.phase !== "construction") continue;
-    const project = entry as VillageProject & { lifecycle: VillageProjectLifecycle };
-    const flow = project.lifecycle;
-    const builder = state.villagers.find((resident) => resident.characterId === flow.builderId);
-    if (!builder?.agenda) {
-      if (flow.workOrder && !flow.workOrder.pausedAt) {
-        flow.workOrder.remainingMs = Math.max(0, Date.parse(flow.workOrder.completesAt) - now.getTime());
-        flow.workOrder.pausedAt = now.toISOString();
-      }
-      project.status = "blocked";
-      flow.blockedReason = "The Builder left. Choose another willing Villager to finish the work.";
-      continue;
-    }
-    if (flow.workOrder && !flow.workOrder.pausedAt && Date.parse(flow.workOrder.completesAt) <= now.getTime())
-      finishConstruction(state, project, flow.workOrder.completesAt);
+  if (project.status !== "working" || !project.lifecycle.workOrder || project.lifecycle.workOrder.pausedAt) return;
+  const staged = cloneVillageContext(state);
+  try {
+    trimProjectFocus(projectFor(staged, project.id), at);
+    completeProject(staged, projectFor(staged, project.id), at);
+    projectAgendaReservations(staged);
+    Object.assign(state, staged);
+  } catch (error) {
+    pauseProject(project, at, error instanceof Error ? error.message : "The completed Project needs review.");
+    project.lifecycle.workOrder.remainingMs = 0;
   }
 }
-
-export function renovationAffectedIds(venue: VillageVenue, change?: VillageProjectLifecycle["change"]): string[] {
-  return [
-    ...new Set([
-      ...venueResidentIds(venue),
-      ...(venue.workerIds ?? []),
-      ...venueZones(venue).flatMap((zone) => zone.controllerIds ?? []),
-      ...(change?.baseZones ?? []).flatMap((zone) => zone.controllerIds ?? []),
-      ...(change?.improvement?.zones ?? []).flatMap((zone) => zone.controllerIds ?? []),
-    ]),
-  ].filter((id) => id !== "player");
+export function reconcileProjectLifecycles(state: VillageState, now: Date): void {
+  const at = now.toISOString();
+  for (const id of state.projects.filter((project) => project.status === "working").map((project) => project.id)) {
+    const project = projectFor(state, id),
+      flow = project.lifecycle;
+    if (project.kind === "establishment" && !placeRegistry(state)) continue;
+    if (project.kind === "establishment" && !project.establishment?.physical) continue;
+    if (
+      !state.villagers.some((resident) => resident.characterId === flow.builderId) ||
+      !flow.candidates.some(
+        (candidate) => candidate.residentId === flow.builderId && matchesProjectDesign(candidate.scope, project),
+      )
+    ) {
+      pauseProject(project, at, "Choose a willing resident lead, then Resume.");
+      continue;
+    }
+    try {
+      if (missingProjectAgreements(state, project).length) {
+        pauseProject(project, at, "Renew the necessary agreements, then Resume.");
+        continue;
+      }
+    } catch (error) {
+      pauseProject(project, at, error instanceof Error ? error.message : "The Project site needs review.");
+      continue;
+    }
+    if (flow.workOrder && Date.parse(flow.workOrder.completesAt) <= now.getTime())
+      finishConstruction(state, project, flow.workOrder.completesAt);
+    else if (flow.workOrder?.focus) {
+      try {
+        if (!projectFocusValid(state, project, now)) flow.workOrder.focus = allocateProjectFocus(state, project, now);
+      } catch (error) {
+        pauseProject(project, at, error instanceof Error ? error.message : "The lead's Agenda needs review.");
+      }
+    }
+  }
+  projectAgendaReservations(state);
 }

@@ -1,14 +1,15 @@
+import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
+import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
+const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { chromium, expect } from "@playwright/test";
+import { chromium, expect, withBrowser } from "./fixtures/browser-diagnostics.mjs";
 import { snapshot, residents, now } from "./fixtures/villages-scene-browser.fixture.mjs";
 
 const tag = "marinara-capability-villages";
-const chrome = "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const browser = await chromium.launch({
   headless: true,
-  ...(process.platform === "win32" && existsSync(chrome) ? { executablePath: chrome } : {}),
 });
 const synthetic = (color) =>
   `data:image/svg+xml;base64,${Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1536"><circle cx="512" cy="180" r="130" fill="${color}"/><path d="M340 320h344l90 620H250zM350 900h130v620H330zM544 900h130l30 620H544z" fill="${color}"/></svg>`).toString("base64")}`;
@@ -34,10 +35,11 @@ cases.push(
     mode,
   })),
 );
-try {
+await withBrowser(browser, async () => {
   for (const { width, height, count, mode } of cases) {
     const mobile = width !== 1440;
     const page = await browser.newPage({ viewport: { width, height }, hasTouch: mobile });
+    await mockEngineLookups(page);
     const errors = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(() => {
@@ -65,8 +67,9 @@ try {
             },
     }));
     const castIds = residents.slice(0, count).map((person) => person.characterId);
+    let activityWrites = 0;
     const session = {
-      version: 1,
+      version: 2,
       stagingVersion: 1,
       memoryMode: "live",
       id: "grouped-scene",
@@ -75,7 +78,7 @@ try {
       zoneId: "exterior",
       area: "public",
       startedAt: now,
-      lastActivityAt: now,
+      lastActivityAt: new Date(Date.now() - 3 * 86400000).toISOString(),
       endedAt: "",
       status: "active",
       activeIds: castIds,
@@ -107,10 +110,10 @@ try {
       submissions: [],
     };
     await page.route("http://scene-groups.test/missing.png", (route) =>
-      route.fulfill({ status: 404, body: "missing" }),
+      fulfill(route, { status: 404, body: "missing" }),
     );
     await page.route("**/api/characters/summaries", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify(
@@ -130,7 +133,10 @@ try {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = fixture;
-      if (path.endsWith("/rooms/active") || path.endsWith("/rooms/activity")) value = { session };
+      if (path.endsWith("/rooms/activity")) {
+        activityWrites++;
+        value = { session };
+      } else if (path.endsWith("/rooms/active")) value = { session };
       else if (path.endsWith("/changes"))
         value = {
           changes: [],
@@ -170,10 +176,14 @@ try {
         session.endedAt = now;
         value = { session, recordEvents: [] };
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
+      await fulfill(route, {
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(authorSceneResponse(value, fixture.worldScope)),
+      });
     });
     await page.route("http://scene-groups.test/", (route) =>
-      route.fulfill({
+      fulfill(route, {
         status: 200,
         contentType: "text/html",
         body: `<style>:root{--background:#171b25;--foreground:#f4f0e8;--popover:#252b38;--border:#78859a;--primary:#d94491;--muted-foreground:#c4cbd7;--secondary:#384253}html,body{margin:0;width:100%;height:100%;overflow:hidden;font-family:Arial}[data-component=HomeBrowserHub]{height:100%;display:flex;flex-direction:column}.mari-home-browser-chrome{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-around;background:#201c25;color:#eee}main{flex:1;min-height:0;overflow:auto}${tag}{display:block;width:100%;height:100%}</style><div data-component="HomeBrowserHub"><header class="mari-home-browser-chrome"><span>Marinara</span><span>⌂ Home</span><span>Professor Mari</span><strong>Villages</strong></header><main data-component="HomeBrowserHub.Content"><${tag}></${tag}></main></div>`,
@@ -257,6 +267,13 @@ try {
             return { x, y, width, height };
           }),
         );
+      // Reading pagination and the Scene canvas each schedule layout work through
+      // ResizeObserver/requestAnimationFrame. Capture after font readiness and
+      // their chained render callbacks, rather than racing first pointerdown.
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        for (let frame = 0; frame < 3; frame++) await new Promise((resolve) => requestAnimationFrame(resolve));
+      });
       const baseline = await boxes();
       if (mode === "sprites") {
         await next.click();
@@ -345,12 +362,15 @@ try {
       )
       .toBeLessThanOrEqual(mobile ? 1 : 13);
     await screenshot("ended");
+    assert.equal(
+      activityWrites,
+      0,
+      "three-day-old Scenes accept reading, typing and first clicks without activity heartbeats",
+    );
     assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(
     "Mobile Scenes: visible toolbar, grouped scale, speaker opacity, portrait/initial/error fallbacks, dock edges, keyboard, drafts and staging passed",
   );
-} finally {
-  await browser.close();
-}
+});

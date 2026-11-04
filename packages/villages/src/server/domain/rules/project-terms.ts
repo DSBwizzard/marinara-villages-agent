@@ -1,38 +1,151 @@
-import type { VillageProjectLifecycle } from "../models/world.js";
+import { changedZoneIds, shape } from "./project-structure.js";
+export { changedZoneIds } from "./project-structure.js";
+import { asRecord, asTrimmedString } from "./coerce.js";
+import { venueResidentIds } from "./venue-model.js";
+import { venueZones, zoneControllerIds } from "./venue-zones.js";
+import type { VillageVenue, VillageVenueImage, VillageProject, VillageProjectChange } from "../models/world.js";
 
-export function renovationTerms(change: NonNullable<VillageProjectLifecycle["change"]>): string {
+export function validImage(value: unknown): VillageVenueImage | null {
+  const row = asRecord(value),
+    ref = asTrimmedString(row.ref),
+    url = asTrimmedString(row.url),
+    id = asTrimmedString(row.id);
+  return /^global-gallery:[^\\s]{1,200}$/u.test(ref) && url.startsWith("/") && id ? { ref, url, id } : null;
+}
+export function renovationTerms(change: VillageProjectChange): string {
   return [
     change.detail,
-    change.classes ? "Base Classes: " + change.classes.join(", ") : "",
+    change.form !== undefined ? "Physical form: " + change.form : "",
+    change.exteriorDescription !== undefined ? "Entrance: " + change.exteriorDescription : "",
+    change.classes ? "Classes: " + change.classes.join(", ") : "",
     change.capacity !== undefined ? "Residence capacity: " + change.capacity : "",
-    change.baseZones
-      ? "Base zones: " +
-        change.baseZones
-          .map(
-            (zone) =>
-              `${zone.name} (${zone.kind}, ${zone.venueClass})${zone.ownerId ? " assigned to " + zone.ownerId : ""}: ${zone.description || zone.purpose || ""}`,
-          )
-          .join("; ")
-      : "",
-    change.homeKind ? "Home tier: " + change.homeKind : "",
-    change.slot !== undefined ? "Upgrade slot " + (change.slot + 1) : "",
-    change.improvement === null
-      ? "Remove the existing Upgrade and archive its zones."
-      : change.improvement
-        ? [
-            change.improvement.title + ": " + change.improvement.description,
-            "Contributed Class: " + (change.improvement.classContribution ?? "none"),
-            "Extra beds: " + change.improvement.extraBeds,
-            change.improvement.spaceId ? "Modify existing zone: " + change.improvement.spaceId : "",
-            ...(change.improvement.zones ?? []).map(
-              (zone) =>
-                zone.name + " [" + zone.id + "; " + zone.kind + "; " + zone.venueClass + "]: " + zone.description,
-            ),
-          ]
-            .filter(Boolean)
-            .join("\n")
-        : "",
+    ...(change.zones ?? []).map((zone) => zone.name + ": " + (zone.description || zone.purpose || "")),
   ]
     .filter(Boolean)
     .join("\n");
+}
+function globalChange(venue: VillageVenue, change: VillageProjectChange) {
+  const classes =
+    change.classes && JSON.stringify([...change.classes].sort()) !== JSON.stringify([...(venue.classes ?? [])].sort());
+  const capacity = change.capacity !== undefined && change.capacity !== (venue.residenceCapacity ?? 1);
+  return {
+    classes: classes ? change.classes : undefined,
+    capacity: capacity ? change.capacity : undefined,
+    ...(change.form !== undefined ? { form: change.form } : {}),
+    ...(change.exteriorDescription !== undefined ? { exteriorDescription: change.exteriorDescription } : {}),
+  };
+}
+export function renovationAffectedIds(
+  venue: VillageVenue,
+  change?: VillageProjectChange | null,
+  approvedZoneIds?: string[],
+): string[] {
+  if (!change) return [];
+  const ids = approvedZoneIds ?? changedZoneIds(venue, change);
+  const touched = venueZones(venue).filter((zone) => ids.includes(zone.id));
+  const added = (change.zones ?? []).filter((zone) => ids.includes(zone.id));
+  const global = globalChange(venue, change);
+  const building = global.form !== undefined || global.exteriorDescription !== undefined;
+  const residence =
+    building ||
+    global.classes ||
+    global.capacity !== undefined ||
+    [...touched, ...added].some((zone) => zone.kind === "shared-residence");
+  const workplace =
+    building || global.classes || [...touched, ...added].some((zone) => zone.venueClass === "workplace");
+  if (!ids.length && !building && !global.classes && global.capacity === undefined) return [];
+  return [
+    ...new Set([
+      ...(venue.access?.managerIds ?? []),
+      ...(residence ? venueResidentIds(venue) : []),
+      ...(workplace ? (venue.workerIds ?? []) : []),
+      ...(building
+        ? venueZones(venue).flatMap((zone) => [
+            ...zoneControllerIds(venue, zone),
+            ...(zone.ownerId ? [zone.ownerId] : []),
+          ])
+        : []),
+      ...touched.flatMap((zone) => [...zoneControllerIds(venue, zone), ...(zone.ownerId ? [zone.ownerId] : [])]),
+      ...added.flatMap((zone) => [...(zone.controllerIds ?? []), ...(zone.ownerId ? [zone.ownerId] : [])]),
+    ]),
+  ].filter((id) => id !== "player");
+}
+export function approvalScope(
+  venue: VillageVenue,
+  change: VillageProjectChange,
+  actorId: string,
+  approvedZoneIds?: string[],
+): string {
+  const changed = approvedZoneIds ?? changedZoneIds(venue, change);
+  const manager = venue.access?.managerIds.includes(actorId);
+  const resident = venueResidentIds(venue).includes(actorId);
+  const worker = venue.workerIds?.includes(actorId);
+  const relevant = changed.filter((id) => {
+    const old = venueZones(venue).find((zone) => zone.id === id);
+    const next = change.zones?.find((zone) => zone.id === id);
+    return (
+      manager ||
+      [old, next].some(
+        (zone) =>
+          zone &&
+          (zone.ownerId === actorId ||
+            zone.controllerIds?.includes(actorId) ||
+            (resident && zone.kind === "shared-residence") ||
+            (worker && zone.venueClass === "workplace") ||
+            (old && zoneControllerIds(venue, old).includes(actorId))),
+      )
+    );
+  });
+  return JSON.stringify([
+    globalChange(venue, change),
+    relevant
+      .sort()
+      .map((id) => [
+        id,
+        change.zones?.find((zone) => zone.id === id) && shape(change.zones.find((zone) => zone.id === id)!),
+      ]),
+  ]);
+}
+export function projectDesignKey(project: VillageProject): string {
+  const plan = project.plan;
+  return JSON.stringify([
+    project.kind,
+    project.kind !== "new-venue" ? project.venueId : "",
+    project.venueDraft?.classes,
+    project.venueDraft?.description,
+    project.venueDraft?.position,
+    plan
+      ? [
+          plan.form,
+          plan.venueType,
+          plan.exteriorDescription,
+          plan.capacity,
+          plan.layout,
+          [...plan.spaces, ...plan.privateSpaces].map(shape),
+        ]
+      : null,
+    project.lifecycle?.change,
+    project.establishment
+      ? [
+          project.establishment.goal,
+          project.establishment.physical,
+          project.establishment.zoneIds,
+          project.establishment.objectives.map((row) => [row.id, row.text]),
+        ]
+      : null,
+  ]);
+}
+export function matchesProjectDesign(scope: string, project: VillageProject): boolean {
+  try {
+    // Saved decoding changes object field order without changing the agreed design.
+    const canonical = (value: unknown) =>
+      JSON.stringify(value, (_key, entry: unknown) =>
+        entry && typeof entry === "object" && !Array.isArray(entry)
+          ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b)))
+          : entry,
+      );
+    return canonical(JSON.parse(scope)) === canonical(JSON.parse(projectDesignKey(project)));
+  } catch {
+    return false;
+  }
 }

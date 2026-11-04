@@ -1,62 +1,25 @@
-import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
+import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { createHash } from "node:crypto";
+import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
+import { asRecord } from "../../domain/rules/coerce.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
-import type { backgroundCalls } from "../../adapters/operations/background-context.js";
-import type { VillageHappening } from "../../domain/models/world.js";
 import { badRequest } from "../../domain/rules/errors.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
-import { VILLAGE_SHARED_SETTING_RULE } from "../../domain/rules/narrative-grounding.js";
-import {
-  boundText,
-  MAX_HAPPENINGS_PER_WRITE,
-  MAX_SETTING_LENGTH,
-  MAX_VENUE_DESCRIPTION_LENGTH,
-  MAX_VENUE_NAME_LENGTH,
-} from "../../domain/rules/prompt-preset.js";
-import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
-import { fitVenueWritingMessages } from "../../domain/rules/venue-writing.js";
-import { completionFailure as typedCompletionFailure, WorkFailureError } from "../../domain/rules/work-failure.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
+import { boundText, MAX_VENUE_DESCRIPTION_LENGTH, MAX_VENUE_NAME_LENGTH } from "../../domain/rules/prompt-preset.js";
+import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
+import { SCENE_MEMORY_INSTRUCTION } from "../../domain/rules/scene-memories.js";
+import { readSocialWishChanges, SOCIAL_WISH_INSTRUCTION } from "../../domain/rules/social-wishes.js";
 import type { completeWithRoom } from "../generation/model-requests.js";
 import type { villagesConnectionIdFor } from "../settings/connections.js";
-import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
-
-import {
-  BOOTSTRAP_MAX_TOKENS,
-  BOOTSTRAP_TEMPERATURE,
-  type VillageBootstrapProposal,
-  buildBootstrapMessages,
-  coerceProposal,
-  TICK_MAX_TOKENS,
-  TICK_TEMPERATURE,
-  type VillageTickContext,
-  type VillageTickProposal,
-  buildTickMessages,
-  coerceHappeningList,
-  coerceOpportunityHappenings,
-  readHousingRequests,
-  REACTION_MAX_TOKENS,
-  REACTION_TEMPERATURE,
-  type VillageReactionContext,
-  buildReactionMessages,
-} from "../../domain/rules/village-bootstrap-rules.js";
 
 export type VillageBootstrapServicePorts = {
   villagesLanguageModels: typeof villagesLanguageModels;
   villagesConnectionIdFor: typeof villagesConnectionIdFor;
   completeWithRoom: typeof completeWithRoom;
-  backgroundCalls: Pick<typeof backgroundCalls, "getStore">;
-  villagesDebugAgentsEnabled: typeof villagesDebugAgentsEnabled;
-  villagesLogger: () => Pick<ReturnType<typeof villagesLogger>, "debugOverride">;
 };
 /** Cold recipe: awaited stages retain one application's model and storage connections. */
 export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
-  const {
-    villagesLanguageModels,
-    villagesConnectionIdFor,
-    completeWithRoom,
-    backgroundCalls,
-    villagesDebugAgentsEnabled,
-    villagesLogger,
-  } = ports;
+  const { villagesLanguageModels, villagesConnectionIdFor, completeWithRoom } = ports;
 
   async function draftVillageVenueDescriptions(
     setting: string,
@@ -85,11 +48,17 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
           'Return JSON only: {"descriptions":[{"id":"...","text":"..."}]}. Each text is 2-4 sentences, under 1000 characters.',
         ].join("\n"),
       },
-      { role: "user", content: JSON.stringify({ setting: setting.slice(0, MAX_SETTING_LENGTH), lore, venues: rows }) },
+      { role: "user", content: JSON.stringify({ setting, lore, venues: rows }) },
     ];
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2_500, 2_500) });
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2_500, { temperature: 0.7 });
-    const payload = extractJsonObject(completion.content ?? "");
+    if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
+      throw badRequest("The complete place description does not fit the System connection. No request was sent.");
+    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2_500, {
+      responseFormat: { type: "json_object" },
+      retryEmpty: false,
+      temperature: 0.7,
+    });
+    const payload = extractModelJsonObject(completion);
     const descriptions = Array.isArray(payload?.descriptions) ? payload.descriptions : [];
     const known = new Set(rows.map((row) => row.id));
     const result: Record<string, string> = {};
@@ -104,180 +73,92 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     return result;
   }
 
-  async function proposeVillage(
-    setting: string,
-    options: { signal?: AbortSignal; lore?: readonly string[] } = {},
-  ): Promise<VillageBootstrapProposal> {
-    const world = setting.trim();
-    if (world.length === 0) throw badRequest("Write what the village is like before asking for places.");
-
-    const model = await villagesLanguageModels().resolveForRequest({
-      connectionId: await villagesConnectionIdFor("system"),
-    });
-    const requestedMaxTokens = Math.min(model.maxOutputTokens ?? BOOTSTRAP_MAX_TOKENS, BOOTSTRAP_MAX_TOKENS);
-    const fitted = model.fitContext(buildBootstrapMessages(world, options.lore ?? []), {
-      maxTokens: requestedMaxTokens,
-    });
-    const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
-    villagesLogger().debugOverride(debugEnabled, "[villages] bootstrap prompt: %s", JSON.stringify(fitted.messages));
-
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
-      temperature: BOOTSTRAP_TEMPERATURE,
-      debugMode: debugEnabled,
-      signal: options.signal,
-    });
-
-    const payload = extractJsonObject(completion.content ?? "");
-    if (!payload) throw new Error("The village did not suggest any places. Try again, or write them yourself.");
-
-    const proposal = coerceProposal(payload);
-    if (proposal.venues.length === 0) {
-      throw new Error("The village did not suggest any places. Try again, or write them yourself.");
-    }
-    return { ...proposal, model: model.model };
-  }
-
-  async function proposePublicVenueNames(setting: string, lore: readonly string[] = []): Promise<string[]> {
-    const world = setting.trim();
-    if (!world) throw badRequest("Describe the place and world before asking for names.");
-    const model = await villagesLanguageModels().resolveForRequest({
-      connectionId: await villagesConnectionIdFor("system"),
-    });
-    const requestedMaxTokens = Math.min(model.maxOutputTokens ?? BOOTSTRAP_MAX_TOKENS, BOOTSTRAP_MAX_TOKENS);
-    const messages: CapabilityLanguageModelMessage[] = [
-      {
-        role: "system",
-        content: [
-          "Suggest exactly three alternative names for one shared community venue in the authored setting.",
-          VILLAGE_SHARED_SETTING_RULE,
-          "These are choices for the same venue, not three separate places. Keep each name short and distinct.",
-          "Stay consistent with the setting and established lore. Do not introduce unsupported technology or geography.",
-          'Answer with JSON only: {"names":["...","...","..."]}.',
-          `Setting: ${world}`,
-          lore.length ? `Established lore: ${lore.join("\n")}` : "",
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-      },
-      { role: "user", content: "What could we name the village's one public venue?" },
-    ];
-    const fitted = model.fitContext(messages, { maxTokens: requestedMaxTokens });
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
-      temperature: BOOTSTRAP_TEMPERATURE,
-    });
-    const payload = extractJsonObject(completion.content ?? "");
-    const names = [
-      ...new Set(
-        (Array.isArray(payload?.names) ? payload.names : [])
-          .map((name) => boundText(name, MAX_VENUE_NAME_LENGTH).trim())
-          .filter(Boolean),
-      ),
-    ].slice(0, 3);
-    if (names.length !== 3)
-      throw new Error("The village could not suggest three names. Try again, or name the venue yourself.");
-    return names;
-  }
-
-  async function proposeHappenings(
-    context: VillageTickContext,
+  async function interpretSocialSource(
+    lines: unknown,
+    context: {
+      state?: import("../../domain/models/relationship-types.js").RelationshipState;
+      candidates: unknown[];
+      relationships: string[];
+      residents: Pick<
+        import("../../domain/models/world.js").VillageVillager,
+        "characterId" | "cardSnapshot" | "wishes"
+      >[];
+      memory?: ReturnType<typeof import("../../domain/rules/scene-memories.js").sceneMemoryContext>;
+      at: string;
+      place?: unknown;
+      possibleMemoryEffects?: unknown;
+      committedPhysical?: unknown;
+      originalPlaceUpdate?: unknown;
+    },
+    mail: boolean,
     options: { signal?: AbortSignal } = {},
-  ): Promise<VillageTickProposal> {
+  ) {
     const model = await villagesLanguageModels().resolveForRequest({
       connectionId: await villagesConnectionIdFor("system"),
     });
-    const requestedMaxTokens = Math.min(model.maxOutputTokens ?? TICK_MAX_TOKENS, TICK_MAX_TOKENS);
-    const messages = buildTickMessages(context);
-    const fitted = fitVenueWritingMessages(
-      model,
-      [{ text: String(messages[0].content) }],
-      String(messages[1].content),
-      requestedMaxTokens,
-      "System",
-    );
-    const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
-    villagesLogger().debugOverride(debugEnabled, "[villages] creative prompt: %s", JSON.stringify(fitted.messages));
-
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
+    const reviewMessages = [
+      {
+        role: "system" as const,
+        content:
+          RELATIONSHIP_REVIEW_INSTRUCTION +
+          " Return JSON only. Independently interpret these supplied exact lines. Return a memoryChanges array using the native Memory contract supplied below, grounded only in actual witnessed dialogue; use an empty array when none are supported. Use zero-based numeric lineIds into lines for social citations. For an encounter the player is absent: disclosures must be empty. For personal mail the recipient is player; save its disclosures for reading. The captured and live social baseline is context.state; absent pair revisions are 0. sceneAfter and liveAfter coincide for this automatic source. Mail cannot grant access or create actionable invitations; return permissions:[] for mail. Do not invent physical deeds or player consent. Private reasons and intentions remain private. " +
+          (mail
+            ? ""
+            : " Return consistent:true only if every narrated physical outcome is supported. Otherwise consistent:false; never rewrite source facts. possibleMemoryEffects lists a pending physical receipt: dependent physical facts need its exact effectId with validated-event support, and a supported matching placeUpdate. When committedPhysical is supplied, physical truth is already settled: preserve the original physical nomination and use its saved outcome while reinterpreting social meaning. " +
+              PLACE_UPDATE_INSTRUCTION) +
+          SCENE_MEMORY_INSTRUCTION +
+          "\n" +
+          SOCIAL_WISH_INSTRUCTION,
+      },
+      {
+        role: "user" as const,
+        content: JSON.stringify({ lines, mode: mail ? "mail" : "encounter", context, now: context.at }),
+      },
+    ];
+    const fittedReview = model.fitContext(reviewMessages, { maxTokens: 4096 });
+    if (fittedReview.trimmed || JSON.stringify(fittedReview.messages) !== JSON.stringify(reviewMessages))
+      throw new Error("Offscreen semantic evidence does not fit System context.");
+    const judged = await completeWithRoom(model, reviewMessages, Math.min(fittedReview.maxTokens ?? 4096, 4096), {
       responseFormat: { type: "json_object" },
       retryEmpty: false,
-      temperature: TICK_TEMPERATURE,
-      debugMode: debugEnabled,
+      temperature: 0.1,
+      reasoningEffort: "low",
+      debugMode: false,
+      usagePurpose: "checks",
       signal: options.signal,
     });
-
-    const payload = extractJsonObject(completion.content ?? "");
-    const diagnostics = responseDiagnostics(model, completion, fitted.maxTokens ?? requestedMaxTokens, payload);
-    const fail = (missing = false) =>
-      new WorkFailureError({
-        ...(typedCompletionFailure(completion, "events-response", fitted.maxTokens ?? requestedMaxTokens) ?? {
-          cause: missing ? ("missing_result" as const) : ("invalid_json" as const),
-          stage: "events-response",
-          message: "",
-        }),
-        message:
-          typedCompletionFailure(completion, "events-response", fitted.maxTokens ?? requestedMaxTokens)?.message ??
-          (missing
-            ? "Village Events returned JSON without usable happenings. Explicitly retry unfinished work."
-            : "Village Events returned no usable JSON. Explicitly retry unfinished work."),
-        finishReason: completion.finishReason,
-        requestedOutputTokens: fitted.maxTokens ?? requestedMaxTokens,
-        responseDiagnostics: { ...diagnostics, missingFields: missing ? ["happenings"] : [] },
-      });
-    if (!payload) throw fail();
-    const proposal = {
-      // Admit only current visual and structured proposal fields.
-      happenings: coerceOpportunityHappenings(
-        payload.happenings,
-        new Set(context.recent.map((line) => line.trim().toLowerCase())),
-        context.moment,
-        context.opportunities,
-      ),
-      routineIdea:
-        payload.routineIdea && typeof payload.routineIdea === "object" && !Array.isArray(payload.routineIdea)
-          ? (payload.routineIdea as VillageTickProposal["routineIdea"])
-          : undefined,
-      housingRequests: readHousingRequests(payload.housingRequests, context),
-      social:
-        context.social && payload.social && typeof payload.social === "object"
-          ? (payload.social as VillageTickProposal["social"])
-          : undefined,
+    const interpreted = extractModelJsonObject(judged);
+    const review = interpreted?.relationshipReview as Record<string, unknown> | undefined;
+    if (
+      judged.finishReason === "length" ||
+      !review ||
+      !Array.isArray(interpreted?.wishChanges) ||
+      interpreted.wishChanges.length > 16 ||
+      !Array.isArray(interpreted?.memoryChanges) ||
+      interpreted.memoryChanges.length > 16 ||
+      !["changes", "permissions", "disclosures"].every((key) => Array.isArray(review[key]))
+    )
+      throw new Error("Offscreen interpretation is incomplete; explicit retry required.");
+    if (
+      !mail &&
+      Array.isArray(lines) &&
+      lines.some((line) => asRecord(line).kind === "narration") &&
+      interpreted?.consistent !== true
+    )
+      throw new Error("The saved encounter contains unsupported physical outcomes.");
+    const record: Record<string, unknown> = {
+      relationshipReview: review,
+      placeUpdate: mail ? null : (interpreted?.placeUpdate ?? null),
+      physicalConsistent: !mail && interpreted?.consistent === true,
     };
-    // A usable visual entry is required; structured proposals are optional.
-    if (proposal.happenings.length === 0) throw fail(true);
-    return { ...proposal, model: model.model };
+    if (context.memory) record.memoryContexts = { [context.memory.saved.protection.fingerprint]: context.memory.saved };
+    record.semanticVersion = 2;
+    record.memoryChanges = interpreted!.memoryChanges;
+    record.wishChanges = readSocialWishChanges(interpreted!.wishChanges);
+    record.semanticSourceHash = createHash("sha256").update(JSON.stringify(reviewMessages)).digest("hex");
+    return record;
   }
 
-  async function proposeReaction(
-    context: VillageReactionContext,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<{ happenings: VillageHappening[]; model: string }> {
-    const model = await villagesLanguageModels().resolveForRequest({
-      connectionId: await villagesConnectionIdFor("system"),
-    });
-    const requestedMaxTokens = Math.min(model.maxOutputTokens ?? REACTION_MAX_TOKENS, REACTION_MAX_TOKENS);
-    const fitted = model.fitContext(buildReactionMessages(context), { maxTokens: requestedMaxTokens });
-    const debugEnabled = !backgroundCalls.getStore() && villagesDebugAgentsEnabled();
-    villagesLogger().debugOverride(debugEnabled, "[villages] reaction prompt: %s", JSON.stringify(fitted.messages));
-
-    const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? requestedMaxTokens, {
-      temperature: REACTION_TEMPERATURE,
-      debugMode: debugEnabled,
-      signal: options.signal,
-    });
-
-    const payload = extractJsonObject(completion.content ?? "");
-    if (!payload) throw new Error("The village did not say what it saw.");
-    // Seeded with the window and with the deed itself, so the one line that must
-    // never come back as news is the thing that just happened, which the village
-    // has already written down somewhere else.
-    const seen = new Set(context.recent.map((line) => line.trim().toLowerCase()));
-    seen.add(context.deed.trim().toLowerCase());
-    return {
-      happenings: coerceHappeningList(payload.happenings, seen, context.moment, MAX_HAPPENINGS_PER_WRITE),
-      model: model.model,
-    };
-  }
-
-  return { draftVillageVenueDescriptions, proposeVillage, proposePublicVenueNames, proposeHappenings, proposeReaction };
+  return { draftVillageVenueDescriptions, interpretSocialSource };
 }
 export type VillageBootstrapService = ReturnType<typeof createVillageBootstrap>;

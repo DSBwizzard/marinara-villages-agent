@@ -1,21 +1,18 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import { withSettingsOwners } from "./fixtures/villages-settings-owner.fixture.js";
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { withSettingsOwners, settingsJobId } from "./fixtures/villages-settings-owner.fixture.js";
+import { backgroundRevision } from "../packages/villages/src/server/domain/rules/background-revision.js";
+import { fixtureWish } from "./helpers/social-wishes-fixture.js";
+import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
-import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
-import { readUsageMeter, saveUsageRate } from "../packages/villages/src/server/features/settings/usage-meter.js";
-import {
-  proposeRemap,
-  remapBlocks,
-  remapBlockKeys,
-} from "../packages/villages/src/server/domain/rules/native-remap.js";
-import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
-import {
-  translationBatchSize,
-  translationRequestCount,
-} from "../packages/villages/src/server/domain/rules/generation-budgets.js";
 import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { proposeRemap, remapBlocks } from "../packages/villages/src/server/domain/rules/native-remap.js";
+import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
+import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
+import { readUsageMeter, saveUsageRate } from "../packages/villages/src/server/features/settings/usage-meter.js";
+import { previewVillageBurst } from "../packages/villages/src/server/features/settings/usage-preview.js";
 const records = new Map<string, any>();
 let calls = 0,
   writes = 0,
@@ -56,6 +53,7 @@ const model: any = {
         rhythm: [],
       }),
       usage: { promptTokens: 500, completionTokens: 100, totalTokens: 600 },
+      finishReason: "stop",
     };
   },
 };
@@ -64,7 +62,7 @@ const release = configureVillagesRuntime({
   logger: { debugOverride() {}, warn() {}, error() {}, info() {}, debug() {} },
   getAgentConfig: async () => ({ connectionId: "paid", settings: { imageConnectionId: "picture" } }),
   persistence: {
-    documents: {
+    documents: villageFixtureDocuments({
       async getById(_p: string, id: string) {
         return structuredClone(records.get(id) ?? null);
       },
@@ -83,7 +81,7 @@ const release = configureVillagesRuntime({
         records.set(value.id, r);
         return r;
       },
-    },
+    }),
   },
   resources: {
     async listCharacters() {
@@ -106,10 +104,20 @@ globalThis.fetch = async () =>
     ]),
   );
 const state = coerceVillageState({
+  ...defaultVillageState(),
+
   wishSystemVersion: 3,
   seed: "seed",
   setting: "Village",
-  venues: [{ id: "park", name: "Park", classes: ["community"], form: "Park" }],
+  venues: [
+    venueFixture({
+      residentIds: [null].filter((id) => typeof id === "string" && !!id),
+      id: "park",
+      name: "Park",
+      classes: ["community"],
+      form: "Park",
+    }),
+  ],
   villagers: [
     {
       characterId: "a",
@@ -134,6 +142,8 @@ async function main() {
     assert.equal(plan.requests, 1, "one owned routine request, no translation");
     assert.equal(plan.residents[0]?.requests, 1);
     assert.ok(plan.dollars);
+    assert.match(plan.note, /Base estimate excludes automatic retries/);
+    assert.match(plan.note, /one extra response/);
     assert.equal(calls, 0);
     assert.equal(writes, 0, "previews do not reconcile or write village state");
     const context = {
@@ -144,7 +154,7 @@ async function main() {
       home: "",
       venues: [],
       activeWishes: [],
-      completedWishes: [],
+      wishes: [],
       schedule: null,
       allowInitialWish: false,
     };
@@ -154,9 +164,9 @@ async function main() {
     const signature = "unused-retired-translation";
     state.villagers[0].remap = {
       signature,
-      moves: remapBlockKeys(remapBlocks(schedule)).map((key) => ({
-        day: key.split("|")[0],
-        time: key.split("|")[1],
+      moves: remapBlocks(schedule).map((block) => ({
+        day: block.day,
+        time: block.time,
         here: "Studying",
         venueId: "",
       })),
@@ -176,7 +186,7 @@ async function main() {
       (await previewVillageBurst({ action: "change", settings: { setting: "A different world" } })).requests,
       0,
     );
-    state.villagers[0].agenda!.wishes = [{ wish: "Learn pottery", id: "wish", status: "active" }] as any;
+    state.villagers[0].wishes = [fixtureWish({ wish: "Talk about pottery" })];
     state.villagers[0].remap!.signature = "unused-retired-translation-with-wish";
     storeState();
     assert.equal(
@@ -187,16 +197,23 @@ async function main() {
     const unchanged = structuredClone(records.get("villages-village"));
     await readUsageMeter(true);
     assert.deepEqual(records.get("villages-village"), unchanged, "meter reads cannot reconcile the village");
-    records.set("job", {
-      id: "job",
+    const jobSlot = "villages-background-" + backgroundRevision(["agenda", "a"]);
+    records.set(jobSlot, {
+      id: jobSlot,
       kind: "background-work",
       data: {
         seed: state.seed,
+        id: "fixture-job",
+        attempt: 1,
         kind: "agenda",
         subjectId: "a",
         status: "failed",
         finite: true,
-        steps: Array.from({ length: 3 }, () => ({ status: "completed" })),
+        steps: Array.from({ length: 3 }, (_, index) => ({
+          fingerprint: "saved:" + index,
+          status: "completed",
+          response: { content: "{}", finishReason: "stop" },
+        })),
         settings: {},
         input: {},
         failedStep: null,
@@ -208,9 +225,9 @@ async function main() {
       0,
       "retries reuse purchased routine responses",
     );
-    records.get("job").data.status = "completed";
+    records.get(jobSlot).data.status = "completed";
     assert.equal(
-      (await previewVillageBurst({ action: "retry", jobId: "job" })).requests,
+      (await previewVillageBurst({ action: "retry", jobId: jobSlot })).requests,
       0,
       "completed retry replays cost no new requests",
     );
@@ -221,16 +238,11 @@ async function main() {
       connectionId: "picture",
     });
     assert.equal(images.requests, 3);
+    assert.doesNotMatch(images.note, /automatic retries/);
     assert.ok((images.dollars?.min ?? 0) >= 0.12);
     const unknown = await previewVillageBurst({ action: "images", count: 2, connectionId: "unpriced" });
     assert.equal(unknown.unknownCosts, 2);
     assert.equal(unknown.dollars, null);
-    for (const limit of [700, 1400, 5000])
-      for (const blocks of [0, 1, 12, 40])
-        assert.equal(
-          translationRequestCount(blocks, translationBatchSize(limit)),
-          Math.ceil(blocks / Math.min(10, Math.max(2, Math.floor(limit / 350)))),
-        );
     failCards = true;
     resetNativeScheduleCache();
     assert.equal(
@@ -239,7 +251,7 @@ async function main() {
       "retired translation stays zero even when cards are unreadable",
     );
     assert.equal(
-      (await previewVillageBurst({ action: "retry", jobId: "job" })).requests,
+      (await previewVillageBurst({ action: "retry", jobId: jobSlot })).requests,
       0,
       "a saved completed retry does not need readable native cards",
     );
@@ -283,7 +295,7 @@ async function main() {
   }
   await withSettingsOwners(async (a, b, selectB) => {
     const paused = a.pause("list", "background-work");
-    const pending = previewVillageBurst({ action: "retry", jobId: "same-job" });
+    const pending = previewVillageBurst({ action: "retry", jobId: settingsJobId });
     await paused.wait(pending);
     selectB();
     paused.resume();
@@ -301,7 +313,11 @@ async function main() {
     const failure = new Error("A raw world storage failure");
     a.failNext("get", "villages-village", failure);
     await assert.rejects(previewVillageBurst({ action: "images" }), (error) => error === failure);
-    assert.equal(a.calls.length, 1, "raw read failure precedes model and background lookup");
+    assert.ok(
+      a.calls.every((call) => call.op === "get" && ["villages-repair-control", "villages-village"].includes(call.id)),
+      "raw read failure precedes model and background lookup; only recovery admission may precede it",
+    );
+    assert.equal(a.calls.filter((call) => call.id === "villages-village").length, 1);
     a.failNext("resolver", "same-connection", new Error("model unavailable"));
     const result = await previewVillageBurst({ action: "images", count: 1 });
     assert.equal(result.requests, 1, "resolution failure retains counts and unknown prices");

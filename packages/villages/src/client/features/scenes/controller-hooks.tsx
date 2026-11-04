@@ -1,11 +1,8 @@
-import type {
-  ArchiveVisitSummary,
-  RoomOperation,
-  RoomRecordEvent,
-  SceneView,
-  SceneChangeIssue,
-} from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import type { RoomOperation, RoomRecordEvent, SceneChangeIssue, SceneView } from "../../../shared/contracts/village.js";
+import { useFocusRevision } from "../../shared/activity.js";
+import { request } from "../../shared/api.js";
+import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import {
   completedGreetingAfterFailure,
   currentRoom,
@@ -13,15 +10,16 @@ import {
   refreshSceneAfterFailure,
   staleVenueReason,
 } from "./ScenePanel.js";
-import { isLocalRoomCompletion } from "./villages-room-reading";
-import { useSceneEntryLifetime } from "./entry-lifetime.js";
-import { useEffect, useState } from "react";
+import { isLocalRoomCompletion, hasPublishedRoomSubmission } from "./villages-room-reading";
 
 export function useSceneChangesPolling(ports: {
+  visible: boolean;
+  viewing: boolean;
+  busy: boolean;
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
   dismissedRoomEventIdsRef: React.RefObject<Set<string>>;
   receiveRoomRecordEvents: (events: readonly import("../../../shared/contracts/village.js").RoomRecordEvent[]) => void;
   room: import("../../../shared/contracts/village.js").SceneView;
-  roomChangeStatus: { pending: number; failed: number; rejected: number };
   setRoomChangeStatus: React.Dispatch<React.SetStateAction<{ pending: number; failed: number; rejected: number }>>;
   setRoomNotices: React.Dispatch<
     React.SetStateAction<import("../../../shared/contracts/village.js").RoomRecordEvent[]>
@@ -32,29 +30,43 @@ export function useSceneChangesPolling(ports: {
     dismissedRoomEventIdsRef,
     receiveRoomRecordEvents,
     room,
-    roomChangeStatus,
     setRoomChangeStatus,
     setRoomNotices,
     setRoomUnresolvedChanges,
   } = ports;
+  const cursorRef = useRef({ sceneId: "", cursor: "" });
+  const focusRevision = useFocusRevision(ports.visible && ports.viewing);
+  const sceneChanges = ports.snapshot?.sceneChanges;
+  const revision = room?.id && sceneChanges?.sceneId === room.id ? sceneChanges.revision : "";
   useEffect(() => {
-    if (!room?.id || room.memoryMode !== "live") return;
-    setRoomChangeStatus({ pending: 0, failed: 0, rejected: 0 });
-    setRoomUnresolvedChanges([]);
+    if (!room?.id || room.memoryMode !== "live" || !ports.visible || !ports.viewing || ports.busy) return;
+    if (cursorRef.current.sceneId !== room.id) {
+      cursorRef.current = { sceneId: room.id, cursor: "" };
+      setRoomChangeStatus({ pending: 0, failed: 0, rejected: 0 });
+      setRoomUnresolvedChanges([]);
+    }
+    const controller = new AbortController();
+    let retries = 0;
+    let wasActive = false;
+    let settling = false;
     let stopped = false,
       timer: ReturnType<typeof setTimeout>;
-    let cursor = "";
+    let cursor = cursorRef.current.cursor;
     const poll = async () => {
       try {
         const answer = await request<{
+          activeRequest?: { status?: string };
+          backgroundChecks?: { status: string }[];
           changes: { notices: RoomRecordEvent[] }[];
           notices: RoomRecordEvent[];
           dismissedNoticeIds: string[];
-          processingSummary: typeof roomChangeStatus;
+          processingSummary: { pending: number; failed: number; rejected: number };
           nextCursor: string;
           hasMore: boolean;
           unresolved: SceneChangeIssue[];
-        }>(`/rooms/${encodeURIComponent(room.id)}/changes?cursor=${encodeURIComponent(cursor)}&limit=20`);
+        }>(`/rooms/${encodeURIComponent(room.id)}/changes?cursor=${encodeURIComponent(cursor)}&limit=20`, {
+          signal: controller.signal,
+        });
         if (stopped) return;
         for (const id of answer.dismissedNoticeIds ?? []) dismissedRoomEventIdsRef.current.add(id);
         setRoomNotices((current) => current.filter((event) => !dismissedRoomEventIdsRef.current.has(event.id)));
@@ -65,22 +77,50 @@ export function useSceneChangesPolling(ports: {
         setRoomChangeStatus(answer.processingSummary ?? { pending: 0, failed: 0, rejected: 0 });
         setRoomUnresolvedChanges(answer.unresolved ?? []);
         cursor = answer.nextCursor ?? cursor;
-        timer = setTimeout(() => void poll(), answer.hasMore ? 25 : 1500);
+        cursorRef.current.cursor = cursor;
+        retries = 0;
+        // The operation/recovery monitor owns a running turn. This loop owns only its asynchronous Wish checks.
+        const active = answer.backgroundChecks?.some((job) => ["queued", "running"].includes(job.status));
+        if (answer.hasMore) timer = setTimeout(() => void poll(), 25);
+        else if (room.status !== "closed" && active) {
+          wasActive = true;
+          timer = setTimeout(() => void poll(), 1500);
+        } else if (room.status !== "closed" && wasActive && !settling) {
+          settling = true;
+          timer = setTimeout(() => void poll(), 1500);
+        }
+        // Late afterApply commits change the shared snapshot revision and reopen this read.
       } catch {
-        if (!stopped) timer = setTimeout(() => void poll(), 3000);
+        if (!stopped && retries++ < 2) timer = setTimeout(() => void poll(), 3000);
       }
     };
     void poll();
     return () => {
       stopped = true;
+      controller.abort();
       clearTimeout(timer);
     };
-  }, [room?.id, room?.memoryMode, receiveRoomRecordEvents]);
+  }, [
+    room?.id,
+    room?.memoryMode,
+    room?.status,
+    room?.sceneRevision,
+    room?.operation?.status,
+    ports.visible,
+    ports.viewing,
+    ports.busy,
+    revision,
+    focusRevision,
+    receiveRoomRecordEvents,
+    setRoomChangeStatus,
+    setRoomUnresolvedChanges,
+    setRoomNotices,
+    dismissedRoomEventIdsRef,
+  ]);
 }
 
 export function useSceneSelectionReset(ports: {
-  lastRoomActivitySentRef: React.RefObject<number>;
-  lastRoomDeliberateAtRef: React.RefObject<number>;
+  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
   loadSnapshot: (options?: { signal?: AbortSignal; quiet?: boolean }) => Promise<void>;
   observedRoomIdRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
@@ -102,8 +142,6 @@ export function useSceneSelectionReset(ports: {
   >;
 }) {
   const {
-    lastRoomActivitySentRef,
-    lastRoomDeliberateAtRef,
     loadSnapshot,
     observedRoomIdRef,
     room,
@@ -128,12 +166,6 @@ export function useSceneSelectionReset(ports: {
       setRoomMoveZoneId("");
       setRoomTargetId("");
       roomMoveOperationIdRef.current = null;
-      lastRoomDeliberateAtRef.current = Date.parse(room.lastActivityAt || room.startedAt) || Date.now();
-    } else {
-      lastRoomDeliberateAtRef.current = Math.max(
-        lastRoomDeliberateAtRef.current,
-        Date.parse(room.lastActivityAt || room.startedAt) || 0,
-      );
     }
     let disposed = false;
     const interrupted = (reason: "inactivity" | "elsewhere") => {
@@ -143,27 +175,21 @@ export function useSceneSelectionReset(ports: {
       setRoomNotices([]);
       seenRoomEventIdsRef.current.clear();
       setLastSceneEnding(
-        reason === "inactivity"
-          ? "Interrupted: Inactivity. Your completed exchanges were saved in the Scene archive."
-          : "This Scene ended while you were away. Its completed exchanges are in the Scene archive.",
+        reason === "inactivity" ? "Interrupted: Inactivity." : "This Scene ended while you were away.",
       );
       setScreen("home");
       void loadSnapshot();
     };
-    const validate = (touchAfter = false) => {
+    const validate = () => {
       if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
       void request<{ session: SceneView | null }>("/rooms/active")
         .then(async ({ session }) => {
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
           if (session?.id === room.id) {
             setRoom(currentRoom(session));
-            if (touchAfter) {
-              await request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) });
-              lastRoomDeliberateAtRef.current = Date.now();
-            }
             return;
           }
-          const archived = await request<{ visit: SceneView }>(`/rooms/archive/${encodeURIComponent(room.id)}`).catch(
+          const archived = await request<{ visit: SceneView }>(`/rooms/${encodeURIComponent(room.id)}/recovery`).catch(
             () => null,
           );
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
@@ -174,37 +200,37 @@ export function useSceneSelectionReset(ports: {
           if (reason) interrupted(reason);
         });
     };
-    const deliberate = (event: Event) => {
-      if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
-      if (Date.now() - lastRoomDeliberateAtRef.current >= 30 * 60_000) {
-        if (event.cancelable) event.preventDefault();
-        event.stopImmediatePropagation();
-        validate(true);
-        return;
-      }
-      lastRoomDeliberateAtRef.current = Date.now();
-      if (Date.now() - lastRoomActivitySentRef.current < 15_000) return;
-      lastRoomActivitySentRef.current = Date.now();
-      void request("/rooms/activity", { method: "POST", body: JSON.stringify({ sessionId: room.id }) }).catch(
-        (cause) => {
-          const reason = staleVenueReason(cause);
-          if (reason) interrupted(reason);
-          else validate();
-        },
-      );
+    const onFocus = () => {
+      if (!document.hidden) validate();
     };
-    const onFocus = () => validate();
+    if (room.liveSceneVersion === 1 && !document.hidden) validate();
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onFocus);
-    for (const type of ["pointerdown", "keydown", "input", "scroll"]) window.addEventListener(type, deliberate, true);
     return () => {
       disposed = true;
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onFocus);
-      for (const type of ["pointerdown", "keydown", "input", "scroll"])
-        window.removeEventListener(type, deliberate, true);
     };
-  }, [room?.id, room?.status, room?.lastActivityAt, room?.startedAt, screen, loadSnapshot]);
+  }, [
+    room?.id,
+    room?.status,
+    ports.snapshot?.village.instant,
+    room?.liveSceneVersion,
+    screen,
+    loadSnapshot,
+    observedRoomIdRef,
+    setRoomContactBoundary,
+    setRoomMoveZoneId,
+    setRoomTargetId,
+    roomMoveOperationIdRef,
+    roomCompletionRef,
+    setRoom,
+    setRoomOpen,
+    setRoomNotices,
+    seenRoomEventIdsRef,
+    setLastSceneEnding,
+    setScreen,
+  ]);
 }
 
 export function useSceneOpeningWarning(ports: {
@@ -216,10 +242,13 @@ export function useSceneOpeningWarning(ports: {
   useEffect(() => {
     if (roomGreetingError && (roomGreetingError.sessionId !== room?.id || room?.status !== "opening"))
       setRoomGreetingError(null);
-  }, [room?.id, room?.status, roomGreetingError]);
+  }, [room?.id, room?.status, roomGreetingError, setRoomGreetingError]);
 }
 
 export function useSceneOperationPolling(ports: {
+  visible: boolean;
+  viewing: boolean;
+  recoveryPending: boolean;
   room: import("../../../shared/contracts/village.js").SceneView;
   roomBusy: boolean;
   setRoom: React.ActionDispatch<[next: React.SetStateAction<import("../../../shared/contracts/village.js").SceneView>]>;
@@ -228,13 +257,21 @@ export function useSceneOperationPolling(ports: {
 }) {
   const { room, roomBusy, setRoom, setRoomEnded, setRoomError } = ports;
   useEffect(() => {
-    if (!room?.id || room.operation?.status !== "running" || roomBusy) return;
+    if (
+      !room?.id ||
+      room.operation?.status !== "running" ||
+      roomBusy ||
+      !ports.visible ||
+      !ports.viewing ||
+      ports.recoveryPending
+    )
+      return;
     let stopped = false;
     let reading = false;
     const poll = async () => {
       if (stopped || reading || document.hidden) return;
       reading = true;
-      const latest = await refreshSceneAfterFailure(room.id, room.operation?.id);
+      const latest = await refreshSceneAfterFailure(room.id, room.operation?.id, () => !stopped);
       reading = false;
       if (!stopped && latest) {
         setRoom(currentRoom(latest));
@@ -251,13 +288,25 @@ export function useSceneOperationPolling(ports: {
       window.removeEventListener("focus", poll);
       document.removeEventListener("visibilitychange", poll);
     };
-  }, [room?.id, room?.operation?.id, room?.operation?.status, roomBusy]);
+  }, [
+    room?.id,
+    room?.operation?.id,
+    room?.operation?.status,
+    roomBusy,
+    ports.visible,
+    ports.viewing,
+    ports.recoveryPending,
+    setRoom,
+    setRoomEnded,
+    setRoomError,
+  ]);
 }
 
 export function useSceneInterruptedSubmission(ports: {
   composerEditVersionRef: React.RefObject<number>;
   restoredSceneDraftRef: React.RefObject<string>;
   room: import("../../../shared/contracts/village.js").SceneView;
+  setLegacyRecovery: React.Dispatch<React.SetStateAction<import("./useScenesState.js").LegacySceneRecovery | null>>;
   roomMoveOperationIdRef: React.RefObject<string>;
   setRoomContactBoundary: React.Dispatch<React.SetStateAction<string>>;
   setRoomContactKind: React.Dispatch<React.SetStateAction<"knock" | "call">>;
@@ -270,6 +319,7 @@ export function useSceneInterruptedSubmission(ports: {
     composerEditVersionRef,
     restoredSceneDraftRef,
     room,
+    setLegacyRecovery,
     roomMoveOperationIdRef,
     setRoomContactBoundary,
     setRoomContactKind,
@@ -282,7 +332,7 @@ export function useSceneInterruptedSubmission(ports: {
     if (
       !room?.id ||
       (room.operation?.status !== "interrupted" && !room.operation?.error) ||
-      room.submissions?.some((entry) => entry.id === room.operation?.id)
+      hasPublishedRoomSubmission(room, room.operation?.id)
     )
       return;
     const restoreKey = `${room.id}:${room.operation?.id}:${room.operation?.attemptId}`;
@@ -303,32 +353,34 @@ export function useSceneInterruptedSubmission(ports: {
           }
           return;
         }
+        const legacy = ["contact", "fulfill"].includes(operation.input.mode ?? "");
+        if (legacy) {
+          setLegacyRecovery((current) => (current?.sceneId === room.id ? current : { sceneId: room.id, operation }));
+        }
         if (!operation.input.message) return;
         restoredSceneDraftRef.current = restoreKey;
         if (composerEditVersionRef.current !== editVersion) return;
         setRoomDraft((current) => current || operation.input?.message || "");
         if (editVersion !== 0) return;
         if (operation.input.mode === "leave") setRoomMode("conclude");
-        else if (["chat", "fulfill", "contact"].includes(operation.input.mode ?? "")) {
-          setRoomMode(operation.input.mode as "chat" | "fulfill" | "contact");
-          setRoomTargetId(operation.input.targetId ?? "");
-          if (operation.input.contact) {
-            setRoomContactKind(operation.input.contact.kind === "call" ? "call" : "knock");
-            setRoomContactBoundary(operation.input.contact.boundaryZoneId ?? "");
-          }
-        }
+        else if (operation.input.mode === "chat") setRoomMode("chat");
       })
       .catch(() => {});
     return () => {
       disposed = true;
     };
   }, [
-    room?.id,
-    room?.operation?.id,
-    room?.operation?.attemptId,
-    room?.operation?.status,
-    room?.operation?.error,
-    room?.submissions,
+    room,
+    restoredSceneDraftRef,
+    composerEditVersionRef,
+    setRoomDraft,
+    setRoomMode,
+    setRoomMoveZoneId,
+    roomMoveOperationIdRef,
+    setRoomTargetId,
+    setRoomContactKind,
+    setRoomContactBoundary,
+    setLegacyRecovery,
   ]);
 }
 
@@ -372,7 +424,9 @@ export function useActiveSceneRestoration(ports: {
   });
   const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
   const [attempt, setAttempt] = useState(0);
-  useEffect(() => {
+  // A restoration attempt starts only on mount or explicit retry. Its captured
+  // selection still retires through the entry lifetime, including after handoff.
+  const restore = useEffectEvent((attempt: number) => {
     const controller = new AbortController();
     let claim: ReturnType<typeof lifetime.begin> = null;
     void request<{ session: SceneView | null; debugDiscardEnabled: boolean }>("/rooms/active", {
@@ -403,7 +457,6 @@ export function useActiveSceneRestoration(ports: {
               const { session: greeted } = await request<{ session: SceneView }>("/rooms/greet", {
                 method: "POST",
                 body: JSON.stringify({ sessionId: session.id }),
-                signal: AbortSignal.timeout(30_000),
               });
               if (!owns()) return;
               const next = currentRoom(greeted);
@@ -437,62 +490,11 @@ export function useActiveSceneRestoration(ports: {
       controller.abort();
       if (claim) lifetime.cancel(claim);
     };
-  }, [attempt]);
-  return {
-    status,
-    retry: () => {
-      setStatus("checking");
-      setAttempt((current) => current + 1);
-    },
-  };
-}
-
-export function useSceneArchive(ports: {
-  archiveOffset: number;
-  archiveVenueId: string;
-  archiveVersion: number;
-  archiveVillagerId: string;
-  menuPage: import("../../shared/types.js").MenuPage;
-  setArchiveError: React.Dispatch<React.SetStateAction<string>>;
-  setArchiveTotal: React.Dispatch<React.SetStateAction<number>>;
-  setVenueVisits: React.Dispatch<
-    React.SetStateAction<import("../../../shared/contracts/village.js").ArchiveVisitSummary[]>
-  >;
-  snapshot: import("../../../shared/contracts/village.js").VillageSnapshot;
-}) {
-  const {
-    archiveOffset,
-    archiveVenueId,
-    archiveVersion,
-    archiveVillagerId,
-    menuPage,
-    setArchiveError,
-    setArchiveTotal,
-    setVenueVisits,
-    snapshot,
-  } = ports;
-  useEffect(() => {
-    if (menuPage !== "chatlogs" || !snapshot?.isFounded) return;
-    const controller = new AbortController();
-    const query = new URLSearchParams();
-    if (archiveVenueId) query.set("venueId", archiveVenueId);
-    if (archiveVillagerId) query.set("characterId", archiveVillagerId);
-    query.set("offset", String(archiveOffset));
-    query.set("limit", "20");
-    setVenueVisits(null);
-    void request<{ visits: ArchiveVisitSummary[]; total: number }>(`/rooms/archive?${query.toString()}`, {
-      signal: controller.signal,
-    })
-      .then(({ visits, total }) => {
-        if (!controller.signal.aborted) {
-          setVenueVisits(visits);
-          setArchiveTotal(total);
-          setArchiveError("");
-        }
-      })
-      .catch((cause) => {
-        if (!controller.signal.aborted) setArchiveError(messageFrom(cause, "Scenes could not be read."));
-      });
-    return () => controller.abort();
-  }, [archiveVenueId, archiveVillagerId, archiveOffset, archiveVersion, menuPage, snapshot?.isFounded]);
+  });
+  useEffect(() => restore(attempt), [attempt]);
+  const retry = useCallback(() => {
+    setStatus("checking");
+    setAttempt((current) => current + 1);
+  }, []);
+  return { status, retry };
 }

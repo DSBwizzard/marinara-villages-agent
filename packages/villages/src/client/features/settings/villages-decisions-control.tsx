@@ -47,34 +47,31 @@ export function DecisionsControl({
     const refresh = async () => {
       const revision = settingsRevision.current;
       try {
-        const [config, diagnostics] = await Promise.all([
-          api<Configuration>("/interpretation-settings", { signal: controller.signal }),
-          api<{ checks: Trace[] }>(`/interpretation-diagnostics/${encodeURIComponent(sceneId)}`, {
-            signal: controller.signal,
-          }),
-        ]);
-        if (
-          !config?.settings ||
-          typeof config.settings.decisionsEnabled !== "boolean" ||
-          !Array.isArray(diagnostics.checks)
-        )
-          return;
-        if (!cancelled) {
-          if (!savingRef.current && revision === settingsRevision.current) setConfiguration(config);
-          setChecks(diagnostics.checks);
-        }
+        const config = await api<Configuration>("/interpretation-settings", { signal: controller.signal });
+        if (!config?.settings || typeof config.settings.decisionsEnabled !== "boolean") return;
+        if (!cancelled && !savingRef.current && revision === settingsRevision.current) setConfiguration(config);
       } catch {
-        /* Poll failure never interferes with the Scene or resets a saved switch. */
+        /* A failed read never interferes with the Scene or resets a saved switch. */
       }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 2500);
     return () => {
       cancelled = true;
-      clearInterval(timer);
       controller.abort();
     };
   }, [api, sceneId]);
+  useEffect(() => {
+    if (!open || busy) return;
+    const controller = new AbortController();
+    void api<{ checks: Trace[] }>(`/interpretation-diagnostics/${encodeURIComponent(sceneId)}`, {
+      signal: controller.signal,
+    })
+      .then((diagnostics) => {
+        if (!controller.signal.aborted && Array.isArray(diagnostics.checks)) setChecks(diagnostics.checks);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [api, sceneId, open, busy]);
   useEffect(() => {
     if (!busy) setNextTurn(false);
   }, [busy]);
@@ -122,7 +119,7 @@ export function DecisionsControl({
   const enabled = configuration?.settings.decisionsEnabled === true;
   const latest = checks.at(-1);
   const fallback = enabled && (!configuration?.status.available || latest?.result.source === "system");
-  const checking = checks.some((check) => check.applied === "Not yet applied");
+  const checking = busy || checks.some((check) => check.applied === "Not yet applied");
   return (
     <div
       className="villages-decisions-control"

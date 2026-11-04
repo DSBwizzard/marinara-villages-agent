@@ -27,7 +27,10 @@ export function sceneResend(
   input: SceneSendInput,
   submissionId: string,
 ): { submissionId: string; retryOfAttemptId?: string; replaceOfOperationId?: string } {
-  if (!saved?.input || (saved.status === "complete" && (!saved.error || saved.kind === "change-interpretation")))
+  if (
+    !saved?.input ||
+    (saved.status === "complete" && (!saved.error || saved.kind === "change-interpretation" || saved.kind === "greet"))
+  )
     return { submissionId };
   if (saved.status === "running") throw new Error("This Scene is still responding. Your draft is preserved.");
   const prior = saved.input;
@@ -41,7 +44,7 @@ export function sceneResend(
     prior.attentionChoice?.id === input.attentionChoice?.id &&
     prior.attentionChoice?.zoneId === input.attentionChoice?.zoneId;
   if (same) return { submissionId: saved.id, retryOfAttemptId: saved.attemptId };
-  if (saved.kind !== "turn" || prior.mode !== "chat" || input.mode !== "chat")
+  if (saved.kind !== "turn")
     throw new Error("Recover the saved request before changing this message or mode. Your edits are preserved.");
   return {
     submissionId: submissionId === saved.id ? createVillagesClientId() : submissionId,

@@ -1,13 +1,15 @@
-import { sceneLayoutVenue } from "./scene-layout.js";
+import { sceneAccessState, sceneLayoutVenue } from "./scene-layout.js";
+import { sceneRelationshipView } from "./relationship-rules.js";
 import { contactNeighborIds } from "../../../shared/helpers/zone-contact.js";
 import type { AttentionPlan } from "./scene-attention.js";
 import type { VenueLine, VenueScene } from "../models/scene-model.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
+import { badRequest } from "./errors.js";
 import { asRecord, asTrimmedString } from "./coerce.js";
 import { type AccessContext, evaluateZoneAccess } from "./venue-access.js";
-import { canInviteToZone, canOccupyZone, venueInZone, venueZones, zoneClosed } from "./venue-zones.js";
+import { canInviteToZone, canOccupyZone, venueZones, zoneClosed } from "./venue-zones.js";
 
-export type ContactDelivery = "voice" | "loud" | "device";
+export type ContactDelivery = "voice" | "loud";
 export type ContactIntent = {
   attention?: AttentionPlan;
   physicalTargetId?: string;
@@ -16,19 +18,16 @@ export type ContactIntent = {
   boundaryZoneId: string;
   quote: string;
   delivery?: ContactDelivery;
-  deviceFeatureId?: string;
 };
 export type DoorwayContact = {
   characterId: string;
   playerZoneId: string;
   characterZoneId: string;
   delivery?: ContactDelivery;
-  deviceFeatureId?: string;
 };
 export function readContactDelivery(value: unknown, message: string): ContactDelivery {
   const row = asRecord(value);
-  if (row.delivery === "device" && /\b(?:intercom|speakerphone|telephone|communication device|radio)\b/iu.test(message))
-    return "device";
+  if (row.delivery === "device") throw badRequest("Device links are not supported by Contact.");
   const citation = asTrimmedString(row.deliveryQuote) || message;
   const loud =
     /\b(?:shout|shouting|yell|yelling|holler|hollering|scream|screaming|loudly|raise\s+my\s+voice|top\s+of\s+my\s+lungs)\b/iu;
@@ -37,15 +36,6 @@ export function readContactDelivery(value: unknown, message: string): ContactDel
   return normalize(message).includes(normalize(citation)) && loud.test(citation) && !hypothetical.test(citation)
     ? "loud"
     : "voice";
-}
-/** A device must already exist in the player's visible Zone; prose cannot conjure a connection. */
-export function contactDevice(venue: VillageVenue, origin: string, featureId: string): boolean {
-  return !!venueInZone(venue, origin).state.features?.some(
-    (feature) =>
-      feature.id === featureId &&
-      !/\b(?:broken|disconnected|nonfunctional|non-functional|out of order)\b/iu.test(feature.text) &&
-      /\b(?:intercom|speakerphone|telephone|communication device|two-way radio)\b/iu.test(feature.text),
-  );
 }
 /** Sound reach is eligibility, never proof of hearing. Entry permissions do not block a voice. */
 export function contactReach(
@@ -95,13 +85,24 @@ export function contactPosition(scene: VenueScene, characterId: string): string 
   );
 }
 export function sceneAccessContext(
-  scene: Pick<VenueScene, "id" | "startedAt" | "sceneAttendance" | "accompanying" | "departedIds" | "zoneId">,
+  scene: Pick<
+    VenueScene,
+    | "id"
+    | "startedAt"
+    | "sceneAttendance"
+    | "accompanying"
+    | "departedIds"
+    | "zoneId"
+    | "continuity"
+    | "villageSeed"
+    | "submissions"
+  >,
   state: VillageState,
 ): AccessContext {
   return {
     sceneId: scene.id,
     at: new Date(scene.sceneAttendance?.capturedAt ?? scene.startedAt),
-    relationships: state.relationshipContext,
+    relationships: sceneRelationshipView(state.relationshipContext, scene),
     positions: {
       ...Object.fromEntries((scene.sceneAttendance?.occupants ?? []).map((row) => [row.characterId, row.zoneId])),
       ...Object.fromEntries((scene.accompanying ?? []).map((row) => [row.characterId, row.zoneId])),
@@ -117,6 +118,7 @@ export function contactCanEnter(
   characterId: string,
   scene?: VenueScene,
 ): boolean {
+  if (scene) state = sceneAccessState(state, scene);
   venue = sceneLayoutVenue(venue, scene);
   const zone = venueZones(venue).find((entry) => entry.id === zoneId);
   if (zone?.closed) return false;
@@ -127,12 +129,16 @@ export function contactCanEnter(
         ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
         accepting: characterId === "player",
         unavailable: !!zone && zoneClosed(state, venue, zone),
+        environment: state.narrative,
       }).allowed
     );
   return (
     !!zone &&
     !zoneClosed(state, venue, zone) &&
-    (canOccupyZone(venue, zone, characterId) ||
+    (canOccupyZone(venue, zone, characterId, {
+      ...(scene ? sceneAccessContext(scene, state) : { relationships: state.relationshipContext }),
+      environment: state.narrative,
+    }) ||
       (characterId === "player" &&
         !scene?.dismissedZoneIds?.includes(zoneId) &&
         (venue.playerInvitations?.some(
@@ -195,7 +201,6 @@ export function readContactIntent(value: unknown, message: string): ContactInten
     boundaryZoneId: asTrimmedString(row.boundaryZoneId),
     quote,
     delivery: readContactDelivery(row, message),
-    ...(asTrimmedString(row.deviceFeatureId) ? { deviceFeatureId: asTrimmedString(row.deviceFeatureId) } : {}),
   };
 }
 export function contactSpeech(
@@ -220,6 +225,7 @@ export function readContactMoves(
   allowed: string[],
   requireSegment = false,
   allowLocalNoop: boolean | "redundant" = false,
+  semantic = false,
 ): ContactMove[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -246,17 +252,18 @@ export function readContactMoves(
       path?.length === 1 &&
       destination === (scene.zoneId ?? "exterior") &&
       zones.some((zone) => zone.id === destination) &&
-      !zones.some(
-        (zone) =>
-          zone.id !== destination &&
-          [zone.name].some((label) => !!words(label) && narratedWords.includes(" " + words(label) + " ")),
-      );
+      (semantic ||
+        !zones.some(
+          (zone) =>
+            zone.id !== destination &&
+            [zone.name].some((label) => !!words(label) && narratedWords.includes(" " + words(label) + " ")),
+        ));
     const citedMove =
       Number(segment) >= 0 &&
       narration?.kind === "narration" &&
       normalize(quote).length >= 8 &&
       normalize(narration.content).includes(normalize(quote)) &&
-      (localNoop || (!!name && normalize(quote).includes(normalize(name))));
+      (semantic || localNoop || (!!name && normalize(quote).includes(normalize(name))));
     const movementText = normalize(localNoop ? (narration?.content ?? "") : quote);
     // A validated current-Zone annotation is discarded by v3, never applied as movement.
     // Speech/thought intent elsewhere in its narration cannot make that no-op consequential.
@@ -266,8 +273,11 @@ export function readContactMoves(
       (requireSegment && segment === undefined) ||
       seen.has(actor) ||
       (segment === undefined ? !contactSpeech(lines, actor, quote) : !citedMove) ||
-      (qualifyMovement && segment !== undefined && /\b(?:would|could|will|plans?|intends?)\b/iu.test(movementText)) ||
-      (qualifyMovement && /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(movementText)) ||
+      (!semantic &&
+        qualifyMovement &&
+        segment !== undefined &&
+        /\b(?:would|could|will|plans?|intends?)\b/iu.test(movementText)) ||
+      (!semantic && qualifyMovement && /\b(?:maybe|perhaps|might|unless|if|won't|can't|not)\b/iu.test(movementText)) ||
       !path ||
       (path.length < 2 && !localNoop) ||
       !lines.some((line) => line.kind === "narration")

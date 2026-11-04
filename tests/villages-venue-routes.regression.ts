@@ -1,5 +1,5 @@
-import { villageRouteSource } from "./route-source.js";
 import { clientImplementation } from "./client-source.js";
+import { villageRouteSource } from "./route-source.js";
 // Wiring proof for the active Scene, Venue editor, and Mailbox. Behavior is
 // exercised by the Venue session, model, and location image suites.
 import assert from "node:assert/strict";
@@ -11,7 +11,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const routes = villageRouteSource();
 const ui = clientImplementation();
 const sceneStore = readFileSync(resolve(root, "packages/villages/src/server/adapters/storage/scene-slots.ts"), "utf8");
-const sceneModel = readFileSync(resolve(root, "packages/villages/src/server/domain/models/scene-model.ts"), "utf8");
 
 for (const path of [
   "/rooms/active",
@@ -21,25 +20,26 @@ for (const path of [
   "/rooms/turn",
   "/rooms/end",
   "/rooms/leave",
-  "/rooms/archive",
-  "/rooms/archive/:id",
-  "/locations/venue",
+  "/rooms/:id/recovery",
   "/locations/venue/:venueId",
   "/locations/venue/image",
   "/locations/venue/:venueId/dependencies",
   "/locations/venue/:venueId/proposals",
   "/locations/venue/:venueId/player-move",
-  "/venue-mail/:mailId/decision",
 ])
   assert.ok(routes.includes(`"${path}"`), `${path} is exposed`);
 
 for (const retired of [
+  "/locations/venue",
   "/villagers/:characterId/conversation",
   "/villagers/:characterId/greet",
   "/villagers/:characterId/end",
   "/villagers/:characterId/wish",
+  "/venue-mail/:mailId/decision",
   "/rooms/debug-presence",
   "/rooms/leave-pending",
+  "/rooms/archive",
+  "/rooms/archive/:id",
   "/rooms/archive/:id/retry-memory",
   "/venues/act",
   "/rooms/say",
@@ -67,7 +67,7 @@ assert.doesNotMatch(
 assert.match(ui, /className=\{`\$\{ELEMENT_TAG\}-room-mode-menu`\}/u, "visit modes have a visible menu");
 assert.match(ui, /View Mailbox/u, "the player can open Mailbox while visiting home");
 assert.match(ui, /Plan a renovation/u, "Venue structural changes use renovation Projects");
-assert.match(ui, /Search Venues/u, "the Venue index is searchable");
+assert.doesNotMatch(ui, /Search Venues/u, "Settings does not duplicate the Places directory");
 assert.match(ui, /Retry opening/u);
 assert.match(ui, /Continue without opening/u);
 assert.match(ui, /That line could not be sent/u, "failed turns keep a visible error");
@@ -75,8 +75,13 @@ assert.ok(
   routes.includes("await leaveVenueSession("),
   "leaving delegates receipt and recovery handling to the session service",
 );
-assert.match(ui, /Open transcript/u);
+const leaveRoute = routes.slice(routes.indexOf('>("/rooms/leave"'), routes.indexOf('>("/rooms/end"'));
+assert.match(
+  leaveRoute,
+  /readSubmissionId\(request.body.replaceOfOperationId\)/u,
+  "Conclude forwards validated edited-send authorization",
+);
+assert.doesNotMatch(ui, /Open transcript/u);
 assert.match(sceneStore, /const ACTIVE_ID = "villages-active-venue"/u);
-assert.match(sceneModel, /heardHistory: \{ characterId: string; lineIds: string\[\] \}\[\]/u);
 
 console.log("villages-venue-routes: ok");

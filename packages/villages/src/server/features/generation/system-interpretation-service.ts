@@ -2,7 +2,7 @@ import { sourceAttentionSystemCheck } from "../../domain/rules/attention-sources
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { InterpretationCheck, InterpretationResult } from "../../domain/models/interpretation-check-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { extractJsonObject } from "../../domain/rules/json-reply.js";
+import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { completionFailure } from "../../domain/rules/work-failure.js";
 import {
@@ -176,7 +176,7 @@ export function createSystemInterpretation(ports: SystemInterpretationPorts) {
           responseDiagnostics: responseDiagnostics(resolved, answer, requestedOutputTokens),
         },
       }));
-    const parsed = extractJsonObject(answer.content ?? "");
+    const parsed = extractModelJsonObject(answer);
     return readSystemInterpretations(
       compact && parsed ? compact.decode(parsed) : parsed,
       checks,

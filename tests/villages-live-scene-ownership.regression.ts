@@ -1,11 +1,5 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
-import type { CapabilityDocumentStore } from "@marinara-engine/shared";
-import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
-import {
-  configureLiveScenes,
-  activeVenueSession,
-  touchVenueSession,
-} from "../packages/villages/src/server/features/scenes/live-session.js";
 import {
   createActivationScope,
   installDefaultActivation,
@@ -16,17 +10,20 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
+import type { ActiveVenue, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
+import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
+import { applySceneMutation } from "../packages/villages/src/server/domain/rules/scene-mutation.js";
 import { initializeVenueAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { resolveVenueZone } from "../packages/villages/src/server/domain/rules/venue-zones.js";
-import { SESSION_PREFIX } from "../packages/villages/src/server/adapters/storage/scene-slots.js";
-import type { ActiveVenue, VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
-type Document = NonNullable<Awaited<ReturnType<CapabilityDocumentStore["getById"]>>>;
+import { createLiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
+import {
+  activeVenueSession,
+  configureLiveScenes,
+  touchVenueSession,
+} from "../packages/villages/src/server/features/scenes/live-session.js";
 function deferred() {
-  let resolve!: () => void;
-  const promise = new Promise<void>((done) => (resolve = done));
-  return { promise, resolve };
+  return Promise.withResolvers<void>();
 }
 function fixture(name: string) {
   const stamp = new Date().toISOString(),
@@ -38,11 +35,21 @@ function fixture(name: string) {
       ...defaultVillageState(),
       seed: name,
       foundedAt: stamp,
-      venues: [{ id: "venue", name, classes: ["community"], description: name }],
+      venues: [
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          id: "venue",
+          name,
+          classes: ["community"],
+          description: name,
+        }),
+      ],
     });
   initializeVenueAccess(world.venues[0]!);
   const saved = coerceSession({
+    version: 3,
     id: "same",
+    villageSeed: world.seed,
     placeId: "venue",
     placeName: name,
     status: "active",
@@ -62,6 +69,7 @@ function fixture(name: string) {
     lines: [],
     submissions: [],
   });
+  saved.continuity = captureSceneContinuity(world, saved, Date.now());
   sessions.set(saved.id, saved);
   let busy = false,
     pauseAt = "",
@@ -124,33 +132,6 @@ function fixture(name: string) {
     hasVenueOperation(id) {
       note("operation:" + id);
       return busy;
-    },
-    villagesDocuments() {
-      note("documents");
-      return {
-        async getById(packageId, id) {
-          note("get:" + id);
-          assert.equal(packageId, "villages");
-          if (!sessions.has(id.slice(SESSION_PREFIX.length))) return null;
-          return {
-            id,
-            packageId,
-            kind: "venue-session",
-            name,
-            description: "",
-            data: {},
-            revision: 7,
-            createdAt: stamp,
-            updatedAt: stamp,
-          } satisfies Document;
-        },
-        async remove(packageId, id, revision) {
-          note("remove:" + id + ":" + revision);
-          assert.equal(packageId, "villages");
-          assert.equal(revision, 7);
-          return sessions.delete(id.slice(SESSION_PREFIX.length));
-        },
-      };
     },
     async readVillageState() {
       note("world");
@@ -216,36 +197,93 @@ async function main() {
     at: played.saved.startedAt,
     heardBy: ["mara"],
   });
-  assert.equal(await played.service.activeVenueSession(), null);
-  assert.equal(played.sessions.get("same")?.endReason, "inactivity");
-  assert.equal(played.active.sessionId, "");
-  assert(!played.calls.includes("documents"), "completed player exchanges stay archived");
+  assert.equal((await played.service.activeVenueSession())?.status, "active");
+  assert.equal(played.sessions.get("same")?.endReason, "");
+  assert.equal(played.active.sessionId, "same");
+  assert.equal(played.sessions.get("same")?.lines[0]?.content, "Hello");
   const unplayed = fixture("unplayed");
   unplayed.saved.lastActivityAt = "2020-01-01T00:00:00.000Z";
-  assert.equal(await unplayed.service.activeVenueSession(), null);
-  assert.equal(unplayed.sessions.size, 0);
-  assert(unplayed.calls.indexOf("clear:same") < unplayed.calls.indexOf("get:" + SESSION_PREFIX + "same"));
-  assert.equal(
-    unplayed.calls.filter((call) => call === "documents").length,
-    2,
-    "existing lazy cleanup getters remain separate",
-  );
-  assert(unplayed.calls.includes("remove:" + SESSION_PREFIX + "same:7"));
+  assert.equal((await unplayed.service.activeVenueSession())?.status, "active");
+  assert.equal(unplayed.sessions.size, 1, "absence preserves even an empty Scene");
+  for (const evidence of ["raw", "checkpoint", "unknown", "committed"]) {
+    const interrupted = fixture("saved-" + evidence);
+    interrupted.saved.lastActivityAt = "2020-01-01T00:00:00.000Z";
+    if (evidence === "committed") {
+      interrupted.saved.lines.push({
+        id: "greeting-line",
+        role: "assistant",
+        speakerId: "mara",
+        name: "Mara",
+        content: "Hello",
+        at: interrupted.saved.startedAt,
+        heardBy: ["player"],
+      });
+      interrupted.saved.submissions.push({ id: "greeting", replyLineIds: ["greeting-line"] } as any);
+      interrupted.saved.operation = {
+        id: "greeting",
+        kind: "greet",
+        status: "complete",
+        attempts: {},
+        checkpoints: {},
+      } as any;
+    } else if (evidence === "unknown")
+      interrupted.saved.generationReceipts = [
+        {
+          operationId: "greeting",
+          attemptId: "paid",
+          stages: ["narration"],
+          outcome: "unknown",
+          acknowledgedAt: interrupted.saved.startedAt,
+        },
+      ];
+    else
+      interrupted.saved.operation = {
+        id: "greeting",
+        kind: "greet",
+        status: "interrupted",
+        attemptId: "paid",
+        token: "owner",
+        sceneRevision: 0,
+        input: {},
+        attempts:
+          evidence === "raw" ? { paid: { status: "complete", result: { content: "Saved paid greeting" } } } : {},
+        checkpoints: evidence === "checkpoint" ? { "greeting-reply": { lines: ["Saved paid greeting"] } } : {},
+      } as any;
+    const before = structuredClone({
+      operation: interrupted.saved.operation,
+      receipts: interrupted.saved.generationReceipts,
+      lines: interrupted.saved.lines,
+      submissions: interrupted.saved.submissions,
+    });
+    assert.equal((await interrupted.service.activeVenueSession())?.status, "active");
+    const archived = interrupted.sessions.get("same")!;
+    assert.equal(archived.status, "active");
+    assert.equal(archived.endReason, "");
+    assert.equal(interrupted.active.sessionId, "same");
+    assert.deepEqual(
+      {
+        operation: archived.operation,
+        receipts: archived.generationReceipts,
+        lines: archived.lines,
+        submissions: archived.submissions,
+      },
+      before,
+    );
+    assert.equal((await interrupted.service.requireLiveVenueSession("same")).id, "same");
+  }
   const arrived = fixture("arrived");
+  arrived.saved.continuity = undefined;
   arrived.saved.lastActivityAt = "2020-01-01T00:00:00.000Z";
   arrived.onChange(() => arrived.setBusy(true));
   assert.equal((await arrived.service.activeVenueSession())?.status, "active");
-  assert(!arrived.calls.includes("write:same"), "operation arriving before mutation prevents inactivity close");
+  assert(!arrived.calls.includes("write:same"), "operation arriving before capture retains its admitted context");
   assert(!arrived.calls.includes("clear:same"));
   const ended = fixture("ended");
   ended.saved.status = "closed";
   await assert.rejects(ended.service.requireLiveVenueSession("same"), /already ended/);
   const inactive = fixture("inactive");
   inactive.saved.lastActivityAt = "2020-01-01T00:00:00.000Z";
-  await assert.rejects(
-    inactive.service.requireLiveVenueSession("same"),
-    (error: unknown) => (error as { statusCode: number }).statusCode === 410,
-  );
+  assert.equal((await inactive.service.requireLiveVenueSession("same")).status, "active");
   const unselected = fixture("unselected");
   unselected.active.sessionId = "another";
   await assert.rejects(unselected.service.requireLiveVenueSession("same"), /not active/);
@@ -318,6 +356,7 @@ async function main() {
     privateZone = resolveVenueZone(privateVenue, "community")!;
   privateZone.access!.mode = "permission-required";
   privateVenue.access!.managerIds = ["player"];
+  privateExit.saved.continuity!.facts.venues = structuredClone(privateExit.world.venues);
   privateExit.saved.zoneId = "exterior";
   privateExit.saved.activeIds = [];
   privateExit.retry();
@@ -336,6 +375,8 @@ async function main() {
   hiddenZone.access!.mode = "permission-required";
   hiddenZone.access!.managerIds = ["player"];
   unseenVenue.zones!.push(hiddenZone);
+  unseen.saved.continuity!.facts.venues = structuredClone(unseen.world.venues);
+  unseen.saved.sceneAttendance!.layout = captureSceneLayout(unseenVenue);
   unseen.saved.sceneAttendance!.occupants[0]!.zoneId = hiddenZone.id;
   unseen.saved.sceneAttendance!.occupants.push({
     characterId: "unrelated",
@@ -357,6 +398,7 @@ async function main() {
     concurrentVenue = concurrent.world.venues[0]!;
   resolveVenueZone(concurrentVenue, "community")!.access!.mode = "permission-required";
   concurrentVenue.access!.managerIds = ["player"];
+  concurrent.saved.continuity!.facts.venues = structuredClone(concurrent.world.venues);
   concurrent.saved.zoneId = "exterior";
   concurrent.saved.activeIds = [];
   concurrent.onChange(() => {
@@ -427,7 +469,9 @@ async function main() {
   current.run(releaseCurrent);
   current.dispose();
   clearCurrent();
-  console.log("PASS live Scene ownership, inactivity, deliberate activity, captured attendance and access ordering");
+  console.log(
+    "PASS live Scene ownership, persistent absence, activity compatibility, captured attendance and access ordering",
+  );
 }
 main().catch((error) => {
   console.error(error);
