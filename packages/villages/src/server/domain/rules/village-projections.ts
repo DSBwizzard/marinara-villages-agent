@@ -1,4 +1,5 @@
 import type { VillagePlaceView, VillagePlayerIdentity, VillageState, VillageVillager } from "../models/world.js";
+import { findLocation } from "./places.js";
 import { agendaAt } from "./agenda-plan.js";
 import { badRequest, conflict } from "./errors.js";
 import { homeBuildingOptions, type VillageHomeLine } from "./prompt-preset.js";
@@ -72,7 +73,7 @@ function preferredVillagerPlace(
   // so the lookup is by id against the current list rather than by position into
   // the one the translation was written from. A place that is gone reads as
   // unplaced, which is where the fallback below picks the villager up.
-  const venue = venueId.length > 0 ? village.venues.find((entry) => entry.id === venueId) : undefined;
+  const venue = venueId.length > 0 ? findLocation(village, venueId) : undefined;
   if (venue) {
     const zone = chooseAgendaZone(venue, villager.characterId, agenda?.activity, agenda?.zoneId, village, {
       at,
@@ -139,7 +140,7 @@ export function villagePresence(
   for (const resident of pending) {
     const preferred =
       positions?.get(resident.characterId) ?? preferredVillagerPlace(village, resident, null, minuteOfDay, at)!;
-    const origin = village.venues.find((venue) => venue.id === preferred.id)!;
+    const origin = findLocation(village, preferred.id)!;
     const home = village.venues.find((venue) => venueResidentIds(venue).includes(resident.characterId));
     const destinations = [...new Set([origin, home, ...village.venues].filter((venue) => !!venue))];
     let placed = false;

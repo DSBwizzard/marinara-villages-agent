@@ -51,7 +51,13 @@ function operation(checkpoints: Record<string, unknown> = {}): VenueOperation {
   };
 }
 async function world(f: ReturnType<typeof sceneHistoryFixture>) {
-  const { memories: _memories, memoryScenes: _scenes, memoryReceipts: _receipts, ...fields } = defaultVillageState();
+  const {
+    memories: _memories,
+    memoryScenes: _scenes,
+    memoryReceipts: _receipts,
+    worldPlaces: _places,
+    ...fields
+  } = defaultVillageState();
   await f.documents.create({
     id: "villages-village",
     packageId: "villages",

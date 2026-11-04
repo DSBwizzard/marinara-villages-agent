@@ -1,3 +1,4 @@
+import { findLocation } from "./places.js";
 import type { VenueScene } from "../models/scene-model.js";
 import { PLACE_UPDATE_INSTRUCTION } from "./zone-continuity.js";
 import type { VillageState } from "../models/world.js";
@@ -70,7 +71,7 @@ export function sceneWritingCapabilities(state: VillageState, scene: VenueScene)
       ...(scene.sceneAttendance?.occupants.map((person) => person.characterId) ?? []),
     ]),
   ];
-  const venue = state.venues.find((venue) => venue.id === scene.placeId);
+  const venue = findLocation(state, scene.placeId);
   return {
     management: !!accessManagementPrompt(state, actors, scene.placeId),
     movement: !!venue && venueZones(venue).length > 1,

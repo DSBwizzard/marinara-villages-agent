@@ -103,6 +103,9 @@ export function parseVenueReply(
 }
 export function quietContactReply(text: string, localIds: string[]) {
   return {
+    npcAdmissions: [] as import("./npc-participation.js").NpcAdmission[],
+    placeDiscoveries: [] as unknown[],
+    establishmentProgress: [] as unknown[],
     residentActionReceipt: undefined as import("./resident-actions.js").ResidentActionReceipt | undefined,
     semanticAccess: undefined as InterpretationBatch | null | undefined,
     semanticProvenance: undefined as import("../models/semantic-model.js").SemanticProvenance | undefined,

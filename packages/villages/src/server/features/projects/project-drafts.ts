@@ -10,6 +10,8 @@ import { venueDesignHash, changedZoneIds } from "../../domain/rules/project-stru
 import { renovationAffectedIds } from "../../domain/rules/project-terms.js";
 import { randomUUID } from "node:crypto";
 import { MAX_PROJECT_DRAFTS } from "../../../shared/helpers/project-design.js";
+import { establishmentControllers, establishmentDraft, establishmentChange } from "../../domain/rules/establishment.js";
+import { findLocation } from "../../domain/rules/places.js";
 
 function requireDraftSpace(state: VillageState): void {
   if (state.projects.filter((project) => project.status === "planning").length >= MAX_PROJECT_DRAFTS)
@@ -79,6 +81,39 @@ export function draftRenovationProject(
   project.lifecycle!.changedZoneIds = changedZoneIds(venue, change);
   project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds, change);
   project.lifecycle!.affectedIds = renovationAffectedIds(venue, change, project.lifecycle!.changedZoneIds);
+  state.projects.push(project);
+  return project;
+}
+
+export function draftEstablishmentProject(
+  state: VillageState,
+  venueId: string,
+  value: unknown,
+  requestId: string,
+): VillageProject {
+  requireDraftSpace(state);
+  const place = state.worldPlaces.places[venueId],
+    venue = findLocation(state, venueId),
+    row = asRecord(value);
+  if (!place || !venue || !place.knownBy.includes("player") || !place.prepared || place.report)
+    throw conflict("Visit and prepare the Place before establishing it.");
+  const establishment = establishmentDraft(row.establishment);
+  const change = establishmentChange(state, venue, row, establishment, villageNow());
+  const project: VillageProject = {
+    id: requestId,
+    kind: "establishment",
+    title: "Establish " + venue.name,
+    venueId,
+    participantIds: [],
+    progress: 0,
+    status: "planning",
+    updatedAt: villageNow().toISOString(),
+    establishment,
+    lifecycle: lifecycle(venueId, change),
+  };
+  project.lifecycle!.changedZoneIds = establishment.physical ? changedZoneIds(venue, change) : [];
+  project.lifecycle!.baseDesignHash = venueDesignHash(venue, project.lifecycle!.changedZoneIds, change);
+  project.lifecycle!.affectedIds = establishmentControllers(state, project);
   state.projects.push(project);
   return project;
 }

@@ -1,3 +1,5 @@
+import { findLocation } from "../../domain/rules/places.js";
+import { findNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
 import { observeVillageClock, villageClockShiftMs, villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
@@ -40,9 +42,13 @@ export function createLiveScenes({
   changeSession,
   clearActivePointer,
   hasVenueOperation,
-  readVillageState,
-  mutateVillageState,
+  readVillageState: readVillageStateWithoutPlaces,
+  mutateVillageState: mutateVillageStateWithoutPlaces,
 }: LiveScenePorts) {
+  const readVillageState: typeof readVillageStateWithoutPlaces = (options) =>
+    readVillageStateWithoutPlaces({ ...options, memories: true });
+  const mutateVillageState: typeof mutateVillageStateWithoutPlaces = (change, options) =>
+    mutateVillageStateWithoutPlaces(change, { ...options, memories: true });
   async function alignSceneClock(session: VenueScene): Promise<VenueScene> {
     const total = villageClockShiftMs();
     if (session.status === "closed" || (session.clockShiftMs ?? 0) === total) return session;
@@ -109,7 +115,7 @@ export function createLiveScenes({
       if (hasVenueOperation(session.id)) return session;
     }
     const village = sceneContinuityView(await readVillageState(), session),
-      venue = village.venues.find((entry) => entry.id === session.placeId);
+      venue = findLocation(village, session.placeId);
     if (!venue || session.status === "closed") return session;
     if (session.sceneAttendance && !session.sceneAttendance.layout) {
       const captured = await changeSession(session.id, (state) => {
@@ -120,7 +126,7 @@ export function createLiveScenes({
     }
     if (venue.access && session.pendingAccessClaim) {
       await mutateVillageState((state) => {
-        const current = state.venues.find((row) => row.id === venue.id);
+        const current = findLocation(state, venue.id);
         const target = current && resolveVenueZone(current, session.zoneId ?? "exterior");
         if (!current) return;
         if (!target) return;
@@ -133,7 +139,7 @@ export function createLiveScenes({
         if (decision.allowed) claimVisitPermission(current, decision.permissionId, session.id);
       });
       const settled = await changeSession(session.id, (state) => {
-        const captured = state.continuity?.facts.venues.find((row) => row.id === venue.id);
+        const captured = findLocation(state.continuity?.facts, venue.id);
         const target = captured && resolveVenueZone(captured, state.zoneId ?? "exterior");
         if (captured && target) {
           const decision = evaluateZoneAccess(captured, target, "player", {
@@ -317,7 +323,8 @@ export function createLiveScenes({
       });
     }
     const people = sceneZoneOccupants(session, village, venue, zoneId);
-    if (people.length > 4) throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
+    if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
+      throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     const activeIds = people.map((person) => person.characterId);
     if (session.zoneId === zoneId && JSON.stringify(activeIds) === JSON.stringify(session.activeIds)) return session;
     return changeSession(session.id, (state) => {
@@ -335,7 +342,7 @@ export function createLiveScenes({
     if (session.status === "closed") return session;
     const village = await readVillageState({ wishes: true });
     if (village.seed !== session.villageSeed) throw conflict("That Village changed. Its saved Scene is preserved.");
-    const venue = village.venues.find((row) => row.id === session.placeId);
+    const venue = findLocation(village, session.placeId);
     if (!venue) return session;
     const now = villageNow();
     const moment = (at: Date) =>
@@ -349,7 +356,7 @@ export function createLiveScenes({
     const currentMoment = moment(now);
     const previousAt = session.sceneAttendance?.capturedAt ?? session.startedAt;
     const previousMoment = moment(new Date(previousAt));
-    const sameRoutine = (id: string) => sameSceneRoutine(village, session, id, now);
+    const sameRoutine = (id: string) => !!findNpc(village, id) || sameSceneRoutine(village, session, id, now);
     const accompanying = (session.accompanying ?? []).filter((row) => sameRoutine(row.characterId));
     const positions = new Map(
       accompanying.flatMap((row) => {
@@ -372,6 +379,11 @@ export function createLiveScenes({
       }),
     );
     const attendance = captureSceneAttendance(village, venue.id, now, positions);
+    attendance.occupants.push(
+      ...(session.sceneAttendance?.occupants ?? []).filter(
+        (person) => !!findNpc(village, person.characterId) && !session.departedIds?.includes(person.characterId),
+      ),
+    );
     const departedIds = (session.departedIds ?? []).filter(sameRoutine);
     const continuity = captureSceneContinuity(village, session, now.getTime());
     if (
@@ -399,7 +411,11 @@ export function createLiveScenes({
       state.doorwayContacts = (state.doorwayContacts ?? []).filter((row) => sameRoutine(row.characterId));
       state.entryOffers = (state.entryOffers ?? []).filter((row) => sameRoutine(row.controllerId));
       const people = sceneZoneOccupants(state, village, venue, state.zoneId ?? "exterior");
-      if (people.length > 4) throw conflict("This Zone is full. Move to another Zone.");
+      if (
+        people.filter((person) => village.villagers.some((resident) => resident.characterId === person.characterId))
+          .length > 4
+      )
+        throw conflict("This Zone is full. Move to another Zone.");
       const activeIds = people.map((row) => row.characterId);
       const departed = state.activeIds.filter((id) => !activeIds.includes(id));
       const arrived = people.filter((row) => !state.activeIds.includes(row.characterId));

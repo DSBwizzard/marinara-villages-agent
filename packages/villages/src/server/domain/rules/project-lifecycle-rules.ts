@@ -9,10 +9,12 @@ import {
   projectAgendaReservations,
 } from "./project-focus.js";
 import { approvalScope, matchesProjectDesign, renovationAffectedIds } from "./project-terms.js";
+import { establishmentControllers, establishmentScope } from "./establishment.js";
+import { findLocation, placeRegistry } from "./places.js";
 export { renovationAffectedIds, validImage } from "./project-terms.js";
 
 export const PROJECT_DURATION_MS = 24 * 60 * 60_000;
-export function active(state: VillageState, kind?: "new-venue" | "renovation"): boolean {
+export function active(state: VillageState, kind?: VillageProject["kind"]): boolean {
   return state.projects.some(
     (project) => (!kind || project.kind === kind) && ["working", "paused"].includes(project.status),
   );
@@ -51,6 +53,12 @@ export function sameName(state: VillageState, name: string): boolean {
 }
 export function missingProjectAgreements(state: VillageState, project: VillageProject): string[] {
   const flow = project.lifecycle!;
+  if (project.kind === "establishment") {
+    flow.affectedIds = establishmentControllers(state, project);
+    return flow.affectedIds.filter(
+      (id) => !flow.approvals.some((row) => row.residentId === id && row.scope === establishmentScope(project)),
+    );
+  }
   if (project.kind !== "renovation") return [];
   const venue = state.venues.find((venue) => venue.id === project.venueId);
   if (!venue) throw conflict("The Project Venue is missing.");
@@ -68,13 +76,17 @@ export function refreshProjectAgreements(state: VillageState): void {
   for (const project of state.projects) {
     const flow = project.lifecycle;
     if (!flow || !["planning", "working", "paused"].includes(project.status)) continue;
-    const venue = state.venues.find((venue) => venue.id === project.venueId);
-    if (project.kind !== "renovation" || !venue || !flow.change) continue;
+    if (project.kind === "establishment" && !placeRegistry(state)) continue;
+    const venue = findLocation(state, project.venueId);
+    if (project.kind === "new-venue" || !venue || !flow.change) continue;
     missingProjectAgreements(state, project);
     flow.approvals = flow.approvals.filter(
       (approval) =>
         flow.affectedIds.includes(approval.residentId) &&
-        approval.scope === approvalScope(venue, flow.change!, approval.residentId, flow.changedZoneIds),
+        approval.scope ===
+          (project.kind === "establishment"
+            ? establishmentScope(project)
+            : approvalScope(venue, flow.change!, approval.residentId, flow.changedZoneIds)),
     );
   }
 }
@@ -115,6 +127,8 @@ export function reconcileProjectLifecycles(state: VillageState, now: Date): void
   for (const id of state.projects.filter((project) => project.status === "working").map((project) => project.id)) {
     const project = projectFor(state, id),
       flow = project.lifecycle;
+    if (project.kind === "establishment" && !placeRegistry(state)) continue;
+    if (project.kind === "establishment" && !project.establishment?.physical) continue;
     if (
       !state.villagers.some((resident) => resident.characterId === flow.builderId) ||
       !flow.candidates.some(

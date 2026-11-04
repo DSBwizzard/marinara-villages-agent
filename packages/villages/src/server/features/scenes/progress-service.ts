@@ -1,4 +1,5 @@
 import { mutableSceneSubmission } from "../../domain/rules/scene-submissions.js";
+import { applyPlaceExchange } from "../../domain/rules/place-exchange.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueRecordEvent, VenueScene, VenueSubmission } from "../../domain/models/scene-model.js";
 
@@ -163,6 +164,8 @@ export function createSceneProgress({
   async function applySavedExchange(sessionId: string, submissionId: string): Promise<void> {
     const scene = await readSession(sessionId);
     const turn = scene.submissions.find((entry) => entry.id === submissionId);
+    if (turn && (turn.npcAdmissions?.length || turn.placeDiscoveries?.length || turn.establishmentProgress?.length))
+      await mutateVillageState((state) => applyPlaceExchange(state, scene, turn), { memories: true });
     if (turn?.accessEvents?.length) await applySavedAccessEvents(scene, turn);
     if (turn?.invitationSignal) await recordSpokenInvitation(scene, turn.invitationSignal);
     if (turn?.movement) return;

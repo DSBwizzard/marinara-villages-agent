@@ -1,3 +1,4 @@
+import { placeRegistry, readNpc } from "./places.js";
 import { LETTER_FONTS } from "../../../shared/helpers/letter-fonts.js";
 import {
   MAX_PLACE_DESCRIPTION,
@@ -136,9 +137,40 @@ export function worldRepairRecords(state: VillageState, includeMemories = true, 
         ],
       },
     );
+  for (const npc of Object.values(placeRegistry(state)?.npcs ?? {}))
+    add(
+      ["npc", npc.id],
+      "people",
+      npc.label || npc.name,
+      "Supporting character",
+      [
+        text("name", "Name", npc.name),
+        text("label", "Display label", npc.label),
+        text("characterization", "Characterization", npc.characterization),
+        text("facts", "Established facts (one per line)", npc.facts.join("\n")),
+        text("availability", "Availability", npc.availability),
+        { key: "disabled", label: "Disabled", type: "boolean", value: npc.disabled },
+      ],
+      { revision: npc.revision, source: [npc.source, ...npc.associations.map((row) => row.placeId + ": " + row.role)] },
+    );
+  for (const place of Object.values(placeRegistry(state)?.places ?? {}))
+    add(
+      ["place", place.id],
+      "places",
+      place.location.name,
+      "Place",
+      [
+        text("name", "Name", place.location.name),
+        text("description", "Description", place.location.description),
+        { key: "disabled", label: "Disabled", type: "boolean", value: place.disabled },
+        { key: "report", label: "Reported, unverified", type: "boolean", value: place.report },
+      ],
+      { revision: place.revision, source: [place.source] },
+    );
   const people = [
     { id: "player", name: "Your Persona" },
     ...state.villagers.map((v) => ({ id: v.characterId, name: v.cardSnapshot.name })),
+    ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
   ];
   if (includeMemories) {
     for (const id of new Set(state.memories.records.flatMap((r) => Object.keys(r.knowers))))
@@ -481,6 +513,39 @@ export function applyWorldRepair(state: VillageState, record: RepairRecord, requ
   const values = inputValues(record, request),
     [kind, id, sub, actor] = repairParts(record.id);
   const str = (key: string) => String(values[key] ?? "");
+  if (kind === "npc" || kind === "place") {
+    if (kind === "npc") {
+      const npc = state.worldPlaces.npcs[id];
+      if (!npc) throw conflict("This supporting character changed.");
+      state.worldPlaces.npcs[id] = readNpc({
+        ...npc,
+        name: str("name"),
+        label: str("label"),
+        characterization: str("characterization"),
+        facts: str("facts")
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean),
+        availability: str("availability"),
+        disabled: values.disabled === true,
+        revision: npc.revision + 1,
+        updatedAt: at,
+      });
+    } else {
+      const place = state.worldPlaces.places[id];
+      if (!place || !str("name") || str("name").length > 100 || str("description").length > 1000)
+        throw badRequest("Shorten the Place details.");
+      place.location.name = str("name");
+      place.location.description = str("description");
+      place.location.zones!.find((zone) => zone.kind === "exterior")!.description = str("description");
+      place.disabled = values.disabled === true;
+      place.report = values.report === true;
+      place.revision++;
+    }
+    state.worldPlaces.revision++;
+    normalizeVillageMutation(state, state.seed, () => {});
+    return;
+  }
   if (kind === "narrative-claim") {
     const narrative = state.narrative,
       claim = narrative?.claims?.find((row) => row.id === id);

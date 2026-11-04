@@ -1,8 +1,18 @@
 import { coerceSession } from "../decoding/scene-codec.js";
-import type { VenueScene } from "../models/scene-model.js";
+import type { VenueScene, VenueSubmission, VenueLine } from "../models/scene-model.js";
 import { projectMetadataRejected } from "./semantic-continuity.js";
 import { sceneEvidencePerception } from "./scene-evidence-perception.js";
 import { validateProjectSpeech } from "./project-interpretation.js";
+
+export function projectSpeakerAtTurn(turn: VenueSubmission, line: Pick<VenueLine, "id" | "speakerId">): boolean {
+  return !!(
+    turn.activeIdsAtTurn?.includes(line.speakerId) ||
+    turn.speechIdsAtTurn?.includes(line.speakerId) ||
+    turn.npcAdmissions?.some(
+      (arrival) => arrival.npc.id === line.speakerId && (turn.replyLineIds?.indexOf(line.id) ?? -1) >= arrival.segment,
+    )
+  );
+}
 
 /** Keep the same per-Scene candidate window without storing the Scene transcript. */
 export function projectSceneEvidence(scene: VenueScene): VenueScene {
@@ -11,7 +21,7 @@ export function projectSceneEvidence(scene: VenueScene): VenueScene {
     return scene.lines
       .filter((line) =>
         turn.replyLineIds?.length
-          ? turn.replyLineIds.includes(line.id) && turn.activeIdsAtTurn?.includes(line.speakerId)
+          ? turn.replyLineIds.includes(line.id) && projectSpeakerAtTurn(turn, line)
           : line.at === turn.at && scene.participants.some((person) => person.characterId === line.speakerId),
       )
       .filter(
@@ -57,6 +67,7 @@ export function projectSceneEvidence(scene: VenueScene): VenueScene {
       zoneIdAtTurn: turn.zoneIdAtTurn,
       privateOwnerIdAtTurn: turn.privateOwnerIdAtTurn,
       activeIdsAtTurn: turn.activeIdsAtTurn,
+      npcAdmissions: turn.npcAdmissions,
       speechIdsAtTurn: turn.speechIdsAtTurn,
       replyLineIds: turn.replyLineIds,
       projectContexts: turn.projectContexts,

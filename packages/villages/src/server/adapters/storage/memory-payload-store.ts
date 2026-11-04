@@ -17,13 +17,14 @@ import {
   type MemoryPageData,
 } from "./memory-pages.js";
 import { isRepairSimulation } from "./repair-gate.js";
+import { emptyPlaceRegistry, readPlaceRegistry } from "../../domain/rules/places.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 
 export const MEMORY_PAYLOAD_KIND = "memory-payload";
 const INTENT_KIND = "memory-payload-intent";
 const PAYLOAD_ID = /^villages-memory-([a-f0-9]{32})-[a-f0-9-]{36}$/;
 export type MemoryHead = { id: string; digest: string; revision: number };
-export type MemoryPayload = Pick<VillageState, "memories" | "memoryScenes" | "memoryReceipts">;
+export type MemoryPayload = Pick<VillageState, "memories" | "memoryScenes" | "memoryReceipts" | "worldPlaces">;
 export const memoryDigest = (text: string) => createHash("sha256").update(text).digest("hex");
 const worldKey = (state: Pick<VillageState, "seed" | "setupAt">) =>
   memoryDigest(JSON.stringify([state.seed, state.setupAt])).slice(0, 32);
@@ -45,17 +46,32 @@ export function assertMemoryWorld(head: MemoryHead, state: Pick<VillageState, "s
   memoryRequire(head.id.startsWith("villages-memory-" + worldKey(state) + "-"), "history belongs to another world");
 }
 export function memoryPayload(state: VillageState): MemoryPayload {
-  return { memories: state.memories, memoryScenes: state.memoryScenes, memoryReceipts: state.memoryReceipts };
+  return {
+    memories: state.memories,
+    memoryScenes: state.memoryScenes,
+    memoryReceipts: state.memoryReceipts,
+    worldPlaces: state.worldPlaces,
+  };
 }
 export function emptyMemoryPayload(): MemoryPayload {
-  return { memories: { format: 1, revision: 0, records: [] }, memoryScenes: {}, memoryReceipts: {} };
+  return {
+    memories: { format: 1, revision: 0, records: [] },
+    memoryScenes: {},
+    memoryReceipts: {},
+    worldPlaces: emptyPlaceRegistry(),
+  };
 }
 function isEmpty(payload: MemoryPayload) {
   return (
     !payload.memories.records.length &&
     !payload.memories.revision &&
     !Object.keys(payload.memoryScenes).length &&
-    !Object.keys(payload.memoryReceipts).length
+    !Object.keys(payload.memoryReceipts).length &&
+    !payload.worldPlaces.revision &&
+    !Object.keys(payload.worldPlaces.places).length &&
+    !Object.keys(payload.worldPlaces.npcs).length &&
+    !Object.keys(payload.worldPlaces.operations).length &&
+    !Object.keys(payload.worldPlaces.receipts).length
   );
 }
 /** Inspect the transitive immutable footprint without copying it into an owner document. */
@@ -87,6 +103,7 @@ export function createMemoryPayloadStore(documents: CapabilityDocumentStore) {
       memories,
       memoryScenes: readMemorySceneStates(raw.memoryScenes, memories),
       memoryReceipts: readMemoryReceipts(raw.memoryReceipts),
+      worldPlaces: readPlaceRegistry(raw.worldPlaces),
     });
   };
   function validateRecord(record: CapabilityDocumentRecord, head: MemoryHead) {

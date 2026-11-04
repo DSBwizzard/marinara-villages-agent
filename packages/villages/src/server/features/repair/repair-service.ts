@@ -1,3 +1,4 @@
+import { findNpc, placeRegistry } from "../../domain/rules/places.js";
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { retainBackgroundJob } from "../../adapters/storage/background-responses.js";
@@ -114,6 +115,20 @@ function restoredReceipts(
   return { ...result, ...saved };
 }
 function advanceRestoredRevisions(prior: VillageState, current: VillageState) {
+  if (placeRegistry(prior) && placeRegistry(current)) {
+    prior.worldPlaces.revision = Math.max(prior.worldPlaces.revision, current.worldPlaces.revision) + 1;
+    for (const place of Object.values(prior.worldPlaces.places))
+      place.revision = Math.max(place.revision, current.worldPlaces.places[place.id]?.revision ?? 0) + 1;
+    for (const npc of Object.values(prior.worldPlaces.npcs))
+      npc.revision = Math.max(npc.revision, current.worldPlaces.npcs[npc.id]?.revision ?? 0) + 1;
+    for (const operation of Object.values(prior.worldPlaces.operations)) {
+      operation.attempt = Math.max(operation.attempt, current.worldPlaces.operations[operation.id]?.attempt ?? 0) + 1;
+      if (operation.status === "started") {
+        operation.status = "failed";
+        operation.error = "The world was restored. Retry explicitly.";
+      }
+    }
+  }
   if (prior.narrative) {
     prior.narrative.revision = Math.max(prior.narrative.revision, current.narrative?.revision ?? 0) + 1;
     prior.narrative.weatherRevision =
@@ -361,10 +376,15 @@ export function createRepairService(ports: RepairPorts) {
     });
   }
   async function allRecords(includeMemories = true, includeArchives = true, personId?: string) {
-    const state = await repository.readAuthority({ memories: includeMemories, wishes: true }),
+    const state = await repository.readAuthority({ memories: true, wishes: true }),
       result = worldRepairRecords(state, includeMemories, personId);
-    if (personId && personId !== "player" && !state.villagers.some((p) => p.characterId === personId))
-      throw notFound("Choose a villager from People.");
+    if (
+      personId &&
+      personId !== "player" &&
+      !state.villagers.some((p) => p.characterId === personId) &&
+      !findNpc(state, personId)
+    )
+      throw notFound("Choose a person from People.");
     const saved = await currentSocial(state),
       social = await socialData(saved, state);
     for (const edge of Object.values(social.edges)) {
@@ -489,7 +509,7 @@ export function createRepairService(ports: RepairPorts) {
     return !!(pointer?.data as { sessionId?: string })?.sessionId;
   }
   async function index(historyOffset = 0, checkpointOffset = 0): Promise<RepairIndex> {
-    const state = await repository.readAuthority();
+    const state = await repository.readAuthority({ memories: true });
     const histories = (await documents.list(PKG, HISTORY))
       .map((r) => r.data as HistoryHeader)
       .filter((r) => r.format === 1 && r.seed === state.seed && r.setupAt === state.setupAt)
@@ -504,6 +524,7 @@ export function createRepairService(ports: RepairPorts) {
       people: [
         { id: "player", name: "Your Persona" },
         ...state.villagers.map((p) => ({ id: p.characterId, name: p.cardSnapshot.name })),
+        ...Object.values(placeRegistry(state)?.npcs ?? {}).map((npc) => ({ id: npc.id, name: npc.label || npc.name })),
       ],
       records: [],
       historyOffset,
@@ -533,7 +554,8 @@ export function createRepairService(ports: RepairPorts) {
     const personName =
       personId === "player"
         ? "Your Persona"
-        : state.villagers.find((p) => p.characterId === personId)?.cardSnapshot.name;
+        : (state.villagers.find((p) => p.characterId === personId)?.cardSnapshot.name ??
+          findNpc(state, personId ?? "")?.name);
     const creation = memoryList
       ? records.find((r) => r.creating && (!personId || r.people?.some((p) => p.id === personId)))
       : undefined;
@@ -568,7 +590,7 @@ export function createRepairService(ports: RepairPorts) {
   async function inspect(id: string, personId?: string) {
     const kind = repairParts(id)[0];
     const { records } = await allRecords(
-        ["memory", "new-memory"].includes(kind),
+        ["memory", "new-memory", "npc", "place"].includes(kind),
         ["scene", "saved-scene", "saved-domain"].includes(kind),
         personId,
       ),
@@ -745,7 +767,7 @@ export function createRepairService(ports: RepairPorts) {
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at));
     } else
       await repository.mutateAuthority((state) => applyWorldRepair(state, record, request, at), {
-        memories: ["memory", "new-memory"].includes(kind),
+        memories: ["memory", "new-memory", "npc", "place"].includes(kind),
         wishes: kind === "wish" ? true : undefined,
       });
   }
@@ -785,7 +807,7 @@ export function createRepairService(ports: RepairPorts) {
     if (await documents.getById(PKG, docId(HISTORY, request.operationId)))
       throw conflict("This repair was already applied. Open Repair history.");
     const simulation = await gate.simulate(async () => {
-      const includeMemories = ["memory", "new-memory", "wish", "saved-scene", "saved-domain"].includes(
+      const includeMemories = ["memory", "new-memory", "npc", "place", "wish", "saved-scene", "saved-domain"].includes(
         repairParts(request.recordId)[0],
       );
       const includeArchives = ["scene", "saved-scene", "saved-domain"].includes(repairParts(request.recordId)[0]);
@@ -800,6 +822,8 @@ export function createRepairService(ports: RepairPorts) {
         );
       const [kind, id] = repairParts(record.id),
         consequential = [
+          "npc",
+          "place",
           "zone",
           "access",
           "permission",
@@ -895,7 +919,9 @@ export function createRepairService(ports: RepairPorts) {
       !rootWrite ||
       repairDigest((rootWrite.before?.data as { memoryHead?: unknown })?.memoryHead) ===
         repairDigest((rootWrite.after?.data as { memoryHead?: unknown })?.memoryHead);
-    const documentUndo = !["memory", "new-memory", "saved-scene", "saved-domain"].includes(kind) && sameMemoryHead;
+    const documentUndo =
+      !["memory", "new-memory", "saved-scene", "saved-domain"].includes(kind) &&
+      (sameMemoryHead || ["npc", "place"].includes(kind));
     const review: RepairReview = {
       kind: "repair",
       id: request.operationId,
@@ -1048,6 +1074,11 @@ export function createRepairService(ports: RepairPorts) {
               await createDepartureHistory(documents).decode(write.before.data),
               true,
             );
+            const priorHead = readMemoryHead(priorWorld.memoryHead);
+            const priorPayload = priorHead
+              ? await createMemoryPayloadStore(documents).read(priorHead, priorWorld as unknown as VillageState)
+              : emptyMemoryPayload();
+            if (!priorPayload) throw conflict("The repair's Place history is unavailable.");
             await repository.mutateAuthority(
               (currentState) => {
                 const prior = coerceVillageState({
@@ -1055,6 +1086,9 @@ export function createRepairService(ports: RepairPorts) {
                   memories: currentState.memories,
                   memoryScenes: currentState.memoryScenes,
                   memoryReceipts: currentState.memoryReceipts,
+                  worldPlaces: ["npc", "place"].includes(repairParts(saved.request.recordId)[0])
+                    ? priorPayload.worldPlaces
+                    : currentState.worldPlaces,
                 });
                 prior.clock = currentState.clock;
                 advanceRestoredRevisions(prior, currentState);

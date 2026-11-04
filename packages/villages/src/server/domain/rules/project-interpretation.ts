@@ -16,13 +16,13 @@ const normalized = (text: string) =>
 
 export function projectSpeechContexts(
   state: VillageState,
-  activeIds: string[],
+  _activeIds: string[],
   _conversation: string,
   _message = "",
   _venueId = "",
 ): ProjectSpeechContext[] {
   return state.projects.flatMap((project) =>
-    project.lifecycle && ["planning", "paused", "working"].includes(project.status) && activeIds.length
+    project.lifecycle && ["planning", "paused", "working"].includes(project.status)
       ? [{ projectId: project.id, revision: project.lifecycle.revision, phase: project.lifecycle.phase }]
       : [],
   );
@@ -37,6 +37,7 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
         return {
           ...context,
           title: project.title,
+          establishment: project.establishment,
           description: project.lifecycle?.change
             ? renovationTerms(project.lifecycle.change)
             : projectPhysicalDesign(project),
@@ -46,7 +47,7 @@ export function projectSpeechPrompt(state: VillageState, contexts: ProjectSpeech
         };
       }),
     ) +
-    ". Residents may approve a relevant physical design, willingly commit to lead it, decline or withdraw in natural language. Approval and volunteering can occur in the same exchange. No speech starts, resumes or completes work. Projects take 24 elapsed real hours after the player's explicit Start. Gifts and objects provide no Project benefit."
+    ". Scoped supporting controllers may approve their own Place or later Renovations; only Villagers can volunteer to lead physical work. Establishment objectives may be social and require actual witnessed outcomes, not promises of future results. Social establishment uses no timer or lead. Residents may approve a relevant physical design, willingly commit to lead it, decline or withdraw in natural language. Approval and volunteering can occur in the same exchange. No speech starts, resumes or completes work. Physical Projects take 24 elapsed real hours after the player's explicit Start. Gifts and objects provide no Project benefit."
   );
 }
 export function coerceProjectSpeech(value: unknown): ProjectSpeechProposal[] {

@@ -6,7 +6,7 @@ import {
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 
 // Fresh-world contract: neither an empty setup nor a played old world is converted.
-for (const version of [0, 5, 6, 7, 8, 9, 10, 11, 12, 13]) {
+for (const version of [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]) {
   for (const played of [false, true]) {
     const state = {
       ...defaultVillageState(),
@@ -19,7 +19,13 @@ for (const version of [0, 5, 6, 7, 8, 9, 10, 11, 12, 13]) {
     const before = structuredClone(state);
     assert.throws(() => coerceVillageState(state), /Unsupported Village format/);
     assert.deepEqual(state, before);
-    const { memories: _memories, memoryScenes: _scenes, memoryReceipts: _receipts, ...root } = state;
+    const {
+      memories: _memories,
+      memoryScenes: _scenes,
+      memoryReceipts: _receipts,
+      worldPlaces: _places,
+      ...root
+    } = state;
     const record = {
       id: "villages-village",
       packageId: "villages",
@@ -45,7 +51,7 @@ for (const version of [0, 5, 6, 7, 8, 9, 10, 11, 12, 13]) {
     assert.deepEqual(record, saved);
   }
 }
-assert.equal(coerceVillageState(undefined).version, 14);
+assert.equal(coerceVillageState(undefined).version, 15);
 const fresh = coerceVillageState(defaultVillageState());
 assert.deepEqual(coerceVillageState(JSON.parse(JSON.stringify(fresh))), fresh);
 console.log("Fresh worlds reload; incompatible setup and played worlds remain untouched.");

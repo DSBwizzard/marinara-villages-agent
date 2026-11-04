@@ -188,7 +188,7 @@ await runCase("mailbox-pages/commands", async () => {
     readVillageSnapshot: async (options?: { memories?: boolean }) => {
       const snapshot = { ...f.village, relationshipContext: coerceRelationshipState(f.village.seed, f.state) };
       if (!options?.memories)
-        for (const key of ["memories", "memoryScenes", "memoryReceipts"])
+        for (const key of ["memories", "memoryScenes", "memoryReceipts", "worldPlaces"])
           Object.defineProperty(snapshot, key, {
             enumerable: false,
             get() {

@@ -1,3 +1,5 @@
+import { projectSpeakerAtTurn } from "../../domain/rules/project-scene-evidence.js";
+import { findLocation } from "../../domain/rules/places.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { z } from "zod";
 import type { SceneHistoryPage } from "../../../shared/contracts/scene-history.js";
@@ -321,7 +323,7 @@ export function createSceneQueryService({
     });
     const submission = session.submissions.find((entry) => entry.id === submissionId);
     if (!submission) throw notFound("That roleplay turn was not recorded.");
-    const venue = (await readVillageState()).venues.find((entry) => entry.id === session.placeId);
+    const venue = findLocation(await readVillageState(), session.placeId);
     const zoneId =
       submission.zoneIdAtTurn ??
       session.zoneId ??
@@ -366,6 +368,7 @@ export function createSceneQueryService({
         ...new Set([
           ...(submission.activeIdsAtTurn ?? session.participants.map((participant) => participant.characterId)),
           ...(submission.speechIdsAtTurn ?? []),
+          ...(submission.npcAdmissions ?? []).map((arrival) => arrival.npc.id),
         ]),
       ],
       action: submission.action ?? null,
@@ -392,8 +395,7 @@ export function createSceneQueryService({
         submission.replyLineIds?.length
           ? submission.replyLineIds.includes(line.id) &&
             line.role === "assistant" &&
-            (submission.activeIdsAtTurn?.includes(line.speakerId) ||
-              submission.speechIdsAtTurn?.includes(line.speakerId)) &&
+            projectSpeakerAtTurn(submission, line) &&
             !line.contactHidden &&
             !line.contactReport
           : line.at === submission.at &&

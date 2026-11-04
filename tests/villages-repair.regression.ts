@@ -1,6 +1,6 @@
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { knownSocialWishes } from "../packages/villages/src/server/domain/rules/social-wishes.js";
-// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/wish-checkpoints, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity
+// Test cases: repair/review, repair/review-retirement, repair/review-cancel-race, repair/review-retirement-recovery, repair/add-memory, repair/memory-undo, repair/people, repair/checkpoints, repair/checkpoint-retention, repair/checkpoint-deletion, repair/snapshot-integrity, repair/recovery, repair/fences, repair/privacy, repair/domain-editors, repair/relationship-history, repair/letter-fonts, repair/retained-scenes, repair/correction-retained, repair/restored-evidence, repair/scale, repair/http, repair/wishes, repair/wish-checkpoints, repair/place-continuity, repair/checkpoint-pages, repair/journal-integrity, repair/places
 import assert from "node:assert/strict";
 import { authorSceneFixture, fixtureSceneState } from "./helpers/village-storage.fixture.js";
 import {
@@ -1739,4 +1739,64 @@ await runCase("repair/wish-checkpoints", async () => {
     "Restoration preserves the monotonic private archive instead of rewinding meaningful removed history",
   );
   await collectRetainedStorage(f.gate);
+});
+
+await runCase("repair/places", async () => {
+  const { establishPlace } = await import("../packages/villages/src/server/domain/rules/place-discovery.js");
+  const f = await fixture();
+  await f.repo.mutateAuthority(
+    (state) => {
+      state.maps = [
+        {
+          id: "map",
+          name: "Village",
+          revision: 1,
+          width: 1440,
+          height: 900,
+          view: { fit: "cover", focusX: 50, focusY: 50, zoom: 1 },
+          artwork: { id: "art", ref: "global-gallery:art", url: "/map.png" },
+        },
+      ];
+      establishPlace(
+        state,
+        {
+          name: "Cafe",
+          description: "A cafe",
+          controllers: ["jo"],
+          people: [{ ref: "jo", name: "Jo", characterization: "An attentive proprietor" }],
+          zones: [{ id: "room", name: "Room", kind: "restricted", description: "Private", controllers: ["jo"] }],
+        },
+        "place:cafe",
+        "map",
+        "test",
+        state.setupAt,
+        true,
+      );
+    },
+    { memories: true },
+  );
+  for (const [kind, id, patch] of [
+    ["npc", "npc:place:cafe:jo", { disabled: true }],
+    ["place", "place:cafe", { name: "Corrected Cafe" }],
+  ] as const) {
+    const record = await f.api.inspect(repairId(kind, id));
+    const review = await f.prepare({
+      recordId: record.id,
+      action: "correct",
+      values: { ...Object.fromEntries(record.fields.map((field) => [field.key, field.value])), ...patch },
+      knowers: [],
+      operationId: "repair-" + kind,
+    } as any);
+    assert.equal(review.undoAvailable, true);
+    await f.api.apply(review.id, review.token);
+    const changed = await f.read();
+    if (kind === "npc") assert.equal(changed.worldPlaces.npcs[id].disabled, true);
+    else assert.equal(changed.worldPlaces.places[id].location.name, "Corrected Cafe");
+    const undo = await f.api.undo(review.id, "undo-" + kind);
+    await f.api.apply(undo.id, undo.token);
+    const restored = await f.read();
+    assert.equal(restored.worldPlaces.npcs["npc:place:cafe:jo"].disabled, false);
+    assert.equal(restored.worldPlaces.places["place:cafe"].location.name, "Cafe");
+    assert.deepEqual(restored.worldPlaces.places["place:cafe"].location.access?.managerIds, ["npc:place:cafe:jo"]);
+  }
 });

@@ -15,10 +15,13 @@ import type { SceneErrorItem } from "./scene-errors.js";
 import { currentRoom, RoomPanel, sceneZoneLabel } from "./ScenePanel.js";
 import type { SceneScreenController } from "./screen-contracts.js";
 import { hasPublishedRoomSubmission } from "./villages-room-reading.js";
+import { ModalDialog } from "../../shared/ModalDialog.js";
+import type { PlaceDetail } from "../../../shared/contracts/places.js";
 
 const requestErrorIds = new Set(["room", "operation", "greeting"]);
 
 export function SceneScreen({ controller }: { controller: SceneScreenController }) {
+  const [showPlace, setShowPlace] = useState(false);
   const displayedSubmissionId = controller.room?.latestTurn?.published ? controller.room.latestTurn.id : undefined;
   useEffect(() => {
     if (displayedSubmissionId && controller.room?.id)
@@ -363,6 +366,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           onViewVenue={() => {
             const place = snapshot?.settings.venues.find((place) => place.id === room.placeId);
             if (place) openVenue(place);
+            else setShowPlace(true);
             void loadSnapshot();
           }}
           onEnd={() => void closeRoom()}
@@ -424,6 +428,12 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
             else {
               const place = snapshot?.settings.venues.find((candidate) => candidate.id === room.placeId);
               if (place) void openRoom(place);
+              else
+                void request<PlaceDetail>("/places/" + encodeURIComponent(room.placeId))
+                  .then((detail) => {
+                    if (sceneLifetime.current === room.id) void openRoom(detail.location);
+                  })
+                  .catch((cause) => setRoomError(messageFrom(cause, "Could not reopen this Place.")));
             }
           }}
           onContinueWithoutGreeting={() => {
@@ -460,6 +470,32 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
           Back to village
         </button>
       )}
+      {showPlace && room ? (
+        <ModalDialog title={room.placeName} onClose={() => setShowPlace(false)} scrollBody>
+          <div className="villages-founding-editor-body villages-places-directory">
+            <p>{sceneVenues.find((place) => place.id === room.placeId)?.description}</p>
+            <ul>
+              {sceneVenues
+                .find((place) => place.id === room.placeId)
+                ?.zones?.map((zone) => (
+                  <li key={zone.id}>
+                    {zone.name}
+                    {zone.seen ? <p>{zone.description}</p> : null}
+                  </li>
+                ))}
+            </ul>
+            <button
+              type="button"
+              onClick={() => {
+                setShowPlace(false);
+                goHome();
+              }}
+            >
+              Map
+            </button>
+          </div>
+        </ModalDialog>
+      ) : null}
     </div>
   );
 }

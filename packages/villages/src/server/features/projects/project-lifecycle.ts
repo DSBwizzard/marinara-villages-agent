@@ -52,3 +52,12 @@ export async function renewRenovationApprovals(
 ): Promise<void> {
   return binding.get().renewRenovationApprovals(...args);
 }
+
+export async function createEstablishmentProject(...args: Parameters<ProjectLifecycle["createEstablishmentProject"]>) {
+  return binding.get().createEstablishmentProject(...args);
+}
+export async function completeEstablishmentProject(
+  ...args: Parameters<ProjectLifecycle["completeEstablishmentProject"]>
+) {
+  return binding.get().completeEstablishmentProject(...args);
+}

@@ -56,7 +56,7 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
   // This is an already-captured projection, not an old world to migrate.
   const decoded = coerceVillageState({
     ...facts,
-    version: 14,
+    version: 15,
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
   });
@@ -69,9 +69,11 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     Object.entries(facts).flatMap(([key, value]) =>
       key === "foundingHistory"
         ? [[key, value]]
-        : sceneContinuityFields.includes(key as (typeof sceneContinuityFields)[number])
-          ? [[key, decoded[key as (typeof sceneContinuityFields)[number]]]]
-          : [],
+        : key === "worldPlaces"
+          ? [[key, decoded.worldPlaces]]
+          : sceneContinuityFields.includes(key as (typeof sceneContinuityFields)[number])
+            ? [[key, decoded[key as (typeof sceneContinuityFields)[number]]]]
+            : [],
     ),
   ) as SceneContinuity["facts"];
   return {
@@ -440,6 +442,15 @@ export function coerceSession(value: unknown): VenueScene {
                   }
                 : {}),
               ...(Array.isArray(row.projectSpeech) ? { projectSpeech: coerceProjectSpeech(row.projectSpeech) } : {}),
+              ...(Array.isArray(row.npcAdmissions)
+                ? { npcAdmissions: structuredClone(row.npcAdmissions) as VenueSubmission["npcAdmissions"] }
+                : {}),
+              ...(Array.isArray(row.placeDiscoveries)
+                ? { placeDiscoveries: structuredClone(row.placeDiscoveries) }
+                : {}),
+              ...(Array.isArray(row.establishmentProgress)
+                ? { establishmentProgress: structuredClone(row.establishmentProgress) }
+                : {}),
               ...(asRecord(row.speechCapture).version === 3 &&
               ["captured", "silent"].includes(String(asRecord(row.speechCapture).status))
                 ? { speechCapture: structuredClone(row.speechCapture) as VenueSubmission["speechCapture"] }

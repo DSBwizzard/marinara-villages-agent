@@ -1,3 +1,12 @@
+import { findLocation } from "../../domain/rules/places.js";
+import { findNpc, npcProfile } from "../../domain/rules/places.js";
+import {
+  NPC_INTRODUCTION_WRITING,
+  prepareNpcIntroductions,
+  validateNpcAdmissions,
+  fenceIntroductionWitnesses,
+  type NpcAdmission,
+} from "../../domain/rules/npc-participation.js";
 import { createHash } from "node:crypto";
 import { openingSceneDirection } from "../../domain/rules/opening-project.js";
 import { recentPlaceText } from "../../../shared/helpers/place-continuity.js";
@@ -177,9 +186,11 @@ export function createSceneWriting({
   rejectVenueCompletion,
   completeWithRoom,
   villagesConnectionIdFor,
-  readVillageState,
+  readVillageState: readVillageStateWithoutPlaces,
   semantic,
 }: SceneWritingPorts) {
+  const readVillageState: typeof readVillageStateWithoutPlaces = (options) =>
+    readVillageStateWithoutPlaces({ ...options, memories: true });
   function explicitSceneActions(): boolean {
     return venueOperationInput()?.interactionScopeVersion === 6;
   }
@@ -277,7 +288,10 @@ export function createSceneWriting({
       [];
     const profiles = active.map((person) => {
       const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
-      if (!resident) return `${person.name} (${person.characterId}): no longer resident.`;
+      if (!resident) {
+        const npc = findNpc(village, person.characterId);
+        return npc ? npcProfile(npc) : `${person.name} (${person.characterId}): no longer available.`;
+      }
       const card = readEffectiveVillagerCard(resident);
       if (
         (session.contactGeneration?.acoustics || session.contactGeneration?.zoneEvents) &&
@@ -319,7 +333,7 @@ export function createSceneWriting({
       return venueCardProfile(card, player.name, false);
     });
     const audience = active.map((person) => person.characterId);
-    const storedPlace = village.venues.find((venue) => venue.id === session.placeId);
+    const storedPlace = findLocation(village, session.placeId);
     const place = storedPlace
       ? session.zoneId
         ? venueInZone(storedPlace, session.zoneId)
@@ -450,6 +464,7 @@ export function createSceneWriting({
       ].filter(Boolean);
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
+        NPC_INTRODUCTION_WRITING,
         VENUE_SCENE_WRITING_FOUNDATION,
         venueOperationInput()?.sceneBoundaryVersion === 1 ? SCENE_OUTCOME_BOUNDARY : "",
         openingSceneDirection(village, session),
@@ -467,6 +482,13 @@ export function createSceneWriting({
       ]),
       identity: blocksFor([...profiles]),
       circumstances: blocksFor([
+        `Relevant supporting character candidates (not attendance or shared knowledge): ${JSON.stringify(
+          Object.values(village.worldPlaces.npcs)
+            .filter(
+              (npc) => !npc.disabled && npc.associations.some((association) => association.placeId === session.placeId),
+            )
+            .slice(0, 4),
+        )}`,
         `You write one shared scene in ${session.placeName}, ${village.name}. It is ${moment.localTime}. ${villageCurrentSetting(village)}`,
         village.narrative
           ? `Captured active circumstances (narrator context; knowledge stays witness-bound): ${JSON.stringify(environmentCircumstances(village.narrative, session.placeId, session.zoneId ?? "exterior"))}. Captured effective weather: ${moment.weather}. Locally perceivable environmental circumstances: ${JSON.stringify(environmentObservations(village.narrative, moment.instant, session.placeId, session.zoneId ?? "exterior"))}. These are outward circumstances, never proof everyone previously knew them. Ordinary-use restrictions permit only legally authorized inspection/corrective work and safe egress; do not invent consent, supplies, completed repairs or reopen on a promise. Actual supported physical repairs may clear matching conditions; all other restrictions remain.`
@@ -508,7 +530,7 @@ export function createSceneWriting({
           : "",
         capabilities.management ? accessManagementPrompt(village, audience, session.placeId) : "",
         session.contactGeneration?.actorIds
-          ? `Only selected residents ${JSON.stringify(audience)} may speak, act or receive invented reactions. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
+          ? `Only selected existing actors ${JSON.stringify(audience)} and explicitly declared supporting-character introductions may speak or act. Other physically present residents remain passive witnesses; their silence is not departure. Four complete resident profiles is the total reply budget across all Zones.`
           : "",
         `A Venue is the place; Zones are its separate spaces. A Scene continues across Zone movement. Local residents: ${session.activeIds.join(", ")}. ${session.contactGeneration?.zoneEvents ? "Other candidate residents remain in their captured Zones; they are not onstage." : "Only server-listed residents occupy this Zone."} ${session.liveSceneVersion === 1 ? "Attendance, activities and time are admitted for this exchange only. Schedules can change them between exchanges. Never reintroduce an absent speaker or give new arrivals knowledge of earlier dialogue. Current physical facts supersede old narration." : "Attendance, activities and time were captured at Scene start. Witnessed developments establish what is happening now. Background agendas cannot move anyone in this Scene. Only evidenced movement changes positions. A resident may leave after a clear spoken departure; do not force departure because real time passed."}`,
         session.liveSceneVersion === 1
@@ -525,8 +547,8 @@ export function createSceneWriting({
                 : "The player is in this Residence's Exterior Zone. Say / Do reaches only its current physical occupants. Use Contact to attempt attention in an adjacent Zone. Show only what the player can observe here; never invent interior replies, disclose unseen details or narrate entering another Zone."
               : "The player is in this Venue's Exterior Zone. Show only what they can observe from this Zone; do not describe them entering an interior."
             : active.length
-              ? "Only the named residents may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
-              : "Nobody is present. Write one grounded scene narration, with no resident dialogue or invented witnesses.",
+              ? "Only the named actors and validated supporting-character introductions may speak. Do not disclose one resident's private knowledge through another. When the player addresses someone, respond to what they said; silence alone is neither consent nor a generic substitute for an answer. Quoted dialogue is not required because each segment has an explicit kind."
+              : "No existing actor is onstage. Describe observable surroundings or explicitly declare a grounded supporting-character introduction; never imply an unseen responder.",
         sharedWorldContext(
           village.worldName,
           active.map((person) => {
@@ -643,7 +665,7 @@ export function createSceneWriting({
       });
     if (!audience.length)
       blocks.push({
-        text: "No resident is available in the supplied Scene cast. Continue with observable surroundings and the player's own actions only. Do not invent an unseen person, incoming messages on a screen/device, or human activity/noises to imply someone is listening or answering. A name in the Venue title, player input or earlier narration does not establish presence. Do not continue an unsupported implied conversation from earlier narration.",
+        text: "No resident is available in the supplied Scene cast. Continue observable surroundings or explicitly declare a grounded supporting character through npcIntroductions before they speak or witness anything. Never imply an undeclared unseen responder or incoming messages. A name in the Venue title, player input or earlier narration does not establish presence. Do not continue an unsupported implied conversation from earlier narration.",
       });
     blocks.push({
       text: "Only the player's explicit Move action changes their Zone. Act/Do and conversation remain in the current Zone. Walking toward furniture or people here is an ordinary local action. Never narrate the player crossing into another Zone, following a villager across Zones, or accepting entry automatically. Villager movement remains subject to access; presence does not confer housing residency or permission.",
@@ -698,24 +720,27 @@ export function createSceneWriting({
       village: authority,
       wishContexts: (capturedWishes
         ? capturedWishes.map((owner) => ({ ...owner, wishes: immutableSocialWishes(owner.wishes) }))
-        : active.map((person) => {
-            const owner = village.villagers.find((row) => row.characterId === person.characterId)!;
-            return {
-              actorId: owner.characterId,
-              wishId: "",
-              fingerprint: "",
-              wishes: immutableSocialWishes(owner.wishes),
-              capturedAt: owner.cardSnapshot.capturedAt,
-            };
+        : active.flatMap((person) => {
+            const owner = village.villagers.find((row) => row.characterId === person.characterId);
+            if (!owner) return [];
+            return [
+              {
+                actorId: owner.characterId,
+                wishId: "",
+                fingerprint: "",
+                wishes: immutableSocialWishes(owner.wishes),
+                capturedAt: owner.cardSnapshot.capturedAt,
+              },
+            ];
           })) as import("../../domain/models/wish-check-model.js").CapturedWishContexts,
       audience,
       active,
       pendingMoves: authority.residences.filter(
         (row) => row.status !== "current" && (row.agreement?.requiredIds ?? []).some((id) => audience.includes(id)),
       ),
-      storedPlace: village.venues.find((row) => row.id === session.placeId),
+      storedPlace: findLocation(village, session.placeId),
       place: (() => {
-        const current = village.venues.find((row) => row.id === session.placeId);
+        const current = findLocation(village, session.placeId);
         return current
           ? session.zoneId
             ? venueInZone(current, session.zoneId)
@@ -802,7 +827,7 @@ export function createSceneWriting({
       args[7],
       replacement ? null : offer,
     );
-    let { fitted, earlierEvidence, promptMemories, loreInspection, wishContexts } = prepared;
+    let { fitted, earlierEvidence, promptMemories, loreInspection, wishContexts, audience } = prepared;
     const {
       sparse,
       writingVersion,
@@ -810,7 +835,6 @@ export function createSceneWriting({
       maxTokens,
       model,
       village,
-      audience,
       pendingMoves,
       storedPlace,
       place,
@@ -1020,6 +1044,7 @@ export function createSceneWriting({
         contactIntent: extractedContact,
       };
     let parsed: ReturnType<typeof parseVenueReply>;
+    let npcAdmissions: NpcAdmission[] = [];
     let eventRaw = raw;
     let effectFailures: NonNullable<import("../../domain/models/scene-model.js").VenueSubmission["effectFailures"]> =
       {};
@@ -1037,8 +1062,22 @@ export function createSceneWriting({
         for (const [index, spans] of captureSources)
           asRecord(raw.segments[index]).fragments = spans.map((span) => span.text);
       }
+      if (raw) {
+        raw.npcIntroductions ??= originalRaw?.npcIntroductions;
+        const introductions = prepareNpcIntroductions(raw, village, session, requestKey);
+        session = introductions.scene;
+        npcAdmissions = introductions.admissions;
+        audience = [...audience, ...npcAdmissions.map((admission) => admission.npc.id)];
+      }
       eventRaw = session.contactGeneration?.zoneEvents ? zoneEventReply(raw, message) : raw;
       parsed = parseVenueReply(eventRaw, session.contactGeneration?.zoneEvents ? [...audience, "player"] : audience);
+      fenceIntroductionWitnesses(
+        parsed.lines,
+        parsed.heardPlayerBy,
+        npcAdmissions,
+        session.contactGeneration?.localIds ?? session.activeIds,
+        false,
+      );
       // Only System supplies presentation, regardless of extra Narration fields.
       for (const line of parsed.lines) {
         delete line.expression;
@@ -1119,6 +1158,7 @@ export function createSceneWriting({
       throw new HaltedSceneTurn(semanticResult.turnOutcome);
     }
     if (semanticResult?.intent) session = { ...session, semanticIntent: semanticResult.intent };
+    npcAdmissions = validateNpcAdmissions(semanticResult?.effects.npcAdmissions, npcAdmissions);
     for (const row of semanticResult?.presentation ?? []) {
       if (parsed.lines[row.segment]) parsed.lines[row.segment].staging = row.staging;
     }
@@ -1230,6 +1270,12 @@ export function createSceneWriting({
           throw cause;
         }
       }
+      fenceIntroductionWitnesses(
+        parsed.lines,
+        parsed.heardPlayerBy,
+        npcAdmissions,
+        session.contactGeneration?.localIds ?? session.activeIds,
+      );
       const physicalContext =
         semanticResult && raw?.placeUpdate
           ? semanticPhysicalContext(raw.placeUpdate, parsed.lines, session, message, contactMoves)
@@ -1305,7 +1351,7 @@ export function createSceneWriting({
             session.contactGeneration.localIds.includes(ending.speakerId)));
       const requestedVenueId = request ? asTrimmedString(request.entry.venueId) : "";
       const invitedVenueId = invitation ? asTrimmedString(invitation.entry.venueId) : "";
-      const invitedVenue = sceneContinuityView(village, session).venues.find((venue) => venue.id === invitedVenueId);
+      const invitedVenue = findLocation(sceneContinuityView(village, session), invitedVenueId);
       let invitationScope: "shared" | "private" = invitation?.entry.scope === "private" ? "private" : "shared";
       const invitationZoneId = asTrimmedString(invitation?.entry.privateSpaceId ?? invitation?.entry.zoneId);
       const invitationZone = invitedVenue
@@ -1357,7 +1403,7 @@ export function createSceneWriting({
       const physicalVillage = narrativeSource
         ? provisionalSceneNarrative(sceneContinuityView(village, session), narrativeAuthority, narrativeSource)
         : village;
-      const physicalVenue = physicalVillage.venues.find((row) => row.id === session.placeId);
+      const physicalVenue = findLocation(physicalVillage, session.placeId);
       let placeUpdate: ReturnType<typeof readVenueSceneChange> = null;
       try {
         if (
@@ -1374,6 +1420,7 @@ export function createSceneWriting({
             {
               ...physicalVillage,
               venues: structuredClone(physicalVillage.venues),
+              worldPlaces: structuredClone(physicalVillage.worldPlaces),
               narrative: structuredClone(physicalVillage.narrative),
             },
             session.placeId,
@@ -1557,6 +1604,13 @@ export function createSceneWriting({
         departures,
         sceneEnded,
         responseDiagnostics: diagnostics as ResponseDiagnostics | undefined,
+        npcAdmissions,
+        placeDiscoveries: Array.isArray(semanticResult?.effects.placeDiscoveries)
+          ? (semanticResult.effects.placeDiscoveries as unknown[])
+          : [],
+        establishmentProgress: Array.isArray(semanticResult?.effects.establishmentProgress)
+          ? (semanticResult.effects.establishmentProgress as unknown[])
+          : [],
         residentActionReceipt: semanticResult?.effects.residentActionReceipt as
           import("../../domain/rules/resident-actions.js").ResidentActionReceipt | undefined,
         semanticAccess,
@@ -1607,7 +1661,7 @@ export function createSceneWriting({
       if (invitations.length === 1) {
         const { result, check } = invitations[0],
           facts = asRecord(check.facts);
-        const controlledVenue = currentVillage.venues.find((venue) => venue.id === facts.venueId);
+        const controlledVenue = findLocation(currentVillage, facts.venueId);
         const zone = controlledVenue && resolveVenueZone(controlledVenue, String(facts.zoneId));
         const actor = String(facts.actorId);
         const supporting =
@@ -1664,13 +1718,13 @@ export function createSceneWriting({
       if (!semantic) throw conflict("System interpretation is not configured.");
       if (mode === "greet" && !session.contactGeneration?.zoneEvents) {
         const state = await readVillageState();
-        const venue = state.venues.find((row) => row.id === session.placeId);
+        const venue = findLocation(state, session.placeId);
         if (venue) session = zoneEventScene(session, venue);
       }
       actionOutcome = undefined;
       const reply = await generateOnce(session, message, mode, targetId, settled, signal, trace, actionOutcome);
       const currentVillage = await readVillageState();
-      const controlledVenue = currentVillage.venues.find((venue) => venue.id === session.placeId);
+      const controlledVenue = findLocation(currentVillage, session.placeId);
       if (reply.placeUpdate) {
         if (controlledVenue?.constructionStatus === "worksite") throw new VenueReplyFailure("construction-worksite");
       }
@@ -1684,7 +1738,7 @@ export function createSceneWriting({
       )
         throw conflict("Room access changed while the reply was being prepared. You returned to the exterior.");
       if (reply.invitationSignal) {
-        const invited = currentVillage.venues.find((venue) => venue.id === reply.invitationSignal!.venueId);
+        const invited = findLocation(currentVillage, reply.invitationSignal!.venueId);
         const target = invited && resolveVenueZone(invited, reply.invitationSignal.zoneId ?? "");
         if (
           !invited ||

@@ -1,3 +1,5 @@
+import { findLocation, placeRegistry } from "../../domain/rules/places.js";
+import { projectPlace } from "../../domain/rules/place-discovery.js";
 import { createHash } from "node:crypto";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
 import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.js";
@@ -68,6 +70,14 @@ export function createVillageSnapshot({
       });
       village = await readVillageState();
     }
+    if (
+      village.projects.some(
+        (project) =>
+          (project.kind === "establishment" || project.lifecycle?.affectedIds.some((id) => id.startsWith("npc:"))) &&
+          !["complete", "cancelled"].includes(project.status),
+      )
+    )
+      village = await readVillageState({ memories: true });
     const minuteOfDay = deriveVillageMoment({
       foundedAt: village.foundedAt,
       environment: village.narrative,
@@ -79,7 +89,7 @@ export function createVillageSnapshot({
     const { activeVenueSession } = sceneQueries();
     const residenceAccess = await activeVenueSession();
     const sceneWorld = residenceAccess ? sceneContinuityView(village, residenceAccess, false) : village;
-    const capturedVenue = residenceAccess && sceneWorld.venues.find((venue) => venue.id === residenceAccess.placeId);
+    const capturedVenue = residenceAccess && findLocation(sceneWorld, residenceAccess.placeId);
     // ONE schedule read for the whole village, so every villager's pin and their
     // own drawer's plate are resolved off the same answer. Null when the Engine
     // will not answer, which leaves every villager unplaced rather than failing
@@ -179,6 +189,29 @@ export function createVillageSnapshot({
       projects: village.projects.map((project) => ({
         id: project.id,
         kind: project.kind,
+        actorNames: Object.fromEntries(
+          (project.lifecycle?.affectedIds ?? []).flatMap((id) => {
+            const npc = placeRegistry(village)?.npcs[id];
+            return npc ? [[id, npc.label || npc.name]] : [];
+          }),
+        ),
+        place:
+          project.kind === "establishment" &&
+          !["complete", "cancelled"].includes(project.status) &&
+          village.worldPlaces.places[project.venueId]
+            ? projectPlace(village, village.worldPlaces.places[project.venueId])
+            : undefined,
+        establishment: project.establishment
+          ? {
+              ...project.establishment,
+              objectives: project.establishment.objectives.map(({ id, text, met }) => ({
+                id,
+                text,
+                met,
+                evidence: [],
+              })),
+            }
+          : undefined,
         title: project.title,
         venueId: project.venueId,
         status: project.status,
@@ -241,7 +274,7 @@ export function createVillageSnapshot({
             sceneVenue: {
               sceneId: residenceAccess.id,
               venue: villageSettings(
-                sceneWorld,
+                { ...sceneWorld, venues: [capturedVenue] },
                 player,
                 residenceAccess,
                 sceneAccessContext(residenceAccess, sceneWorld),
