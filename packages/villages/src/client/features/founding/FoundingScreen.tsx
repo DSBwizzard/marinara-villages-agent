@@ -142,7 +142,8 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     rootRef.current?.scrollTo({ top: 0 });
-  }, [setupStep]);
+    setValidatedFields((fields) => (fields.includes("map") ? fields.filter((field) => field !== "map") : fields));
+  }, [setupStep, screen]);
   useFoundingKeyboardOverlay(rootRef, screen === "setup");
   const mapUpload = useRef<HTMLInputElement>(null);
   const [mapNavigation, setMapNavigation] = useState<MobileMapView | null>(null);

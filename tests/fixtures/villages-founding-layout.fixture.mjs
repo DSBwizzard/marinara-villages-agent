@@ -478,6 +478,12 @@ export async function verifyFoundingLayout(group) {
         await expect(mapWarning).toBeVisible();
         assert.deepEqual(await root.boundingBox(), frame, "Validation does not resize the Founding window");
         assert.equal(await mapWarning.evaluate((node) => getComputedStyle(node).color), "rgb(255, 155, 165)");
+        await button("Back").click();
+        await expect(root).toHaveAttribute("data-step", "1");
+        await button("Continue to Venues and Map").click();
+        await expect(root).toHaveAttribute("data-step", "2");
+        await expect(mapWarning).toHaveCount(0);
+
         await expect(root.getByRole("button", { name: "Simple map", exact: true })).toHaveCount(0);
         await expect(root.getByRole("button", { name: "+ Add home", exact: true })).toHaveCount(0);
         await expect(root.getByRole("button", { name: "+ Add Venue", exact: true })).toHaveCount(0);
