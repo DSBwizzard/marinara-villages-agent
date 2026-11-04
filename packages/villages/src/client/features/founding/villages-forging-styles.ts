@@ -1,6 +1,6 @@
 export const VILLAGES_FORGING_STYLES = `
 /* Extra scroll reach sits outside layout, so a keyboard cannot compress a form or its footer. */
-.villages-forging-v2 { position:relative; }
+.villages-forging-v2 { position:relative; isolation:isolate; }
 .villages-forging-v2[data-founding-keyboard=true],.villages-forging-v2 dialog[data-founding-keyboard=true] { overflow:auto!important; }
 .villages-forging-v2[data-founding-keyboard=true]::after,.villages-forging-v2 dialog[data-founding-keyboard=true]::after { content:""; position:absolute; top:var(--founding-scroll-end,100%); left:0; width:1px; height:var(--founding-keyboard-inset); pointer-events:none; }
 .villages-forging-v2 .villages-founding-dialog[data-header-input]>header { display:flex; gap:.6rem; padding:0; background:transparent; align-items:center; }
@@ -362,7 +362,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-forging-map .marinara-capability-villages-stage[data-exploration=true] { height:clamp(14rem,calc(var(--founding-viewport-height,100dvh) * .4),32rem)!important; }
 .villages-quick-map .marinara-capability-villages-stage[data-exploration=true] { height:100%!important; min-height:0; }
 .villages-quick-map>p { position:absolute; top:.5rem; left:.5rem; right:.5rem; z-index:7; margin:0; padding:.5rem; border-radius:.4rem; background:#141b39ed; }
-.villages-forging-v2 dialog.villages-quick-dialog[open] { display:flex; flex-direction:column; gap:1rem; width:min(92rem,calc(100vw - 3rem)); height:min(48rem,calc(100dvh - 3rem)); max-height:calc(100dvh - 3rem); max-width:calc(100vw - 3rem); padding:1.5rem; overflow:hidden; background:linear-gradient(135deg,#192441,#141b39); container:founding-editor / inline-size; }
+.villages-forging-v2 dialog.villages-quick-dialog[open] { display:flex; flex-direction:column; gap:1rem; width:min(92rem,100%); height:min(48rem,100%); max-height:100%; max-width:100%; padding:1.5rem; overflow:hidden; background:linear-gradient(135deg,#192441,#141b39); container:founding-editor / inline-size; }
 .villages-forging-v2 .villages-quick-dialog>header { flex:none; margin:0; padding:0; background:transparent; }
 .villages-forging-v2 .villages-quick-dialog>header h3 { font-size:1.5rem; }
 .villages-forging-v2 .villages-quick-dialog>header>button { width:auto; height:auto; }
@@ -441,7 +441,7 @@ export const VILLAGES_FORGING_STYLES = `
 .villages-quick-space summary small { display:block; color:#c1c9e9; margin:.35rem 0 0 1rem; line-height:1.4; }
 @media(max-width:704px) { .villages-forging-v2 .marinara-capability-villages-map-camera-controls { display:none; } }
 @media(max-width:1000px) {
- .villages-forging-v2 dialog.villages-quick-dialog[open] { inset:0; width:100%; max-width:100%; height:var(--founding-viewport-height,100dvh); max-height:var(--founding-viewport-height,100dvh); margin:0; padding:1rem; border-radius:0; }
+ .villages-forging-v2 dialog.villages-quick-dialog[open] { width:100%; height:100%; padding:1rem; border-radius:0; }
 }
 @media(max-width:727px) {
  .villages-forging-v2 dialog.villages-quick-dialog[open] { padding:.75rem; }
@@ -551,4 +551,11 @@ export const VILLAGES_FORGING_STYLES = `
  .villages-quick-map-panel .villages-quick-map { height:300px; flex:none; }
  .villages-quick-pages { flex:none; height:clamp(16rem,50dvh,32rem); }
 }
+/* Founding overlays belong to the capability pane, never the Engine window. */
+.villages-founding-overlay { position:absolute; inset:0; z-index:100; display:grid; grid-template:minmax(0,1fr) / minmax(0,1fr); place-items:center; padding:1rem; overflow:hidden; background:#090c1a99; }
+.villages-forging-v2 .villages-founding-overlay>dialog { position:relative; inset:auto; margin:0; width:min(42rem,100%); height:auto; max-width:100%; max-height:100%; }
+.villages-forging-v2 .villages-founding-overlay>dialog:not(.villages-quick-dialog) { overflow:auto; }
+.villages-forging-v2 .villages-founding-overlay>dialog[data-compact=true] { width:min(26rem,100%); max-height:100%; }
+.villages-forging-v2 .villages-founding-overlay>dialog.villages-quick-dialog { width:min(92rem,100%); height:min(48rem,100%); }
+@media(max-width:1000px) { .villages-founding-overlay { padding:0; } .villages-forging-v2 .villages-founding-overlay>dialog.villages-quick-dialog { width:100%; height:100%; } }
 `;

@@ -142,7 +142,7 @@ await withBrowser(browser, async () => {
         fulfill(route, {
           contentType: "text/html",
           body:
-            '<meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#121936;color:white;font:16px system-ui"><marinara-capability-villages style="display:block;height:100dvh"><div id="root"></div></marinara-capability-villages><script>' +
+            '<meta name="viewport" content="width=device-width,initial-scale=1"><body style="margin:0;background:#121936;color:white;font:16px system-ui"><header id="engine-controls" style="height:96px;background:#111;display:flex;align-items:center;gap:16px"><button onclick="window.engineClicks=(window.engineClicks||0)+1">Engine control</button><button>Engine navigation</button></header><marinara-capability-villages style="display:block;height:calc(100dvh - 96px)"><div id="root" style="height:100%"></div></marinara-capability-villages><script>' +
             bundle.outputFiles[0].text +
             "</script>",
         }),
@@ -152,15 +152,55 @@ await withBrowser(browser, async () => {
       const button = (name) => page.getByRole("button", { name, exact: true });
       await expect(sheet).toHaveCount(0);
       const first = page.locator('[data-venue-id="founding-home:player"]');
+      const engine = page.locator("#engine-controls");
+      const engineBefore = await engine.screenshot();
       await first.click();
       await expect(sheet).toBeVisible();
       await expect(sheet).toHaveAttribute("open", "");
-      await sheet.getByLabel("Appearance", { exact: true }).fill("A timber cottage");
+      assert.equal(
+        await sheet.evaluate((node) => node.matches(":modal")),
+        false,
+        "The editor does not make the Engine document modal",
+      );
+      assert.deepEqual(
+        await engine.screenshot(),
+        engineBefore,
+        "Engine chrome keeps identical pixels while Villages is dimmed",
+      );
+      const contained = async () => {
+        const pane = await page.locator(".villages-forging-v2").boundingBox();
+        const popup = await sheet.boundingBox();
+        const overlay = await page.locator(".villages-founding-overlay").boundingBox();
+        assert.deepEqual(overlay, pane, "Dimming covers exactly the Villages pane");
+        assert.ok(
+          popup.y >= pane.y &&
+            popup.x >= pane.x &&
+            popup.y + popup.height <= pane.y + pane.height + 1 &&
+            popup.x + popup.width <= pane.x + pane.width + 1,
+          "Popup stays inside Villages",
+        );
+      };
+      await contained();
+      await expect(page.locator(".villages-forging-body")).toHaveJSProperty("inert", true);
+      await button("Engine control").click();
+      assert.equal(await page.evaluate(() => window.engineClicks), 1, "Engine controls remain clickable");
+      await page.keyboard.press("Tab");
+      await expect(button("Engine navigation")).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(sheet).toBeVisible();
+      await sheet.getByLabel("Venue form", { exact: true }).fill("A timber cottage");
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await expect(sheet).toHaveCount(0);
       await expect(first).toBeFocused();
+      await expect(page.locator(".villages-forging-body")).toHaveJSProperty("inert", false);
       await first.click();
-      await expect(sheet.getByLabel("Appearance", { exact: true })).toHaveValue("A timber cottage");
+      if (viewport.width > 600) {
+        await page.locator(".villages-founding-overlay").click({ position: { x: 2, y: 2 } });
+        await expect(sheet).toHaveCount(0);
+        await expect(first).toBeFocused();
+        await first.click();
+      }
+      await expect(sheet.getByLabel("Venue form", { exact: true })).toHaveValue("A timber cottage");
       await page.keyboard.press("Escape");
       await expect(sheet).toHaveCount(0);
       await expect(first).toBeFocused();
@@ -272,6 +312,7 @@ await withBrowser(browser, async () => {
       const compactCanvas = sheet.locator(".villages-zone-map-canvas");
       assert.ok((await compactCanvas.boundingBox()).height > 310, "Seven low Zones expand the graph");
       await page.setViewportSize({ width: viewport.width === 1366 ? 390 : 1366, height: 900 });
+      await contained();
       await assertGraph();
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues[0].zoneLayout),
@@ -355,7 +396,7 @@ await withBrowser(browser, async () => {
       );
       await sheet.getByLabel("Zone name", { exact: true }).fill("Front Office");
       expected.spaces[0].name = "Front Office";
-      await sheet.getByLabel("Appearance", { exact: true }).fill("A converted school bus");
+      await sheet.getByLabel("Venue form", { exact: true }).fill("A converted school bus");
       expected.form = "A converted school bus";
       assert.deepEqual(
         await page.evaluate(() => window.quickState.venues[0]),
@@ -379,7 +420,16 @@ await withBrowser(browser, async () => {
       };
       await sheet.getByRole("button", { name: "Done", exact: true }).click();
       await button("Suggest").click();
-      await page.getByRole("dialog").getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.setViewportSize({ width: viewport.width, height: 260 });
+      const confirmation = page.getByRole("dialog", { name: "Suggest", exact: true });
+      const shortPane = await page.locator(".villages-forging-v2").boundingBox();
+      const shortDialog = await confirmation.boundingBox();
+      assert.ok(
+        shortDialog.y >= shortPane.y && shortDialog.y + shortDialog.height <= shortPane.y + shortPane.height + 1,
+        "Compact confirmation fits a short Villages pane",
+      );
+      await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+      await page.setViewportSize(viewport);
       assert.equal(calls, 0);
       loseReply = true;
       await confirm();

@@ -339,6 +339,31 @@ export async function verifyFoundingLayout(group) {
         assert.ok(box.y - controls.y - controls.height < 80, "Circumstances starts directly below its controls");
         await button("World rules").click();
         await expect(root.getByLabel("Village Timezone", { exact: true })).toHaveCount(0);
+        await button("Art settings").click();
+        const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
+        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("fixture-ink");
+        await expect
+          .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
+          .toBe("fixture-ink");
+        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("@custom");
+        await artSettings
+          .getByLabel("Scenery style description", { exact: true })
+          .fill("Watercolor with muted teal and warm amber.");
+        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
+        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
+        if (process.env.VILLAGES_SCREENSHOT_DIR)
+          await page.screenshot({
+            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
+          });
+        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
+        await expect(artSettings).toHaveCount(0);
+        assert.equal(generatedImages, 0, "Changing art settings never generates an image");
+        assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
+        await button("Art settings").click();
+        await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
+          "Watercolor with muted teal and warm amber.",
+        );
+        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
         await bounds("setting");
         await button("Continue to People").click();
         await expect(root).toHaveAttribute("data-step", "1");
@@ -494,7 +519,7 @@ export async function verifyFoundingLayout(group) {
         ).toBeVisible();
         if (view.width === 2550) {
           const name = await sheet.getByLabel("Venue Name", { exact: true }).boundingBox();
-          const appearance = await sheet.getByLabel("Appearance", { exact: true }).boundingBox();
+          const appearance = await sheet.getByLabel("Venue form", { exact: true }).boundingBox();
           const details = await sheet.locator(".villages-quick-zone-fields").boundingBox();
           const artwork = await sheet.getByRole("region", { name: "Zone artwork", exact: true }).boundingBox();
           assert.ok(name.x + name.width <= appearance.x, "Name and Appearance share the desktop header");
@@ -506,7 +531,7 @@ export async function verifyFoundingLayout(group) {
             .getByLabel("Venue Name", { exact: true })
             .evaluate((node) => getComputedStyle(node).fontSize);
           const appearanceStyle = await sheet
-            .getByLabel("Appearance", { exact: true })
+            .getByLabel("Venue form", { exact: true })
             .evaluate((node) => getComputedStyle(node).fontSize);
           assert.equal(nameStyle, appearanceStyle, "Venue header uses uniform type size");
           const list = await root.getByRole("region", { name: "Starting Venues", exact: true }).boundingBox();
@@ -518,7 +543,7 @@ export async function verifyFoundingLayout(group) {
           );
           const zoneName = await sheet.getByLabel("Zone name", { exact: true }).boundingBox();
           const purpose = await sheet.getByLabel("Used for", { exact: true }).boundingBox();
-          const description = await sheet.getByLabel("Long-term details", { exact: true }).boundingBox();
+          const description = await sheet.getByLabel("Zone description", { exact: true }).boundingBox();
           const artworkPreview = await sheet.locator(".villages-quick-art img,.villages-quick-art-empty").boundingBox();
           assert.ok(Math.abs(description.y - artworkPreview.y) < 1, "Description and artwork start on the same row");
           assert.equal(
@@ -550,7 +575,7 @@ export async function verifyFoundingLayout(group) {
             path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "zone-editing-" + view.width + ".png"),
           });
         const nameBox = sheet.getByLabel("Venue Name", { exact: true });
-        const appearanceBox = sheet.getByLabel("Appearance", { exact: true });
+        const appearanceBox = sheet.getByLabel("Venue form", { exact: true });
         const decoration = (locator) =>
           locator.evaluate((node) => {
             const style = getComputedStyle(node);
@@ -561,31 +586,7 @@ export async function verifyFoundingLayout(group) {
           await decoration(appearanceBox),
           "Venue name retains the standard input box while unfocused",
         );
-        await sheet.getByRole("button", { name: "Art settings", exact: true }).click();
-        const artSettings = page.getByRole("dialog", { name: "Art settings", exact: true });
-        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("fixture-ink");
-        await expect
-          .poll(() => page.evaluate(() => window.featureController.sceneryStyleProfileId))
-          .toBe("fixture-ink");
-        await artSettings.getByLabel("Scenery style preset", { exact: true }).selectOption("@custom");
-        await artSettings
-          .getByLabel("Scenery style description", { exact: true })
-          .fill("Watercolor with muted teal and warm amber.");
-        await artSettings.getByLabel("Map details", { exact: true }).fill("A circular Village around a central pond.");
-        await artSettings.getByLabel("Exclude from map", { exact: true }).fill("neon colors");
-        if (process.env.VILLAGES_SCREENSHOT_DIR)
-          await page.screenshot({
-            path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, "art-settings-" + view.width + ".png"),
-          });
-        await artSettings.getByRole("button", { name: "Done", exact: true }).click();
-        await expect(artSettings).toHaveCount(0);
-        assert.equal(generatedImages, 0, "Changing art settings never generates an image");
-        assert.deepEqual(await root.boundingBox(), frame, "Art settings do not resize the Founding window");
-        await sheet.getByRole("button", { name: "Art settings", exact: true }).click();
-        await expect(artSettings.getByLabel("Scenery style description", { exact: true })).toHaveValue(
-          "Watercolor with muted teal and warm amber.",
-        );
-        await artSettings.getByRole("button", { name: "Close Art settings", exact: true }).click();
+        await expect(root.getByRole("button", { name: "Art settings", exact: true })).toHaveCount(0);
         const image = await page.evaluate(() => {
           const canvas = document.createElement("canvas");
           canvas.width = 1536;
@@ -719,7 +720,7 @@ export async function verifyFoundingLayout(group) {
           assert.ok(Math.abs(map.height - options.height) <= 1, "Both overview panels use the whole available height");
         }
         await editVenue("founding-home:player");
-        const appearance = sheet.getByLabel("Appearance", { exact: true });
+        const appearance = sheet.getByLabel("Venue form", { exact: true });
         const savedAppearance = await appearance.inputValue();
         await appearance.fill("");
         await sheet.getByRole("button", { name: "Done", exact: true }).click();

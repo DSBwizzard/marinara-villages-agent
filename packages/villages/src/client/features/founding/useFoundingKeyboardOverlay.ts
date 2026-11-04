@@ -47,6 +47,10 @@ export function useFoundingKeyboardOverlay(root: RefObject<HTMLElement | null>, 
       }
       for (const dialog of node.querySelectorAll<HTMLDialogElement>("dialog[open]")) {
         if (saved.has(dialog)) continue;
+        if (dialog.closest(".villages-founding-overlay")) {
+          remember(dialog);
+          continue;
+        }
         const bounds = dialog.getBoundingClientRect();
         remember(dialog);
         Object.assign(dialog.style, {

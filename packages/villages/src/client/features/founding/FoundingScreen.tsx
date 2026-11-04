@@ -351,7 +351,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             ))}
           </ol>
           <h1>Forging the Village</h1>
-          {setupStep === 2 ? (
+          {setupStep === 0 ? (
             <button
               type="button"
               className="villages-founding-art-settings-button"
@@ -362,7 +362,7 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
             </button>
           ) : null}
         </header>
-        {setupStep === 2 && artSettingsOpen ? (
+        {setupStep === 0 && artSettingsOpen ? (
           <FoundingDialog title="Art settings" onClose={() => setArtSettingsOpen(false)}>
             <div className="villages-founding-editor-body">
               <p>One style for the Village map and all Venue images. Changes apply to new generations.</p>
@@ -601,15 +601,6 @@ export function FoundingScreen({ controller }: { controller: FoundingScreenContr
                 venues={setupVenues}
                 saveStatus={draftStatus}
                 onRetrySaving={() => void retrySetupSaving()}
-                artSettings={
-                  <button
-                    type="button"
-                    disabled={busy || setupVenueBusy || setupSuggestionsBusy || setupMapBusy || !!setupMapRequest}
-                    onClick={() => setArtSettingsOpen(true)}
-                  >
-                    Art settings
-                  </button>
-                }
                 actions={
                   <QuickStartButton
                     busy={busy || setupSuggestionsBusy}

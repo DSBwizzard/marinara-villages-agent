@@ -27,7 +27,6 @@ export function QuickStartVenues({
   communityVenueId,
   actions,
   mapArtwork,
-  artSettings,
   saveStatus,
   onRetrySaving,
 }: {
@@ -47,7 +46,6 @@ export function QuickStartVenues({
   communityVenueId?: string;
   actions?: ReactNode;
   mapArtwork?: ReactNode;
-  artSettings?: ReactNode;
   saveStatus?: string;
   onRetrySaving?(): void;
 }) {
@@ -193,17 +191,7 @@ export function QuickStartVenues({
         {!open && (saveError || problem) ? <p role="alert">{saveError || problem}</p> : null}
       </section>
       {open && selected ? (
-        <FoundingDialog
-          title="Edit Venue"
-          className="villages-quick-dialog"
-          headerContent={
-            <>
-              <h3>Edit Venue</h3>
-              {artSettings}
-            </>
-          }
-          onClose={() => setEditorOpen(false)}
-        >
+        <FoundingDialog title="Edit Venue" className="villages-quick-dialog" onClose={() => setEditorOpen(false)}>
           <div className="villages-quick-editor-body" key={selected.id}>
             <fieldset className="villages-quick-venue-header" disabled={busy || imageBusy}>
               <label>
@@ -220,10 +208,10 @@ export function QuickStartVenues({
                 {fieldError("name")}
               </label>
               <label>
-                Appearance
+                Venue form
                 <textarea
                   autoComplete="off"
-                  aria-label="Appearance"
+                  aria-label="Venue form"
                   {...errorProps("form")}
                   maxLength={2000}
                   rows={2}
@@ -305,10 +293,10 @@ export function QuickStartVenues({
                 <div className="villages-quick-zone-content">
                   <div className="villages-quick-zone-fields">
                     <label className="villages-quick-zone-description">
-                      <span>Long-term details</span>
+                      <span>Zone description</span>
                       <textarea
                         autoComplete="off"
-                        aria-label="Long-term details"
+                        aria-label="Zone description"
                         {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
                         value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
                         maxLength={1000}
