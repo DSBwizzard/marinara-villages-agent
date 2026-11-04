@@ -162,7 +162,20 @@ await withBrowser(browser, async () => {
       const first = page.locator('[data-venue-id="founding-home:player"]');
       await first.click();
       const zone = (id) => sheet.locator('[data-layout-zone="' + id + '"]');
+      await expect(button("Edit layout")).toBeVisible();
+      await expect(button("Add Zone")).toHaveCount(0);
+      await expect(button("Remove Zone")).toHaveCount(0);
+      await expect(button("Modify Zone Connections")).toHaveCount(0);
+      await expect(zone("exterior")).toHaveAttribute("data-draggable", "false");
       const originalVenues = await page.evaluate(() => window.quickState.venues);
+      await button("Edit layout").click();
+      await expect(button("Finish layout")).toBeVisible();
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues),
+        originalVenues,
+        "Entering layout mode never changes the draft",
+      );
+      await expect(zone("exterior")).toHaveAttribute("data-draggable", "true");
       await page.evaluate(() =>
         window.replaceQuickVenues((rows) =>
           rows.map((row, index) =>
@@ -265,6 +278,56 @@ await withBrowser(browser, async () => {
       await page.evaluate((rows) => window.replaceQuickVenues(rows), originalVenues);
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
       assert.ok((await compactCanvas.boundingBox()).height < 230, "Sparse graphs trim unused bottom space");
+      await button("Add Zone").click();
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
+      const addedZone = await sheet
+        .getByRole("group", { name: "Selected Zone", exact: true })
+        .getAttribute("data-zone-id");
+      await sheet.getByLabel("Zone name", { exact: true }).fill("Reading nook");
+      await sheet.getByLabel("Zone name", { exact: true }).press("Enter");
+      await expect(sheet.getByRole("heading", { name: "Reading nook", exact: true })).toBeVisible();
+      await button("Rename Zone").click();
+      await expect(sheet.getByLabel("Zone name", { exact: true })).toBeFocused();
+      const beforeConnect = await page.evaluate(() => window.quickState.venues);
+      await button("Modify Zone Connections").click();
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues),
+        beforeConnect,
+        "Opening connection controls never changes the draft",
+      );
+      await zone("common:base").click();
+      await zone(addedZone).click();
+      await expect
+        .poll(() =>
+          page.evaluate(
+            (id) => window.quickState.venues[0].spaces.find((row) => row.id === id).connectedTo.includes("common:base"),
+            addedZone,
+          ),
+        )
+        .toBe(true);
+      await button("Done").click();
+      await button("Remove Zone").click();
+      await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
+      await expect(zone("exterior")).toHaveAttribute("aria-pressed", "true");
+      await button("Modify Zone Connections").click();
+      await zone("exterior").click();
+      const beforeFinish = await page.evaluate(() => window.quickState.venues);
+      await button("Finish layout").click();
+      await expect(button("Add Zone")).toHaveCount(0);
+      await expect(button("Modify Zone Connections")).toHaveCount(0);
+      await expect(zone("exterior")).toHaveAttribute("data-draggable", "false");
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues),
+        beforeFinish,
+        "Leaving layout mode preserves data and clears unfinished connection selection",
+      );
+      await zone("exterior").press("ArrowRight");
+      assert.deepEqual(
+        await page.evaluate(() => window.quickState.venues),
+        beforeFinish,
+        "The default Zone picker cannot move nodes accidentally",
+      );
+
       await zone("common:base").click();
       await page.evaluate(() => window.legacyPolicy());
       const access = sheet.getByRole("switch", { name: "Restricted access", exact: true });

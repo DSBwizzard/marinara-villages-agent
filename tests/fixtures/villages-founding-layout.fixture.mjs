@@ -515,7 +515,7 @@ export async function verifyFoundingLayout(group) {
         if (view.width === 2550) {
           const name = await sheet.getByLabel("Venue Name", { exact: true }).boundingBox();
           const appearance = await sheet.getByLabel("Appearance", { exact: true }).boundingBox();
-          const details = await sheet.getByRole("group", { name: "Selected Zone", exact: true }).boundingBox();
+          const details = await sheet.locator(".villages-quick-zone-fields").boundingBox();
           const artwork = await sheet.getByRole("region", { name: "Zone artwork", exact: true }).boundingBox();
           assert.ok(name.x + name.width <= appearance.x, "Name and Appearance share the desktop header");
           assert.ok(
@@ -534,9 +534,28 @@ export async function verifyFoundingLayout(group) {
           assert.ok(editor.width > list.width * 2, "The Venue editor reclaims space from the slimmer list");
           const zoneName = await sheet.getByLabel("Zone name", { exact: true }).boundingBox();
           const purpose = await sheet.getByLabel("Used for", { exact: true }).boundingBox();
+          const description = await sheet.getByLabel("Long-term details", { exact: true }).boundingBox();
+          const artworkPreview = await sheet.locator(".villages-quick-art img,.villages-quick-art-empty").boundingBox();
+          assert.ok(Math.abs(description.y - artworkPreview.y) < 1, "Description and artwork start on the same row");
+          assert.equal(
+            await sheet.getByLabel("Zone name", { exact: true }).evaluate((node) => getComputedStyle(node).color),
+            await sheet
+              .getByRole("heading", { name: "Common Space", exact: true })
+              .evaluate((node) => getComputedStyle(node).color),
+            "Editable Zone heading retains the visible heading text color",
+          );
           assert.ok(
-            Math.abs(zoneName.y - purpose.y) < 1 && zoneName.x + zoneName.width <= purpose.x,
-            "Zone name and Used for share a row",
+            zoneName.y + zoneName.height <= description.y && description.y + description.height <= purpose.y,
+            "Selected Zone heading leads the description, with purpose below",
+          );
+          await expect(sheet.getByRole("heading", { name: "Common Space", exact: true })).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "Edit layout", exact: true })).toBeVisible();
+          await expect(sheet.getByRole("button", { name: "Add Zone", exact: true })).toHaveCount(0);
+          await expect(sheet.getByRole("button", { name: "Modify Zone Connections", exact: true })).toHaveCount(0);
+          assert.equal(
+            await sheet.locator(".villages-zone-map-canvas").evaluate((node) => getComputedStyle(node).borderTopColor),
+            "rgba(0, 0, 0, 0)",
+            "Default navigator has no heavy graph frame",
           );
           const scroll = await sheet
             .locator(".villages-quick-panel")

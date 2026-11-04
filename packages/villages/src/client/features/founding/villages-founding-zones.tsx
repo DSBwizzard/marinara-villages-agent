@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ZoneMap } from "../../shared/ZoneMap.js";
 import { resolveZoneLayout } from "../../../shared/helpers/zone-layout.js";
 import { connectionProblem, materializeConnections } from "../../../shared/helpers/zone-contact.js";
@@ -77,58 +78,67 @@ export function FoundingConnections({
   busy?: boolean;
   readOnly?: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const editingLayout = editing && !readOnly;
   const zones = foundingLayoutZones(venue);
   const remove = () => {
     if (!selectedZoneId || selectedZoneId === "exterior") return;
     onPatch(removeFoundingZone(venue, selectedZoneId));
     onSelect?.("exterior");
   };
-  if (readOnly)
-    return (
+  return (
+    <section className="villages-founding-zone-nav" data-editing={editingLayout} aria-label="Zones">
+      <header className="villages-founding-zone-nav-heading">
+        <h3>Zones</h3>
+        {!readOnly ? (
+          <button type="button" disabled={busy} aria-pressed={editingLayout} onClick={() => setEditing(!editing)}>
+            {editingLayout ? "Finish layout" : "Edit layout"}
+          </button>
+        ) : null}
+      </header>
       <ZoneMap
+        key={editingLayout ? "layout" : "browse"}
         compact
         zones={zones}
         positions={venue.zoneLayout}
         selectedId={selectedZoneId}
         onSelect={onSelect}
         disabled={busy}
+        modifyConnections
+        toolbar={
+          editingLayout && allowAdd ? (
+            <>
+              <button type="button" disabled={busy || zones.length >= 7} onClick={() => onAdd?.(false)}>
+                Add Zone
+              </button>
+              <button
+                type="button"
+                disabled={busy || !selectedZoneId || selectedZoneId === "exterior"}
+                onClick={remove}
+              >
+                Remove Zone
+              </button>
+            </>
+          ) : undefined
+        }
+        onPositions={editingLayout ? (zoneLayout) => onPatch({ ...venue, zoneLayout }) : undefined}
+        onConnections={
+          editingLayout
+            ? (rows) =>
+                onPatch({
+                  ...venue,
+                  spaces: venue.spaces?.map((zone) => ({
+                    ...zone,
+                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                  })),
+                  privateSpaces: venue.privateSpaces?.map((zone) => ({
+                    ...zone,
+                    connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
+                  })),
+                })
+            : undefined
+        }
       />
-    );
-  return (
-    <ZoneMap
-      compact
-      zones={zones}
-      positions={venue.zoneLayout}
-      selectedId={selectedZoneId}
-      onSelect={onSelect}
-      disabled={busy}
-      modifyConnections
-      toolbar={
-        allowAdd ? (
-          <>
-            <button type="button" disabled={busy || zones.length >= 7} onClick={() => onAdd?.(false)}>
-              Add Zone
-            </button>
-            <button type="button" disabled={busy || !selectedZoneId || selectedZoneId === "exterior"} onClick={remove}>
-              Remove Zone
-            </button>
-          </>
-        ) : undefined
-      }
-      onPositions={(zoneLayout) => onPatch({ ...venue, zoneLayout })}
-      onConnections={(rows) =>
-        onPatch({
-          ...venue,
-          spaces: venue.spaces?.map((zone) => ({
-            ...zone,
-            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-          })),
-          privateSpaces: venue.privateSpaces?.map((zone) => ({
-            ...zone,
-            connectedTo: rows.find((row) => row.id === zone.id)?.connectedTo,
-          })),
-        })
-      }
-    />
+    </section>
   );
 }

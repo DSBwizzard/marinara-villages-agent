@@ -19,28 +19,31 @@ export function QuickStartZoneArtwork({
   const upload = useRef<HTMLInputElement>(null);
   return (
     <section className="villages-quick-art" aria-label="Zone artwork">
-      <div className="villages-quick-art-actions">
-        <button type="button" disabled={busy} onClick={onGenerate}>
-          Generate artwork
-        </button>
-        <button type="button" disabled={busy} onClick={() => upload.current?.click()}>
-          Upload image
-        </button>
-        <input
-          ref={upload}
-          hidden
-          autoComplete="off"
-          type="file"
-          accept="image/*"
-          aria-label="Upload Zone image"
-          disabled={busy}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (file) onUpload(file);
-          }}
-        />
-      </div>
+      <header className="villages-quick-art-header">
+        <h4>Artwork</h4>
+        <div className="villages-quick-art-actions">
+          <button type="button" disabled={busy} onClick={onGenerate}>
+            Generate artwork
+          </button>
+          <button type="button" disabled={busy} onClick={() => upload.current?.click()}>
+            Upload image
+          </button>
+          <input
+            ref={upload}
+            hidden
+            autoComplete="off"
+            type="file"
+            accept="image/*"
+            aria-label="Upload Zone image"
+            disabled={busy}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) onUpload(file);
+            }}
+          />
+        </div>
+      </header>
       {image ? (
         <img src={image.url} alt={`Artwork for ${name}`} />
       ) : (

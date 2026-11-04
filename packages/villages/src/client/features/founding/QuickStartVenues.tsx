@@ -46,6 +46,7 @@ export function QuickStartVenues({
 }) {
   const dialog = useRef<HTMLElement>(null);
   const zoneFields = useRef<HTMLFieldSetElement>(null);
+  const zoneName = useRef<HTMLInputElement>(null);
   const fieldId = useId();
   const [zoneId, setZoneId] = useState("exterior");
   const selected = venues.find((venue) => venue.id === selectedId) ?? venues[0];
@@ -216,28 +217,84 @@ export function QuickStartVenues({
                 allowAdd
                 onAdd={addZone}
               />
-              <div className="villages-quick-zone-content">
-                <fieldset
-                  className="villages-quick-zone-fields"
-                  ref={zoneFields}
-                  aria-label="Selected Zone"
-                  data-zone-id={zoneId}
-                  disabled={busy || imageBusy}
-                >
+              <fieldset
+                className="villages-quick-selected-zone"
+                ref={zoneFields}
+                aria-label="Selected Zone"
+                data-zone-id={zoneId}
+                disabled={busy || imageBusy}
+              >
+                <header className="villages-quick-zone-heading">
+                  <h3 aria-label={zone ? zone.name || "Zone" : "Entrance"}>
+                    {zone ? (
+                      <input
+                        ref={zoneName}
+                        autoComplete="off"
+                        aria-label="Zone name"
+                        {...errorProps("zone-name")}
+                        value={zone.name ?? ""}
+                        size={Math.max(8, zone.name?.length ?? 0)}
+                        placeholder="Zone name"
+                        maxLength={100}
+                        onChange={(event) => patchZone({ name: event.target.value })}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            event.currentTarget.blur();
+                          }
+                        }}
+                      />
+                    ) : (
+                      "Entrance"
+                    )}
+                  </h3>
                   {zone ? (
-                    <div className="villages-quick-zone-summary">
-                      <label>
-                        Zone name
-                        <input
-                          autoComplete="off"
-                          aria-label="Zone name"
-                          {...errorProps("zone-name")}
-                          value={zone.name ?? ""}
-                          maxLength={100}
-                          onChange={(event) => patchZone({ name: event.target.value })}
-                        />
-                        {fieldError("zone-name")}
-                      </label>
+                    <button
+                      type="button"
+                      aria-label="Rename Zone"
+                      title="Rename Zone"
+                      onClick={() => {
+                        zoneName.current?.focus();
+                        zoneName.current?.select();
+                      }}
+                    >
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="m16 3 5 5M3 21l5-1L21 7a2.1 2.1 0 0 0-4-4L4 16l-1 5Z" />
+                      </svg>
+                    </button>
+                  ) : null}
+                </header>
+                {fieldError("zone-name")}
+                <div className="villages-quick-zone-content">
+                  <div className="villages-quick-zone-fields">
+                    <label className="villages-quick-zone-description">
+                      <span>Long-term details</span>
+                      <textarea
+                        autoComplete="off"
+                        aria-label="Long-term details"
+                        {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
+                        value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
+                        maxLength={1000}
+                        rows={5}
+                        onChange={(event) =>
+                          zoneId === "exterior"
+                            ? patch({ ...selected, description: event.target.value })
+                            : patchZone({ description: event.target.value })
+                        }
+                      />
+                      {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
+                    </label>
+                    {zone ? (
                       <label>
                         Used for
                         <input
@@ -250,60 +307,41 @@ export function QuickStartVenues({
                         />
                         {fieldError("zone-purpose")}
                       </label>
-                    </div>
-                  ) : (
-                    <h3>Entrance</h3>
-                  )}
-                  <label>
-                    Long-term details
-                    <textarea
-                      autoComplete="off"
-                      aria-label="Long-term details"
-                      {...errorProps(zoneId === "exterior" ? "description" : "zone-appearance")}
-                      value={zoneId === "exterior" ? selected.description : (zone?.description ?? "")}
-                      maxLength={1000}
-                      rows={5}
-                      onChange={(event) =>
-                        zoneId === "exterior"
-                          ? patch({ ...selected, description: event.target.value })
-                          : patchZone({ description: event.target.value })
-                      }
-                    />
-                    {fieldError(zoneId === "exterior" ? "description" : "zone-appearance")}
-                  </label>
-                  {zone && zoneAccess ? (
-                    <label className="villages-quick-zone-access">
-                      <input
-                        autoComplete="off"
-                        type="checkbox"
-                        role="switch"
-                        aria-label="Restricted access"
-                        checked={zoneAccess.mode === "permission-required"}
-                        disabled={selected.id === communityVenueId && zoneAccess.mode === "public"}
-                        onChange={(event) =>
-                          patchZone({
-                            access: { ...zoneAccess, mode: event.target.checked ? "permission-required" : "public" },
-                          })
-                        }
-                      />
-                      {zoneAccess.mode === "permission-required" ? "Restricted" : "Public"}
-                    </label>
-                  ) : null}
-                </fieldset>
-                <QuickStartZoneArtwork
-                  key={selected.id + ":" + zoneId}
-                  image={image}
-                  name={artworkName}
-                  busy={busy || imageBusy}
-                  onUpload={(file) => onUploadImage(selected, artworkArea, file, artworkZone?.id)}
-                  onGenerate={() => onGenerateImage(selected, artworkArea, artworkZone?.id)}
-                  onRemove={() =>
-                    !artworkZone
-                      ? patch({ ...selected, presentation: { ...selected.presentation, image: null } })
-                      : patchZone({ image: null })
-                  }
-                />
-              </div>
+                    ) : null}
+                    {zone && zoneAccess ? (
+                      <label className="villages-quick-zone-access">
+                        <input
+                          autoComplete="off"
+                          type="checkbox"
+                          role="switch"
+                          aria-label="Restricted access"
+                          checked={zoneAccess.mode === "permission-required"}
+                          disabled={selected.id === communityVenueId && zoneAccess.mode === "public"}
+                          onChange={(event) =>
+                            patchZone({
+                              access: { ...zoneAccess, mode: event.target.checked ? "permission-required" : "public" },
+                            })
+                          }
+                        />
+                        {zoneAccess.mode === "permission-required" ? "Restricted" : "Public"}
+                      </label>
+                    ) : null}
+                  </div>
+                  <QuickStartZoneArtwork
+                    key={selected.id + ":" + zoneId}
+                    image={image}
+                    name={artworkName}
+                    busy={busy || imageBusy}
+                    onUpload={(file) => onUploadImage(selected, artworkArea, file, artworkZone?.id)}
+                    onGenerate={() => onGenerateImage(selected, artworkArea, artworkZone?.id)}
+                    onRemove={() =>
+                      !artworkZone
+                        ? patch({ ...selected, presentation: { ...selected.presentation, image: null } })
+                        : patchZone({ image: null })
+                    }
+                  />
+                </div>
+              </fieldset>
             </section>
             {saveError || problem ? (
               <footer className="villages-quick-footer">

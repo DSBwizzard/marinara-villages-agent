@@ -50,7 +50,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   // Trim unused canvas without changing the 320px coordinate scale or hit targets.
   const pixelsPerUnit = 320 / 100;
   const compactHeight = compact
-    ? Math.max(220, ...Object.values(layout).map(({ y }) => (y + ZONE_TILE.height) * pixelsPerUnit))
+    ? Math.max(180, ...Object.values(layout).map(({ y }) => (y + ZONE_TILE.height) * pixelsPerUnit))
     : undefined;
   const name = (id: string) => (id === "exterior" ? "Entrance" : zones.find((z) => z.id === id)?.name || "Zone");
   const pairs = rows.flatMap((z) =>
