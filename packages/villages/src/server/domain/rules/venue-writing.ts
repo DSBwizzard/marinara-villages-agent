@@ -71,6 +71,7 @@ export const VENUE_DEPARTURE_METADATA =
 
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
+  const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
   return [
     {
       role: "system",
@@ -78,15 +79,15 @@ export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[
         .filter((block) => block.optional !== "lore")
         .map((block) => block.text)
         .filter(Boolean)
-        .concat(LORE_REFERENCE_RULE)
+        .concat(lore.length ? [LORE_REFERENCE_RULE] : [])
         .join("\n\n"),
     },
-    ...(blocks.some((block) => block.optional === "lore")
+    ...(lore.length
       ? [
           {
             role: "user" as const,
             content: JSON.stringify({
-              lorebookReferences: blocks.filter((block) => block.optional === "lore").map((block) => block.text),
+              lorebookReferences: lore,
             }),
           },
         ]

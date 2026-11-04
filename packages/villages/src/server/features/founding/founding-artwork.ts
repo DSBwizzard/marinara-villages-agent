@@ -37,10 +37,10 @@ export function createFoundingArtworkSources(
   }
   async function read(images: readonly VillageVenueImage[]) {
     const saved = slot.coerce((await documents().getById("villages", id))?.data);
-    return Object.fromEntries(
+    return new Map<VillageVenueImage, import("../../../shared/contracts/lore.js").LoreUse[]>(
       images.flatMap((image) => {
         const match = saved.images.find((row) => row.id === image.id && row.ref === image.ref && row.url === image.url);
-        return match ? [[image.id, readLoreUse(match.lore)]] : [];
+        return match ? [[image, readLoreUse(match.lore)]] : [];
       }),
     );
   }

@@ -271,9 +271,12 @@ async function main() {
   const sources = () => createFoundingArtworkSources(() => storage.documents, storage.ports.mutateDocument);
   const image = { id: "image-1", ref: "global-gallery:image-1", url: "/image-1.png", lore };
   await sources().remember(image);
-  assert.deepEqual(await sources().read([image]), { "image-1": lore }, "Founding sources survive service restart");
-  assert.deepEqual(await sources().read([{ ...image, ref: "global-gallery:replacement" }]), {});
-  assert.deepEqual(await sources().read([{ ...image, url: "/replacement.png" }]), {});
+  assert.deepEqual((await sources().read([image])).get(image), lore, "Founding sources survive service restart");
+  const mismatched = { ...image, url: "/replacement.png" };
+  const mixed = await sources().read([image, mismatched]);
+  assert.deepEqual(mixed.get(image), lore);
+  assert.equal(mixed.has(mismatched), false, "A matching ID cannot transfer sources to another URL");
+  assert.equal((await sources().read([{ ...image, ref: "global-gallery:replacement" }])).size, 0);
   await independentFactories();
   await restartedServiceCleanup();
   await scopedDispatch();

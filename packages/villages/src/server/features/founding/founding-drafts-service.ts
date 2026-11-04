@@ -479,7 +479,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     generateFoundingVenueImage,
     uploadFoundingVenueImage,
     readFoundingImageLore: (images: readonly VillageVenueImage[]) =>
-      ports.artworkSources?.read(images) ?? Promise.resolve({}),
+      ports.artworkSources?.read(images) ??
+      Promise.resolve(new Map<VillageVenueImage, import("../../../shared/contracts/lore.js").LoreUse[]>()),
   };
 }
 export type FoundingDraftsService = ReturnType<typeof createFoundingDrafts>;

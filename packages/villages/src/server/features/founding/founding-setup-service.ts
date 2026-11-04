@@ -148,7 +148,10 @@ export function createFoundingSetup({
       .filter((image): image is NonNullable<typeof image> => !!image);
     const imageSources = await readFoundingImageLore?.(images);
     if (imageSources)
-      for (const image of images) if (imageSources[image.id]?.length) image.lore = imageSources[image.id];
+      for (const image of images) {
+        const lore = imageSources.get(image);
+        if (lore?.length) image.lore = lore;
+      }
     const assignedResidents = new Set(places.flatMap((place) => place.residentIds));
     const circumstances = readFoundingCircumstances(input.circumstances, places, villageNow().toISOString());
     const admissions = readFoundingResidentAdmissions(input.foundingResidentAdmissions, [...assignedResidents]);

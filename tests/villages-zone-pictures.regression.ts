@@ -115,6 +115,26 @@ const connection = (imageService: string, model = "") => ({
 {
   const f = fixture();
   await f.enter();
+  f.dirty("A new lamp.");
+  const entered = Promise.withResolvers<void>(),
+    gate = Promise.withResolvers<void>();
+  f.ports.readVillageImageLore = async () => {
+    entered.resolve();
+    await gate.promise;
+    return "";
+  };
+  const pending = f.enter();
+  await entered.promise;
+  f.zone().freezePicture = true;
+  f.zone().pictureRevision!++;
+  gate.resolve();
+  await pending;
+  assert.equal(f.calls.length, 0, "A slow lore read cannot purchase an invalidated artwork edit");
+  assert.equal(f.zone().image!.id, "original");
+}
+{
+  const f = fixture();
+  await f.enter();
   const before = f.zone().description;
   f.world().venues[0].form = "A restored glass-roofed mall";
   f.zone().picture!.dirty = true;

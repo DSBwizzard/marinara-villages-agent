@@ -227,9 +227,6 @@ export function createZonePictures(
           if (support!.multiple && base && base.id !== source.id)
             references.push((await ports.readZonePictureReference!(base)).dataUrl);
           if (valid(await ports.readVillageState())?.picture?.claim !== claim) return;
-          const currentSupport = await ports.resolveVillageImageEditing!();
-          if (currentSupport?.signature !== support!.signature)
-            throw conflict("The image connection changed. Retry artwork deliberately.");
           let inspection: LoreInspection | undefined;
           const lore = await ports.readVillageImageLore(
             village.selectedLorebookIds,
@@ -246,6 +243,10 @@ export function createZonePictures(
           const included = !!lorePart && editPrompt.length + lorePart.length + 1 <= MAX_IMAGE_PROMPT_LENGTH;
           if (included) editPrompt += "\n" + lorePart;
           const scale = Math.min(1, 2048 / Math.max(reference.width, reference.height));
+          const currentSupport = await ports.resolveVillageImageEditing!();
+          if (currentSupport?.signature !== support!.signature)
+            throw conflict("The image connection changed. Retry artwork deliberately.");
+          if (valid(await ports.readVillageState())?.picture?.claim !== claim) return;
           const decoded = await ports.generateVillageImage({
             connectionId: support!.connectionId,
             referenceImages: references,
