@@ -58,7 +58,7 @@ await withBrowser(browser, async () => {
         if (path === "/places") value = { items: [place], nextCursor: null };
         else if (path === "/places/explore") {
           explorations.push(route.request().postDataJSON());
-          value = { status: "failed", placeId: "" };
+          value = { status: explorations.at(-1).intent === "A duck" ? "ready" : "failed", placeId: "" };
         } else if (path === "/places/place%3Alantern" || path === "/places/place:lantern") value = place;
         else if (path.endsWith("/prepare")) {
           generations++;

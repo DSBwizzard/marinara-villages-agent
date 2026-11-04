@@ -120,7 +120,7 @@ export function PlacesDirectory({
               setScope(["exterior"]);
               if (visit) onVisit(row.location);
             }
-          } else setError("No appropriate Place was found.");
+          }
         }
       }
     } catch {
