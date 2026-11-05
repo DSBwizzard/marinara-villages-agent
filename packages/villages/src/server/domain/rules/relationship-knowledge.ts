@@ -25,7 +25,7 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
       )
       .map((row) => {
         const knowledge = row.knowers.player!;
-        const originalDisclosure = sourceRecords.get(row.id)?.knowers.player?.disclosed;
+        const originalDisclosure = sourceRecords.get(row.rootId)?.knowers.player?.disclosed;
         const bond =
           knowledge.basis === "report" && knowledge.attributedTo === resident.characterId
             ? relationshipBondSchema.safeParse({
@@ -41,7 +41,16 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
           at: row.occurredAt,
           // Original metadata only identifies the repaired statement; it never restores its labels.
           invalidatesBond:
-            !!knowledge.repair && originalDisclosure?.kind === "connection" && originalDisclosure.toId === "player",
+            (!!knowledge.repair ||
+              (row.id !== row.rootId &&
+                !(
+                  knowledge.basis === "report" &&
+                  knowledge.attributedTo === resident.characterId &&
+                  knowledge.disclosed?.kind === "connection" &&
+                  knowledge.disclosed.toId === "player"
+                ))) &&
+            originalDisclosure?.kind === "connection" &&
+            originalDisclosure.toId === "player",
           spokenByResident: knowledge.basis === "report" && knowledge.attributedTo === resident.characterId,
           ...(bond?.success ? { bond: bond.data } : {}),
         };

@@ -1430,7 +1430,9 @@ await withBrowser(browser, async () => {
     );
     if (width <= 390) await page.screenshot({ path: resolve(output, `long-name-${width}.png`) });
     await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
-    const unknownBond = profile.locator(".villages-relationship-bond");
+    const unknownBond = page
+      .getByRole("region", { name: `${secondName} profile`, exact: true })
+      .locator(".villages-relationship-bond");
     await expect(unknownBond.getByText("Not yet known", { exact: true })).toBeVisible();
     await expect(unknownBond.locator("[data-tone=unknown]")).toBeVisible();
     await expect(unknownBond.locator(".villages-relationship-condition")).toHaveCount(0);

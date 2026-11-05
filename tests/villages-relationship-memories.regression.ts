@@ -187,6 +187,46 @@ const state = fixture();
     { connection: "Close friends", condition: "At ease", tone: "steady" },
     "Correcting a different pair does not erase the known player bond",
   );
+  for (const display of ["none", "legacy", "compact"]) {
+    const linked = fixture();
+    publishRelationshipDisclosures(linked, parsed, source, [speech], at, readAt);
+    publishRelationshipDisclosures(linked, space, laterSource, [later], at, readAt);
+    const root = linked.memories.records.at(-1)!;
+    const correction = memoryProposal(linked.memories, {
+      audience: ["player"],
+      text: "I just needed some more room at the table.",
+      patch: {
+        action: "correct",
+        target: targetOf(linked.memories, root.id),
+        kind: "information",
+        subjects: ["a"],
+        domainRef: root.domainRef,
+      },
+    });
+    correction.proposal.learners.player!.attributedTo = "a";
+    correction.context.occurredAt = "2026-10-26T12:03:00.000Z";
+    correction.context.recordedAt = readAt;
+    if (display === "legacy") correction.proposal.learners.player!.disclosed = { kind: "connection", toId: "player" };
+    if (display === "compact")
+      correction.proposal.learners.player!.disclosed = {
+        kind: "connection",
+        toId: "player",
+        connectionLabel: "Close friends",
+        conditionLabel: "At ease",
+        bondTone: "steady",
+      };
+    linked.memories = applyMemoryProposal(linked.memories, correction.proposal, correction.context).collection;
+    assert.deepEqual(
+      projectRelationshipProfiles(linked.relationshipContext!, linked)[0]!.bond,
+      display === "compact" ? { connection: "Close friends", condition: "At ease", tone: "steady" } : undefined,
+      "A linked correction cannot revive an older bond; only its own valid disclosure supplies a replacement",
+    );
+    assert.equal(
+      projectRelationshipProfiles(linked.relationshipContext!, linked)[0]!.summary,
+      display === "none" ? "" : correction.proposal.text,
+      "Valid legacy corrections retain their own known prose",
+    );
+  }
 }
 reserveMemoryScene(state, "source-scene", at);
 reserveMemoryScene(state, "other-scene", at);
