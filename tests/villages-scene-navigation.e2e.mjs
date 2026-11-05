@@ -66,6 +66,12 @@ await withBrowser(browser, async () => {
             held = route;
             return;
           }
+          if (reads <= 3)
+            return fulfill(route, {
+              status: 503,
+              contentType: "application/json",
+              body: JSON.stringify({ error: "Temporarily unavailable" }),
+            });
           return fulfill(route, {
             contentType: "application/json",
             body: JSON.stringify(authorSceneResponse({ session: restore ? session : null }, snapshot.worldScope)),
@@ -75,7 +81,7 @@ await withBrowser(browser, async () => {
       });
       await page.goto("http://scene-navigation.test/");
       await page.addScriptTag({ path: resolve("packages/villages/client.js") });
-      await expect(page.getByRole("status")).toContainText("Loading Scene");
+      await expect(page.getByRole("status")).toContainText("Checking Scene");
       await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
       await expect.poll(() => !!held).toBe(true);
       await fulfill(held, {
@@ -84,6 +90,10 @@ await withBrowser(browser, async () => {
         body: JSON.stringify({ error: "Temporarily unavailable" }),
       });
       await expect(page.getByRole("button", { name: "Retry Scene check" })).toBeVisible();
+      await expect(page.getByRole("alert")).toContainText("Temporarily unavailable");
+      await expect(page.getByRole("alert")).toContainText("HTTP 503; GET /api/villages/rooms/active");
+      assert.equal(reads, 3);
+      assert.equal(await page.getByRole("alert").evaluate((panel) => panel.scrollWidth <= panel.clientWidth), true);
       await expect(page.locator(".marinara-capability-villages-home")).toHaveCount(0);
       await page.getByRole("button", { name: "Retry Scene check" }).click();
       if (restore) {
