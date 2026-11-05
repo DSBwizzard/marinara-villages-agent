@@ -10,6 +10,7 @@ import { parseRelationshipReview } from "../packages/villages/src/server/domain/
 import {
   applyRelationshipReview,
   defaultRelationshipState,
+  neutralRelationship,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
   assertResidentActionWitnesses,
@@ -517,6 +518,42 @@ async function main() {
         events: openingEvents,
       };
       if (behavior === "project-authority") Object.assign(result, { projectSpeech: [{}] });
+      if (["social-authority", "social-record-authority"].includes(behavior))
+        Object.assign(result, {
+          relationshipChanges: {
+            changes: [
+              {
+                fromId: "host",
+                toId: "player",
+                expectedRevision: state.relationshipContext?.edges[JSON.stringify(["host", "player"])]?.revision ?? 0,
+                reason: "Witnessed response.",
+                lineIds: [0],
+                liveAfter: {
+                  connection: behavior === "social-authority" ? "Friends" : "",
+                  stance: "Tentative but willing to hear the player.",
+                  expectations: [],
+                  concerns: [],
+                  records:
+                    behavior === "social-record-authority"
+                      ? [
+                          {
+                            id: "preserved-boundary",
+                            expectedRevision: 1,
+                            kind: "boundary",
+                            text: "Ask before entering.",
+                            participants: ["host", "player"],
+                            status: "stated",
+                          },
+                        ]
+                      : [],
+                },
+              },
+            ],
+            permissions: [],
+            disclosures: [],
+            intentions: [],
+          },
+        });
       if (packet.input.pipelineVersion === 3)
         Object.assign(result, {
           intent: {
@@ -2359,6 +2396,34 @@ async function main() {
     "The current Scene cannot silently upgrade an unmarked frozen decoder",
   );
   actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
+  const beforeSocialAuthority = state.relationshipContext;
+  state.relationshipContext = defaultRelationshipState(state.seed);
+  state.relationshipContext.edges[JSON.stringify(["host", "player"])] = {
+    ...neutralRelationship("host", "player"),
+    revision: 1,
+    records: {
+      "preserved-boundary": {
+        id: "preserved-boundary",
+        revision: 1,
+        kind: "boundary",
+        text: "Ask before entering.",
+        participants: ["host", "player"],
+        status: "stated",
+        evidenceIds: [],
+        updatedAt: scene.startedAt,
+      },
+    },
+  } as any;
+  for (const scenario of ["social-authority", "social-record-authority"]) {
+    behavior = scenario;
+    await assert.rejects(
+      service.exchange(compactScene, "Missing social authority: " + scenario, [accessLine], null, [], true),
+      /inconsistent \(social\)/,
+      "Changed connections and nonempty records still require explicit consequential authority",
+    );
+  }
+  behavior = "valid";
+  state.relationshipContext = beforeSocialAuthority;
   state.villagers = [{ characterId: "host", cardSnapshot: { name: "Host" } }] as any;
   venue.zones.find((zone: any) => zone.id === "room")!.closed = true;
   const standingGrant = readResidentActions([makeAction(accessLine.content, { duration: "standing" })]);

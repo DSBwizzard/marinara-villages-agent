@@ -33,7 +33,7 @@ async function main() {
         },
       ],
     });
-    assert.match(prompt, /while the player plays their own persona/u);
+    assert.match(prompt, /the player controls their own persona/u);
     assert.match(prompt, /The player is Robin/u);
     assert.match(prompt, /The player controls their own speech, decisions, actions, thoughts, feelings, and consent/u);
     assert.match(prompt, /Never write a new player response or imply one/u);
