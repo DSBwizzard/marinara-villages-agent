@@ -539,7 +539,7 @@ async function checkPackage(width) {
     "Newer packaged scenery draft",
   );
   assert.equal(scenerySaves.length, 1);
-  const automatic = page.getByRole("checkbox", { name: "Automatic Zone pictures", exact: true });
+  const automatic = page.getByRole("checkbox", { name: "Dynamic Images", exact: true });
   await expect(automatic).toBeChecked();
   await automatic.click();
   await expect.poll(() => scenerySaves.length).toBe(2);

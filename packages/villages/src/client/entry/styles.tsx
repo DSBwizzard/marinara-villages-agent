@@ -2130,9 +2130,12 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-zone-artwork-frame { width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { display:block; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
-.${ELEMENT_TAG}-zone-artwork-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); min-height:calc(88px + .4rem); gap:.4rem; align-items:stretch; align-content:start; }
-.${ELEMENT_TAG}-zone-artwork-actions > button { min-width:0; width:100%; min-height:44px; margin:0; padding:.5rem .2rem; font-size:.8rem; line-height:1.2; white-space:nowrap; }
-.${ELEMENT_TAG}-zone-artwork-actions > .${ELEMENT_TAG}-zone-artwork-retry { grid-column:1/-1; }
+.${ELEMENT_TAG}-zone-artwork-actions { position:relative; display:flex; flex-wrap:wrap; min-height:44px; gap:.4rem; align-items:start; }
+.${ELEMENT_TAG}-picture-menu summary { display:flex; align-items:center; gap:.7rem; min-height:44px; box-sizing:border-box; padding:.5rem .8rem; border:1px solid #65799c; border-radius:.5rem; background:#1f3050; cursor:pointer; list-style:none; }
+.${ELEMENT_TAG}-picture-menu summary::-webkit-details-marker { display:none; }
+.${ELEMENT_TAG}-picture-menu summary:focus-visible { outline:3px solid #bfa9ff; outline-offset:2px; }
+.${ELEMENT_TAG}-picture-menu > div { position:absolute; top:100%; left:0; z-index:20; display:grid; gap:.2rem; width:min(15rem,100%); box-sizing:border-box; padding:.4rem; border:1px solid #65799c; border-radius:.5rem; background:#14213c; box-shadow:0 .5rem 1.5rem #0006; }
+.${ELEMENT_TAG}-picture-menu > div > button { min-height:44px; margin:0; width:100%; text-align:left; }
 .${ELEMENT_TAG}-zone-access-details small { display:block; }
 @media(max-width:700px) {
  .${ELEMENT_TAG}-venue-zones-workspace { grid-template-columns:minmax(0,1fr); gap:.75rem; }
@@ -2142,8 +2145,8 @@ ${VILLAGES_FORGING_STYLES}
  .${ELEMENT_TAG}-venue-zones-layout .villages-zone-map-tile strong { font-size:.8rem; line-height:1.15; white-space:normal; overflow-wrap:anywhere; }
  .${ELEMENT_TAG}-zone-artwork-frame { height:180px; }
 }
-.${ELEMENT_TAG}-zone-picture-freeze { display:flex; align-items:center; gap:.5rem; min-height:44px; width:fit-content; margin-bottom:.25rem; cursor:pointer; }
-.${ELEMENT_TAG}-zone-picture-freeze input { width:1.15rem; height:1.15rem; margin:0; }
+.${ELEMENT_TAG}-zone-picture-freeze { display:flex; align-items:center; gap:.5rem; min-height:44px; max-width:100%; margin-bottom:.25rem; cursor:pointer; font-size:.85rem; line-height:1.4; }
+.${ELEMENT_TAG}-zone-picture-freeze input { flex:none; width:1.15rem; height:1.15rem; margin:0; }
 .${ELEMENT_TAG}-venue-assignments { margin:0; padding:0; list-style:none; width:100%; }
 .${ELEMENT_TAG}-venue-assignments li { display:flex; flex-wrap:wrap; justify-content:space-between; gap:.6rem; padding:.7rem 0; border-bottom:1px solid var(--border); }
 .villages-zone-map { min-width:0; margin:1rem 0; }

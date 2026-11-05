@@ -44,7 +44,7 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                 checked={snapshot.settings.automaticZonePictures !== false}
                 onChange={(event) => void saveScenerySettings(event.target.checked)}
               />
-              Automatic Zone pictures
+              Dynamic Images
             </label>
             <SceneryStyleFields
               value={sceneryStyle}

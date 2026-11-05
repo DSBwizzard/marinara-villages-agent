@@ -1157,6 +1157,90 @@ async function main() {
       },
     });
     const currentDate = localDateKey(villageNow());
+    registerBackgroundHandler("world-development", {
+      authority: "raw",
+      async generate() {
+        for (const step of ["world-proposal", "world-review"]) {
+          const reply = await completeWithRoom(model as any, [{ role: "user", content: step }], 100, {});
+          const failure = completionFailure(reply, "world-development", 100);
+          if (failure) throw new WorkFailureError(failure);
+        }
+        return {};
+      },
+      valid: () => true,
+      apply() {},
+    });
+    for (const failedStep of ["world-proposal", "world-review"]) {
+      await reset();
+      await mutateVillageState((state) => {
+        state.backgroundPace = "balanced";
+        state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+      });
+      await villageBackgroundPresence("retry-world", true);
+      responsePlans.set(failedStep, [
+        { content: "", finishReason: "stop" },
+        { content: "ready", finishReason: "stop" },
+      ]);
+      await queueBackgroundJob({
+        kind: "world-development",
+        subjectId: failedStep,
+        seed: "fixture",
+        revision: failedStep,
+        finite: false,
+        label: "World catch-up",
+        automaticDate: currentDate,
+        input: { context: { catchup: true }, catchupBatchId: "return-batch" },
+      });
+      await settleBackgroundWork();
+      assert.equal((await summary(failedStep)).status, "completed");
+      assert.equal((await summary(failedStep)).requests, 3, "One extra principal request is accounted for.");
+      assert.deepEqual(
+        calls,
+        failedStep === "world-proposal"
+          ? [failedStep, failedStep, "world-review"]
+          : ["world-proposal", failedStep, failedStep],
+        "Completed steps are reused.",
+      );
+      assert.equal(
+        (await readVillageState()).eventAttempts!.attempts.length,
+        1,
+        "A retry retains the original opportunity reservation.",
+      );
+    }
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "balanced";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("retry-world-exhausted", true);
+    responsePlans.set("world-review", [
+      { content: "", finishReason: "stop" },
+      { content: "", finishReason: "stop" },
+    ]);
+    await queueBackgroundJob({
+      kind: "world-development",
+      subjectId: "world-exhausted",
+      seed: "fixture",
+      revision: "world-exhausted",
+      finite: false,
+      label: "World catch-up",
+      automaticDate: currentDate,
+      input: { context: { catchup: true }, catchupBatchId: "return-batch" },
+    });
+    await settleBackgroundWork();
+    assert.equal((await summary("world-exhausted")).status, "failed");
+    assert.equal(calls.length, 3);
+    stop();
+    stop = startBackgroundWork({ now: () => now });
+    await recoverBackgroundWork();
+    await settleBackgroundWork();
+    assert.equal(calls.length, 3, "Restart cannot grant another automatic model request.");
+    await reset();
+    await mutateVillageState((state) => {
+      state.backgroundPace = "balanced";
+      state.returnCatchup = { batch: { id: "return-batch", status: "running" } };
+    });
+    await villageBackgroundPresence("return-session", true);
     const catchupWork = (subject: string, step: string): BackgroundInput => ({
       kind: "resident-planning",
       subjectId: subject,
