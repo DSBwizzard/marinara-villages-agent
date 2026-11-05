@@ -257,25 +257,33 @@ async function run() {
     const playerGuard = "The player controls their own speech, decisions, actions, thoughts, feelings, and consent";
     assert.ok(prompt.includes(playerGuard));
     scene.memoryMode = "live";
-    const opening = String((await prepareVenueTurnMessages(scene, "", "greet", "", null)).fitted.messages[0].content);
+    const opening = (await prepareVenueTurnMessages(scene, "", "greet", "", null)).fitted.messages
+      .map((entry) => entry.content)
+      .join("\n");
 
     assert.ok(!opening.includes("recollections:["));
     assert.ok(!opening.includes("contactIntent:"));
     const currentTurn = String(
-      (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages[0].content,
+      (await prepareVenueTurnMessages(scene, "Your move.", "chat", "reserved", null)).fitted.messages
+        .map((entry) => entry.content)
+        .join("\n"),
     );
     assert.ok(!currentTurn.includes("recollections:["));
 
     scene.memoryMode = "live";
     scene.area = "private";
     const controlled = String(
-      (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages[0].content,
+      (await prepareVenueTurnMessages(scene, "I rearrange the room.", "chat", "", null)).fitted.messages
+        .map((entry) => entry.content)
+        .join("\n"),
     );
     assert.match(controlled, /residentActions/);
     scene.area = "outside";
     scene.activeIds = ["reserved"];
     const one = String(
-      (await prepareVenueTurnMessages(scene, "Your move.", "ask", "reserved", null)).fitted.messages[0].content,
+      (await prepareVenueTurnMessages(scene, "Your move.", "ask", "reserved", null)).fitted.messages
+        .map((entry) => entry.content)
+        .join("\n"),
     );
     assert.ok(one.includes("reserved DESCRIPTION TAIL"));
     assert.ok(!one.includes("outgoing DESCRIPTION TAIL"));
