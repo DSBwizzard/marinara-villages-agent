@@ -10,12 +10,17 @@ import { resolve } from "node:path";
 const bundle = await build({
   stdin: {
     contents: `import {createRoot} from 'react-dom/client';
+      import {flushSync} from 'react-dom';
       import {VillagesRuntimeDebug} from './packages/villages/src/client/features/settings/RuntimeDebug.js';
       import {LoreChip,FoundingLore} from './packages/villages/src/client/shared/LoreChip.js';
       import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
-      const entries=[{id:'guild',bookId:'world',bookName:'Village customs',name:'Silver Guild',targets:['Narration','System']},{id:'calendar',bookId:'world',bookName:'Village customs',name:'Calendar',targets:['Narration']}];
+      const first='00000000-0000-4000-8000-000000000001',second='00000000-0000-4000-8000-000000000002';
+      const entries=[{id:'guild',bookId:'world',bookName:'Village customs',name:'Silver Guild',targets:['Narration','System'],inspections:[{target:'Narration',id:first},{target:'System',id:second}]},{id:'calendar',bookId:'world',bookName:'Village customs',name:'Calendar',targets:['Narration']}];
+      const map=[{id:'texts',bookId:'gidget',bookName:'Gidget’s Lorebook',name:'Interpreting Gidget’s Texts',targets:['Image'],inspections:[{target:'Image',id:first}]}];
       const tag=document.createElement('marinara-capability-villages');document.body.appendChild(tag);syncVillagesStyles();
-      createRoot(document.getElementById('root')).render(<><VillagesRuntimeDebug/><section aria-label='Scene sources'><LoreChip entries={entries} label='Latest exchange'/></section><FoundingLore records={[{label:'Elias · Personal routine',entries}]}/></>);`,
+      const root=createRoot(document.getElementById('root'));
+      const render=()=>root.render(<><VillagesRuntimeDebug/><section aria-label='Scene sources'><LoreChip entries={entries} label='Latest exchange'/></section><section aria-label='Map sources'><LoreChip entries={map} label='Map artwork'/></section><FoundingLore records={[{label:'Elias · Personal routine',entries}]}/></>);
+      window.setLoreInspection=(id)=>{map[0]={...map[0],inspections:[{target:'Image',id}]};flushSync(render);};render();`,
     resolveDir: process.cwd(),
     loader: "tsx",
   },
@@ -42,6 +47,8 @@ await withBrowser(browser, async () => {
       const page = await browser.newPage({ viewport: { width, height: 900 } });
       let verbose = false,
         holdRefresh = false,
+        expired = false,
+        pendingTrigger,
         pendingRefresh;
       const calls = [];
       await page.route("http://lore-inspection.test/", (route) =>
@@ -56,6 +63,33 @@ await withBrowser(browser, async () => {
           return fulfill(route, { status: 200, json: { verbose, effective: verbose, engineEnabled: false } });
         }
         if (path.endsWith("/debug/lore")) {
+          const body = request.method() === "POST" ? request.postDataJSON() : null;
+          if (body?.inspectionId) {
+            assert.equal(verbose, false, "Targeted notice inspection needs no verbose logging");
+            if (body.inspectionId.endsWith("3")) {
+              pendingTrigger = route;
+              return;
+            }
+            const trigger = expired
+              ? null
+              : body.entryId === "texts"
+                ? {
+                    constant: false,
+                    match: "setting",
+                    key: "text",
+                    caseSensitive: false,
+                    matchWholeWords: false,
+                    secondary: { logic: "not_all", matched: 1, total: 2 },
+                  }
+                : {
+                    constant: body.inspectionId.endsWith("2"),
+                    match: "recent",
+                    key: "guild",
+                    caseSensitive: true,
+                    matchWholeWords: true,
+                  };
+            return fulfill(route, { status: 200, json: { trigger } });
+          }
           assert(verbose, "The client only inspects after the explicit creator switch");
           if (request.method() === "POST") {
             assert.equal(request.postDataJSON().query, "What about the guild?");
@@ -104,6 +138,7 @@ await withBrowser(browser, async () => {
       await expect(panel).toHaveCount(0);
       await toggle.check();
       await expect(panel).not.toContainText("Silver Guild");
+      await toggle.uncheck();
       assert(
         calls.every(([, path]) => /\/debug\/(runtime|lore)$/.test(path)),
         "Inspection has no generation endpoint",
@@ -118,6 +153,53 @@ await withBrowser(browser, async () => {
       await expect(details).toContainText("Narration");
       await expect(details).toContainText("System");
       await expect(details.locator("li")).toHaveCount(2);
+      const beforeExpand = calls.length;
+      await details.getByText("Silver Guild", { exact: true }).click();
+      await expect(details.getByRole("region", { name: "Narration trigger" })).toContainText(
+        "Key “guild” matched recent shared dialogue.",
+      );
+      await expect(details.getByRole("region", { name: "System trigger" })).toContainText(
+        "Constant entry · no key required.",
+      );
+      assert.equal(calls.length, beforeExpand + 2, "Only the selected entry’s two target records are fetched");
+      await details.getByText("Calendar", { exact: true }).click();
+      await expect(details).toContainText("Trigger details were not recorded.");
+      await page.keyboard.press("Escape");
+      await page.getByRole("region", { name: "Map sources" }).getByRole("button").click();
+      const mapDialog = page.getByRole("dialog", { name: "Lorebooks", exact: true });
+      const mapNotice = mapDialog.locator("summary");
+      await mapNotice.focus();
+      await page.keyboard.press("Enter");
+      await expect(mapDialog).toContainText("Key “text” matched the setting / generation context.");
+      await expect(mapDialog).toContainText("Case-insensitive · Substring matching");
+      await expect(mapDialog).toContainText("At least one secondary key must be absent · 1 of 2 matched.");
+      assert(await mapDialog.evaluate((element) => element.scrollWidth <= element.clientWidth));
+      if (process.env.VILLAGES_SCREENSHOT_DIR)
+        await page.screenshot({
+          path: resolve(process.env.VILLAGES_SCREENSHOT_DIR, `lore-trigger-${width}.png`),
+          fullPage: true,
+        });
+      const beforeRerender = calls.length;
+      await page.evaluate(() => window.setLoreInspection("00000000-0000-4000-8000-000000000001"));
+      assert.equal(
+        calls.length,
+        beforeRerender,
+        "An unchanged inspection survives ordinary parent renders without refetching",
+      );
+      await page.evaluate(() => window.setLoreInspection("00000000-0000-4000-8000-000000000003"));
+      await expect.poll(() => !!pendingTrigger).toBe(true);
+      await expect(mapDialog.getByRole("status")).toContainText("Loading trigger");
+      await expect(mapDialog).not.toContainText("Key “text”");
+      await fulfill(pendingTrigger, {
+        status: 200,
+        json: { trigger: { constant: true, match: "constant", caseSensitive: false, matchWholeWords: false } },
+      });
+      await expect(mapDialog).toContainText("Constant entry · no key required.");
+      await page.keyboard.press("Escape");
+      expired = true;
+      await chip.click();
+      await page.getByRole("dialog").getByText("Silver Guild", { exact: true }).click();
+      await expect(page.getByRole("dialog")).toContainText("Trigger details expired or the runtime restarted.");
       await page.keyboard.press("Escape");
       await expect(details).toHaveCount(0);
       await expect(chip).toBeFocused();

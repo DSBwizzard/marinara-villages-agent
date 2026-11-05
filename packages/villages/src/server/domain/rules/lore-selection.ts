@@ -72,29 +72,36 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
     const hasPrimary = scopes.some(primary);
     const secondary = entry.secondaryKeys ?? [];
     let secondaryMatches = true;
+    let condition: import("../../../shared/contracts/lore.js").LoreTrigger["secondary"];
     if (entry.selective && secondary.length && !entry.constant) {
       const found = secondary.map((key) => scopes.some((text) => keyMatches(key, text, entry)));
+      let logic: NonNullable<typeof condition>["logic"];
       switch (entry.selectiveLogic ?? "and_any") {
         // Engine's native names use the same conditions as compatible imported entries.
         case "and":
         case "or":
         case "and_any":
+          logic = "and_any";
           secondaryMatches = found.some(Boolean);
           break;
         case "and_all":
+          logic = "and_all";
           secondaryMatches = found.every(Boolean);
           break;
         case "not":
         case "not_any":
+          logic = "not_any";
           secondaryMatches = !found.some(Boolean);
           break;
         case "not_all":
+          logic = "not_all";
           secondaryMatches = !found.every(Boolean);
           break;
         default:
           trace.status = "unsupported";
           continue;
       }
+      condition = { logic, matched: found.filter(Boolean).length, total: found.length };
     }
     if (!entry.constant && (!hasPrimary || !secondaryMatches)) {
       if (hasPrimary && !secondaryMatches) trace.status = "conditions";
@@ -108,6 +115,21 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
           ? 2
           : 3;
     trace.match = (["current", "recent", "setting", "constant"] as const)[rank]!;
+    const key = entry.useRegex
+      ? undefined
+      : (entry.keys ?? []).find((key) =>
+          (rank === 0 ? [query.current ?? ""] : rank === 1 ? (query.recent ?? []) : [query.setting]).some((text) =>
+            keyMatches(key, text, entry),
+          ),
+        );
+    trace.trigger = {
+      constant: entry.constant === true,
+      match: trace.match,
+      ...(key ? { key } : {}),
+      caseSensitive: entry.caseSensitive === true,
+      matchWholeWords: entry.matchWholeWords === true,
+      ...(condition ? { secondary: condition } : {}),
+    };
     candidates.push({ entry, rank, trace });
   }
   candidates.sort(

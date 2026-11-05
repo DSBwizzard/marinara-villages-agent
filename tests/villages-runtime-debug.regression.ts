@@ -8,7 +8,11 @@ import {
   saveRuntimeDebug,
   runtimeDebug,
   readLoreInspections,
+  rememberLoreInspection,
+  readLoreTrigger,
 } from "../packages/villages/src/server/adapters/observability/runtime-debug.js";
+import { selectVillageLore } from "../packages/villages/src/server/domain/rules/lore-selection.js";
+import { inspectedLoreUse } from "../packages/villages/src/server/domain/rules/lore-context.js";
 import { registerRuntimeDiagnosticsRoutes } from "../packages/villages/src/server/features/settings/routes.js";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -114,6 +118,74 @@ async function main() {
         403,
       );
       const beforeInspection = paidCalls;
+      const selected = selectVillageLore(
+        [
+          {
+            id: "text",
+            bookId: "private",
+            name: "Texting",
+            content: "Private body",
+            enabled: true,
+            folderEnabled: true,
+            keys: ["private key"],
+          },
+          {
+            id: "omitted",
+            bookId: "private",
+            name: "Other",
+            content: "Private omitted body",
+            enabled: true,
+            folderEnabled: true,
+            keys: ["unmatched"],
+          },
+        ],
+        { setting: "Unshared private key context" },
+        1600,
+      ).inspection;
+      const inspectionId = rememberLoreInspection(selected)!;
+      const reference = { inspectionId, bookId: "private", entryId: "text" };
+      const targeted = await server.inject({ method: "POST", url: "/debug/lore", payload: reference });
+      assert.equal(targeted.statusCode, 200, "An explicit notice click works without verbose logging");
+      assert.equal(targeted.json().trigger.key, "private key");
+      assert.doesNotMatch(targeted.body, /Private body|Unshared|context|unmatched/);
+      assert.doesNotMatch(
+        JSON.stringify(inspectedLoreUse({ ...selected, inspectionId }, "Image")),
+        /private key|Private body|Unshared/,
+      );
+      for (const patch of [{ bookId: "other" }, { entryId: "omitted" }]) {
+        const unavailable = await server.inject({
+          method: "POST",
+          url: "/debug/lore",
+          payload: { ...reference, ...patch },
+        });
+        assert.deepEqual(unavailable.json(), { trigger: null });
+      }
+      for (const payload of [
+        { ...reference, inspectionId: "bad" },
+        { ...reference, entryId: "x".repeat(161) },
+        { ...reference, bookId: null },
+        { inspectionId },
+      ])
+        assert.equal((await server.inject({ method: "POST", url: "/debug/lore", payload })).statusCode, 400);
+      await saveRuntimeDebug(false);
+      assert.equal(readLoreTrigger(inspectionId, "private", "text").trigger?.key, "private key");
+      const clone = readLoreTrigger(inspectionId, "private", "text");
+      clone.trigger!.key = "changed";
+      assert.equal(readLoreTrigger(inspectionId, "private", "text").trigger?.key, "private key");
+      for (let index = 0; index < 100; index++) rememberLoreInspection(selected);
+      assert.deepEqual(
+        readLoreTrigger(inspectionId, "private", "text"),
+        { trigger: null },
+        "Old references expire rather than resolving to a newer lookup",
+      );
+      const beforeReset = rememberLoreInspection(selected)!;
+      release();
+      release = configureVillagesRuntime(host as Parameters<typeof configureVillagesRuntime>[0]);
+      assert.deepEqual(
+        readLoreTrigger(beforeReset, "private", "text"),
+        { trigger: null },
+        "Trigger details stay inside the originating activation",
+      );
       await saveRuntimeDebug(true);
       for (let index = 0; index < 12; index++)
         runtimeDebug("lore inspection", {

@@ -250,6 +250,45 @@ async function main() {
   assert.equal(ranked.selected[1], "harbor: Complete fact.");
   assert.equal(ranked.selected[2], "mountain: Complete fact.");
   assert.equal(ranked.inspection.entries.find((entry) => entry.id === "constant")?.status, "budget");
+  assert.deepEqual(ranked.inspection.entries.find((entry) => entry.id === "guild")?.trigger, {
+    constant: false,
+    match: "current",
+    key: "guild",
+    caseSensitive: false,
+    matchWholeWords: false,
+  });
+  const trigger = (patch: Partial<LoreEntry>, text: string) =>
+    selectVillageLore([make("text", patch)], { setting: text }, 1600).inspection.entries[0]?.trigger;
+  assert.equal(trigger({}, "texting")?.key, "text", "Substring evidence names the actual authored key");
+  assert.equal(trigger({ matchWholeWords: true }, "texting"), undefined);
+  assert.deepEqual(
+    trigger({ constant: true }, "texting"),
+    {
+      constant: true,
+      match: "setting",
+      key: "text",
+      caseSensitive: false,
+      matchWholeWords: false,
+    },
+    "Constant eligibility stays explicit even when a key affects priority",
+  );
+  assert.deepEqual(trigger({ constant: true, useRegex: true }, "texting"), {
+    constant: true,
+    match: "constant",
+    caseSensitive: false,
+    matchWholeWords: false,
+  });
+  assert.deepEqual(
+    trigger({ selective: true, secondaryKeys: ["fog", "private sentence"], selectiveLogic: "not_all" }, "text fog")
+      ?.secondary,
+    { logic: "not_all", matched: 1, total: 2 },
+  );
+  assert.deepEqual(trigger({ selective: true, secondaryKeys: ["secret"], selectiveLogic: "not" }, "text")?.secondary, {
+    logic: "not_any",
+    matched: 0,
+    total: 1,
+  });
+  assert.equal(trigger({ caseSensitive: true, matchWholeWords: true }, "text")?.caseSensitive, true);
   const match = (patch: Partial<LoreEntry>, text: string) =>
     selectVillageLore([make("harbor", patch)], { setting: text }, 1600).selected.length;
   assert.equal(match({}, "HARBORSIDE"), 1);
@@ -424,6 +463,39 @@ async function main() {
     { ...originalUse, content: "private body", query: "private trigger", match: "private backstory" },
   ]);
   assert.deepEqual(safe, [originalUse]);
+  const firstId = "00000000-0000-4000-8000-000000000001";
+  const secondId = "00000000-0000-4000-8000-000000000002";
+  const withInspections = mergeLoreUse(
+    [{ ...originalUse, inspections: [{ target: "Narration", id: firstId }] }],
+    [{ ...originalUse, targets: ["System"], inspections: [{ target: "System", id: secondId }] }],
+  );
+  assert.deepEqual(withInspections[0]!.inspections, [
+    { target: "Narration", id: firstId },
+    { target: "System", id: secondId },
+  ]);
+  assert.deepEqual(
+    readLoreUse([
+      {
+        ...originalUse,
+        inspections: [
+          { target: "Image", id: firstId, key: "private key", query: "private context" },
+          { target: "Image", id: "not-an-id" },
+          null,
+        ],
+        trigger: { key: "private key" },
+      },
+    ])[0]!.inspections,
+    [{ target: "Image", id: firstId }],
+  );
+  assert.deepEqual((publicSceneResponse({ lore: withInspections }) as any).lore, withInspections);
+  assert.doesNotMatch(
+    JSON.stringify(
+      publicSceneResponse({
+        lore: [{ ...withInspections[0], trigger: { key: "private key" }, query: "private context" }],
+      }),
+    ),
+    /private key|private context/,
+  );
   const inspection = {
     purpose: "test",
     stage: "selection" as const,
@@ -457,6 +529,11 @@ async function main() {
     combined,
     "Saved Scene provenance survives restart without Engine reads",
   );
+  const referencedScene = coerceSession({
+    ...savedScene,
+    submissions: [{ ...savedScene.submissions[0], lore: withInspections }],
+  });
+  assert.deepEqual(coerceSession(JSON.parse(JSON.stringify(referencedScene))).submissions[0]!.lore, withInspections);
   assert.deepEqual(publicSceneAuthority(savedScene).lore, combined);
   const unpublished = {
     ...savedScene,

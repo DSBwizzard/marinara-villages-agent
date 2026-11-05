@@ -3,6 +3,7 @@ import { villagesDebugAgentsEnabled, villagesDocuments, villagesLogger } from ".
 import { venueDebugContext } from "../operations/operation-context.js";
 import { mutateDocument } from "../storage/document-store.js";
 import { createRuntimeDebug, type RuntimeDebug } from "./runtime-debug-service.js";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
 export type { RuntimeDebugView } from "./runtime-debug-service.js";
 const binding = createActivationBinding<RuntimeDebug>("Villages runtime diagnostics are not configured.");
 const standalone = createRuntimeDebug({
@@ -30,6 +31,16 @@ export function saveRuntimeDebug(value: unknown, meter?: unknown) {
 }
 export function readLoreInspections() {
   return diagnostics().readLoreInspections();
+}
+export function rememberLoreInspection(report: LoreInspection): string | undefined {
+  try {
+    return diagnostics().rememberLoreInspection(report);
+  } catch {
+    return undefined;
+  }
+}
+export function readLoreTrigger(inspectionId: unknown, bookId: unknown, entryId: unknown) {
+  return diagnostics().readLoreTrigger(inspectionId, bookId, entryId);
 }
 /** Missing/disposed diagnostics must never replace an operation's result. */
 export function runtimeDebug(event: string, detail: unknown): void {

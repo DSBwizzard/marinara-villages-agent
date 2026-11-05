@@ -22,6 +22,9 @@ const VILLAGES_STYLES = `
 .${ELEMENT_TAG}-lore-dialog header button { min-width:44px;min-height:44px;border:0;background:transparent;color:inherit;font:inherit;cursor:pointer; }
 .${ELEMENT_TAG}-lore-dialog ul { list-style:none;padding:0;margin:0; }
 .${ELEMENT_TAG}-lore-dialog li { border-top:1px solid var(--border);padding:.75rem 0;overflow-wrap:anywhere; }
+.${ELEMENT_TAG}-lore-dialog summary { cursor:pointer;min-height:44px; }
+.${ELEMENT_TAG}-lore-reason { margin-top:.75rem;font-size:.8rem; }
+.${ELEMENT_TAG}-lore-reason p { margin:.4rem 0; }
 .${ELEMENT_TAG}-lore-book,.${ELEMENT_TAG}-lore-label { display:block;font-size:.75rem;color:var(--muted-foreground); }
 .${ELEMENT_TAG}-lore-targets { display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.4rem; }
 .${ELEMENT_TAG}-lore-targets span { padding:.1rem .4rem;border-radius:.3rem;background:var(--secondary);font-size:.75rem; }

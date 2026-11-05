@@ -1,6 +1,6 @@
 import { coerceLoreTokenBudget, DEFAULT_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 import { villageEngineJson } from "./engine-transport.js";
-import { runtimeDebug } from "../observability/runtime-debug.js";
+import { runtimeDebug, rememberLoreInspection } from "../observability/runtime-debug.js";
 import { badGateway } from "../../domain/rules/errors.js";
 import { selectVillageLore, type LoreEntry } from "../../domain/rules/lore-selection.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
@@ -136,9 +136,13 @@ export async function readVillageLore(
       { setting: context, current: options?.current, recent: options?.recent },
       tokenBudget,
     );
-    result.inspection.purpose = options?.purpose ?? "Lore lookup";
-    options?.inspect?.(result.inspection);
-    runtimeDebug("lore inspection", result.inspection);
+    const inspection: LoreInspection = {
+      ...result.inspection,
+      purpose: options?.purpose ?? "Lore lookup",
+      inspectionId: rememberLoreInspection(result.inspection),
+    };
+    options?.inspect?.(inspection);
+    runtimeDebug("lore inspection", inspection);
     return result.selected;
   } catch (_error) {
     signal?.throwIfAborted();
