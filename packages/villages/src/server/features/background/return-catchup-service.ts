@@ -89,7 +89,32 @@ export function createReturnCatchup(ports: Ports) {
         const tracking = state.returnCatchup,
           batch = tracking?.batch,
           capture = tracking?.capture;
-        if (!batch || !capture || !["queued", "running"].includes(batch.status)) return;
+        if (!batch || !capture || !["queued", "running", "failed"].includes(batch.status)) return;
+        if (batch.status === "failed") {
+          const record = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
+          const opportunity = batch.opportunities?.find((row) => row.id === record?.opportunityId);
+          if (
+            !ports.hasPresence() ||
+            !record ||
+            !opportunity ||
+            record.automaticRetryUsed ||
+            record.status === "settling" ||
+            record.heldStage === "settling" ||
+            (await ports.job(
+              opportunity.kind === "world" ? "world-development" : "resident-planning",
+              returnCatchupSubject(batch.id, opportunity.id),
+            ))
+          )
+            return;
+          await update(batch.id, (world) => {
+            const row = world.returnCatchup!.batch!.records!.find((item) => item.opportunityId === opportunity.id)!;
+            row.automaticRetryUsed = true;
+            row.status = "queued";
+            row.error = undefined;
+            world.returnCatchup!.batch!.status = "running";
+          });
+          continue;
+        }
         if (batch.status === "queued") {
           await update(batch.id, (world) => {
             world.returnCatchup!.batch!.status = "running";
@@ -221,7 +246,6 @@ export function createReturnCatchup(ports: Ports) {
             if (error instanceof ReturnOpportunityUnavailable) row.status = "rejected";
             else world.returnCatchup!.batch!.status = "failed";
           });
-          if (!(error instanceof ReturnOpportunityUnavailable)) return;
         }
       }
       throw new Error("Village catch-up did not settle within its bounded work limit.");

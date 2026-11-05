@@ -29,7 +29,7 @@ import { WORLD_DEVELOPMENT_INSTRUCTION, WORLD_DEVELOPMENT_REVIEW } from "../../d
 type Ports = {
   relationshipIdentity: RelationshipIdentity;
   wishIdentity: WishIdentity;
-  read: () => Promise<VillageState>;
+  read: (options?: import("../../domain/models/world-repository.js").VillageMemoryRead) => Promise<VillageState>;
   mutate: (update: (state: VillageState) => void) => Promise<void>;
   socialSnapshot: () => Promise<VillageState>;
   resident: (now: Date, dueOnly?: boolean) => Promise<boolean | void>;
@@ -62,7 +62,12 @@ export function createNarrative(ports: Ports) {
     const result = extractModelJsonObject(completion);
     const failure = completionFailure(completion, "world-development", fitted.maxTokens ?? allowance);
     if (failure) throw new WorkFailureError(failure);
-    if (!result) throw new Error("World development returned no usable JSON. Its response is retained.");
+    if (!result)
+      throw new WorkFailureError({
+        cause: "invalid_json",
+        stage: "world-development",
+        message: "World development returned no usable JSON. Its response is retained.",
+      });
     return result;
   }
   async function queueWorld(
@@ -157,7 +162,7 @@ export function createNarrative(ports: Ports) {
     opportunity: ResidentPlanningOpportunity,
     capture: ReturnCatchupCapture,
   ): Promise<void> {
-    const live = await ports.read();
+    const live = await ports.read({ wishes: true });
     const batch = live.returnCatchup?.batch;
     if (
       batch?.id !== batchId ||
@@ -189,12 +194,22 @@ export function createNarrative(ports: Ports) {
       const proposed = await ask(WORLD_DEVELOPMENT_INSTRUCTION, input.grant, 1800);
       if (proposed.quiet === true && Object.keys(proposed).length === 1) return { quiet: true };
       if (proposed.quiet !== false || !proposed.proposal)
-        throw new Error("Invalid world proposal. Its response is retained.");
+        throw new WorkFailureError({
+          cause: "missing_result",
+          stage: "world-development",
+          message: "Invalid world proposal. Its response is retained.",
+        });
       const result = await ask(
         WORLD_DEVELOPMENT_REVIEW,
         { admission: input.grant, savedProposal: proposed.proposal },
         3000,
       );
+      if (typeof result.consistent !== "boolean" || (result.consistent && !result.development))
+        throw new WorkFailureError({
+          cause: "missing_result",
+          stage: "world-development",
+          message: "The world review is missing required metadata. Its response is retained.",
+        });
       if (result.consistent !== true)
         throw new Error(String(result.reason || "The world proposal was not supported.").slice(0, 300));
       return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
