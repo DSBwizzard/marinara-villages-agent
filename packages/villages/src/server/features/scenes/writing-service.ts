@@ -462,8 +462,6 @@ export function createSceneWriting({
             ]
           : []),
         PLAYER_CAPTURE_CONTRACT,
-        "Input source quotes (text IDs, never audibility): " +
-          JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
         zoneEventContract(session)
           .replace(
             ZONE_PLAYER_SPEECH_CONTRACT,
@@ -487,6 +485,7 @@ export function createSceneWriting({
       direction: blocksFor([
         NPC_INTRODUCTION_WRITING,
         VENUE_SCENE_WRITING_FOUNDATION,
+        "Current server positions, calendar, access and witness boundaries remain authoritative over cards and earlier prose.",
         venueOperationInput()?.sceneBoundaryVersion === 1 ? SCENE_OUTCOME_BOUNDARY : "",
         openingSceneDirection(village, session),
         venueWritingDirection(village.narrationStyle, player.name),
@@ -545,7 +544,6 @@ export function createSceneWriting({
             )
           : "",
         `Current Zone description (revision ${place?.state.revision ?? 0}): ${place?.description ?? ""}. Recent context: ${place ? recentPlaceText(place.state, now.getTime()) : ""}. Preserve unrelated established facts.`,
-        "Approved room description: " + (place?.description || "none"),
         place?.constructionStatus === "worksite"
           ? "This is an incomplete exterior-only worksite. Its project ledger and resident work order determine completion; neither player narration nor this scene can finish it or open its interior."
           : "",
@@ -614,6 +612,8 @@ export function createSceneWriting({
         `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
       ]),
       conversation: blocksFor([
+        "Input source quotes (text IDs, never audibility): " +
+          JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
         ...lore.map((entry, index) => ({
           text: `Relevant world lore: ${entry}`,
           optional: "lore" as const,
@@ -650,21 +650,6 @@ export function createSceneWriting({
     const maxTokens = Math.min(model.maxOutputTokens ?? requestedMaxTokens, requestedMaxTokens);
     const fitStarted = performance.now();
     {
-      for (const block of blocks) {
-        if (
-          block.text.includes("Return memoryChanges:") ||
-          block.text.includes("Return wishChanges:") ||
-          [
-            "memoryChanges:",
-            "relationshipChanges:",
-            "wishChanges:",
-            "projectSpeech:",
-            "Optional projectSpeech:",
-            "Resolve player physical actions",
-          ].some((prefix) => block.text.startsWith(prefix))
-        )
-          block.text = "";
-      }
       if ([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion)))
         blocks.push({
           text:
@@ -683,6 +668,7 @@ export function createSceneWriting({
     }
     if (storedPlace)
       blocks.push({
+        role: "user",
         text:
           "Current physical Scene state (server authority, not shared character knowledge): " +
           JSON.stringify(sceneLocationContext(session, storedPlace, audience)) +
@@ -699,7 +685,10 @@ export function createSceneWriting({
       ? (captured.ordinary ?? captured.fitted)
       : fitVenueWritingMessages(model, blocks, input, maxTokens);
     if (introduction)
-      blocks.push({ text: SCENE_DEVELOPMENT_WRITING + " Immutable local admission: " + JSON.stringify(introduction) });
+      blocks.push({
+        role: "user",
+        text: SCENE_DEVELOPMENT_WRITING + " Immutable local admission: " + JSON.stringify(introduction),
+      });
     let fitted = captured?.fitted ?? ordinary;
     if (!captured && introduction) {
       try {

@@ -57,6 +57,7 @@ import {
   semanticEvidence,
   semanticHash,
   semanticImmediate,
+  semanticPromptContext,
   semanticWishChangesCovered,
 } from "../../domain/rules/semantic-contract.js";
 import { semanticPlayerMoves } from "../../domain/rules/semantic-timeline.js";
@@ -122,7 +123,10 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
   ])}`;
 }
 
-function systemMessages(input: unknown, systemPrompt: string, sourceHash: string) {
+const SYSTEM_PROMPT_LAYOUT =
+  'In the reference input, social.capturedAndScene:{sameAs:"live"} means the complete captured view is identical to social.live, including seed, revisions, records and intentions; it is not absent or empty. Keep every required output field, review, coverage row and exact citation. For supported results, keep reasons to one short factual clause; explain unresolved or rejected results precisely. Do not repeat evidence, rules or unchanged facts in reasons. ';
+
+function systemMessages(input: unknown, systemPrompt: string, sourceHash: string, promptVersion = 1) {
   const { _memoryWrite: _privateMemoryWrite, ...context } = asRecord(asRecord(input).context);
   const { _presentation, zoneEventSource: _privateZoneEventSource, ...publicInput } = asRecord(input);
   if (publicInput.hearingTimelineVersion === 1 && Array.isArray(publicInput.evidence))
@@ -136,28 +140,30 @@ function systemMessages(input: unknown, systemPrompt: string, sourceHash: string
       return line;
     });
   const selection = _presentation as SpriteSelectionContext | undefined;
+  const presentation = selection
+    ? {
+        presentation: {
+          current: selection.state,
+          sprites: Object.entries(selection.sprites).map(([characterId, sprite]) => ({
+            characterId,
+            expressions: describeSpriteExpressions(sprite, selection.variants),
+          })),
+        },
+      }
+    : {};
+  let packet: unknown = { sourceHash, input: { ...publicInput, context, ...presentation } };
+  if (promptVersion === 2) {
+    const { context: _originalContext, ...currentInput } = publicInput;
+    packet = {
+      input: { context: semanticPromptContext(context), ...currentInput, ...presentation },
+      sourceHash,
+    };
+  }
   return [
     { role: "system" as const, content: systemPrompt },
     {
       role: "user" as const,
-      content: JSON.stringify({
-        sourceHash,
-        input: {
-          ...publicInput,
-          context,
-          ...(selection
-            ? {
-                presentation: {
-                  current: selection.state,
-                  sprites: Object.entries(selection.sprites).map(([characterId, sprite]) => ({
-                    characterId,
-                    expressions: describeSpriteExpressions(sprite, selection.variants),
-                  })),
-                },
-              }
-            : {}),
-        },
-      }),
+      content: JSON.stringify(packet),
     },
   ];
 }
@@ -233,7 +239,9 @@ function exchangeInstruction(
     (actionContractV2
       ? ""
       : 'access rows use {actorId,visitorId:"player",venueId,zoneId,outcome:"invite-now|invite-later|refuse|dismiss|ban-zone|ban-venue|invite-outside-hours|access-management|unresolved",duration:"visit|standing",conditions:[],accompanies:boolean,evidence:[current segment indexes],command?:exact supported access command}. conditions only supports "accompanied"; any other condition (including a restricted future time) requires outcome:unresolved, with no command or permission. Standing grants go in relationship permissions, never turn a visit into standing. Interpret scope, timing and paraphrases from context; words ban or permission are not required. Only current issuer speech or witnessed clear gesture supports access. Unsupported conditions stay unresolved; never broaden them. ') +
-    'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. ' +
+    (context.projects
+      ? 'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. '
+      : "No relevant Project IDs are supplied: return projectSpeech:[] and projects authority false. New venue and residence requests still use events. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. ") +
     (actionContractV2
       ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
       : LIVE_MEMORY_INSTRUCTION
@@ -312,8 +320,9 @@ export function createSemanticService(ports: SemanticPorts) {
     // Future draft evidence is checked again after generation; known authority already has to fit now.
     const messages = systemMessages(
       input,
-      SYSTEM_BASE + SYSTEM_CURRENT_SCENE + exchangeInstruction(scene, context, policy),
+      SYSTEM_BASE + SYSTEM_CURRENT_SCENE + exchangeInstruction(scene, context, policy) + SYSTEM_PROMPT_LAYOUT,
       "0".repeat(semanticHash(null).length),
+      2,
     );
     const fitted = model.fitContext(messages, { maxTokens: output });
     if (
@@ -395,9 +404,14 @@ export function createSemanticService(ports: SemanticPorts) {
           model: initial.model,
           output: Math.min(initial.maxOutputTokens ?? taskOutput, taskOutput),
           outputPolicy: 3,
+          promptVersion: 2,
           instruction,
           currentEvidenceOnly,
-          systemPrompt: SYSTEM_BASE + (currentEvidenceOnly ? SYSTEM_CURRENT_SCENE : SYSTEM_RETRIEVAL) + instruction,
+          systemPrompt:
+            SYSTEM_BASE +
+            (currentEvidenceOnly ? SYSTEM_CURRENT_SCENE : SYSTEM_RETRIEVAL) +
+            instruction +
+            SYSTEM_PROMPT_LAYOUT,
           ...(identity.narrativeGrant !== undefined ? { narrativeReviewOutputVersion: 1 } : {}),
           reasoningEffort: identity.pipelineVersion === 3 ? ("none" as const) : ("low" as const),
         };
@@ -440,6 +454,7 @@ export function createSemanticService(ports: SemanticPorts) {
             input,
             snapshot.systemPrompt ?? SYSTEM_BASE + SYSTEM_RETRIEVAL + (snapshot.instruction ?? instruction),
             sourceHash,
+            snapshot.promptVersion,
           );
           const fitted = model.fitContext(messages, { maxTokens: output });
           if (

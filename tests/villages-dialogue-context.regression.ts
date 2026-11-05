@@ -221,8 +221,11 @@ async function run() {
       pendingProjectQuestions: [],
     };
     const prompt = String(
-      (await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null)).fitted
-        .messages[0].content,
+      (
+        await prepareVenueTurnMessages(scene, "What about Alex’s violin music?", "chat", "outgoing", null)
+      ).fitted.messages
+        .map((entry) => entry.content)
+        .join("\n"),
     );
     const positions = [
       "## Writing direction",

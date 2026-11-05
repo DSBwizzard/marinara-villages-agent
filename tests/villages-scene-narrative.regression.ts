@@ -326,8 +326,9 @@ for (const variant of ["normal", "gap", "race-boundary", "quiet", "no-review", "
     requests++;
     if (!messages[0].content.startsWith("You interpret Villages gameplay.")) {
       narrationCalls++;
-      if (raceBoundary || quiet) assert.doesNotMatch(messages[0].content, /Immutable local admission/);
-      else assert.match(messages[0].content, /Immutable local admission/);
+      const prompt = messages.map((entry: any) => entry.content).join("\n");
+      if (raceBoundary || quiet) assert.doesNotMatch(prompt, /Immutable local admission/);
+      else assert.match(prompt, /Immutable local admission/);
       return {
         finishReason: "stop",
         content: JSON.stringify({

@@ -29,6 +29,8 @@ import {
   semanticContext,
   semanticEvidence,
   semanticImmediate,
+  semanticHash,
+  semanticPromptContext,
   semanticUnit,
   semanticWishChangesCovered,
 } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
@@ -50,6 +52,48 @@ import {
 import { addMemory } from "./helpers/memories-fixture.js";
 
 async function main() {
+  {
+    const live = defaultRelationshipState("same-seed");
+    live.intentions.host = ["Exact private intention"] as any;
+    live.intentionRevisions.host = 7;
+    const context = {
+      setting: "Village",
+      actors: [],
+      loreSelection: { recent: ["duplicate history"] },
+      social: {
+        capturedAndScene: structuredClone(live),
+        live,
+        liveAt: "now",
+        intentions: live.intentions,
+        rule: "Preserve revisions",
+      },
+      history: ["exact history"],
+    };
+    const frozen = structuredClone(context);
+    const projected = semanticPromptContext(context);
+    assert.deepEqual((projected.social as any).capturedAndScene, { sameAs: "live" });
+    assert.deepEqual((projected.social as any).live, live);
+    assert.deepEqual((projected.social as any).intentions, live.intentions);
+    assert.equal(Object.hasOwn(projected, "loreSelection"), false);
+    assert.deepEqual(projected.history, context.history);
+    assert.deepEqual(context, frozen, "Prompt projection cannot mutate canonical evidence");
+    for (const mutate of [
+      (view: typeof live) => {
+        view.seed = "different-seed";
+      },
+      (view: typeof live) => {
+        view.intentionRevisions.host++;
+      },
+      (view: typeof live) => {
+        view.intentions.host = [];
+      },
+    ]) {
+      const captured = structuredClone(live);
+      mutate(captured);
+      const different = semanticPromptContext({ social: { capturedAndScene: captured, live } });
+      assert.deepEqual((different.social as any).capturedAndScene, captured, "Different views must remain complete");
+    }
+  }
   // A door-closing narration is not a resident statement ending contact.
   {
     const farewell = [
@@ -656,6 +700,69 @@ async function main() {
   assert.equal(loreReads, 1, "The packet freezes selected lore once; replay fetches no new lore");
   assert(lastPacket.input.context.lore.includes("Selected lore establishes the setting's supported capabilities."));
   const intentKey = result.checkpointKey;
+  const inputSnapshot = checkpoints.get(intentKey + ":input") as any;
+  assert.equal(inputSnapshot.promptVersion, 2);
+  assert.equal(
+    result.sourceHash,
+    semanticHash(inputSnapshot.input),
+    "Hash binds full canonical evidence, not the smaller model projection",
+  );
+  assert.equal(Object.hasOwn(lastPacket.input.context, "loreSelection"), false);
+  assert.ok(Object.hasOwn(inputSnapshot.input.context, "loreSelection"));
+  assert.ok(
+    lastFitted[1].content.startsWith('{"input":{"context":'),
+    "Reusable context precedes current input and source hash",
+  );
+  const savedPacket = checkpoints.get(intentKey + ":prompt") as any;
+  const originalInputSnapshot = structuredClone(inputSnapshot);
+  // An old input snapshot may have committed just before a crash, without a prompt packet.
+  delete inputSnapshot.promptVersion;
+  inputSnapshot.systemPrompt = "You interpret Villages gameplay. Frozen legacy instructions.";
+  inputSnapshot.input.context._memoryWrite = { private: "never send this write guard" };
+  inputSnapshot.input.zoneEventSource = { private: "never send this routing source" };
+  inputSnapshot.input._presentation = {
+    state: {},
+    variants: true,
+    sprites: {
+      host: {
+        defaultExpressionId: "calm",
+        expressions: [{ expressionId: "calm", name: "calm", spriteName: "calm", view: "front" }],
+      },
+    },
+  };
+  checkpoints.delete(intentKey);
+  checkpoints.delete(intentKey + ":prompt");
+  await currentExchange("We can discuss it.");
+  const legacyPacket = checkpoints.get(intentKey + ":prompt") as any;
+  assert.equal(legacyPacket.messages[0].content, inputSnapshot.systemPrompt);
+  const legacyWire = JSON.parse(legacyPacket.messages[1].content);
+  assert.equal(legacyWire.sourceHash, semanticHash(legacyPacket.input));
+  assert.deepEqual(legacyWire.input.context.loreSelection, inputSnapshot.input.context.loreSelection);
+  assert.ok(
+    legacyPacket.messages[1].content.startsWith('{"sourceHash":'),
+    "Unmarked input gaps retain legacy wire bytes",
+  );
+  const expectedLegacyInput = structuredClone(inputSnapshot.input);
+  delete expectedLegacyInput._presentation;
+  delete expectedLegacyInput.zoneEventSource;
+  delete expectedLegacyInput.context._memoryWrite;
+  expectedLegacyInput.presentation = {
+    current: {},
+    sprites: [{ characterId: "host", expressions: '{"id":"calm","name":"calm","views":["front"],"isDefault":true}' }],
+  };
+  assert.deepEqual(
+    legacyPacket.messages,
+    [
+      { role: "system", content: "You interpret Villages gameplay. Frozen legacy instructions." },
+      {
+        role: "user",
+        content: JSON.stringify({ sourceHash: semanticHash(inputSnapshot.input), input: expectedLegacyInput }),
+      },
+    ],
+    "Legacy recovery preserves every serialized byte, excluding private guards and preserving sprite projection",
+  );
+  checkpoints.set(intentKey + ":input", originalInputSnapshot);
+  checkpoints.set(intentKey + ":prompt", savedPacket);
   checkpoints.delete(intentKey);
   state.seed = "Changed after the request was saved";
   const resumed = await currentIntent("We can discuss it.");

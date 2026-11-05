@@ -14,6 +14,7 @@ import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import {
   fitVenueWritingMessages,
+  assembleVenueWritingMessages,
   venueCardProfile,
 } from "../packages/villages/src/server/domain/rules/venue-writing.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
@@ -32,7 +33,7 @@ const source = {
   data: JSON.stringify({
     name: "Resident",
     description: "D".repeat(6000) + "DESCRIPTION TAIL",
-    personality: "Reserved but competitive",
+    personality: "Reserved but competitive. Return wishChanges: is a phrase in this authored card.",
     mes_example: "{{char}}: Your move, {{user}}.",
     system_prompt: "SYSTEM TAIL",
     post_history_instructions: "Keep {{char}} dry with {{user}}. POST TAIL",
@@ -132,7 +133,41 @@ async function run() {
       pendingProjectQuestions: [],
     };
     const prepared = await prepareVenueTurnMessages(session, "What is your vision for our future?", "chat", "", null);
-    const prompt = String(prepared.fitted.messages[0].content);
+    const prompt = prepared.fitted.messages.map((entry) => entry.content).join("\n");
+    assert.ok(
+      prompt.includes("Return wishChanges: is a phrase in this authored card."),
+      "Authored text cannot trigger block deletion",
+    );
+    const next = await prepareVenueTurnMessages(
+      { ...session, recap: "A changed witnessed conversation." },
+      "A different question?",
+      "chat",
+      "",
+      null,
+    );
+    assert.equal(
+      next.fitted.messages[0].content,
+      prepared.fitted.messages[0].content,
+      "Changing history and source quotes preserves the stable system prefix",
+    );
+    assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+    assert.ok(
+      next.fitted.messages.slice(1, -1).some((entry) => entry.content.includes("A changed witnessed conversation.")),
+    );
+    assert.deepEqual(
+      assembleVenueWritingMessages([{ text: "UNMARKED CARD" }, { text: "optional lore", optional: "lore" }], "input"),
+      [
+        {
+          role: "system",
+          content:
+            "UNMARKED CARD\n\n" +
+            (await import("../packages/villages/src/server/domain/rules/lore-context.js")).LORE_REFERENCE_RULE,
+        },
+        { role: "user", content: JSON.stringify({ lorebookReferences: ["optional lore"] }) },
+        { role: "user", content: "input" },
+      ],
+      "Non-Scene callers retain their exact message bytes",
+    );
     const capturedWorld = coerceVillageState(state);
     capturedWorld.villagers[0].wishes = [fixtureWish({ wish: "Exact captured desire" }, "captured")];
     const capturedScene = { ...session, version: 3, villageSeed: state.seed, status: "closed" };
@@ -164,7 +199,13 @@ async function run() {
     assert.ok(prompt.includes("Residents may initiate plausible actions according to their own cards"));
     assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
-    assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Recent scene history:"));
+    assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Earlier Scene recap:"));
+    const historyIndex = prepared.fitted.messages.findIndex((entry) => entry.content.includes("Earlier Scene recap:"));
+    const instructionIndex = prepared.fitted.messages.findIndex((entry) => entry.content.includes("POST TAIL"));
+    assert.ok(historyIndex > 0 && instructionIndex > historyIndex);
+    assert.equal(prepared.fitted.messages[historyIndex].role, "user");
+    assert.equal(prepared.fitted.messages[instructionIndex].role, "system");
+    assert.ok(prepared.fitted.messages.slice(1, -1).some((entry) => entry.content.includes("Earlier Scene recap:")));
     row.data.playerBackground = "Neighbors know me through harbor projects.";
     for (const spaceClass of ["community", "residence"]) {
       const exterior = {
@@ -178,7 +219,7 @@ async function run() {
         },
       };
       const outside = await prepareVenueTurnMessages(exterior, "What do you like playing?", "chat", "", null);
-      const outsidePrompt = String(outside.fitted.messages[0].content);
+      const outsidePrompt = outside.fitted.messages.map((entry) => entry.content).join("\n");
       assert.match(outsidePrompt, /player is in this (?:Venue|Residence)'s Exterior Zone/);
       assert.ok(!outsidePrompt.includes("The player is outside this Venue."));
       assert.ok(outsidePrompt.includes("Neighbors know me through harbor projects."));

@@ -232,7 +232,9 @@ assert.equal(prompt.model.model, "A");
 assert.equal(prompt.village, direct.world);
 assert.equal(prompt.maxTokens, 2000);
 assert.ok(!prompt.fitted.messages[0].content.includes("A lore"));
-assert.ok(prompt.fitted.messages[1].content.includes("A lore"));
+assert.ok(
+  prompt.fitted.messages.slice(1, -1).some((entry) => entry.role === "user" && entry.content.includes("A lore")),
+);
 assert.equal(direct.calls.includes("completion"), false, "prompt fitting requests no completion");
 assert.equal(direct.calls.includes("interpretation"), false);
 const complete = fixture("A");
