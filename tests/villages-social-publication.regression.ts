@@ -8,6 +8,9 @@ import { completeResidenceMove } from "../packages/villages/src/server/domain/ru
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
 import { sceneAccessState } from "../packages/villages/src/server/domain/rules/scene-layout.js";
 import { sceneMemoryContext } from "../packages/villages/src/server/domain/rules/scene-memories.js";
+import { DISCLOSURE_SUPPORT_FAILURE } from "../packages/villages/src/server/domain/rules/relationship-memories.js";
+import { socialReceiptId } from "../packages/villages/src/server/domain/rules/relationship-review.js";
+import { memoryHash } from "../packages/villages/src/server/domain/rules/memory-integrity.js";
 import {
   evaluateZoneAccess,
   initializeVenueAccess,
@@ -191,6 +194,89 @@ assert.equal(
 const after = worldWrites;
 await changes.replaySceneChanges(scene.id);
 assert.equal(worldWrites, after, "Published source replay is a read-only no-op");
+{
+  const line = {
+    id: "long-speech",
+    speakerId: "a",
+    kind: "dialogue",
+    role: "assistant",
+    content: "x".repeat(374),
+    heardBy: ["a"],
+    playerHeard: true,
+  } as const;
+  scene.lines.push(structuredClone(line) as any);
+  const sourceId = scene.id + ":long-source";
+  const receiptId =
+    "social-disclosure:" +
+    memoryHash(socialReceiptId(sourceId, ["disclosure", "a", "player", "connection", [line.id]]));
+  const processing = createExchangeProcessing({
+    seed: village.seed,
+    sceneId: scene.id,
+    submissionId: "long-source",
+    order: 1,
+    lineIds: [line.id],
+    actionReceiptIds: [],
+  });
+  for (const domain of Object.values(processing.domains)) domain.status = "applied";
+  scene.submissions.push({
+    id: "long-source",
+    at: elapsed(5),
+    semanticReady: true,
+    semanticProvenance: { ...turn.semanticProvenance!, sourceHash: "long-source" },
+    processing,
+    liveProposals: bindLiveProposals(
+      {
+        memoryChanges: [],
+        relationshipChanges: {
+          changes: [],
+          permissions: [],
+          disclosures: [
+            {
+              fromId: "a",
+              toId: "player",
+              text: "Ada wants to get to know you.",
+              kind: "connection",
+              lineIds: [0],
+              bond: { connection: "New acquaintances" },
+            },
+          ],
+        },
+      },
+      "",
+      [line.id],
+      scene.lines,
+    ),
+  } as any);
+  village.socialPublications![sourceId] = true;
+  village.memoryReceipts[receiptId] = {
+    id: receiptId,
+    sceneId: scene.id,
+    submissionId: sourceId,
+    domain: "memories",
+    status: "rejected",
+    at: elapsed(5),
+    committedAt: elapsed(5),
+    evidenceIds: [line.id],
+    reason: DISCLOSURE_SUPPORT_FAILURE,
+  };
+  const transcript = JSON.stringify(scene.lines);
+  const beforeRetry = worldWrites;
+  await commands.finishSemanticScene(scene.id);
+  assert.equal(worldWrites, beforeRetry, "Ordinary Scene completion does not retry acknowledged rejections");
+  await changes.replaySceneChanges(scene.id);
+  assert.equal(
+    village.memoryReceipts[receiptId]!.status,
+    "applied",
+    "Explicit saved replay recovers an acknowledged long disclosure",
+  );
+  assert.equal(JSON.stringify(scene.lines), transcript, "Replay never changes the conversation");
+  assert.deepEqual(projectRelationshipProfiles(village.relationshipContext!, village)[0]!.bond, {
+    connection: "New acquaintances",
+  });
+  const recovered = worldWrites;
+  await changes.replaySceneChanges(scene.id);
+  assert.equal(worldWrites, recovered, "A recovered disclosure is terminal on later replay");
+}
 {
   let world = socialWorldFixture(),
     social = defaultRelationshipState(world.seed);

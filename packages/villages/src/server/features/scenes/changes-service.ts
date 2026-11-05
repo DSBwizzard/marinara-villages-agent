@@ -21,7 +21,7 @@ import { filterRelationshipNotices, relationshipChangeNotices } from "../../doma
 import { workFailureSummary } from "../../domain/rules/work-failure.js";
 export interface SceneChangesPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
-  finishSemanticScene?(id: string): Promise<void>;
+  finishSemanticScene?(id: string, replayDisclosures?: boolean): Promise<void>;
   mutateRelationships?: typeof import("../residents/relationship-store.js").mutateRelationships;
   changeSession?: typeof import("../../adapters/storage/scene-store.js").changeSession;
   readSession(id: string): Promise<VenueScene>;
@@ -279,7 +279,7 @@ export function createSceneChanges({
     const scene = await readSession(id);
     for (const turn of scene.submissions.filter((turn) => turn.processing && unfinishedExchange(turn.processing)))
       await processSavedExchange(id, turn.id);
-    await finishSemanticScene?.(id);
+    await finishSemanticScene?.(id, true);
     return readSceneChanges(id);
   }
 

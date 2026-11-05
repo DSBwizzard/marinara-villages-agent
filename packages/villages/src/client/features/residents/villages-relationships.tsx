@@ -1,7 +1,8 @@
 import { HistoryClarifications } from "../../shared/HistoryClarifications.js";
 import { useVillageActivity } from "../../shared/activity.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { RelationshipBond } from "./RelationshipBond.js";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
 export type { RelationshipProfile, RelationshipView } from "../../../shared/contracts/relationships.js";
 type Request = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -11,6 +12,7 @@ export function VillagesRelationships({
   prefix,
   onVenue,
   characterId,
+  portrait,
   inspect = false,
   view: suppliedView,
 }: {
@@ -18,6 +20,7 @@ export function VillagesRelationships({
   prefix: string;
   onVenue: (id: string) => void;
   characterId?: string;
+  portrait?: ReactNode;
   inspect?: boolean;
   view?: RelationshipView | null;
   onView?: (view: RelationshipView) => void;
@@ -84,9 +87,32 @@ export function VillagesRelationships({
       .villages-relationships h3,.villages-relationships h4 {margin:.4rem 0}
       .villages-relationships p {white-space:pre-wrap;line-height:1.5}
       .villages-relationships blockquote {margin:.5rem 0;padding-left:.75rem;border-left:2px solid #8c90b0}
-      .villages-relationships details {margin:.75rem 0}
-      .villages-relationships summary {cursor:pointer}
       .villages-relationships pre {white-space:pre-wrap;font-size:.8rem}
+      .villages-relationship-bond header {display:flex;align-items:center;justify-content:space-between;gap:1rem}
+      .villages-relationship-bond .villages-relationship-caption {text-align:center;font-size:.85em;opacity:.8;margin:1.5rem 0 .6rem}
+      .villages-relationship-visual {display:flex;align-items:center;gap:1rem;min-width:0;padding:1rem 0;color:#967536}
+      .villages-relationship-person {display:grid;justify-items:center;gap:.6rem;width:5rem;flex-shrink:0;color:var(--foreground);text-align:center;overflow-wrap:anywhere}
+      .villages-relationship-person > span[aria-hidden] {display:grid;place-items:center;position:relative;width:4rem;height:4.8rem;overflow:hidden;flex-shrink:0;border:1px solid #b39a6b66;border-radius:.2rem;background:#fff7e8;font-size:2rem;box-shadow:1px 2px 4px #49301822;transform:rotate(-4deg)}
+      .villages-relationship-person:last-child > span[aria-hidden] {transform:rotate(4deg)}
+      .villages-relationship-person img {width:100%;height:100%;object-fit:cover}
+      .villages-relationship-person svg {width:2rem;height:2rem}
+      .villages-relationship-connection {flex:1;min-width:0;text-align:center;align-self:stretch;display:flex;flex-direction:column;justify-content:center;padding-bottom:1.5rem}
+      .villages-relationship-connection .villages-relationship-label {font-size:1.3em;color:var(--foreground);margin:0 0 1rem;overflow-wrap:anywhere}
+      .villages-relationship-thread {position:relative;display:flex;align-items:center;justify-content:center;min-height:2rem}
+      .villages-relationship-thread > span {position:absolute;inset:auto 0;height:6px;border-top:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-1deg)}
+      .villages-relationship-thread::after {content:"";position:absolute;right:-1px;border-top:5px solid transparent;border-bottom:5px solid transparent;border-left:8px solid currentColor}
+      .villages-relationship-thread b {display:grid;place-items:center;position:relative;width:2rem;height:2rem;border:1px solid #a65d2d;border-radius:50%;background:var(--dossier-paper,var(--background));color:#a65d2d;font:500 1rem/1 sans-serif}
+      .villages-relationship-connection .villages-relationship-condition {color:var(--foreground);margin:.8rem 0 0}
+      .villages-relationship-visual[data-tone=tentative] .villages-relationship-thread > span {height:2px;border-bottom:0;border-top-style:dashed}
+      .villages-relationship-visual[data-tone=unknown] {color:var(--muted-foreground)}
+      .villages-relationship-visual[data-tone=unknown] .villages-relationship-thread > span {height:2px;border-bottom:0;border-top-style:dotted}
+      .villages-relationship-visual[data-tone=unknown] .villages-relationship-thread::after {display:none}
+      .villages-relationship-unknown {font-size:.9em;text-align:center}
+      .villages-relationship-history ol {list-style:none;padding:0}
+      .villages-relationship-history li {padding:.8rem 0;border-bottom:1px solid var(--dossier-line,var(--border))}
+      .villages-relationship-history small,.villages-relationship-history time,.villages-relationship-access small {display:block}
+      .villages-relationship-access {display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1rem}
+      @media(max-width:500px){.villages-relationship-visual{gap:.5rem}.villages-relationship-person{width:3rem;font-size:.85em}.villages-relationship-person>span[aria-hidden]{width:2.8rem;height:3.5rem}.villages-relationship-connection .villages-relationship-label{font-size:1.1em}.villages-relationships article{padding:.6rem}}
     `}</style>
       {error ? <p role="alert">{error}</p> : null}
       {view?.starting.pending ? (
@@ -98,21 +124,7 @@ export function VillagesRelationships({
         view.profiles
           .filter((person) => !characterId || person.characterId === characterId)
           .map((person) => (
-            <article key={person.characterId}>
-              <h3>{person.name}</h3>
-              <p>{person.summary || "No relationship has been expressed yet."}</p>
-              {person.learned.map((entry, index) => (
-                <p key={index}>
-                  <strong>{entry.kind === "history" ? "Known history" : person.name + " shared"}:</strong> {entry.text}
-                  <small> · {date(entry.at)}</small>
-                </p>
-              ))}
-              {person.access.map((access) => (
-                <button key={access.venueId + access.zoneId} type="button" onClick={() => onVenue(access.venueId)}>
-                  {access.name} · {access.active ? "Standing invitation" : "Unavailable"}
-                </button>
-              ))}
-            </article>
+            <RelationshipBond key={person.characterId} person={person} portrait={portrait} onVenue={onVenue} />
           ))
       )}
       {inspect ? (
@@ -128,11 +140,11 @@ export function VillagesRelationships({
                   {debug.processing.map((work, index) => (
                     <p key={index}>
                       <strong>{work.label}:</strong> {work.status}
-                      {work.message ? <> · {work.message}</> : null}
+                      {work.message ? <span>{work.message}</span> : null}
                       <small>
                         {" "}
-                        · {work.requests} requests
-                        {work.tokens !== null ? " · " + work.tokens.toLocaleString() + " tokens" : ""}
+                        {work.requests} requests
+                        {work.tokens !== null ? " / " + work.tokens.toLocaleString() + " tokens" : ""}
                       </small>
                       {["failed", "interrupted", "paused"].includes(work.status) ? (
                         <button
@@ -181,10 +193,10 @@ export function VillagesRelationships({
                       Skip encounter
                     </button>
                   ) : null}
-                  <details>
-                    <summary>Source</summary>
+                  <section>
+                    <h4>Source</h4>
                     <code>{row.id}</code>
-                  </details>
+                  </section>
                 </article>
               ))}
               <HistoryClarifications
@@ -209,7 +221,8 @@ export function VillagesRelationships({
                 .map((person) => (
                   <article key={person.characterId}>
                     <h4>
-                      {person.name} · {person.initialized ? "History prepared" : "History pending"}
+                      {person.name}
+                      <small>{person.initialized ? "History prepared" : "History pending"}</small>
                     </h4>
                     {person.intentions.length ? (
                       <>
@@ -217,7 +230,8 @@ export function VillagesRelationships({
                         {person.intentions.map((intention, index) => (
                           <div key={index}>
                             <p>
-                              {intention.text} · {intention.status}
+                              {intention.text}
+                              <small>{intention.status}</small>
                             </p>
                             <p>{intention.reason}</p>
                             <small>{intention.targets.join(", ")}</small>
@@ -228,10 +242,11 @@ export function VillagesRelationships({
                       <p>No saved social intention.</p>
                     )}
                     {person.perspectives.map((perspective, index) => (
-                      <details key={index} open={perspective.technical.toId === "player" || undefined}>
-                        <summary>
-                          About {perspective.aboutName} · {perspective.connection || "Unestablished"}
-                        </summary>
+                      <section key={index}>
+                        <h4>
+                          About {perspective.aboutName}
+                          <small>{perspective.connection || "Unestablished"}</small>
+                        </h4>
                         <p>{perspective.stance || "No private stance recorded."}</p>
                         {perspective.expectations.length ? (
                           <>
@@ -256,40 +271,42 @@ export function VillagesRelationships({
                         {perspective.records.map((record, i) => (
                           <p key={i}>
                             <strong>
-                              {record.kind} · {record.status}:
+                              {record.kind}: {record.status}
                             </strong>{" "}
                             {record.text}
                             {record.currentStatus && record.currentStatus !== record.status ? (
-                              <small> · Current shared terms: {record.currentStatus}</small>
+                              <small>Current shared terms: {record.currentStatus}</small>
                             ) : null}
-                            {record.dueAt ? <> · Due {date(record.dueAt)}</> : null}
+                            {record.dueAt ? <small>Due {date(record.dueAt)}</small> : null}
                           </p>
                         ))}
                         <h4>Defining experiences</h4>
                         {perspective.experiences.map((experience, i) => (
-                          <details key={i}>
-                            <summary>
-                              {experience.reason} · {date(experience.at)}
-                            </summary>
+                          <section key={i}>
+                            <h4>
+                              {experience.reason}
+                              <small>{date(experience.at)}</small>
+                            </h4>
                             {experience.evidence.map((evidence, j) => (
                               <blockquote key={j}>
                                 <strong>{evidence.speaker}:</strong> {evidence.text}
                               </blockquote>
                             ))}
-                            <details>
-                              <summary>Source ID</summary>
+                            <section>
+                              <h4>Source ID</h4>
                               <pre>{experience.sourceId}</pre>
-                            </details>
-                          </details>
+                            </section>
+                          </section>
                         ))}
                         <small>
-                          Updated {date(perspective.updatedAt)} · Revision {perspective.revision}
+                          Updated {date(perspective.updatedAt)}
+                          <span>Revision {perspective.revision}</span>
                         </small>
-                        <details>
-                          <summary>Technical details</summary>
+                        <section>
+                          <h4>Technical details</h4>
                           <pre>{JSON.stringify(perspective.technical, null, 2)}</pre>
-                        </details>
-                      </details>
+                        </section>
+                      </section>
                     ))}
                   </article>
                 ))}

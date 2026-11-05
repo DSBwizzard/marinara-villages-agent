@@ -150,7 +150,10 @@ await withBrowser(browser, async () => {
       profiles: ["mara", "eli"].map((characterId) => ({
         characterId,
         name: person(characterId).name,
-        summary: "Mara has expressed an interest in talking again.",
+        summary: characterId === "mara" ? "Mara has expressed an interest in talking again." : "",
+        ...(characterId === "mara"
+          ? { bond: { connection: "Close friends", condition: "Needs space", tone: "strained" } }
+          : {}),
         knownAt: now,
         closeKnownAt: "",
         routine: ["Often reads at the Mill"],
@@ -803,6 +806,25 @@ await withBrowser(browser, async () => {
       await expect(profile.getByRole("heading", { name: "Mara", exact: true, level: 1 })).toBeVisible();
       await expect(profile.getByText(/PRIVATE/)).toHaveCount(0);
       await expect(profile.getByRole("checkbox")).toHaveCount(0);
+      if (label === "Relationships") {
+        const bond = profile.locator(".villages-relationship-bond");
+        await expect(bond.getByText("Close friends", { exact: true })).toBeVisible();
+        await expect(bond.getByText("Needs space", { exact: true })).toBeVisible();
+        await expect(bond.locator("[data-tone=strained]")).toBeVisible();
+        await expect(bond.locator("details, summary")).toHaveCount(0);
+        const requests = writes.length;
+        await bond.getByRole("button", { name: "History", exact: true }).click();
+        await expect(bond.getByText("Mara and Eli are friends", { exact: true })).toBeVisible();
+        await bond.getByRole("button", { name: "Relationship", exact: true }).click();
+        assert.equal(writes.length, requests, "Viewing bond history requests no generation or writes");
+        assert.equal((await bond.textContent()).includes("·"), false);
+        assert.ok(
+          await bond.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+          "Bond fits the notebook page",
+        );
+        await settleTurn();
+        await page.screenshot({ path: resolve(output, `relationship-bond-${width}-${height}.png`) });
+      }
     }
     await expect(profile.getByText(/Harbour · Standing access/)).toBeVisible();
     await expect(profile.getByText("Agenda destination", { exact: true })).toHaveCount(0);
@@ -1419,6 +1441,16 @@ await withBrowser(browser, async () => {
       "Long-name profile fits viewport",
     );
     if (width <= 390) await page.screenshot({ path: resolve(output, `long-name-${width}.png`) });
+    await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
+    const unknownBond = page
+      .getByRole("region", { name: `${secondName} profile`, exact: true })
+      .locator(".villages-relationship-bond");
+    await expect(unknownBond.getByText("Not yet known", { exact: true })).toBeVisible();
+    await expect(unknownBond.locator("[data-tone=unknown]")).toBeVisible();
+    await expect(unknownBond.locator(".villages-relationship-condition")).toHaveCount(0);
+    await unknownBond.getByRole("button", { name: "History", exact: true }).click();
+    await expect(unknownBond.getByText("No relationship history learned yet.", { exact: true })).toBeVisible();
+    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     await expect(profile.getByRole("img", { name: "Mara's signature", exact: true }).locator("img")).toHaveAttribute(

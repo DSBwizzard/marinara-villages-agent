@@ -75,6 +75,7 @@ export type RelationshipDisclosure = {
   kind: "explanation" | "preference" | "boundary" | "routine" | "history" | "connection" | "home" | "work";
   lineIds: string[];
   excerpts?: string[];
+  bond?: import("../../../shared/contracts/relationships.js").RelationshipBond;
 };
 export type RelationshipReview = {
   changes: RelationshipChange[];

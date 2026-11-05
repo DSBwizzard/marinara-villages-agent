@@ -30,6 +30,346 @@ function fixture() {
   return state;
 }
 const state = fixture();
+// A complete longer speech can use both native evidence slots without losing any source text.
+for (const content of ["A".repeat(374), "界".repeat(120)]) {
+  const world = fixture();
+  const source = { kind: "scene" as const, id: "long-disclosure", revision: 1, fingerprint: memoryHash(content) };
+  const disclosure = {
+    id: "long-bond",
+    fromId: "a",
+    toId: "player",
+    kind: "connection" as const,
+    text: "Ada wants to get to know you.",
+    lineIds: ["long-speech"],
+    bond: { connection: "New acquaintances" },
+  };
+  const lines = [
+    {
+      id: "long-speech",
+      speakerId: "a",
+      role: "assistant" as const,
+      kind: "dialogue",
+      content,
+      heardBy: ["player", "a"],
+      playerHeard: true,
+    },
+  ];
+  const receiptId = "social-disclosure:" + memoryHash(disclosure.id);
+  world.memoryReceipts[receiptId] = {
+    id: receiptId,
+    sceneId: "",
+    submissionId: source.id,
+    domain: "memories",
+    status: "rejected",
+    at,
+    committedAt: readAt,
+    evidenceIds: disclosure.lineIds,
+    reason: "Disclosure needs one or two bounded exact supporting quotes",
+  };
+  publishRelationshipDisclosures(world, [disclosure], source, lines, at, readAt);
+  const memory = world.memories.records[0];
+  assert.ok(memory, "Saved source replays recover a bounded-support rejection");
+  assert.equal(
+    memory.knowers.player!.support.map((row) => row.excerpt).join(""),
+    content,
+    "Every source character is retained",
+  );
+  assert.equal(memory.knowers.player!.support.length, 2);
+  assert.ok(memory.knowers.player!.support.every((row) => Buffer.byteLength(row.excerpt) <= 320));
+  assert.equal(world.memoryReceipts[receiptId]!.status, "applied");
+  assert.deepEqual(projectRelationshipProfiles(world.relationshipContext!, world)[0]!.bond, {
+    connection: "New acquaintances",
+  });
+  for (const change of [
+    { submissionId: "another-source" },
+    { evidenceIds: ["another-line"] },
+    { reason: "Player Memory correction or Forget protects this disclosure" },
+  ]) {
+    const other = fixture();
+    other.memoryReceipts[receiptId] = {
+      ...world.memoryReceipts[receiptId]!,
+      status: "rejected",
+      reason: "Disclosure needs one or two bounded exact supporting quotes",
+      ...change,
+    };
+    publishRelationshipDisclosures(other, [disclosure], source, lines, at, readAt);
+    assert.equal(other.memories.records.length, 0, "Other sources, evidence and protected rejections remain terminal");
+  }
+  const oversized = fixture();
+  publishRelationshipDisclosures(
+    oversized,
+    [disclosure],
+    source,
+    [{ ...lines[0]!, content: "x".repeat(641) }],
+    at,
+    readAt,
+  );
+  assert.equal(oversized.memories.records.length, 0, "Oversized support is never truncated to fit");
+  for (const text of ["a".repeat(318) + "😀" + "b".repeat(318), "x".repeat(641)]) {
+    const ambiguous = fixture();
+    publishRelationshipDisclosures(
+      ambiguous,
+      [{ ...disclosure, lineIds: ["long-speech", "short-speech"] }],
+      source,
+      [
+        { ...lines[0]!, content: text },
+        { ...lines[0]!, id: "short-speech", content: "A short statement." },
+      ],
+      at,
+      readAt,
+    );
+    assert.equal(
+      ambiguous.memories.records.length,
+      0,
+      "A long citation cannot disappear while another citation survives",
+    );
+  }
+  const equalTime = fixture();
+  publishRelationshipDisclosures(
+    equalTime,
+    [{ ...disclosure, id: "other-bond", bond: { connection: "Friends" } }],
+    { ...source, id: "other-source" },
+    lines,
+    at,
+    readAt,
+  );
+  equalTime.memoryReceipts[receiptId] = {
+    ...world.memoryReceipts[receiptId]!,
+    status: "rejected",
+    reason: "Disclosure needs one or two bounded exact supporting quotes",
+  };
+  publishRelationshipDisclosures(equalTime, [disclosure], source, lines, at, readAt);
+  assert.deepEqual(
+    projectRelationshipProfiles(equalTime.relationshipContext!, equalTime)[0]!.bond,
+    { connection: "Friends" },
+    "Ambiguous equal-time recovery cannot replace a different known source",
+  );
+  assert.equal(equalTime.memoryReceipts[receiptId]!.status, "rejected");
+  const correctedRoot = equalTime.memories.records[0]!;
+  const corrected = memoryProposal(equalTime.memories, {
+    audience: ["player"],
+    text: "Ada was explaining an unrelated preference.",
+    patch: {
+      action: "correct",
+      target: targetOf(equalTime.memories, correctedRoot.id),
+      kind: "information",
+      subjects: ["a"],
+      domainRef: correctedRoot.domainRef,
+    },
+  });
+  corrected.proposal.learners.player!.attributedTo = "a";
+  corrected.proposal.learners.player!.disclosed = { kind: "explanation", toId: "player" };
+  corrected.context.occurredAt = at;
+  corrected.context.recordedAt = readAt;
+  equalTime.memories = applyMemoryProposal(equalTime.memories, corrected.proposal, corrected.context).collection;
+  assert.equal(projectRelationshipProfiles(equalTime.relationshipContext!, equalTime)[0]!.bond, undefined);
+  publishRelationshipDisclosures(equalTime, [disclosure], source, lines, at, readAt);
+  assert.equal(
+    projectRelationshipProfiles(equalTime.relationshipContext!, equalTime)[0]!.bond,
+    undefined,
+    "Recovery cannot reverse a linked equal-time correction that changed category",
+  );
+}
+// Compact display is saved player knowledge, independent of private attitudes.
+{
+  const world = fixture();
+  const source = { kind: "scene" as const, id: "bond-source", revision: 1, fingerprint: memoryHash("bond") };
+  const speech = {
+    id: "bond-line",
+    speakerId: "a",
+    role: "assistant" as const,
+    content: "You're a close friend. I'm comfortable with you.",
+    heardBy: ["a", "player"],
+    playerHeard: true,
+  };
+  const disclosure = {
+    fromId: "a",
+    toId: "player",
+    text: speech.content,
+    kind: "connection",
+    lineIds: [speech.id],
+    bond: { connection: "Close friends", condition: "At ease", tone: "steady" },
+  };
+  const parse = (row: unknown, lines = [speech]) =>
+    parseRelationshipReview({ ...emptyRelationshipReview(), disclosures: [row] }, source.id, lines, world).disclosures;
+  const parsed = parse(disclosure);
+  for (const excerpts of [null, "bad", [], ["valid", 1]])
+    assert.throws(() => parse({ ...disclosure, excerpts }), "Invalid explicit excerpts cannot become fallback speech");
+  publishRelationshipDisclosures(world, parsed, source, [speech], at, readAt);
+  const profile = () => projectRelationshipProfiles(world.relationshipContext!, world)[0]!;
+  assert.deepEqual(profile().bond, { connection: "Close friends", condition: "At ease", tone: "steady" });
+  assert.throws(() => parse({ ...disclosure, toId: "b" }), /only the resident/);
+  assert.throws(() => parse({ ...disclosure, kind: "boundary" }), /only the resident/);
+  assert.throws(() => parse({ ...disclosure, bond: { connection: "Friends", tone: "steady" } }), /expressed condition/);
+  assert.throws(() => parse({ ...disclosure, bond: { connection: "x".repeat(61) } }), /60/);
+  assert.throws(() => parse(disclosure, [{ ...speech, playerHeard: false }]), /heard by the player/);
+
+  const later = { ...speech, id: "space", content: "I need some space." };
+  const laterSource = { ...source, id: "space-source" };
+  const space = parseRelationshipReview(
+    {
+      ...emptyRelationshipReview(),
+      disclosures: [
+        {
+          ...disclosure,
+          lineIds: [later.id],
+          text: later.content,
+          bond: { condition: "Needs space", tone: "strained" },
+        },
+      ],
+    },
+    laterSource.id,
+    [later],
+    world,
+  ).disclosures;
+  const laterAt = at;
+  publishRelationshipDisclosures(world, space, laterSource, [later], laterAt, readAt);
+  assert.deepEqual(
+    profile().bond,
+    { connection: "Close friends", condition: "Needs space", tone: "strained" },
+    "Condition-only speech preserves only an already known label",
+  );
+
+  const latest = world.memories.records.at(-1)!;
+  correctVillageMemory(
+    world,
+    {
+      operationId: "correct-bond",
+      action: "repair",
+      expectedCollectionRevision: world.memories.revision,
+      target: { id: latest.id, revision: latest.revision, rootRevision: latest.revision },
+      knowers: ["player"],
+      text: "Ada was talking about needing more room at the table.",
+    },
+    readAt,
+  );
+  assert.equal(profile().bond, undefined, "Correcting a later source never revives an older visual condition");
+  assert.equal(profile().summary, "");
+  assert.ok(profile().learned.some((row) => row.text.includes("room at the table")));
+
+  const legacy = { ...speech, id: "legacy", content: "I don't know where we stand." };
+  const legacySource = { ...source, id: "legacy-source" };
+  const withoutBond = parseRelationshipReview(
+    {
+      ...emptyRelationshipReview(),
+      disclosures: [{ ...disclosure, bond: undefined, lineIds: [legacy.id], text: legacy.content }],
+    },
+    legacySource.id,
+    [legacy],
+    world,
+  ).disclosures;
+  publishRelationshipDisclosures(world, withoutBond, legacySource, [legacy], "2026-10-26T12:02:00.000Z", readAt);
+  assert.equal(profile().bond, undefined, "A newer legacy disclosure clears compact prior knowledge");
+  assert.equal(profile().summary, legacy.content);
+
+  const forgotten = fixture();
+  publishRelationshipDisclosures(forgotten, parsed, source, [speech], at, readAt);
+  const target = forgotten.memories.records[0]!;
+  forgetVillageMemory(
+    forgotten,
+    {
+      operationId: "forget-bond",
+      action: "forget",
+      expectedCollectionRevision: forgotten.memories.revision,
+      target: { id: target.id, revision: target.revision, rootRevision: target.revision },
+      knowers: ["player"],
+    },
+    readAt,
+  );
+  assert.equal(projectRelationshipProfiles(forgotten.relationshipContext!, forgotten)[0]!.bond, undefined);
+  publishRelationshipDisclosures(forgotten, parsed, source, [speech], at, readAt);
+  assert.equal(
+    projectRelationshipProfiles(forgotten.relationshipContext!, forgotten)[0]!.bond,
+    undefined,
+    "Replay cannot restore forgotten display metadata",
+  );
+
+  const spoofed = fixture();
+  publishRelationshipDisclosures(spoofed, parsed, source, [speech], at, readAt);
+  spoofed.memories.records[0]!.knowers.player!.attributedTo = "b";
+  assert.equal(
+    projectRelationshipProfiles(spoofed.relationshipContext!, spoofed)[0]!.bond,
+    undefined,
+    "Another speaker's report cannot become the resident's expressed bond",
+  );
+  assert.equal(
+    projectRelationshipProfiles(spoofed.relationshipContext!, spoofed)[0]!.summary,
+    "",
+    "Fallback prose also requires the resident's own report",
+  );
+  const unrelated = fixture();
+  publishRelationshipDisclosures(unrelated, parsed, source, [speech], at, readAt);
+  const otherLine = { ...speech, id: "other-pair", content: "Ben is an old friend." };
+  const otherSource = { ...source, id: "other-pair-source" };
+  const otherDisclosure = parseRelationshipReview(
+    {
+      ...emptyRelationshipReview(),
+      disclosures: [{ ...disclosure, toId: "b", bond: undefined, text: otherLine.content, lineIds: [otherLine.id] }],
+    },
+    otherSource.id,
+    [otherLine],
+    unrelated,
+  ).disclosures;
+  publishRelationshipDisclosures(unrelated, otherDisclosure, otherSource, [otherLine], at, readAt);
+  const otherMemory = unrelated.memories.records.at(-1)!;
+  correctVillageMemory(
+    unrelated,
+    {
+      operationId: "correct-other-pair",
+      action: "repair",
+      expectedCollectionRevision: unrelated.memories.revision,
+      target: { id: otherMemory.id, revision: otherMemory.revision, rootRevision: otherMemory.revision },
+      knowers: ["player"],
+      text: "Ben is a recent acquaintance.",
+    },
+    readAt,
+  );
+  assert.deepEqual(
+    projectRelationshipProfiles(unrelated.relationshipContext!, unrelated)[0]!.bond,
+    { connection: "Close friends", condition: "At ease", tone: "steady" },
+    "Correcting a different pair does not erase the known player bond",
+  );
+  for (const display of ["none", "legacy", "compact"]) {
+    const linked = fixture();
+    publishRelationshipDisclosures(linked, parsed, source, [speech], at, readAt);
+    publishRelationshipDisclosures(linked, space, laterSource, [later], at, readAt);
+    const root = linked.memories.records.at(-1)!;
+    const correction = memoryProposal(linked.memories, {
+      audience: ["player"],
+      text: "I just needed some more room at the table.",
+      patch: {
+        action: "correct",
+        target: targetOf(linked.memories, root.id),
+        kind: "information",
+        subjects: ["a"],
+        domainRef: root.domainRef,
+      },
+    });
+    correction.proposal.learners.player!.attributedTo = "a";
+    correction.context.occurredAt = "2026-10-26T12:03:00.000Z";
+    correction.context.recordedAt = readAt;
+    if (display === "legacy") correction.proposal.learners.player!.disclosed = { kind: "connection", toId: "player" };
+    if (display === "compact")
+      correction.proposal.learners.player!.disclosed = {
+        kind: "connection",
+        toId: "player",
+        connectionLabel: "Close friends",
+        conditionLabel: "At ease",
+        bondTone: "steady",
+      };
+    linked.memories = applyMemoryProposal(linked.memories, correction.proposal, correction.context).collection;
+    assert.deepEqual(
+      projectRelationshipProfiles(linked.relationshipContext!, linked)[0]!.bond,
+      display === "compact" ? { connection: "Close friends", condition: "At ease", tone: "steady" } : undefined,
+      "A linked correction cannot revive an older bond; only its own valid disclosure supplies a replacement",
+    );
+    assert.equal(
+      projectRelationshipProfiles(linked.relationshipContext!, linked)[0]!.summary,
+      display === "none" ? "" : correction.proposal.text,
+      "Valid legacy corrections retain their own known prose",
+    );
+  }
+}
 reserveMemoryScene(state, "source-scene", at);
 reserveMemoryScene(state, "other-scene", at);
 const source = {
