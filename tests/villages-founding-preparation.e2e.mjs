@@ -245,8 +245,9 @@ await withBrowser(browser, async () => {
         instanceId: "history-instance",
         kind: "starting-ties",
         label: "Starting history",
-        status: "completed",
-        attempt: 1,
+        status: "failed",
+        attempt: 2,
+        error: "Starting history output was truncated.",
         requests: 1,
         tokens: 50,
       },
@@ -259,11 +260,24 @@ await withBrowser(browser, async () => {
       question: "Are Aqua and Feddy spouses or siblings?",
     };
     let inspected = 0,
-      clarified = 0;
-    let inspection = { residents: [], processing: [], conflicts: [conflict] };
+      clarified = 0,
+      historyRetries = 0;
+    let inspection = { residents: [], processing: [], conflicts: [] };
     await page.route("**/api/villages/relationships/inspect", (route) => {
       inspected++;
       return fulfill(route, { json: inspection });
+    });
+    await page.route("**/api/villages/background/retry", (route) => {
+      const body = route.request().postDataJSON();
+      assert.equal(body.id, "history-job");
+      assert.equal(body.expectedInstanceId, "history-instance");
+      assert.equal(body.expectedAttempt, 2);
+      assert.match(body.actionId, /^[a-zA-Z0-9-]+$/);
+      historyRetries++;
+      snapshot.backgroundWork[0].status = "running";
+      snapshot.backgroundWork[0].attempt = 3;
+      snapshot.backgroundWork[0].error = "";
+      return fulfill(route, { json: {} });
     });
     await page.route("**/api/villages/relationships/clarifications", (route) => {
       clarified++;
@@ -281,6 +295,10 @@ await withBrowser(browser, async () => {
     await expect(root.getByRole("heading", { name: "Starting history · Needs review" })).toBeVisible();
     assert.equal(inspected, 0, "Private history is read only after explicit Inspect");
     await root.getByText("Inspect starting history", { exact: true }).click();
+    await root.getByRole("button", { name: "Retry starting history", exact: true }).click();
+    await expect.poll(() => historyRetries).toBe(1);
+    inspection = { ...inspection, conflicts: [conflict] };
+    snapshot.backgroundWork[0].status = "completed";
     await expect(root.getByText(conflict.question, { exact: true })).toBeVisible();
     await root.getByRole("textbox", { name: "Clarification", exact: true }).fill("They are siblings.");
     assert.ok(
