@@ -506,12 +506,15 @@ export type ZonePicture = {
   removed?: boolean;
   failed?: boolean;
   dirty?: boolean;
-  operation?: "update" | "replace";
+  daylight?: boolean;
+  night?: { sourceId: string; image: VillageVenueImage };
+  operation?: "update" | "replace" | "night";
   problem?: string;
   lastAutomaticAt?: string;
 };
 export type VillageVenueSpace = {
   picture?: ZonePicture;
+  dayNight?: boolean;
   freezePicture?: boolean;
   pictureRevision?: number;
   connectedTo?: string[];

@@ -781,7 +781,6 @@ console.log(
   const { fixture, renovation, venue: makeVenue } = await import("./fixtures/villages-projects.fixture.js");
   const { venueFixture } = await import("./helpers/venues.fixture.js");
   const { buildLocationPrompt } = await import("../packages/villages/src/server/domain/rules/location-image-rules.js");
-  const { deriveVillageMoment } = await import("../packages/villages/src/server/domain/rules/village-clock.js");
   const { venueInZone } = await import("../packages/villages/src/server/domain/rules/venue-zones.js");
   const f = fixture();
   await f.mutate((state) => {
@@ -817,7 +816,6 @@ console.log(
   const picture = buildLocationPrompt(
     restarted,
     venueInZone(restored, "common"),
-    deriveVillageMoment({ foundedAt: restarted.foundedAt, seed: restarted.seed, now: new Date(at) }),
     "Old lore describes a damaged atrium",
     "interior",
   );

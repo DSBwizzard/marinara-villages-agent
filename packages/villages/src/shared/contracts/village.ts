@@ -424,6 +424,10 @@ export type VillageVenue = {
     controllerIds?: string[];
     venueClass: "residence" | "workplace" | "community" | "other";
     description: string;
+    dayNight?: boolean;
+    daylightReady?: boolean;
+    nightImage?: VillageVenueImage;
+    nightPending?: boolean;
     freezePicture?: boolean;
     pictureRetryAvailable?: boolean;
     pictureUpdateAvailable?: boolean;
@@ -812,6 +816,7 @@ export type SceneView = {
   lore?: import("./lore.js").LoreUse[];
   liveSceneVersion?: 1;
   currentTime?: string;
+  lighting?: "day" | "night";
   capturedContext?: true;
   playerName?: string;
   /** An existing handoff needs return/recovery controls; private context stays server-side. */

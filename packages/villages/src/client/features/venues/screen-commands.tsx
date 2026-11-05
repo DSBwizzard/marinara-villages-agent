@@ -87,6 +87,23 @@ export function useVenueScreenCommands(ports: {
       if (global.finish(claim)) setBusy(false);
     }
   };
+  const setZoneDayNight = async (place: VillageVenue, zoneId: string, enabled: boolean) => {
+    if (!isCurrentVenue(place.id)) return;
+    const claim = beginGlobal();
+    if (!claim) return;
+    setBusy(true);
+    try {
+      const next = await request<VillageSnapshot>("/locations/venue/image/day-night", {
+        method: "PATCH",
+        body: JSON.stringify({ venueId: place.id, zoneId, enabled }),
+      });
+      if (global.owns(claim)) setSnapshot(next);
+    } catch (cause) {
+      if (global.owns(claim)) setSettingsError(messageFrom(cause, "Day/night preference could not be saved."));
+    } finally {
+      if (global.finish(claim)) setBusy(false);
+    }
+  };
   const updateZonePicture = async (place: VillageVenue, zoneId: string, retry = false) => {
     if (!isCurrentVenue(place.id)) return;
     const claim = beginGlobal();
@@ -283,6 +300,7 @@ export function useVenueScreenCommands(ports: {
     saveVenueName,
     saveVenueImageContext,
     setZonePictureFrozen,
+    setZoneDayNight,
     retryZonePicture,
     updateZonePicture,
     requestPlayerMove,

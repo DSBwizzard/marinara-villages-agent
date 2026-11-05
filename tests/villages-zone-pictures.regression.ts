@@ -504,6 +504,106 @@ assert.equal(
   assert.equal(f.calls.length, 2);
   assert.equal(f.calls[1].referenceImages, undefined, "Retry repeats a failed Replace as fresh generation");
 }
+
+{
+  const f = fixture();
+  await f.service.setZoneDayNight("home", "living", true);
+  assert.equal(f.calls.length, 0, "pairing preference does not purchase images");
+  assert.equal(f.zone().picture?.daylight, false, "old artwork is not assumed to depict daytime");
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.zone().image?.id, "render-1");
+  assert.equal(f.zone().picture?.base?.id, "original");
+  assert.deepEqual(f.calls[1].referenceImages, ["reference:render-1"], "night derives only from the new day image");
+  assert.equal(f.zone().picture?.night?.sourceId, "render-1");
+  await f.service.setZonePictureFrozen("home", "living", true);
+  const frozen = await f.ports.buildVillageSnapshot!();
+  assert.equal(
+    frozen.settings.venues[0].zones!.find((z) => z.id === "living")?.nightImage?.id,
+    "render-2",
+    "Freeze does not invalidate a completed pair",
+  );
+  await f.service.setZonePictureFrozen("home", "living", false);
+  f.dirty("An oak desk replaces the sofa.");
+  await f.enter();
+  assert.equal(f.calls.length, 3);
+  assert.equal(f.zone().picture?.night, undefined, "a physical update cannot retain the prior night companion");
+  const pending = await f.ports.buildVillageSnapshot!();
+  assert.equal(pending.settings.venues[0].zones!.find((z) => z.id === "living")?.nightImage, undefined);
+  await f.enter();
+  assert.equal(f.calls.length, 3, "night respects the per-Zone cooldown");
+  f.advance(5 * 60_000);
+  await createLocationImages(f.ports).requestZonePicture("home", "living");
+  assert.equal(f.calls.length, 4, "the pending night stage survives a service restart");
+  assert.deepEqual(f.calls[3].referenceImages, ["reference:render-3"]);
+  assert.equal(f.world().zonePictureBudget?.used, 2, "each automatic image consumes its own allowance");
+  await f.service.setZoneDayNight("home", "living", false);
+  assert.equal(
+    (await f.ports.buildVillageSnapshot!()).settings.venues[0].zones!.find((z) => z.id === "living")?.nightImage,
+    undefined,
+  );
+}
+{
+  const f = fixture();
+  await f.service.setZoneDayNight("home", "living", true);
+  f.during(() => {
+    if (f.calls.length === 2) f.fail(true);
+  });
+  await assert.rejects(f.service.updateZonePicture("home", "living"));
+  assert.equal(f.zone().image?.id, "render-1", "a night failure retains the successful physical edit");
+  assert.equal(f.zone().picture?.operation, "night");
+  await f.enter();
+  assert.equal(f.calls.length, 2, "automatic work does not retry a failed night generation");
+  f.fail(false);
+  f.during();
+  await createLocationImages(f.ports).retryZonePicture("home", "living");
+  assert.equal(f.calls.length, 3, "Retry purchases only night, never the completed day edit");
+  assert.deepEqual(f.calls[2].referenceImages, ["reference:render-1"]);
+}
+{
+  const f = fixture();
+  await f.service.setZoneDayNight("home", "living", true);
+  f.during(() => {
+    if (f.calls.length === 2) f.dirty("A new blue wall.");
+  });
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.zone().picture?.night, undefined, "a changed physical account fences a late night result");
+}
+{
+  const f = fixture();
+  await f.service.setZoneDayNight("home", "living", true);
+  await f.service.updateZonePicture("home", "living");
+  await f.ports.setVillageVenueImage("home", image("uploaded"), undefined, "", false, "living");
+  assert.equal(f.zone().dayNight, false, "custom uploads return to single artwork without a hidden conversion");
+  assert.equal(f.zone().picture?.night, undefined);
+  assert.equal(f.calls.length, 2);
+}
+
+{
+  const f = fixture();
+  await f.service.setZoneDayNight("home", "living", true);
+  f.during(() => {
+    if (f.calls.length === 1) {
+      f.zone().freezePicture = true;
+      f.zone().pictureRevision!++;
+    }
+  });
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 1, "Freeze during the day edit cannot purchase a companion after discarding it");
+}
+{
+  const f = fixture();
+  await f.service.setZoneDayNight("home", "living", true);
+  await f.service.updateZonePicture("home", "living");
+  f.zone().picture!.night = undefined;
+  f.during(() => {
+    f.zone().freezePicture = true;
+    f.zone().pictureRevision!++;
+  });
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 3, "a discarded night result must not dispatch a second night request");
+  assert.equal(f.zone().picture?.night, undefined);
+}
 console.log(
   "Zone artwork: material changes, coalescing, operational budgets, generic creation, update/retry, opt-outs and stale-result fences passed.",
 );

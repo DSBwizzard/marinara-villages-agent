@@ -5,6 +5,7 @@ import { ExplorationNavigation, LocationNavigator, MapIcon } from "./villages-ex
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
+import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
 import { useEffect, useState } from "react";
 import { PlacesDirectory } from "./PlacesDirectory.js";
@@ -19,6 +20,7 @@ type MarkerDraft = {
 };
 
 export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
+  const lighting = useVillageLighting(controller.snapshot?.village, controller.snapshot?.clock?.paused);
   const {
     selectedMap,
     setSelectedMapId,
@@ -275,7 +277,14 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
       <div className={`${ELEMENT_TAG}-home-bar`}>
         <span className={`${ELEMENT_TAG}-map-identity`}>
           <strong>{snapshot?.village.name}</strong>
-          <HomeDateWeather weather={snapshot?.village.weather ?? ""} village={snapshot?.village} />
+          <HomeDateWeather
+            weather={snapshot?.village.weather ?? ""}
+            village={snapshot?.village}
+            paused={snapshot?.clock?.paused}
+          />
+          <span role="img" aria-label={lighting} title={lighting}>
+            {lighting === "night" ? "🌙" : lighting === "evening" ? "🌇" : lighting === "morning" ? "🌅" : "☀️"}
+          </span>
         </span>
         {!mobile && !placingProjectId && !markerDraft ? navigation : null}
         <span className={`${ELEMENT_TAG}-home-bar-actions`}>
@@ -442,6 +451,7 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             <div className={`${ELEMENT_TAG}-home-map-viewport`}>
               <MapStage
                 key={selectedMap?.id}
+                lighting={lighting}
                 src={townMapImage || null}
                 alt={`A map of ${selectedMap?.name ?? snapshot?.village.name ?? "the village"}.`}
                 pins={[

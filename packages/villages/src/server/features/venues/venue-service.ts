@@ -87,6 +87,7 @@ export function createVenueCommands({
     onlyIfEmpty = false,
     zoneId?: string,
     expectedContext?: string,
+    daylight = false,
   ): Promise<VillageSnapshot> {
     await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
     await mutateVillageState((state) => {
@@ -121,9 +122,11 @@ export function createVenueCommands({
       if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed)) return;
       if (onlyIfEmpty && zone.image) return;
       zone.image = image;
+      if (!daylight) zone.dayNight = false;
       zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
       zone.picture = {
         base: image,
+        daylight: !!image && daylight,
         removed: !image,
         baseline: image ? zonePictureBaseline(zonePictureContext(state, venue, zone)) : undefined,
         context: image ? zonePictureContext(state, venue, zone) : undefined,

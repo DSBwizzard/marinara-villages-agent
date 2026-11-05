@@ -234,16 +234,37 @@ function ZoneArtwork({
 }) {
   const { busy, placeBusyId, drawPlaceImage, keepPlaceImage, dropPlaceImage } = controller;
   const upload = useRef<HTMLInputElement>(null);
+  const [appearance, setAppearance] = useState<"day" | "night">("day");
+  const artwork = appearance === "night" && zone.nightImage ? zone.nightImage : zone.image;
   const disabled = busy || !!placeBusyId;
   const spaceClass = zone.kind === "exterior" ? undefined : zone.venueClass;
   return (
     <>
+      <label>
+        <input
+          type="checkbox"
+          checked={zone.dayNight === true}
+          disabled={disabled}
+          onChange={(event) => void controller.setZoneDayNight(place, zone.id, event.target.checked)}
+        />
+        Day & night · 2 images
+      </label>
+      {zone.dayNight && zone.daylightReady ? (
+        <div className={`${ELEMENT_TAG}-zone-artwork-actions`} aria-label="Artwork appearance">
+          <button type="button" aria-pressed={appearance === "day"} onClick={() => setAppearance("day")}>
+            Day
+          </button>
+          <button type="button" aria-pressed={appearance === "night"} onClick={() => setAppearance("night")}>
+            Night
+          </button>
+        </div>
+      ) : null}
       <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
-        {zone.image ? (
+        {artwork ? (
           <img
             className={`${ELEMENT_TAG}-venue-profile-image`}
-            src={zone.image.url}
-            alt={`${zone.name} at ${place.name}`}
+            src={artwork.url}
+            alt={`${zone.name} at ${place.name}${zone.dayNight && zone.daylightReady ? ` · ${appearance === "night" && zone.nightImage ? "Night" : "Day"}` : ""}`}
           />
         ) : (
           <div className={`${ELEMENT_TAG}-venue-image-empty`}>No artwork yet</div>
@@ -315,8 +336,10 @@ function ZoneArtwork({
           </button>
         ) : null}
       </div>
-      {zone.pictureProblem || zone.pictureUpdating ? (
-        <p role="status">{zone.pictureProblem || "Artwork pending"}</p>
+      {zone.pictureProblem || zone.pictureUpdating || zone.nightPending ? (
+        <p role="status">
+          {zone.pictureProblem || (zone.nightPending ? "Day/night artwork pending" : "Artwork pending")}
+        </p>
       ) : null}
     </>
   );

@@ -1,6 +1,5 @@
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
-import { villageNow } from "../../adapters/time/clock-gate.js";
 import { createZonePictures } from "./zone-picture-service.js";
 import type { resolveVillageImageEditing, resolveVillageImageConnectionId } from "./image-generation.js";
 import type { readZonePictureReference } from "../../adapters/engine/zone-picture-reference.js";
@@ -32,7 +31,6 @@ import {
 } from "../../domain/rules/scenery-context.js";
 import { venueClasses } from "../../domain/rules/venue-model.js";
 import { legacyZoneId, resolveVenueZone, venueInZone } from "../../domain/rules/venue-zones.js";
-import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import type { mutateVillageState, readVillageState } from "../world/village-store.js";
 import type { assertVenueImageAccess, setVillageVenueImage } from "../venues/services.js";
 import type { generateVillageImage } from "./image-generation.js";
@@ -81,12 +79,12 @@ export function createLocationImages(ports: LocationImagePorts) {
     onlyIfEmpty = false,
     zoneId?: string,
     guard?: (state: VillageState) => boolean,
-  ): Promise<VillageSnapshot> {
+  ): Promise<string | undefined> {
     const found = await requireVenue(venueId);
     const village = found.village;
     if (guard && !guard(village)) {
       if (!onlyIfEmpty) throw conflict("The scenery changed while its image was generated. Generate again.");
-      return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
+      return;
     }
     if (spaceClass && !venueClasses(found.venue).includes(spaceClass))
       throw notFound("That Venue space no longer exists.");
@@ -118,12 +116,6 @@ export function createLocationImages(ports: LocationImagePorts) {
           privateOwnerId,
         ),
     );
-    const moment = deriveVillageMoment({
-      foundedAt: village.foundedAt,
-      environment: village.narrative,
-      seed: village.seed,
-      now: villageNow(),
-    });
     const exterior = targetZone.kind === "exterior";
     let inspection: LoreInspection | undefined;
     const lore = await readVillageImageLore(
@@ -148,7 +140,6 @@ export function createLocationImages(ports: LocationImagePorts) {
     const basePrompt = buildLocationPrompt(
       { ...village, setting: "", worldRules: "", narrative: undefined, venues: [] },
       { ...venue, description: "" },
-      moment,
       "",
       exterior ? "exterior" : "interior",
       privateOwnerId
@@ -208,11 +199,11 @@ export function createLocationImages(ports: LocationImagePorts) {
         latestZone.picture?.removed ||
         sceneryImageKey(latest, latestVenue, zoneId) !== expectedContext
       )
-        return ports.buildVillageSnapshot!();
+        return;
     }
     if (guard && !guard(await readVillageState())) {
       if (!onlyIfEmpty) throw conflict("The scenery changed while its image was generated. Generate again.");
-      return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
+      return;
     }
     const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(inspection, "Image") : [];
     const decoded = await generateVillageImage({
@@ -244,7 +235,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     });
     if (guard && !guard(await readVillageState())) {
       if (!onlyIfEmpty) throw conflict("The scenery changed while its image was generated. Generate again.");
-      return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
+      return;
     }
     const image = await uploadVillageGalleryImage({
       bytes: decoded.bytes,
@@ -254,7 +245,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       width: LOCATION_IMAGE_WIDTH,
       height: LOCATION_IMAGE_HEIGHT,
     });
-    return setVillageVenueImage(
+    await setVillageVenueImage(
       venueId,
       { ...image, ...(usedLore.length ? { lore: usedLore } : {}) },
       spaceClass,
@@ -262,7 +253,9 @@ export function createLocationImages(ports: LocationImagePorts) {
       onlyIfEmpty,
       zoneId,
       expectedContext,
+      true,
     );
+    return image.id;
   }
 
   const pictures = createZonePictures(ports, (venueId, zoneId, automatic, guard) =>
@@ -319,6 +312,20 @@ export function createLocationImages(ports: LocationImagePorts) {
     return ports.buildVillageSnapshot!();
   }
 
+  async function setZoneDayNight(venueId: string, zoneId: string, enabled: boolean): Promise<VillageSnapshot> {
+    await ports.assertVenueImageAccess(venueId, undefined, "", zoneId);
+    await mutateVillageState((state) => {
+      const venue = state.venues.find((entry) => entry.id === venueId);
+      const zone = venue && resolveVenueZone(venue, zoneId);
+      if (!zone) throw notFound("That Zone is no longer here.");
+      if ((zone.dayNight === true) === enabled) return;
+      zone.dayNight = enabled;
+      zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
+      if (zone.picture) zone.picture.claim = undefined;
+    });
+    return ports.buildVillageSnapshot!();
+  }
+
   async function retryZonePicture(venueId: string, zoneId: string): Promise<VillageSnapshot> {
     const { venue } = await requireVenue(venueId);
     if (!resolveVenueZone(venue, zoneId)?.picture?.failed) return ports.buildVillageSnapshot!();
@@ -332,6 +339,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     generateFirstZoneImage,
     storeVillageVenueImage,
     setZonePictureFrozen,
+    setZoneDayNight,
     requestZonePicture,
     updateZonePicture,
     retryZonePicture,

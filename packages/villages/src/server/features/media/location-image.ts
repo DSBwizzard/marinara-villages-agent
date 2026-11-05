@@ -7,6 +7,9 @@ export async function requestZonePicture(...args: Parameters<LocationImageServic
 export async function setZonePictureFrozen(...args: Parameters<LocationImageService["setZonePictureFrozen"]>) {
   return binding.get().setZonePictureFrozen(...args);
 }
+export async function setZoneDayNight(...args: Parameters<LocationImageService["setZoneDayNight"]>) {
+  return binding.get().setZoneDayNight(...args);
+}
 export async function retryZonePicture(...args: Parameters<LocationImageService["retryZonePicture"]>) {
   return binding.get().retryZonePicture(...args);
 }

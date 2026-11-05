@@ -66,6 +66,7 @@ export function venuePictureOf(venues: readonly VillageVenue[], room: SceneView)
     if (!zone) return "";
     // A deliberate removal stays blank; old Entrance rows without artwork
     // keep their Venue-image fallback.
+    if (room.lighting === "night" && zone.nightImage) return zone.nightImage.url;
     if (zone.image !== undefined) return zone.image?.url ?? "";
     if (room.area !== "outside") return "";
   }

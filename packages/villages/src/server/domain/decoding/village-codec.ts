@@ -516,6 +516,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
         : "",
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
+      dayNight: row.dayNight === true,
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {
@@ -523,7 +524,18 @@ function coerceVenue(value: unknown): VillageVenue | null {
         removed: asRecord(row.picture).removed === true,
         failed: asRecord(row.picture).failed === true,
         dirty: asRecord(row.picture).dirty === true,
-        operation: asRecord(row.picture).operation === "replace" ? ("replace" as const) : ("update" as const),
+        daylight: asRecord(row.picture).daylight === true,
+        night: (() => {
+          const night = asRecord(asRecord(row.picture).night);
+          const image = coerceVenueImage(night.image);
+          return image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined;
+        })(),
+        operation:
+          asRecord(row.picture).operation === "night"
+            ? ("night" as const)
+            : asRecord(row.picture).operation === "replace"
+              ? ("replace" as const)
+              : ("update" as const),
         problem: boundText(asRecord(row.picture).problem, 300) || undefined,
         lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
         context: boundText(asRecord(row.picture).context, 24000) || undefined,
@@ -688,6 +700,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           }
         : undefined,
       seen: row.seen === true,
+      dayNight: row.dayNight === true,
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {
@@ -695,7 +708,18 @@ function coerceVenue(value: unknown): VillageVenue | null {
         removed: asRecord(row.picture).removed === true,
         failed: asRecord(row.picture).failed === true,
         dirty: asRecord(row.picture).dirty === true,
-        operation: asRecord(row.picture).operation === "replace" ? ("replace" as const) : ("update" as const),
+        daylight: asRecord(row.picture).daylight === true,
+        night: (() => {
+          const night = asRecord(asRecord(row.picture).night);
+          const image = coerceVenueImage(night.image);
+          return image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined;
+        })(),
+        operation:
+          asRecord(row.picture).operation === "night"
+            ? ("night" as const)
+            : asRecord(row.picture).operation === "replace"
+              ? ("replace" as const)
+              : ("update" as const),
         problem: boundText(asRecord(row.picture).problem, 300) || undefined,
         lastAutomaticAt: asIsoString(asRecord(row.picture).lastAutomaticAt) ?? undefined,
         context: boundText(asRecord(row.picture).context, 24000) || undefined,

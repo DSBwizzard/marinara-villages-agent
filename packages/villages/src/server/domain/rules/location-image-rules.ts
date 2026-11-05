@@ -2,7 +2,6 @@ import { currentVillageCircumstances } from "./prompt-preset.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
 import { imagePromptId } from "./image-generation-rules.js";
 import { venueZones } from "./venue-zones.js";
-import { describeMoment, type VillageMoment } from "./village-clock.js";
 
 export const LOCATION_IMAGE_WIDTH = 1216;
 
@@ -26,7 +25,6 @@ export const avatarPromptId = imagePromptId;
 export function buildLocationPrompt(
   village: VillageState,
   venue: VillageVenue,
-  moment: VillageMoment,
   lore = "",
   area: "exterior" | "interior" = "exterior",
   spaceLabel = "",
@@ -65,7 +63,7 @@ export function buildLocationPrompt(
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
     "Current Venue and Zone records govern physical truth; lore and starting descriptions cannot undo changed physical conditions.",
-    `It is ${describeMoment(moment)}, and the weather is ${moment.weather}.`,
+    "Depict stable daytime lighting wherever daylight reaches this Zone; enclosed spaces retain their established artificial lighting. Do not bake the current time, passing weather or seasonal events into this enduring background. Honor explicit standing world rules.",
     `Honor these facts and do not invent conflicting architecture, technology or geography. ${village.sceneryArtStyle ? "Background scenery" : "Painted background art"} for a story: no people, no animals, no text, no lettering, no watermark.`,
   ]
     .filter((part) => part.length > 0)

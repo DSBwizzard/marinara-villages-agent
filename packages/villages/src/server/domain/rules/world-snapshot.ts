@@ -242,9 +242,23 @@ export function villageSettings(
         const zone = {
           ...originalZone,
           picture: undefined,
+          daylightReady: originalZone.picture?.daylight === true,
+          nightImage:
+            originalZone.dayNight &&
+            originalZone.image &&
+            originalZone.picture?.night?.sourceId === originalZone.image.id
+              ? originalZone.picture.night.image
+              : undefined,
+          nightPending:
+            originalZone.dayNight === true &&
+            (!originalZone.picture?.daylight ||
+              !originalZone.image ||
+              originalZone.picture?.night?.sourceId !== originalZone.image.id),
           pictureRevision: undefined,
           pictureRetryAvailable: originalZone.picture?.failed === true,
           pictureUpdateAvailable:
+            (originalZone.dayNight &&
+              (!originalZone.picture?.daylight || originalZone.picture?.night?.sourceId !== originalZone.image?.id)) ||
             !originalZone.image ||
             originalZone.picture?.dirty === true ||
             (originalZone.picture?.context || originalZone.picture?.baseline
@@ -284,6 +298,10 @@ export function villageSettings(
                 roomSpecification: undefined,
                 purpose: "",
                 image: null,
+                nightImage: undefined,
+                nightPending: undefined,
+                dayNight: undefined,
+                daylightReady: undefined,
                 pictureRetryAvailable: false,
                 pictureUpdateAvailable: false,
                 pictureProblem: undefined,

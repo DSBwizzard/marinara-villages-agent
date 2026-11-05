@@ -148,6 +148,12 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/locations/venue/image/freeze")) {
         const body = request.postDataJSON();
         place.zones.find((zone) => zone.id === body.zoneId).freezePicture = body.frozen;
+      } else if (path.endsWith("/locations/venue/image/day-night")) {
+        const body = request.postDataJSON();
+        const zone = place.zones.find((zone) => zone.id === body.zoneId);
+        zone.dayNight = body.enabled;
+        zone.daylightReady = true;
+        zone.nightImage = body.enabled ? { id: "night", url: mapImage + "#night" } : undefined;
       } else if (path.endsWith("/locations/venue/image")) {
         const body = request.postDataJSON();
         const zone = place.zones.find((zone) => zone.id === body.zoneId);
@@ -315,6 +321,15 @@ await withBrowser(browser, async () => {
       path: "/api/villages/locations/venue/image",
       body: { venueId: place.id, spaceClass: "residence", privateOwnerId: "", zoneId: "bay" },
     });
+    await detail.getByRole("checkbox", { name: "Day & night" }).click();
+    await expect(detail.getByRole("checkbox", { name: "Day & night" })).toBeChecked();
+    await expect(detail.getByRole("button", { name: "Day", exact: true })).toBeVisible();
+    await detail.getByRole("button", { name: "Night", exact: true }).click();
+    await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#night");
+    await detail.getByRole("button", { name: "Day", exact: true }).click();
+    await expect(detail.locator("img")).toHaveAttribute("src", mapImage);
+    await detail.getByRole("checkbox", { name: "Day & night" }).click();
+    await expect(detail.getByRole("checkbox", { name: "Day & night" })).not.toBeChecked();
     await detail.getByLabel("Upload Main Bay artwork").setInputFiles({
       name: "zone.png",
       mimeType: "image/png",

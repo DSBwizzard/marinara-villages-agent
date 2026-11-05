@@ -19,6 +19,7 @@ import {
 export const AUTOMATIC_PICTURES_PER_HOUR = 6;
 export const AUTOMATIC_ZONE_PAUSE_MS = 5 * 60_000;
 const HOUR = 60 * 60_000;
+type CanonicalPicture = { identity: string; epoch: number; revision: number; imageId: string; context: string };
 
 /** One activation-owned queue; saved claims and reservations fence restarts and CAS retries. */
 export function createZonePictures(
@@ -28,7 +29,7 @@ export function createZonePictures(
     zoneId: string,
     automatic: boolean,
     guard: (state: VillageState) => boolean,
-  ) => Promise<unknown>,
+  ) => Promise<string | undefined>,
 ) {
   let tail: Promise<unknown> = Promise.resolve();
   const jobs = new Map<string, Promise<unknown>>();
@@ -57,8 +58,9 @@ export function createZonePictures(
     venueId: string,
     zoneId: string,
     automatic: boolean,
-    replacement?: (guard: (state: VillageState) => boolean) => Promise<unknown>,
-  ): Promise<unknown> {
+    replacement?: (guard: (state: VillageState) => boolean) => Promise<string | undefined>,
+    canonical?: CanonicalPicture,
+  ): Promise<CanonicalPicture | undefined> {
     const admitted = await ports.readVillageState();
     const identity = JSON.stringify([admitted.seed, admitted.foundedAt]);
     return run(
@@ -85,9 +87,29 @@ export function createZonePictures(
         const source = zone.image,
           base = zone.picture?.base ?? source;
         const target = zonePictureContext(village, venue, zone);
+        const prior = zone.picture?.context ?? zone.picture?.baseline;
+        const same = !!prior && zonePictureBaseline(prior) === target;
+        const needsDaylight = zone.dayNight && !zone.picture?.daylight;
+        const night = !!(
+          source &&
+          same &&
+          zone.dayNight &&
+          zone.picture?.daylight &&
+          zone.picture.night?.sourceId !== source.id &&
+          !replacement
+        );
         const freshContext = !source || replacement ? sceneryImageKey(village, venue, zone.id) : undefined;
         const epoch = village.zonePictureEpoch ?? 0,
           revision = zone.pictureRevision ?? 0;
+        if (
+          canonical &&
+          (canonical.identity !== identity ||
+            canonical.epoch !== epoch ||
+            canonical.revision !== revision ||
+            canonical.imageId !== source?.id ||
+            canonical.context !== target)
+        )
+          return;
         const valid = (state: VillageState) => {
           const found = find(state, venueId, zone.id),
             current = found.zone;
@@ -95,6 +117,7 @@ export function createZonePictures(
             JSON.stringify([state.seed, state.foundedAt]) === identity &&
             (state.zonePictureEpoch ?? 0) === epoch &&
             (current.pictureRevision ?? 0) === revision &&
+            current.dayNight === zone.dayNight &&
             current.image?.id === source?.id &&
             found.venue &&
             zonePictureContext(state, found.venue, current) === target &&
@@ -103,9 +126,7 @@ export function createZonePictures(
             ? current
             : undefined;
         };
-        const prior = zone.picture?.context ?? zone.picture?.baseline;
-        const same = prior && zonePictureBaseline(prior) === target;
-        if (source && same && !replacement) {
+        if (source && same && !replacement && !needsDaylight && !night) {
           if (zone.picture?.dirty || zone.picture?.problem || zone.picture?.failed || zone.picture?.claim)
             await ports.mutateVillageState((state) => {
               const current = valid(state);
@@ -118,7 +139,7 @@ export function createZonePictures(
             });
           return;
         }
-        if (automatic && source && !zone.picture?.dirty) return;
+        if (automatic && source && !zone.picture?.dirty && !needsDaylight && !night) return;
         if (automatic && (zone.picture?.failed || zone.picture?.claim || (!source && zone.initialImageAttemptedAt))) {
           await ports.mutateVillageState((state) => {
             const current = valid(state);
@@ -146,22 +167,33 @@ export function createZonePictures(
           problem = "Choose an enabled image connection to update artwork.";
         }
         // Preserve the complete before/after accounts; never truncate a physical change.
-        const prompt = [
-          "Edit reference 1, the latest appearance of this exact Zone. Preserve viewpoint, architecture, furniture identities, colors, fabrics and all details not contradicted by the complete target physical account. Remove things the previous account names that are absent from the target. No people. Match the existing art style. Do not add possessions from personality context.",
-          support?.multiple && base?.id !== source?.id
-            ? "Reference 2 is the original architectural anchor; preserve later furnishings unless the target changes them."
-            : "",
-          "Venue form describes the whole building. Follow explicit architectural changes in the target while preserving unrelated furnishings and details.",
-          "Previous physical account: " +
-            (prior
-              ? zonePictureBaseline(prior)
-                ? zonePictureBaseline(prior)
-                : "Not recorded"
-              : "Not recorded; preserve existing visual details unless the target contradicts them."),
-          "Complete target physical account: " + target,
-        ]
-          .filter(Boolean)
-          .join("\n");
+        const prompt = night
+          ? [
+              "Relight reference 1, the current daytime image of this exact Zone, for nighttime. Keep the identical viewpoint, geometry, architecture, furniture, possessions, colors and art style. Change only illumination, the sky or visible outdoor view through existing openings, and established lamps. Do not add windows, lamps, objects, people or passing weather. Enclosed spaces may retain their established artificial lighting. Honor the complete physical account and standing world rules.",
+              "Complete physical account: " + target,
+              village.worldRules ? "Standing world rules: " + village.worldRules : "",
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : [
+              "Edit reference 1, the latest appearance of this exact Zone. Preserve viewpoint, architecture, furniture identities, colors, fabrics and all details not contradicted by the complete target physical account. Remove things the previous account names that are absent from the target. No people. Match the existing art style. Do not add possessions from personality context.",
+              support?.multiple && base?.id !== source?.id
+                ? "Reference 2 is the original architectural anchor; preserve later furnishings unless the target changes them."
+                : "",
+              "Venue form describes the whole building. Follow explicit architectural changes in the target while preserving unrelated furnishings and details.",
+              "Previous physical account: " +
+                (prior
+                  ? zonePictureBaseline(prior)
+                    ? zonePictureBaseline(prior)
+                    : "Not recorded"
+                  : "Not recorded; preserve existing visual details unless the target contradicts them."),
+              "Complete target physical account: " + target,
+              zone.dayNight
+                ? "Use stable daytime lighting wherever daylight reaches this Zone; enclosed spaces retain their established artificial lighting. Do not depict passing weather. Honor standing world rules."
+                : "",
+            ]
+              .filter(Boolean)
+              .join("\n");
         if (!replacement && source && prior && !zonePictureBaseline(prior))
           problem = "Artwork baseline is unavailable. Generate a replacement.";
         let editPrompt = prompt;
@@ -169,7 +201,7 @@ export function createZonePictures(
           problem =
             "The complete artwork instructions are too long. Shorten Long-term details or Generate a replacement.";
         const claim = createHash("sha256")
-          .update(JSON.stringify([identity, zone.id, target, source?.id, revision, epoch]))
+          .update(JSON.stringify([identity, zone.id, target, source?.id, revision, epoch, night ? "night" : "day"]))
           .digest("hex");
         let claimed = false;
         await ports.mutateVillageState((state) => {
@@ -209,7 +241,7 @@ export function createZonePictures(
             base,
             claim,
             attempted: claim,
-            operation: replacement ? "replace" : "update",
+            operation: replacement ? "replace" : night ? "night" : "update",
             failed: false,
             problem: undefined,
             lastAutomaticAt: automatic ? new Date(now()).toISOString() : current.picture?.lastAutomaticAt,
@@ -220,17 +252,19 @@ export function createZonePictures(
         if (!claimed) {
           if (!automatic && !valid(await ports.readVillageState()))
             throw conflict("The scenery changed while its image was generated. Generate again.");
-          return ports.buildVillageSnapshot?.();
+          return;
         }
         activeClaims.add(claim);
         try {
-          if (!source || replacement)
-            return await (replacement
+          if (!source || replacement) {
+            const imageId = await (replacement
               ? replacement((state) => valid(state)?.picture?.claim === claim)
               : draw(venueId, zone.id, automatic, (state) => valid(state)?.picture?.claim === claim));
+            return imageId ? { identity, epoch, revision: revision + 1, imageId, context: target } : undefined;
+          }
           const reference = await ports.readZonePictureReference!(source);
           const references = [reference.dataUrl];
-          if (support!.multiple && base && base.id !== source.id)
+          if (!night && support!.multiple && base && base.id !== source.id)
             references.push((await ports.readZonePictureReference!(base)).dataUrl);
           if (valid(await ports.readVillageState())?.picture?.claim !== claim) return;
           let inspection: LoreInspection | undefined;
@@ -282,19 +316,33 @@ export function createZonePictures(
             prompt: editPrompt,
           });
           if (usedLore.length) image.lore = usedLore;
+          let committed = false;
           await ports.mutateVillageState((state) => {
+            committed = false;
             const current = valid(state);
             if (!current || current.picture?.claim !== claim) return;
+            if (night) {
+              current.picture = {
+                ...current.picture!,
+                night: { sourceId: source.id, image },
+                failed: false,
+                problem: undefined,
+              };
+              return;
+            }
             current.image = image;
             current.picture = {
               base,
+              daylight: zone.dayNight ? true : zone.picture?.daylight,
               baseline: zone.picture?.baseline ?? target,
               context: target,
               attempted: claim,
               dirty: false,
               lastAutomaticAt: current.picture.lastAutomaticAt,
             };
+            committed = true;
           });
+          if (committed) return { identity, epoch, revision, imageId: image.id, context: target };
         } catch (error) {
           await ports.mutateVillageState((state) => {
             const current = find(state, venueId, zone.id).zone;
@@ -320,19 +368,43 @@ export function createZonePictures(
       },
     );
   }
+  async function completeNight(venueId: string, zoneId: string, canonical?: CanonicalPicture) {
+    if (!canonical) return;
+    const village = await ports.readVillageState();
+    const { venue, zone } = find(village, venueId, zoneId);
+    if (
+      venue &&
+      JSON.stringify([village.seed, village.foundedAt]) === canonical.identity &&
+      (village.zonePictureEpoch ?? 0) === canonical.epoch &&
+      (zone?.pictureRevision ?? 0) === canonical.revision &&
+      zone?.image?.id === canonical.imageId &&
+      zonePictureContext(village, venue, zone) === canonical.context &&
+      zone?.dayNight &&
+      zone.image &&
+      zone.picture?.daylight &&
+      zone.picture.night?.sourceId !== zone.image.id &&
+      !zone.picture.failed &&
+      zonePictureBaseline(zone.picture.context ?? zone.picture.baseline ?? "") ===
+        zonePictureContext(village, venue, zone)
+    )
+      await queue(venueId, zoneId, false, undefined, canonical);
+  }
   async function updateZonePicture(venueId: string, zoneId: string) {
     await ports.assertVenueImageAccess(venueId, undefined, "", zoneId);
-    await queue(venueId, zoneId, false);
+    const canonical = await queue(venueId, zoneId, false);
+    await completeNight(venueId, zoneId, canonical);
     return ports.buildVillageSnapshot!();
   }
   return {
     replaceZonePicture: async (
       venueId: string,
       zoneId: string,
-      draw: (guard: (state: VillageState) => boolean) => Promise<unknown>,
+      draw: (guard: (state: VillageState) => boolean) => Promise<string | undefined>,
     ) => {
       await ports.assertVenueImageAccess(venueId, undefined, "", zoneId);
-      return queue(venueId, zoneId, false, draw);
+      const canonical = await queue(venueId, zoneId, false, draw);
+      await completeNight(venueId, zoneId, canonical);
+      return ports.buildVillageSnapshot!();
     },
     requestZonePicture: (venueId: string, zoneId: string) => queue(venueId, zoneId, true),
     updateZonePicture,

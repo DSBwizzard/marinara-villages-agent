@@ -113,7 +113,6 @@ async function main() {
     moduleUrl(`${services}/features/world/village-store.ts`)
   );
   const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/adapters/engine/engine-loopback.ts`));
-  const { describeMoment } = await import(moduleUrl(`${services}/domain/rules/village-clock.ts`));
 
   // ── The one number two codebases have to agree on ──────────────────────────
   // The tab refuses a file before encoding it, the package refuses a data url
@@ -179,24 +178,6 @@ async function main() {
   );
 
   // ── What the model is asked for ───────────────────────────────────────────
-  // Assembled out of what the village already knows, so the picture agrees with
-  // the words beside it. Nothing here is invented and nothing here is a second
-  // call: the moment was worked out from the clock, for free.
-  const moment = {
-    dateLabel: "11 September",
-    weekday: "Friday",
-    season: "autumn" as const,
-    dayPhase: "morning",
-    instant: "2026-09-11T16:30:00.000Z",
-    localTime: "09:30",
-    minuteOfDay: 570,
-    timeZone: "America/Los_Angeles",
-    hour: 9,
-    minute: 30,
-    weather: "fine drizzle",
-    dayIndex: 3,
-    nextTransitionAt: "2026-09-11T16:31:00.000Z",
-  };
   const setting = "A mill town at the foot of a ridge.";
   const village = coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, setting });
   const exteriorPrompt = buildLocationPrompt(
@@ -215,10 +196,11 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
-  for (const fact of ["the mill pond", "where the grain is ground", setting, describeMoment(moment), moment.weather])
+  for (const fact of ["the mill pond", "where the grain is ground", setting])
     assert.ok(exteriorPrompt.includes(fact), `${fact} informs the exterior image`);
+  assert.doesNotMatch(exteriorPrompt, /fine drizzle|09:30/);
+  assert.match(exteriorPrompt, /stable daytime lighting/);
   assert.match(exteriorPrompt, /entrance and approach, not its enterable interior/u);
   assert.match(exteriorPrompt, /recognizable at thumbnail size/u);
   const interiorPrompt = buildLocationPrompt(
@@ -238,7 +220,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
     "",
     "interior",
   );
@@ -271,7 +252,6 @@ async function main() {
           }),
         ],
       }).venues[0]!,
-      moment,
       "The mill walls are red brick",
     ),
     /Established visual lore: The mill walls are red brick/,
@@ -321,7 +301,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
   for (const fact of [
     "a stone watermill",
@@ -362,7 +341,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
   assert.match(occupiedExterior, /brick cottage|brick porch/u);
   assert.doesNotMatch(occupiedExterior, /secret|hidden room chest|Private Space fact/u);
@@ -383,7 +361,6 @@ async function main() {
           }),
         ],
       }).venues[0]!,
-      moment,
     ).includes("—"),
     false,
     "a place with no note does not get a dangling dash",
@@ -409,7 +386,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
   assert.ok(chatty.includes("y".repeat(MAX_SETTING_LENGTH)), "the full authored description survives assembly");
   assert.throws(
@@ -1061,7 +1037,7 @@ async function main() {
   );
   assert.ok(request.appearance.includes("Physical form: where the grain is ground."));
   assert.ok(request.appearance.includes(settingText), "and it knows which village it stands in");
-  assert.match(request.appearance, /It is .+, and the weather is .+\./, "and what the weather is doing right now");
+  assert.match(request.appearance, /stable daytime lighting/, "artwork lighting is independent of generation time");
   assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
   assert.match(request.promptOverrides[0].negativePrompt, /people/);
   assert.match(request.promptOverrides[0].negativePrompt, /lettering/);
