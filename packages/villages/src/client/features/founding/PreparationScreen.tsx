@@ -84,7 +84,7 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
               ready={preparation.startingHistoryReady}
               work={
                 snapshot?.backgroundWork
-                  .filter((row) => row.kind === "starting-ties")
+                  ?.filter((row) => row.kind === "starting-ties")
                   .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
               }
               onChange={async () => controller.setSnapshot(await request("/setup/preparation"))}

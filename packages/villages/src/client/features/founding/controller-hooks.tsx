@@ -543,7 +543,7 @@ export function useFoundingPreparationPolling(ports: {
         if (!next.foundingPreparation || next.foundingPreparation.canPlay) setScreen("home");
         else if (
           next.foundingPreparation.status === "pending" ||
-          next.backgroundWork.some((row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status))
+          next.backgroundWork?.some((row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status))
         )
           timer = setTimeout(() => void poll(), 2500);
       } catch (cause) {

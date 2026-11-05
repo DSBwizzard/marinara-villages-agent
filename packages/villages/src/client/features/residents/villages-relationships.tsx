@@ -191,7 +191,7 @@ export function VillagesRelationships({
                 conflicts={debug.conflicts}
                 disabled={
                   saving ||
-                  debug.processing.some(
+                  debug.processing?.some(
                     (work) => work.kind === "starting-ties" && ["queued", "running"].includes(work.status),
                   )
                 }

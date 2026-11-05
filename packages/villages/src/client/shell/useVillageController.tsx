@@ -1078,7 +1078,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     ...founding,
     visible,
     canPlay: snapshot?.foundingPreparation?.canPlay,
-    historyPending: !!snapshot?.backgroundWork.some(
+    historyPending: !!snapshot?.backgroundWork?.some(
       (row) => row.kind === "starting-ties" && ["queued", "running"].includes(row.status),
     ),
     status: snapshot?.foundingPreparation?.status,
