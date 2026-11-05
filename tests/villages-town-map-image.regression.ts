@@ -24,18 +24,44 @@ async function main() {
     await import("../packages/villages/src/server/domain/rules/town-map-prompts.ts");
   {
     const queries: string[] = [];
+    const images: { prompt: string; sceneryStyleProfileId?: unknown }[] = [];
     const service = createTownMapImage({
       readVillageImageLoreEntries: async (_ids, query) => {
         queries.push(query);
         return [];
       },
-      generateVillageImage: async () => ({ dataUrl: "synthetic", bytes: new Uint8Array(), mime: "image/png" }),
+      generateVillageImage: async (input: { prompt: string; sceneryStyleProfileId?: unknown }) => {
+        images.push(input);
+        return { dataUrl: "synthetic", bytes: new Uint8Array(), mime: "image/png" };
+      },
       inspectVillageImage: async () => ({ width: 1440, height: 900 }),
     } as any);
     await service.generateVillageTownMap({ setting: "Harbor", structure: "Silver Guild tower" });
     assert.match(queries[0], /Silver Guild tower/, "Authored map details participate in relevance matching");
     await service.generateVillageTownMap({ setting: "Harbor", structure: DEFAULT_TOWN_MAP_LAYOUT_PROMPT });
     assert.equal(queries[1], "Harbor", "Application map instructions never become retrieval keys");
+    for (const [setting, details] of [
+      ["A forest of trails and clearings.", "No buildings; keep the woodland canopy except over paths."],
+      ["An outdoor village of timber houses.", "Keep roofs intact; map streets and entrances only."],
+      ["An enclosed shopping mall.", "Ground-floor interior plan with readable concourses and shop boundaries."],
+      ["A mall with an open courtyard and two floors.", "Show both levels side by side; connect the courtyard routes."],
+    ]) {
+      const before = images.length;
+      await service.generateVillageTownMap({
+        setting,
+        structure: details,
+        sceneryArtStyle: "Watercolor",
+        sceneryStyleProfileId: "shared-style",
+      });
+      assert.equal(images.length, before + 1, "adaptive composition uses one image request without a mode");
+      const image = images.at(-1)!;
+      assert.ok(image.prompt.startsWith(DEFAULT_TOWN_MAP_LAYOUT_PROMPT));
+      assert.ok(image.prompt.includes("Village description: " + setting));
+      assert.ok(image.prompt.includes("Map details: " + details));
+      assert.match(image.prompt, /Map details take priority.*default composition/);
+      assert.match(image.prompt, /Art style for this scenery: Watercolor/);
+      assert.equal(image.sceneryStyleProfileId, "shared-style");
+    }
   }
   const { TOWN_MAP_EXPECTED_HEIGHT, TOWN_MAP_EXPECTED_WIDTH, MAX_TOWN_MAP_IMAGE_LENGTH, villageCurrentSetting } =
     await import(pathToFileURL(join(services, "domain/rules/prompt-preset.ts")).href);

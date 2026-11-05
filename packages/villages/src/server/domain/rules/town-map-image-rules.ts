@@ -35,7 +35,7 @@ export function buildTownMapPrompt(
   const prompt = [
     rules,
     VILLAGE_SHARED_SETTING_RULE,
-    "Map details take priority over conflicting Village description, reviewed context, lore and default scenery-content guidance. Follow Map details for what to include, arrange or omit; follow the Village description for anything Map details leave unspecified. Preserve overhead navigation and spatial readability.",
+    "Map details take priority over conflicting Village description, reviewed context, lore and default composition or scenery-content guidance. Follow Map details for the area, level and what to include, arrange, reveal or omit; follow the Village description for anything Map details leave unspecified. Preserve overhead navigation and spatial readability.",
     "Village description: " + world,
     layout ? "Map details: " + layout : "",
     worldRules ? "Standing world rules: " + worldRules : "",
