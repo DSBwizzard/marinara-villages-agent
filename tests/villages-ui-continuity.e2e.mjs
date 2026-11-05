@@ -14,8 +14,10 @@ import {VillagerDossier} from './packages/villages/src/client/features/residents
 import {VillagerWishJournal} from './packages/villages/src/client/features/residents/villages-wish-journal.js';
 import {VillagerMemoriesPanel} from './packages/villages/src/client/features/residents/MemoriesPanel.js';
 import {useLoadMemoryLibrary,useLoadAgendas,useSetAgendaScheduleIngestion} from './packages/villages/src/client/features/residents/actions.js';
+import {useSceneSelectionReset} from './packages/villages/src/client/features/scenes/controller-hooks.js';
 function Harness(){
  const [scope,setScope]=useState('world-a'),[actor,setActor]=useState('mara'),[revision,setRevision]=useState('0');
+ const [navigation,setNavigation]=useState({actorId:'mara',returnTo:'home'});
  const [active,setActive]=useState(true),[hidden,setHidden]=useState(false),[sprites,setSprites]=useState(false);
  const [library,setLibrary]=useState(null),[agendas,writeAgendas]=useState(null),[error,setError]=useState('');
  const agendaRevision=useRef(0),currentSnapshotRef=useRef(null);currentSnapshotRef.current={worldScope:scope};
@@ -24,9 +26,12 @@ function Harness(){
  const loadMemory=useLoadMemoryLibrary({worldScope:scope,setMemoryLibrary:setLibrary,setError});
  const loadAgendas=useLoadAgendas({worldScope:scope,setAgendas,setError,agendaRevision});
  const influence=useSetAgendaScheduleIngestion({currentSnapshotRef,setAgendas,setError,setBusy:()=>{}});
- window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas};
+ const [validating,setValidating]=useState(false),observed=useRef(''),completion=useRef({roomId:'',submissionId:''}),movement=useRef(''),seen=useRef(new Set());
+ const noChange=useCallback(()=>{},[]);
+ useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active',liveSceneVersion:1}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
+ window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
  return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}>
- <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={{actorId:actor,returnTo:'home'}} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
+ <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={navigation.actorId===actor?navigation:{actorId:actor,returnTo:'home'}} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
  onInspectSection={()=>{}} onBack={()=>setActive(false)} onVenue={()=>{}} inspectors={{
  wishes:<VillagerWishJournal request={request} characterId={actor} prefix='v' inspect/>,
@@ -133,6 +138,8 @@ await withBrowser(browser, async () => {
       } else if (url.pathname.endsWith("/agendas") || url.pathname.endsWith("/influence"))
         json = { villagers: [{ characterId: "mara", name: agendaName }] };
       else if (url.pathname.endsWith("/signature")) json = { status: "idle", attempt: 0 };
+      else if (url.pathname.endsWith("/rooms/active"))
+        json = { session: { id: "saved-scene", status: "active", liveSceneVersion: 1 } };
       else throw Error("Unexpected read " + url.pathname);
       const pending = hold?.path === url.pathname ? hold : null;
       if (pending) {
@@ -225,6 +232,12 @@ await withBrowser(browser, async () => {
     await tabs.getByRole("button", { name: "Overview", exact: true }).click();
     await tabs.getByRole("button", { name: "Wishes", exact: true }).click();
     await expect(page.getByRole("button", { name: "← Wishes", exact: true })).toBeVisible();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await tabs.getByRole("button", { name: "Overview", exact: true }).click();
+      await page.evaluate(() => window.h.navigateWish());
+      await expect(tabs.getByRole("button", { name: "Wishes", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("button", { name: "← Wishes", exact: true })).toBeVisible();
+    }
     await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
     await page.getByRole("button", { name: "Open Wish: Private Wish" }).click();
     const privateNode = await page.getByText("Private reason", { exact: true }).elementHandle();
@@ -323,6 +336,24 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Open Wish: mara shared Wish" })).toHaveCount(0);
     await expect(page.getByText("Saved memory")).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => window.h.agendas)).toBe(null);
+    const validation = pause("/api/villages/rooms/active");
+    await page.evaluate(() => window.h.validate(true));
+    await expect.poll(() => validation.started).toBe(1);
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    assert.equal(validation.started, 1, "Focus and visibility reuse the pending Scene validation");
+    const finishedValidation = page.waitForResponse((response) => response.url().endsWith("/rooms/active"));
+    validation.gate.resolve();
+    await (await finishedValidation).finished();
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("focus"));
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await expect.poll(() => validation.started).toBe(2);
+    hold = null;
     await context.close();
   }
 });

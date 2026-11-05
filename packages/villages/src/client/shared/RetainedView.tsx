@@ -1,17 +1,6 @@
 import { type ReactNode, useLayoutEffect, useRef } from "react";
 import { VillageActivity, useVillageActivity } from "./activity.js";
 
-let activationHeld = false;
-let afterActivation: (() => void) | undefined;
-function releaseActivation() {
-  activationHeld = false;
-  window.removeEventListener("keyup", releaseActivation);
-  window.removeEventListener("blur", releaseActivation);
-  const restore = afterActivation;
-  afterActivation = undefined;
-  restore?.();
-}
-
 /** Keep local controls and scroll, while hidden views stop observing server work. */
 export function RetainedView({ active, children, label }: { active: boolean; children: ReactNode; label?: string }) {
   const activity = useVillageActivity();
@@ -25,14 +14,9 @@ export function RetainedView({ active, children, label }: { active: boolean; chi
         if (focus.current?.checkVisibility()) focus.current.focus({ preventScroll: true });
       });
     };
-    if (viewing && !wasActive.current && focus.current) {
-      // Finish Enter/Space on the opener before restoring a different control.
-      if (activationHeld) afterActivation = restore;
-      else restore();
-    }
+    if (viewing && !wasActive.current && focus.current) restore();
     wasActive.current = viewing;
     return () => {
-      if (afterActivation === restore) afterActivation = undefined;
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
   }, [viewing]);
@@ -44,12 +28,6 @@ export function RetainedView({ active, children, label }: { active: boolean; chi
         style={{ display: active ? "contents" : "none" }}
         role={label ? "region" : undefined}
         aria-label={label}
-        onKeyDownCapture={(event) => {
-          if (event.key !== "Enter" && event.key !== " ") return;
-          activationHeld = true;
-          window.addEventListener("keyup", releaseActivation);
-          window.addEventListener("blur", releaseActivation);
-        }}
         onFocusCapture={(event) => {
           focus.current = event.target;
         }}

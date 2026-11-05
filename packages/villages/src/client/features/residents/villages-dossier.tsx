@@ -237,7 +237,7 @@ export function VillagerDossier({
   });
   useEffect(() => {
     followNavigation();
-  }, [navigation.section, navigation.wishId]);
+  }, [navigation]);
   const visibleVenues = venues
     .map((venue) => {
       const grants = profile?.access?.filter((grant) => grant.venueId === venue.id) ?? [];
