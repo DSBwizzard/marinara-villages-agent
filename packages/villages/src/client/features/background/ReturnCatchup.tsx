@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ReturnCatchupView } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
+import { ModalDialog } from "../../shared/ModalDialog.js";
 
 export function ReturnCatchup({ enabled, onSettled }: { enabled: boolean; onSettled: () => Promise<void> }) {
   const [batch, setBatch] = useState<ReturnCatchupView | null>(null);
@@ -9,6 +10,7 @@ export function ReturnCatchup({ enabled, onSettled }: { enabled: boolean; onSett
   const [busy, setBusy] = useState(false);
   const retryId = useRef("");
   const previous = useRef(false);
+  const host = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!enabled) return;
     let stopped = false;
@@ -34,25 +36,8 @@ export function ReturnCatchup({ enabled, onSettled }: { enabled: boolean; onSett
       clearTimeout(timer);
     };
   }, [enabled, onSettled]);
-  if (!enabled || (!batch && !error)) return null;
-  if (!batch)
-    return (
-      <div
-        role="alert"
-        style={{
-          position: "absolute",
-          inset: 0,
-          zIndex: 1000,
-          background: "var(--background, #fff)",
-          color: "var(--foreground, #222)",
-          padding: "1rem",
-        }}
-      >
-        <p>{error}</p>
-        <p>Checking again automatically.</p>
-      </div>
-    );
   const act = async (kind: "retry" | "continue") => {
+    if (!batch) return;
     setBusy(true);
     setError("");
     try {
@@ -71,60 +56,82 @@ export function ReturnCatchup({ enabled, onSettled }: { enabled: boolean; onSett
     }
   };
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Returning to the Village"
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 1000,
-        background: "var(--background, #fff)",
-        color: "var(--foreground, #222)",
-        overflow: "auto",
-        display: "grid",
-        placeItems: "center",
-        padding: "1rem",
-      }}
-    >
-      <section role="status">
-        <h2>Returning to the Village</h2>
-        <p>
-          {batch.status === "recovering"
-            ? "Finishing an earlier event before play can resume."
-            : batch.status === "failed"
-              ? "Catch-up needs your attention."
-              : "Residents are catching up."}
-        </p>
-        <p>
-          {batch.completed} of {batch.total} complete
-        </p>
-        {batch.issue ? (
-          <p>
-            {batch.issue === "authority"
-              ? "The Village changed while its absence was being checked. Continue to skip this unverified period."
-              : batch.issue === "generation"
-                ? "The resident activity request did not finish."
-                : batch.issue === "interpretation"
-                  ? "The encounter's meaning needs another interpretation."
-                  : "The saved encounter could not finish settling."}
+    <div ref={host}>
+      <style>{`
+        dialog.villages-catchup-card[data-headerless="true"] { width:min(23rem,calc(100% - 2rem)); max-height:calc(100% - 2rem); padding:1.4rem; gap:.8rem; text-align:center; background:linear-gradient(145deg,#25304e,#14213c); box-shadow:0 1rem 4rem #0005; }
+        .villages-catchup-card h2 { margin:0; font-size:1.25rem; }
+        .villages-catchup-icon { display:grid; place-items:center; width:3.5rem; height:3.5rem; margin:auto; border-radius:50%; background:#c3b3ff22; font-size:2rem; }
+        .villages-catchup-card progress { width:100%; accent-color:#b7a2ff; }
+        .villages-catchup-card small { color:#bdc8e2; line-height:1.4; }
+        .villages-catchup-card .villages-zone-map-actions { display:flex; gap:.5rem; flex-wrap:wrap; }
+      `}</style>
+      {enabled && (batch || error) ? (
+        <ModalDialog
+          title="Welcome back"
+          scope={host.current?.parentElement ?? undefined}
+          onClose={() => void 0}
+          dismissible={false}
+          showCloseButton={false}
+          headerless
+          compact
+          className="villages-catchup-card"
+        >
+          <span className="villages-catchup-icon" aria-hidden="true">
+            🏡
+          </span>
+          <h2>Welcome back</h2>
+          <p role="status">
+            {!batch
+              ? "Checking your Village…"
+              : batch.status === "recovering"
+                ? "Finishing a saved event…"
+                : batch.status === "failed"
+                  ? "Catch-up paused"
+                  : "Catching up with Village life…"}
           </p>
-        ) : null}
-        {(batch.status === "failed" || batch.status === "recovering") && batch.issue !== "authority" ? (
-          <p>Retry may make an additional model request and incur a cost.</p>
-        ) : null}
-        {error ? <p role="alert">{error}</p> : null}
-        {(batch.status === "failed" || batch.status === "recovering") && batch.issue !== "authority" ? (
-          <button type="button" disabled={busy} onClick={() => void act("retry")}>
-            Retry
-          </button>
-        ) : null}
-        {!batch.settlementRequired ? (
-          <button type="button" disabled={busy} onClick={() => void act("continue")}>
-            Continue to Village
-          </button>
-        ) : null}
-      </section>
+          {batch ? (
+            <>
+              <progress aria-label="Village catch-up" value={batch.completed} max={Math.max(1, batch.total)} />
+              <small>
+                {batch.completed} of {batch.total} complete
+              </small>
+              {batch.issue ? (
+                <p>
+                  {batch.issue === "authority"
+                    ? "The Village changed. Continue to skip this period."
+                    : batch.issue === "preparation"
+                      ? "Catch-up could not get started."
+                      : batch.issue === "generation"
+                        ? "An activity request could not finish."
+                        : batch.issue === "interpretation"
+                          ? "An encounter needs another interpretation."
+                          : "A saved encounter needs recovery."}
+                </p>
+              ) : null}
+              {["generation", "interpretation"].includes(batch.issue ?? "") ? (
+                <small>Retry may make an additional model request and incur a cost.</small>
+              ) : null}
+            </>
+          ) : (
+            <small>Checking again automatically.</small>
+          )}
+          {error ? <p role="alert">{error}</p> : null}
+          {batch ? (
+            <div className="villages-zone-map-actions">
+              {(batch.status === "failed" || batch.status === "recovering") && batch.issue !== "authority" ? (
+                <button type="button" disabled={busy} onClick={() => void act("retry")}>
+                  {busy ? "Retrying…" : "Retry"}
+                </button>
+              ) : null}
+              {!batch.settlementRequired ? (
+                <button type="button" disabled={busy} onClick={() => void act("continue")}>
+                  Continue to Village
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </ModalDialog>
+      ) : null}
     </div>
   );
 }

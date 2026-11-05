@@ -262,60 +262,82 @@ function ZoneArtwork({
             Retry artwork
           </button>
         ) : null}
-        {zone.image ? (
-          <button
-            type="button"
-            aria-label="Update artwork"
-            className={`${ELEMENT_TAG}-button`}
-            disabled={disabled || zone.pictureUpdateAvailable === false}
-            onClick={() => void controller.updateZonePicture(place, zone.id)}
-          >
-            Update
-          </button>
-        ) : null}
-        <button
-          type="button"
-          aria-label="Regenerate artwork"
-          className={`${ELEMENT_TAG}-button`}
-          disabled={disabled}
-          onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
-        >
-          {zone.image ? "Replace" : "Generate"}
-        </button>
-        <button
-          type="button"
-          aria-label="Upload artwork"
-          className={`${ELEMENT_TAG}-button`}
-          disabled={disabled}
-          onClick={() => upload.current?.click()}
-        >
-          Upload
-        </button>
-        <input
-          autoComplete="off"
-          ref={upload}
-          hidden
-          type="file"
-          accept="image/*"
-          aria-label={`Upload ${zone.name} artwork`}
-          disabled={disabled}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            void keepPlaceImage(place.id, file, spaceClass, zone.ownerId ?? "", zone.id);
+        <details
+          className={`${ELEMENT_TAG}-picture-menu`}
+          onClick={(event) => {
+            if (event.target instanceof Element && event.target.closest("button")) {
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector("summary")?.focus();
+            }
           }}
-        />
-        {zone.image ? (
-          <button
-            type="button"
-            aria-label="Remove artwork"
-            className={`${ELEMENT_TAG}-button`}
-            disabled={disabled}
-            onClick={() => void dropPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
-          >
-            Remove
-          </button>
-        ) : null}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector("summary")?.focus();
+            }
+          }}
+        >
+          <summary role="button" aria-label="Picture">
+            Picture <span aria-hidden="true">▾</span>
+          </summary>
+          <div>
+            {zone.image && zone.pictureUpdateAvailable !== false ? (
+              <button
+                type="button"
+                aria-label="Refresh picture"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={disabled}
+                onClick={() => void controller.updateZonePicture(place, zone.id)}
+              >
+                Refresh
+              </button>
+            ) : null}
+            <button
+              type="button"
+              aria-label="Generate new picture"
+              className={`${ELEMENT_TAG}-button`}
+              disabled={disabled}
+              onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
+            >
+              {zone.image ? "Generate new" : "Generate"}
+            </button>
+            <button
+              type="button"
+              aria-label="Upload artwork"
+              className={`${ELEMENT_TAG}-button`}
+              disabled={disabled}
+              onClick={() => upload.current?.click()}
+            >
+              Upload
+            </button>
+            <input
+              autoComplete="off"
+              ref={upload}
+              hidden
+              type="file"
+              accept="image/*"
+              aria-label={`Upload ${zone.name} artwork`}
+              disabled={disabled}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                void keepPlaceImage(place.id, file, spaceClass, zone.ownerId ?? "", zone.id);
+              }}
+            />
+            {zone.image ? (
+              <button
+                type="button"
+                aria-label="Remove artwork"
+                className={`${ELEMENT_TAG}-button`}
+                disabled={disabled}
+                onClick={() => void dropPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
+              >
+                Remove
+              </button>
+            ) : null}
+          </div>
+        </details>
       </div>
       {zone.pictureProblem || zone.pictureUpdating ? (
         <p role="status">{zone.pictureProblem || "Artwork pending"}</p>
@@ -762,7 +784,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                     disabled={controller.busy}
                     onChange={(event) => void controller.setZonePictureFrozen(place, selected.id, event.target.checked)}
                   />
-                  Freeze picture
+                  Prevent dynamic image updates for this Zone
                 </label>
                 {selected.isPrivate || selected.restricted || !selected.allowed ? (
                   <div className={`${ELEMENT_TAG}-zone-access-details`}>

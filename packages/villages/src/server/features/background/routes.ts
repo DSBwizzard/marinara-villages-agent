@@ -30,6 +30,14 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
     if (!batch) return null;
     const current = batch.records?.find((row) => !["settled", "rejected"].includes(row.status));
     const source = state.socialOutbox?.find((row) => row.id === current?.opportunityId + ":social");
+    const opportunity = batch.opportunities?.find((row) => row.id === current?.opportunityId);
+    const job =
+      batch.status === "failed" && opportunity
+        ? await backgroundJobSnapshot(
+            opportunity.kind === "world" ? "world-development" : "resident-planning",
+            returnCatchupSubject(batch.id, opportunity.id),
+          )
+        : null;
     return {
       id: batch.id,
       status: batch.status,
@@ -41,7 +49,9 @@ export function registerBackgroundRoutes(engine: FastifyInstance) {
       issue:
         batch.status === "failed"
           ? current
-            ? "generation"
+            ? job
+              ? "generation"
+              : "preparation"
             : "authority"
           : batch.status === "recovering"
             ? source?.reinterpretRequired

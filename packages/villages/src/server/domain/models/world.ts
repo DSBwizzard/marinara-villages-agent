@@ -872,6 +872,7 @@ export type ReturnCatchupBatch = {
     opportunityId: string;
     status: "pending" | "queued" | "settling" | "settled" | "rejected" | "held";
     heldStage?: "queued" | "settling";
+    automaticRetryUsed?: true;
     outcome?: unknown;
     error?: string;
   }[];

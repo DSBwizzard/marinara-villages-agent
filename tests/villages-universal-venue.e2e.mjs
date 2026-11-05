@@ -269,7 +269,8 @@ await withBrowser(browser, async () => {
     await expect(detail.getByText("Private", { exact: true })).toBeVisible();
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
-    await expect(detail.getByRole("button", { name: "Regenerate artwork" })).toBeVisible();
+    await detail.getByRole("button", { name: "Picture", exact: true }).click();
+    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeVisible();
     await expect(detail.getByRole("img", { name: "Sleeping Alcove at " + place.name })).toHaveAttribute(
       "src",
       mapImage,
@@ -288,10 +289,14 @@ await withBrowser(browser, async () => {
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private", { exact: true })).toBeVisible();
     await layout.locator('[data-layout-zone="bay"]').click();
-    await expect(detail.getByRole("button", { name: "Regenerate artwork" })).toBeVisible();
+    await detail.getByRole("button", { name: "Picture", exact: true }).click();
+    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeVisible();
     await expect(detail.getByLabel("Upload Main Bay artwork")).toHaveCount(1);
     await expect(detail.getByRole("button", { name: "Upload artwork", exact: true })).toBeVisible();
-    const freeze = detail.getByRole("checkbox", { name: "Freeze picture", exact: true });
+    await detail.getByRole("button", { name: "Picture", exact: true }).press("Escape");
+    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeHidden();
+    await expect(detail.getByRole("button", { name: "Picture", exact: true })).toBeFocused();
+    const freeze = detail.getByRole("checkbox", { name: "Prevent dynamic image updates for this Zone", exact: true });
     await expect(freeze).not.toBeChecked();
     await freeze.click();
     await expect(freeze).toBeChecked();
@@ -313,8 +318,9 @@ await withBrowser(browser, async () => {
     await expect(detail.getByText("Private", { exact: true })).toHaveCount(0);
     const emptyEditor = await detail.boundingBox();
     const emptyFrame = await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox();
-    await detail.getByRole("button", { name: "Regenerate artwork", exact: true }).click();
-    await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeVisible();
+    await detail.getByRole("button", { name: "Picture", exact: true }).click();
+    await detail.getByRole("button", { name: "Generate new picture", exact: true }).click();
+    await expect(detail.getByRole("button", { name: "Picture", exact: true })).toBeVisible();
     assert.equal((await detail.boundingBox()).height, emptyEditor.height, "artwork never resizes editor");
     assert.equal((await detail.locator(`.${prefix}-zone-artwork-frame`).boundingBox()).height, emptyFrame.height);
     assert.deepEqual(writes.at(-1), {
@@ -331,18 +337,20 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
+    await detail.getByRole("button", { name: "Picture", exact: true }).click();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Update artwork", "Regenerate artwork", "Upload artwork", "Remove artwork"].map((name) =>
+      ["Refresh picture", "Generate new picture", "Upload artwork", "Remove artwork"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
     assert.ok(
-      actionBoxes.every((box) => Math.abs(box.width - actionBoxes[0].width) < 1) &&
-        Math.abs(actionBoxes[0].y - actionBoxes[1].y) < 1 &&
-        Math.abs(actionBoxes[2].y - actionBoxes[3].y) < 1 &&
-        actionBoxes[2].y > actionBoxes[0].y,
-      "artwork actions share two aligned rows at every viewport",
+      actionBoxes.every(
+        (box, index) =>
+          box.width <= emptyFrame.width &&
+          (!index || box.y >= actionBoxes[index - 1].y + actionBoxes[index - 1].height),
+      ),
+      "Picture actions fit in one compact menu at every viewport",
     );
     const actions = detail.locator(`.${prefix}-zone-artwork-actions`);
     assert.ok(
@@ -410,7 +418,7 @@ await withBrowser(browser, async () => {
     await expect(profile.getByRole("heading", { name: "Assigned Villagers", exact: true })).toBeVisible();
     await expect(profile.getByRole("button", { name: "View housing requests" })).toBeVisible();
     await expect(profile.getByLabel("Physical form", { exact: true })).toHaveCount(0);
-    await expect(profile.getByRole("button", { name: "Regenerate artwork" })).toHaveCount(0);
+    await expect(profile.getByRole("button", { name: "Generate new picture" })).toHaveCount(0);
     const beforeName = writes.length;
     await profile.getByLabel("Venue name", { exact: true }).fill("Renamed warehouse");
     await chooseVenue(otherId, "The Harbour");

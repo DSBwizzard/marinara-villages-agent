@@ -133,7 +133,7 @@ export type ReturnCatchupView = {
   completed: number;
   total: number;
   settlementRequired: boolean;
-  issue: "generation" | "interpretation" | "settlement" | "authority" | null;
+  issue: "preparation" | "generation" | "interpretation" | "settlement" | "authority" | null;
 };
 
 export type VillageSnapshot = {

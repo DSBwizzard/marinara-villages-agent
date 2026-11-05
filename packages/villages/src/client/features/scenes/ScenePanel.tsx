@@ -1420,7 +1420,11 @@ export function RoomPanel({
                   style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
                 >
                   {step?.name ?? ""}
-                  {step?.delivery === "whisper" ? (
+                  {step?.viaDoorway ? (
+                    <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                      Nearby
+                    </span>
+                  ) : step?.delivery === "whisper" ? (
                     <span title="Whisper" aria-label="Whisper">
                       {" "}
                       · 🤫
@@ -1431,11 +1435,6 @@ export function RoomPanel({
                       · 📣
                     </span>
                   ) : null}
-                  {step?.viaDoorway
-                    ? step.remoteDelivery === "loud"
-                      ? " · calling from inside"
-                      : " · through the doorway"
-                    : ""}
                 </p>
               )}
               <div
