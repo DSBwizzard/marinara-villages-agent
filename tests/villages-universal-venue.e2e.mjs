@@ -338,19 +338,37 @@ await withBrowser(browser, async () => {
       path: "/api/villages/locations/venue/image",
       body: { venueId: place.id, spaceClass: "residence", privateOwnerId: "", zoneId: "bay" },
     });
-    await detail.getByRole("checkbox", { name: "Day & night" }).click();
-    await expect(detail.getByRole("checkbox", { name: "Day & night" })).toBeChecked();
-    await expect(detail.getByRole("button", { name: "Day", exact: true })).toBeVisible();
-    await detail.getByRole("button", { name: "Night", exact: true }).click();
+    const openPicture = async () => {
+      const menu = detail.locator("details." + prefix + "-picture-menu");
+      if (!(await menu.evaluate((el) => el.open)))
+        await detail.getByRole("button", { name: "Picture", exact: true }).click();
+    };
+    await openPicture();
+    await detail.getByRole("switch", { name: "Day & night", exact: true }).click();
+    await openPicture();
+    await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    const beforePreview = writes.length;
+    await detail.getByRole("button", { name: "View night image", exact: true }).click();
     await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#night");
-    await detail.getByRole("button", { name: "Day", exact: true }).click();
+    await openPicture();
+    await detail.getByRole("button", { name: "View day image", exact: true }).click();
     await expect(detail.locator("img")).toHaveAttribute("src", mapImage);
-    await detail.getByRole("button", { name: "Update artwork", exact: true }).click();
+    assert.equal(writes.length, beforePreview, "appearance viewing never generates or saves");
+    await openPicture();
+    await detail.getByRole("button", { name: "Refresh picture", exact: true }).click();
     await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#updated-day");
     await expect(detail.getByRole("button", { name: "Retry artwork", exact: true })).toBeVisible();
     await expect(detail.getByRole("status")).toHaveText("Night artwork failed.");
-    await detail.getByRole("checkbox", { name: "Day & night" }).click();
-    await expect(detail.getByRole("checkbox", { name: "Day & night" })).not.toBeChecked();
+    await openPicture();
+    await detail.getByRole("switch", { name: "Day & night", exact: true }).click();
+    await openPicture();
+    await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
     await detail.getByLabel("Upload Main Bay artwork").setInputFiles({
       name: "zone.png",
       mimeType: "image/png",
@@ -361,7 +379,7 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
-    await detail.getByRole("button", { name: "Picture", exact: true }).click();
+    await openPicture();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
       ["Refresh picture", "Generate new picture", "Upload artwork", "Remove artwork"].map((name) =>

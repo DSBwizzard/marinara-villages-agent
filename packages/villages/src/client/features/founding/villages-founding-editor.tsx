@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { SceneryStylePicker } from "../../shared/SceneryStylePicker.js";
 import type { VillageVenue } from "../../../shared/contracts/village.js";
 
@@ -6,15 +7,27 @@ export function SceneryStyleFields({
   profileId,
   onChange,
   onProfileChange,
+  onCommit,
+  disabled,
+  hint,
 }: {
+  disabled?: boolean;
+  hint?: string;
   value: string;
   profileId: string | null;
   onChange(value: string): void;
   onProfileChange(value: string | null): void;
+  onCommit?(next: { value: string; profileId: string | null }, debounce: boolean): void;
 }) {
+  const hintId = useId();
   return (
-    <fieldset className="villages-scenery-fields">
+    <fieldset className="villages-scenery-fields" disabled={disabled} aria-describedby={hint ? hintId : undefined}>
       <legend>Scenery art style</legend>
+      {hint ? (
+        <small id={hintId} className="villages-style-hint">
+          {hint}
+        </small>
+      ) : null}
       <label>
         Style preset
         <SceneryStylePicker
@@ -22,6 +35,7 @@ export function SceneryStyleFields({
           onChange={(id) => {
             onProfileChange(id);
             if (id !== null) onChange("");
+            onCommit?.({ value: id === null ? value : "", profileId: id }, false);
           }}
         />
       </label>
@@ -34,7 +48,10 @@ export function SceneryStyleFields({
             rows={3}
             maxLength={600}
             value={value}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => {
+              onChange(event.target.value);
+              onCommit?.({ value: event.target.value, profileId: null }, true);
+            }}
           />
         </label>
       ) : null}

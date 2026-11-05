@@ -863,7 +863,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const spriteVisualSettings = useSpriteVisualSettings({ snapshot, setSnapshot, setBusy });
 
-  const saveScenerySettings = useSaveScenerySettings({ ...founding, snapshot, setBusy, setSettingsError, setSnapshot });
+  const scenerySettings = useSaveScenerySettings({ snapshot, busy, setBusy, setSnapshot });
 
   const saveBackgroundPace = useSaveBackgroundPace({ setBusy, setSettingsError, setSnapshot, snapshot });
 
@@ -1412,7 +1412,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     roomSubmissionIdRef: scenes.roomSubmissionIdRef,
     roomTargetId: scenes.roomTargetId,
     roomUnresolvedChanges: scenes.roomUnresolvedChanges,
-    saveScenerySettings,
+    scenerySettings,
     spriteVisualSettings,
     saveSendOnEnter,
     saveSettings,

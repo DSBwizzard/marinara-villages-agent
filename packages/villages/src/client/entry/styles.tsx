@@ -2126,10 +2126,17 @@ ${VILLAGES_FORGING_STYLES}
 .${ELEMENT_TAG}-zone-title h2 > button { cursor:text; }
 .${ELEMENT_TAG}-zone-title h2 > button span { font-size:.7em; opacity:.6; }
 .${ELEMENT_TAG}-zone-title h2 > input { outline-offset:3px; }
-.${ELEMENT_TAG}-zone-artwork-frame { width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
+.${ELEMENT_TAG}-zone-artwork-frame { position:relative; width:100%; height:clamp(200px,34dvh,340px); overflow:hidden; display:grid; place-items:center; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-profile-image { display:block; height:100%; width:100%; max-height:none; object-fit:contain; margin:0; }
 .${ELEMENT_TAG}-zone-artwork-frame .${ELEMENT_TAG}-venue-image-empty { width:100%; height:100%; min-height:0; margin:0; box-sizing:border-box; }
 .${ELEMENT_TAG}-zone-artwork-actions { position:relative; display:flex; flex-wrap:wrap; min-height:44px; gap:.4rem; align-items:start; }
+.${ELEMENT_TAG}-artwork-appearance { position:absolute; right:.5rem; bottom:.5rem; z-index:1; padding:.2rem .6rem; border-radius:1rem; background:#111d; color:#fff; font-size:.85rem; }
+.${ELEMENT_TAG}-picture-menu .${ELEMENT_TAG}-picture-toggle { display:flex; align-items:center; justify-content:space-between; gap:.6rem; }
+.${ELEMENT_TAG}-switch-state { padding:.1rem .5rem; border-radius:1rem; border:1px solid #75849a; font-size:.85rem; }
+.${ELEMENT_TAG}-picture-toggle[aria-checked="true"] .${ELEMENT_TAG}-switch-state { background:#d7b276; color:#172027; border-color:#d7b276; }
+.${ELEMENT_TAG}-visual-setting { margin:.75rem 0; }
+.${ELEMENT_TAG}-visual-setting > label { margin-bottom:.15rem; }
+.villages-style-hint { display:block; line-height:1.4; }
 .${ELEMENT_TAG}-picture-menu summary { display:flex; align-items:center; gap:.7rem; min-height:44px; box-sizing:border-box; padding:.5rem .8rem; border:1px solid #65799c; border-radius:.5rem; background:#1f3050; cursor:pointer; list-style:none; }
 .${ELEMENT_TAG}-picture-menu summary::-webkit-details-marker { display:none; }
 .${ELEMENT_TAG}-picture-menu summary:focus-visible { outline:3px solid #bfa9ff; outline-offset:2px; }

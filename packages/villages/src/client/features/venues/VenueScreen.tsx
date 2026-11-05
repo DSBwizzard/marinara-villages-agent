@@ -228,40 +228,27 @@ function ZoneArtwork({
   place,
   zone,
   controller,
+  night,
 }: {
+  night: boolean;
   place: VillageVenue;
   zone: VenueDisplayZone;
   controller: VenueScreenController;
 }) {
   const { busy, placeBusyId, drawPlaceImage, keepPlaceImage, dropPlaceImage } = controller;
   const upload = useRef<HTMLInputElement>(null);
-  const [appearance, setAppearance] = useState<"day" | "night">("day");
-  const artwork = appearance === "night" && zone.nightImage ? zone.nightImage : zone.image;
+  const [preview, setPreview] = useState<"day" | "night" | null>(null);
+  const appearance =
+    zone.dayNight && zone.nightImage && (preview ?? (night ? "night" : "day")) === "night" ? "night" : "day";
+  const artwork = appearance === "night" ? zone.nightImage : zone.image;
   const disabled = busy || !!placeBusyId;
   const spaceClass = zone.kind === "exterior" ? undefined : zone.venueClass;
   return (
     <>
-      <label>
-        <input
-          type="checkbox"
-          autoComplete="off"
-          checked={zone.dayNight === true}
-          disabled={disabled}
-          onChange={(event) => void controller.setZoneDayNight(place, zone.id, event.target.checked)}
-        />
-        Day & night
-      </label>
-      {zone.dayNight && zone.daylightReady ? (
-        <div className={`${ELEMENT_TAG}-zone-artwork-actions`} aria-label="Artwork appearance">
-          <button type="button" aria-pressed={appearance === "day"} onClick={() => setAppearance("day")}>
-            Day
-          </button>
-          <button type="button" aria-pressed={appearance === "night"} onClick={() => setAppearance("night")}>
-            Night
-          </button>
-        </div>
-      ) : null}
       <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
+        {zone.dayNight && zone.daylightReady ? (
+          <span className={`${ELEMENT_TAG}-artwork-appearance`}>{appearance === "night" ? "Night" : "Day"}</span>
+        ) : null}
         {artwork ? (
           <img
             className={`${ELEMENT_TAG}-venue-profile-image`}
@@ -303,6 +290,32 @@ function ZoneArtwork({
             Picture <span aria-hidden="true">▾</span>
           </summary>
           <div>
+            <button
+              type="button"
+              role="switch"
+              aria-label="Day & night"
+              aria-checked={zone.dayNight === true}
+              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-picture-toggle`}
+              disabled={disabled}
+              onClick={() => {
+                setPreview(null);
+                void controller.setZoneDayNight(place, zone.id, zone.dayNight !== true);
+              }}
+            >
+              <span>Day & night</span>
+              <span className={`${ELEMENT_TAG}-switch-state`} aria-hidden="true">
+                {zone.dayNight ? "On" : "Off"}
+              </span>
+            </button>
+            {zone.dayNight && zone.daylightReady && zone.nightImage ? (
+              <button
+                type="button"
+                className={`${ELEMENT_TAG}-button`}
+                onClick={() => setPreview(appearance === "day" ? "night" : "day")}
+              >
+                {appearance === "day" ? "View night image" : "View day image"}
+              </button>
+            ) : null}
             {zone.image && zone.pictureUpdateAvailable !== false ? (
               <button
                 type="button"
@@ -804,7 +817,13 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
                 ) : (
                   <h2>{selected.name}</h2>
                 )}
-                <ZoneArtwork key={selected.id} place={place} zone={selected} controller={controller} />
+                <ZoneArtwork
+                  key={selected.id}
+                  place={place}
+                  zone={selected}
+                  controller={controller}
+                  night={snapshot.isFounded && lighting === "night"}
+                />
                 <label className={`${ELEMENT_TAG}-zone-picture-freeze`}>
                   <input
                     autoComplete="off"
