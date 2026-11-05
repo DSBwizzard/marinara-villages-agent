@@ -54,3 +54,13 @@ export function fittedLoreUse(
     return true;
   });
 }
+
+/** Only the entries retained by the final prompt may supply visual references. */
+export function inspectedLoreImages(report: LoreInspection | undefined, used: readonly LoreUse[]) {
+  const keys = new Set(used.map(({ bookId, id }) => JSON.stringify([bookId, id])));
+  return (
+    report?.entries.flatMap((entry) =>
+      entry.status === "included" && keys.has(JSON.stringify([entry.bookId, entry.id])) ? (entry.images ?? []) : [],
+    ) ?? []
+  );
+}

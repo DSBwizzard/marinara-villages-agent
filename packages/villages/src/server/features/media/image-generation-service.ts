@@ -3,6 +3,7 @@ import { readSceneryStyleProfileId } from "../../domain/rules/image-style-profil
 import type { loadEngineImageStyleSupport } from "../../adapters/engine/image-style-profiles.js";
 import type { villageEngineJson } from "../../adapters/engine/engine-loopback.js";
 import type { decodeVillageImageDataUrl, DecodedVillageImage } from "../../adapters/engine/image-files.js";
+import type { readLoreImageReferences } from "../../adapters/engine/lore-image-references.js";
 import { asRecord, asTrimmedString } from "../../domain/rules/coerce.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import { imageEditSupport } from "../../domain/rules/image-edit-support.js";
@@ -18,6 +19,7 @@ export type ImageGenerationPorts = {
   villageEngineJson: typeof villageEngineJson;
   villagesImageConnectionChoice: typeof villagesImageConnectionChoice;
   decodeVillageImageDataUrl: typeof decodeVillageImageDataUrl;
+  readLoreImageReferences?: typeof readLoreImageReferences;
 };
 /** Cheap validation, connection selection, one Engine dispatch and decoding share one owner. */
 export function createImageGeneration(ports: ImageGenerationPorts) {
@@ -68,6 +70,8 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
   }
   async function generateVillageImage(input: {
     referenceImages?: string[];
+    loreImages?: Parameters<typeof readLoreImageReferences>[0];
+    beforeDispatch?: () => Promise<void>;
     connectionId?: string;
     sceneryStyleProfileId?: unknown;
     name: string;
@@ -110,13 +114,35 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
       throw badRequest(`Image dimensions can cover at most ${MAX_IMAGE_PIXELS.toLocaleString()} pixels.`);
     }
     const connectionId = await resolveVillageImageConnectionId(input.connectionId);
+    let referenceImages = input.referenceImages;
+    if (input.loreImages?.length) {
+      const images = [...new Map(input.loreImages.map((image) => [image.path, image])).values()];
+      const count = images.length + (referenceImages?.length ?? 0);
+      if (count > 4)
+        throw badRequest(
+          `This artwork needs ${count} reference images; Engine accepts at most 4. Reduce the matching Lorebook images and retry. No image request was made.`,
+        );
+      const support = await resolveVillageImageEditing(connectionId);
+      if (!support || count > support.maxReferences)
+        throw badRequest(
+          "The image connection or its fallback cannot use these Lorebook reference images. Choose a connection that supports them, then retry. No image request was made.",
+        );
+      if (!ports.readLoreImageReferences)
+        throw badRequest("Lorebook reference images are unavailable. Reload Villages and retry.");
+      referenceImages = [...(referenceImages ?? []), ...(await ports.readLoreImageReferences(images))];
+      if ((await resolveVillageImageEditing(connectionId))?.signature !== support.signature)
+        throw badRequest(
+          "The image connection changed while loading Lorebook images. Retry artwork deliberately. No image request was made.",
+        );
+    }
     const name = input.name.trim() || "Village image";
+    await input.beforeDispatch?.();
     const answer = asRecord(
       await guardedClockGeneration(() =>
         villageEngineJson<unknown>(IMAGE_GENERATION_PATH, {
           body: {
             connectionId,
-            referenceImages: input.referenceImages,
+            referenceImages,
             name,
             appearance: prompt,
             purpose: "avatar",
@@ -139,10 +165,12 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     });
   }
 
-  async function resolveVillageImageEditing() {
-    const choice = await villagesImageConnectionChoice();
-    if (!choice.enabled) return null;
-    const connectionId = await resolveVillageImageConnectionId();
+  async function resolveVillageImageEditing(explicit = "") {
+    if (!explicit) {
+      const choice = await villagesImageConnectionChoice();
+      if (!choice.enabled) return null;
+    }
+    const connectionId = await resolveVillageImageConnectionId(explicit);
     const listed = await villageEngineJson<unknown>("/api/connections");
     if (!Array.isArray(listed)) return null;
     const rows = listed.map(asRecord);
@@ -161,6 +189,7 @@ export function createImageGeneration(ports: ImageGenerationPorts) {
     return {
       connectionId,
       multiple: relevant.every((row) => imageEditSupport(row).multiple),
+      maxReferences: Math.min(...relevant.map((row) => imageEditSupport(row).maxReferences)),
       signature: JSON.stringify(
         relevant.map((row) => [
           row.id,

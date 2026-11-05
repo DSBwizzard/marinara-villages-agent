@@ -60,6 +60,7 @@ function fixture() {
     resolveVillageImageConnectionId: async () => "images",
     readZonePictureReference: async (source) => ({ dataUrl: "reference:" + source.id, width: 1200, height: 800 }),
     generateVillageImage: async (input) => {
+      await input.beforeDispatch?.();
       calls.push(input);
       await during?.();
       if (fail) throw Error("Synthetic image failure");
@@ -112,6 +113,52 @@ const connection = (imageService: string, model = "") => ({
   imageService,
   model,
 });
+{
+  const f = fixture();
+  const reference = {
+    path: "/api/lorebooks/entry-images/11111111-1111-1111-1111-111111111111.png",
+    caption: "Blue arches",
+  };
+  f.ports.readVillageImageLore = async (_ids, _context, _length, _budget, inspect) => {
+    inspect?.({
+      purpose: "Image",
+      stage: "selection",
+      budget: 1600,
+      omittedDiagnostics: 0,
+      entries: [
+        { id: "arches", bookId: "world", name: "Arches", match: "setting", status: "included", images: [reference] },
+      ],
+    });
+    return "Arches: Blue arches";
+  };
+  await f.enter();
+  f.dirty("A brass lamp.");
+  await f.enter();
+  assert.deepEqual(
+    f.calls[0].loreImages,
+    [reference],
+    "Zone editing forwards retained Lorebook images alongside its base picture",
+  );
+  assert.doesNotMatch(JSON.stringify(f.zone().image?.lore), /entry-images|caption/);
+}
+for (const replacement of [false, true]) {
+  const f = fixture();
+  await f.enter();
+  f.dirty("A brass lamp.");
+  if (replacement) f.support(false);
+  const generate = f.ports.generateVillageImage;
+  f.ports.generateVillageImage = async (input) => {
+    f.zone().freezePicture = true;
+    f.zone().pictureRevision!++;
+    return generate(input);
+  };
+  await f.enter();
+  assert.equal(
+    f.calls.length,
+    0,
+    "A claim invalidated during reference loading cannot purchase an edit or replacement",
+  );
+}
 {
   const f = fixture();
   await f.enter();

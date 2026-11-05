@@ -22,6 +22,7 @@ export type LoreInspection = {
     bookId: string;
     name: string;
     bookName?: string;
+    images?: { path: string; caption: string }[];
     match: "current" | "recent" | "setting" | "constant" | "none";
     trigger?: LoreTrigger;
     status:

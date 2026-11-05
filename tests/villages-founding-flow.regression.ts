@@ -725,6 +725,10 @@ async function foundingConnectionOwnership() {
 
 async function foundingArchitecturePrompts() {
   const prompts: string[] = [];
+  const reference = {
+    path: "/api/lorebooks/entry-images/11111111-1111-1111-1111-111111111111.png",
+    caption: "Blue arches",
+  };
   let galleryCalls = 0;
   const unused = () => {
     throw new Error("Unexpected provider or catalog request");
@@ -743,12 +747,25 @@ async function foundingArchitecturePrompts() {
       }) as any,
     readLinkedPersona: async () => null,
     readVillageLore: unused,
-    readVillageImageLore: async () => "",
+    readVillageImageLore: async (_ids, _context, _length, _budget, inspect) => {
+      inspect?.({
+        purpose: "Image",
+        stage: "selection",
+        budget: 1600,
+        omittedDiagnostics: 0,
+        entries: [
+          { id: "arches", bookId: "world", name: "Arches", match: "setting", status: "included", images: [reference] },
+        ],
+      });
+      return "Arches: Blue arches";
+    },
     villagesLanguageModels: unused,
     villagesConnectionIdFor: unused,
     completeWithRoom: unused,
     decodeVillageImageDataUrl: unused,
     generateVillageImage: async (input) => {
+      assert.deepEqual(input.loreImages, input.prompt.includes("Arches: Blue arches") ? [reference] : []);
+      await input.beforeDispatch?.();
       prompts.push(input.prompt);
       return { dataUrl: "fixture", mime: "image/png", bytes: new Uint8Array([1]) };
     },

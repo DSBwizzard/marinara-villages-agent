@@ -13,7 +13,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   labels,
   toolbar,
   modifyConnections = false,
-  compact = false,
 }: {
   zones: T[];
   positions?: ZoneLayout;
@@ -25,7 +24,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
   labels?(zone: T): ReactNode;
   toolbar?: ReactNode;
   modifyConnections?: boolean;
-  compact?: boolean;
 }) {
   const [connecting, setConnecting] = useState(false),
     [first, setFirst] = useState<string | null>(null);
@@ -47,11 +45,6 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
       positions,
     );
   const rows = materializeConnections(zones);
-  // Trim unused canvas without changing the 320px coordinate scale or hit targets.
-  const pixelsPerUnit = 320 / 100;
-  const compactHeight = compact
-    ? Math.max(180, ...Object.values(layout).map(({ y }) => (y + ZONE_TILE.height) * pixelsPerUnit))
-    : undefined;
   const name = (id: string) => (id === "exterior" ? "Entrance" : zones.find((z) => z.id === id)?.name || "Zone");
   const pairs = rows.flatMap((z) =>
     contactNeighborIds(rows, z.id)
@@ -111,15 +104,8 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
           ) : null}
         </div>
       ) : null}
-      <div
-        className="villages-zone-map-canvas"
-        style={compactHeight ? { height: compactHeight + 2, minHeight: compactHeight + 2 } : undefined}
-      >
-        <svg
-          viewBox={`0 0 100 ${compactHeight ? compactHeight / pixelsPerUnit : 100}`}
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
+      <div className="villages-zone-map-canvas">
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
           {pairs.map(([a, b]) => (
             <line
               key={JSON.stringify([a, b])}
@@ -140,10 +126,10 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
             className="villages-zone-map-tile"
             style={{
               left: `${layout[zone.id].x + ZONE_TILE.width / 2}%`,
-              top: compact ? `${layout[zone.id].y * pixelsPerUnit}px` : `${layout[zone.id].y}%`,
-              width: `min(${ZONE_TILE.width}%, 12rem)`,
+              top: `${layout[zone.id].y}%`,
+              width: `${ZONE_TILE.width}%`,
               transform: "translateX(-50%)",
-              height: compact ? `${ZONE_TILE.height * pixelsPerUnit}px` : `${ZONE_TILE.height}%`,
+              height: `${ZONE_TILE.height}%`,
             }}
             aria-pressed={connecting ? first === zone.id : selectedId === zone.id}
             aria-label={name(zone.id)}
@@ -175,9 +161,7 @@ export function ZoneMap<T extends ConnectedSpace & { name?: string }>({
               const bounds = event.currentTarget.parentElement!.getBoundingClientRect();
               const position = {
                 x: Math.round(Math.max(0, Math.min(68, current.x + (dx / bounds.width) * 100)) * 10) / 10,
-                y:
-                  Math.round(Math.max(0, Math.min(86, current.y + (dy / (compact ? 320 : bounds.height)) * 100)) * 10) /
-                  10,
+                y: Math.round(Math.max(0, Math.min(86, current.y + (dy / bounds.height) * 100)) * 10) / 10,
               };
               if (!zonePositionFits(current.layout, zone.id, position)) return;
               current.layout = { ...current.layout, [zone.id]: position };

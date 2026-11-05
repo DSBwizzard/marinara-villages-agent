@@ -7,7 +7,12 @@ import type { readZonePictureReference } from "../../adapters/engine/zone-pictur
 import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gallery.js";
 import type { readVillageImageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
-import { inspectedLoreUse, loreText, villageLoreContext } from "../../domain/rules/lore-context.js";
+import {
+  inspectedLoreUse,
+  inspectedLoreImages,
+  loreText,
+  villageLoreContext,
+} from "../../domain/rules/lore-context.js";
 import type { villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { VillageSnapshot, VillageState, VillageVenue, VillageVenueClass } from "../../domain/models/world.js";
 import { conflict, notFound } from "../../domain/rules/errors.js";
@@ -210,8 +215,24 @@ export function createLocationImages(ports: LocationImagePorts) {
       return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
     }
     const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(inspection, "Image") : [];
-    await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${targetZone?.name ?? "Entrance"}`);
     const decoded = await generateVillageImage({
+      loreImages: inspectedLoreImages(inspection, usedLore),
+      beforeDispatch: async () => {
+        const latest = await readVillageState();
+        const current = latest.venues.find((entry) => entry.id === venueId);
+        const zone = current && resolveVenueZone(current, zoneId!);
+        if (
+          !current ||
+          !zone ||
+          latest.seed !== village.seed ||
+          sceneryImageKey(latest, current, zone.id) !== expectedContext ||
+          (guard && !guard(latest)) ||
+          (onlyIfEmpty && (latest.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed))
+        )
+          throw conflict("The scenery changed before its image request. Generate again.");
+        await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
+        await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${targetZone?.name ?? "Entrance"}`);
+      },
       sceneryStyleProfileId: village.sceneryStyleProfileId,
       connectionId,
       name: venue.name,

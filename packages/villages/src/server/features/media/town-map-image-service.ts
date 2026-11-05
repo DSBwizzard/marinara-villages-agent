@@ -2,7 +2,7 @@ import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import type { inspectVillageImage } from "../../adapters/engine/image-files.js";
 import type { readVillageImageLoreEntries } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection, LoreUse } from "../../../shared/contracts/lore.js";
-import { fittedLoreUse, loreText } from "../../domain/rules/lore-context.js";
+import { fittedLoreUse, inspectedLoreImages, loreText } from "../../domain/rules/lore-context.js";
 import { badRequest } from "../../domain/rules/errors.js";
 import {
   readLoreTokenBudget,
@@ -68,8 +68,9 @@ export function createTownMapImage(ports: TownMapImagePorts) {
     const retained: string[] = [];
     const prompt = fitMapContext(base, parts, (entry) => retained.push(entry));
     const usedLore = fittedLoreUse(inspection, parts, retained, "Image");
-    await recordLoreUse(usedLore, "Map artwork");
     const generated = await generateVillageImage({
+      loreImages: inspectedLoreImages(inspection, usedLore),
+      beforeDispatch: () => recordLoreUse(usedLore, "Map artwork"),
       sceneryStyleProfileId: input.sceneryStyleProfileId,
       connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,
       name: "Village map",
