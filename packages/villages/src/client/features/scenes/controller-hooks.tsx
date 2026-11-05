@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import type { RoomOperation, RoomRecordEvent, SceneChangeIssue, SceneView } from "../../../shared/contracts/village.js";
 import { useFocusRevision } from "../../shared/activity.js";
-import { request } from "../../shared/api.js";
+import { messageFrom, request, VillageApiError } from "../../shared/api.js";
 import { useSceneEntryLifetime } from "./entry-lifetime.js";
 import {
   completedGreetingAfterFailure,
@@ -423,78 +423,100 @@ export function useActiveSceneRestoration(ports: {
     setBusy: setRoomBusy,
   });
   const [status, setStatus] = useState<"checking" | "ready" | "error">("checking");
+  const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   // A restoration attempt starts only on mount or explicit retry. Its captured
   // selection still retires through the entry lifetime, including after handoff.
   const restore = useEffectEvent((attempt: number) => {
     const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
     let claim: ReturnType<typeof lifetime.begin> = null;
-    void request<{ session: SceneView | null; debugDiscardEnabled: boolean }>("/rooms/active", {
-      signal: controller.signal,
-    })
-      .then(async ({ session, debugDiscardEnabled: debugEnabled }) => {
-        if (controller.signal.aborted) return;
-        setStatus("ready");
-        if (!lifetime.isCurrent()) return;
-        setDebugDiscardEnabled(debugEnabled);
-        if (!session) return;
-        const owned = lifetime.begin();
-        if (!owned) return;
-        claim = owned;
-        const owns = () => !controller.signal.aborted && lifetime.owns(owned);
-        try {
-          const restored = currentRoom(session);
-          if (!lifetime.handoff(owned, restored, roomEnded)) return;
-          setRoom(restored);
-          setRoomMode("chat");
-          setRoomOpen(true);
-          setScreen("room");
-          // A retry only checks saved state; opening generation remains an explicit action.
-          if (session.status === "opening" && attempt === 0) {
-            owned.busy = true;
-            setRoomBusy(true);
-            try {
-              const { session: greeted } = await request<{ session: SceneView }>("/rooms/greet", {
-                method: "POST",
-                body: JSON.stringify({ sessionId: session.id }),
-              });
-              if (!owns()) return;
-              const next = currentRoom(greeted);
-              if (!lifetime.handoff(owned, next, roomEnded)) return;
-              setRoom((current) => (current?.id === session.id ? next : current));
-              setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
-            } catch (cause) {
-              if (!owns()) return;
-              const recovered = await completedGreetingAfterFailure(session.id, owns);
-              if (!owns()) return;
-              if (recovered) {
-                if (!lifetime.handoff(owned, recovered, roomEnded)) return;
-                setRoom((current) => (current?.id === session.id ? recovered : current));
-                setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
-              } else
-                setRoomGreetingError((current) =>
-                  current && current.sessionId !== session.id
-                    ? current
-                    : { sessionId: session.id, message: openingFailureMessage(cause) },
-                );
-            }
-          }
-        } finally {
-          if (!controller.signal.aborted && lifetime.finish(owned) && owned.busy) setRoomBusy(false);
-        }
+    const check = (retries = 0) => {
+      if (controller.signal.aborted) return;
+      const timeout = AbortSignal.timeout(10_000);
+      void request<{ session: SceneView | null; debugDiscardEnabled: boolean }>("/rooms/active", {
+        signal: AbortSignal.any([controller.signal, timeout]),
       })
-      .catch(() => {
-        if (!controller.signal.aborted) setStatus("error");
-      });
+        .then(async ({ session, debugDiscardEnabled: debugEnabled }) => {
+          if (controller.signal.aborted) return;
+          setStatus("ready");
+          setError("");
+          if (!lifetime.isCurrent()) return;
+          setDebugDiscardEnabled(debugEnabled);
+          if (!session) return;
+          const owned = lifetime.begin();
+          if (!owned) return;
+          claim = owned;
+          const owns = () => !controller.signal.aborted && lifetime.owns(owned);
+          try {
+            const restored = currentRoom(session);
+            if (!lifetime.handoff(owned, restored, roomEnded)) return;
+            setRoom(restored);
+            setRoomMode("chat");
+            setRoomOpen(true);
+            setScreen("room");
+            // A retry only checks saved state; opening generation remains an explicit action.
+            if (session.status === "opening" && attempt === 0 && retries === 0) {
+              owned.busy = true;
+              setRoomBusy(true);
+              try {
+                const { session: greeted } = await request<{ session: SceneView }>("/rooms/greet", {
+                  method: "POST",
+                  body: JSON.stringify({ sessionId: session.id }),
+                });
+                if (!owns()) return;
+                const next = currentRoom(greeted);
+                if (!lifetime.handoff(owned, next, roomEnded)) return;
+                setRoom((current) => (current?.id === session.id ? next : current));
+                setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
+              } catch (cause) {
+                if (!owns()) return;
+                const recovered = await completedGreetingAfterFailure(session.id, owns);
+                if (!owns()) return;
+                if (recovered) {
+                  if (!lifetime.handoff(owned, recovered, roomEnded)) return;
+                  setRoom((current) => (current?.id === session.id ? recovered : current));
+                  setRoomGreetingError((current) => (current?.sessionId === session.id ? null : current));
+                } else
+                  setRoomGreetingError((current) =>
+                    current && current.sessionId !== session.id
+                      ? current
+                      : { sessionId: session.id, message: openingFailureMessage(cause) },
+                  );
+              }
+            }
+          } finally {
+            if (!controller.signal.aborted && lifetime.finish(owned) && owned.busy) setRoomBusy(false);
+          }
+        })
+        .catch((cause) => {
+          if (controller.signal.aborted) return;
+          let message = timeout.aborted
+            ? "Scene check timed out (GET /api/villages/rooms/active)."
+            : messageFrom(cause, "Scene check failed.");
+          if (cause instanceof VillageApiError && cause.status && !message.includes(`HTTP ${cause.status}`))
+            message += ` (HTTP ${cause.status}; GET /api/villages/rooms/active)`;
+          setError(message);
+          if (
+            retries < 2 &&
+            (timeout.aborted || (cause instanceof VillageApiError && [0, 502, 503, 504].includes(cause.status)))
+          )
+            timer = setTimeout(() => check(retries + 1), 1_000 * 2 ** retries);
+          else setStatus("error");
+        });
+    };
+    check();
     return () => {
       controller.abort();
+      clearTimeout(timer);
       if (claim) lifetime.cancel(claim);
     };
   });
   useEffect(() => restore(attempt), [attempt]);
   const retry = useCallback(() => {
     setStatus("checking");
+    setError("");
     setAttempt((current) => current + 1);
   }, []);
-  return { status, retry };
+  return { status, error, retry };
 }
