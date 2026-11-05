@@ -40,6 +40,7 @@ import { arrangementActivityAt } from "../packages/villages/src/server/domain/ru
 import { sceneHistoryFixture } from "./helpers/scene-history-store.fixture.js";
 import { fixtureWish, wishWorld } from "./helpers/social-wishes-fixture.js";
 import { createVillageRepository } from "../packages/villages/src/server/adapters/storage/village-repository.js";
+import { WorkFailureError } from "../packages/villages/src/server/domain/rules/work-failure.js";
 import {
   captureSceneContinuity,
   sceneContinuityView,
@@ -631,6 +632,7 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
   const fixture = world();
   let queued: any,
     residentReads = 0;
+  let answers: unknown[] = [];
   const service = createNarrative({
     relationshipIdentity: fixtureRelationshipIdentity,
     wishIdentity: fixtureWishIdentity,
@@ -649,12 +651,15 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
       queued = job;
     },
     job: async () => null,
-    models: (() => {
-      throw new Error("No provider needed for local admission");
-    }) as any,
+    models: (() => ({
+      resolveForRequest: async () => ({
+        fitContext: (messages: unknown, options: object) => ({ messages, ...options }),
+      }),
+    })) as any,
     connection: async () => "fixture",
     complete: async () => {
-      throw new Error("No dispatch during candidate selection");
+      assert.ok(answers.length, "No request during local admission");
+      return { content: JSON.stringify(answers.shift()) } as any;
     },
     now: () => new Date(at),
     afterCatchup: async () => {},
@@ -681,4 +686,15 @@ function proposal(grant: NonNullable<ReturnType<typeof admitNarrative>>) {
     attempts: [{ id: "saved-attempt", date: "2026-10-29", at, origin: "world" }],
   };
   assert.equal(preferredActivityLane(fixture.state), "resident");
+  for (const review of [{}, { consistent: true }, { consistent: false, reason: "Unsupported proposal" }]) {
+    answers = [{ quiet: false, proposal: {} }, review];
+    await assert.rejects(
+      () => service.handler.generate(queued.input),
+      (error: unknown) =>
+        review.consistent === false
+          ? error instanceof Error && !(error instanceof WorkFailureError)
+          : error instanceof WorkFailureError && error.failure.cause === "missing_result",
+    );
+    assert.equal(answers.length, 0, "The retained review determines recovery; no hidden request is made.");
+  }
 }

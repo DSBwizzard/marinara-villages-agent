@@ -204,6 +204,12 @@ export function createNarrative(ports: Ports) {
         { admission: input.grant, savedProposal: proposed.proposal },
         3000,
       );
+      if (typeof result.consistent !== "boolean" || (result.consistent && !result.development))
+        throw new WorkFailureError({
+          cause: "missing_result",
+          stage: "world-development",
+          message: "The world review is missing required metadata. Its response is retained.",
+        });
       if (result.consistent !== true)
         throw new Error(String(result.reason || "The world proposal was not supported.").slice(0, 300));
       return { quiet: false, development: readNarrativeDevelopment(result.development, input.grant) };
