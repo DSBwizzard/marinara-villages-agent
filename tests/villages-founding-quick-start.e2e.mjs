@@ -285,10 +285,14 @@ await withBrowser(browser, async () => {
         });
         for (const node of result.nodes) {
           const box = node.box;
-          assert.ok(box.height >= 44, "Compact nodes retain full touch targets");
+          assert.ok(box.height >= 44, "Nodes retain full touch targets");
+          assert.ok(
+            Math.abs(box.width - (result.canvas.width - 2) * 0.32) < 1,
+            "Visible nodes fill their reserved collision areas",
+          );
           assert.ok(
             box.top >= result.canvas.top && box.bottom <= result.canvas.bottom,
-            "Low authored Zones stay inside the expanded canvas",
+            "Low authored Zones stay inside the canvas",
           );
           for (const other of result.nodes.filter((row) => row.id !== node.id))
             assert.ok(
@@ -296,7 +300,7 @@ await withBrowser(browser, async () => {
                 other.box.right <= box.left + 0.1 ||
                 box.bottom <= other.box.top + 0.1 ||
                 other.box.bottom <= box.top + 0.1,
-              "Compact nodes do not overlap",
+              "Nodes do not overlap",
             );
         }
         for (const endpoint of result.lines.flat())
@@ -309,8 +313,9 @@ await withBrowser(browser, async () => {
           );
       };
       await assertGraph();
-      const compactCanvas = sheet.locator(".villages-zone-map-canvas");
-      assert.ok((await compactCanvas.boundingBox()).height > 310, "Seven low Zones expand the graph");
+      const canvas = sheet.locator(".villages-zone-map-canvas");
+      const canvasHeight = (await canvas.boundingBox()).height;
+      assert.ok(canvasHeight >= 320, "The editor uses the full canvas height");
       await page.setViewportSize({ width: viewport.width === 1366 ? 390 : 1366, height: 900 });
       await contained();
       await assertGraph();
@@ -324,13 +329,28 @@ await withBrowser(browser, async () => {
       const low = await zone("compact:4").boundingBox();
       await page.mouse.move(low.x + low.width / 2, low.y + low.height / 2);
       await page.mouse.down();
-      await page.mouse.move(low.x + low.width / 2, low.y + low.height / 2 + 6.4, { steps: 3 });
+      await page.mouse.move(low.x + low.width / 2, low.y + low.height / 2 + canvasHeight * 0.04, { steps: 3 });
+      assert.equal((await canvas.boundingBox()).height, canvasHeight, "Dragging never changes the canvas height");
       await page.mouse.up();
       await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["compact:4"].y)).toBe(86);
       await assertGraph();
       await page.evaluate((rows) => window.replaceQuickVenues(rows), originalVenues);
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(2);
-      assert.ok((await compactCanvas.boundingBox()).height < 230, "Sparse graphs trim unused bottom space");
+      assert.equal((await canvas.boundingBox()).height, canvasHeight, "Sparse graphs keep the full canvas height");
+      await zone("common:base").scrollIntoViewIfNeeded();
+      const room = await zone("common:base").boundingBox();
+      const entrance = await zone("exterior").boundingBox();
+      await page.mouse.move(room.x + room.width / 2, room.y + room.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(room.x + room.width * 1.51, entrance.y + entrance.height / 2 - 2, { steps: 1 });
+      await page.mouse.up();
+      await expect.poll(() => page.evaluate(() => window.quickState.venues[0].zoneLayout["common:base"].y)).toBe(0);
+      const adjacent = await zone("common:base").boundingBox();
+      assert.ok(
+        adjacent.x >= entrance.x + entrance.width && adjacent.x < entrance.x + entrance.width + 4,
+        "Zones can sit immediately beside another visible Zone without an invisible blocked margin",
+      );
+      await assertGraph();
       await button("Add Zone").click();
       await expect(sheet.locator("[data-layout-zone]")).toHaveCount(3);
       const addedZone = await sheet.locator(".villages-quick-selected-zone").getAttribute("data-zone-id");
