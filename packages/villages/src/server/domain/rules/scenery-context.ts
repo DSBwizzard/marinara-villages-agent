@@ -96,6 +96,7 @@ export function sceneryImageKey(village: VillageState, venue: VillageVenue, zone
     village.zonePictureEpoch ?? 0,
     zone?.pictureRevision ?? 0,
     zone?.freezePicture ?? false,
+    zone?.dayNight ?? false,
     village.sceneryArtStyle,
     village.sceneryStyleProfileId ?? null,
     village.setting,

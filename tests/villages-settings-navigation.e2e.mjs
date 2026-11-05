@@ -516,43 +516,66 @@ async function checkPackage(width) {
     await page.screenshot({
       path: resolve(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `sprite-visual-settings-${width}.png`),
     });
-  await page.getByLabel("Scenery style description", { exact: true }).fill("Packaged scenery save");
-  await page.getByLabel("Personalize new venue images by default", { exact: true }).uncheck();
-  await expect(page.getByLabel("Use selected lorebooks when generating images", { exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "Save scenery settings", exact: true }).click();
+  await expect(page.getByLabel("Personalize new venue images by default", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toHaveCount(0);
+  await expect(variants).toHaveAttribute("aria-describedby", /spriteVariantsEnabled-help/);
+  const personalizationBefore = snapshot.settings.personalizeVenueImagesByDefault;
+  const style = page.getByLabel("Scenery style description", { exact: true });
+  const acknowledge = async (index, fail = false) => {
+    if (!fail) Object.assign(snapshot.settings, scenerySaves[index].request().postDataJSON());
+    await fulfill(scenerySaves[index], {
+      status: fail ? 500 : 200,
+      contentType: "application/json",
+      body: JSON.stringify(fail ? { error: "Scenery unavailable" } : snapshot),
+    });
+  };
+  await style.fill("Packaged scenery save");
   await expect.poll(() => scenerySaves.length).toBe(1);
   assert.deepEqual(scenerySaves[0].request().postDataJSON(), {
     sceneryArtStyle: "Packaged scenery save",
     sceneryStyleProfileId: null,
-    personalizeVenueImagesByDefault: false,
   });
-  await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeDisabled();
-  await page.getByLabel("Scenery style description", { exact: true }).fill("Newer packaged scenery draft");
+  await style.fill("Newer packaged scenery draft");
   await section("general", "General Preferences");
-  assert.equal(narrationReads, expectedNarrationReads, "Writing settings are retained across navigation");
-  const saved = structuredClone(snapshot);
-  Object.assign(saved.settings, scenerySaves[0].request().postDataJSON());
-  await fulfill(scenerySaves[0], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
-  await section("visual", "Visual Settings");
-  await expect(page.getByRole("button", { name: "Save scenery settings", exact: true })).toBeEnabled();
-  await expect(page.getByLabel("Scenery style description", { exact: true })).toHaveValue(
-    "Newer packaged scenery draft",
-  );
-  assert.equal(scenerySaves.length, 1);
-  const automatic = page.getByRole("checkbox", { name: "Dynamic Images", exact: true });
-  await expect(automatic).toBeChecked();
-  await automatic.click();
+  assert.equal(narrationReads, expectedNarrationReads);
+  await acknowledge(0);
   await expect.poll(() => scenerySaves.length).toBe(2);
-  assert.deepEqual(scenerySaves[1].request().postDataJSON(), { automaticZonePictures: false });
-  saved.settings.automaticZonePictures = false;
-  await fulfill(scenerySaves[1], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  assert.equal(scenerySaves[1].request().postDataJSON().sceneryArtStyle, "Newer packaged scenery draft");
+  await section("visual", "Visual Settings");
+  await expect(style).toHaveValue("Newer packaged scenery draft");
+  await acknowledge(1);
+  await expect(page.getByText("Saving…", { exact: true })).toHaveCount(0);
+  await style.fill("Failed latest text");
+  await expect.poll(() => scenerySaves.length).toBe(3);
+  await acknowledge(2, true);
+  await expect(page.getByText("Scenery unavailable", { exact: false })).toBeVisible();
+  await expect(style).toHaveValue("Failed latest text");
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect.poll(() => scenerySaves.length).toBe(4);
+  await acknowledge(3);
+  await expect(page.getByText("Saving…", { exact: true })).toHaveCount(0);
+  await style.fill("Cancelled before preset");
+  await page.getByRole("combobox", { name: "Scenery style preset", exact: true }).selectOption("");
+  await expect.poll(() => scenerySaves.length).toBe(5);
+  assert.deepEqual(scenerySaves[4].request().postDataJSON(), { sceneryArtStyle: "", sceneryStyleProfileId: "" });
+  await acknowledge(4);
+  await expect(style).toHaveCount(0);
+  const automatic = page.getByRole("checkbox", { name: "Dynamic Images", exact: true });
+  await automatic.click();
+  await expect.poll(() => scenerySaves.length).toBe(6);
+  assert.deepEqual(scenerySaves[5].request().postDataJSON(), { automaticZonePictures: false });
+  await acknowledge(5);
   await expect(automatic).not.toBeChecked();
   await automatic.click();
-  await expect.poll(() => scenerySaves.length).toBe(3);
-  assert.deepEqual(scenerySaves[2].request().postDataJSON(), { automaticZonePictures: true });
-  saved.settings.automaticZonePictures = true;
-  await fulfill(scenerySaves[2], { status: 200, contentType: "application/json", body: JSON.stringify(saved) });
+  await expect.poll(() => scenerySaves.length).toBe(7);
+  assert.deepEqual(scenerySaves[6].request().postDataJSON(), { automaticZonePictures: true });
+  await acknowledge(6);
   await expect(automatic).toBeChecked();
+  assert.equal(
+    snapshot.settings.personalizeVenueImagesByDefault,
+    personalizationBefore,
+    "autosave does not overwrite the hidden saved preference",
+  );
   await section("general", "General Preferences");
   await expect(page.getByLabel("Additional writing guidance", { exact: true })).toHaveCount(0);
   await page.locator("label").filter({ hasText: "Tense" }).locator("select").selectOption("past");

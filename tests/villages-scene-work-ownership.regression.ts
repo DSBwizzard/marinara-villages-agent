@@ -133,6 +133,14 @@ function commandFixture(
     VENUE_REPLY_MAX_TOKENS,
     WISH_PROPOSAL_INSTRUCTION,
     sceneWork: () => work,
+    readVillageState: async () => {
+      await touch("world-read");
+      return world;
+    },
+    readActive: async () => {
+      await touch("presence");
+      return { sessionId: scene.id, placeId: scene.placeId };
+    },
     readSession: async (id) => {
       assert.equal(id, scene.id);
       await touch("session");

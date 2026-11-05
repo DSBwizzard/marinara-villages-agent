@@ -234,10 +234,7 @@ assert.equal(projectVenueAccess(venue, "player")?.managerIds, undefined);
 const snapshot = villageSettings(state, { name: "Player", missing: false } as any, null);
 assert.equal(snapshot.venues[0]!.access, undefined);
 assert.ok(snapshot.venues[0]!.zones!.every((zone) => !zone.access));
-assert.equal(
-  snapshot.venues[0]!.zones!.find((zone) => zone.id === "mara-bedroom")!.description,
-  "mara-bedroom visible appearance",
-);
+assert.equal(snapshot.venues[0]!.zones!.find((zone) => zone.id === "mara-bedroom")!.description, "");
 assert.equal(
   publicSceneResponse({
     access: venue.access,

@@ -12,6 +12,7 @@ import {
   useState,
 } from "react";
 import type { TownMapFit, TownMapView } from "../../../shared/contracts/village.js";
+import { MAP_LIGHTING_FILTERS, type VillageLighting } from "../../../shared/helpers/village-lighting.js";
 import { DESKTOP_PHOTO_SCALE, ELEMENT_TAG } from "../../shared/constants.js";
 import { clamp, round4 } from "../../shared/presentation.js";
 import type { MapFrameShape, MapPin, MapZoomRange, PictureBox } from "../../shared/types.js";
@@ -212,7 +213,9 @@ export function MapStage({
   keyboardPlacementId,
   placementCursor,
   children,
+  lighting = "day",
 }: {
+  lighting?: VillageLighting;
   src: string | null;
   alt: string;
   pins: MapPin[];
@@ -779,6 +782,7 @@ export function MapStage({
       data-picture-height={picture?.height}
       data-compact-photos={compactPhotos ? "true" : "false"}
       data-empty={src ? "false" : "true"}
+      data-lighting={lighting}
       onPointerDownCapture={(event) => {
         if (mobile || exploration) {
           mobilePointerDown(event);
@@ -871,8 +875,10 @@ export function MapStage({
                     width: picture.width,
                     height: picture.height,
                     objectFit: "fill",
+                    filter: MAP_LIGHTING_FILTERS[lighting],
+                    transition: "filter 4s ease",
                   }
-                : pictureStyle(live)
+                : { ...pictureStyle(live), filter: MAP_LIGHTING_FILTERS[lighting], transition: "filter 4s ease" }
             }
             src={src}
             alt={alt}

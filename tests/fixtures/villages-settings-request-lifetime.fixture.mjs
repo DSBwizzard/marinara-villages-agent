@@ -20,18 +20,20 @@ function Harness(){
  const settings=useSettingsState(),[snapshot,setSnapshot]=useState(window.seed),[busy,setBusy]=useState(false),
  [archive,setArchiveVersion]=useState(0),
  [sceneryStyle,setSceneryStyle]=useState(' Exact scenery A '),[sceneryStyleProfileId]=useState(null),[personalizeHomes,setPersonalizeHomes]=useState(false);
- const ports={...settings,snapshot,setSnapshot,setBusy,setArchiveVersion,
+ const ports={...settings,snapshot,busy,setSnapshot,setBusy,setArchiveVersion,
   sceneryStyle,sceneryStyleProfileId,personalizeHomes,acceptSavedSettings:()=>{window.acks++}};
  const save=useSaveSettings(ports),scenery=useSaveScenerySettings(ports),visual=useSpriteVisualSettings(ports),pace=useSaveBackgroundPace(ports),enter=useSaveSendOnEnter(ports);
- const commands={save,scenery,flip:()=>visual.save('spriteCardFlipEnabled',window.flipValue??true),variants:()=>visual.save('spriteVariantsEnabled',false),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>visual.save('characterSpeechColors',false)};
+ const commands={save,scenery:()=>scenery.save({sceneryArtStyle:sceneryStyle,sceneryStyleProfileId}),flip:()=>visual.save('spriteCardFlipEnabled',window.flipValue??true),variants:()=>visual.save('spriteVariantsEnabled',false),pace:()=>pace('quiet'),enter:()=>enter(true),colors:()=>visual.save('characterSpeechColors',false)};
  const launch=work=>{window.pending.push(work());return window.pending.length-1},run=kind=>launch(commands[kind]);
  window.h={run,twice:kind=>{run(kind);run(kind)},cross:()=>{run('pace');run('enter')},crossScenery:reverse=>{run(reverse?'pace':'scenery');run(reverse?'scenery':'pace')},independent:()=>{run('flip');run('pace')},
   editScenery:()=>{setSceneryStyle('Newer scenery');setPersonalizeHomes(true)},
+  queueScenery:(value,debounce=false)=>{setSceneryStyle(value);return launch(()=>scenery.save({sceneryArtStyle:value,sceneryStyleProfileId:null},debounce))},
+  queuePreset:()=>launch(()=>scenery.save({sceneryArtStyle:'',sceneryStyleProfileId:''})),retryScenery:()=>launch(scenery.retry),
   retain:kind=>{window.old=commands[kind]},old:()=>launch(window.old),
   reset:()=>{setSnapshot({...window.seed,isFounded:false,settings:{...window.seed.settings,setting:'reset'}});setBusy(true)},
   resetDone:()=>setBusy(false),refound:()=>{setSnapshot({...window.seed,isFounded:true,settings:{...window.seed.settings,setting:'B',sendOnEnter:true,characterSpeechColors:false}})},
   hydrate:()=>setSnapshot(current=>({...current,isFounded:true})),
-  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError,flipDraft:visual.draft.spriteCardFlipEnabled??null,flipError:visual.error,flipSaving:visual.saving,colorsDraft:visual.draft.characterSpeechColors,archive,sceneryStyle,personalizeHomes,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
+  read:()=>({setting:snapshot.settings.setting,founded:snapshot.isFounded,busy,error:settings.settingsError||scenery.error,scenerySaving:scenery.saving,sceneryDraft:scenery.draft,flipDraft:visual.draft.spriteCardFlipEnabled??null,flipError:visual.error,flipSaving:visual.saving,colorsDraft:visual.draft.characterSpeechColors,archive,sceneryStyle,personalizeHomes,enter:snapshot.settings.sendOnEnter,colors:snapshot.settings.characterSpeechColors})};
  return <pre id='state'>{JSON.stringify(window.h.read())}</pre>;
 }window.pending=[];window.acks=0;
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
@@ -106,7 +108,6 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
     scenery: {
       sceneryStyleProfileId: null,
       sceneryArtStyle: " Exact scenery A ",
-      personalizeVenueImagesByDefault: false,
     },
     flip: { spriteCardFlipEnabled: true },
     variants: { spriteVariantsEnabled: false },
@@ -204,8 +205,17 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         await expect.poll(() => f.requests.length).toBe(1);
         assert.deepEqual(f.requests[0].body, reverse ? payloads.pace : payloads.scenery);
         await f.respond(0);
+        if (reverse) {
+          await expect.poll(() => f.requests.length).toBe(2);
+          assert.deepEqual(f.requests[1].body, payloads.scenery);
+          await f.respond(1);
+        }
         await f.page.evaluate(() => Promise.all(window.pending));
-        assert.equal(f.requests.length, 1);
+        assert.equal(
+          f.requests.length,
+          reverse ? 2 : 1,
+          "scenery waits for a different settings writer without losing its patch",
+        );
         await f.finish();
       }
       // Saving the captured scenery does not acknowledge or overwrite newer drafts.
@@ -225,6 +235,47 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal(await f.page.evaluate(() => window.acks), 0);
         await f.finish();
       }
+      // Newer text and independent toggles survive a slow response, failure and explicit retry.
+      for (const fail of [false, true]) {
+        const f = await mount(strict, width);
+        await f.run("scenery");
+        await expect.poll(() => f.requests.length).toBe(1);
+        await f.page.evaluate(() => window.h.queueScenery("Newest unsaved text"));
+        assert.equal(f.requests.length, 1);
+        await f.respond(0, fail);
+        if (fail) {
+          await expect.poll(async () => (await f.state()).error).not.toBe("");
+          assert.equal(f.requests.length, 1, "a failed request does not loop automatically");
+          await f.page.evaluate(() => window.h.retryScenery());
+        }
+        await expect.poll(() => f.requests.length).toBe(2);
+        assert.equal(f.requests[1].body.sceneryArtStyle, "Newest unsaved text");
+        assert.equal("personalizeVenueImagesByDefault" in f.requests[1].body, false);
+        await f.respond(1);
+        await f.page.evaluate(() => Promise.all(window.pending));
+        assert.equal((await f.state()).sceneryStyle, "Newest unsaved text");
+        assert.equal((await f.state()).error, "");
+        await f.finish();
+      }
+      const preset = await mount(strict, width);
+      await preset.page.evaluate(() => {
+        window.h.queueScenery("Superseded custom text", true);
+        window.h.queuePreset();
+      });
+      await expect.poll(() => preset.requests.length).toBe(1);
+      assert.deepEqual(preset.requests[0].body, { sceneryArtStyle: "", sceneryStyleProfileId: "" });
+      await preset.respond(0);
+      await preset.page.waitForTimeout(450);
+      assert.equal(preset.requests.length, 1, "an older debounce cannot overwrite the preset");
+      await preset.finish();
+      const delayed = await mount(strict, width);
+      await delayed.page.evaluate(() => {
+        window.h.queueScenery("Old world text", true);
+        window.h.reset();
+      });
+      await delayed.page.waitForTimeout(450);
+      assert.equal(delayed.requests.length, 0, "reset retires work that has not dispatched");
+      await delayed.finish();
       // Sprite controls now share the same admission group as scenery and other settings.
       const shared = await mount(strict, width);
       await shared.page.evaluate(() => window.h.independent());

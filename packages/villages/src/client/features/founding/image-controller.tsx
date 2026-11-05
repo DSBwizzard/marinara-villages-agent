@@ -241,9 +241,17 @@ export function createFoundingGenerateSetupImage(ports: {
         description: row.description,
         occupancy: row.occupancy,
         imageContext: row.imageContext,
+        reference: row.pictureReference?.id,
         zone: [...(row.spaces ?? []), ...(row.privateSpaces ?? [])]
           .filter((zone) => zone.id === zoneId)
-          .map(({ id, name, purpose, description, state }) => ({ id, name, purpose, description, state })),
+          .map(({ id, name, purpose, description, state, pictureReference }) => ({
+            id,
+            name,
+            purpose,
+            description,
+            state,
+            reference: pictureReference?.id,
+          })),
       });
     const venueKey = physicalImageKey(venue);
     setupImageClaim.current = true;
@@ -261,6 +269,7 @@ export function createFoundingGenerateSetupImage(ports: {
           zoneName: selectedArea?.name,
           zonePurpose: selectedArea?.purpose,
           zoneAppearance: selectedArea?.description,
+          reference: selectedArea?.pictureReference ?? (area === "exterior" ? venue.pictureReference : undefined),
           privateOwnerId: area === "private" ? selectedArea?.ownerId : undefined,
           privateDescription: description,
           foundingResidentAdmissions: Object.fromEntries(
@@ -315,12 +324,6 @@ export function createFoundingUploadSetupImage(ports: {
   readonly setupImageTargetRef: FoundingState["setupImageTargetRef"];
   readonly setupVenuesRef: React.RefObject<import("../../../shared/contracts/village").VillageVenue[]>;
   readonly snapshot: import("../../../shared/contracts/village").VillageSnapshot;
-  readonly withSetupImage: (
-    venue: import("../../../shared/contracts/village").VillageVenue,
-    area: "exterior" | "private" | "interior",
-    image: import("../../../shared/contracts/village").VillageVenueImage,
-    zoneId?: string,
-  ) => import("../../../shared/contracts/village").VillageVenue;
 }) {
   return async (venue: SetupVenueDraft, area: "exterior" | "interior" | "private", file?: File, zoneId?: string) => {
     const {
@@ -334,7 +337,6 @@ export function createFoundingUploadSetupImage(ports: {
       setupImageTargetRef,
       setupVenuesRef,
       snapshot,
-      withSetupImage,
     } = ports;
 
     if (!file || setupImageClaim.current) return;
@@ -362,7 +364,21 @@ export function createFoundingUploadSetupImage(ports: {
         )
       )
         return;
-      patchSetupVenue(venue.id, (row) => withSetupImage(row, area, image, zoneId));
+      patchSetupVenue(venue.id, (row) =>
+        area === "exterior"
+          ? { ...row, pictureReference: image, referenceAppliedId: undefined }
+          : {
+              ...row,
+              [area === "private" ? "privateSpaces" : "spaces"]: (area === "private"
+                ? row.privateSpaces
+                : row.spaces
+              )?.map((room, index) =>
+                (zoneId ? room.id === zoneId : index === 0)
+                  ? { ...room, pictureReference: image, referenceAppliedId: undefined }
+                  : room,
+              ),
+            },
+      );
     } catch (cause) {
       setSetupProblem(messageFrom(cause, "That venue image could not be uploaded."));
     } finally {
@@ -381,18 +397,49 @@ export function createFoundingWithSetupImage() {
     zoneId?: string,
   ): SetupVenueDraft => {
     return area === "exterior"
-      ? { ...venue, presentation: { ...venue.presentation, image } }
+      ? {
+          ...venue,
+          referenceAppliedId: venue.pictureReference?.id,
+          daylightReady: true,
+          pictureContext: JSON.stringify({
+            description: venue.description,
+            ...(venue.form ? { form: venue.form } : {}),
+          }),
+          presentation: { ...venue.presentation, image },
+        }
       : area === "private"
         ? {
             ...venue,
             privateSpaces: (venue.privateSpaces ?? [personalSpaceDraft()]).map((room) =>
-              (zoneId ? room.id === zoneId : room.ownerId === "player") ? { ...room, image } : room,
+              (zoneId ? room.id === zoneId : room.ownerId === "player")
+                ? {
+                    ...room,
+                    image,
+                    daylightReady: true,
+                    pictureContext: JSON.stringify({
+                      description: room.description,
+                      ...(venue.form ? { form: venue.form } : {}),
+                    }),
+                    referenceAppliedId: room.pictureReference?.id,
+                  }
+                : room,
             ),
           }
         : {
             ...venue,
             spaces: venue.spaces?.map((space, index) =>
-              (zoneId ? space.id === zoneId : index === 0) ? { ...space, image } : space,
+              (zoneId ? space.id === zoneId : index === 0)
+                ? {
+                    ...space,
+                    image,
+                    daylightReady: true,
+                    pictureContext: JSON.stringify({
+                      description: space.description,
+                      ...(venue.form ? { form: venue.form } : {}),
+                    }),
+                    referenceAppliedId: space.pictureReference?.id,
+                  }
+                : space,
             ),
           };
   };

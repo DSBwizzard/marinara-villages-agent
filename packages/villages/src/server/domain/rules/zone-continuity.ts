@@ -1,3 +1,4 @@
+import { ZONE_DAY_NIGHT_INSTRUCTION } from "../../../shared/helpers/zone-day-night.js";
 import type {
   PlaceAfter,
   PlaceContinuity,
@@ -176,6 +177,7 @@ export function applyPlaceUpdate(before: PlaceAfter, value: unknown, at: string)
           "narration",
           "expectedRevision",
           "appearanceChanged",
+          "dayNight",
           "edits",
           "append",
           "recent",
@@ -201,6 +203,7 @@ export function applyPlaceUpdate(before: PlaceAfter, value: unknown, at: string)
       }))
   )
     throw invalid();
+  if (row.dayNight !== undefined && typeof row.dayNight !== "boolean") throw invalid();
   if (row.appearanceChanged !== undefined && typeof row.appearanceChanged !== "boolean") throw invalid();
   if (row.expectedRevision !== before.state.revision) throw conflict("This Zone changed. Your draft is preserved.");
   if (!Number.isFinite(Date.parse(at))) throw invalid();
@@ -251,6 +254,8 @@ export function applyPlaceUpdate(before: PlaceAfter, value: unknown, at: string)
 }
 
 export const PLACE_UPDATE_INSTRUCTION =
+  ZONE_DAY_NIGHT_INSTRUCTION +
+  " Include dayNight only with enduring description edits. " +
   'Optional placeUpdate:{happened:true,segment,actorIds:[],consent:[{actorId,segment?,lineId?,quote?}],narration,expectedRevision,appearanceChanged:boolean,edits:[{before,after}],append?,recent?:{text,renew?}}. segment cites current local action narration; actors must actually be there. Every nonacting controller needs consent citing current dialogue segment or exact earlier accepted Scene lineId perceived by actors. Judge conditions and withdrawals for this action/Zone; old agreements are no license. Player consent uses segment:"player",quote:"exact current input". Valid access permits ordinary temporary use; enduring edits need controller authority. Description is physical truth, max4000: use unique exact edits (empty after removes) and/or append; preserve unrelated facts. Consolidate only redundant wording. Unfinished physical work stays here; intentions/promises belong in Memories. Recent is one complete paragraph, max600, empty clears. Its shared 24-hour deadline stays for unrelated new activity. renew:true only when the whole retained arrangement was deliberately maintained/reestablished, never viewing/mentioning. Evidence must establish the completed deed and available supplies. No invented supplies, remote deeds or object/quantity accounting. System judges support/consent; code binds witnesses, authority, revisions and receipts. appearanceChanged:true only for a meaningful visible enduring alteration (furniture, colors, damage, structure); false for rewording, tiny incidental details or recent-only activity. This flags artwork only after the physical change is committed. Optional conditionClears:[{id,expectedRevision}] only for supplied local conditions whose complete remedy is actually performed by this supported physical action. Do not clear on a promise, intention, mere situation resolution or partial work; keep every other restriction. Omit unchanged fields; narration cannot assert unsupported results.';
 
 export function readPlaceUpdate(value: unknown, before: PlaceAfter, at: string): PlaceUpdate | null {

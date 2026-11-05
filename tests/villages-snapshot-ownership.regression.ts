@@ -1,3 +1,5 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
@@ -128,6 +130,7 @@ function fixture(label: string, missingColors = false) {
   const service = createVillageSnapshot(ports);
   return {
     world,
+    ports,
     setScene: (scene: VenueScene) => {
       activeScene = scene;
     },
@@ -209,6 +212,41 @@ async function main() {
     ready.revision,
     "late own-Scene notice is delivered through shared refresh",
   );
+  {
+    const f = fixture("observed");
+    const venue = venueFixture({ id: "square", name: "Square", description: "Old approach" });
+    f.world.venues.push(venue);
+    const zone = venue.zones![0];
+    zone.observed = captureZoneObservation(venue, zone);
+    zone.description = "Newly observed approach";
+    const current = coerceSession({
+      version: 3,
+      id: "observed",
+      villageSeed: f.world.seed,
+      placeId: venue.id,
+      zoneId: zone.id,
+      status: "active",
+      startedAt: stamp,
+    });
+    const service = createVillageSnapshot({
+      ...f.ports,
+      readVillageState: async () => structuredClone(f.world),
+      rollActiveAgendas: async () => false,
+      sceneQueries: () => ({
+        activeVenueSession: async () => {
+          zone.observed = captureZoneObservation(venue, zone);
+          return structuredClone(current);
+        },
+      }),
+    });
+    const first = await service.buildVillageSnapshot(now);
+    assert.equal(
+      first.settings.venues[0].zones![0].description,
+      "Newly observed approach",
+      "the first snapshot projects the reconciled observation",
+    );
+    assert.equal(first.settings.venues[0].zones![0].pictureGenerateAvailable, true);
+  }
   const plain = fixture("plain");
   assert.deepEqual(plain.calls, [], "construction must not read, mutate, load a catalog or start background work");
   const snapshot = await plain.service.buildVillageSnapshot(now);

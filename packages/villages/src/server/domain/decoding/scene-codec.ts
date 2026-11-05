@@ -61,6 +61,23 @@ function readSceneContinuity(value: unknown): SceneContinuity | undefined {
     memories: { format: 1, revision: 0, records: [] },
     memoryScenes: {},
   });
+  const keepCapturedLighting = (venue: import("../models/world.js").VillageVenue, value: unknown) => {
+    const zones = asRecord(value).zones;
+    if (!Array.isArray(zones)) return;
+    for (const zone of venue.zones ?? []) {
+      const original = zones.map(asRecord).find((row) => row.id === zone.id);
+      if (!original) continue;
+      zone.dayNight = original.dayNight === true;
+      if (zone.observed && !original.observed) zone.observed.dayNight = zone.dayNight;
+    }
+  };
+  for (const venue of decoded.venues)
+    keepCapturedLighting(
+      venue,
+      (facts.venues as unknown[]).find((row) => asRecord(row).id === venue.id),
+    );
+  for (const [id, place] of Object.entries(decoded.worldPlaces?.places ?? {}))
+    keepCapturedLighting(place.location, asRecord(asRecord(asRecord(facts.worldPlaces).places)[id]).location);
   if (facts.relationshipContext)
     decoded.relationshipContext = immutableRelationshipState(raw.seed, facts.relationshipContext);
   if (Object.hasOwn(facts, "foundingHistory") && typeof facts.foundingHistory !== "string")

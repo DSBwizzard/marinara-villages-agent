@@ -1,3 +1,4 @@
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
@@ -310,10 +311,10 @@ async function main() {
     );
     const view = villageSettings(saved, { name: "Player", description: "", personaId: "" } as any);
     const hidden = view.venues.find((v) => v.id === "bank")!.zones!.find((z) => z.id === "staff")!;
-    assert.equal(hidden.description, "Secret shell collection in a canvas corner");
+    assert.equal(hidden.description, "");
     assert.equal(hidden.state.recent, null);
     assert.equal(hidden.image, null);
-    assert.equal(hidden.preparation!.status, "ready");
+    assert.equal(hidden.preparation, undefined);
     await mutateVillageState((current) => {
       const place = current.venues[4]!;
       applyAccessCommand(
@@ -486,6 +487,7 @@ async function privateInteriorLifecycle() {
               venueId: "bungalow",
               id: "bedroom",
               name: "Bedroom",
+              dayNight: true,
               description: input.existingInterior?.description
                 ? input.existingInterior.description + "\nThe garden-facing window is renewed."
                 : "A neutral bedroom with a garden-facing window and plain bed.",
@@ -501,21 +503,19 @@ async function privateInteriorLifecycle() {
   assert.equal(calls, 1, "reading ready interiors never regenerates them");
   const bedroom = resolveVenueZone(home, "bedroom")!;
   assert.equal(bedroom.preparation?.status, "ready");
+  assert.equal(bedroom.dayNight, true, "normal room preparation includes its daylight decision");
+  assert.equal(bedroom.dayNightManual, false);
   assert.equal(bedroom.roomSpecification, "A small room with a garden-facing window");
   const player = { name: "Player", description: "", personaId: "" } as any;
   let view = villageSettings(village, player);
-  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, bedroom.description);
+  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, "");
   assert.equal(bedroom.seen, false, "viewing details does not record a gameplay visit");
   bedroom.image = { ref: "global-gallery:before", id: "before", url: "https://example.test/before.png" };
   bedroom.description = "A personalized interior with a keepsake.";
   view = villageSettings(village, player);
   const shown = view.venues[0].zones!.find((zone) => zone.id === "bedroom")!;
-  assert.equal(
-    shown.description,
-    bedroom.description,
-    "private details use the same current projection as other Zones",
-  );
-  assert.equal(shown.image?.id, "before", "saved artwork is visible before a visit");
+  assert.equal(shown.description, "", "unvisited private details remain undisclosed");
+  assert.equal(shown.image, null, "unvisited artwork is not exposed through settings");
   assert.equal(bedroom.seen, false);
   const reloaded = coerceVillageState(structuredClone(village));
   assert.equal(resolveVenueZone(reloaded.venues[0], "bedroom")!.description, bedroom.description);
@@ -523,6 +523,7 @@ async function privateInteriorLifecycle() {
   bedroom.image = null;
   let draws = 0;
   const images = createLocationImages({
+    canGenerateZonePicture: async () => bedroom.seen,
     readVillageState: async () => structuredClone(village),
     mutateVillageState: async (update: any) => {
       update(village);
@@ -539,7 +540,7 @@ async function privateInteriorLifecycle() {
         assert.match(input.prompt, /garden-facing window/);
       } else assert.match(input.prompt, /Large established physical detail/);
       assert.match(input.prompt, /Shared architecture/);
-      assert.match(input.prompt, /no people, no animals, no text/);
+      assert.match(input.negativePrompt, /people.*animals.*text/);
       throw new Error("Synthetic image failure");
     },
     villagesLogger: () => ({ warn() {} }),
@@ -559,6 +560,7 @@ async function privateInteriorLifecycle() {
     bedroom.initialImageAttemptedAt,
   );
   bedroom.description += "\n" + "Large established physical detail. ".repeat(70);
+  bedroom.observed = captureZoneObservation(home, bedroom);
   await assert.rejects(
     () => images.generateVillageLocationImage("bungalow", undefined, undefined, "", false, "bedroom"),
     /Synthetic image failure/,

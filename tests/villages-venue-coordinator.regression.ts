@@ -1,3 +1,6 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { configureLocationImages } from "../packages/villages/src/server/features/media/location-image.js";
+import type { LocationImageService } from "../packages/villages/src/server/features/media/location-image-service.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import {
   villageFixtureDocuments,
@@ -419,6 +422,16 @@ async function main() {
     seed("slow-greeting");
     row("slow-greeting").data = coerceSession({ version: 3, ...row("slow-greeting").data, status: "opening" });
     const world = defaultVillageState();
+    const greetingVenue = venueFixture({ id: "greeting-place", name: "Hall", description: "A hall" });
+    delete greetingVenue.access;
+    world.venues = [greetingVenue];
+    Object.assign(row("slow-greeting").data, {
+      placeId: greetingVenue.id,
+      zoneId: "exterior",
+      startedAt: new Date().toISOString(),
+    });
+    let earlyPictures = 0;
+    const delayedPresence = deferred<void>();
     const greetingWork = createSceneWork();
     let stage = deferred<void>();
     let dispatches = 0;
@@ -427,6 +440,7 @@ async function main() {
       activationScope: () => undefined,
       sceneWork: () => greetingWork,
       readSession,
+      readActive: async () => ({ sessionId: "slow-greeting", placeId: greetingVenue.id }),
       changeSession,
       readVillageState: async () => world,
       mutateVillageState: async (change: any) => {
@@ -444,7 +458,13 @@ async function main() {
       isInactive: () => false,
       villagesLogger: () => ({ info() {}, warn() {} }),
       refreshZoneParticipants: async (scene) => scene,
-      markZoneSeen: async () => {},
+      outsideVenueOperation: (run: () => unknown) => run(),
+      loadPrivateSpaceImages: async () => ({
+        requestZonePicture: async () => {
+          earlyPictures++;
+          await delayedPresence.promise;
+        },
+      }),
       processSavedExchange: async () => {},
       generate: async (_scene, _message, _mode, _target, _settled, signal) => {
         for (const duration of [7942, 24163]) {
@@ -474,7 +494,13 @@ async function main() {
       assert.equal(dispatches, 2);
       assert.equal((await commands.greetVenue("slow-greeting", undefined, true)).lines.length, 1);
       assert.equal(dispatches, 2, "Saved-only duplicate recovery does not dispatch or append twice");
+      assert.equal(
+        earlyPictures,
+        0,
+        "coordinated work cannot launch a slow early presence check that absorbs its settled image request",
+      );
     } finally {
+      delayedPresence.resolve();
       mock.timers.reset();
     }
     seed("v3-opening-retry");
@@ -1568,6 +1594,59 @@ async function main() {
       ),
       "Targeted Narration rejection retains raw proposal diagnostics",
     );
+    {
+      seed("artwork-settled");
+      Object.assign(row("artwork-settled").data, { placeId: "artwork-place", zoneId: "studio" });
+      const observed = deferred<{ placeId: string; zoneId: string; status: string | undefined }>();
+      let pictures = 0;
+      const releasePictures = configureLocationImages({
+        requestZonePicture: async (placeId: string, zoneId: string) => {
+          pictures++;
+          observed.resolve({ placeId, zoneId, status: (await readSession("artwork-settled")).operation?.status });
+        },
+      } as unknown as LocationImageService);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await coordinateVenue("artwork-settled", "visit", "turn", {}, 0, undefined, async () => "settled");
+        const result = await Promise.race([
+          observed.promise,
+          new Promise<never>((_resolve, reject) => {
+            timer = setTimeout(() => reject(Error("Settled visit did not request its pending artwork")), 1500);
+          }),
+        ]);
+        assert.deepEqual(
+          result,
+          { placeId: "artwork-place", zoneId: "studio", status: "complete" },
+          "automatic artwork is requested after the operation's completion is persisted",
+        );
+        seed("artwork-held");
+        await assert.rejects(
+          coordinateVenue("artwork-held", "visit", "turn", {}, 0, undefined, async () => {
+            throw Error("held");
+          }),
+          /held/,
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(pictures, 1, "failed Scene work cannot initiate artwork");
+        seed("artwork-closed");
+        await coordinateVenue("artwork-closed", "visit", "turn", {}, 0, undefined, async () => {
+          await changeSession("artwork-closed", (scene) => {
+            scene.status = "closed";
+          });
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(pictures, 1, "closed Scenes cannot initiate artwork");
+        seed("artwork-rejected");
+        await coordinateVenue("artwork-rejected", "visit", "turn", {}, 0, undefined, async () => ({
+          turnOutcome: "occupancy-unavailable",
+        }));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(pictures, 1, "an expected rejected turn cannot initiate artwork or mutate observed state");
+      } finally {
+        clearTimeout(timer);
+        releasePictures();
+      }
+    }
     console.log("villages-venue-coordinator: ok");
   } finally {
     release();

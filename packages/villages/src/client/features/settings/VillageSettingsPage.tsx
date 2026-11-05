@@ -16,15 +16,13 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
     lorebooks,
     lorebooksError,
     mobile,
-    personalizeHomes,
-    saveScenerySettings,
+    scenerySettings,
     spriteVisualSettings,
     saveSettings,
     sceneryStyle,
     sceneryStyleProfileId,
     setLoreTokenBudgetDraft,
     setLorebookDraft,
-    setPersonalizeHomes,
     setSceneryStyle,
     setSceneryStyleProfileId,
     settingsError,
@@ -40,30 +38,50 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
               <input
                 autoComplete="off"
                 type="checkbox"
-                disabled={busy}
-                checked={snapshot.settings.automaticZonePictures !== false}
-                onChange={(event) => void saveScenerySettings(event.target.checked)}
+                disabled={busy && !scenerySettings.saving}
+                aria-describedby={`${ELEMENT_TAG}-dynamic-images-help`}
+                checked={
+                  scenerySettings.draft.automaticZonePictures ?? snapshot.settings.automaticZonePictures !== false
+                }
+                onChange={(event) => void scenerySettings.save({ automaticZonePictures: event.target.checked })}
               />
               Dynamic Images
             </label>
+            <small id={`${ELEMENT_TAG}-dynamic-images-help`} className={`${ELEMENT_TAG}-hint`}>
+              Refresh Zone pictures after lasting changes. Uses image generation.
+            </small>
             <SceneryStyleFields
+              disabled={busy && !scenerySettings.saving}
+              hint="Used for new map and Venue artwork. Existing pictures stay unchanged."
               value={sceneryStyle}
               profileId={sceneryStyleProfileId}
               onChange={setSceneryStyle}
               onProfileChange={setSceneryStyleProfileId}
+              onCommit={(next, debounce) =>
+                void scenerySettings.save(
+                  { sceneryArtStyle: next.value, sceneryStyleProfileId: next.profileId },
+                  debounce,
+                )
+              }
             />
-            <label>
-              <input
-                autoComplete="off"
-                type="checkbox"
-                checked={personalizeHomes}
-                onChange={(event) => setPersonalizeHomes(event.target.checked)}
-              />
-              Personalize new venue images by default
-            </label>
-            <button type="button" disabled={busy} onClick={() => void saveScenerySettings()}>
-              Save scenery settings
-            </button>
+            {scenerySettings.saving ? (
+              <p role="status" className={`${ELEMENT_TAG}-hint`}>
+                Saving…
+              </p>
+            ) : null}
+            {scenerySettings.error ? (
+              <p role="alert" className={`${ELEMENT_TAG}-error`}>
+                {scenerySettings.error}
+                <button
+                  type="button"
+                  className={`${ELEMENT_TAG}-button`}
+                  disabled={busy}
+                  onClick={() => void scenerySettings.retry()}
+                >
+                  Retry
+                </button>
+              </p>
+            ) : null}
           </section>
         </>
       ) : (

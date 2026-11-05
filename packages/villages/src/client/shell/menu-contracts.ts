@@ -71,7 +71,7 @@ export type MenuScreenController = {
   readonly spriteVisualSettings: ReturnType<
     typeof import("../features/settings/SpriteVisualSettings.js").useSpriteVisualSettings
   >;
-  readonly saveScenerySettings: ReturnType<typeof useSaveScenerySettings>;
+  readonly scenerySettings: ReturnType<typeof useSaveScenerySettings>;
   readonly saveSettings: ReturnType<typeof useSaveSettings>;
   readonly saveBackgroundPace: ReturnType<typeof useSaveBackgroundPace>;
   readonly sceneryStyle: FoundingState["sceneryStyle"];

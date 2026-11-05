@@ -1,3 +1,4 @@
+import { zoneDayNightDefault } from "../../../shared/helpers/zone-day-night.js";
 import { reconcileFoundingHome } from "./founding-homes.js";
 import { applyFoundingVenueDraft, foundingVenueDraftSource } from "../../../shared/helpers/founding-venue-draft.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
@@ -224,6 +225,8 @@ export function createFoundingSuggestSetupVenues(ports: {
           for (const key of ["name", "venueType", "form", "description"] as const)
             if ((options.venueId || !setupAuthoredFieldsRef.current[row.id]?.includes(key)) && row[key] === before[key])
               changed[key] = proposal[key] ?? row[key];
+          if (changed.description !== row.description)
+            Object.assign(changed, zoneDayNightDefault(row, proposal.dayNight));
           return changed;
         }),
       );

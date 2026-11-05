@@ -3,6 +3,7 @@ import type { VillageVenue } from "../../../shared/contracts/village.js";
 
 export function QuickStartZoneArtwork({
   image,
+  reference,
   name,
   busy,
   onUpload,
@@ -10,6 +11,7 @@ export function QuickStartZoneArtwork({
   onRemove,
 }: {
   image: VillageVenue["presentation"]["image"];
+  reference?: VillageVenue["presentation"]["image"];
   name: string;
   busy: boolean;
   onUpload(file: File): void;
@@ -26,7 +28,7 @@ export function QuickStartZoneArtwork({
             Generate artwork
           </button>
           <button type="button" disabled={busy} onClick={() => upload.current?.click()}>
-            Upload image
+            Upload reference
           </button>
           <input
             ref={upload}
@@ -34,7 +36,7 @@ export function QuickStartZoneArtwork({
             autoComplete="off"
             type="file"
             accept="image/*"
-            aria-label="Upload Zone image"
+            aria-label="Upload Zone reference"
             disabled={busy}
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -49,7 +51,8 @@ export function QuickStartZoneArtwork({
       ) : (
         <div className="villages-quick-art-empty">No image yet</div>
       )}
-      {image ? (
+      {reference ? <p role="status">Reference saved. Generate artwork to use it.</p> : null}
+      {image || reference ? (
         <button type="button" disabled={busy} className="villages-quick-remove-art" onClick={onRemove}>
           Remove image
         </button>

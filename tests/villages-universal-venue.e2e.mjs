@@ -20,6 +20,15 @@ await withBrowser(browser, async () => {
       console.error(error.message);
     });
     const snapshot = structuredClone(fixture);
+    const night = width === 850;
+    Object.assign(snapshot.village, {
+      instant: night ? "2026-11-05T20:00:00Z" : "2026-11-05T12:00:00Z",
+      timeZone: "UTC",
+      hour: night ? 20 : 12,
+      minute: 0,
+      minuteOfDay: night ? 1200 : 720,
+      localTime: night ? "20:00" : "12:00",
+    });
     snapshot.isFounded = true;
     snapshot.projects = [];
     const place = snapshot.settings.venues[0];
@@ -67,6 +76,7 @@ await withBrowser(browser, async () => {
         venueClass: "residence",
         connectedTo: ["exterior", "alcove", "workshop"],
         seen: true,
+        pictureGenerateAvailable: true,
         description: "An open living area.",
         image: null,
         state,
@@ -79,6 +89,7 @@ await withBrowser(browser, async () => {
         venueClass: "residence",
         connectedTo: ["bay"],
         seen: false,
+        pictureGenerateAvailable: false,
         description: "A private sleeping alcove with a blue blanket.",
         image: { id: "alcove-art", ref: "global-gallery:alcove-art", url: mapImage },
         state,
@@ -159,8 +170,20 @@ await withBrowser(browser, async () => {
       } else if (path.endsWith("/locations/venue/image")) {
         const body = request.postDataJSON();
         const zone = place.zones.find((zone) => zone.id === body.zoneId);
-        if (zone)
-          zone.image = request.method() === "DELETE" ? null : { ref: "zone:" + zone.id, url: body.image || mapImage };
+        if (zone) {
+          if (request.method() === "PUT") {
+            zone.pictureReference = { id: "uploaded-reference", url: mapImage + "#reference" };
+            zone.referencePending = true;
+          } else {
+            zone.image = request.method() === "DELETE" ? null : { ref: "zone:" + zone.id, url: mapImage };
+            zone.dayNight = true;
+            zone.nightImage = request.method() === "DELETE" ? undefined : { id: "night", url: mapImage + "#night" };
+          }
+        }
+        if (zone) {
+          zone.pictureRetryAvailable = false;
+          zone.pictureProblem = undefined;
+        }
       } else if (path.endsWith(`/locations/venue/${place.id}`) && request.method() === "PUT") {
         place.name = request.postDataJSON().name;
         if (holdVenueSave) {
@@ -278,7 +301,7 @@ await withBrowser(browser, async () => {
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
     await detail.getByRole("button", { name: "Picture", exact: true }).click();
-    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeVisible();
+    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeDisabled();
     await expect(detail.getByRole("img", { name: "Sleeping Alcove at " + place.name })).toHaveAttribute(
       "src",
       mapImage,
@@ -299,8 +322,8 @@ await withBrowser(browser, async () => {
     await layout.locator('[data-layout-zone="bay"]').click();
     await detail.getByRole("button", { name: "Picture", exact: true }).click();
     await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeVisible();
-    await expect(detail.getByLabel("Upload Main Bay artwork")).toHaveCount(1);
-    await expect(detail.getByRole("button", { name: "Upload artwork", exact: true })).toBeVisible();
+    await expect(detail.getByLabel("Upload Main Bay reference")).toHaveCount(1);
+    await expect(detail.getByRole("button", { name: "Upload image reference", exact: true })).toBeVisible();
     await detail.getByRole("button", { name: "Lore activity", exact: true }).click();
     const lore = page.getByRole("dialog", { name: "Lore activity", exact: true });
     await expect(lore.getByRole("searchbox", { name: "Search Lore entries" })).toHaveValue(
@@ -344,7 +367,20 @@ await withBrowser(browser, async () => {
       path: "/api/villages/locations/venue/image",
       body: { venueId: place.id, spaceClass: "residence", privateOwnerId: "", zoneId: "bay" },
     });
-    await detail.getByLabel("Upload Main Bay artwork").setInputFiles({
+    const openPicture = async () => {
+      const menu = detail.locator("details." + prefix + "-picture-menu");
+      if (!(await menu.evaluate((el) => el.open)))
+        await detail.getByRole("button", { name: "Picture", exact: true }).click();
+    };
+    await openPicture();
+    await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveCount(0);
+    await expect(detail.getByRole("button", { name: "View night image", exact: true })).toHaveCount(0);
+    await expect(detail.getByRole("button", { name: "Refresh picture", exact: true })).toHaveCount(0);
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
+      await detail.getByRole("button", { name: "Upload image reference", exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `picture-menu-${width}.png`) });
+    }
+    await detail.getByLabel("Upload Main Bay reference").setInputFiles({
       name: "zone.png",
       mimeType: "image/png",
       buffer: Buffer.from(
@@ -354,10 +390,12 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
-    await detail.getByRole("button", { name: "Picture", exact: true }).click();
+    await expect(detail.locator("img")).toHaveAttribute("src", mapImage + (night ? "#night" : ""));
+    await expect(detail.getByRole("status")).toHaveText("Reference saved for your next visit.");
+    await openPicture();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Refresh picture", "Generate new picture", "Upload artwork", "Remove artwork"].map((name) =>
+      ["Generate new picture", "Upload image reference", "Remove artwork"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
@@ -546,6 +584,7 @@ await withBrowser(browser, async () => {
       .click();
     if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("village");
     else await page.getByRole("button", { name: "World Configuration", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "World Configuration", level: 1, exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village navigation" })

@@ -4,6 +4,9 @@ const binding = createActivationBinding<LiveScenes>("Live Scene service is not c
 export function configureLiveScenes(service: LiveScenes): () => void {
   return binding.configure(bindActivationService(service));
 }
+export async function canGenerateZonePicture(...args: Parameters<LiveScenes["canGenerateZonePicture"]>) {
+  return binding.get().canGenerateZonePicture(...args);
+}
 export async function activeVenueSession(...args: Parameters<LiveScenes["activeVenueSession"]>) {
   return binding.get().activeVenueSession(...args);
 }

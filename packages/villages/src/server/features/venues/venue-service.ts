@@ -1,3 +1,4 @@
+import { rememberZoneArtwork, observedPictureKey } from "../../domain/rules/zone-observation.js";
 import { sceneActorIds } from "../../domain/rules/places.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
@@ -87,12 +88,17 @@ export function createVenueCommands({
     onlyIfEmpty = false,
     zoneId?: string,
     expectedContext?: string,
+    daylight = false,
+    guard?: (state: VillageState) => boolean,
+    fromObservation = false,
   ): Promise<VillageSnapshot> {
-    await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
+    await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId, fromObservation);
     await mutateVillageState((state) => {
       const venue = state.venues.find((entry) => entry.id === venueId);
       if (!venue) throw notFound("That place is no longer in the village.");
+      if (guard && !guard(state)) throw conflict("The scenery changed while its image was generated. Generate again.");
       if (
+        !fromObservation &&
         expectedContext &&
         expectedContext !==
           sceneryImageKey(
@@ -118,18 +124,28 @@ export function createVenueCommands({
         );
       const zone = resolveVenueZone(venue, targetId);
       if (!zone) throw notFound("That zone no longer exists.");
+      if (
+        fromObservation &&
+        (!zone.observed || (expectedContext && observedPictureKey(state, zone) !== expectedContext))
+      )
+        throw conflict("The remembered artwork changed. Generate again.");
+      const renderedContext = fromObservation ? zone.observed!.context : zonePictureContext(state, venue, zone);
       if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed)) return;
       if (onlyIfEmpty && zone.image) return;
       zone.image = image;
       zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
       zone.picture = {
+        reference: image ? zone.picture?.reference : undefined,
+        referenceAppliedId: image ? zone.picture?.reference?.id : undefined,
         base: image,
+        daylight: !!image && daylight,
         removed: !image,
-        baseline: image ? zonePictureBaseline(zonePictureContext(state, venue, zone)) : undefined,
-        context: image ? zonePictureContext(state, venue, zone) : undefined,
+        baseline: image ? zonePictureBaseline(renderedContext) : undefined,
+        context: image ? renderedContext : undefined,
         lastAutomaticAt: zone.picture?.lastAutomaticAt,
-        dirty: false,
+        dirty: fromObservation && renderedContext !== zonePictureContext(state, venue, zone),
       };
+      rememberZoneArtwork(zone, fromObservation);
       if (!image) zone.initialImageAttemptedAt = new Date().toISOString();
       if (zone.kind === "exterior") venue.presentation.image = image;
     });
@@ -141,11 +157,13 @@ export function createVenueCommands({
     spaceClass?: VillageVenueClass,
     privateOwnerId = "",
     zoneId?: string,
+    fromObservation = false,
   ): Promise<void> {
     const village = await readVillageState();
     const venue = village.venues.find((entry) => entry.id === venueId);
     if (!venue) throw notFound("That Venue is no longer here.");
-    if (spaceClass && !hasVenueClass(venue, spaceClass)) throw notFound("That Venue space no longer exists.");
+    if (!fromObservation && spaceClass && !hasVenueClass(venue, spaceClass))
+      throw notFound("That Venue space no longer exists.");
     const targetId =
       zoneId ??
       legacyZoneId(
@@ -156,7 +174,9 @@ export function createVenueCommands({
       );
     const zone = resolveVenueZone(venue, targetId);
     if (!zone) throw notFound("That Zone no longer exists.");
-    if (zoneClosed(village, venue, zone)) throw conflict("This Zone is not physically available yet.");
+    if (fromObservation) {
+      if (!zone.seen || !zone.observed) throw conflict("Visit this Zone before generating its artwork.");
+    } else if (zoneClosed(village, venue, zone)) throw conflict("This Zone is not physically available yet.");
   }
 
   async function setVillageHomeBuildingNames(value: unknown): Promise<VillageSnapshot> {

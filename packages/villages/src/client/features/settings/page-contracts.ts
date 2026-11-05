@@ -33,15 +33,13 @@ export type VillageSettingsPagePorts = {
   readonly lorebooks: VillageLorebookOption[];
   readonly lorebooksError: string;
   readonly mobile: boolean;
-  readonly personalizeHomes: boolean;
   readonly spriteVisualSettings: ReturnType<typeof import("./SpriteVisualSettings.js").useSpriteVisualSettings>;
-  readonly saveScenerySettings: (automaticZonePictures?: boolean) => Promise<void>;
+  readonly scenerySettings: ReturnType<typeof import("./actions.js").useSaveScenerySettings>;
   readonly saveSettings: () => Promise<void>;
   readonly sceneryStyle: string;
   readonly sceneryStyleProfileId: string | null;
   readonly setLoreTokenBudgetDraft: React.Dispatch<React.SetStateAction<number>>;
   readonly setLorebookDraft: React.Dispatch<React.SetStateAction<string[]>>;
-  readonly setPersonalizeHomes: React.Dispatch<React.SetStateAction<boolean>>;
   readonly setSceneryStyle: React.Dispatch<React.SetStateAction<string>>;
   readonly setSceneryStyleProfileId: React.Dispatch<React.SetStateAction<string | null>>;
   readonly settingsError: string;

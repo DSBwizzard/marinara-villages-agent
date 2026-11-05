@@ -1,3 +1,5 @@
+import { configureLiveScenes } from "../packages/villages/src/server/features/scenes/live-session.js";
+import type { LiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
@@ -65,6 +67,12 @@ import { generateVillageTownMap } from "../packages/villages/src/server/features
  * out: it is a compatibility surface with another codebase, so a rename should
  * fail this test rather than be followed by it.
  */
+// Transport ownership is independent of the real presence gate, covered by Zone artwork regressions.
+const allowMediaFixtureVisit = () =>
+  configureLiveScenes({
+    canGenerateZonePicture: async () => true,
+    activeVenueSession: async () => null,
+  } as unknown as LiveScenes);
 const AVATAR_PATH = "/api/characters/avatar-generation";
 
 /** The Engine's own gallery endpoints, on the same terms. */
@@ -113,7 +121,6 @@ async function main() {
     moduleUrl(`${services}/features/world/village-store.ts`)
   );
   const { villageEngineBaseUrl } = await import(moduleUrl(`${services}/adapters/engine/engine-loopback.ts`));
-  const { describeMoment } = await import(moduleUrl(`${services}/domain/rules/village-clock.ts`));
 
   // ── The one number two codebases have to agree on ──────────────────────────
   // The tab refuses a file before encoding it, the package refuses a data url
@@ -179,24 +186,6 @@ async function main() {
   );
 
   // ── What the model is asked for ───────────────────────────────────────────
-  // Assembled out of what the village already knows, so the picture agrees with
-  // the words beside it. Nothing here is invented and nothing here is a second
-  // call: the moment was worked out from the clock, for free.
-  const moment = {
-    dateLabel: "11 September",
-    weekday: "Friday",
-    season: "autumn" as const,
-    dayPhase: "morning",
-    instant: "2026-09-11T16:30:00.000Z",
-    localTime: "09:30",
-    minuteOfDay: 570,
-    timeZone: "America/Los_Angeles",
-    hour: 9,
-    minute: 30,
-    weather: "fine drizzle",
-    dayIndex: 3,
-    nextTransitionAt: "2026-09-11T16:31:00.000Z",
-  };
   const setting = "A mill town at the foot of a ridge.";
   const village = coerceVillageState({ ...defaultVillageState(), wishSystemVersion: 3, setting });
   const exteriorPrompt = buildLocationPrompt(
@@ -215,10 +204,11 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
-  for (const fact of ["the mill pond", "where the grain is ground", setting, describeMoment(moment), moment.weather])
+  for (const fact of ["the mill pond", "where the grain is ground", setting])
     assert.ok(exteriorPrompt.includes(fact), `${fact} informs the exterior image`);
+  assert.doesNotMatch(exteriorPrompt, /fine drizzle|09:30/);
+  assert.match(exteriorPrompt, /stable daytime lighting/);
   assert.match(exteriorPrompt, /entrance and approach, not its enterable interior/u);
   assert.match(exteriorPrompt, /recognizable at thumbnail size/u);
   const interiorPrompt = buildLocationPrompt(
@@ -238,7 +228,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
     "",
     "interior",
   );
@@ -271,7 +260,6 @@ async function main() {
           }),
         ],
       }).venues[0]!,
-      moment,
       "The mill walls are red brick",
     ),
     /Established visual lore: The mill walls are red brick/,
@@ -321,7 +309,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
   for (const fact of [
     "a stone watermill",
@@ -362,7 +349,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
   assert.match(occupiedExterior, /brick cottage|brick porch/u);
   assert.doesNotMatch(occupiedExterior, /secret|hidden room chest|Private Space fact/u);
@@ -383,7 +369,6 @@ async function main() {
           }),
         ],
       }).venues[0]!,
-      moment,
     ).includes("—"),
     false,
     "a place with no note does not get a dangling dash",
@@ -409,7 +394,6 @@ async function main() {
         }),
       ],
     }).venues[0]!,
-    moment,
   );
   assert.ok(chatty.includes("y".repeat(MAX_SETTING_LENGTH)), "the full authored description survives assembly");
   assert.throws(
@@ -730,6 +714,7 @@ async function main() {
 
   const { activate } = await import(moduleUrl(`${services}/entry/index.ts`));
   await activate(context);
+  allowMediaFixtureVisit();
 
   // ── Founding a village costs nothing ──────────────────────────────────────
   // The whole point of the button. A village that draws art while it is being
@@ -932,7 +917,7 @@ async function main() {
     kept
       .json()
       .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
-      .map((venue: any) => venue.presentation.image),
+      .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").pictureReference ?? null),
     [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
     "the picture is kept as a reference and no other place is touched",
   );
@@ -952,7 +937,10 @@ async function main() {
   const second = await put("/api/villages/locations/venue/image", { venueId: "ridge", image: TINY_PNG });
   assert.equal(second.statusCode, 200, second.body);
   assert.equal(
-    second.json().settings.venues.find((venue: any) => venue.id === "ridge").presentation.image.ref,
+    second
+      .json()
+      .settings.venues.find((venue: any) => venue.id === "ridge")
+      .zones.find((zone: any) => zone.id === "exterior").pictureReference.ref,
     "global-gallery:gallery-3",
   );
   assert.deepEqual(
@@ -965,6 +953,14 @@ async function main() {
   assert.equal(galleryCalls(FOLDERS_PATH)[3]!.body?.name, "Villages");
   assert.equal(galleryCalls(UPLOAD_PATH)[2]!.search, "?folderId=folder-villages", "and then everything is filed in it");
 
+  await mutateVillageState((state) => {
+    for (const venue of state.venues)
+      for (const zone of venue.zones ?? []) {
+        zone.dayNight = false;
+        zone.dayNightManual = false;
+        if (venue.id === "mill" && zone.picture) zone.picture.reference = undefined;
+      }
+  });
   // ── Drawing one ───────────────────────────────────────────────────────────
   // Which connection is used is a three-step chain the connections regression
   // proves for talk. Pictures read a DIFFERENT agent field, and that is the bug
@@ -1034,7 +1030,7 @@ async function main() {
   const request = named.call.body;
   assert.equal(named.call.method, "POST");
   assert.equal(request.purpose, "avatar");
-  assert.equal(request.name, "the mill pond");
+  assert.equal(request.name, "Entrance");
   assert.equal(request.width, 1216);
   assert.equal(request.height, 832);
   assert.deepEqual(
@@ -1045,7 +1041,7 @@ async function main() {
   assert.equal(request.promptOverrides.length, 1, "exactly one override, so the Engine has exactly one key to match");
   assert.equal(
     request.promptOverrides[0].id,
-    avatarPromptId("the mill pond", "avatar"),
+    avatarPromptId("Entrance", "avatar"),
     "the override id is built by the one function that knows the Engine's arithmetic",
   );
   assert.equal(
@@ -1053,15 +1049,18 @@ async function main() {
     request.appearance,
     "the override carries the scene the body also carries, so what is drawn is what was asked for",
   );
-  assert.ok(
-    request.appearance.includes(
-      "A wide, empty exterior view of the mill pond and its approach in Ashcroft. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.",
-    ),
-    "the picture is of the place, with its own note",
+  assert.match(
+    request.appearance,
+    /A stone mill beside shallow water/,
+    "manual generation uses the saved physical observation",
   );
-  assert.ok(request.appearance.includes("Physical form: where the grain is ground."));
-  assert.ok(request.appearance.includes(settingText), "and it knows which village it stands in");
-  assert.match(request.appearance, /It is .+, and the weather is .+\./, "and what the weather is doing right now");
+  assert.match(request.appearance, /Remembered physical form: where the grain is ground/);
+  assert.doesNotMatch(
+    request.appearance,
+    new RegExp(settingText),
+    "manual generation does not expand live Village context",
+  );
+  assert.match(request.appearance, /stable daytime lighting/, "artwork lighting is independent of generation time");
   assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
   assert.match(request.promptOverrides[0].negativePrompt, /people/);
   assert.match(request.promptOverrides[0].negativePrompt, /lettering/);
@@ -1072,7 +1071,7 @@ async function main() {
   const drawnUpload = galleryCalls(UPLOAD_PATH).at(-1)!;
   assert.equal(drawnUpload.form?.width, "1216");
   assert.equal(drawnUpload.form?.height, "832");
-  assert.ok(String(drawnUpload.form?.prompt).includes("the mill pond"), "the gallery entry keeps what was asked for");
+  assert.equal(drawnUpload.form?.prompt, request.appearance, "the gallery entry keeps what was asked for");
   assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 4, "the folder is not looked for again once it is known");
 
   const stored = kept.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
@@ -1098,7 +1097,10 @@ async function main() {
     "the place goes back to having no picture",
   );
   assert.ok(
-    removed.json().settings.venues.find((venue: any) => venue.id === "ridge").presentation.image,
+    removed
+      .json()
+      .settings.venues.find((venue: any) => venue.id === "ridge")
+      .zones.find((zone: any) => zone.id === "exterior").pictureReference,
     "and the other place keeps its own",
   );
   assert.equal(
@@ -1293,6 +1295,8 @@ async function main() {
     });
     assert.equal(styledFounding.statusCode, 200, styledFounding.body);
     assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
+    assert.match(draws().at(-1).body.appearance, /stable daytime lighting/);
+    assert.match(draws().at(-1).body.appearance, /Ignore the current clock/);
     assert.doesNotMatch(draws().at(-1).body.appearance, /Painted background art|watercolor illustration/i);
   }
   await generateVillageTownMap({
@@ -1347,7 +1351,6 @@ async function mediaConnectionOwnership() {
     ["store", "read"],
     ["store", "upload"],
     ["store", "write"],
-    ["location", "lore"],
     ["location", "provider"],
     ["location", "upload"],
     ["private", "write"],
@@ -1497,7 +1500,27 @@ async function mediaConnectionOwnership() {
           }),
         ),
       );
-      return { scope, entered, gate, release, pause, records, world, requests, label };
+      const releasePresence = scope.run(allowMediaFixtureVisit);
+      for (const venue of state.venues)
+        for (const zone of venue.zones ?? []) {
+          zone.dayNight = false;
+          zone.dayNightManual = false;
+        }
+      records.get("villages-village")!.data = structuredClone(state);
+      return {
+        scope,
+        entered,
+        gate,
+        release: () => {
+          releasePresence();
+          release();
+        },
+        pause,
+        records,
+        world,
+        requests,
+        label,
+      };
     };
     const a = fixture("A", true),
       b = fixture("B", false);
@@ -1643,7 +1666,11 @@ async function mediaConnectionOwnership() {
       if (operation === "location" && variant === "ordinary")
         assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image");
       if (operation === "store" && !["failure", "disposed"].includes(variant)) {
-        assert.equal(a.world().venues[0]!.presentation.image?.id, "A-image");
+        assert.equal(
+          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.picture?.reference?.id,
+          "A-image",
+        );
+        assert.equal(a.world().venues[0]!.presentation.image, null);
       }
       if (variant === "cas")
         assert.equal(a.world().spriteCardFlipEnabled, false, "losing save preserves authoritative concurrent fields");
