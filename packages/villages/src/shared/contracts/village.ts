@@ -133,11 +133,12 @@ export type ReturnCatchupView = {
   completed: number;
   total: number;
   settlementRequired: boolean;
-  issue: "generation" | "interpretation" | "settlement" | "authority" | null;
+  issue: "preparation" | "generation" | "interpretation" | "settlement" | "authority" | null;
 };
 
 export type VillageSnapshot = {
   worldScope: string;
+  mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
   opening?: import("./opening.js").OpeningView;

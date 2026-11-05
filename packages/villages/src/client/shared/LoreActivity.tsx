@@ -1,4 +1,14 @@
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import type {
   LoreActivity as Activity,
   LoreActivityList,
@@ -28,12 +38,44 @@ function seenRevision(scope: string) {
   }
 }
 const empty: LoreActivityList = { scope: "", revision: 0, records: [] };
+const LoreActivityContext = createContext<{ unread: boolean; show(query: string): void } | null>(null);
+
+export function LoreActivityButton({
+  query = "",
+  role,
+  onOpen,
+}: {
+  query?: string;
+  role?: "menuitem";
+  onOpen?: () => void;
+}) {
+  const activity = useContext(LoreActivityContext);
+  if (!activity) return null;
+  return (
+    <button
+      type="button"
+      role={role}
+      className="villages-lore-launch"
+      aria-label={`Lore activity${activity.unread ? " · New activity" : ""}`}
+      onClick={() => {
+        onOpen?.();
+        activity.show(query);
+      }}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 7v14m0-14C9 4 5 4 2 5v15c3-1 7-1 10 1m0-14c3-3 7-3 10-2v15c-3-1-7-1-10 1" />
+      </svg>
+      Lore activity{activity.unread ? <span className="villages-lore-dot" aria-hidden="true" /> : null}
+    </button>
+  );
+}
 
 export function LoreActivity({ children }: { children: ReactNode }) {
   const host = useRef<HTMLDivElement>(null);
   const { visible } = useVillageActivity();
   const focus = useFocusRevision(visible);
   const [open, setOpen] = useState(false);
+  const [contextQuery, setContextQuery] = useState("");
   const [summary, setSummary] = useState(empty);
   const [seen, setSeen] = useState(0);
   const [activity, setActivity] = useState<LoreActivityList | null>(null);
@@ -111,69 +153,67 @@ export function LoreActivity({ children }: { children: ReactNode }) {
   }, [open, refresh, applySummary, readSeen]);
   const unread = summary.revision > seen;
   return (
-    <div className="villages-lore-host" ref={host}>
-      <div className="villages-lore-toolbar">
-        <button
-          type="button"
-          className="villages-lore-launch"
-          aria-label={`Lore activity${unread ? " · New activity" : ""}`}
-          aria-expanded={open}
-          onClick={() => {
-            setActivity(null);
-            setOpen(true);
-          }}
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 7v14m0-14C9 4 5 4 2 5v15c3-1 7-1 10 1m0-14c3-3 7-3 10-2v15c-3-1-7-1-10 1" />
-          </svg>
-          Lore activity{unread ? <span className="villages-lore-dot" aria-hidden="true" /> : null}
-        </button>
-      </div>
-      <div className="villages-lore-workarea">{children}</div>
-      {open && host.current ? (
-        <ModalDialog
-          title="Lore activity"
-          onClose={() => setOpen(false)}
-          scope={host.current}
-          className="villages-lore-dialog"
-          headerContent={
-            <>
-              <h3>Lore activity</h3>
-              {activity && summary.revision > activity.revision ? (
-                <button
-                  type="button"
-                  className="villages-lore-refresh"
-                  onClick={() => setRefresh((value) => value + 1)}
-                >
-                  New activity <span className="villages-lore-dot" aria-hidden="true" />
+    <LoreActivityContext
+      value={{
+        unread,
+        show: (query) => {
+          setContextQuery(query);
+          setActivity(null);
+          setOpen(true);
+        },
+      }}
+    >
+      <div className="villages-lore-host" ref={host}>
+        <div className="villages-lore-workarea">{children}</div>
+        {open && host.current ? (
+          <ModalDialog
+            title="Lore activity"
+            onClose={() => setOpen(false)}
+            scope={host.current}
+            className="villages-lore-dialog"
+            headerContent={
+              <>
+                <h3>Lore activity</h3>
+                {activity && summary.revision > activity.revision ? (
+                  <button
+                    type="button"
+                    className="villages-lore-refresh"
+                    onClick={() => setRefresh((value) => value + 1)}
+                  >
+                    New activity <span className="villages-lore-dot" aria-hidden="true" />
+                  </button>
+                ) : null}
+              </>
+            }
+          >
+            {error ? (
+              <div className="villages-lore-empty">
+                <p role="alert">{error}</p>
+                <button type="button" onClick={() => setRefresh((value) => value + 1)}>
+                  Retry
                 </button>
-              ) : null}
-            </>
-          }
-        >
-          {error ? (
-            <div className="villages-lore-empty">
-              <p role="alert">{error}</p>
-              <button type="button" onClick={() => setRefresh((value) => value + 1)}>
-                Retry
-              </button>
-            </div>
-          ) : activity ? (
-            <LoreInspector key={activity.scope} records={activity.records} />
-          ) : (
-            <p className="villages-lore-empty" role="status">
-              Loading activity…
-            </p>
-          )}
-        </ModalDialog>
-      ) : null}
-    </div>
+              </div>
+            ) : activity ? (
+              <LoreInspector
+                key={JSON.stringify([activity.scope, contextQuery])}
+                records={activity.records}
+                initialSearch={contextQuery}
+              />
+            ) : (
+              <p className="villages-lore-empty" role="status">
+                Loading activity…
+              </p>
+            )}
+          </ModalDialog>
+        ) : null}
+      </div>
+    </LoreActivityContext>
   );
 }
 
-function LoreInspector({ records }: { records: Activity[] }) {
+function LoreInspector({ records, initialSearch }: { records: Activity[]; initialSearch: string }) {
   const [filter, setFilter] = useState("All");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [selected, setSelected] = useState("");
   const [useId, setUseId] = useState("");
   const [reading, setReading] = useState(false);

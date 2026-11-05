@@ -226,6 +226,7 @@ export function LocationNavigator({
   onClose,
   mobile,
   focusSearch,
+  onDiscover,
 }: {
   rows: ExplorationRow[];
   search: string;
@@ -234,6 +235,7 @@ export function LocationNavigator({
   onClose: () => void;
   mobile: boolean;
   focusSearch: boolean;
+  onDiscover: () => void;
 }) {
   const searchRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -263,6 +265,9 @@ export function LocationNavigator({
           <MapIcon name="close" />
         </button>
       </header>
+      <button type="button" className={P + "-discover-places"} disabled={disabled} onClick={onDiscover}>
+        Discover Places
+      </button>
       <label className={P + "-explore-search"}>
         <span className={P + "-sr-only"}>Search places</span>
         <input

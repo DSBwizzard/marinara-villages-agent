@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { LoreActivityButton } from "../../shared/LoreActivity.js";
 import type { TownMapView, VillageMap, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
@@ -354,6 +355,7 @@ function MapEditor({
         >
           Generate artwork
         </button>
+        <LoreActivityButton query="Map artwork" />
 
         <label className={P + "-button"}>
           Upload image

@@ -107,11 +107,18 @@ export function SceneHistory({
                   ? "Narration"
                   : line.name || "Resident"}
               {isSceneAside(line) ? " · aside" : ""}
-              {speechDelivery(line) === "whisper"
-                ? " · whisper"
-                : speechDelivery(line) === "shout"
-                  ? " · shout"
-                  : ""}: {line.viaDoorway ? "Through the doorway · " : ""}
+              {line.viaDoorway ? (
+                <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                  Nearby
+                </span>
+              ) : speechDelivery(line) === "whisper" ? (
+                " · whisper"
+              ) : speechDelivery(line) === "shout" ? (
+                " · shout"
+              ) : (
+                ""
+              )}
+              :{" "}
             </strong>
             <span
               style={line.role === "assistant" && line.kind !== "narration" ? speechStyle(line.speakerId) : undefined}

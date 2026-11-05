@@ -1,7 +1,6 @@
 import { ELEMENT_TAG as P } from "./constants.js";
 export const LORE_ACTIVITY_STYLES = `
 .villages-lore-host{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;min-width:0;container-type:inline-size}
-.villages-lore-toolbar{display:flex;justify-content:flex-end;flex:none;padding:.35rem .85rem;border-bottom:1px solid #8b80ba30;background:linear-gradient(110deg,#121830,#1b2140);font-family:system-ui,sans-serif}
 .villages-lore-launch{position:relative;display:inline-flex;align-items:center;gap:.5rem;min-height:36px;padding:.35rem .7rem;border:1px solid #9480cf88;border-radius:.55rem;background:#9c7ce610;color:#e4dcff;font:inherit;font-size:.8rem;font-weight:600;cursor:pointer}
 .villages-lore-launch:hover{background:#9c7ce629;border-color:#bca1ff}
 .villages-lore-launch svg{width:18px;height:18px;stroke:#c6afff;fill:none;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}

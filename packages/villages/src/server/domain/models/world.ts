@@ -876,6 +876,7 @@ export type ReturnCatchupBatch = {
     opportunityId: string;
     status: "pending" | "queued" | "settling" | "settled" | "rejected" | "held";
     heldStage?: "queued" | "settling";
+    automaticRetryUsed?: true;
     outcome?: unknown;
     error?: string;
   }[];
@@ -1416,6 +1417,7 @@ type ClientVisibleSnapshot<T extends import("../../../shared/contracts/village.j
 
 export type VillageSnapshot = ClientVisibleSnapshot<{
   worldScope: string;
+  mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettingsView["venues"][number] };
   opening?: import("../../../shared/contracts/opening.js").OpeningView;

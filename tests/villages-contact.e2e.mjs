@@ -167,9 +167,10 @@ await withBrowser(browser, async () => {
     assert.equal(entered, undefined, "an invitation never automatically moves the player");
     await expect(page.getByRole("button", { name: "Move to Common Space", exact: true })).toHaveCount(0);
     await readUntil(/Come into our Common Space/);
-    await expect(
-      page.getByText(remoteDelivery === "loud" ? /calling from inside/i : /through the doorway/i).first(),
-    ).toBeVisible();
+    await expect(page.getByText("Nearby", { exact: true })).toBeVisible();
+    await expect(page.locator('[class$="-chat-vn-name"]')).not.toContainText(
+      /📣|through the doorway|calling from inside/i,
+    );
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Mode: Say / Do. Choose mode", exact: true })).toBeVisible();
     await page.getByRole("textbox", { name: "Message at The Mill", exact: true }).fill("Thanks. How are you?");

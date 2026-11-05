@@ -1444,6 +1444,7 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
           recorded.has(row.opportunityId) ||
           !["pending", "queued", "settling", "settled", "rejected", "held"].includes(String(row.status)) ||
           (row.heldStage !== undefined && !["queued", "settling"].includes(String(row.heldStage))) ||
+          (row.automaticRetryUsed !== undefined && row.automaticRetryUsed !== true) ||
           (row.error !== undefined && typeof row.error !== "string")
         )
           throw new Error("The saved Village catch-up records could not be read.");

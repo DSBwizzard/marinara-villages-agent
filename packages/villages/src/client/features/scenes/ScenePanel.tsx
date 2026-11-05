@@ -36,6 +36,7 @@ import { SceneAsides } from "./villages-scene-asides.js";
 import { SceneHistory } from "./SceneHistory.js";
 import { selectSpriteImage, spriteFacing } from "./villages-sprite-stage";
 import { shouldSubmitVenueKey } from "./villages-venue-send";
+import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
 /** Unseen Zone names remain private. */
 export function sceneZoneLabel(zone?: { name: string; kind: string; seen?: boolean }): string {
@@ -863,6 +864,14 @@ export function RoomPanel({
           </button>
           {actionsOpen ? (
             <span className={`${ELEMENT_TAG}-room-actions-menu`} role="menu" aria-label="Venue actions">
+              <LoreActivityButton
+                query={`Scene · ${room.placeName}`}
+                role="menuitem"
+                onOpen={() => {
+                  setActionsOpen(false);
+                  actionsRef.current?.querySelector("button")?.focus();
+                }}
+              />
               <button
                 type="button"
                 role="menuitem"
@@ -1411,7 +1420,11 @@ export function RoomPanel({
                   style={step?.player ? undefined : nameStyle(step?.speakerId ?? "")}
                 >
                   {step?.name ?? ""}
-                  {step?.delivery === "whisper" ? (
+                  {step?.viaDoorway ? (
+                    <span className={`${ELEMENT_TAG}-speech-location`} title="Speaking from another Zone">
+                      Nearby
+                    </span>
+                  ) : step?.delivery === "whisper" ? (
                     <span title="Whisper" aria-label="Whisper">
                       {" "}
                       · 🤫
@@ -1422,11 +1435,6 @@ export function RoomPanel({
                       · 📣
                     </span>
                   ) : null}
-                  {step?.viaDoorway
-                    ? step.remoteDelivery === "loud"
-                      ? " · calling from inside"
-                      : " · through the doorway"
-                    : ""}
                 </p>
               )}
               <div

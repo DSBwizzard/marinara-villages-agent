@@ -46,11 +46,16 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
     await expect(page.getByRole("alert").filter({ hasText: "Catch-up status is unavailable" })).toBeVisible();
-    const dialog = page.getByRole("dialog", { name: "Returning to the Village" });
+    const dialog = page.getByRole("dialog", { name: "Welcome back" });
     await expect(dialog).toBeVisible({ timeout: 8000 });
-    await expect(dialog).toContainText("The resident activity request did not finish");
+    await expect(dialog).toContainText("An activity request could not finish");
     await expect(dialog).toContainText("additional model request");
     await expect(dialog.getByRole("button", { name: "Retry" })).toBeVisible();
+    assert.ok((await dialog.boundingBox()).width <= 400, "Catch-up is a compact card on desktop and phone.");
+    batch.issue = "preparation";
+    await expect(dialog).toContainText("Catch-up could not get started", { timeout: 8000 });
+    await expect(dialog).not.toContainText("additional model request");
+    await page.screenshot({ path: resolve(`.build-tmp/catchup-${width}.png`) });
     await dialog.getByRole("button", { name: "Continue to Village" }).click();
     await expect(dialog).toBeHidden();
     assert.equal(continued, 1);
