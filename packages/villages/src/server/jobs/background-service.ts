@@ -1075,8 +1075,8 @@ export function createBackgroundWork(ports: BackgroundWorkPorts) {
           job!.automaticDate &&
           (!job!.retrying || catchupBatchId(job!))
         ) {
-          if (!job!.retrying && job!.requests >= 2)
-            throw new Error("Automatic resident activity may make at most two principal requests.");
+          if (!job!.retrying && job!.requests >= 2 + Number(!!job!.automaticRetryUsed))
+            throw new Error("Automatic resident activity exhausted its principal request allowance.");
           await mutateForJob(job!, (state) => {
             if (state.seed !== job!.seed) throw new Obsolete("Village identity changed.");
             const actual = new ZonedDate(
