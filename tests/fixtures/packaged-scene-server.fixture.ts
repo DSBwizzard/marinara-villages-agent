@@ -176,7 +176,7 @@ export async function packagedSceneServer() {
                     additionalActions: [],
                     decisions: [],
                     coverage: packet.input.evidence.flatMap((line: any, segment: number) =>
-                      line.playerHeard && line.speakerId !== "player"
+                      line.speakerId === "mara"
                         ? [{ segment, status: "none", actionIds: [], reason: "No actions" }]
                         : [],
                     ),

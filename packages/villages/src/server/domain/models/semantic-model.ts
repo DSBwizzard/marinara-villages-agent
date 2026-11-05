@@ -17,6 +17,7 @@ export interface SemanticInterpreter {
     residentActions?: import("../rules/resident-actions.js").ResidentAccessAction[],
     residentActionsOmitted?: boolean,
     narrativeGrant?: import("./narrative-model.js").NarrativeAdmission | null,
+    zoneEventSource?: Record<string, unknown>,
   ): Promise<SemanticExchange>;
 }
 
@@ -60,6 +61,7 @@ export type SemanticProvenance = {
   turnPolicyVersion?: 1;
   pipelineVersion?: 3;
   residentActionsVersion?: 1 | 2;
+  hearingTimelineVersion?: 1;
   authority?: SemanticExchange["authority"];
   version: 2;
   sourceHash: string;

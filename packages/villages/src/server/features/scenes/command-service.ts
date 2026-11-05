@@ -1261,7 +1261,12 @@ export function createSceneCommands({
                 soundHopVersion: 1,
                 playerAgencyVersion: 1,
                 ...(admission.semanticVersion === 2
-                  ? { semanticBudget: SEMANTIC_OPERATION_BUDGET, semanticPipelineVersion: 3, residentActionsVersion: 2 }
+                  ? {
+                      semanticBudget: SEMANTIC_OPERATION_BUDGET,
+                      semanticPipelineVersion: 3,
+                      residentActionsVersion: 2,
+                      hearingTimelineVersion: 1,
+                    }
                   : {}),
                 writingCapabilities: sceneWritingCapabilities(await readVillageState(), admission),
               };
@@ -1624,6 +1629,17 @@ export function createSceneCommands({
         : !prior && admittedVersion === 6
           ? { soundHopVersion: 1 }
           : {}),
+      ...(scene.operation?.id === input.submissionId
+        ? scene.operation.input.hearingTimelineVersion === 1
+          ? { hearingTimelineVersion: 1 }
+          : {}
+        : prior
+          ? prior.semanticProvenance?.hearingTimelineVersion === 1
+            ? { hearingTimelineVersion: 1 }
+            : {}
+          : scene.semanticVersion === 2 && admittedVersion === 6
+            ? { hearingTimelineVersion: 1 }
+            : {}),
       ...(writingVersion !== undefined
         ? {
             writingContractVersion: writingVersion,

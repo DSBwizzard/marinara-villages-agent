@@ -1,4 +1,5 @@
 import { venueFixture } from "./helpers/venues.fixture.js";
+import { contactNeighborIds } from "../packages/villages/src/shared/helpers/zone-contact.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import AdmZip from "adm-zip";
 import Fastify from "fastify";
@@ -278,6 +279,27 @@ const model = {
           quote: packet.input.evidence[evidence[0]].content,
         },
       }));
+      const playerHears = (line: any, segment: number) => {
+        if (packet.input.hearingTimelineVersion !== 1) return line.playerHeard;
+        if (line.kind === "narration" || line.speakerId === "player") return true;
+        const saved = state();
+        const move = (response as any).events?.moves?.find(
+          (row: any) => row.characterId === line.speakerId && row.segment <= segment,
+        );
+        const introduced = packet.input.context.social.npcIntroductions.some(
+          (row: any) => row.npc.id === line.speakerId && row.segment <= segment,
+        );
+        const origin =
+          move?.zoneId ??
+          (introduced
+            ? saved.zoneId
+            : saved.sceneAttendance.occupants.find((row: any) => row.characterId === line.speakerId)?.zoneId);
+        if (line.delivery === "whisper") return origin === saved.zoneId && line.targetId === "player";
+        return (
+          origin === saved.zoneId ||
+          (line.delivery === "shout" && contactNeighborIds(saved.sceneAttendance.layout, origin).includes(saved.zoneId))
+        );
+      };
       return {
         content: JSON.stringify({
           ...response,
@@ -303,7 +325,7 @@ const model = {
                     reason: "Fixture supplies this resident action",
                   })),
                   coverage: packet.input.evidence.flatMap((line: any, segment: number) =>
-                    line.playerHeard && line.speakerId !== "player"
+                    playerHears(line, segment) && line.speakerId !== "player"
                       ? [
                           {
                             segment,
@@ -474,6 +496,7 @@ async function turn(
   assert.equal(modelCalls, before + expectedCalls, "Narration plus the existing combined System stage only");
   assert.equal(state().operation.input.interactionScopeVersion, 6);
   assert.equal(state().operation.input.soundHopVersion, 1);
+  assert.equal(state().operation.input.hearingTimelineVersion, 1);
   assert.equal(state().operation.input.writingContractVersion, 3);
   assert.equal(typeof state().operation.input.writingCapabilities.movement, "boolean");
   assert(!Object.keys(state().operation.checkpoints).some((key) => /attention-plan|acoustic-routing/.test(key)));
@@ -589,6 +612,193 @@ try {
       movement: null,
     };
     semanticExchangeAnswer = quietSystem();
+    // A doorway's prose, final witnesses and social publication share one timeline.
+    {
+      const baseline = clone(records),
+        initialIntent = clone(semanticIntentAnswer);
+      const restore = () => {
+        records.clear();
+        for (const [id, row] of clone(baseline)) records.set(id, row);
+        semanticIntentAnswer = clone(initialIntent);
+        semanticExchangeAnswer = quietSystem();
+      };
+      const disclosure = {
+        fromId: "neighbor",
+        toId: "neighbor",
+        kind: "work",
+        text: "Neighbor says they work in the harbour workshop.",
+        lineIds: [1],
+      };
+      const payload = (id: string) => ({
+        sessionId: scene.id,
+        submissionId: id,
+        message: "*waits*",
+        mode: "chat",
+        targetId: "",
+        expectedSceneRevision: state().sceneRevision,
+      });
+      answer = {
+        playerSpeechCapture: { status: "silent", utterances: [] },
+        segments: [
+          { text: "The kitchen door opens." },
+          { speakerId: "neighbor", text: "I'm Neighbor. I work in the harbour workshop." },
+        ],
+      };
+      semanticExchangeAnswer.relationshipChanges = { changes: [], permissions: [], disclosures: [disclosure] };
+      const beforeLines = clone(state().lines),
+        beforeCalls = modelCalls;
+      const held = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: payload("doorway-unheard"),
+      });
+      assert.equal(held.statusCode, 502, held.body);
+      assert.match(held.body, /own communication heard by the player/);
+      assert.deepEqual(state().lines, beforeLines, "An unheard disclosure cannot save a contradictory exchange");
+      assert.equal(modelCalls, beforeCalls + 2, "Rejection makes no automatic repair request");
+      assert.equal(lastSemanticInput.zoneEventSource, undefined, "Raw routing metadata stays server-only");
+      assert(
+        lastSemanticInput.evidence.every(
+          (line: any) => !Object.hasOwn(line, "heardBy") && !Object.hasOwn(line, "playerHeard"),
+        ),
+        "Unrouted drafts assert no witnesses to System",
+      );
+      assert(
+        Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")),
+        "An interpretation error retains the purchased writing",
+      );
+      semanticExchangeAnswer = quietSystem();
+      const corrected = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: { ...payload("doorway-unheard"), retryOfAttemptId: state().operation.attemptId },
+      });
+      assert.equal(corrected.statusCode, 200, corrected.body);
+      assert.equal(modelCalls, beforeCalls + 3, "Explicit interpretation retry reuses the exact narration");
+      assert.equal(state().submissions.at(-1).processing.domains.relationships.status, "applied");
+      restore();
+
+      semanticExchangeAnswer!.events = {
+        moves: [{ characterId: "neighbor", zoneId: "terrace", segment: 1 }],
+        departures: [],
+        contactEnd: [],
+      };
+      semanticExchangeAnswer!.relationshipChanges = {
+        changes: [],
+        permissions: [],
+        disclosures: [{ ...disclosure, lineIds: [2] }],
+      };
+      const arrived = await turn("doorway-crossing-whisper", "*waits*", [
+        { speakerId: "neighbor", text: "PRIVATE WORDS BEFORE ARRIVAL" },
+        { text: "Neighbor steps out of the Kitchen onto the Terrace beside you." },
+        {
+          speakerId: "neighbor",
+          text: "I'm Neighbor. I work in the harbour workshop.",
+          delivery: "whisper",
+          targetId: "player",
+        },
+      ]);
+      const heard = state().lines.findLast(
+        (line: any) => line.content === "I'm Neighbor. I work in the harbour workshop.",
+      );
+      assert.notEqual(heard.contactHidden, true);
+      assert.equal(heard.soundOnly, undefined, "No provisional muffled cue survives a completed crossing");
+      assert.equal(state().submissions.at(-1).processing.domains.relationships.status, "applied");
+      const arrivedHistory = await publicHistory(arrived.session.playback.scope);
+      assert.match(arrivedHistory, /harbour workshop/);
+      assert.doesNotMatch(arrivedHistory, /PRIVATE WORDS BEFORE ARRIVAL/, "Later arrival never backdates hearing");
+      assert(
+        fixtureVillageState(records.get("villages-village").data, records).memories.records.some(
+          (row: any) => row.text === disclosure.text,
+        ),
+        "The same player-heard disclosure reaches native Memories",
+      );
+      restore();
+
+      const terms = {
+        connection: "New acquaintances",
+        stance: "Willing to meet",
+        expectations: [],
+        concerns: [],
+        records: [
+          {
+            id: "",
+            expectedRevision: 0,
+            kind: "agreement",
+            text: "Meet for tea tomorrow.",
+            participants: ["aqua", "player"],
+            status: "accepted",
+          },
+        ],
+      };
+      semanticIntentAnswer = {
+        status: "resolved",
+        instructions: "",
+        action: null,
+        movement: null,
+        timeline: [{ kind: "speech", text: "Let's meet for tea tomorrow." }],
+      };
+      semanticExchangeAnswer!.relationshipChanges = {
+        changes: [
+          {
+            fromId: "aqua",
+            toId: "player",
+            expectedRevision: 0,
+            sceneAfter: terms,
+            liveAfter: terms,
+            reason: "Both explicitly agree.",
+            lineIds: [0, 1],
+          },
+        ],
+        permissions: [],
+        disclosures: [],
+      };
+      (semanticExchangeAnswer!.authority as any).social = true;
+      await turn("local-mutual-terms", '"Let\'s meet for tea tomorrow."', [
+        { speakerId: "player", text: "Let's meet for tea tomorrow." },
+        { speakerId: "aqua", text: "Yes, let's meet for tea tomorrow." },
+      ]);
+      assert.equal(
+        state().submissions.at(-1).processing.domains.relationships.status,
+        "applied",
+        "Hidden capture of the player's own speech still supplies witnessed assent",
+      );
+      restore();
+
+      answer = {
+        playerSpeechCapture: { status: "silent", utterances: [] },
+        segments: [{ text: "Neighbor stands beside you and silently hands you a cup." }],
+      };
+      semanticExchangeAnswer!.consistent = false;
+      semanticExchangeAnswer!.perceptionViolation = { segment: 0, quote: answer.segments[0].text };
+      const beforeReplacement = modelCalls;
+      const contradiction = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: payload("doorway-invalid-visuals"),
+      });
+      assert.equal(contradiction.statusCode, 502, contradiction.body);
+      assert.match(contradiction.body, /Retry to replace the reply/);
+      assert.equal(modelCalls, beforeReplacement + 2);
+      assert(
+        !Object.keys(state().operation.checkpoints).some((key) => key.startsWith("writing-completion:")),
+        "A cited narration contradiction can be replaced on explicit retry",
+      );
+      semanticExchangeAnswer = quietSystem();
+      answer = {
+        playerSpeechCapture: { status: "silent", utterances: [] },
+        segments: [{ text: "You wait by the terrace railing." }],
+      };
+      const replaced = await app.inject({
+        method: "POST",
+        url: "/api/villages/rooms/turn",
+        payload: { ...payload("doorway-invalid-visuals"), retryOfAttemptId: state().operation.attemptId },
+      });
+      assert.equal(replaced.statusCode, 200, replaced.body);
+      assert.equal(modelCalls, beforeReplacement + 4, "Only explicit retry replaces invalid narration and its review");
+      assert(!state().lines.some((line: any) => line.content.includes("silently hands you")));
+      restore();
+    }
     const distant = await turn("current-distant-call", "*waits*", [
       { speakerId: "distant", text: "PRIVATE WORDS NEVER DELIVERED", delivery: "shout" },
       { text: "You pause by the railing." },
@@ -2669,18 +2879,65 @@ try {
       wishChanges: [],
       projectSpeech: [],
     };
-    await turn(
-      "place-introduction",
-      "*waits*",
-      [
+    answer = {
+      playerSpeechCapture: { status: "silent", utterances: [] },
+      npcIntroductions: [{ ref: "new:jo", name: "Jo", characterization: "A friendly traveler.", segment: 1 }],
+      segments: [
+        { speakerId: owner, text: "The early conversation stays between us." },
         { kind: "narration", text: "A traveler named Jo steps into the dining room." },
-        { speakerId: "new:jo", text: "Good afternoon." },
+        { speakerId: "new:jo", text: "Good afternoon. I prefer tea." },
       ],
-      {},
-      { npcIntroductions: [{ ref: "new:jo", name: "Jo", characterization: "A friendly traveler.", segment: 0 }] },
+    };
+    beforeSemanticResponse = () => {
+      const id = lastSemanticInput.context.social.npcIntroductions[0].npc.id;
+      semanticExchangeAnswer!.relationshipChanges = {
+        changes: [],
+        permissions: [],
+        disclosures: [{ fromId: id, toId: id, kind: "preference", text: "Jo says they prefer tea.", lineIds: [0, 2] }],
+      };
+    };
+    const introductionPayload = {
+      sessionId: scene.id,
+      submissionId: "place-introduction",
+      message: "*waits*",
+      mode: "chat",
+      targetId: "",
+      expectedSceneRevision: state().sceneRevision,
+    };
+    const beforeIntroduction = modelCalls;
+    const earlyCitation = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: introductionPayload,
+    });
+    assert.equal(earlyCitation.statusCode, 502, earlyCitation.body);
+    assert.match(
+      earlyCitation.body,
+      /wrong audience/,
+      "A newcomer cannot cite pre-introduction speech in this same exchange",
+    );
+    assert.equal(modelCalls, beforeIntroduction + 2);
+    const npcDisclosure = (semanticExchangeAnswer!.relationshipChanges as any).disclosures[0];
+    npcDisclosure.lineIds = [2];
+    const validIntroduction = await app.inject({
+      method: "POST",
+      url: "/api/villages/rooms/turn",
+      payload: { ...introductionPayload, retryOfAttemptId: state().operation.attemptId },
+    });
+    assert.equal(validIntroduction.statusCode, 200, validIntroduction.body);
+    assert.equal(
+      modelCalls,
+      beforeIntroduction + 3,
+      "Correcting the citation reuses the exact admitted newcomer and narration",
     );
     const introduced = state().submissions.at(-1).npcAdmissions[0].npc.id;
     assert.equal(state().submissions.at(-1).semanticReady, true);
+    assert.equal(state().submissions.at(-1).processing.domains.relationships.status, "applied");
+    assert(
+      !state()
+        .lines.find((line: any) => line.content === "The early conversation stays between us.")
+        .heardBy.includes(introduced),
+    );
     assert(state().activeIds.includes(introduced));
     assert(fixtureVillageState(records.get("villages-village").data, records).worldPlaces.npcs[introduced]);
     assert(
