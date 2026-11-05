@@ -1,3 +1,4 @@
+import { useVillageLighting } from "../../shared/useVillageLighting.js";
 import { useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useConfirmation } from "../../shared/confirmation.js";
 import { connectionProblem } from "../../../shared/helpers/zone-contact.js";
@@ -248,7 +249,7 @@ function ZoneArtwork({
           disabled={disabled}
           onChange={(event) => void controller.setZoneDayNight(place, zone.id, event.target.checked)}
         />
-        Day & night · 2 images
+        Day & night
       </label>
       {zone.dayNight && zone.daylightReady ? (
         <div className={`${ELEMENT_TAG}-zone-artwork-actions`} aria-label="Artwork appearance">
@@ -497,6 +498,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     venueEditNotice,
     planVenueRenovation,
   } = controller;
+  const lighting = useVillageLighting(snapshot?.village, snapshot?.clock?.paused);
   const place = snapshot?.settings.venues.find((venue) => venue.id === venueId);
   const navigationSelection = useMemo(
     () => ({ venueId, venueZoneKey, venueSection }),
@@ -575,6 +577,11 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
   const activeScene = !!room && room.status !== "closed";
   const residents =
     place.residentIds ?? (place.occupancy.residentCharacterId ? [place.occupancy.residentCharacterId] : []);
+  const entrance = place.zones?.find((zone) => zone.kind === "exterior");
+  const backdrop =
+    snapshot.isFounded && lighting === "night" && entrance?.dayNight && entrance.nightImage
+      ? entrance.nightImage
+      : place.presentation.image;
   const map = snapshot.settings.maps?.find((entry) => entry.id === place.presentation.mapId);
   const visit = () =>
     activeScene && room.placeId === place.id
@@ -643,7 +650,7 @@ export function VenueScreen({ controller }: { controller: VenueScreenController 
     <WorkspaceShell active="places" onNavigate={navigate} sidebar={sidebar} disabled={navigationBusy}>
       <div className={`${ELEMENT_TAG}-venue-profile`}>
         <header className={`${ELEMENT_TAG}-header ${ELEMENT_TAG}-workspace-venue-header`}>
-          {place.presentation.image ? <img src={place.presentation.image.url} alt="" /> : null}
+          {backdrop ? <img src={backdrop.url} alt="" /> : null}
           <div>
             <h1 className={`${ELEMENT_TAG}-title`}>{place.name}</h1>
             {snapshot.settings.communityVenueId === place.id ? <p>Community Venue</p> : null}

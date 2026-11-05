@@ -517,6 +517,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
       image: coerceVenueImage(row.image),
       state: coerceSpaceState(row.state),
       dayNight: row.dayNight === true,
+      dayNightManual: typeof row.dayNightManual === "boolean" ? row.dayNightManual : typeof row.dayNight === "boolean",
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {
@@ -701,6 +702,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
         : undefined,
       seen: row.seen === true,
       dayNight: row.dayNight === true,
+      dayNightManual: typeof row.dayNightManual === "boolean" ? row.dayNightManual : typeof row.dayNight === "boolean",
       freezePicture: row.freezePicture === true,
       pictureRevision: Number.isSafeInteger(row.pictureRevision) ? Number(row.pictureRevision) : 0,
       picture: {

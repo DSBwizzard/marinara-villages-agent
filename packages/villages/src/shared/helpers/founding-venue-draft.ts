@@ -1,3 +1,4 @@
+import { zoneDayNightDefault } from "./zone-day-night.js";
 import type { VillageVenue } from "../contracts/village.js";
 import type { FoundingVenueSuggestion } from "../contracts/founding.js";
 import { draftZonePolicy } from "./founding-zone-policy.js";
@@ -24,6 +25,7 @@ export function applyFoundingVenueDraft(venue: VillageVenue, plan: FoundingVenue
     };
     return {
       ...base,
+      ...(zone.description !== base.description ? zoneDayNightDefault(base, zone.dayNight) : {}),
       name: zone.name,
       purpose: zone.purpose,
       description: zone.description,
@@ -36,6 +38,7 @@ export function applyFoundingVenueDraft(venue: VillageVenue, plan: FoundingVenue
   const spaces = zones.filter((zone) => !plan.zones!.find((draft) => draft.id === zone.id)!.private);
   return {
     ...venue,
+    ...(plan.description !== venue.description ? zoneDayNightDefault(venue, plan.dayNight) : {}),
     name: plan.name,
     venueType: plan.venueType,
     form: plan.form,

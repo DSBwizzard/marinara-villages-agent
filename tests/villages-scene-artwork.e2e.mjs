@@ -1,3 +1,5 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import assert from "node:assert/strict";
@@ -11,11 +13,13 @@ const bundle = await build({
     resolveDir: process.cwd(),
     contents: `
 import {installFeature} from './tests/fixtures/feature-root.js';
+import {useState} from 'react';
 import {SceneScreen} from './packages/villages/src/client/features/scenes/SceneScreen.js';
 import {VenueScreen} from './packages/villages/src/client/features/venues/VenueScreen.js';
 import {venuePictureOf} from './packages/villages/src/client/shared/presentation.js';
 window.pictureFor=venuePictureOf;
-installFeature(c=>c.screen==='venue'?<VenueScreen controller={c}/>:<SceneScreen controller={c}/>);
+function VenueHarness({c}) { const [founded,setFounded]=useState(true); window.setBackdropFounded=setFounded; return <VenueScreen controller={{...c,snapshot:{...c.snapshot,isFounded:founded}}}/>; }
+installFeature(c=>c.screen==='venue'?<VenueHarness c={c}/>:<SceneScreen controller={c}/>);
 `,
   },
   bundle: true,
@@ -43,9 +47,15 @@ await withBrowser(browser, async () => {
     const old = image("#635344"),
       generated = image("#346755"),
       uploaded = image("#664477");
+    const night = image("#182944");
+    venue.presentation.image = { url: old, id: "header-day", ref: "header-day" };
+    snapshot.village = { ...snapshot.village, instant: "2026-11-06T04:00:00Z", timeZone: "America/Los_Angeles" };
+    snapshot.clock = { ...snapshot.clock, paused: true };
     venue.zones = [
       {
         id: "exterior",
+        dayNight: true,
+        nightImage: { url: night, id: "header-night", ref: "header-night" },
         kind: "exterior",
         name: "Entrance",
         venueClass: "community",
@@ -132,6 +142,18 @@ await withBrowser(browser, async () => {
     };
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
+    const header = page.locator(".marinara-capability-villages-workspace-venue-header > img");
+    await expect(header).toHaveAttribute("src", night);
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside") {
+      await mkdir(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, { recursive: true });
+      await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `play-night-${width}.png`) });
+    }
+    await page.evaluate(() => window.setBackdropFounded(false));
+    await expect(header).toHaveAttribute("src", old);
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS && area === "outside")
+      await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `founding-day-${width}.png`) });
+    await page.evaluate(() => window.setBackdropFounded(true));
+    await expect(header).toHaveAttribute("src", night);
     await page.getByRole("button", { name: "Regenerate artwork", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
     await expect(page.getByRole("button", { name: "Regenerate artwork", exact: true })).toBeEnabled();

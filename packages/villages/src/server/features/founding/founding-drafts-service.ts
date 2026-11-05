@@ -1,3 +1,4 @@
+import { ZONE_DAY_NIGHT_INSTRUCTION } from "../../../shared/helpers/zone-day-night.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import {
   readFoundingVenueDraftSource,
@@ -24,6 +25,7 @@ import {
   LOCATION_IMAGE_HEIGHT,
   LOCATION_NEGATIVE_PROMPT,
   venueImageCompositionPrompt,
+  DAYTIME_IMAGE_INSTRUCTION,
 } from "../../domain/rules/location-image-rules.js";
 import {
   DEFAULT_LORE_TOKEN_BUDGET,
@@ -184,6 +186,8 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                 ]
               : []),
             "For every included Private Space supply privateDescription: a short visible physical description tailored to its assigned household member. Describe the space and ordinary furnishings, not private thoughts or secrets. The explicit playerHome flag identifies the player's home; residentIds identifies its other household members.",
+            ZONE_DAY_NIGHT_INSTRUCTION +
+              " At Venue level dayNight describes Entrance; commonDayNight and privateDayNight describe their respective spaces.",
             fullDraft
               ? 'Draft the complete selected Venue. Preserve every supplied existing Zone id, private/shared use and owner, and its physical condition. Improve its names, purposes and visible descriptions; add only genuinely useful Zones using availableNewZoneIds, with at most six Zones besides Entrance. Keep the form consistent across rooms. New private Zones are only for this household; shared Zones have ownerId empty. All Zones need valid connections and every resident must be able to reach their sleeping Zone without passing through another resident’s private room. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Entrance appearance","zones":[{"id":"...","name":"...","purpose":"...","description":"...","private":false,"ownerId":"","connectedTo":["exterior"]}]}]}. Do not generate access policies, images, household changes or map positions.'
               : 'Venue Type identifies the place; Form describes its physical structure. Every included Zone needs a concrete purpose. Include connections as undirected [fromId,toId] pairs using exterior, common:base and private:base only for included spaces. Every space must connect to Entrance. Common/Private does not imply position; private spaces may connect directly to Entrance. Return JSON only: {"venues":[{"id":"...","name":"...","venueType":"...","form":"...","description":"Exterior appearance","layout":"common|private|both","commonName":"...","commonPurpose":"activities in this Zone","commonDescription":"visible appearance","privateName":"...","privatePurpose":"activities in this Zone","privateDescription":"visible appearance","connections":[["exterior","common:base"]]}]}.',
@@ -237,6 +241,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   venueType: "",
                   form: "",
                   description: "",
+                  dayNight: false,
                   zones: draftSource!
                     .zones!.filter((zone) => zone.kind !== "exterior")
                     .map((zone) => ({
@@ -244,6 +249,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                       name: "",
                       purpose: "",
                       description: "",
+                      dayNight: false,
                       private: draftSource!.privateSpaces!.some((room) => room.id === zone.id),
                       ownerId: zone.ownerId ?? "",
                       connectedTo: zone.connectedTo ?? [],
@@ -269,9 +275,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
                   commonName: "",
                   commonPurpose: "",
                   commonDescription: "",
+                  commonDayNight: false,
                   privateName: "",
                   privatePurpose: "",
                   privateDescription: "",
+                  privateDayNight: false,
                 },
           ),
         },
@@ -428,6 +436,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       ],
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
       [
+        DAYTIME_IMAGE_INSTRUCTION,
         "Place: " + setting,
         ...(personality
           ? cards

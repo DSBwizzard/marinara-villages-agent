@@ -1,3 +1,4 @@
+import { applyZoneDayNightDefault } from "./zone-picture.js";
 import { findLocation } from "./places.js";
 import { sceneActorIds, placeRegistry } from "./places.js";
 import type { VillageState, VillageVenue, VillageVenueClass, VillageVenueEvent } from "../models/world.js";
@@ -109,6 +110,7 @@ export function applyVenueSceneChange(
   if (enduring && change.appearanceChanged === true) {
     zone.picture = { ...zone.picture, base: zone.picture?.base ?? zone.image, dirty: true };
   }
+  if (after.description !== zone.description) applyZoneDayNightDefault(zone, change.dayNight);
   zone.description = after.description;
   zone.state = after.state;
   clearRepairedConditions(state, placeId, zone.id, change.conditionClears, sceneId, at);

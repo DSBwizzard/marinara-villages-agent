@@ -7,6 +7,11 @@ import { parsePlace } from "./founding-record.js";
 import { accessibleVenueRoute } from "./venue-path.js";
 import { communityVenueEligible } from "./community-venue.js";
 
+function readDayNight(value: unknown): boolean {
+  if (typeof value !== "boolean") throw badRequest("The Zone daylight decision must be on or off.");
+  return value;
+}
+
 export function readFoundingVenueDraftSource(value: unknown) {
   const row = asRecord(value);
   const areas = (value: unknown) => {
@@ -92,6 +97,7 @@ export function parseFoundingVenueDraft(
       name: text(zone, "name", 100),
       purpose: text(zone, "purpose", 240),
       description: text(zone, "description", 4000),
+      ...(zone.dayNight === undefined ? {} : { dayNight: readDayNight(zone.dayNight) }),
       private: personal,
       ownerId,
       connectedTo: zone.connectedTo as string[],
@@ -110,6 +116,7 @@ export function parseFoundingVenueDraft(
     form: text(row, "form", 2000),
     venueType: asTrimmedString(row.venueType).slice(0, 100),
     description: text(row, "description", 4000),
+    ...(row.dayNight === undefined ? {} : { dayNight: readDayNight(row.dayNight) }),
     zones,
     layout: "common",
     commonName: "",

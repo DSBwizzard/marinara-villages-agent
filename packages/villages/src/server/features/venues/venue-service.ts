@@ -122,7 +122,10 @@ export function createVenueCommands({
       if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed)) return;
       if (onlyIfEmpty && zone.image) return;
       zone.image = image;
-      if (!daylight) zone.dayNight = false;
+      if (!daylight) {
+        zone.dayNight = false;
+        zone.dayNightManual = true;
+      }
       zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
       zone.picture = {
         base: image,

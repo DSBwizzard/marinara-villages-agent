@@ -1,4 +1,5 @@
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
+import { DAYTIME_IMAGE_INSTRUCTION } from "../../domain/rules/location-image-rules.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createZonePictures } from "./zone-picture-service.js";
 import type { resolveVillageImageEditing, resolveVillageImageConnectionId } from "./image-generation.js";
@@ -182,6 +183,7 @@ export function createLocationImages(ports: LocationImagePorts) {
           (fact) => "Current circumstance: " + fact,
         ),
         `Current physical account: ${venue.description}`,
+        DAYTIME_IMAGE_INSTRUCTION,
         ...(onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
           ? sceneryAdmissionContext(village, found.venue)
           : []),
@@ -318,6 +320,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       const venue = state.venues.find((entry) => entry.id === venueId);
       const zone = venue && resolveVenueZone(venue, zoneId);
       if (!zone) throw notFound("That Zone is no longer here.");
+      zone.dayNightManual = true;
       if ((zone.dayNight === true) === enabled) return;
       zone.dayNight = enabled;
       zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;

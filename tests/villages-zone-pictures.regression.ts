@@ -1,3 +1,4 @@
+import { applyZoneDayNightDefault } from "../packages/villages/src/server/domain/rules/zone-picture.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
@@ -607,3 +608,74 @@ assert.equal(
 console.log(
   "Zone artwork: material changes, coalescing, operational budgets, generic creation, update/retry, opt-outs and stale-result fences passed.",
 );
+
+{
+  const f = fixture();
+  f.zone().dayNight = false;
+  f.zone().dayNightManual = false;
+  const update = (dayNight: boolean, append = "A new skylight admits daylight.") =>
+    applyVenueSceneChange(
+      f.world(),
+      "home",
+      {
+        narration: "The supported work is complete.",
+        expectedRevision: f.zone().state.revision,
+        append,
+        appearanceChanged: true,
+        dayNight,
+      },
+      "scene",
+      "2026-10-29T12:00:00Z",
+      "community",
+      "public",
+      "",
+      "living",
+      { actorIds: ["player"], witnessIds: [], consentIds: [], positions: { player: "living" } },
+    );
+  update(true);
+  assert.equal(
+    f.zone().dayNight,
+    true,
+    "existing physical update carries its daylight decision without another request",
+  );
+  assert.equal(f.zone().dayNightManual, false);
+  assert.equal(f.calls.length, 0, "classification itself never buys artwork");
+  assert.equal(coerceVillageState(f.world()).venues[0].zones!.find((z) => z.id === "living")!.dayNightManual, false);
+  await f.service.setZoneDayNight("home", "living", true);
+  assert.equal(f.zone().dayNightManual, true, "saving even the same value pins the manual choice");
+  update(false, "The skylight is covered permanently.");
+  assert.equal(f.zone().dayNight, true, "a later AI result cannot override a player choice");
+  assert.throws(() => update("yes" as unknown as boolean), /physical change could not be recorded/);
+}
+{
+  const f = fixture();
+  f.zone().dayNightManual = false;
+  f.zone().picture!.claim = "old-in-flight-image";
+  const revision = f.zone().pictureRevision ?? 0;
+  applyZoneDayNightDefault(f.zone(), true);
+  assert.equal(f.zone().picture!.claim, undefined);
+  assert.equal(f.zone().pictureRevision, revision + 1, "an inferred mode change fences outstanding artwork");
+  for (const dayNight of [false, true]) {
+    const saved = structuredClone(f.world());
+    const old = saved.venues[0].zones!.find((z) => z.id === "living")!;
+    old.dayNight = dayNight;
+    delete old.dayNightManual;
+    const restored = coerceVillageState(saved).venues[0].zones!.find((z) => z.id === "living")!;
+    applyZoneDayNightDefault(restored, !dayNight);
+    assert.equal(restored.dayNight, dayNight, "old saved settings remain unchanged");
+    assert.equal(restored.dayNightManual, true);
+  }
+}
+{
+  const f = fixture();
+  f.dirty("The wall is newly painted yellow.");
+  await f.service.updateZonePicture("home", "living");
+  assert.match(String(f.calls[0].prompt), /stable daytime lighting/);
+  assert.match(String(f.calls[0].prompt), /Ignore the current clock/);
+  assert.equal(f.calls.length, 1, "unpaired image updates remain one operation");
+  assert.equal(f.zone().picture!.daylight, true);
+  await f.service.setZoneDayNight("home", "living", true);
+  await f.service.updateZonePicture("home", "living");
+  assert.equal(f.calls.length, 2, "enabling pairing after a daytime edit buys only its night companion");
+  assert.deepEqual(f.calls[1].referenceImages, ["reference:render-1"]);
+}

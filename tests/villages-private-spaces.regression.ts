@@ -486,6 +486,7 @@ async function privateInteriorLifecycle() {
               venueId: "bungalow",
               id: "bedroom",
               name: "Bedroom",
+              dayNight: true,
               description: input.existingInterior?.description
                 ? input.existingInterior.description + "\nThe garden-facing window is renewed."
                 : "A neutral bedroom with a garden-facing window and plain bed.",
@@ -501,6 +502,8 @@ async function privateInteriorLifecycle() {
   assert.equal(calls, 1, "reading ready interiors never regenerates them");
   const bedroom = resolveVenueZone(home, "bedroom")!;
   assert.equal(bedroom.preparation?.status, "ready");
+  assert.equal(bedroom.dayNight, true, "normal room preparation includes its daylight decision");
+  assert.equal(bedroom.dayNightManual, false);
   assert.equal(bedroom.roomSpecification, "A small room with a garden-facing window");
   const player = { name: "Player", description: "", personaId: "" } as any;
   let view = villageSettings(village, player);

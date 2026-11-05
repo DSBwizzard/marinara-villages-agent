@@ -3,6 +3,9 @@ import type { VillageState, VillageVenue } from "../models/world.js";
 import { imagePromptId } from "./image-generation-rules.js";
 import { venueZones } from "./venue-zones.js";
 
+export const DAYTIME_IMAGE_INSTRUCTION =
+  "Use stable daytime lighting wherever daylight reaches this Zone; enclosed spaces retain their established artificial lighting. Ignore the current clock, passing weather and transient descriptions of darkness. Honor explicit standing world rules and lasting physical conditions.";
+
 export const LOCATION_IMAGE_WIDTH = 1216;
 
 export const LOCATION_IMAGE_HEIGHT = 832;
@@ -63,7 +66,7 @@ export function buildLocationPrompt(
     surrounding ? `Other known places in the village: ${surrounding}.` : "",
     lore ? `Established visual lore: ${lore}.` : "",
     "Current Venue and Zone records govern physical truth; lore and starting descriptions cannot undo changed physical conditions.",
-    "Depict stable daytime lighting wherever daylight reaches this Zone; enclosed spaces retain their established artificial lighting. Do not bake the current time, passing weather or seasonal events into this enduring background. Honor explicit standing world rules.",
+    DAYTIME_IMAGE_INSTRUCTION,
     `Honor these facts and do not invent conflicting architecture, technology or geography. ${village.sceneryArtStyle ? "Background scenery" : "Painted background art"} for a story: no people, no animals, no text, no lettering, no watermark.`,
   ]
     .filter((part) => part.length > 0)

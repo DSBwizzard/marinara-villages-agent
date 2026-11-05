@@ -98,9 +98,21 @@ export function readBaseVenueLayout(
     spaces.length + rooms.length > 6
   )
     throw badRequest("Provide Zones matching its selected layout, with at most six Zones besides Entrance.");
+  const daylight = (value: Record<string, unknown>) => {
+    if (value.dayNight !== undefined && typeof value.dayNight !== "boolean")
+      throw badRequest("Day & night must be on or off.");
+    if (value.dayNightManual !== undefined && typeof value.dayNightManual !== "boolean")
+      throw badRequest("Check the artwork preference.");
+    return {
+      dayNight: value.dayNight === true,
+      dayNightManual:
+        typeof value.dayNightManual === "boolean" ? value.dayNightManual : typeof value.dayNight === "boolean",
+    };
+  };
   const result: VillageVenueZone[] = [
     {
       ...defaultVenueSpace(classes[0]!),
+      ...daylight(row),
       id: "exterior",
       name: "Entrance",
       kind: "exterior",
@@ -134,6 +146,7 @@ export function readBaseVenueLayout(
       throw badRequest("Choose controllers for the Private Space.");
     result.push({
       ...defaultVenueSpace(role, description),
+      ...daylight(area),
       ...(prepareInterior ? { roomSpecification } : {}),
       id: asTrimmedString(area.id) || (isPrivate ? "private:base" : "common:base"),
       connectedTo: Array.isArray(area.connectedTo) ? (area.connectedTo as string[]) : undefined,

@@ -1269,6 +1269,8 @@ async function main() {
     });
     assert.equal(styledFounding.statusCode, 200, styledFounding.body);
     assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
+    assert.match(draws().at(-1).body.appearance, /stable daytime lighting/);
+    assert.match(draws().at(-1).body.appearance, /Ignore the current clock/);
     assert.doesNotMatch(draws().at(-1).body.appearance, /Painted background art|watercolor illustration/i);
   }
   await generateVillageTownMap({

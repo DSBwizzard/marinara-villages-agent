@@ -384,6 +384,8 @@ export type VillageVenueImage = {
  * somewhere somebody lives.
  */
 export type VillageVenue = {
+  dayNight?: boolean;
+  dayNightManual?: boolean;
   zoneLayout?: import("../helpers/zone-layout.js").ZoneLayout;
   venueType?: string;
   accessView?: import("../helpers/venue-access.js").VenueAccessView;
@@ -425,6 +427,7 @@ export type VillageVenue = {
     venueClass: "residence" | "workplace" | "community" | "other";
     description: string;
     dayNight?: boolean;
+    dayNightManual?: boolean;
     daylightReady?: boolean;
     nightImage?: VillageVenueImage;
     nightPending?: boolean;

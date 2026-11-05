@@ -515,6 +515,7 @@ export type ZonePicture = {
 export type VillageVenueSpace = {
   picture?: ZonePicture;
   dayNight?: boolean;
+  dayNightManual?: boolean;
   freezePicture?: boolean;
   pictureRevision?: number;
   connectedTo?: string[];

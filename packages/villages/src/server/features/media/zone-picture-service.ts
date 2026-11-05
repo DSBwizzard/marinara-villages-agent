@@ -1,3 +1,4 @@
+import { DAYTIME_IMAGE_INSTRUCTION } from "../../domain/rules/location-image-rules.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createHash } from "node:crypto";
 import type { VillageState, VillageVenueZone } from "../../domain/models/world.js";
@@ -188,9 +189,7 @@ export function createZonePictures(
                     : "Not recorded"
                   : "Not recorded; preserve existing visual details unless the target contradicts them."),
               "Complete target physical account: " + target,
-              zone.dayNight
-                ? "Use stable daytime lighting wherever daylight reaches this Zone; enclosed spaces retain their established artificial lighting. Do not depict passing weather. Honor standing world rules."
-                : "",
+              DAYTIME_IMAGE_INSTRUCTION,
             ]
               .filter(Boolean)
               .join("\n");
@@ -333,7 +332,7 @@ export function createZonePictures(
             current.image = image;
             current.picture = {
               base,
-              daylight: zone.dayNight ? true : zone.picture?.daylight,
+              daylight: true,
               baseline: zone.picture?.baseline ?? target,
               context: target,
               attempted: claim,

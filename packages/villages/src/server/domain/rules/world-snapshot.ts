@@ -301,6 +301,7 @@ export function villageSettings(
                 nightImage: undefined,
                 nightPending: undefined,
                 dayNight: undefined,
+                dayNightManual: undefined,
                 daylightReady: undefined,
                 pictureRetryAvailable: false,
                 pictureUpdateAvailable: false,
@@ -320,6 +321,8 @@ export function villageSettings(
       const primary = zones.find((zone) => zone.kind !== "exterior" && zone.kind !== "private-residence");
       return {
         ...venue,
+        dayNight: zones.find((zone) => zone.kind === "exterior")?.dayNight,
+        dayNightManual: zones.find((zone) => zone.kind === "exterior")?.dayNightManual,
         access: undefined,
         accessView: projectVenueAccess(venue, "player", village.communityVenueId),
         zones,
