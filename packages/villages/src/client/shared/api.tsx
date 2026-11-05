@@ -104,7 +104,7 @@ function requestRefusal(payload: unknown, status: number, fallback: string): Err
   const message = typeof detail === "string" ? detail : fallback;
   if (status === 401 || status === 403) {
     accessRevision++;
-    window.dispatchEvent(new CustomEvent(VILLAGE_ACCESS_DENIED, { detail: message }));
+    globalThis.window?.dispatchEvent?.(new CustomEvent(VILLAGE_ACCESS_DENIED, { detail: message }));
   }
   if (status === 409 && /clock/i.test(message)) window.dispatchEvent(new Event("villages-clock-changed"));
   if (status === 403 && /admin[-_ ]?secret/iu.test(message)) {
