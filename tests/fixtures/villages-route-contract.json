@@ -407,6 +407,10 @@
       "bodyLimit": 28027564
     },
     {
+      "method": "patch",
+      "path": "/locations/venue/image/day-night"
+    },
+    {
       "method": "post",
       "path": "/locations/venue/image/retry"
     },

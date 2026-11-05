@@ -119,7 +119,12 @@ export function useVenueScreenCommands(ports: {
       );
       if (global.owns(claim)) setSnapshot(next);
     } catch (cause) {
-      if (global.owns(claim)) setSettingsError(messageFrom(cause, "Artwork could not be updated."));
+      if (global.owns(claim)) {
+        setSettingsError(messageFrom(cause, "Artwork could not be updated."));
+        // Day may have committed before its night companion failed.
+        const saved = await request<VillageSnapshot>("").catch(() => null);
+        if (saved && global.owns(claim)) setSnapshot(saved);
+      }
     } finally {
       if (global.finish(claim)) setBusy(false);
     }

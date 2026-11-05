@@ -154,11 +154,22 @@ await withBrowser(browser, async () => {
         zone.dayNight = body.enabled;
         zone.daylightReady = true;
         zone.nightImage = body.enabled ? { id: "night", url: mapImage + "#night" } : undefined;
+      } else if (path.endsWith("/locations/venue/image/update")) {
+        const zone = place.zones.find((zone) => zone.id === request.postDataJSON().zoneId);
+        zone.image = { ref: "zone:updated-day", url: mapImage + "#updated-day" };
+        zone.nightImage = undefined;
+        zone.pictureRetryAvailable = true;
+        zone.pictureProblem = "Night artwork failed.";
+        return fulfill(route, { status: 500, json: { error: "Night artwork failed." } });
       } else if (path.endsWith("/locations/venue/image")) {
         const body = request.postDataJSON();
         const zone = place.zones.find((zone) => zone.id === body.zoneId);
         if (zone)
           zone.image = request.method() === "DELETE" ? null : { ref: "zone:" + zone.id, url: body.image || mapImage };
+        if (zone) {
+          zone.pictureRetryAvailable = false;
+          zone.pictureProblem = undefined;
+        }
       } else if (path.endsWith(`/locations/venue/${place.id}`) && request.method() === "PUT") {
         place.name = request.postDataJSON().name;
         if (holdVenueSave) {
@@ -328,6 +339,10 @@ await withBrowser(browser, async () => {
     await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#night");
     await detail.getByRole("button", { name: "Day", exact: true }).click();
     await expect(detail.locator("img")).toHaveAttribute("src", mapImage);
+    await detail.getByRole("button", { name: "Update artwork", exact: true }).click();
+    await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#updated-day");
+    await expect(detail.getByRole("button", { name: "Retry artwork", exact: true })).toBeVisible();
+    await expect(detail.getByRole("status")).toHaveText("Night artwork failed.");
     await detail.getByRole("checkbox", { name: "Day & night" }).click();
     await expect(detail.getByRole("checkbox", { name: "Day & night" })).not.toBeChecked();
     await detail.getByLabel("Upload Main Bay artwork").setInputFiles({

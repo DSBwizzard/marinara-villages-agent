@@ -243,6 +243,7 @@ function ZoneArtwork({
       <label>
         <input
           type="checkbox"
+          autoComplete="off"
           checked={zone.dayNight === true}
           disabled={disabled}
           onChange={(event) => void controller.setZoneDayNight(place, zone.id, event.target.checked)}
