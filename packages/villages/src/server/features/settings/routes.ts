@@ -148,8 +148,10 @@ export function registerUsageRoutes(engine: FastifyInstance) {
 }
 export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.get("/debug/lore", async (_request, reply) => {
+  app.get<{ Querystring: { activity?: unknown } }>("/debug/lore", async (request, reply) => {
     try {
+      if (request.query?.activity === "summary") return await readLoreActivity(true);
+      if (request.query?.activity !== undefined) throw badRequest("Choose a Lore activity query.");
       return await readLoreInspections();
     } catch (error) {
       return fail(reply, error, "inspecting lorebooks");

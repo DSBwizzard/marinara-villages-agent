@@ -73,7 +73,10 @@ await withBrowser(browser, async () => {
         }),
       );
       await page.route("**/api/villages/**", async (route) => {
-        const body = route.request().postDataJSON();
+        const body =
+          route.request().method() === "GET"
+            ? { action: new URL(route.request().url()).searchParams.get("activity") }
+            : route.request().postDataJSON();
         calls.push(body);
         assert(new URL(route.request().url()).pathname.endsWith("/debug/lore"));
         if (body.action === "summary") return fulfill(route, { status: 200, json: { scope, revision, records: [] } });
@@ -254,7 +257,10 @@ await withBrowser(browser, async () => {
       }),
     );
     await page.route("**/api/villages/**", (route) => {
-      const body = route.request().postDataJSON();
+      const body =
+        route.request().method() === "GET"
+          ? { action: new URL(route.request().url()).searchParams.get("activity") }
+          : route.request().postDataJSON();
       if (body.action === "summary") pendingSummaries.push(route);
       else if (body.action === "activity") listRoute = route;
       else return fulfill(route, { status: 200, json: { trigger: null } });

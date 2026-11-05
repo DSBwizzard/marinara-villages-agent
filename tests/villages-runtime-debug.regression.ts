@@ -157,7 +157,7 @@ async function main() {
         first.revision,
         "Recovery does not create another unread event",
       );
-      const summary = await server.inject({ method: "POST", url: "/debug/lore", payload: { action: "summary" } });
+      const summary = await server.inject({ method: "GET", url: "/debug/lore?activity=summary" });
       assert.equal(summary.statusCode, 200);
       assert.doesNotMatch(summary.body, /private key|Unshared|Texting|Private body/);
       const targeted = await server.inject({ method: "POST", url: "/debug/lore", payload: reference });

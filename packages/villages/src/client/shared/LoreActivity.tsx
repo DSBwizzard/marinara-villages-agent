@@ -61,11 +61,8 @@ export function LoreActivity({ children }: { children: ReactNode }) {
   );
   const readSummary = async (signal: AbortSignal) => {
     const id = ++sequence.current;
-    const next = await request<LoreActivityList>("/debug/lore", {
-      method: "POST",
-      signal,
-      body: JSON.stringify({ action: "summary" }),
-    });
+    const next = await request<LoreActivityList>("/debug/lore?activity=summary", { signal });
+    if (typeof next.scope !== "string" || !Number.isSafeInteger(next.revision) || next.revision < 0) return;
     if (!signal.aborted && id === sequence.current) applySummary(next);
   };
   useVisibleInterval(readSummary, 5000);

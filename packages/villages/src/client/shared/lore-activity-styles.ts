@@ -1,3 +1,4 @@
+import { ELEMENT_TAG as P } from "./constants.js";
 export const LORE_ACTIVITY_STYLES = `
 .villages-lore-host{position:relative;display:flex;flex-direction:column;height:100%;min-height:0;min-width:0;container-type:inline-size}
 .villages-lore-toolbar{display:flex;justify-content:flex-end;flex:none;padding:.35rem .85rem;border-bottom:1px solid #8b80ba30;background:linear-gradient(110deg,#121830,#1b2140);font-family:system-ui,sans-serif}
@@ -6,6 +7,7 @@ export const LORE_ACTIVITY_STYLES = `
 .villages-lore-launch svg{width:18px;height:18px;stroke:#c6afff;fill:none;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
 .villages-lore-dot{display:inline-block;width:8px;height:8px;flex:none;border-radius:50%;background:#ff617b;box-shadow:0 0 0 3px #ff617b20}
 .villages-lore-workarea{flex:1;min-height:0;min-width:0;overflow:hidden}
+.villages-lore-host .${P}-home-full[data-mobile="true"] .${P}-home-map-viewport{min-height:max(0px,calc(88px - var(--villages-exploration-inset,0px)))}
 .villages-founding-overlay:has(>.villages-lore-dialog){padding:0;place-items:stretch end;background:#05091766;backdrop-filter:blur(2px)}
 .villages-founding-overlay>dialog.villages-lore-dialog{position:relative;inset:auto;display:flex;flex-direction:column;box-sizing:border-box;max-width:100%;max-height:100%;height:100%;width:min(70rem,68%);margin:0;padding:0;overflow:hidden;overscroll-behavior:contain;border:1px solid #b295ff88;border-right:0;border-radius:1rem 0 0 1rem;box-shadow:-1rem 0 4rem #0006;background:linear-gradient(135deg,#1b2343,#11182f 65%);color:#edf0ff;font: .9rem/1.5 system-ui,sans-serif}
 .villages-lore-dialog *{box-sizing:border-box}
