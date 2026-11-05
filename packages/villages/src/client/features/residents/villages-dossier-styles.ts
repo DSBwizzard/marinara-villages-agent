@@ -108,7 +108,7 @@ export const DOSSIER_STYLES = `
 .${P}-dossier-biography p { font-size:clamp(16px,3cqh,24px); }
 /* Section owners supply records. Semantic groups occupy either side of the binding. */
 .${P}-dossier-root .${P}-overlay { background:transparent; color:var(--dossier-ink); border:0; padding:0; box-shadow:none; min-width:0; }
-.${P}-dossier-content > :is(.villages-relationships,.${P}-overlay), .${P}-dossier-content > .${P}-dossier-sheet:has(.${P}-memory-library), .${P}-dossier-root .${P}-memory-library { display:contents; }
+.${P}-dossier-content > [role="region"] > :is(.villages-relationships,.${P}-overlay), .${P}-dossier-content > [role="region"] > .${P}-dossier-sheet:has(.${P}-memory-library), .${P}-dossier-root .${P}-memory-library { display:contents; }
 .${P}-dossier-content .villages-relationship-grid { display:contents; }
 .${P}-dossier-root .villages-relationship-card, .${P}-dossier-root .villages-relationship-setup { background:transparent; color:var(--dossier-ink); border:0; border-radius:0; padding:0; }
 .${P}-dossier-content .villages-relationship-card { grid-column:2; grid-row:1 / span 4; }

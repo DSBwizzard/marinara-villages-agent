@@ -1,6 +1,6 @@
 import type { PersonaResponse, VillageLorebookOption, VillageSnapshot } from "../../shared/contracts/village.js";
 import { useVisibleInterval } from "./activity.js";
-import { messageFrom, request } from "./api.js";
+import { invalidatesRead, messageFrom, request } from "./api.js";
 import { createVillagesClientId } from "./request-id.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
@@ -58,7 +58,7 @@ export function useSnapshotReference(ports: {
 }) {
   const { currentSnapshotRef, snapshot } = ports;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     currentSnapshotRef.current = snapshot;
   }, [currentSnapshotRef, snapshot]);
 }
@@ -79,7 +79,8 @@ export function useLoadVillageSnapshot(ports: {
         });
         if (!options.signal?.aborted && read.publish(next)) setError("");
       } catch (cause) {
-        if (options.signal?.aborted || options.quiet || !read.publish(null)) return;
+        if (options.signal?.aborted || options.quiet || !read.isCurrent()) return;
+        if (invalidatesRead(cause)) read.publish(null);
         setError(messageFrom(cause, "Could not read the village."));
       }
     },

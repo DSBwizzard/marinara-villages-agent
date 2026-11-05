@@ -1,6 +1,8 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import type { ResidentSignature, ResidentSignatureImage } from "../../../shared/helpers/resident-signature.js";
 import { useFocusRevision, useVillageActivity } from "../../shared/activity.js";
+import { invalidatesRead, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
+import { RetainedView } from "../../shared/RetainedView.js";
 import { VenuePolaroid } from "../exploration/villages-venue-polaroid.js";
 import { PeopleBook } from "./PeopleBook.js";
 import { type RelationshipView, VillagesRelationships } from "./villages-relationships.js";
@@ -149,35 +151,44 @@ export function VillagerDossier({
   onVenue: (id: string) => void;
   error?: string;
 }) {
-  const { visible, backgroundRevision } = useVillageActivity();
+  const { visible, backgroundRevision, viewing } = useVillageActivity();
   const focusRevision = useFocusRevision(visible);
   const showingSprites = !!spriteManager;
   const [section, setSection] = useState<DossierSection>(
     navigation.section ?? (navigation.wishId ? "wishes" : "overview"),
   );
   const [inspect, setInspect] = useState(false);
+  const [visited, setVisited] = useState<DossierSection[]>([section]);
   const [manageOpen, setManageOpen] = useState(false);
+  const [inspected, setInspected] = useState<DossierSection[]>([]);
   const [relationships, setRelationships] = useState<RelationshipView | null>(null);
+  const relationshipEpoch = useRef(0);
   const [readError, setReadError] = useState("");
   const [revision, setRevision] = useState(0);
   const content = useRef<HTMLDivElement>(null);
+  const positions = useRef<Partial<Record<DossierSection, number>>>({});
   const [turn, setTurn] = useState({ id: 0, backwards: false });
   const profile = relationships?.profiles?.find((person) => person.characterId === navigation.actorId);
   const name = villager?.name ?? "Former villager";
   useEffect(() => {
     if (!visible || showingSprites) return;
     const controller = new AbortController();
+    const epoch = relationshipEpoch.current;
     const refresh = async () => {
-      setRelationships(null);
       try {
         const view = await request<RelationshipView>("/relationships", { signal: controller.signal });
-        if (!controller.signal.aborted) {
+        if (!controller.signal.aborted && epoch === relationshipEpoch.current) {
           setRelationships(view);
           setReadError("");
         }
       } catch (cause) {
-        if (!controller.signal.aborted)
+        if (!controller.signal.aborted && epoch === relationshipEpoch.current) {
+          if (invalidatesRead(cause)) {
+            setRelationships(null);
+            setInspect(false);
+          }
           setReadError(cause instanceof Error ? cause.message : "Profile information could not be read.");
+        }
       }
     };
     void refresh();
@@ -186,18 +197,47 @@ export function VillagerDossier({
     };
   }, [request, navigation.actorId, revision, visible, showingSprites, backgroundRevision, focusRevision]);
   useEffect(() => {
-    onInspectSection(inspect ? section : null);
+    const denied = (event: Event) => {
+      relationshipEpoch.current++;
+      setRelationships(null);
+      setInspect(false);
+      setReadError(event instanceof CustomEvent && typeof event.detail === "string" ? event.detail : "Access denied.");
+    };
+    window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
+    return () => window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
+  }, []);
+  useEffect(() => {
+    onInspectSection(inspect && viewing !== false ? section : null);
     return () => onInspectSection(null);
-  }, [inspect, section, onInspectSection]);
+  }, [inspect, section, onInspectSection, viewing]);
+  useEffect(() => {
+    if (viewing === false) setInspect(false);
+  }, [viewing]);
+  useEffect(() => {
+    if (!inspect) setInspected([]);
+    else setInspected((current) => (current.includes(section) ? current : [...current, section]));
+  }, [inspect, section]);
+  useLayoutEffect(() => {
+    if (content.current) content.current.scrollTop = positions.current[section] ?? 0;
+  }, [section]);
+  const inspectedSection = (tab: DossierSection) => inspect && (section === tab || inspected.includes(tab));
   const choose = (next: DossierSection, inspection = inspect) => {
+    setVisited((current) => (current.includes(next) ? current : [...current, next]));
+    if (content.current) positions.current[section] = content.current.scrollTop;
     if (next !== section) {
       const order = sections;
       setTurn((current) => ({ id: current.id + 1, backwards: order.indexOf(next) < order.indexOf(section) }));
     }
     setSection(next);
     setInspect(inspection);
-    if (content.current) content.current.scrollTop = 0;
   };
+  const followNavigation = useEffectEvent(() => {
+    const target = navigation.section ?? (navigation.wishId ? "wishes" : null);
+    if (target) choose(target, false);
+  });
+  useEffect(() => {
+    followNavigation();
+  }, [navigation]);
   const visibleVenues = venues
     .map((venue) => {
       const grants = profile?.access?.filter((grant) => grant.venueId === venue.id) ?? [];
@@ -246,273 +286,296 @@ export function VillagerDossier({
       )}
     </div>
   );
-  // The artwork workspace uses the available screen; the dossier stays mounted for a seamless return.
-  if (spriteManager) return <div className={`${P}-root ${P}-sprite-manager-root`}>{spriteManager}</div>;
   return (
-    <div className={`${P}-root ${P}-dossier-root`}>
-      <PeopleBook
-        label={`${name} profile`}
-        overview={section === "overview" && !!villager}
-        section={section}
-        inspect={inspect}
-        toolbar={
-          <>
-            <button type="button" className={`${P}-dossier-back`} onClick={onBack}>
-              ← Back to Villagers
-            </button>
-            {section !== "overview" || !villager ? <h1>{name}</h1> : null}
-            <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
-              {villager ? (
-                <details className={`${P}-dossier-management`} open={manageOpen}>
-                  <summary
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setManageOpen((open) => !open);
-                    }}
-                  >
-                    Character tools
-                  </summary>
-                  <div className={`${P}-dossier-controls`} role="group" aria-label="Character tools">
-                    {controls}
-                  </div>
-                </details>
-              ) : null}
-              {onClose ? (
-                <button type="button" className={`${P}-notebook-close`} onClick={onClose}>
-                  Close ×
-                </button>
-              ) : null}
-            </div>
-          </>
-        }
-      >
-        <div className={`${P}-dossier-identity`}>
-          <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
-            <div className={`${P}-dossier-journal-content`}>
-              <div className={`${P}-dossier-portrait`}>{portrait}</div>
-              <h1>{name}</h1>
-              {personalMail ? (
-                <button type="button" onClick={personalMail.onOpen}>
-                  Message
-                </button>
-              ) : null}
-              <div className={`${P}-dossier-biography`}>
-                {villager?.summary ? <p>{villager.summary}</p> : null}
-                {villager?.missing ? (
-                  <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
-                ) : null}
-              </div>
-            </div>
-            {villager ? (
-              <VillagerSignature
-                key={navigation.actorId}
-                actorId={navigation.actorId}
-                name={name}
-                signature={villager.signatureFallback}
-                saved={villager.signature}
-                request={request}
-              />
-            ) : null}
-          </article>
-        </div>
-        <main className={`${P}-dossier-workspace`}>
-          <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
-            <div>
-              {sections.map((tab) => (
-                <button type="button" key={tab} aria-pressed={section === tab} onClick={() => choose(tab)}>
-                  {titles[tab]}
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              className={`${P}-dossier-inspect`}
-              aria-pressed={inspect}
-
-              onClick={() => setInspect(!inspect)}
-            >
-              <DossierIcon name="inspect" />
-              {inspect ? "Leave Inspect" : "Inspect"}
-            </button>
-          </nav>
-          <div
-            ref={content}
-            className={`${P}-dossier-content`}
-            role="region"
-            tabIndex={section === "overview" ? -1 : 0}
-            aria-label={`${titles[section]} content`}
-          >
-            {error ? (
-              <p role="alert" className={`${P}-dossier-warning`}>
-                {error}
-              </p>
-            ) : null}
-            {readError ? (
-              <p role="alert">
-                {readError}{" "}
-                <button type="button" onClick={() => setRevision(revision + 1)}>
-                  Retry profile
-                </button>
-              </p>
-            ) : null}
-            {!villager ? (
-              <Sheet title="This villager has moved out">
-                <p>Saved history retained.</p>
-              </Sheet>
-            ) : (
+    <>
+      {spriteManager ? <div className={`${P}-root ${P}-sprite-manager-root`}>{spriteManager}</div> : null}
+      <RetainedView active={!showingSprites}>
+        <div className={`${P}-root ${P}-dossier-root`}>
+          <PeopleBook
+            label={`${name} profile`}
+            overview={section === "overview" && !!villager}
+            section={section}
+            inspect={inspect}
+            toolbar={
               <>
-                {section === "overview" ? (
-                  <div className={`${P}-dossier-overview`}>
-                    {readError ? null : !relationships ? (
-                      <p role="status">Reading profile…</p>
-                    ) : !profile ? (
-                      <p role="status">
-                        {relationships.starting?.pending
-                          ? "Profile information is still being prepared."
-                          : "Profile information is unavailable."}
-                      </p>
-                    ) : (
-                      <>
-                        <Sheet title="Relationships" icon="relationships">
-                          <p>{profile?.summary || "No relationship shared yet."}</p>
-                          {profile?.learned
-                            ?.filter(
-                              (entry) =>
-                                entry.kind !== "routine" &&
-                                entry.kind !== "preference" &&
-                                entry.kind !== "home" &&
-                                entry.kind !== "work" &&
-                                entry.text !== profile.summary,
-                            )
-                            .map((entry, index) => (
-                              <p key={index}>{entry.text}</p>
-                            ))}
-                        </Sheet>
-                        <Sheet title="Wishes" icon="wishes">
-                          {profile?.knownWishes?.length ? (
-                            <ul>
-                              {profile?.knownWishes?.map((wish) => (
-                                <li key={wish.wishId}>
-                                  {wish.text}
-                                  {wish.status ? ` · ${wish.status}` : ""}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p>None shared yet.</p>
-                          )}
-                        </Sheet>
-                        <Sheet title="Routine" icon="agenda">
-                          {profile?.routine?.length ? (
-                            <ul>
-                              {profile.routine.map((line, index) => (
-                                <li key={index}>{line}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p>No routine shared yet.</p>
-                          )}
-                        </Sheet>
-                      </>
-                    )}
-                    <Sheet title="Home and work" icon="venues">
-                      {venues.some((venue) => venue.publicConnections.length) ? (
-                        <ul>
-                          {venues.flatMap((venue) =>
-                            venue.publicConnections.map((role) => (
-                              <li key={`${venue.id}:${role}`}>
-                                {role} · {venue.name}
-                              </li>
-                            )),
-                          )}
-                        </ul>
-                      ) : (
-                        <p>No home or workplace assigned.</p>
-                      )}
-                    </Sheet>
-                    {inspect ? inspectors.overview : null}
+                <button type="button" className={`${P}-dossier-back`} onClick={onBack}>
+                  ← Back to Villagers
+                </button>
+                {section !== "overview" || !villager ? <h1>{name}</h1> : null}
+                <div className={`${P}-dossier-actions`} role="group" aria-label="Profile actions">
+                  {villager ? (
+                    <details className={`${P}-dossier-management`} open={manageOpen}>
+                      <summary
+                        onClick={(event) => {
+                          event.preventDefault();
+                          setManageOpen((open) => !open);
+                        }}
+                      >
+                        Character tools
+                      </summary>
+                      <div className={`${P}-dossier-controls`} role="group" aria-label="Character tools">
+                        {controls}
+                      </div>
+                    </details>
+                  ) : null}
+                  {onClose ? (
+                    <button type="button" className={`${P}-notebook-close`} onClick={onClose}>
+                      Close ×
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            }
+          >
+            <div className={`${P}-dossier-identity`}>
+              <article className={`${P}-dossier-journal`} aria-label={`${name} journal`}>
+                <div className={`${P}-dossier-journal-content`}>
+                  <div className={`${P}-dossier-portrait`}>{portrait}</div>
+                  <h1>{name}</h1>
+                  {personalMail ? (
+                    <button type="button" onClick={personalMail.onOpen}>
+                      Message
+                    </button>
+                  ) : null}
+                  <div className={`${P}-dossier-biography`}>
+                    {villager?.summary ? <p>{villager.summary}</p> : null}
+                    {villager?.missing ? (
+                      <p className={`${P}-dossier-warning`}>Card missing · saved character remains available.</p>
+                    ) : null}
                   </div>
-                ) : section === "relationships" ? (
-                  <VillagesRelationships
+                </div>
+                {villager ? (
+                  <VillagerSignature
+                    key={navigation.actorId}
+                    actorId={navigation.actorId}
+                    name={name}
+                    signature={villager.signatureFallback}
+                    saved={villager.signature}
                     request={request}
-                    prefix={P}
-                    onVenue={onVenue}
-                    characterId={navigation.actorId}
-                    inspect={inspect}
-                    view={relationships}
-                    onView={setRelationships}
                   />
-                ) : section === "wishes" ? (
-                  inspect ? (
-                    inspectors.wishes
-                  ) : (
-                    <VillagerWishJournal
-                      inspect={inspect}
-                      request={request}
-                      characterId={navigation.actorId}
-                      prefix={P}
-                      focusWishId={navigation.wishId}
-                      wishes={relationships ? (profile?.knownWishes ?? []) : null}
-                      onWishes={(knownWishes) =>
-                        setRelationships((current) =>
-                          current
-                            ? {
-                                ...current,
-                                profiles: current.profiles.map((entry) =>
-                                  entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
-                                ),
-                              }
-                            : current,
-                        )
-                      }
-                    />
-                  )
-                ) : section === "memories" ? (
-                  inspect ? (
-                    inspectors.memories
-                  ) : (
-                    <Sheet title="Memories" icon="memories">
-                      <button type="button" onClick={() => setInspect(true)}>
-                        Inspect memories
-                      </button>
-                    </Sheet>
-                  )
-                ) : section === "agenda" ? (
-                  inspect ? (
-                    inspectors.agenda
-                  ) : (
-                    <Sheet title="Known routine" icon="agenda">
-                      {profile?.routine?.length ? (
-                        <>
-                          <p>Last shared information · {new Date(profile.knownAt).toLocaleString()}</p>
-                          <ul>
-                            {profile.routine?.map((line, index) => (
-                              <li key={index}>{line}</li>
-                            ))}
-                          </ul>
-                          <p>{profile.interests || "No interests shared yet."}</p>
-                        </>
-                      ) : (
-                        <p>Their routine has not been shared yet.</p>
-                      )}
-                    </Sheet>
-                  )
+                ) : null}
+              </article>
+            </div>
+            <main className={`${P}-dossier-workspace`}>
+              <nav className={`${P}-dossier-tabs`} aria-label="Villager profile sections">
+                <div>
+                  {sections.map((tab) => (
+                    <button type="button" key={tab} aria-pressed={section === tab} onClick={() => choose(tab)}>
+                      {titles[tab]}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className={`${P}-dossier-inspect`}
+                  aria-pressed={inspect}
+
+                  onClick={() => setInspect(!inspect)}
+                >
+                  <DossierIcon name="inspect" />
+                  {inspect ? "Leave Inspect" : "Inspect"}
+                </button>
+              </nav>
+              <div
+                ref={content}
+                className={`${P}-dossier-content`}
+                tabIndex={0}
+                aria-label={`${titles[section]} reading area`}
+              >
+                {error ? (
+                  <p role="alert" className={`${P}-dossier-warning`}>
+                    {error}
+                  </p>
+                ) : null}
+                {readError ? (
+                  <p role="alert">
+                    {readError}{" "}
+                    <button type="button" onClick={() => setRevision(revision + 1)}>
+                      Retry profile
+                    </button>
+                  </p>
+                ) : null}
+                {!villager ? (
+                  <Sheet title="This villager has moved out">
+                    <p>Saved history retained.</p>
+                  </Sheet>
                 ) : (
                   <>
-                    <Sheet title="Relevant Venues" icon="venues">
-                      {venueCards()}
-                    </Sheet>
-                    <Sheet title="Projects and Venue Requests">{related}</Sheet>
+                    {visited.includes("overview") ? (
+                      <RetainedView active={section === "overview"} label="Overview content">
+                        <div className={`${P}-dossier-overview`}>
+                          {!relationships ? (
+                            <p role="status">Reading profile…</p>
+                          ) : !profile ? (
+                            <p role="status">
+                              {relationships.starting?.pending
+                                ? "Profile information is still being prepared."
+                                : "Profile information is unavailable."}
+                            </p>
+                          ) : (
+                            <>
+                              <Sheet title="Relationships" icon="relationships">
+                                <p>{profile?.summary || "No relationship shared yet."}</p>
+                                {profile?.learned
+                                  ?.filter(
+                                    (entry) =>
+                                      entry.kind !== "routine" &&
+                                      entry.kind !== "preference" &&
+                                      entry.kind !== "home" &&
+                                      entry.kind !== "work" &&
+                                      entry.text !== profile.summary,
+                                  )
+                                  .map((entry, index) => (
+                                    <p key={index}>{entry.text}</p>
+                                  ))}
+                              </Sheet>
+                              <Sheet title="Wishes" icon="wishes">
+                                {profile?.knownWishes?.length ? (
+                                  <ul>
+                                    {profile?.knownWishes?.map((wish) => (
+                                      <li key={wish.wishId}>
+                                        {wish.text}
+                                        {wish.status ? ` · ${wish.status}` : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p>None shared yet.</p>
+                                )}
+                              </Sheet>
+                              <Sheet title="Routine" icon="agenda">
+                                {profile?.routine?.length ? (
+                                  <ul>
+                                    {profile.routine.map((line, index) => (
+                                      <li key={index}>{line}</li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p>No routine shared yet.</p>
+                                )}
+                              </Sheet>
+                            </>
+                          )}
+                          <Sheet title="Home and work" icon="venues">
+                            {venues.some((venue) => venue.publicConnections.length) ? (
+                              <ul>
+                                {venues.flatMap((venue) =>
+                                  venue.publicConnections.map((role) => (
+                                    <li key={`${venue.id}:${role}`}>
+                                      {role} · {venue.name}
+                                    </li>
+                                  )),
+                                )}
+                              </ul>
+                            ) : (
+                              <p>No home or workplace assigned.</p>
+                            )}
+                          </Sheet>
+                          {inspectedSection("overview") ? inspectors.overview : null}
+                        </div>
+                      </RetainedView>
+                    ) : null}
+                    {visited.includes("relationships") ? (
+                      <RetainedView active={section === "relationships"} label="Relationships content">
+                        <VillagesRelationships
+                          key={inspectedSection("relationships") ? "inspect" : "public"}
+                          request={request}
+                          prefix={P}
+                          onVenue={onVenue}
+                          characterId={navigation.actorId}
+                          inspect={inspectedSection("relationships")}
+                          view={relationships}
+                          onView={setRelationships}
+                        />
+                      </RetainedView>
+                    ) : null}
+                    {visited.includes("wishes") ? (
+                      <RetainedView active={section === "wishes"} label="Wishes content">
+                        {inspectedSection("wishes") ? (
+                          <RetainedView active={inspect}>{inspectors.wishes}</RetainedView>
+                        ) : null}
+                        <RetainedView active={!inspect}>
+                          <VillagerWishJournal
+                            inspect={false}
+                            request={request}
+                            characterId={navigation.actorId}
+                            prefix={P}
+                            focusWishId={navigation.wishId}
+                            wishes={relationships ? (profile?.knownWishes ?? []) : null}
+                            onWishes={(knownWishes) => {
+                              relationshipEpoch.current++;
+                              setRelationships((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      profiles: current.profiles.map((entry) =>
+                                        entry.characterId === navigation.actorId ? { ...entry, knownWishes } : entry,
+                                      ),
+                                    }
+                                  : current,
+                              );
+                            }}
+                            onFollowing={() => {
+                              relationshipEpoch.current++;
+                            }}
+                          />
+                        </RetainedView>
+                      </RetainedView>
+                    ) : null}
+                    {visited.includes("memories") ? (
+                      <RetainedView active={section === "memories"} label="Memories content">
+                        {inspectedSection("memories") ? inspectors.memories : null}
+                        {!inspect ? (
+                          <Sheet title="Memories" icon="memories">
+                            <button type="button" onClick={() => setInspect(true)}>
+                              Inspect memories
+                            </button>
+                          </Sheet>
+                        ) : null}
+                      </RetainedView>
+                    ) : null}
+                    {visited.includes("agenda") ? (
+                      <RetainedView active={section === "agenda"} label="Agenda content">
+                        {inspectedSection("agenda") ? inspectors.agenda : null}
+                        {!inspect ? (
+                          <Sheet title="Known routine" icon="agenda">
+                            {profile?.routine?.length ? (
+                              <>
+                                <p>Last shared information · {new Date(profile.knownAt).toLocaleString()}</p>
+                                <ul>
+                                  {profile.routine?.map((line, index) => (
+                                    <li key={index}>{line}</li>
+                                  ))}
+                                </ul>
+                                <p>{profile.interests || "No interests shared yet."}</p>
+                              </>
+                            ) : (
+                              <p>Their routine has not been shared yet.</p>
+                            )}
+                          </Sheet>
+                        ) : null}
+                      </RetainedView>
+                    ) : null}
+                    {visited.includes("venues") ? (
+                      <RetainedView active={section === "venues"} label="Venues content">
+                        <>
+                          <Sheet title="Relevant Venues" icon="venues">
+                            {venueCards()}
+                          </Sheet>
+                          <Sheet title="Projects and Venue Requests">{related}</Sheet>
+                        </>
+                      </RetainedView>
+                    ) : null}
                   </>
                 )}
-              </>
-            )}
-          </div>
-        </main>
-        {turn.id > 0 ? (
-          <div key={turn.id} className={`${P}-dossier-turn`} data-backwards={turn.backwards} aria-hidden="true" />
-        ) : null}
-      </PeopleBook>
-    </div>
+              </div>
+            </main>
+            {turn.id > 0 ? (
+              <div key={turn.id} className={`${P}-dossier-turn`} data-backwards={turn.backwards} aria-hidden="true" />
+            ) : null}
+          </PeopleBook>
+        </div>
+      </RetainedView>
+    </>
   );
 }

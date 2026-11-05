@@ -458,7 +458,14 @@ async function main() {
     const beforeError = calls;
     await assert.rejects(
       completeWithRoom(model as any, [{ role: "user", content: "JSON" }], 3000, jsonOptions),
-      (error: any) => error.failure?.cause === "provider_exception" && /rejected JSON mode/.test(error.message),
+      (error: any) => {
+        assert.equal(error.failure.cause, "provider_exception");
+        assert.equal(error.failure.model, model.model);
+        assert.equal(error.failure.connectionId, model.connectionId);
+        assert.equal(error.failure.detail, "response_format json_object is unsupported");
+        assert.match(error.message, /rejected JSON mode/);
+        return true;
+      },
     );
     assert.equal(calls - beforeError, 1);
     await queueBackgroundJob({ ...input, subjectId: "unsupported", revision: "2" });

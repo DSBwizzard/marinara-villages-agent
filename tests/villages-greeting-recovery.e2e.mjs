@@ -208,7 +208,7 @@ async function fixture({ restored = true, recovery = "failed" } = {}) {
 await withBrowser(browser, async () => {
   for (const restored of [false, true]) {
     const f = await fixture({ restored });
-    await expectSceneError(f.page, "The connection was interrupted. Check the saved reply before sending again.");
+    await expectSceneError(f.page, "The game couldn’t reach the server.");
     await openSceneErrors(f.page);
     await expect(f.page.getByRole("button", { name: "Retry opening", exact: true })).toBeVisible();
     await expect(f.page.getByRole("button", { name: "Continue without opening", exact: true })).toBeVisible();
@@ -224,10 +224,10 @@ await withBrowser(browser, async () => {
     const composer = f.page.getByRole("textbox", { name: "Message at The Mill" });
     await composer.fill("Keep this unsent draft.");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
-    await expectSceneError(f.page, "This line could not be accepted.");
+    await expectSceneError(f.page, "The game couldn’t accept your message.");
     await f.focus();
     await expect(composer).toHaveValue("Keep this unsent draft.");
-    await expectSceneError(f.page, "This line could not be accepted.");
+    await expectSceneError(f.page, "The game couldn’t accept your message.");
     await f.mount();
     await expect(f.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
     await expect(f.page.getByRole("alert")).toHaveCount(0);
@@ -242,7 +242,7 @@ await withBrowser(browser, async () => {
     await f.page.close();
   }
   const unsaved = await fixture();
-  await expectSceneError(unsaved.page, "The connection was interrupted. Check the saved reply before sending again.");
+  await expectSceneError(unsaved.page, "The game couldn’t reach the server.");
   unsaved.succeedNextGreeting();
   await openSceneErrors(unsaved.page);
   await unsaved.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
@@ -255,11 +255,11 @@ await withBrowser(browser, async () => {
   await unsaved.page.close();
 
   const terminal = await fixture();
-  await expectSceneError(terminal.page, "The connection was interrupted. Check the saved reply before sending again.");
+  await expectSceneError(terminal.page, "The game couldn’t reach the server.");
   terminal.setTerminalFailure();
   terminal.allowReads();
   await terminal.focus();
-  await expectSceneError(terminal.page, "The AI reply was incomplete or could not be read.");
+  await expectSceneError(terminal.page, "The AI returned a reply the game couldn’t read.");
   await openSceneErrors(terminal.page);
   await terminal.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
   await expect(terminal.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
@@ -269,10 +269,7 @@ await withBrowser(browser, async () => {
   await terminal.page.close();
 
   const recoverable = await fixture();
-  await expectSceneError(
-    recoverable.page,
-    "The connection was interrupted. Check the saved reply before sending again.",
-  );
+  await expectSceneError(recoverable.page, "The game couldn’t reach the server.");
   recoverable.setTerminalFailure({ recoverable: true });
   recoverable.allowReads();
   await recoverable.focus();
@@ -284,15 +281,15 @@ await withBrowser(browser, async () => {
   await recoverable.page.close();
 
   const changed = await fixture();
-  await expectSceneError(changed.page, "The connection was interrupted. Check the saved reply before sending again.");
+  await expectSceneError(changed.page, "The game couldn’t reach the server.");
   changed.setTerminalFailure();
   changed.allowReads();
   await changed.focus();
-  await expectSceneError(changed.page, "The AI reply was incomplete or could not be read.");
+  await expectSceneError(changed.page, "The AI returned a reply the game couldn’t read.");
   await openSceneErrors(changed.page);
   changed.changeAttemptOnRead();
   await changed.page.getByRole("button", { name: "Retry opening", exact: true }).first().click();
-  await expectSceneError(changed.page, "The opening request changed. Review the current Scene before retrying.");
+  await expectSceneError(changed.page, "The Scene changed during the request.");
   assert.equal(changed.calls, 1, "a different saved attempt is never retried without a fresh click");
   await changed.page.close();
 

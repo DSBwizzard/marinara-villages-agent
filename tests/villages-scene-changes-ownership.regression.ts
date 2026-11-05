@@ -326,6 +326,12 @@ async function main() {
   assert(
     !read.calls.includes("world") && !read.calls.includes("mutate") && !read.calls.some((x) => x.startsWith("replay:")),
   );
+  const beforeDetails = read.calls.length;
+  const details = await read.service.readSceneErrorDetails("same");
+  assert.deepEqual(read.calls.slice(beforeDetails), ["scene:same", "world"]);
+  assert.equal(details.errors.length, 1);
+  assert.match(details.errors[0]!.details, /Synthetic missing saved result/);
+  assert.equal(details.errors[0]!.id, third.unresolved[0]!.diagnosticId);
   for (const cursor of ["-1", "1.2", "wat", "0:0:0:0", "9007199254740992"]) {
     const invalid = fixture("seed");
     await assert.rejects(invalid.service.readSceneChanges("same", cursor), /Invalid changes cursor/);
@@ -335,6 +341,7 @@ async function main() {
   mismatch.scene.villageSeed = "different";
   await assert.rejects(mismatch.service.readSceneChanges("same", "wat"), /previous village/);
   assert.deepEqual(mismatch.calls, ["scene:same", "snapshot"]);
+  await assert.rejects(mismatch.service.readSceneErrorDetails("same"), /previous village/);
   const capped = fixture("seed");
   for (let i = 0; i < 55; i++) capped.job("job-" + i, {});
   capped.job("current-batch", { input: {}, subjectId: "wish-batch:same:latest", status: "running" });

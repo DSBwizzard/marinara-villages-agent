@@ -137,7 +137,6 @@ window.mount();
     await page.evaluate(() => window.r.setRoom(window.r.make("A", ["A zero.", "A one.", "A two."])));
     await expect(text).toHaveText("Passage unavailable.");
     await page.getByRole("button", { name: "1 Scene error", exact: true }).click();
-    await page.locator("summary").filter({ hasText: "Scene reading" }).click();
     await page.getByRole("button", { name: "Latest", exact: true }).click();
     await expect(text).toHaveText("A two.");
 
@@ -205,8 +204,6 @@ window.mount();
     const trigger = page.getByRole("button", { name: "1 Scene error", exact: true });
     await expect(trigger).toBeVisible();
     if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
-    const summary = page.locator("summary").filter({ hasText: "Scene reading" });
-    if (!(await summary.evaluate((el) => el.parentElement.open))) await summary.click();
     await page.getByRole("button", { name: "Latest", exact: true }).click();
     await expect(text).toHaveText("Page 99.");
     for (let i = 0; i < 40; i++) await previous.click();

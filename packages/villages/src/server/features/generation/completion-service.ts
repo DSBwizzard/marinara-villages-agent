@@ -136,6 +136,9 @@ export function createModelCompletions(ports: ModelCompletionPorts) {
                 const failure = new WorkFailureError({
                   cause: "provider_exception",
                   stage: "dispatch",
+                  model: model.model,
+                  connectionId: model.connectionId,
+                  ...(unsupported ? { detail: message } : {}),
                   requestedOutputTokens: tokens,
                   message: unsupported
                     ? "The selected connection rejected JSON mode. Choose a connection supporting JSON responses, then explicitly retry. No fallback request was made."

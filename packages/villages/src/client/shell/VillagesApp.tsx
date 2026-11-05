@@ -10,6 +10,10 @@ import { RosterScreen } from "../features/residents/RosterScreen.js";
 import { SceneScreen } from "../features/scenes/SceneScreen.js";
 import { VenueScreen } from "../features/venues/VenueScreen.js";
 import { ELEMENT_TAG } from "../shared/constants.js";
+import { RetainedView } from "../shared/RetainedView.js";
+import type { DossierNavigation } from "../features/residents/villages-dossier.js";
+import type { MenuPage } from "../shared/types.js";
+import { menuCategory } from "./navigation.js";
 import { MenuScreen } from "./MenuScreen.js";
 import type { useVillageController as ControllerFactory } from "./useVillageController.js";
 import { useVillageController } from "./useVillageController.js";
@@ -148,142 +152,167 @@ function VillagesContent({ element }: { element: HTMLElement }) {
         portraits={controller.portraits}
         initialResidentId={controller.screen === "person" ? controller.personProfile?.actorId : ""}
       />
-      <div hidden={showing} inert={showing} style={{ height: "100%" }}>
-        <VillageScreen
-          controller={showing ? { ...navigation, screen: origin.screen, menuPage: origin.menuPage } : navigation}
-        />
-      </div>
-      {showing ? (
-        <div
-          ref={notebook}
-          className={`${ELEMENT_TAG}-notebook-session`}
-          data-phase={phase}
-          role={bookVisible ? "dialog" : undefined}
-          aria-modal={bookVisible ? true : undefined}
-          aria-label={bookVisible ? "People" : undefined}
-          onKeyDown={(event) => {
-            if (!bookVisible) return;
-            if (event.key === "Tab") {
-              const controls = [
-                ...(notebook.current?.querySelectorAll<HTMLElement>(
-                  'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]',
-                ) ?? []),
-              ].filter((node) => node.checkVisibility());
-              const first = controls[0],
-                last = controls.at(-1);
-              const active = element.shadowRoot?.activeElement ?? document.activeElement;
-              if (event.shiftKey && active === first) {
-                event.preventDefault();
-                last?.focus();
-              } else if (!event.shiftKey && active === last) {
-                event.preventDefault();
-                first?.focus();
+      <VillageScreen
+        controller={navigation}
+        people={
+          <div
+            ref={notebook}
+            hidden={!showing || !bookVisible}
+            inert={!showing || !bookVisible}
+            className={`${ELEMENT_TAG}-notebook-session`}
+            data-phase={phase}
+            role={bookVisible ? "dialog" : undefined}
+            aria-modal={bookVisible ? true : undefined}
+            aria-label={bookVisible ? "People" : undefined}
+            onKeyDown={(event) => {
+              if (!bookVisible) return;
+              if (event.key === "Tab") {
+                const controls = [
+                  ...(notebook.current?.querySelectorAll<HTMLElement>(
+                    'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),summary,[tabindex="0"]',
+                  ) ?? []),
+                ].filter((node) => node.checkVisibility());
+                const first = controls[0],
+                  last = controls.at(-1);
+                const active = element.shadowRoot?.activeElement ?? document.activeElement;
+                if (event.shiftKey && active === first) {
+                  event.preventDefault();
+                  last?.focus();
+                } else if (!event.shiftKey && active === last) {
+                  event.preventDefault();
+                  first?.focus();
+                }
               }
-            }
-            if (event.key !== "Escape" || event.defaultPrevented) return;
-            if (notebook.current?.querySelector('[role="dialog"],dialog[open]')) return;
-            const details = notebook.current?.querySelector<HTMLDetailsElement>("details[open]");
-            if (details) {
-              details.querySelector<HTMLElement>("summary")?.click();
+              if (event.key !== "Escape" || event.defaultPrevented) return;
+              if (notebook.current?.querySelector('[role="dialog"],dialog[open]')) return;
+              const details = notebook.current?.querySelector<HTMLDetailsElement>("details[open]");
+              if (details) {
+                details.querySelector<HTMLElement>("summary")?.click();
+                event.stopPropagation();
+                return;
+              }
               event.stopPropagation();
-              return;
-            }
-            event.stopPropagation();
-            close();
-          }}
-        >
-          <div className={`${ELEMENT_TAG}-notebook-motion`} inert={phase === "closing"}>
-            {!bookVisible ? (
-              <>
-                {controller.screen === "venue" ? (
-                  <VenueScreen controller={navigation} />
-                ) : (
-                  <MenuScreen controller={navigation} />
-                )}
-              </>
-            ) : controller.screen === "person" ? (
-              <ResidentsScreen controller={navigation} onDirectory={directory} onClose={close} />
-            ) : (
-              <RosterScreen controller={navigation} onClose={close} readingPosition={readingPosition} />
-            )}
+              close();
+            }}
+          >
+            <div className={`${ELEMENT_TAG}-notebook-motion`} inert={phase === "closing"}>
+              <PeoplePages
+                controller={navigation}
+                onDirectory={directory}
+                onClose={close}
+                readingPosition={readingPosition}
+                active={showing && bookVisible}
+              />
+            </div>
           </div>
-        </div>
-      ) : null}
+        }
+      />
     </VillagesFrame>
   );
 }
 
-function VillageScreen({ controller }: { controller: ReturnType<typeof ControllerFactory> }) {
-  const { screen, personProfile, menuPage, room, sceneRestoration } = controller;
+type Controller = ReturnType<typeof ControllerFactory>;
+
+function VillageScreen({ controller, people }: { controller: Controller; people: import("react").ReactNode }) {
+  const { room, sceneRestoration } = controller;
 
   if (!room && sceneRestoration.status !== "ready")
     return (
       <div className={ELEMENT_TAG + "-root"}>
-        <section className={ELEMENT_TAG + "-panel"} role="status">
-          <p>{sceneRestoration.status === "error" ? "Could not load your Scene." : "Loading Scene…"}</p>
+        <section className={ELEMENT_TAG + "-panel"} role={sceneRestoration.status === "error" ? "alert" : "status"}>
+          <p>{sceneRestoration.status === "error" ? "Could not check your Scene." : "Checking Scene…"}</p>
           {sceneRestoration.status === "error" ? (
-            <button type="button" className={ELEMENT_TAG + "-button"} onClick={sceneRestoration.retry}>
-              Retry Scene check
-            </button>
+            <>
+              <p className={ELEMENT_TAG + "-error"} style={{ overflowWrap: "anywhere" }}>
+                {sceneRestoration.error}
+              </p>
+              <button type="button" className={ELEMENT_TAG + "-button"} onClick={sceneRestoration.retry}>
+                Retry Scene check
+              </button>
+            </>
           ) : null}
         </section>
       </div>
     );
 
-  if (room && room.status !== "closed")
-    return (
-      <>
-        <div key="retained-scene" hidden={screen !== "room"} style={{ height: "100%" }}>
-          <SceneScreen controller={controller} />
-        </div>
-        {screen === "home" ? (
+  return <VillageDestinations controller={controller} people={people} />;
+}
+
+function PeoplePages({
+  controller,
+  onDirectory,
+  onClose,
+  readingPosition,
+  active,
+}: {
+  controller: Controller;
+  onDirectory: () => void;
+  onClose: () => void;
+  readingPosition: { current: number };
+  active: boolean;
+}) {
+  const [person, setPerson] = useState<DossierNavigation | null>(null);
+  if (active && controller.personProfile && controller.personProfile !== person) setPerson(controller.personProfile);
+  return (
+    <>
+      <RetainedView active={active && controller.screen !== "person"}>
+        <RosterScreen
+          controller={{ ...controller, screen: "menu", menuPage: "villagers" }}
+          onClose={onClose}
+          readingPosition={readingPosition}
+        />
+      </RetainedView>
+      {person ? (
+        <RetainedView key={person.actorId} active={active && controller.screen === "person"}>
+          <ResidentsScreen
+            controller={{ ...controller, screen: "person", personProfile: person }}
+            onDirectory={onDirectory}
+            onClose={onClose}
+          />
+        </RetainedView>
+      ) : null}
+    </>
+  );
+}
+
+/** One map, one Venue, and the fixed menu pages; never a history of resident/world data. */
+function VillageDestinations({ controller, people }: { controller: Controller; people: import("react").ReactNode }) {
+  const { screen, menuPage, room, venueId } = controller;
+  const [home, setHome] = useState(false);
+  const [venue, setVenue] = useState<string | null>(null);
+  const [menus, setMenus] = useState<MenuPage[]>([]);
+  const page = menuPage === "index" ? "general" : menuPage;
+  if (screen === "home" && !home) setHome(true);
+  if (screen === "venue" && venueId && venue !== venueId) setVenue(venueId);
+  if (screen === "menu" && page !== "villagers" && !menus.includes(page)) setMenus([...menus, page]);
+  return (
+    <>
+      {home ? (
+        <RetainedView active={screen === "home"}>
           <ExplorationScreen controller={controller} />
-        ) : screen === "venue" ? (
-          <VenueScreen controller={controller} />
-        ) : screen === "menu" ? (
-          menuPage === "villagers" ? (
-            <RosterScreen controller={controller} />
-          ) : (
-            <MenuScreen controller={controller} />
-          )
-        ) : screen === "person" && personProfile ? (
-          <ResidentsScreen controller={controller} />
-        ) : null}
-      </>
-    );
-
-  if (screen === "person" && personProfile)
-    return (
-      <>
-        {personProfile.returnTo === "room" ? (
-          <div key="retained-scene" hidden style={{ height: "100%" }}>
-            <SceneScreen controller={controller} />
-          </div>
-        ) : null}
-        <ResidentsScreen controller={controller} />
-      </>
-    );
-
-  if (screen === "room") {
-    return (
-      <>
-        <div key="retained-scene" style={{ height: "100%" }}>
-          {<SceneScreen controller={controller} />}
-        </div>
-      </>
-    );
-  }
-
-  if (screen === "venue") return <VenueScreen controller={controller} />;
-
-  if (screen === "menu" && menuPage === "villagers") return <RosterScreen controller={controller} />;
-
-  if (screen === "menu") return <MenuScreen controller={controller} />;
-
-  if (screen === "preparing") return <PreparationScreen controller={controller} />;
-
-  if (screen === "resume") return <ResumeScreen controller={controller} />;
-
-  if (screen === "setup") return <FoundingScreen controller={controller} />;
-  return <ExplorationScreen controller={controller} />;
+        </RetainedView>
+      ) : null}
+      {room ? (
+        <RetainedView key={room.id} active={screen === "room"}>
+          <SceneScreen controller={controller} />
+        </RetainedView>
+      ) : null}
+      {venue ? (
+        <RetainedView key={venue} active={screen === "venue"}>
+          <VenueScreen controller={{ ...controller, screen: "venue", venueId: venue }} />
+        </RetainedView>
+      ) : null}
+      {menus.map((entry) => (
+        <RetainedView key={entry} active={screen === "menu" && page === entry}>
+          <MenuScreen
+            controller={{ ...controller, screen: "menu", menuPage: entry, menuSection: menuCategory(entry) }}
+          />
+        </RetainedView>
+      ))}
+      {people}
+      {screen === "preparing" ? <PreparationScreen controller={controller} /> : null}
+      {screen === "resume" ? <ResumeScreen controller={controller} /> : null}
+      {screen === "setup" ? <FoundingScreen controller={controller} /> : null}
+    </>
+  );
 }

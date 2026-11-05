@@ -1,5 +1,6 @@
 import { HistoryClarifications } from "../../shared/HistoryClarifications.js";
 import { useVillageActivity } from "../../shared/activity.js";
+import { invalidatesRead } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useEffect, useRef, useState } from "react";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
@@ -28,30 +29,44 @@ export function VillagesRelationships({
   const [error, setError] = useState("");
   const recoveryIdentity = useRef<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
+  const supplied = suppliedView !== undefined;
+  useEffect(() => {
+    if (!inspect) setDebug(null);
+  }, [inspect]);
   useEffect(() => {
     if (!visible) return;
     const controller = new AbortController();
     const refresh = () => {
       const pending: Promise<unknown>[] = [];
-      if (suppliedView === undefined)
-        pending.push(request<RelationshipView>("/relationships", { signal: controller.signal }).then(setLocalView));
+      if (!supplied)
+        pending.push(
+          request<RelationshipView>("/relationships", { signal: controller.signal }).then((next) => {
+            if (!controller.signal.aborted) setLocalView(next);
+          }),
+        );
       if (inspect)
         pending.push(
-          request<RelationshipInspectView>("/relationships/inspect", { signal: controller.signal }).then(setDebug),
+          request<RelationshipInspectView>("/relationships/inspect", { signal: controller.signal }).then((next) => {
+            if (!controller.signal.aborted) setDebug(next);
+          }),
         );
       void Promise.all(pending)
         .then(() => {
           if (!controller.signal.aborted) setError("");
         })
         .catch((cause) => {
-          if (!controller.signal.aborted)
+          if (!controller.signal.aborted) {
+            if (invalidatesRead(cause)) {
+              setLocalView(null);
+              setDebug(null);
+            }
             setError(cause instanceof Error ? cause.message : "Relationships could not be read.");
+          }
         });
     };
-    if (!inspect) setDebug(null);
     refresh();
     return () => controller.abort();
-  }, [request, suppliedView, inspect, visible, backgroundRevision]);
+  }, [request, supplied, inspect, visible, backgroundRevision]);
   async function recoverEncounter(row: NonNullable<RelationshipInspectView["recovery"]>[number], skip = false) {
     const key = row.id + ":" + row.reinterpretRequired + ":" + skip;
     recoveryIdentity.current[key] ??= createVillagesClientId();

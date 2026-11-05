@@ -267,7 +267,6 @@ await withBrowser(browser, async () => {
     await composer(two).fill("Review the updated scene");
     await send(two).click();
     await two.getByRole("button", { name: /^1 Scene error$/ }).click();
-    await two.getByRole("region", { name: "Scene errors" }).locator("summary").first().click();
     await expect(two.getByRole("region", { name: "Scene errors" })).toContainText(/scene changed/i);
     await two.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(calls, 2);
@@ -282,8 +281,6 @@ await withBrowser(browser, async () => {
 
     const openRecovery = async () => {
       await two.getByRole("button", { name: /^\d+ Scene errors?$/ }).click();
-      for (const summary of await two.getByRole("region", { name: "Scene errors" }).locator("summary").all())
-        await summary.click();
     };
     disconnectNext = true;
     await composer(two).fill("Preserve an interrupted request");

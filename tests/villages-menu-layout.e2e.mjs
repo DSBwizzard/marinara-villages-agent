@@ -208,7 +208,7 @@ await withBrowser(browser, async () => {
     await page.goto("http://villages.test/");
     await page.addScriptTag({ path: resolve("packages/villages/client.js") });
 
-    const root = page.locator(`.${tag}-sectioned-menu`);
+    const root = page.locator(`.${tag}-sectioned-menu:visible`);
     await page.getByRole("button", { name: "More" }).click();
     await expect(root).toBeVisible();
     await expect(root.getByRole("heading", { name: "General Preferences", level: 1 })).toBeVisible();

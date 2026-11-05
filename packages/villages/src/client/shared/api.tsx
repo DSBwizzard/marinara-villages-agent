@@ -85,6 +85,14 @@ export class VillageApiError extends Error {
   }
 }
 
+export function invalidatesRead(cause: unknown): boolean {
+  return cause instanceof VillageApiError && [401, 403, 404].includes(cause.status);
+}
+
+export const VILLAGE_ACCESS_DENIED = "villages-access-denied";
+let accessRevision = 0;
+export const villageAccessRevision = () => accessRevision;
+
 const GENERIC_HTTP_ERROR =
   /^(?:Bad Request|Unauthorized|Forbidden|Not Found|Conflict|Payload Too Large|Too Many Requests|Internal Server Error|Bad Gateway|Service Unavailable|Gateway Timeout)$/iu;
 
@@ -94,6 +102,10 @@ function requestRefusal(payload: unknown, status: number, fallback: string): Err
     (value) => typeof value === "string" && value.trim() && !GENERIC_HTTP_ERROR.test(value.trim()),
   );
   const message = typeof detail === "string" ? detail : fallback;
+  if (status === 401 || status === 403) {
+    accessRevision++;
+    globalThis.window?.dispatchEvent?.(new CustomEvent(VILLAGE_ACCESS_DENIED, { detail: message }));
+  }
   if (status === 409 && /clock/i.test(message)) window.dispatchEvent(new Event("villages-clock-changed"));
   if (status === 403 && /admin[-_ ]?secret/iu.test(message)) {
     return new VillageApiError(
@@ -161,6 +173,7 @@ async function readApiResponse(response: Response, path: string, init?: RequestI
     // Non-JSON failures may be a plain-text gateway refusal. HTML is never displayed.
   }
   if (!response.ok) {
+    if (init?.signal?.aborted) throw init.signal.reason;
     if (
       !validJson &&
       /^text\/plain\b/iu.test(response.headers.get("Content-Type") ?? "") &&

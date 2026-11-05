@@ -55,7 +55,7 @@ function fixture(label: string, checkpointed = false) {
     failure = "",
     usedPause = false,
     guardDisposed = false,
-    brokenReply = false;
+    brokenReply: string | null = null;
   const owner = createActivationScope();
   const checkpoints = new Map<string, unknown>();
   let roomInterpretation:
@@ -154,17 +154,17 @@ function fixture(label: string, checkpointed = false) {
       assert.equal(options.temperature, 0.85);
       await touch("completion");
       return {
-        content: brokenReply
-          ? "invalid"
-          : JSON.stringify({
-              playerSpeechCapture: { status: "silent", utterances: [] },
-              residentActions: [],
-              segments: [{ kind: "narration", text: label + " room remains quiet." }],
-              heardPlayerBy: [],
-              wishChanges: [],
-              memoryChanges: [],
-              relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-            }),
+        content:
+          brokenReply ??
+          JSON.stringify({
+            playerSpeechCapture: { status: "silent", utterances: [] },
+            residentActions: [],
+            segments: [{ kind: "narration", text: label + " room remains quiet." }],
+            heardPlayerBy: [],
+            wishChanges: [],
+            memoryChanges: [],
+            relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+          }),
         finishReason: "stop",
       };
     },
@@ -217,8 +217,8 @@ function fixture(label: string, checkpointed = false) {
     guardDisposal() {
       guardDisposed = true;
     },
-    invalidReply() {
-      brokenReply = true;
+    invalidReply(content = "invalid") {
+      brokenReply = content;
     },
     run() {
       return service.generate(scene, "I wait.", "chat", "", null);
@@ -327,7 +327,28 @@ for (const stage of ["world", "connection", "lore", "model", "completion", "refr
 }
 const invalid = fixture("invalid");
 invalid.invalidReply();
-await assert.rejects(invalid.run(), /failed validation/);
+await assert.rejects(invalid.run(), (error: any) => {
+  assert.equal(error.failure.cause, "invalid_json");
+  assert.match(error.failure.detail, /No JSON object found/);
+  return true;
+});
+const invalidLine = fixture("invalid-line");
+invalidLine.invalidReply(
+  JSON.stringify({
+    playerSpeechCapture: { status: "silent", utterances: [] },
+    residentActions: [],
+    segments: [{ kind: "robot", text: "A quiet room." }],
+    heardPlayerBy: [],
+    wishChanges: [],
+    memoryChanges: [],
+    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
+  }),
+);
+await assert.rejects(invalidLine.run(), (error: any) => {
+  assert.match(error.failure.detail, /segments\[0\]\.kind/);
+  assert.equal(error.message, "The AI used an unknown kind of Scene text.");
+  return true;
+});
 assert.equal(
   invalid.calls.filter((x) => x === "completion").length,
   1,

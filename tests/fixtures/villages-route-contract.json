@@ -229,6 +229,10 @@
       "path": "/venues/:venueId/zones/:zoneId/name"
     },
     {
+      "method": "get",
+      "path": "/rooms/:id/error-details"
+    },
+    {
       "method": "post",
       "path": "/rooms/greet"
     },

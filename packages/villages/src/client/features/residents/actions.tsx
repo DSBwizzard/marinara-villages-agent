@@ -1,4 +1,4 @@
-import { type SetStateAction, useCallback, useRef } from "react";
+import { type SetStateAction, useCallback, useLayoutEffect, useRef } from "react";
 import type {
   AgendaListResponse,
   BackgroundWork,
@@ -9,17 +9,42 @@ import type {
   VillagerRefreshPreview,
   VillageSnapshot,
 } from "../../../shared/contracts/village.js";
-import { messageFrom, request } from "../../shared/api.js";
+import {
+  invalidatesRead,
+  messageFrom,
+  request,
+  VILLAGE_ACCESS_DENIED,
+  villageAccessRevision,
+} from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 
 export function useLoadMemoryLibrary(ports: {
+  worldScope: string;
   setError: React.Dispatch<SetStateAction<string>>;
   setMemoryLibrary: React.Dispatch<SetStateAction<MemoryLibrary>>;
 }) {
   const active = useRef<AbortController | null>(null);
-  const { setError, setMemoryLibrary } = ports;
+  const loadedQuery = useRef("");
+  const { setError, setMemoryLibrary, worldScope } = ports;
+  const scope = useRef(worldScope);
+  scope.current = worldScope;
+  useLayoutEffect(() => {
+    loadedQuery.current = "";
+    setMemoryLibrary(null);
+    const denied = () => {
+      active.current?.abort();
+      loadedQuery.current = "";
+      setMemoryLibrary(null);
+    };
+    window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
+    return () => {
+      active.current?.abort();
+      window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
+    };
+  }, [worldScope, setMemoryLibrary]);
   return useCallback(
     async (signal?: AbortSignal, query: { characterId?: string; query?: string; cursor?: MemoryCursor } = {}) => {
+      if (scope.current !== worldScope) return;
       active.current?.abort();
       const controller = new AbortController();
       active.current = controller;
@@ -29,18 +54,26 @@ export function useLoadMemoryLibrary(ports: {
         params.set("afterId", query.cursor.afterId);
         params.set("revision", String(query.cursor.revision));
       }
-      setMemoryLibrary(null);
+      const queryKey = JSON.stringify([
+        worldScope,
+        query.characterId ?? "player",
+        query.query ?? "",
+        query.cursor ?? null,
+      ]);
+      if (loadedQuery.current !== queryKey) setMemoryLibrary(null);
       try {
         const response = await request<MemoryLibrary>("/memories/inspect?" + params, { signal: requestSignal });
         if (requestSignal.aborted || active.current !== controller) return;
+        loadedQuery.current = queryKey;
         setMemoryLibrary(response);
         setError("");
       } catch (cause) {
         if (requestSignal.aborted || active.current !== controller) return;
+        if (invalidatesRead(cause)) setMemoryLibrary(null);
         setError(messageFrom(cause, "Could not read memories."));
       }
     },
-    [setError, setMemoryLibrary],
+    [setError, setMemoryLibrary, worldScope],
   );
 }
 export function useForgetMemory(ports: {
@@ -75,23 +108,46 @@ export function useForgetMemory(ports: {
 }
 
 export function useLoadAgendas(ports: {
+  worldScope: string;
+  agendaRevision: React.RefObject<number>;
   setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
-  const { setAgendas, setError } = ports;
+  const { setAgendas, setError, worldScope, agendaRevision } = ports;
+  const scope = useRef(worldScope);
+  scope.current = worldScope;
+  const active = useRef<AbortController | null>(null);
+  useLayoutEffect(() => {
+    setAgendas(null);
+    const denied = () => {
+      active.current?.abort();
+      setAgendas(null);
+    };
+    window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
+    return () => {
+      active.current?.abort();
+      window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
+    };
+  }, [worldScope, setAgendas]);
   return useCallback(
     async (signal?: AbortSignal) => {
+      if (scope.current !== worldScope) return;
+      active.current?.abort();
+      const controller = new AbortController();
+      active.current = controller;
+      const requestSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      const revision = agendaRevision.current;
       try {
-        const response = await request<AgendaListResponse>("/agendas", { signal });
-        if (signal?.aborted) return;
+        const response = await request<AgendaListResponse>("/agendas", { signal: requestSignal });
+        if (requestSignal.aborted || revision !== agendaRevision.current) return;
         setAgendas(response.villagers);
       } catch (cause) {
-        if (signal?.aborted) return;
-        setAgendas(null);
+        if (requestSignal.aborted || revision !== agendaRevision.current) return;
+        if (invalidatesRead(cause)) setAgendas(null);
         setError(messageFrom(cause, "Could not read what the villagers wish for."));
       }
     },
-    [setAgendas, setError],
+    [setAgendas, setError, worldScope, agendaRevision],
   );
 }
 
@@ -106,6 +162,9 @@ export function useRewriteAgenda(ports: {
   const agendaActions = useRef(new Map<string, string>());
   return useCallback(
     async (characterId: string) => {
+      const worldScope = currentSnapshotRef.current?.worldScope;
+      const access = villageAccessRevision();
+      const current = () => currentSnapshotRef.current?.worldScope === worldScope && villageAccessRevision() === access;
       setBusy(true);
       try {
         const job = currentSnapshotRef.current?.backgroundWork?.find(
@@ -118,19 +177,21 @@ export function useRewriteAgenda(ports: {
           await retryWork(job);
           return;
         }
-        const actionId = agendaActions.current.get(characterId) ?? createVillagesClientId();
-        agendaActions.current.set(characterId, actionId);
+        const key = JSON.stringify([worldScope, characterId]);
+        const actionId = agendaActions.current.get(key) ?? createVillagesClientId();
+        agendaActions.current.set(key, actionId);
         const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/regenerate`, {
           method: "POST",
           body: JSON.stringify({ actionId }),
         });
-        agendaActions.current.delete(characterId);
+        agendaActions.current.delete(key);
+        if (!current()) return;
         setAgendas(response.villagers);
         setError("");
       } catch (cause) {
-        setError(messageFrom(cause, "That villager could not be asked again."));
+        if (current()) setError(messageFrom(cause, "That villager could not be asked again."));
       } finally {
-        setBusy(false);
+        if (current()) setBusy(false);
       }
     },
     [currentSnapshotRef, retryWork, setAgendas, setBusy, setError],
@@ -138,28 +199,33 @@ export function useRewriteAgenda(ports: {
 }
 
 export function useSetAgendaScheduleIngestion(ports: {
+  currentSnapshotRef: React.RefObject<VillageSnapshot>;
   setAgendas: React.Dispatch<SetStateAction<VillagerAgendaView[]>>;
   setBusy: React.Dispatch<SetStateAction<boolean>>;
   setError: React.Dispatch<SetStateAction<string>>;
 }) {
-  const { setAgendas, setBusy, setError } = ports;
+  const { currentSnapshotRef, setAgendas, setBusy, setError } = ports;
   return useCallback(
     async (characterId: string, enabled: boolean, categories?: Record<string, boolean>) => {
+      const worldScope = currentSnapshotRef.current?.worldScope;
+      const access = villageAccessRevision();
+      const current = () => currentSnapshotRef.current?.worldScope === worldScope && villageAccessRevision() === access;
       setBusy(true);
       try {
         const response = await request<AgendaListResponse>(`/agendas/${encodeURIComponent(characterId)}/influence`, {
           method: "PATCH",
           body: JSON.stringify({ enabled, categories }),
         });
+        if (!current()) return;
         setAgendas(response.villagers);
         setError("");
       } catch (cause) {
-        setError(messageFrom(cause, "Schedule use could not be changed."));
+        if (current()) setError(messageFrom(cause, "Schedule use could not be changed."));
       } finally {
-        setBusy(false);
+        if (current()) setBusy(false);
       }
     },
-    [setAgendas, setBusy, setError],
+    [currentSnapshotRef, setAgendas, setBusy, setError],
   );
 }
 

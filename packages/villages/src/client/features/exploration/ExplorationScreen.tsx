@@ -1,4 +1,5 @@
 import { createVillagesClientId } from "../../shared/request-id.js";
+import { useVillageActivity } from "../../shared/activity.js";
 import type { VillageSnapshot, VillageVenue } from "../../../shared/contracts/village.js";
 import { MapStage } from "./MapStage.js";
 import { ExplorationNavigation, LocationNavigator, MapIcon } from "./villages-exploration.js";
@@ -21,6 +22,7 @@ type MarkerDraft = {
 
 export function ExplorationScreen({ controller }: { controller: ExplorationScreenController }) {
   const lighting = useVillageLighting(controller.snapshot?.village, controller.snapshot?.clock?.paused);
+  const { visible } = useVillageActivity();
   const {
     selectedMap,
     setSelectedMapId,
@@ -74,14 +76,19 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     [placeMarkers, setPlaceMarkers] = useState<PlaceSummary[]>([]);
   const [bounds, setBounds] = useState("0,0,1,1"),
     [placingPlace, setPlacingPlace] = useState<PlaceSummary | null>(null);
+  const mapId = selectedMap?.id;
   useEffect(() => {
-    if (!showPlaces || !selectedMap) {
+    if (!visible) return;
+    if (!showPlaces || !mapId) {
       setPlaceMarkers([]);
       return;
     }
     let current = true;
+    const controller = new AbortController();
     const timer = setTimeout(() => {
-      void request<PlaceDirectory>("/places?" + new URLSearchParams({ mapId: selectedMap.id, bounds, limit: "100" }))
+      void request<PlaceDirectory>("/places?" + new URLSearchParams({ mapId, bounds, limit: "100" }), {
+        signal: controller.signal,
+      })
         .then((page) => {
           if (current) setPlaceMarkers(page.items);
         })
@@ -91,9 +98,10 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     }, 150);
     return () => {
       current = false;
+      controller.abort();
       clearTimeout(timer);
     };
-  }, [showPlaces, selectedMap, bounds, setError]);
+  }, [showPlaces, mapId, bounds, setError, visible]);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraft | null>(null);
   const [markerError, setMarkerError] = useState("");
   const [hasSavedMarkers, setHasSavedMarkers] = useState(false);
