@@ -9,6 +9,7 @@ import {
   createMailboxPresentation,
   readMailboxQuery,
   mailboxLetterIdentity,
+  hasUnreadMail,
 } from "../packages/villages/src/server/domain/rules/mailbox-view.js";
 import { villageWorldScope } from "../packages/villages/src/server/domain/rules/village-identity.js";
 import type { SocialMailMessage } from "../packages/villages/src/server/domain/models/social-mail.js";
@@ -42,6 +43,16 @@ function fixture(count: number) {
   return { village, state, thread, present: () => createMailboxPresentation(village, state, []) };
 }
 await runCase("mailbox-pages/growth", async () => {
+  const unread = fixture(1);
+  assert.equal(hasUnreadMail(unread.state), false);
+  unread.thread.messages[0].readAt = undefined;
+  assert.equal(hasUnreadMail(unread.state), true);
+  const receipt = unread.state.mailDeliveries[unread.thread.messages[0].id];
+  delete unread.state.mailDeliveries[unread.thread.messages[0].id];
+  assert.equal(hasUnreadMail(unread.state), false, "Unpublished incoming mail never exposes a notification.");
+  unread.state.mailDeliveries[unread.thread.messages[0].id] = receipt;
+  unread.thread.participantIds = ["ada", "bea"];
+  assert.equal(hasUnreadMail(unread.state), false, "Other residents' correspondence stays private.");
   const metrics: unknown[] = [];
   for (const count of [1000, 10_000, 25_000]) {
     const f = fixture(count),

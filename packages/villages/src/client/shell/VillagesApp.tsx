@@ -141,7 +141,10 @@ function VillagesContent({ element }: { element: HTMLElement }) {
       <Mailbox
         open={controller.mailboxOpen}
         snapshot={controller.snapshot}
-        onClose={() => controller.setMailboxOpen(false)}
+        onClose={() => {
+          controller.setMailboxOpen(false);
+          void controller.loadSnapshot({ quiet: true });
+        }}
         portraits={controller.portraits}
         initialResidentId={controller.screen === "person" ? controller.personProfile?.actorId : ""}
       />

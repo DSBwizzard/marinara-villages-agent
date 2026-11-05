@@ -12,6 +12,7 @@ import type { VenueScreenController } from "./screen-contracts.js";
 import { venueDisplayZones, type VenueDisplayZone } from "./venue-view.js";
 import { VenueLayoutEditor } from "./VenueLayoutEditor.js";
 import { ZoneAccessLabels } from "./VenueLayout.js";
+import { LoreActivityButton } from "../../shared/LoreActivity.js";
 
 function VenueName({ place, controller }: { place: VillageVenue; controller: VenueScreenController }) {
   const { venueEditDraft, setVenueEditDraft, venueEditBusy, saveVenueName } = controller;
@@ -334,6 +335,7 @@ function ZoneArtwork({
                 Remove
               </button>
             ) : null}
+            <LoreActivityButton query={`Zone artwork · ${place.name} · ${zone.name}`} />
           </div>
         </details>
       </div>

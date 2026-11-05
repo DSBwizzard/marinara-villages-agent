@@ -143,6 +143,14 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/catalog")) value = { characters: [] };
       else if (path.endsWith("/personas")) value = { personas: [] };
       else if (path.endsWith("/lorebooks")) value = { books: [] };
+      else if (path.endsWith("/debug/lore"))
+        value = {
+          scope: snapshot.worldScope,
+          revision: 0,
+          records: [
+            { id: "zone-artwork", at: "2026-11-05T00:00:00Z", purpose: "Zone artwork", revision: 0, entries: [] },
+          ],
+        };
       else if (path.endsWith("/connections"))
         value = { systemConnectionId: "talk", narrationConnectionId: "talk", imageConnectionId: "image" };
       else if (path.endsWith("/locations/venue/image/freeze")) {
@@ -195,6 +203,12 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Map", exact: true })
       .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
+    const openProfile = async () => {
+      const navigator = page.getByRole("complementary", { name: "Places navigator" });
+      await navigator.locator(`[data-exploration-row="${place.id}"]`).click();
+      await navigator.getByRole("button", { name: "View venue", exact: true }).click();
+    };
+    await openProfile();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     const typeLines = await profile
@@ -287,6 +301,15 @@ await withBrowser(browser, async () => {
     await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeVisible();
     await expect(detail.getByLabel("Upload Main Bay artwork")).toHaveCount(1);
     await expect(detail.getByRole("button", { name: "Upload artwork", exact: true })).toBeVisible();
+    await detail.getByRole("button", { name: "Lore activity", exact: true }).click();
+    const lore = page.getByRole("dialog", { name: "Lore activity", exact: true });
+    await expect(lore.getByRole("searchbox", { name: "Search Lore entries" })).toHaveValue(
+      `Zone artwork · ${place.name} · Main Bay`,
+    );
+    await lore.getByRole("button", { name: "Close Lore activity" }).click();
+    await expect(detail.getByRole("button", { name: "Picture", exact: true })).toBeFocused();
+    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeHidden();
+    await detail.getByRole("button", { name: "Picture", exact: true }).click();
     await detail.getByRole("button", { name: "Picture", exact: true }).press("Escape");
     await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeHidden();
     await expect(detail.getByRole("button", { name: "Picture", exact: true })).toBeFocused();
@@ -458,6 +481,7 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Map", exact: true })
       .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
+    await openProfile();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
     await expect(page.getByText("Housing requests · Renamed warehouse", { exact: true })).toBeVisible();

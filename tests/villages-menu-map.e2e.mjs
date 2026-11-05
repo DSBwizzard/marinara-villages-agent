@@ -17,6 +17,7 @@ await withBrowser(browser, async () => {
     const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: width < 600 });
     await mockEngineLookups(page);
     const state = structuredClone(base);
+    state.mailboxUnread = true;
     state.village.name = "Maple House";
     state.settings.setting = "An apartment building and its neighborhood.";
     state.settings.townMapImageMaxLength = 8000000;
@@ -44,6 +45,13 @@ await withBrowser(browser, async () => {
     await page.route("**/api/villages**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       let value = state;
+      if (path.endsWith("/mailbox")) {
+        await fulfill(route, {
+          status: 200,
+          json: { scope: state.worldScope, folder: "inbox", letters: [], total: 0, recovery: [], recoveryTotal: 0 },
+        });
+        return;
+      }
       if (route.request().method() !== "GET" && !path.endsWith("/background/presence"))
         writes.push({ path, body: route.request().postDataJSON() });
       if (path.endsWith("/maps/generate")) {
@@ -120,7 +128,23 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("combobox", { name: "Displayed map" })).toHaveCount(0);
     await expect(places).toHaveCount(0);
     await expect(mapImage("Maple House")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mailbox · Unread mail", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Lore activity/ })).toHaveCount(0);
+    await expect(page.locator("." + P + "-maps-toolbar")).toHaveCount(0);
+    const tools = await page.locator("." + P + "-map-tools").boundingBox();
+    assert.ok(tools.x >= 0 && tools.x + tools.width <= width, "Compact map controls fit desktop and phone");
+    mkdirSync(resolve(".build-tmp/multiple-maps"), { recursive: true });
+    await page.screenshot({ path: resolve(`.build-tmp/multiple-maps/controls-${width}.png`) });
+    state.mailboxUnread = false;
+    await page.getByRole("button", { name: "Mailbox · Unread mail", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Mailbox", exact: true })
+      .getByRole("button", { name: "Close Mailbox", exact: true })
+      .click();
+    await expect(page.getByRole("button", { name: "Mailbox", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Mailbox · Unread mail", exact: true })).toHaveCount(0);
     const originalMarker = { ...state.settings.venues[0].presentation };
+    await page.getByRole("button", { name: "Map options", exact: true }).click();
     await page.getByRole("button", { name: "Move markers", exact: true }).click();
     await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
     const navigationMap = page.locator("." + P + "-home-map-viewport ." + P + "-canvas");
@@ -137,6 +161,8 @@ await withBrowser(browser, async () => {
       [draftKey, state.settings.venues[0].id],
     );
     await mount();
+    await expect(page.getByRole("button", { name: "Mailbox", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Map options", exact: true }).click();
     await page.getByRole("button", { name: "Resume marker edits", exact: true }).click();
     assert.deepEqual(
       await page.evaluate(
@@ -149,6 +175,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("combobox", { name: "Move Venue" })).toHaveValue(state.settings.venues[0].id);
     await page.getByRole("button", { name: "Cancel", exact: true }).click();
     assert.deepEqual(state.settings.venues[0].presentation, originalMarker, "cancel leaves the saved marker alone");
+    await page.getByRole("button", { name: "Map options", exact: true }).click();
     await page.getByRole("button", { name: "Move markers", exact: true }).click();
     await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
     await navigationMap.click({ position: { x: mapBox.width * 0.5, y: mapBox.height * 0.5 } });
@@ -162,9 +189,10 @@ await withBrowser(browser, async () => {
     assert.equal(markerWrite.body.expectedRevision, 1);
     assert.notEqual(markerWrite.body.placements[0].x, originalMarker.x);
     assert.equal(state.settings.venues[0].presentation.x, markerWrite.body.placements[0].x);
-    await expect(page.getByRole("button", { name: "Move markers", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Map options", exact: true })).toBeVisible();
     Object.assign(state.settings.venues[0].presentation, { x: null, y: null });
     await mount();
+    await page.getByRole("button", { name: "Map options", exact: true }).click();
     await page.getByRole("button", { name: "Move markers", exact: true }).click();
     await page.getByRole("combobox", { name: "Move Venue" }).selectOption(state.settings.venues[0].id);
     await navigationMap.focus();
@@ -173,12 +201,17 @@ await withBrowser(browser, async () => {
     assert.equal(state.settings.venues[0].presentation.x, 0.51, "keyboard places an unplaced Venue");
     assert.equal(state.settings.venues[0].presentation.y, 0.5);
     writes.length = 0;
-    await page.getByRole("button", { name: "All maps", exact: true }).click();
+    await page.getByRole("button", { name: "Choose map", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeFocused();
     await expect(page.locator("." + P + "-maps-grid button")).toHaveCount(2);
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
     await expect(mapImage("Maple Street")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Choose map", exact: true })).toBeFocused();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "Show places", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
     await expect(page.getByRole("button", { name: /Corner Café.*Venue/ })).toBeVisible();
     await expect(page.getByRole("button", { name: /Lobby.*Workplace/ })).toHaveCount(0);
     assert.equal(
@@ -189,7 +222,7 @@ await withBrowser(browser, async () => {
     await mount();
     await expect(mapImage("Maple Street")).toBeVisible();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "All maps", exact: true }).click();
+    await page.getByRole("button", { name: "Choose map", exact: true }).click();
     await page.getByRole("button", { name: "Manage maps", exact: true }).click();
     await page.getByRole("button", { name: "Add map", exact: true }).click();
     await page.getByRole("textbox", { name: "Map name", exact: true }).fill("Riverside");
@@ -202,7 +235,7 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "Save map", exact: true })).toBeEnabled();
     const requestId = generation.id;
     await mount();
-    await page.getByRole("button", { name: "All maps", exact: true }).click();
+    await page.getByRole("button", { name: "Choose map", exact: true }).click();
     await page.getByRole("button", { name: "Manage maps", exact: true }).click();
     await page.getByRole("button", { name: "Add map", exact: true }).click();
     await expect(page.getByRole("textbox", { name: "Map name", exact: true })).toHaveValue("Riverside");
@@ -287,18 +320,21 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Map", exact: true }).click();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "All maps", exact: true }).click();
+    await page.getByRole("button", { name: "Choose map", exact: true }).click();
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
     await expect(mapImage("Maple Street")).toBeVisible();
     await expect(places).toHaveCount(0);
-    await page.getByRole("button", { name: "Show places", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
     await expect(page.getByRole("button", { name: "Visit", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Return to Scene", exact: true }).click();
     await expect(composer).toHaveValue("An unfinished thought");
     assert.equal(writes.length, beforeBrowsing, "map browsing preserves the active Scene without world commands");
     await page.getByRole("button", { name: "Venue actions", exact: true }).click();
     await page.getByRole("menuitem", { name: "Map", exact: true }).click();
-    await page.getByRole("button", { name: "All maps", exact: true }).click();
+    await page.getByRole("button", { name: "Choose map", exact: true }).click();
     mkdirSync(".build-tmp/multiple-maps", { recursive: true });
     await page.screenshot({ path: resolve(".build-tmp/multiple-maps/overview-" + width + ".png") });
     assert.ok((await page.locator("." + P + "-maps-overview").boundingBox()).width <= width);

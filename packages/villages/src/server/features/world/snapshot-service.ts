@@ -1,4 +1,5 @@
 import { findLocation, placeRegistry } from "../../domain/rules/places.js";
+import { hasUnreadMail } from "../../domain/rules/mailbox-view.js";
 import { projectPlace } from "../../domain/rules/place-discovery.js";
 import { createHash } from "node:crypto";
 import { ZonedDate } from "../../../shared/helpers/zoned-date.js";
@@ -163,6 +164,7 @@ export function createVillageSnapshot({
     });
     const snapshot: VillageSnapshot = {
       worldScope: villageWorldScope(village),
+      mailboxUnread: hasUnreadMail(village.relationshipContext),
       status: "ready",
       clock,
       progressEngineVersion: village.progressEngineVersion,
