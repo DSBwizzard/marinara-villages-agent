@@ -89,6 +89,7 @@ export function publishRelationshipDisclosures(
             memory.domainRef?.kind === "relationship" &&
             memory.domainRef.characterId === row.fromId &&
             (knowledge.repair ||
+              memory.id !== memory.rootId ||
               !knowledge.disclosed ||
               (knowledge.disclosed.kind === "connection" && knowledge.disclosed.toId === "player"))
           );

@@ -145,6 +145,30 @@ for (const content of ["A".repeat(374), "界".repeat(120)]) {
     "Ambiguous equal-time recovery cannot replace a different known source",
   );
   assert.equal(equalTime.memoryReceipts[receiptId]!.status, "rejected");
+  const correctedRoot = equalTime.memories.records[0]!;
+  const corrected = memoryProposal(equalTime.memories, {
+    audience: ["player"],
+    text: "Ada was explaining an unrelated preference.",
+    patch: {
+      action: "correct",
+      target: targetOf(equalTime.memories, correctedRoot.id),
+      kind: "information",
+      subjects: ["a"],
+      domainRef: correctedRoot.domainRef,
+    },
+  });
+  corrected.proposal.learners.player!.attributedTo = "a";
+  corrected.proposal.learners.player!.disclosed = { kind: "explanation", toId: "player" };
+  corrected.context.occurredAt = at;
+  corrected.context.recordedAt = readAt;
+  equalTime.memories = applyMemoryProposal(equalTime.memories, corrected.proposal, corrected.context).collection;
+  assert.equal(projectRelationshipProfiles(equalTime.relationshipContext!, equalTime)[0]!.bond, undefined);
+  publishRelationshipDisclosures(equalTime, [disclosure], source, lines, at, readAt);
+  assert.equal(
+    projectRelationshipProfiles(equalTime.relationshipContext!, equalTime)[0]!.bond,
+    undefined,
+    "Recovery cannot reverse a linked equal-time correction that changed category",
+  );
 }
 // Compact display is saved player knowledge, independent of private attitudes.
 {
