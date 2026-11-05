@@ -12,13 +12,19 @@ export function zoneSoundRange(scene: VenueScene, venue: VillageVenue, origin: s
   const adjacent = contactNeighbors(venue, origin, scene);
   return [...new Set([origin, ...adjacent, ...adjacent.flatMap((id) => contactNeighbors(venue, id, scene))])];
 }
+const LEGACY_HEARING_CONTRACT =
+  "Ordinary speech/asides and sound reach the source and directly connected Zones. Explicit shouting (delivery:shout) or actually very loud sound (loud:true) alerts the Venue; words are clear only locally/adjacently, farther listeners perceive indistinct noise.";
+export function zoneHearingContract(scene: VenueScene): string {
+  return scene.operation?.input.soundHopVersion === 1
+    ? "Ordinary words are clear only in the source Zone. Directly connected Zones hear indistinct voices or ordinary sound. Explicit shouting (delivery:shout) or very loud sound (loud:true) reaches at most two connections; shouted words carry to directly connected Zones, while farther listeners hear indistinct noise."
+    : LEGACY_HEARING_CONTRACT;
+}
 export function zoneEventContract(scene: VenueScene): string {
   return scene.operation?.input.soundHopVersion === 1
-    ? ZONE_EVENT_CONTRACT.replace(
-        "Ordinary speech/asides and sound reach the source and directly connected Zones. Explicit shouting (delivery:shout) or actually very loud sound (loud:true) alerts the Venue; words are clear only locally/adjacently, farther listeners perceive indistinct noise.",
-        "Ordinary words are clear only in the source Zone. Directly connected Zones hear indistinct voices or ordinary sound. Explicit shouting (delivery:shout) or very loud sound (loud:true) reaches at most two connections; shouted words carry to directly connected Zones, while farther listeners hear indistinct noise.",
-      ).replace("Venue-wide shouts", "connected-Zone shouts") +
-        "\nEvery connection behaves alike. Drawing distance changes neither movement nor sound."
+    ? ZONE_EVENT_CONTRACT.replace(LEGACY_HEARING_CONTRACT, zoneHearingContract(scene)).replace(
+        "Venue-wide shouts",
+        "connected-Zone shouts",
+      ) + "\nEvery connection behaves alike. Drawing distance changes neither movement nor sound."
     : ZONE_EVENT_CONTRACT;
 }
 
@@ -131,7 +137,8 @@ export const ZONE_EVENT_CONTRACT = [
   "Write natural prose, including audible events in their relevant action or reaction. Offscreen sounds reveal only perceptible qualities/direction, never unseen identity, objects, activity or rooms. Do not duplicate noises, add filler sound or use detached sound-effect captions; a meaningful sound may stand alone.",
   ZONE_SOUND_CONTRACT,
   ZONE_PLAYER_SPEECH_CONTRACT,
-  "Ordinary speech/asides and sound reach the source and directly connected Zones. Explicit shouting (delivery:shout) or actually very loud sound (loud:true) alerts the Venue; words are clear only locally/adjacently, farther listeners perceive indistinct noise. Whispers reach only their local addressee. Permissions never block sound; sound grants no entry. No cross-Venue sound.",
+  LEGACY_HEARING_CONTRACT +
+    " Whispers reach only their local addressee. Permissions never block sound; sound grants no entry. No cross-Venue sound.",
   "Use captured Scene positions and completed segment movements. Visual narration/gestures are witnessed only in the player's Zone; thoughts are private. Remote residents know only reachable audio and their own witnessed history, never surrounding player narration, private thoughts, unseen actions or others' private knowledge.",
   "Residents may occasionally initiate brief offstage speech/sounds from existing activity without hearing the player; do not force everyone to react or repeat noises. Each reaction uses ONLY preceding perceptible events: local visuals, reachable ordinary audio, directed local whispers or indistinct distant shouts. A source-private activity is not shared knowledge. Never react beyond reach, even to events you wrote, infer an unseen identity/location/activity or explain silence. Quiet distant sounds support no local reaction. Do not invent doors blocking Venue-wide shouts. Hearing forces no reply, consent, waking or movement. Remote dialogue reveals no unseen gestures/interiors.",
   'Evidence uses numeric segment indexes (including player speech) or supplied earlier IDs, never unfiltered "player" input. Narration proves full visual text only locally; remote sound listeners cannot cite surrounding actions. Distant shouts prove no words. Omit routine noise memories; receiving sound requires no updates. No recap, contactIntent, contactRelay or player movement. Physical changes still need validated placeUpdate: sound proves no repair, transfer, permission or lasting effect.',

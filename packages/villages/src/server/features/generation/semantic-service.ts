@@ -13,11 +13,23 @@ import type { InterpretationBatch } from "../../domain/models/interpretation-mod
 import type { VenueReplyLine, VenueScene } from "../../domain/models/scene-model.js";
 import type { SemanticExchange, SemanticIntent } from "../../domain/models/semantic-model.js";
 import { asRecord } from "../../domain/rules/coerce.js";
-import { badGateway, conflict, UnsupportedPlayerAgency } from "../../domain/rules/errors.js";
+import {
+  badGateway,
+  conflict,
+  UnsupportedPlayerAgency,
+  UnsupportedScenePerception,
+} from "../../domain/rules/errors.js";
 import { extractModelJsonObject } from "../../domain/rules/json-reply.js";
 import { LIVE_MEMORY_INSTRUCTION } from "../../domain/rules/live-exchange.js";
 
-import { RELATIONSHIP_PERMISSION_INSTRUCTION } from "../../domain/rules/relationship-review.js";
+import {
+  parseRelationshipProposals,
+  RELATIONSHIP_PERMISSION_INSTRUCTION,
+} from "../../domain/rules/relationship-review.js";
+import { sceneEvidencePerception } from "../../domain/rules/scene-evidence-perception.js";
+import { fenceIntroductionWitnesses, validateNpcAdmissions } from "../../domain/rules/npc-participation.js";
+import { readContactMoves } from "../../domain/rules/venue-contact.js";
+import { routeZoneEvents, zoneHearingContract } from "../../domain/rules/zone-events.js";
 import {
   reconcileResidentActions,
   RESIDENT_ACTION_PUBLIC_SOCIAL,
@@ -26,7 +38,11 @@ import {
   RESIDENT_ACTION_SHAPE,
   type ResidentAccessAction,
 } from "../../domain/rules/resident-actions.js";
-import { residentLocalIdsAt, residentMovementUnavailable } from "../../domain/rules/resident-movement.js";
+import {
+  assertSceneMovementCapacity,
+  residentLocalIdsAt,
+  residentMovementUnavailable,
+} from "../../domain/rules/resident-movement.js";
 import { sceneContinuityView, sceneWishEffectIds } from "../../domain/rules/scene-continuity.js";
 import { wishHistoryLoaded } from "../../domain/rules/social-wishes.js";
 import {
@@ -100,6 +116,7 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
     identity.residentActionsOmitted === true,
     identity.message,
     identity.evidence,
+    ...(identity.hearingTimelineVersion === 1 ? [identity.hearingTimelineVersion, identity.zoneEventSource] : []),
     ...(Object.hasOwn(identity, "narrativeGrant") ? [identity.narrativeGrant] : []),
     ...(Array.isArray(identity.residentActions) ? [identity.residentActions] : []),
   ])}`;
@@ -107,7 +124,17 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
 
 function systemMessages(input: unknown, systemPrompt: string, sourceHash: string) {
   const { _memoryWrite: _privateMemoryWrite, ...context } = asRecord(asRecord(input).context);
-  const { _presentation, ...publicInput } = asRecord(input);
+  const { _presentation, zoneEventSource: _privateZoneEventSource, ...publicInput } = asRecord(input);
+  if (publicInput.hearingTimelineVersion === 1 && Array.isArray(publicInput.evidence))
+    publicInput.evidence = publicInput.evidence.map((value) => {
+      const {
+        heardBy: _unroutedWitnesses,
+        playerHeard: _unroutedPlayer,
+        soundOnly: _unroutedSound,
+        ...line
+      } = asRecord(value);
+      return line;
+    });
   const selection = _presentation as SpriteSelectionContext | undefined;
   return [
     { role: "system" as const, content: systemPrompt },
@@ -155,6 +182,10 @@ function exchangeInstruction(
   },
 ): string {
   return (
+    (scene.operation?.input.hearingTimelineVersion === 1
+      ? zoneHearingContract(scene) +
+        ' Whispers require a local recipient. Draft evidence has no witnesses yet: derive them from context.reach and the completed movement timeline before interpreting any effects. Opening a door or standing at a threshold changes neither Zone nor hearing. When narration stages clear conversation or visible acting across an unreachable boundary, return consistent:false and perceptionViolation:{segment:exact draft index,quote:"exact offending text"}; otherwise perceptionViolation:null. A remote resident stays unseen unless a completed permitted crossing brings them into the player\'s Zone; never infer a crossing to justify prose or disclosures. '
+      : "") +
     (residentActionsOmitted
       ? "Writing omitted residentActions. The supplied [] is only an empty proposal list, never evidence of no player-access actions. Independently discover every expressed player-access action in additionalActions and cover every player-heard non-player segment. "
       : "") +
@@ -656,6 +687,7 @@ export function createSemanticService(ports: SemanticPorts) {
     residentActions?: ResidentAccessAction[],
     residentActionsOmitted = false,
     narrativeGrant?: NarrativeAdmission | null,
+    zoneEventSource?: Record<string, unknown>,
   ): Promise<SemanticExchange> {
     const state = await readSceneAuthority(scene);
     const sceneState = sceneContinuityView(state, scene);
@@ -683,6 +715,7 @@ export function createSemanticService(ports: SemanticPorts) {
           : {}),
         residentActionsOmitted,
         evidence,
+        ...(zoneEventSource ? { hearingTimelineVersion: 1, zoneEventSource } : {}),
         prepared,
         context,
         ...(narrativeGrant !== undefined ? { narrativeGrant } : {}),
@@ -737,11 +770,73 @@ export function createSemanticService(ports: SemanticPorts) {
             effects: {},
             access: null,
           };
+        if (savedInput.hearingTimelineVersion === 1 && raw.perceptionViolation != null) {
+          const violation = asRecord(raw.perceptionViolation);
+          const source = Number.isSafeInteger(violation.segment)
+            ? savedInput.evidence[Number(violation.segment)]
+            : undefined;
+          if (
+            !source ||
+            source.speakerId === "player" ||
+            typeof violation.quote !== "string" ||
+            !violation.quote.trim() ||
+            !source.content.includes(violation.quote) ||
+            raw.consistent !== false
+          )
+            throw badGateway("System could not match its hearing review to the Scene. The draft is preserved.");
+          throw new UnsupportedScenePerception();
+        }
+        let evidence = savedInput.evidence;
+        const immediate = raw.consistent === true ? semanticImmediate(raw.events, lines) : undefined;
+        const admissions =
+          savedInput.hearingTimelineVersion === 1 && immediate
+            ? validateNpcAdmissions(raw.npcAdmissions, scene.pendingNpcAdmissions ?? [])
+            : [];
+        if (savedInput.hearingTimelineVersion === 1 && savedInput.zoneEventSource && immediate) {
+          const venue = findLocation(sceneState, scene.placeId);
+          if (!venue || !scene.contactGeneration?.zoneEvents)
+            throw badGateway("The admitted hearing context is unavailable. The draft is preserved.");
+          const projected = { lines: structuredClone(lines), heardPlayerBy: [] as string[] };
+          const moves = readContactMoves(
+            immediate.contactMoves,
+            projected.lines,
+            state,
+            venue,
+            scene,
+            savedInput.context.actors.map((actor) => actor.id),
+            true,
+            "redundant",
+            true,
+          );
+          if (moves.length !== (immediate.contactMoves as unknown[]).length)
+            throw badGateway("The reply proposed an unsupported resident movement. Your draft is preserved.");
+          assertSceneMovementCapacity(scene, moves);
+          const playerMoves = semanticPlayerMoves(
+            immediate.semanticPlayerMoves,
+            { ...scene, semanticIntent: interpretedIntent ?? prepared ?? undefined },
+            projected.lines,
+          );
+          routeZoneEvents(
+            savedInput.zoneEventSource,
+            scene,
+            projected,
+            moves.filter((move) => move.path.length > 1),
+            playerMoves,
+          );
+          fenceIntroductionWitnesses(
+            projected.lines,
+            projected.heardPlayerBy,
+            admissions,
+            scene.contactGeneration.localIds ?? scene.activeIds,
+          );
+          evidence = semanticEvidence(projected.lines).map((line, index) => ({
+            ...line,
+            playerHeard: sceneEvidencePerception(projected.lines[index]).playerPerception === "full",
+          }));
+        }
         const agency = asRecord(raw.playerAgencyViolation);
         const agencyEvidence =
-          typeof agency.segment === "number" && Number.isInteger(agency.segment)
-            ? savedInput.evidence[agency.segment]
-            : undefined;
+          typeof agency.segment === "number" && Number.isInteger(agency.segment) ? evidence[agency.segment] : undefined;
         const citedAgency = Boolean(
           agencyEvidence?.playerHeard &&
           agencyEvidence.speakerId !== "player" &&
@@ -762,7 +857,7 @@ export function createSemanticService(ports: SemanticPorts) {
           lines,
         );
         const reconciliation = savedInput.residentActions
-          ? reconcileResidentActions(savedInput.residentActions, raw.residentActionReview, savedInput.evidence)
+          ? reconcileResidentActions(savedInput.residentActions, raw.residentActionReview, evidence)
           : undefined;
         if (reconciliation) {
           if (
@@ -791,6 +886,55 @@ export function createSemanticService(ports: SemanticPorts) {
           };
         }
         const effects = readSemanticEffects(raw, hash);
+        if (savedInput.hearingTimelineVersion === 1 && effects.relationshipChanges !== undefined) {
+          const earlier = savedInput.context.history.map((line) => ({
+            ...line,
+            speakerId: line.role === "user" ? "player" : line.speakerId,
+            playerHeard: sceneEvidencePerception(line).playerPerception === "full",
+          }));
+          const { rejections } = parseRelationshipProposals(
+            effects.relationshipChanges,
+            scene.id + ":" + scene.operation?.id,
+            [
+              ...evidence.map((line) => ({
+                ...line,
+                role: line.speakerId === "player" ? ("user" as const) : ("assistant" as const),
+              })),
+              ...earlier,
+            ],
+            admissions.length
+              ? {
+                  ...state,
+                  worldPlaces: {
+                    ...state.worldPlaces,
+                    npcs: {
+                      ...state.worldPlaces.npcs,
+                      ...Object.fromEntries(admissions.map(({ npc }) => [npc.id, npc])),
+                    },
+                  },
+                }
+              : state,
+            (row) => ({
+              ...row,
+              lineIds: Array.isArray(row.lineIds)
+                ? row.lineIds.map((ref) => {
+                    if (typeof ref === "number" && Number.isSafeInteger(ref) && evidence[ref]) return evidence[ref].id;
+                    if (typeof ref === "string" && earlier.some((line) => line.id === ref)) return ref;
+                    throw new Error("Citation was not supplied in this reply context");
+                  })
+                : row.lineIds,
+            }),
+            true,
+            sceneState.relationshipContext,
+            scene.liveSceneVersion === 1,
+          );
+          if (rejections.length)
+            throw badGateway(
+              "System relationship interpretation needs correction: " +
+                rejections.map((row) => row.reason).join("; ") +
+                " The draft is preserved.",
+            );
+        }
         if (!semanticWishChangesCovered(effects.wishChanges, savedInput.context.actors)) delete effects.wishChanges;
         if (savedInput.narrativeGrant !== undefined)
           effects.narrativeDevelopment = readSceneNarrativeReview(
@@ -809,7 +953,6 @@ export function createSemanticService(ports: SemanticPorts) {
           (asRecord(raw.action).happened !== true || !Number.isInteger(asRecord(raw.action).segment))
         )
           throw badGateway("System physical outcome lacks a completed, cited action.");
-        const immediate = semanticImmediate(raw.events, lines);
         Object.assign(effects, immediate);
         effects.placeUpdate = raw.action ?? null;
         effects.memoryContexts = {

@@ -25,7 +25,12 @@ import { applyAcousticWitnesses } from "../../domain/rules/acoustic-witnesses.js
 import { applyAttentionWitnesses } from "../../domain/rules/attention-witnesses.js";
 import { asRecord, asString, asTrimmedString } from "../../domain/rules/coerce.js";
 import { validDecisionEvidence } from "../../domain/rules/decision-candidates.js";
-import { badGateway, conflict, UnsupportedPlayerAgency } from "../../domain/rules/errors.js";
+import {
+  badGateway,
+  conflict,
+  UnsupportedPlayerAgency,
+  UnsupportedScenePerception,
+} from "../../domain/rules/errors.js";
 import { extractJsonObject } from "../../domain/rules/json-reply.js";
 import { recallMemories } from "../../domain/rules/memory-recall.js";
 import {
@@ -469,6 +474,9 @@ export function createSceneWriting({
             "No recap, contactIntent, contactRelay or player Zone travel. Local actions remain in this Zone.",
             "No recap, contactIntent, contactRelay or player Zone travel. Only the explicit Move action changes the player Zone. Walking within this Zone is an ordinary local action.",
           ),
+        venueOperationInput()?.hearingTimelineVersion === 1
+          ? "A willing resident continuing an in-person doorway conversation normally completes a permitted crossing into the player's Zone, or remains offstage and uses the supplied hearing rules. Opening a door or stopping at its threshold is not a crossing and does not make ordinary remote words clear or remote acting visible. Narration, delivery and completed movement must agree."
+          : "",
       ].filter(Boolean);
     const blocks = buildVenueSceneBlocks({
       direction: blocksFor([
@@ -1148,17 +1156,31 @@ export function createSceneWriting({
             residentActions,
             residentActionsOmitted,
             narrativeVersion ? (narrativeGrant ?? null) : undefined,
+            venueOperationInput()?.hearingTimelineVersion === 1 && session.contactGeneration?.zoneEvents
+              ? (eventRaw ?? undefined)
+              : undefined,
           )
           .catch(async (error: unknown) => {
-            if (error instanceof UnsupportedPlayerAgency)
+            if (
+              error instanceof UnsupportedPlayerAgency ||
+              error instanceof UnsupportedScenePerception ||
+              error instanceof InvalidNarratedSound
+            )
               await rejectVenueCompletion(
                 {
                   model: model.model,
                   connectionId: model.connectionId,
                   reason:
-                    error instanceof UnsupportedPlayerAgency ? "unsupported-player-agency" : "incomplete-introduction",
+                    error instanceof UnsupportedPlayerAgency
+                      ? "unsupported-player-agency"
+                      : error instanceof InvalidNarratedSound
+                        ? "invalid-narrated-sound"
+                        : "unsupported-scene-perception",
                 },
-                { stages: ["writing-completion:" + requestKey] },
+                {
+                  ...(error instanceof InvalidNarratedSound ? { preserveWriting: true } : {}),
+                  stages: ["writing-completion:" + requestKey],
+                },
               );
             throw error;
           })
@@ -1636,6 +1658,7 @@ export function createSceneWriting({
               ...(venueOperationInput()?.occurrenceVersion === 1 ? { occurrenceVersion: 1 as const } : {}),
               sourceHash: semanticResult.sourceHash,
               ...(venueOperationInput()?.semanticPipelineVersion === 3 ? { pipelineVersion: 3 as const } : {}),
+              ...(venueOperationInput()?.hearingTimelineVersion === 1 ? { hearingTimelineVersion: 1 as const } : {}),
               ...([1, 2].includes(Number(venueOperationInput()?.residentActionsVersion))
                 ? { residentActionsVersion: venueOperationInput()?.residentActionsVersion as 1 | 2 }
                 : {}),
