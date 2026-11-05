@@ -3,6 +3,9 @@ import { sceneErrorMessage } from "../packages/villages/src/client/features/scen
 import { sceneErrorReport } from "../packages/villages/src/client/features/scenes/scene-error-report.js";
 
 const cases = [
+  ["This line could not be accepted.", "The game couldn’t accept your message."],
+  ["Invalid request details", "The request contains invalid details."],
+  ["History temporarily unavailable", "The game couldn’t load the Scene history."],
   [
     "The reply used an invalid narrated sound. Your draft is preserved.",
     "The AI described a sound the game couldn’t place in the Scene.",
@@ -85,7 +88,7 @@ const items = [
   {
     id: "operation",
     title: "Message failed",
-    message: cases[0][0],
+    message: "The reply used an invalid narrated sound. Your draft is preserved.",
     diagnosticId: "operation:turn:attempt",
     fields: [
       { label: "Scene ID", value: "scene" },
@@ -95,7 +98,7 @@ const items = [
   {
     id: "memory",
     title: "World change not saved",
-    message: cases[2][0],
+    message: "memories[0].text must be a nonempty string.",
     diagnosticId: "turn:memories",
     fields: [
       { label: "Scene ID", value: "scene" },
@@ -111,7 +114,7 @@ const report = sceneErrorReport(items, [
   { id: "turn:memories", details: '{"rejectedProposals":[{"index":0,"reason":"Exact validation failure"}]}' },
   { id: "unrelated", details: "UNRELATED ERROR AND PRIVATE EVIDENCE" },
 ]);
-assert.ok(report.includes("Original error: " + cases[0][0]));
+assert.ok(report.includes("Original error: " + items[0]!.message));
 assert.match(report, /attentionWitnesses.segment/);
 assert.match(report, /Exact validation failure/);
 assert.equal(report.match(/Scene ID: scene/gu)?.length, 1, "share repeated Scene context");

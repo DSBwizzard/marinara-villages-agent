@@ -224,10 +224,10 @@ await withBrowser(browser, async () => {
     const composer = f.page.getByRole("textbox", { name: "Message at The Mill" });
     await composer.fill("Keep this unsent draft.");
     await f.page.getByRole("button", { name: "Send", exact: true }).click();
-    await expectSceneError(f.page, "This line could not be accepted.");
+    await expectSceneError(f.page, "The game couldn’t accept your message.");
     await f.focus();
     await expect(composer).toHaveValue("Keep this unsent draft.");
-    await expectSceneError(f.page, "This line could not be accepted.");
+    await expectSceneError(f.page, "The game couldn’t accept your message.");
     await f.mount();
     await expect(f.page.getByText("The saved greeting.", { exact: true })).toBeVisible();
     await expect(f.page.getByRole("alert")).toHaveCount(0);

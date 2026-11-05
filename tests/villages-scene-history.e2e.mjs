@@ -95,7 +95,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await finish(await pending(), { error: "History temporarily unavailable" }, 503);
     await expect(page.getByRole("region", { name: "Scene errors", exact: true })).toContainText(
-      "History temporarily unavailable",
+      "The game couldn’t load the Scene history.",
     );
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await finish(await pending(), payload(120, { version: "2".repeat(64), olderCursor: "older-120" }));

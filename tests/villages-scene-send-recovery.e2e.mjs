@@ -546,7 +546,7 @@ await withBrowser(browser, async () => {
     failure = "normal";
     await composer.fill("Reload draft");
     await send.click();
-    await expectSceneError(page, "Invalid request details");
+    await expectSceneError(page, "The request contains invalid details.");
     await expect(composer).toHaveValue("Reload draft");
     await expect(composer).toBeEnabled();
     await load();
@@ -565,7 +565,7 @@ await withBrowser(browser, async () => {
     // The preflight is async while the composer still looks enabled. Wait for
     // the failed POST and its recovery UI before testing an explicit resend.
     await expect.poll(() => turns.length).toBe(beforeUnreadable + 1);
-    await expectSceneError(page, "Invalid request details");
+    await expectSceneError(page, "The request contains invalid details.");
     await expect(composer).toBeEnabled();
     await expect(composer).toHaveValue("Unreadable recovery draft");
     await expect(
