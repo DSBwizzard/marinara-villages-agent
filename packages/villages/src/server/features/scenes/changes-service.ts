@@ -18,7 +18,7 @@ import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { coerceResponseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { scenePresenceNotices, sceneProcessingSummary } from "../../domain/rules/scene-public.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
-import { workFailureSummary } from "../../domain/rules/work-failure.js";
+import { sceneChangeDiagnosticId, sceneChangeError, sceneErrorDetails } from "./error-details.js";
 export interface SceneChangesPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
   finishSemanticScene?(id: string): Promise<void>;
@@ -48,6 +48,13 @@ export function createSceneChanges({
   readTerminal,
   venueRequestMetrics,
 }: SceneChangesPorts) {
+  async function readSceneErrorDetails(id: string) {
+    const scene = await readSession(id);
+    const village = await readVillageState();
+    if (scene.villageSeed && scene.villageSeed !== village.seed)
+      throw conflict("This Scene belongs to a previous village.");
+    return sceneErrorDetails(scene);
+  }
   /** Privileged diagnostics use the saved record only. A read never starts interpretation or recovery. */
   async function readSceneChanges(id: string, cursor = "", limit = 20) {
     const scene = await readSession(id);
@@ -204,6 +211,7 @@ export function createSceneChanges({
             .filter(([, result]) => ["pending", "failed", "rejected"].includes(result.status))
             .map(([domain, result]) => ({
               submissionId: turn.id,
+              diagnosticId: sceneChangeDiagnosticId(turn.id, domain, result),
               domain,
               status: result.status,
               continued: turn.semanticContinuedDomains?.includes(domain as ExchangeDomain) ?? false,
@@ -216,13 +224,7 @@ export function createSceneChanges({
               reason:
                 result.status === "pending"
                   ? "This proposed update is still being checked."
-                  : result.failure
-                    ? workFailureSummary(result.failure)
-                    : result.status === "rejected"
-                      ? /evidence|witness|heard/iu.test(result.reason ?? "")
-                        ? "The proposed world change cited speech or actions that were not witnessed by everyone it would affect. It wasn’t saved; the conversation remains in the transcript."
-                        : "The proposed world change did not meet the requirements for saving. The conversation remains in the transcript; saved diagnostics contain the validation result."
-                      : "World changes could not be applied. Replay saved work first; inspect saved diagnostics if it persists.",
+                  : sceneChangeError(result, domain),
             })),
         )
         .sort((left, right) => {
@@ -332,6 +334,6 @@ export function createSceneChanges({
     await finishSemanticScene?.(id);
     return readSceneChanges(id);
   }
-  return { readSceneChanges, dismissSceneNotice, replaySceneChanges, continueSceneChange };
+  return { readSceneChanges, readSceneErrorDetails, dismissSceneNotice, replaySceneChanges, continueSceneChange };
 }
 export type SceneChanges = ReturnType<typeof createSceneChanges>;

@@ -135,7 +135,12 @@ import {
 } from "../../domain/rules/venue-zones.js";
 import { deriveVillageMoment } from "../../domain/rules/village-clock.js";
 import { readPlayerIdentity } from "../../domain/rules/village-projections.js";
-import { completionFailure as typedCompletionFailure, type WorkFailure } from "../../domain/rules/work-failure.js";
+import {
+  completionFailure as typedCompletionFailure,
+  workFailureSummary,
+  type WorkFailure,
+} from "../../domain/rules/work-failure.js";
+import { privateRejectedText, rejectedSyntaxError } from "../../domain/rules/rejected-response.js";
 import {
   InvalidNarratedSound,
   routeZoneEvents,
@@ -1129,6 +1134,13 @@ export function createSceneWriting({
       };
       throw new VenueReplyFailure(raw ? "invalid-segments" : "invalid-json", {
         ...failure,
+        detail: privateRejectedText(
+          raw
+            ? cause instanceof Error
+              ? cause.message
+              : String(cause)
+            : rejectedSyntaxError(completion.content ?? ""),
+        ).slice(0, 2000),
         responseDiagnostics: diagnostics,
       });
     }
@@ -1792,8 +1804,8 @@ export function createSceneWriting({
       villagesLogger().warn("[villages] scene=%s draft rejected: %s; no automatic retry", session.id, cause.kind);
       throw Object.assign(
         badGateway(
-          cause.failure?.cause === "output_limit"
-            ? cause.failure.message
+          cause.failure
+            ? workFailureSummary(cause.failure)
             : `The Scene reply failed validation (${cause.kind}). Your draft is preserved; explicitly retry.`,
         ),
         cause.failure ? { failure: cause.failure } : {},

@@ -8,6 +8,9 @@ export function configureSceneChanges(service: SceneChanges): () => void {
 export async function readSceneChanges(...args: Parameters<SceneChanges["readSceneChanges"]>) {
   return binding.get().readSceneChanges(...args);
 }
+export async function readSceneErrorDetails(...args: Parameters<SceneChanges["readSceneErrorDetails"]>) {
+  return binding.get().readSceneErrorDetails(...args);
+}
 export async function dismissSceneNotice(...args: Parameters<SceneChanges["dismissSceneNotice"]>) {
   return binding.get().dismissSceneNotice(...args);
 }

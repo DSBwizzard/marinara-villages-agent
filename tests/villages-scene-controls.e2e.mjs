@@ -214,7 +214,7 @@ await withBrowser(browser, async () => {
       await expect(page.getByRole("button", { name: "1 Scene error", exact: true })).toBeVisible();
       await expect(page.getByText("The switch could not be saved.", { exact: false })).toHaveCount(0);
       const settingsErrors = await openSceneErrors(page);
-      await expect(settingsErrors).toContainText("Server could not persist the Decisions setting.");
+      await expect(settingsErrors).toContainText("The game couldn’t save the Decisions setting.");
       await page.keyboard.press("Escape");
       await expect(settingsErrors).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Close Scene settings" })).toBeVisible();

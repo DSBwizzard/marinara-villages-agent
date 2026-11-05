@@ -81,6 +81,7 @@ export async function villagesRoutes(engine: FastifyInstance) {
     "get /memories",
     "get /rooms/:id/history",
     "get /rooms/:id/playback",
+    "get /rooms/:id/error-details",
     "get /memories/inspect",
     "get /memories/:id/evidence",
     "get /memories/inspect/:id",
