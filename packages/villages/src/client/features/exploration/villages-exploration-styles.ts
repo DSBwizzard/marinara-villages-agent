@@ -28,7 +28,20 @@ export const EXPLORATION_STYLES = `
 .${P}-home-full[data-mobile="false"] .${P}-explore-nav button { flex:0 1 auto; flex-direction:row; min-height:40px; gap:6px; padding:0 10px; border-top:0; border-bottom:2px solid transparent; font-size:13px; }
 .${P}-home-full[data-mobile="false"] .${P}-explore-nav button[aria-pressed="true"] { border-bottom-color:var(--explore-selected); }
 .${P}-home-full .${P}-room { display:flex; align-items:stretch; justify-content:flex-start; padding:0; gap:0; margin:0; overflow:hidden; }
-.${P}-home-full .${P}-home-map-viewport { flex:1 1 auto; width:auto; min-width:0; height:100%; overflow:hidden; }
+.${P}-home-full .${P}-home-map-viewport { position:relative; flex:1 1 auto; width:auto; min-width:0; height:100%; overflow:hidden; }
+.${P}-map-tools { position:absolute; z-index:7; left:12px; top:12px; display:flex; gap:6px; max-width:calc(100% - 24px); }
+.${P}-map-tools > button,.${P}-map-tools summary { display:flex; align-items:center; gap:8px; min-height:44px; max-width:100%; box-sizing:border-box; padding:8px 10px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; list-style:none; }
+.${P}-map-tools > button { min-width:0; }
+.${P}-map-tools > button > span:first-of-type { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.${P}-map-tools svg { width:20px; height:20px; flex:none; }
+.${P}-map-tools summary::-webkit-details-marker { display:none; }
+.${P}-map-tools .${P}-map-options { position:absolute; right:0; top:calc(100% + 6px); display:grid; gap:4px; width:min(15rem,calc(100vw - 24px)); padding:6px; box-sizing:border-box; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-panel); box-shadow:0 8px 24px #0006; }
+.${P}-map-options label,.${P}-map-options button { display:flex; align-items:center; gap:8px; min-height:44px; padding:8px; border:0; border-radius:4px; background:transparent; color:var(--explore-text); font:inherit; text-align:left; box-sizing:border-box; }
+.${P}-map-options input { width:18px; height:18px; }
+.${P}-home-full .${P}-mailbox-launch { position:relative; display:grid; place-items:center; width:44px; height:44px; padding:10px; border:0; border-radius:8px; background:transparent; color:var(--explore-muted); cursor:pointer; }
+.${P}-mailbox-launch svg { width:22px; height:22px; fill:none; stroke:currentColor; stroke-width:1.7; }
+.${P}-mailbox-dot { position:absolute; top:7px; right:6px; width:7px; height:7px; border-radius:50%; background:#e7bb73; box-shadow:0 0 0 2px var(--explore-background); }
+.${P}-discover-places { margin:0 12px 8px; min-height:44px; padding:8px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; }
 .${P}-stage[data-exploration="true"] { flex:1; display:block; width:100%!important; height:100%!important; aspect-ratio:auto!important; border:0; border-radius:0; touch-action:none; user-select:none; }
 .${P}-stage[data-exploration="true"] .${P}-canvas { overflow:clip; cursor:grab; }
 .${P}-stage[data-exploration="true"][data-mobile-gesturing="true"] .${P}-canvas { cursor:grabbing; }
@@ -52,7 +65,7 @@ export const EXPLORATION_STYLES = `
 .${P}-location-navigator header { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px 2px 16px; }
 .${P}-location-navigator h2 { margin:0; font-size:16px; }
 .${P}-location-navigator header button { display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:4px; background:transparent; color:var(--explore-muted); cursor:pointer; }
-.${P}-location-navigator svg, .${P}-navigator-toggle svg { width:21px; height:21px; flex:none; }
+.${P}-location-navigator svg { width:21px; height:21px; flex:none; }
 .${P}-explore-search { display:block; flex:0 0 auto; padding:4px 12px 12px; }
 .${P}-explore-search input { width:100%; box-sizing:border-box; min-height:44px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:#0e141f; color:var(--explore-text); padding:8px 10px; font:inherit; font-size:16px; }
 .${P}-explore-search input::placeholder { color:var(--explore-muted); }
@@ -65,16 +78,15 @@ export const EXPLORATION_STYLES = `
 .${P}-explore-row strong { font-size:14px; line-height:1.35; }
 .${P}-explore-row small { color:var(--explore-muted); font-size:12px; margin-top:3px; }
 .${P}-navigator-actions { display:flex; flex-wrap:wrap; gap:6px; padding:0 12px 12px 45px; }
-.${P}-navigator-actions button,.${P}-navigator-toggle { min-height:44px; padding:8px 10px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; }
+.${P}-navigator-actions button { min-height:44px; padding:8px 10px; border:1px solid var(--explore-border); border-radius:var(--explore-radius); background:var(--explore-surface); color:var(--explore-text); font:inherit; font-size:13px; cursor:pointer; }
 .${P}-navigator-actions button:first-child { background:var(--explore-selected); border-color:var(--explore-selected); color:var(--explore-ink); }
-.${P}-navigator-toggle { position:absolute; z-index:7; left:12px; top:12px; display:flex; align-items:center; gap:6px; }
 .${P}-explore-empty { color:var(--explore-muted); font-size:14px; padding:12px; }
 .${P}-home-full button:disabled { opacity:.5; cursor:default; }
 .${P}-home-full :is(button,input,[tabindex]):focus-visible { outline:3px solid var(--explore-selected); outline-offset:-3px; }
 .${P}-home-full button:hover:not(:disabled) { filter:brightness(1.12); }
 
 /* Engine accent animations must not recolor map-control icons. */
-.${P}-home-full :is(.${P}-home-bar,.${P}-explore-nav,.${P}-location-navigator,.${P}-navigator-toggle) svg { color:inherit; }
+.${P}-home-full :is(.${P}-home-bar,.${P}-explore-nav,.${P}-location-navigator,.${P}-map-tools) svg { color:inherit; }
 .${P}-home-full[data-mobile="true"] { padding:0; gap:0; }
 .${P}-home-full[data-mobile="true"] .${P}-home-bar { min-height:52px; padding:4px 8px; }
 .${P}-home-full[data-mobile="true"] .${P}-map-identity { flex-direction:column; align-items:flex-start; gap:2px; max-width:65%; }

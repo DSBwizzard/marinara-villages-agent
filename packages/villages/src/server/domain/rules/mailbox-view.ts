@@ -54,6 +54,22 @@ const PAGE_SIZE = 50,
 type Key = [string, string, string];
 type Kind = "inbox" | "sent" | "recovery";
 const busy = (status?: string) => ["queued", "running", "paused"].includes(status ?? "");
+function visibleMail(thread: SocialMailThread, message: SocialMailMessage, state: RelationshipState) {
+  return (
+    thread.participantIds.includes("player") &&
+    (message.fromId === "player" || (message.toId === "player" && !!state.mailDeliveries[message.id]))
+  );
+}
+export function hasUnreadMail(state: RelationshipState | undefined): boolean {
+  return (
+    !!state &&
+    Object.values(state.mailThreads).some((thread) =>
+      thread.messages.some(
+        (message) => message.fromId !== "player" && !message.readAt && visibleMail(thread, message, state),
+      ),
+    )
+  );
+}
 const compare = (a: Key, b: Key) => {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i]! < b[i]! ? -1 : 1;
   return 0;
@@ -159,12 +175,6 @@ export function createMailboxPresentation(village: VillageState, state: Relation
             : undefined,
     };
   }
-  function visible(thread: SocialMailThread, message: SocialMailMessage) {
-    return (
-      thread.participantIds.includes("player") &&
-      (message.fromId === "player" || (message.toId === "player" && !!state.mailDeliveries[message.id]))
-    );
-  }
   const scope = { version: 1, seed: village.seed, setupAt: village.setupAt, shift: state.clockShiftMs ?? 0 };
   function after(value: string | undefined, kind: Kind): Key | undefined {
     if (!value) return undefined;
@@ -230,7 +240,7 @@ export function createMailboxPresentation(village: VillageState, state: Relation
       sources.set(thread.id, messages);
       for (const message of thread.messages) {
         messages.set(message.id, message);
-        if (visible(thread, message) && (folder === "sent") === (message.fromId === "player"))
+        if (visibleMail(thread, message, state) && (folder === "sent") === (message.fromId === "player"))
           letters.push({ key: [message.at, thread.id, message.id], value: { thread, message } });
       }
     }
@@ -271,7 +281,7 @@ export function createMailboxPresentation(village: VillageState, state: Relation
     if (!Object.hasOwn(state.mailThreads, threadId)) throw badRequest("That letter is unavailable.");
     const thread = state.mailThreads[threadId];
     const message = thread?.messages.find((row) => row.id === messageId);
-    if (!thread || !message || !visible(thread, message)) throw badRequest("That letter is unavailable.");
+    if (!thread || !message || !visibleMail(thread, message, state)) throw badRequest("That letter is unavailable.");
     return {
       scope: villageWorldScope(village),
       thread: threadInfo(thread),

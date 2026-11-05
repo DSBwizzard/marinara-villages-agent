@@ -396,7 +396,10 @@ await withBrowser(browser, async () => {
       .click();
     await expect(page.getByRole("button", { name: "View Venue", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
-    await page.getByRole("button", { name: "Show places", exact: true }).click();
+    await page
+      .getByRole("navigation", { name: "Village exploration" })
+      .getByRole("button", { name: "Places", exact: true })
+      .click();
     const places = page.getByRole("complementary", { name: "Places navigator" });
     await places.getByRole("button", { name: /^The Mill/ }).click();
     await places.getByRole("button", { name: "View venue", exact: true }).click();

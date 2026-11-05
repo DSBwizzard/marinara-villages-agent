@@ -254,12 +254,8 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           closeExploration();
           setShowAllMaps(false);
         } else if (tab === "places") {
-          const first = places[0] ?? snapshot?.settings.venues[0];
-          if (first) openPlace(first);
-          else {
-            setFocusSearch(true);
-            setExploreSheet({ tab: "places" });
-          }
+          setFocusSearch(true);
+          setExploreSheet({ tab: "places" });
         } else {
           setExploreSheet(null);
           openMenu(tab === "people" ? "villagers" : tab === "projects" ? "projects" : "index");
@@ -281,12 +277,23 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         <span className={`${ELEMENT_TAG}-home-bar-actions`}>
           <button
             type="button"
-            className={ELEMENT_TAG + "-button"}
+            className={ELEMENT_TAG + "-mailbox-launch"}
+            aria-label={snapshot?.mailboxUnread ? "Mailbox · Unread mail" : "Mailbox"}
+            title="Mailbox"
             disabled={!!markerDraft}
             onClick={() => controller.setMailboxOpen(true)}
           >
-            Mailbox
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="m3 6 9 7 9-7" />
+            </svg>
+            {snapshot?.mailboxUnread ? <span className={ELEMENT_TAG + "-mailbox-dot"} aria-hidden="true" /> : null}
           </button>
+          {room && room.status !== "closed" && !markerDraft ? (
+            <button type="button" className={`${ELEMENT_TAG}-button`} onClick={returnToScene}>
+              Return to Scene
+            </button>
+          ) : null}
           {placingProjectId ? (
             <button
               type="button"
@@ -302,90 +309,61 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
           ) : null}
         </span>
       </div>
-      <div className={ELEMENT_TAG + "-maps-toolbar"}>
-        <button
-          type="button"
-          disabled={busy || !!markerDraft || !!placingProjectId}
-          onClick={() => {
-            setDiscoveryId("");
-            setDiscoveryOpen(true);
-          }}
-        >
-          Discover Places
-        </button>
-        <label>
-          <input
-            autoComplete="off"
-            type="checkbox"
-            checked={showPlaces}
-            onChange={(event) => setShowPlaces(event.target.checked)}
-          />
-          Places layer
-        </label>
-        {placingPlace ? (
-          <>
-            <span>Choose a map position for {placingPlace.name}.</span>
-            <button type="button" onClick={() => setPlacingPlace(null)}>
-              Cancel placement
-            </button>
-          </>
-        ) : null}
-        <button type="button" disabled={busy || !!markerDraft} onClick={() => setShowAllMaps(true)}>
-          All maps
-        </button>
-        {!showAllMaps && !placingProjectId && selectedMap ? (
-          markerDraft ? (
+      {placingPlace || markerDraft ? (
+        <div className={ELEMENT_TAG + "-maps-toolbar"}>
+          {placingPlace ? (
             <>
-              <label>
-                Venue{" "}
-                <select
-                  aria-label="Move Venue"
-                  disabled={busy}
-                  value={markerDraft.selected}
-                  onChange={(event) => updateMarkerDraft({ ...markerDraft, selected: event.target.value })}
-                >
-                  <option value="">Choose Venue</option>
-                  {places.map((place) => (
-                    <option key={place.id} value={place.id}>
-                      {place.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <span>Choose a Venue, then tap the map or use arrow keys on the map or marker.</span>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  try {
-                    sessionStorage.removeItem(markerKey);
-                  } catch {
-                    setMarkerError("Could not discard the marker draft. Try again.");
-                    return;
-                  }
-                  setHasSavedMarkers(false);
-                  setMarkerDraft(null);
-                  setMarkerError("");
-                }}
-              >
-                Cancel
-              </button>
-              <button type="button" disabled={busy} onClick={() => void saveMarkers()}>
-                Save markers
+              <span>Choose a map position for {placingPlace.name}.</span>
+              <button type="button" onClick={() => setPlacingPlace(null)}>
+                Cancel placement
               </button>
             </>
-          ) : (
-            <button type="button" disabled={busy} onClick={startMarkers}>
-              {hasSavedMarkers ? "Resume marker edits" : "Move markers"}
-            </button>
-          )
-        ) : null}
-        {room && room.status !== "closed" && !markerDraft ? (
-          <button type="button" onClick={returnToScene}>
-            Return to Scene
-          </button>
-        ) : null}
-      </div>
+          ) : null}
+          {!showAllMaps && !placingProjectId && selectedMap ? (
+            markerDraft ? (
+              <>
+                <label>
+                  Venue{" "}
+                  <select
+                    aria-label="Move Venue"
+                    disabled={busy}
+                    value={markerDraft.selected}
+                    onChange={(event) => updateMarkerDraft({ ...markerDraft, selected: event.target.value })}
+                  >
+                    <option value="">Choose Venue</option>
+                    {places.map((place) => (
+                      <option key={place.id} value={place.id}>
+                        {place.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span>Choose a Venue, then tap the map or use arrow keys on the map or marker.</span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    try {
+                      sessionStorage.removeItem(markerKey);
+                    } catch {
+                      setMarkerError("Could not discard the marker draft. Try again.");
+                      return;
+                    }
+                    setHasSavedMarkers(false);
+                    setMarkerDraft(null);
+                    setMarkerError("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <button type="button" disabled={busy} onClick={() => void saveMarkers()}>
+                  Save markers
+                </button>
+              </>
+            ) : null
+          ) : null}
+        </div>
+      ) : null}
       <div className={ELEMENT_TAG + "-room"}>
         {showAllMaps ? (
           <div className={ELEMENT_TAG + "-maps-overview"}>
@@ -416,6 +394,10 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 search={explorationSearch.places}
                 onSearch={(value) => setExplorationSearch((current) => ({ ...current, places: value }))}
                 disabled={busy}
+                onDiscover={() => {
+                  setDiscoveryId("");
+                  setDiscoveryOpen(true);
+                }}
                 onClose={() => {
                   if (mobile) closeExploration();
                   else {
@@ -425,21 +407,50 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
                 }}
                 rows={rows}
               />
-            ) : !placingProjectId && !markerDraft ? (
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-navigator-toggle`}
-                aria-label="Show places"
-                onClick={() => {
-                  setFocusSearch(true);
-                  setExploreSheet({ tab: "places" });
-                }}
-              >
-                <MapIcon name="places" />
-                <span>Places</span>
-              </button>
             ) : null}
             <div className={`${ELEMENT_TAG}-home-map-viewport`}>
+              {!placingProjectId && !markerDraft ? (
+                <div className={`${ELEMENT_TAG}-map-tools`}>
+                  <button type="button" aria-label="Choose map" disabled={busy} onClick={() => setShowAllMaps(true)}>
+                    <MapIcon name="map" />
+                    <span>{selectedMap?.name ?? "Maps"}</span>
+                    <span aria-hidden="true">▾</span>
+                  </button>
+                  <details
+                    onClick={(event) => {
+                      if (event.target instanceof Element && event.target.closest("button"))
+                        event.currentTarget.open = false;
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.currentTarget.open = false;
+                        event.currentTarget.querySelector("summary")?.focus();
+                      }
+                    }}
+                  >
+                    <summary role="button" aria-label="Map options">
+                      <MapIcon name="more" />
+                    </summary>
+                    <div className={`${ELEMENT_TAG}-map-options`}>
+                      <label>
+                        <input
+                          autoComplete="off"
+                          type="checkbox"
+                          checked={showPlaces}
+                          onChange={(event) => setShowPlaces(event.target.checked)}
+                        />
+                        Places layer
+                      </label>
+                      {selectedMap ? (
+                        <button type="button" disabled={busy} onClick={startMarkers}>
+                          {hasSavedMarkers ? "Resume marker edits" : "Move markers"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </details>
+                </div>
+              ) : null}
               <MapStage
                 key={selectedMap?.id}
                 src={townMapImage || null}

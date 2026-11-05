@@ -138,6 +138,7 @@ export type ReturnCatchupView = {
 
 export type VillageSnapshot = {
   worldScope: string;
+  mailboxUnread?: boolean;
   sceneChanges?: { sceneId: string; revision: string };
   sceneVenue?: { sceneId: string; venue: VillageSettings["venues"][number] };
   opening?: import("./opening.js").OpeningView;

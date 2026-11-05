@@ -10,10 +10,10 @@ import { resolve } from "node:path";
 const bundle = await build({
   stdin: {
     contents: `import {createRoot} from 'react-dom/client';
-import {LoreActivity} from './packages/villages/src/client/shared/LoreActivity.js';
+import {LoreActivity,LoreActivityButton} from './packages/villages/src/client/shared/LoreActivity.js';
 import {syncVillagesStyles} from './packages/villages/src/client/entry/styles.js';
 const tag=document.createElement('marinara-capability-villages');tag.style.display="none";document.body.appendChild(tag);syncVillagesStyles();
-createRoot(document.getElementById('root')).render(<LoreActivity><main style={{padding:'24px',height:'100%',background:'#10172c',color:'#d8dfed'}}><h2>Forging the Village</h2><p>Setting  People  <b>Venues and Map</b>  Review</p><div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:'20px',height:'75%'}}><section style={{border:'1px solid #46516f',borderRadius:'12px',padding:'20px'}}><h3>Starting venues</h3><p>Meridian Consolidated Holdings</p><p>Gidget’s Lube & Loft</p><p>The Glitterdome Atrium</p></section><section style={{border:'1px solid #46516f',borderRadius:'12px',padding:'20px',background:'linear-gradient(140deg,#293f3a,#27304e)'}}><h3>Village map</h3></section></div></main></LoreActivity>);`,
+const root=createRoot(document.getElementById('root'));window.showLore=(query='')=>root.render(<LoreActivity><main style={{padding:'24px',height:'100%',background:'#10172c',color:'#d8dfed'}}><h2>Forging the Village</h2><LoreActivityButton query={query} /><p>Setting  People  <b>Venues and Map</b>  Review</p><div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:'20px',height:'75%'}}><section style={{border:'1px solid #46516f',borderRadius:'12px',padding:'20px'}}><h3>Starting venues</h3><p>Meridian Consolidated Holdings</p><p>Gidget’s Lube & Loft</p><p>The Glitterdome Atrium</p></section><section style={{border:'1px solid #46516f',borderRadius:'12px',padding:'20px',background:'linear-gradient(140deg,#293f3a,#27304e)'}}><h3>Village map</h3></section></div></main></LoreActivity>);window.showLore();`,
     resolveDir: process.cwd(),
     loader: "tsx",
   },
@@ -157,6 +157,14 @@ await withBrowser(browser, async () => {
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Lore activity", exact: true })).toBeFocused();
+      await page.evaluate(() => window.showLore("Map artwork"));
+      await page.getByRole("button", { name: "Lore activity", exact: true }).click();
+      await expect(dialog.getByRole("searchbox", { name: "Search Lore entries" })).toHaveValue("Map artwork");
+      await expect(list.getByRole("button")).toHaveCount(2);
+      await dialog.getByRole("searchbox", { name: "Search Lore entries" }).fill("");
+      await expect(list.getByRole("button")).toHaveCount(3);
+      await page.keyboard.press("Escape");
+      await page.evaluate(() => window.showLore());
       revision = 3;
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await expect(launch).toBeVisible();

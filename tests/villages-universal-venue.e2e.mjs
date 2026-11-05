@@ -195,6 +195,12 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Map", exact: true })
       .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
+    const openProfile = async () => {
+      const navigator = page.getByRole("complementary", { name: "Places navigator" });
+      await navigator.locator(`[data-exploration-row="${place.id}"]`).click();
+      await navigator.getByRole("button", { name: "View venue", exact: true }).click();
+    };
+    await openProfile();
     const profile = page.locator(`.${prefix}-venue-profile`);
     await expect(profile.getByRole("heading", { name: "Warehouse home", exact: true })).toBeVisible();
     const typeLines = await profile
@@ -450,6 +456,7 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Map", exact: true })
       .click();
     await page.getByRole("button", { name: "Places", exact: true }).click();
+    await openProfile();
     await tabs.getByRole("button", { name: "Manage", exact: true }).click();
     await profile.getByRole("button", { name: "View housing requests", exact: true }).click();
     await expect(page.getByText("Housing requests · Renamed warehouse", { exact: true })).toBeVisible();
