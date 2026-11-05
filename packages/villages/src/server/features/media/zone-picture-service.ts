@@ -139,11 +139,10 @@ export function createZonePictures(
           if (source && !replacement) {
             support = (await ports.resolveVillageImageEditing?.()) ?? null;
             if (!support || !ports.readZonePictureReference)
-              problem =
-                "This connection cannot update artwork. Choose a compatible image connection or Generate a replacement.";
+              problem = "This connection cannot refresh artwork. Choose a compatible image connection or Generate new.";
           } else if (!replacement) await ports.resolveVillageImageConnectionId?.();
         } catch {
-          problem = "Choose an enabled image connection to update artwork.";
+          problem = "Choose an enabled image connection to refresh artwork.";
         }
         // Preserve the complete before/after accounts; never truncate a physical change.
         const prompt = [
@@ -195,7 +194,7 @@ export function createZonePictures(
               current.picture = {
                 ...current.picture,
                 base,
-                problem: "Automatic limit reached. Update artwork manually or wait for a later visit or action.",
+                problem: "Automatic limit reached. Refresh the picture manually or wait for a later visit or action.",
               };
               return;
             }
