@@ -58,7 +58,7 @@ export function useSnapshotReference(ports: {
 }) {
   const { currentSnapshotRef, snapshot } = ports;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     currentSnapshotRef.current = snapshot;
   }, [currentSnapshotRef, snapshot]);
 }

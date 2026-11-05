@@ -7,18 +7,16 @@ export function useResidentInspection(ports: {
   personProfile: import("./villages-dossier.js").DossierNavigation;
   profileInspection: import("./villages-dossier.js").DossierSection;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
-  setAgendas: React.Dispatch<React.SetStateAction<import("../../../shared/contracts/village.js").VillagerAgendaView[]>>;
 }) {
-  const { loadAgendas, personProfile, profileInspection, screen, setAgendas } = ports;
+  const { loadAgendas, personProfile, profileInspection, screen } = ports;
   useEffect(() => {
     if (screen !== "person" || !personProfile || !profileInspection) return;
     const controller = new AbortController();
     if (["agenda", "venues"].includes(profileInspection)) {
-      setAgendas(null);
       void loadAgendas(controller.signal);
     }
     return () => controller.abort();
-  }, [screen, personProfile, profileInspection, loadAgendas, setAgendas]);
+  }, [screen, personProfile, profileInspection, loadAgendas]);
 }
 
 export function useResidentAgendaPolling(ports: {

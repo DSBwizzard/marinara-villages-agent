@@ -3,7 +3,7 @@ import { messageFrom, request } from "../../shared/api.js";
 import { readFileAsDataUrl } from "../../shared/presentation.js";
 
 import type { ExplorationSheet, ExplorationTab } from "./villages-exploration.js";
-import { type SetStateAction, useCallback } from "react";
+import { type SetStateAction, useCallback, useRef } from "react";
 
 export function useCloseExploration(ports: {
   element: HTMLElement;
@@ -28,6 +28,8 @@ export function useCloseExploration(ports: {
 }
 
 export function useOpenPlace(ports: {
+  venueId?: string | null;
+  worldScope?: string;
   screen?: string;
   setVenueReturnTo?: React.Dispatch<SetStateAction<"home" | "menu" | "room" | "person">>;
   setVenueSection?: React.Dispatch<SetStateAction<"about" | "zones" | "manage">>;
@@ -53,6 +55,8 @@ export function useOpenPlace(ports: {
   setVenueZoneKey: React.Dispatch<SetStateAction<string>>;
 }) {
   const { screen, setVenueReturnTo, setVenueSection, setVenueEditError, setVenueEditNotice } = ports;
+  const { venueId, worldScope } = ports;
+  const lastScope = useRef(worldScope);
 
   const {
     setExploreSheet,
@@ -72,8 +76,11 @@ export function useOpenPlace(ports: {
       setOpenPlaceId(null);
       setVenueId(place.id);
       setVenuePage("view");
-      setVenueSection?.("about");
-      setVenueZoneKey("exterior");
+      if (venueId !== place.id || lastScope.current !== worldScope) {
+        setVenueSection?.("about");
+        setVenueZoneKey("exterior");
+      }
+      lastScope.current = worldScope;
       setVenueEditDraft((current) => (current?.id === place.id ? current : null));
       setVenueEditError?.("");
       setVenueEditNotice?.("");
@@ -82,6 +89,8 @@ export function useOpenPlace(ports: {
     },
     [
       screen,
+      venueId,
+      worldScope,
       setExploreSheet,
       setOpenPlaceId,
       setScreen,

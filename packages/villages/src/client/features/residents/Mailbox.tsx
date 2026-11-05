@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MailboxMutation, MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
-import { request, VillageApiError } from "../../shared/api.js";
+import { invalidatesRead, request, VillageApiError, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import type { PortraitMap } from "../../shared/types.js";
@@ -207,6 +207,21 @@ export function Mailbox({
   const cursor = cursors.at(-1) ?? "";
   const recoveryCursor = recoveryCursors.at(-1) ?? "";
   const queryKey = JSON.stringify([scope, folder, cursor, recoveryCursor]);
+  useLayoutEffect(() => {
+    const denied = (event: Event) => {
+      uiEpoch.current++;
+      navigationEpoch.current++;
+      indexLane.current++;
+      detailLane.current++;
+      setView(null);
+      setLoadedLetter(null);
+      setSelection(null);
+      setBusy(false);
+      setLoadError(event instanceof CustomEvent && typeof event.detail === "string" ? event.detail : "Access denied.");
+    };
+    window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
+    return () => window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
+  }, []);
   const currentQuery = useRef(queryKey);
   currentQuery.current = queryKey;
   useEffect(() => {
@@ -221,6 +236,11 @@ export function Mailbox({
   useLayoutEffect(() => {
     uiEpoch.current++;
     navigationEpoch.current++;
+    setBusy(false);
+  }, [open]);
+  useLayoutEffect(() => {
+    uiEpoch.current++;
+    navigationEpoch.current++;
     setView(null);
     setLoadedLetter(null);
     setSelection(null);
@@ -229,12 +249,16 @@ export function Mailbox({
     setBusy(false);
     setError("");
     setReadError("");
-    if (open) {
-      setFolder("inbox");
-      setRecipient(initialResidentId);
-      setComposing(!!initialResidentId);
-    }
-  }, [open, initialResidentId, scope]);
+    setFolder("inbox");
+    setRecipient("");
+    setComposing(false);
+  }, [scope]);
+  useLayoutEffect(() => {
+    if (!open || !initialResidentId) return;
+    navigationEpoch.current++;
+    setRecipient(initialResidentId);
+    setComposing(true);
+  }, [open, initialResidentId]);
   const choose = (next: Selection) => {
     navigationEpoch.current++;
     setSelection(next);
@@ -270,6 +294,11 @@ export function Mailbox({
     void refresh(controller.signal).catch((cause) => {
       if (!controller.signal.aborted) {
         setLoadError(cause instanceof Error ? cause.message : "Mailbox unavailable.");
+        if (invalidatesRead(cause)) {
+          setView(null);
+          setLoadedLetter(null);
+          setSelection(null);
+        }
         if (cause instanceof VillageApiError && cause.status === 409) {
           navigationEpoch.current++;
           setCursors([]);
@@ -306,8 +335,10 @@ export function Mailbox({
       })
       .catch((cause) => {
         if (!controller.signal.aborted && epoch === uiEpoch.current && lane === detailLane.current) {
-          setLoadedLetter(null);
-          setSelection(null);
+          if (invalidatesRead(cause) || (cause instanceof VillageApiError && cause.status === 409)) {
+            setLoadedLetter(null);
+            setSelection(null);
+          }
           setError(cause instanceof Error ? cause.message : "Letter unavailable.");
         }
       });

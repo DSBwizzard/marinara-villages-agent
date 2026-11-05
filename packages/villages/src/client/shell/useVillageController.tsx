@@ -147,7 +147,7 @@ import { useVenueScreenCommands } from "../features/venues/screen-commands.js";
 import { useVenuesState } from "../features/venues/useVenuesState.js";
 import { useVenueZoneSelection } from "../features/venues/zone-selection.js";
 import { useActivitySignal, useCapabilityVisibility, useVisibleInterval } from "../shared/activity.js";
-import { request } from "../shared/api.js";
+import { request, VILLAGE_ACCESS_DENIED } from "../shared/api.js";
 import {
   useInitialVillageLoad,
   useLoadLorebooks,
@@ -198,6 +198,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     memoryLibrary,
     setMemoryLibrary,
     agendas,
+    agendaRevision,
     setAgendas,
     personProfile,
     setPersonProfile,
@@ -526,6 +527,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   /** What is true of the picture being previewed, if the panel is holding one. */
 
   const [busy, setBusy] = useState(false);
+  useLayoutEffect(() => {
+    setBusy(false);
+    const denied = () => setBusy(false);
+    window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
+    return () => window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
+  }, [snapshot?.worldScope]);
 
   /** Accept each server receipt once, regardless of which visit-ending path returned it. */
   const receiveRoomRecordEvents = useReceiveRoomRecordEvents(scenes);
@@ -564,7 +571,11 @@ export function useVillageController({ element }: { element: HTMLElement }) {
 
   const loadLorebooks = useLoadLorebooks(founding);
 
-  const loadMemoryLibrary = useLoadMemoryLibrary({ setError, setMemoryLibrary });
+  const loadMemoryLibrary = useLoadMemoryLibrary({
+    setError,
+    setMemoryLibrary,
+    worldScope: snapshot?.worldScope ?? "",
+  });
 
   const forgetMemory = useForgetMemory({ loadMemoryLibrary, setBusy, setError });
 
@@ -576,14 +587,13 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * call's worth of text per villager and nobody is looking at it while it is
    * closed.
    */
-  const loadAgendas = useLoadAgendas({ setAgendas, setError });
+  const loadAgendas = useLoadAgendas({ setAgendas, setError, worldScope: snapshot?.worldScope ?? "", agendaRevision });
 
   useResidentInspection({
     loadAgendas,
     personProfile,
     profileInspection,
     screen,
-    setAgendas,
   });
 
   useResidentAgendaPolling({ visible, agendas, loadAgendas, personProfile, profileInspection, screen });
@@ -608,7 +618,12 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setError,
   });
 
-  const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({ setAgendas, setBusy, setError });
+  const setAgendaScheduleIngestion = useSetAgendaScheduleIngestion({
+    currentSnapshotRef,
+    setAgendas,
+    setBusy,
+    setError,
+  });
 
   useInitialVillageLoad({ visible: visible && !snapshot?.isFounded, loadSnapshot });
 
@@ -755,6 +770,8 @@ export function useVillageController({ element }: { element: HTMLElement }) {
    * enter one of the dedicated editing pages without a model request.
    */
   const openPlace = useOpenPlace({
+    venueId,
+    worldScope: snapshot?.worldScope,
     setVenueEditError,
     setVenueEditNotice,
     screen,

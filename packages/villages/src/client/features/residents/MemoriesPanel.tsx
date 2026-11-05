@@ -6,6 +6,7 @@ import type {
   MemoryListEntry,
 } from "../../../shared/contracts/village.js";
 import { messageFrom, request } from "../../shared/api.js";
+import { useVillageActivity } from "../../shared/activity.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { stampTime, renderVillagesMarkdown } from "../../shared/presentation.js";
 import { MemoryCorrectionForm } from "./MemoryCorrectionForm.js";
@@ -26,6 +27,7 @@ export function VillagerMemoriesPanel({
   onQuery(query: MemoryListQuery, signal?: AbortSignal): Promise<void>;
   onForget(entry: MemoryListEntry, knower: string): void;
 }) {
+  const { visible } = useVillageActivity();
   const [knower, setKnower] = useState(characterId);
   const [query, setQuery] = useState("");
   const [cursor, setCursor] = useState<MemoryCursor | undefined>();
@@ -38,18 +40,20 @@ export function VillagerMemoriesPanel({
   const evidenceRequest = useRef<AbortController | null>(null);
   const pageRequest = useRef<AbortController | null>(null);
   const queryReader = useRef(onQuery);
+  const submitted = useRef<MemoryListQuery>({ characterId });
   queryReader.current = onQuery;
   const people = useRef(library?.residents);
   if (library?.residents) people.current = library.residents;
   useEffect(() => {
+    if (!visible) return;
     const controller = new AbortController();
     pageRequest.current = controller;
-    void queryReader.current({ characterId }, controller.signal);
+    void queryReader.current(submitted.current, controller.signal);
     return () => {
       evidenceRequest.current?.abort();
       pageRequest.current?.abort();
     };
-  }, [characterId]);
+  }, [characterId, visible]);
   const load = (next: MemoryCursor | undefined, audience = knower) => {
     evidenceRequest.current?.abort();
     setEvidence(null);
@@ -59,7 +63,8 @@ export function VillagerMemoriesPanel({
     pageRequest.current?.abort();
     const controller = new AbortController();
     pageRequest.current = controller;
-    return onQuery({ characterId: audience, query, cursor: next }, controller.signal);
+    submitted.current = { characterId: audience, query, cursor: next };
+    return onQuery(submitted.current, controller.signal);
   };
   const refresh = () => {
     setPrevious([]);
