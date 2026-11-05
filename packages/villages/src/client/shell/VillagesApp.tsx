@@ -219,12 +219,17 @@ function VillageScreen({ controller }: { controller: ReturnType<typeof Controlle
   if (!room && sceneRestoration.status !== "ready")
     return (
       <div className={ELEMENT_TAG + "-root"}>
-        <section className={ELEMENT_TAG + "-panel"} role="status">
-          <p>{sceneRestoration.status === "error" ? "Could not load your Scene." : "Loading Scene…"}</p>
+        <section className={ELEMENT_TAG + "-panel"} role={sceneRestoration.status === "error" ? "alert" : "status"}>
+          <p>{sceneRestoration.status === "error" ? "Could not check your Scene." : "Checking Scene…"}</p>
           {sceneRestoration.status === "error" ? (
-            <button type="button" className={ELEMENT_TAG + "-button"} onClick={sceneRestoration.retry}>
-              Retry Scene check
-            </button>
+            <>
+              <p className={ELEMENT_TAG + "-error"} style={{ overflowWrap: "anywhere" }}>
+                {sceneRestoration.error}
+              </p>
+              <button type="button" className={ELEMENT_TAG + "-button"} onClick={sceneRestoration.retry}>
+                Retry Scene check
+              </button>
+            </>
           ) : null}
         </section>
       </div>

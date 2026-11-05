@@ -1,5 +1,5 @@
 import { scenePlaybackFixtures } from "./scene-browser.fixture.mjs";
-import { mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
+import { abort, mockEngineLookups, fulfill } from "./browser-diagnostics.mjs";
 import assert from "node:assert/strict";
 import { build } from "../../scripts/esbuild.mjs";
 import { expect } from "@playwright/test";
@@ -20,7 +20,8 @@ import {useScenesState} from './packages/villages/src/client/features/scenes/use
 import {useActiveSceneRestoration} from './packages/villages/src/client/features/scenes/controller-hooks.js';
 import {useContinueRoomWithoutGreeting,useCloseRoom,useOpenRoom,useGreetRoom} from './packages/villages/src/client/features/scenes/actions.js';
 function scene(id,status='active',revision=0){return authorSceneView({id,version:1,sceneRevision:revision,placeId:'mill',placeName:id,status,activeIds:[],participants:[],lines:[],submissions:[],startedAt:'',endedAt:''},'b'.repeat(64));}
-function Restore(ports){useActiveSceneRestoration(ports);return null}
+function Restore(ports){const restoration=useActiveSceneRestoration(ports);window.retryScene=restoration.retry;
+ return <pre id='restoration'>{JSON.stringify({status:restoration.status,error:restoration.error})}</pre>}
 function Harness(){
  const [room,writeRoom]=useSceneRecord(),[ready,setReady]=useState(false),[founded,setFounded]=useState(window.options.hydrate?undefined:true),
  [screen,setScreen]=useState('home'),[debug,setDebug]=useState(false);
@@ -49,7 +50,7 @@ function Harness(){
   busy:state.roomBusy,error:state.roomError,greetingError:state.roomGreetingError,screen,founded,debug,ended:state.roomEnded,mode:state.roomMode,open:state.roomOpen})}</pre></>;
 }
 window.pending=[];window.publications=[];window.loads=0;window.timeouts=[];
-const timeout=AbortSignal.timeout.bind(AbortSignal);AbortSignal.timeout=ms=>{window.timeouts.push(ms);return timeout(ms)};
+const timeout=AbortSignal.timeout.bind(AbortSignal);AbortSignal.timeout=ms=>{window.timeouts.push(ms);return timeout(window.options.fastTimeout?Math.min(ms,25):ms)};
 const root=createRoot(document.getElementById('root'));window.unmount=()=>root.render(null);
 root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
 `,
@@ -86,7 +87,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       held = [],
       requests = [],
       errors = [];
-    let greeted = false;
+    let greeted = false,
+      activeReads = 0;
     page.on("pageerror", (cause) => errors.push(cause.message));
     await page.route("http://restoration-lifetimes.test/", (route) =>
       fulfill(route, { status: 200, contentType: "text/html", body: '<div id="root"></div>' }),
@@ -96,8 +98,10 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         kind = new URL(request.url()).pathname.split("/").pop(),
         body = request.postDataJSON();
       const recovery = kind === "active" && greeted;
+      if (kind === "active" && !recovery) activeReads++;
       if (kind === "greet") greeted = true;
       requests.push({ kind, recovery, method: request.method(), body });
+      if (kind === "active" && activeReads <= (options.networkFailures ?? 0)) return abort(route);
       const value =
         kind === "active"
           ? {
@@ -120,9 +124,9 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       const failed =
         (kind === "greet" && options.failGreet) ||
         (recovery && options.failRecovery) ||
-        (kind === "active" && !recovery && options.failRead);
+        (kind === "active" && !recovery && (options.failRead || activeReads <= (options.failReads ?? 0)));
       const reply = {
-        status: failed ? 502 : 200,
+        status: failed ? (options.readFailureStatus ?? 502) : 200,
         contentType: "application/json",
         body: JSON.stringify(failed ? { error: "synthetic restoration failure" } : value),
       };
@@ -157,6 +161,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
       context,
       page,
       state,
+      restoration: async () => JSON.parse(await page.locator("#restoration").textContent()),
       held,
       requests,
       run: (kind) => page.evaluate((kind) => window.h.run(kind), kind),
@@ -175,7 +180,7 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
   // State/ownership harness: responsive presentation is covered by the visual suites.
   for (const width of [1280])
     for (const strict of [false, true]) {
-      // Normal reloads preserve completion/ended state, counts, timeout and no snapshot launch.
+      // Normal reloads preserve completion/ended state and launch no snapshot.
       for (const restored of [null, "active", "opening", "closed"]) {
         const f = await mount(strict, width, { restored, marker: true, ended: restored === "closed" });
         await expect.poll(async () => (await f.state()).debug).toBe(true);
@@ -187,7 +192,8 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.deepEqual((await f.refs()).completion, { roomId: "A", submissionId: "prior-marker" });
         assert.equal(f.requests.filter((r) => r.method === "POST").length, restored === "opening" ? 1 : 0);
         assert.equal(await f.page.evaluate(() => window.loads), 0);
-        assert.deepEqual(await f.page.evaluate(() => window.timeouts), []);
+        const timeouts = await f.page.evaluate(() => window.timeouts);
+        assert.ok(timeouts.length > 0 && timeouts.every((ms) => ms === 10_000));
         if (!strict) assert.equal(f.requests.filter((r) => r.kind === "active").length, 1);
         if (restored !== null) {
           assert.equal((await f.state()).screen, "room");
@@ -326,7 +332,9 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         assert.equal(value.status, ["active", "closed"].includes(recovered) ? recovered : "opening");
         assert.equal(value.greetingError === null, ["active", "closed"].includes(recovered));
         assert.equal(f.requests.filter((r) => r.method === "POST").length, 1);
-        assert.deepEqual(await f.page.evaluate(() => window.timeouts), [5_000]);
+        const timeouts = await f.page.evaluate(() => window.timeouts);
+        assert.equal(timeouts.at(-1), 5_000);
+        assert.ok(timeouts.slice(0, -1).every((ms) => ms === 10_000));
         assert.equal(await f.page.evaluate(() => window.loads), 0);
         await f.finish();
       }
@@ -359,7 +367,57 @@ root.render(window.strict?<StrictMode><Harness/></StrictMode>:<Harness/>);
         await f.finish();
       }
     }
+  for (const width of [390, 1440]) {
+    for (const failure of [{ failReads: 1 }, { networkFailures: 1 }]) {
+      const f = await mount(false, width, { ...failure, restored: "opening" });
+      await expect.poll(async () => (await f.restoration()).status).toBe("ready");
+      assert.equal(f.requests.filter((r) => r.kind === "active").length, 2);
+      assert.equal((await f.state()).status, "opening");
+      assert.equal(f.requests.filter((r) => r.method === "POST").length, 0);
+      assert.equal((await f.restoration()).error, "");
+      await f.finish();
+    }
+    const timeout = await mount(false, width, { holdRead: true, fastTimeout: true, restored: "opening" });
+    await expect.poll(async () => (await timeout.restoration()).status).toBe("error");
+    assert.match((await timeout.restoration()).error, /timed out.*GET \/api\/villages\/rooms\/active/);
+    assert.equal(timeout.requests.length, 3);
+    await timeout.page.evaluate(() => {
+      window.options.fastTimeout = false;
+      window.retryScene();
+    });
+    await expect.poll(() => timeout.held.length).toBe(4);
+    assert.equal((await timeout.restoration()).status, "checking");
+    await timeout.release(timeout.held.at(-1));
+    await expect.poll(async () => (await timeout.restoration()).status).toBe("ready");
+    assert.equal((await timeout.state()).status, "opening");
+    assert.equal(timeout.requests.filter((r) => r.method === "POST").length, 0);
+    await timeout.finish();
+
+    const denied = await mount(false, width, { failRead: true, readFailureStatus: 403 });
+    await expect.poll(async () => (await denied.restoration()).status).toBe("error");
+    assert.match((await denied.restoration()).error, /synthetic restoration failure.*HTTP 403/);
+    await denied.page.waitForTimeout(1_100);
+    assert.equal(denied.requests.length, 1);
+    await denied.finish();
+  }
+  for (const action of ["unmount", "retry", "replace"]) {
+    const f = await mount(false, 1280, { failReads: 1, restored: "opening" });
+    await expect.poll(async () => (await f.restoration()).error).toContain("synthetic restoration failure");
+    if (action === "unmount") {
+      await f.page.evaluate(() => window.unmount());
+      await f.page.waitForTimeout(1_100);
+      assert.equal(f.requests.length, 1);
+    } else {
+      await f.page.evaluate((action) => (action === "retry" ? window.retryScene() : window.h.select()), action);
+      await expect.poll(async () => (await f.restoration()).status).toBe("ready");
+      await f.page.waitForTimeout(1_100);
+      assert.equal(f.requests.length, 2);
+      assert.equal((await f.state()).id, action === "replace" ? "B" : "A");
+    }
+    assert.equal(f.requests.filter((r) => r.method === "POST").length, 0);
+    await f.finish();
+  }
   console.log(
-    "Scene restoration lifetimes: unclaimed startup read, exact shared admission, owned greeting/recovery, reset/ABA/replacement, revision/closure, hydration and disposal passed (mounted hooks, synthetic HTTP; single viewport and StrictMode).",
+    "Scene restoration lifetimes: shared admission, greeting/recovery, reset/ABA/replacement, hydration/disposal, bounded HTTP/network/timeout retries, manual recovery and cancellation passed (mounted hooks, synthetic HTTP; StrictMode and desktop/phone).",
   );
 }
