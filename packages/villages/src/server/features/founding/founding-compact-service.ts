@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import type { villagesDebugAgentsEnabled, villagesLogger } from "../../adapters/engine/runtime-host.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import { foundingRequestMessages } from "../../domain/rules/founding-requests.js";
@@ -48,6 +49,7 @@ export function createCompactFounding(ports: CompactFoundingServicePorts) {
       throw new Error("The System context cannot fit the complete Routine request.");
     const debugMode = villagesDebugAgentsEnabled();
     await onModelStart(model.name);
+    await recordLoreUse(context.loreUse, `Routine · ${context.card.name}`);
     const started = performance.now();
     const completion = await completeWithRoom(
       model,

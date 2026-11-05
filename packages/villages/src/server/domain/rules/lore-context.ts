@@ -33,6 +33,7 @@ export function inspectedLoreUse(report: LoreInspection | undefined, target: str
         name,
         ...(bookName ? { bookName } : {}),
         targets: [target],
+        ...(report?.inspectionId ? { inspections: [{ target, id: report.inspectionId }] } : {}),
       })) ?? []
   );
 }

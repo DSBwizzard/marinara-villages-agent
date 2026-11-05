@@ -2,7 +2,6 @@ import { ELEMENT_TAG } from "../../shared/constants.js";
 import { SpriteVisualSettings } from "./SpriteVisualSettings.js";
 import { MapsPanel } from "./MapsPanel.js";
 import { WorldNameSettings } from "./WorldNameSettings.js";
-import { FoundingLore } from "../../shared/LoreChip.js";
 
 import { LoreTokenBudgetField, VillageLorebookPicker } from "../founding/FoundingPanels.js";
 import { SceneryStyleFields } from "../founding/villages-founding-editor";
@@ -103,7 +102,6 @@ export function renderVillageSettingsPage(ports: VillageSettingsPagePorts) {
                   max={snapshot.settings.loreTokenBudgetMax ?? 3200}
                   disabled={busy}
                 />
-                <FoundingLore records={snapshot.settings.foundingLore} />
 
                 <div className={`${ELEMENT_TAG}-row`}>
                   <button

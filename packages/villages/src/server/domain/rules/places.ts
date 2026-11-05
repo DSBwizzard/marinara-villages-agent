@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { readLoreUse } from "../../../shared/helpers/lore.js";
 import type { PlaceSummary } from "../../../shared/contracts/places.js";
 import type { NpcIdentity, PlaceRegistry, WorldPlace } from "../models/places.js";
 import type { VillageState, VillageVenue } from "../models/world.js";
@@ -42,6 +43,7 @@ const operationSchema = z
       .min(1)
       .max(3),
     connectionId: z.string().min(1).max(200),
+    lore: z.array(z.unknown()).max(48).transform(readLoreUse).optional(),
     error: z.string().max(4000).optional(),
   })
   .strict();

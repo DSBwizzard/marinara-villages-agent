@@ -765,6 +765,7 @@ async function foundingArchitecturePrompts() {
     decodeVillageImageDataUrl: unused,
     generateVillageImage: async (input) => {
       assert.deepEqual(input.loreImages, input.prompt.includes("Arches: Blue arches") ? [reference] : []);
+      await input.beforeDispatch?.();
       prompts.push(input.prompt);
       return { dataUrl: "fixture", mime: "image/png", bytes: new Uint8Array([1]) };
     },

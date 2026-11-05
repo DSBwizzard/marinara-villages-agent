@@ -8,11 +8,19 @@ import {
   saveRuntimeDebug,
   runtimeDebug,
   readLoreInspections,
+  rememberLoreInspection,
+  readLoreTrigger,
+  recordLoreUse,
+  readLoreActivity,
 } from "../packages/villages/src/server/adapters/observability/runtime-debug.js";
+import { selectVillageLore } from "../packages/villages/src/server/domain/rules/lore-selection.js";
+import { inspectedLoreUse } from "../packages/villages/src/server/domain/rules/lore-context.js";
 import { registerRuntimeDiagnosticsRoutes } from "../packages/villages/src/server/features/settings/routes.js";
 import Fastify from "fastify";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { backgroundCalls } from "../packages/villages/src/server/adapters/operations/background-context.js";
+import { createTownMapImage } from "../packages/villages/src/server/features/media/town-map-image-service.js";
+import { createImageGeneration } from "../packages/villages/src/server/features/media/image-generation-service.js";
 
 const records = new Map<string, any>();
 const logs: string[] = [];
@@ -114,6 +122,165 @@ async function main() {
         403,
       );
       const beforeInspection = paidCalls;
+      const selected = selectVillageLore(
+        [
+          {
+            id: "text",
+            bookId: "private",
+            name: "Texting",
+            content: "Private body",
+            enabled: true,
+            folderEnabled: true,
+            keys: ["private key"],
+          },
+          {
+            id: "omitted",
+            bookId: "private",
+            name: "Other",
+            content: "Private omitted body",
+            enabled: true,
+            folderEnabled: true,
+            keys: ["unmatched"],
+          },
+        ],
+        { setting: "Unshared private key context" },
+        1600,
+      ).inspection;
+      selected.entries[0]!.images = [
+        {
+          path: "/api/lorebooks/entry-images/11111111-1111-1111-1111-111111111111.png",
+          caption: "Private image caption",
+        },
+      ];
+      const inspectionId = (await rememberLoreInspection(selected))!;
+      assert.doesNotMatch(
+        JSON.stringify(records.get("villages-lore-activity")),
+        /entry-images|Private image caption/,
+        "Image attachments stay transient instead of being copied into activity history",
+      );
+      const reference = { inspectionId, bookId: "private", entryId: "text" };
+      assert.equal((await readLoreActivity()).records.length, 0, "Selection alone is not prompt inclusion");
+      const use = inspectedLoreUse({ ...selected, inspectionId }, "Image");
+      await recordLoreUse(use, "Map artwork");
+      const first = await readLoreActivity();
+      assert.equal(first.records.length, 1);
+      assert.doesNotMatch(JSON.stringify(first), /entry-images|Private image caption/);
+      await recordLoreUse(use, "Map artwork");
+      assert.equal(
+        (await readLoreActivity()).revision,
+        first.revision,
+        "Recovery does not create another unread event",
+      );
+      const summary = await server.inject({ method: "GET", url: "/debug/lore?activity=summary" });
+      assert.equal(summary.statusCode, 200);
+      assert.doesNotMatch(summary.body, /private key|Unshared|Texting|Private body/);
+      const targeted = await server.inject({ method: "POST", url: "/debug/lore", payload: reference });
+      assert.equal(targeted.statusCode, 200, "Explicit creator inspection works without verbose logging");
+      assert.equal(targeted.json().trigger.key, "private key");
+      assert.match(targeted.json().trigger.context.text, /Unshared private key context/);
+      assert.doesNotMatch(
+        targeted.body,
+        /Private body|Private omitted body|unmatched|entry-images|Private image caption/,
+      );
+      assert.doesNotMatch(JSON.stringify(use), /private key|Unshared|Private body/);
+      for (const patch of [{ bookId: "other" }, { entryId: "omitted" }])
+        assert.deepEqual(
+          (await server.inject({ method: "POST", url: "/debug/lore", payload: { ...reference, ...patch } })).json(),
+          { trigger: null },
+        );
+      for (const payload of [
+        { ...reference, inspectionId: "bad" },
+        { ...reference, entryId: "x".repeat(161) },
+        { ...reference, bookId: null },
+        { inspectionId },
+      ])
+        assert.equal((await server.inject({ method: "POST", url: "/debug/lore", payload })).statusCode, 400);
+      const clone = await readLoreTrigger(inspectionId, "private", "text");
+      clone.trigger!.key = "changed";
+      assert.equal((await readLoreTrigger(inspectionId, "private", "text")).trigger?.key, "private key");
+      await saveRuntimeDebug(false);
+      release();
+      release = configureVillagesRuntime(host as Parameters<typeof configureVillagesRuntime>[0]);
+      assert.equal(
+        (await readLoreTrigger(inspectionId, "private", "text")).trigger?.key,
+        "private key",
+        "Evidence survives runtime replacement",
+      );
+      assert.equal((await readLoreActivity()).revision, first.revision);
+      for (let index = 0; index < 200; index++) await rememberLoreInspection(selected);
+      assert.deepEqual(
+        await readLoreTrigger(inspectionId, "private", "text"),
+        { trigger: null },
+        "Retained history has a bounded scope without fabricating old causes",
+      );
+      assert.equal(
+        (await readLoreActivity(true)).revision,
+        first.revision,
+        "Trimming evidence cannot rewind the unread cursor",
+      );
+      const artworkInspection = (await rememberLoreInspection(selected))!;
+      let imagesReady = false,
+        imageDispatches = 0;
+      const generator = createImageGeneration({
+        villagesImageConnectionChoice: async () => ({ enabled: true, connectionId: "art" }),
+        villageEngineJson: async (path) => {
+          if (path === "/api/connections")
+            return [{ id: "art", provider: "image_generation", imageService: "openai", model: "gpt-image-1" }] as any;
+          assert.equal(path, "/api/characters/avatar-generation");
+          imageDispatches++;
+          return { image: "synthetic" } as any;
+        },
+        readLoreImageReferences: async () => {
+          if (!imagesReady) throw Error("Reference unavailable");
+          return ["synthetic-reference"];
+        },
+        decodeVillageImageDataUrl: () => ({ dataUrl: "synthetic", mime: "image/png", bytes: new Uint8Array() }),
+      });
+      const artwork = createTownMapImage({
+        readVillageImageLoreEntries: async (_ids, _context, _limit, _budget, inspect) => {
+          inspect?.({ ...selected, inspectionId: artworkInspection });
+          return ["Texting: Private body"];
+        },
+        generateVillageImage: generator.generateVillageImage,
+        inspectVillageImage: async () => ({ width: 1, height: 1 }),
+      });
+      const beforeArtwork = (await readLoreActivity(true)).revision;
+      await assert.rejects(artwork.generateVillageTownMap({ setting: "Harbor" }), /Reference unavailable/);
+      assert.equal(
+        (await readLoreActivity(true)).revision,
+        beforeArtwork,
+        "Failed image preflight is not injected Lore activity",
+      );
+      assert.equal(imageDispatches, 0);
+      imagesReady = true;
+      await artwork.generateVillageTownMap({ setting: "Harbor" });
+      assert.equal((await readLoreActivity(true)).revision, beforeArtwork + 1);
+      assert.equal(imageDispatches, 1, "Validated artwork records inclusion at its single dispatch");
+      const previousWorld = records.get("villages-village");
+      records.set("villages-village", { data: { seed: "world-one" } });
+      const bound = await readLoreActivity(true);
+      const scopedId = (await rememberLoreInspection({ ...selected, scope: bound.scope }))!;
+      await recordLoreUse(inspectedLoreUse({ ...selected, inspectionId: scopedId }, "Image"), "Map artwork");
+      const worldOne = await readLoreActivity();
+      records.set("villages-village", { data: { seed: "world-two" } });
+      const worldTwo = await readLoreActivity();
+      assert.notEqual(worldTwo.scope, worldOne.scope);
+      assert.equal(worldTwo.records.length, 0);
+      assert.equal(worldTwo.revision, 0);
+      assert.deepEqual(
+        await readLoreTrigger(scopedId, "private", "text"),
+        { trigger: null },
+        "Another Village cannot inspect prior context",
+      );
+      assert.equal(
+        await rememberLoreInspection({ ...selected, scope: worldOne.scope }),
+        undefined,
+        "A lookup returning after a world change cannot enter the new scope",
+      );
+      records.set("villages-village", { data: { seed: "world-one" } });
+      assert.deepEqual(await readLoreActivity(), worldOne, "Returning to a retained Village restores its own history");
+      if (previousWorld) records.set("villages-village", previousWorld);
+      else records.delete("villages-village");
       await saveRuntimeDebug(true);
       for (let index = 0; index < 12; index++)
         runtimeDebug("lore inspection", {

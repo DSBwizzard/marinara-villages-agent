@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import type { inspectVillageImage } from "../../adapters/engine/image-files.js";
 import type { readVillageImageLoreEntries } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection, LoreUse } from "../../../shared/contracts/lore.js";
@@ -69,6 +70,7 @@ export function createTownMapImage(ports: TownMapImagePorts) {
     const usedLore = fittedLoreUse(inspection, parts, retained, "Image");
     const generated = await generateVillageImage({
       loreImages: inspectedLoreImages(inspection, usedLore),
+      beforeDispatch: () => recordLoreUse(usedLore, "Map artwork"),
       sceneryStyleProfileId: input.sceneryStyleProfileId,
       connectionId: typeof input.connectionId === "string" ? input.connectionId : undefined,
       name: "Village map",

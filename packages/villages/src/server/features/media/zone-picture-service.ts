@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createHash } from "node:crypto";
 import type { VillageState, VillageVenueZone } from "../../domain/models/world.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
@@ -263,6 +264,7 @@ export function createZonePictures(
               )
                 throw conflict("The scenery or image connection changed. Retry artwork deliberately.");
               await ports.assertVenueImageAccess(venueId, undefined, undefined, zone.id);
+              await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${zone.name}`);
             },
             connectionId: support!.connectionId,
             referenceImages: references,

@@ -1,4 +1,5 @@
 import { badRequest, VillagesRequestError } from "../../domain/rules/errors.js";
+import { createLoreActivity } from "./lore-activity.js";
 import type { LoreDiagnostic, LoreInspection } from "../../../shared/contracts/lore.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import type { villagesDebugAgentsEnabled, villagesDocuments, villagesLogger } from "../engine/runtime-host.js";
@@ -26,6 +27,7 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
   let showUsageMeter = true;
   let loaded = false;
   let loreInspections: LoreDiagnostic[] = [];
+  const loreActivity = createLoreActivity(ports);
   function resetRuntimeDebug(): void {
     verbose = false;
     showUsageMeter = true;
@@ -119,6 +121,13 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
     return { reports: structuredClone(loreInspections) };
   }
 
-  return { resetRuntimeDebug, readRuntimeDebug, saveRuntimeDebug, runtimeDebug, readLoreInspections };
+  return {
+    resetRuntimeDebug,
+    readRuntimeDebug,
+    saveRuntimeDebug,
+    runtimeDebug,
+    readLoreInspections,
+    ...loreActivity,
+  };
 }
 export type RuntimeDebug = ReturnType<typeof createRuntimeDebug>;

@@ -1,4 +1,5 @@
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { createZonePictures } from "./zone-picture-service.js";
 import type { resolveVillageImageEditing, resolveVillageImageConnectionId } from "./image-generation.js";
@@ -230,6 +231,7 @@ export function createLocationImages(ports: LocationImagePorts) {
         )
           throw conflict("The scenery changed before its image request. Generate again.");
         await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
+        await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${targetZone?.name ?? "Entrance"}`);
       },
       sceneryStyleProfileId: village.sceneryStyleProfileId,
       connectionId,

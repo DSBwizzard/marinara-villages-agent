@@ -1,7 +1,6 @@
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
-import { LoreChip } from "../../shared/LoreChip.js";
 
 export function PreparationScreen({ controller }: { controller: PreparationScreenController }) {
   const { preparationProblem, retryPreparation, screen, snapshot } = controller;
@@ -101,7 +100,6 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
                   return (
                     <div key={kind}>
                       {label} · {status}
-                      <LoreChip entries={entry?.lore} label={`${villager.name} · ${label}`} />
                       {active && preparation?.attempt ? ` · Attempt ${preparation.attempt}` : ""}
                       {entry?.error ? <p className={`${ELEMENT_TAG}-error`}>{entry.error}</p> : null}
                       {preparation?.status === "failed" && entry && entry.status !== "completed" ? (
