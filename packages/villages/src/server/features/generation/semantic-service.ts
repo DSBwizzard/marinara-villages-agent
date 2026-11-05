@@ -124,7 +124,7 @@ function semanticCheckpointKey(stage: string, identity: Record<string, unknown>)
 }
 
 const SYSTEM_PROMPT_LAYOUT =
-  'In the reference input, social.capturedAndScene:{sameAs:"live"} means the complete captured view is identical to social.live, including seed, revisions, records and intentions; it is not absent or empty. Keep every required output field, review, coverage row and exact citation. For supported results, keep reasons to one short factual clause; explain unresolved or rejected results precisely. Do not repeat evidence, rules or unchanged facts in reasons. ';
+  'In the reference input, social.capturedAndScene:{sameAs:"live"} means the complete captured view is identical to social.live, including seed, revisions, records and intentions; it is not absent or empty. Keep every required output field, review, coverage row and exact citation. Use compact JSON without indentation or Markdown fences. For supported results, keep reasons to one short factual clause; explain unresolved or rejected results precisely. Do not repeat evidence, rules or unchanged facts in reasons. ';
 
 function systemMessages(input: unknown, systemPrompt: string, sourceHash: string, promptVersion = 1) {
   const { _memoryWrite: _privateMemoryWrite, ...context } = asRecord(asRecord(input).context);

@@ -230,8 +230,8 @@ async function run() {
     const positions = [
       "## Writing direction",
       "## Complete authored character identity",
-      "## Current Scene circumstances",
       "## Witnessed conversation",
+      "## Current Scene circumstances",
       "## Authored post-history direction",
       "## Response format and evidence metadata",
     ].map((heading) => prompt.indexOf(heading));

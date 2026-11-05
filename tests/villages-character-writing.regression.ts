@@ -146,14 +146,50 @@ async function run() {
       null,
     );
     assert.equal(
-      next.fitted.messages[0].content,
-      prepared.fitted.messages[0].content,
+      next.fitted.messages[0].content.split("## Witnessed conversation")[0],
+      prepared.fitted.messages[0].content.split("## Witnessed conversation")[0],
       "Changing history and source quotes preserves the stable system prefix",
     );
     assert.deepEqual(next.fitted.messages.at(-1), { role: "user", content: "A different question?" });
-    assert.ok(
-      next.fitted.messages.slice(1, -1).some((entry) => entry.content.includes("A changed witnessed conversation.")),
-    );
+    assert.ok(next.fitted.messages[0].content.includes("A changed witnessed conversation."));
+    const originalFit = model.fitContext;
+    model.fitContext = (messages: any[], options: any) =>
+      messages.some((entry) => entry.content.includes("DROP OLD RECAP"))
+        ? { messages: [], ...options }
+        : originalFit(messages, options);
+    try {
+      const constrained = await prepareVenueTurnMessages(
+        {
+          ...session,
+          recap: "DROP OLD RECAP",
+          lines: [
+            {
+              id: "recent-witnessed",
+              speakerId: card.id,
+              role: "assistant",
+              kind: "dialogue",
+              content: "LATEST WITNESSED FACT",
+              heardBy: [card.id],
+              at: stamp,
+            },
+          ],
+        },
+        "A different question?",
+        "chat",
+        "",
+        null,
+      );
+      const kept = constrained.fitted.messages.map((entry) => entry.content).join("\n");
+      assert.ok(!kept.includes("DROP OLD RECAP"));
+      assert.ok(
+        kept.includes("LATEST WITNESSED FACT"),
+        "A tight context drops the older recap before recent witnessed evidence",
+      );
+      assert.ok(kept.includes("DESCRIPTION TAIL") && kept.includes("POST TAIL"));
+      assert.deepEqual(constrained.fitted.messages.at(-1), { role: "user", content: "A different question?" });
+    } finally {
+      model.fitContext = originalFit;
+    }
     assert.deepEqual(
       assembleVenueWritingMessages([{ text: "UNMARKED CARD" }, { text: "optional lore", optional: "lore" }], "input"),
       [
@@ -200,12 +236,9 @@ async function run() {
     assert.ok(!prompt.includes("Narrate only an action the player explicitly submitted"));
     assert.ok(!prompt.includes("SCRIPTED TELL SECRET"));
     assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("Earlier Scene recap:"));
-    const historyIndex = prepared.fitted.messages.findIndex((entry) => entry.content.includes("Earlier Scene recap:"));
-    const instructionIndex = prepared.fitted.messages.findIndex((entry) => entry.content.includes("POST TAIL"));
-    assert.ok(historyIndex > 0 && instructionIndex > historyIndex);
-    assert.equal(prepared.fitted.messages[historyIndex].role, "user");
-    assert.equal(prepared.fitted.messages[instructionIndex].role, "system");
-    assert.ok(prepared.fitted.messages.slice(1, -1).some((entry) => entry.content.includes("Earlier Scene recap:")));
+    assert.equal(prepared.fitted.messages[0].role, "system");
+    assert.ok(prompt.indexOf("## Witnessed conversation") < prompt.indexOf("## Current Scene circumstances"));
+    assert.ok(prompt.indexOf("Authored post-history instructions") > prompt.indexOf("## Current Scene circumstances"));
     row.data.playerBackground = "Neighbors know me through harbor projects.";
     for (const spaceClass of ["community", "residence"]) {
       const exterior = {

@@ -38,7 +38,6 @@ export const EVENT_MEMORY_GUIDANCE =
 
 export type VenueWritingBlock = {
   text: string;
-  role?: "system" | "user";
   optional?: "wish" | "history" | "memory" | "lore";
   lore?: LoreUse;
 };
@@ -57,18 +56,14 @@ export function buildVenueSceneBlocks(sections: VenueWritingSections): VenueWrit
   const headings: Record<keyof VenueWritingSections, string> = {
     direction: "Writing direction",
     identity: "Complete authored character identity",
-    circumstances: "Current Scene circumstances",
     conversation: "Witnessed conversation and recalled memories",
+    circumstances: "Current Scene circumstances",
     authoredInstructions: "Authored post-history direction",
     metadata: "Response format and evidence metadata",
   };
   return (Object.keys(headings) as (keyof VenueWritingSections)[]).flatMap((section) => {
     const blocks = sections[section].filter((block) => block.text.trim());
-    const role: NonNullable<VenueWritingBlock["role"]> =
-      section === "circumstances" || section === "conversation" ? "user" : "system";
-    return blocks.length
-      ? [{ text: `## ${headings[section]}`, role }, ...blocks.map((block) => ({ ...block, role }))]
-      : [];
+    return blocks.length ? [{ text: `## ${headings[section]}` }, ...blocks] : [];
   });
 }
 
@@ -81,17 +76,16 @@ export const VENUE_DEPARTURE_METADATA =
 /** Shared by live generation and isolated evaluations. Never silently shrink a character. */
 export function assembleVenueWritingMessages(blocks: readonly VenueWritingBlock[], input: string) {
   const lore = blocks.filter((block) => block.optional === "lore").map((block) => block.text);
-  const messages: CapabilityLanguageModelMessage[] = [{ role: "system", content: "" }];
-  for (const block of blocks) {
-    if (block.optional === "lore" || !block.text) continue;
-    const role = block.role ?? "system";
-    const previous = messages.at(-1)!;
-    if (previous.role === role) previous.content += (previous.content ? "\n\n" : "") + block.text;
-    else messages.push({ role, content: block.text });
-  }
-  if (lore.length) messages[0].content += (messages[0].content ? "\n\n" : "") + LORE_REFERENCE_RULE;
   return [
-    ...messages,
+    {
+      role: "system",
+      content: blocks
+        .filter((block) => block.optional !== "lore")
+        .map((block) => block.text)
+        .filter(Boolean)
+        .concat(lore.length ? [LORE_REFERENCE_RULE] : [])
+        .join("\n\n"),
+    },
     ...(lore.length
       ? [
           {

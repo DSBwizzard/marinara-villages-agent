@@ -462,6 +462,9 @@ export function createSceneWriting({
             ]
           : []),
         PLAYER_CAPTURE_CONTRACT,
+        "Use compact JSON without indentation or Markdown fences.",
+        "Input source quotes (text IDs, never audibility): " +
+          JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
         zoneEventContract(session)
           .replace(
             ZONE_PLAYER_SPEECH_CONTRACT,
@@ -612,17 +615,14 @@ export function createSceneWriting({
         `Turn: ${mode}. Intended target: ${targetId || "anyone here"}. ${settled === null ? "" : settled.unresolved ? `The wish remains unresolved: ${settled.reason || "meaning or evidence is unclear"}. Clarify naturally through ordinary dialogue. Do not narrate a refusal or fulfillment as established.` : settled.fulfilled ? `A checked wish was fulfilled for ${targetId}: ${settled.wish}.` : "The claim was checked and did not fulfill a wish."}`,
       ]),
       conversation: blocksFor([
-        "Input source quotes (text IDs, never audibility): " +
-          JSON.stringify(playerQuoteSources(message).map(({ id, text }) => ({ id, text }))),
+        `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
+        earlierContext,
         ...lore.map((entry, index) => ({
           text: `Relevant world lore: ${entry}`,
           optional: "lore" as const,
           lore: narrationLore[index],
         })),
         ...optionalKnowledge.map((block) => block.text),
-        `Earlier Scene recap: ${session.recap || "none"}. The recap may name who heard a private exchange.`,
-        "",
-        earlierContext,
       ]),
       authoredInstructions: blocksFor([
         ...active.map((person) => {
@@ -668,7 +668,6 @@ export function createSceneWriting({
     }
     if (storedPlace)
       blocks.push({
-        role: "user",
         text:
           "Current physical Scene state (server authority, not shared character knowledge): " +
           JSON.stringify(sceneLocationContext(session, storedPlace, audience)) +
@@ -686,7 +685,6 @@ export function createSceneWriting({
       : fitVenueWritingMessages(model, blocks, input, maxTokens);
     if (introduction)
       blocks.push({
-        role: "user",
         text: SCENE_DEVELOPMENT_WRITING + " Immutable local admission: " + JSON.stringify(introduction),
       });
     let fitted = captured?.fitted ?? ordinary;
