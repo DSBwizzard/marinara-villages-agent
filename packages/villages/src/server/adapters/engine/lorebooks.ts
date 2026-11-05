@@ -1,6 +1,6 @@
 import { coerceLoreTokenBudget, DEFAULT_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 import { villageEngineJson } from "./engine-transport.js";
-import { runtimeDebug, rememberLoreInspection } from "../observability/runtime-debug.js";
+import { runtimeDebug, rememberLoreInspection, readLoreScope } from "../observability/runtime-debug.js";
 import { badGateway } from "../../domain/rules/errors.js";
 import { selectVillageLore, type LoreEntry } from "../../domain/rules/lore-selection.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
@@ -94,6 +94,7 @@ export async function readVillageLore(
     return [];
   }
   try {
+    const scope = await readLoreScope();
     const books = await listVillageLorebooks(signal);
     const byId = new Map(books.map((book) => [book.id, book]));
     const candidates: LoreEntry[] = [];
@@ -136,11 +137,15 @@ export async function readVillageLore(
       { setting: context, current: options?.current, recent: options?.recent },
       tokenBudget,
     );
+    const requestContext = [options?.current, ...(options?.recent ?? []), context].filter(Boolean).join("\n");
     const inspection: LoreInspection = {
       ...result.inspection,
+      scope,
       purpose: options?.purpose ?? "Lore lookup",
-      inspectionId: rememberLoreInspection(result.inspection),
+      at: new Date().toISOString(),
+      requestContext: requestContext.length > 1200 ? requestContext.slice(0, 1199) + "…" : requestContext,
     };
+    inspection.inspectionId = await rememberLoreInspection(inspection);
     options?.inspect?.(inspection);
     runtimeDebug("lore inspection", inspection);
     return result.selected;

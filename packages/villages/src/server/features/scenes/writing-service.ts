@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { findNpc, npcProfile } from "../../domain/rules/places.js";
 import {
@@ -906,6 +907,7 @@ export function createSceneWriting({
         await semantic.preflight(session, message, narrativeVersion ? (narrativeGrant ?? null) : undefined);
       signal?.throwIfAborted();
     }
+    await recordLoreUse(fitted.lore, `Scene · ${session.placeName || "Exchange"}`);
     trace?.("model request", 0, `${model.model} (${model.connectionId})`);
     let attempts = 0;
     const requestCompletion = () =>

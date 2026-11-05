@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../../adapters/observability/runtime-debug.js";
 import { createHash } from "node:crypto";
 import { ZodError } from "zod";
 import { bindActivationService, createActivationBinding } from "../../../adapters/engine/activation-scope.js";
@@ -63,7 +64,14 @@ export function createWishes(ports: Ports) {
       retryActionId: state.foundingPreparation?.retryActions?.at(-1),
       input: {
         characterId,
-        context: { ...context, loreUse: context.loreUse?.map((entry) => ({ ...entry, targets: ["Initial Wish"] })) },
+        context: {
+          ...context,
+          loreUse: context.loreUse?.map((entry) => ({
+            ...entry,
+            targets: ["Initial Wish"],
+            inspections: entry.inspections?.map((ref) => ({ ...ref, target: "Initial Wish" })),
+          })),
+        },
         revision,
         capturedAt: resident.cardSnapshot.capturedAt,
         now: villageNow().toISOString(),
@@ -79,6 +87,7 @@ export function createWishes(ports: Ports) {
       const fit = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 1536, 1536) });
       if (JSON.stringify(fit.messages) !== JSON.stringify(messages))
         throw new Error("Initial Wish context does not fit.");
+      await recordLoreUse(input.context.loreUse, `Initial Wish · ${input.context.card.name}`);
       const response = await ports.completeWithRoom(model, messages, fit.maxTokens ?? 1536, {
         responseFormat: { type: "json_object" },
         retryEmpty: false,

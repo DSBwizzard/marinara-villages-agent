@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { LoreChip } from "../../shared/LoreChip.js";
 import type { TownMapView, VillageMap, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
@@ -60,7 +59,7 @@ export function MapsPanel({
           <img src={map.artwork.url} alt="" loading="lazy" />
           <span>
             <strong>{map.name}</strong>
-            <LoreChip entries={map.artwork.lore} label={map.name} />
+
             <small>
               {snapshot.settings.venues.filter((venue) => venue.presentation.mapId === map.id).length} Venues
             </small>
@@ -355,7 +354,7 @@ function MapEditor({
         >
           Generate artwork
         </button>
-        <LoreChip entries={draft.image ? draft.lore : map?.artwork.lore} label="Map artwork" />
+
         <label className={P + "-button"}>
           Upload image
           <input

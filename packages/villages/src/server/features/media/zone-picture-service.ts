@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createHash } from "node:crypto";
 import type { VillageState, VillageVenueZone } from "../../domain/models/world.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
@@ -247,6 +248,10 @@ export function createZonePictures(
           if (currentSupport?.signature !== support!.signature)
             throw conflict("The image connection changed. Retry artwork deliberately.");
           if (valid(await ports.readVillageState())?.picture?.claim !== claim) return;
+          await recordLoreUse(
+            included ? inspectedLoreUse(inspection, "Image") : [],
+            `Zone artwork · ${venue.name} · ${zone.name}`,
+          );
           const decoded = await ports.generateVillageImage({
             connectionId: support!.connectionId,
             referenceImages: references,

@@ -1,4 +1,6 @@
 import { chooseLetterFont } from "../../../shared/helpers/letter-font-selection.js";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import { inspectedLoreUse } from "../../domain/rules/lore-context.js";
 import { randomUUID } from "node:crypto";
 import { readWorldName } from "../../../shared/helpers/resident-admission.js";
 import { validTimeZone } from "../../../shared/helpers/zoned-date.js";
@@ -312,6 +314,7 @@ export function createFoundingSetup({
         homeKind: asTrimmedString(raw.homeKind),
       };
     });
+    let inspection: LoreInspection | undefined;
     const lore = await readVillageLore(
       ids,
       loreText(
@@ -322,8 +325,20 @@ export function createFoundingSetup({
       ),
       undefined,
       input.loreTokenBudget === undefined ? village.loreTokenBudget : readLoreTokenBudget(input.loreTokenBudget),
+      {
+        inspect: (report) => {
+          inspection = report;
+        },
+      },
     );
-    return { descriptions: await draftVillageVenueDescriptions(setting, venues, lore) };
+    return {
+      descriptions: await draftVillageVenueDescriptions(
+        setting,
+        venues,
+        lore,
+        inspectedLoreUse(inspection, "Venue descriptions"),
+      ),
+    };
   }
   return {
     runVillageSetup,

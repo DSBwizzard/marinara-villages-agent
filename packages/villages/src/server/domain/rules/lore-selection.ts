@@ -1,4 +1,4 @@
-import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import type { LoreInspection, LoreTrigger } from "../../../shared/contracts/lore.js";
 import { coerceLoreTokenBudget } from "./lore-policy.js";
 
 export type LoreEntry = {
@@ -22,8 +22,8 @@ export type LoreEntry = {
 export type LoreQuery = { current?: string; recent?: readonly string[]; setting: string };
 const compare = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-function keyMatches(key: string, text: string, entry: LoreEntry): boolean {
-  if (typeof key !== "string" || !key.length || key.length > 160) return false;
+function keyPosition(key: string, text: string, entry: LoreEntry): number {
+  if (typeof key !== "string" || !key.length || key.length > 160) return -1;
   const needle = entry.caseSensitive ? key : key.toLowerCase();
   const haystack = entry.caseSensitive ? text : text.toLowerCase();
   let at = haystack.indexOf(needle);
@@ -33,16 +33,53 @@ function keyMatches(key: string, text: string, entry: LoreEntry): boolean {
       (!/[\p{L}\p{N}\p{M}_]$/u.test(haystack.slice(0, at)) &&
         !/^[\p{L}\p{N}\p{M}_]/u.test(haystack.slice(at + needle.length)))
     )
-      return true;
+      return at;
     at = haystack.indexOf(needle, at + 1);
   }
-  return false;
+  return -1;
+}
+const keyMatches = (key: string, text: string, entry: LoreEntry) => keyPosition(key, text, entry) >= 0;
+
+function matchContext(key: string, text: string, source: string, entry: LoreEntry) {
+  const at = keyPosition(key, text, entry);
+  if (at < 0) return undefined;
+  let start = 0,
+    end = 0,
+    folded = 0;
+  const length = (entry.caseSensitive ? key : key.toLowerCase()).length;
+  for (const character of text) {
+    if (folded <= at) start = end;
+    if (folded >= at + length) break;
+    folded += (entry.caseSensitive ? character : character.toLowerCase()).length;
+    end += character.length;
+  }
+  const from = Math.max(0, start - 100),
+    to = Math.min(text.length, end + 140);
+  const prefix = from ? "…" : "";
+  return {
+    text: prefix + text.slice(from, to) + (to < text.length ? "…" : ""),
+    start: start - from + prefix.length,
+    end: end - from + prefix.length,
+    source,
+  };
 }
 
 /** No host I/O, authored regex execution, recursive activation, or model requests. */
 export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuery, budgetValue: number) {
   const budget = coerceLoreTokenBudget(budgetValue);
   const scopes = [query.current ?? "", ...(query.recent ?? []), query.setting];
+  const sources = [
+    "Current request",
+    ...(query.recent ?? []).map((_, index) => `Recent dialogue ${index + 1} of ${query.recent!.length}`),
+    "Setting / generation context",
+  ];
+  const contextFor = (key: string, entry: LoreEntry, indices = scopes.map((_, index) => index)) => {
+    for (const index of indices) {
+      const context = matchContext(key, scopes[index]!, sources[index]!, entry);
+      if (context) return context;
+    }
+    return undefined;
+  };
   const diagnostics: LoreInspection["entries"] = [];
   const candidates: { entry: LoreEntry; rank: number; trace: LoreInspection["entries"][number] }[] = [];
   for (const entry of entries) {
@@ -72,7 +109,8 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
     const hasPrimary = scopes.some(primary);
     const secondary = entry.secondaryKeys ?? [];
     let secondaryMatches = true;
-    let condition: import("../../../shared/contracts/lore.js").LoreTrigger["secondary"];
+    let condition: LoreTrigger["secondary"];
+    let secondaryMatchesContext: LoreTrigger["secondaryMatches"];
     if (entry.selective && secondary.length && !entry.constant) {
       const found = secondary.map((key) => scopes.some((text) => keyMatches(key, text, entry)));
       let logic: NonNullable<typeof condition>["logic"];
@@ -102,6 +140,13 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
           continue;
       }
       condition = { logic, matched: found.filter(Boolean).length, total: found.length };
+      secondaryMatchesContext = secondary
+        .flatMap((key, index) => {
+          if (!found[index]) return [];
+          const context = contextFor(key, entry);
+          return context ? [{ key, text: context.text, source: context.source }] : [];
+        })
+        .slice(0, 3);
     }
     if (!entry.constant && (!hasPrimary || !secondaryMatches)) {
       if (hasPrimary && !secondaryMatches) trace.status = "conditions";
@@ -128,7 +173,17 @@ export function selectVillageLore(entries: readonly LoreEntry[], query: LoreQuer
       ...(key ? { key } : {}),
       caseSensitive: entry.caseSensitive === true,
       matchWholeWords: entry.matchWholeWords === true,
+      ...(key
+        ? {
+            context: contextFor(
+              key,
+              entry,
+              rank === 0 ? [0] : rank === 1 ? (query.recent ?? []).map((_, index) => index + 1) : [scopes.length - 1],
+            ),
+          }
+        : {}),
       ...(condition ? { secondary: condition } : {}),
+      ...(secondaryMatchesContext?.length ? { secondaryMatches: secondaryMatchesContext } : {}),
     };
     candidates.push({ entry, rank, trace });
   }

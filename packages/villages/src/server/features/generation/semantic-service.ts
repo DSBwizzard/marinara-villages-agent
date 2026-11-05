@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { RESIDENT_CONTINUITY_RULE } from "../../../shared/helpers/resident-admission.js";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
@@ -472,6 +473,10 @@ export function createSemanticService(ports: SemanticPorts) {
       if ((fitted.maxTokens ?? output) < 1024)
         throw badGateway("System output allowance is insufficient; no request was made.");
       if (packet.loreInspection) ports.runtimeDebug?.("lore inspection", packet.loreInspection);
+      await recordLoreUse(
+        inspectedLoreUse(packet.loreInspection, "System"),
+        `Scene · ${_scene.placeName || "Exchange"}`,
+      );
       const answer = await ports.completeWithRoom(model, messages, Math.min(fitted.maxTokens ?? output, output), {
         responseFormat: { type: "json_object" },
         temperature: 0.1,

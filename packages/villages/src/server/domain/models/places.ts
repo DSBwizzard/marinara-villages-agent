@@ -43,5 +43,6 @@ export type PlaceOperation = {
   input: { mapId: string; intent: string; placeRevision?: number };
   messages: import("@marinara-engine/shared").CapabilityLanguageModelMessage[];
   connectionId: string;
+  lore?: import("../../../shared/contracts/lore.js").LoreUse[];
   error?: string;
 };

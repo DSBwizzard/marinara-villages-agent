@@ -1,4 +1,5 @@
 import { currentVillageCircumstances } from "../../domain/rules/prompt-preset.js";
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { createZonePictures } from "./zone-picture-service.js";
 import type { resolveVillageImageEditing, resolveVillageImageConnectionId } from "./image-generation.js";
@@ -208,6 +209,8 @@ export function createLocationImages(ports: LocationImagePorts) {
       if (!onlyIfEmpty) throw conflict("The scenery changed while its image was generated. Generate again.");
       return ports.buildVillageSnapshot ? ports.buildVillageSnapshot() : ({} as VillageSnapshot);
     }
+    const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(inspection, "Image") : [];
+    await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${targetZone?.name ?? "Entrance"}`);
     const decoded = await generateVillageImage({
       sceneryStyleProfileId: village.sceneryStyleProfileId,
       connectionId,
@@ -230,7 +233,6 @@ export function createLocationImages(ports: LocationImagePorts) {
       width: LOCATION_IMAGE_WIDTH,
       height: LOCATION_IMAGE_HEIGHT,
     });
-    const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(inspection, "Image") : [];
     return setVillageVenueImage(
       venueId,
       { ...image, ...(usedLore.length ? { lore: usedLore } : {}) },

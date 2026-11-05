@@ -9,6 +9,7 @@ import {
   saveRuntimeDebug,
   readLoreInspections,
   readLoreTrigger,
+  readLoreActivity,
 } from "../../adapters/observability/runtime-debug.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
@@ -154,42 +155,55 @@ export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
       return fail(reply, error, "inspecting lorebooks");
     }
   });
-  app.post<{ Body: { query?: unknown; inspectionId?: unknown; bookId?: unknown; entryId?: unknown } }>(
-    "/debug/lore",
-    { bodyLimit: 12000 },
-    async (request, reply) => {
-      try {
-        if (
-          request.body &&
-          typeof request.body === "object" &&
-          ["inspectionId", "bookId", "entryId"].some((key) => key in request.body)
-        )
-          return readLoreTrigger(request.body.inspectionId, request.body.bookId, request.body.entryId);
-        await readLoreInspections(); // Explicit creator switch; no ordinary Scene endpoint exposes these records.
-        const query = request.body?.query;
-        if (typeof query !== "string" || query.length > 2000) throw badRequest("Use a query within 2,000 characters.");
-        const state = await readVillageAuthority();
-        let report: LoreInspection | undefined;
-        await readVillageLore(
-          state.selectedLorebookIds,
-          [state.setting, state.worldName, ...currentVillageCircumstances(state)].join("\n"),
-          undefined,
-          state.loreTokenBudget,
-          {
-            current: query,
-            purpose: "Key test",
-            inspect: (inspection) => {
-              report = inspection;
-            },
-          },
+  app.post<{
+    Body: {
+      action?: unknown;
+      query?: unknown;
+      inspectionId?: unknown;
+      bookId?: unknown;
+      entryId?: unknown;
+      target?: unknown;
+    };
+  }>("/debug/lore", { bodyLimit: 12000 }, async (request, reply) => {
+    try {
+      if (request.body?.action === "summary" || request.body?.action === "activity")
+        return await readLoreActivity(request.body.action === "summary");
+      if (request.body?.action !== undefined) throw badRequest("Choose a Lore activity action.");
+      if (
+        request.body &&
+        typeof request.body === "object" &&
+        ["inspectionId", "bookId", "entryId"].some((key) => key in request.body)
+      )
+        return await readLoreTrigger(
+          request.body.inspectionId,
+          request.body.bookId,
+          request.body.entryId,
+          request.body.target,
         );
-        await readLoreInspections(); // The creator may have switched inspection off while Engine was being read.
-        return { report };
-      } catch (error) {
-        return fail(reply, error, "testing lorebook keys");
-      }
-    },
-  );
+      await readLoreInspections(); // Explicit creator switch; no ordinary Scene endpoint exposes these records.
+      const query = request.body?.query;
+      if (typeof query !== "string" || query.length > 2000) throw badRequest("Use a query within 2,000 characters.");
+      const state = await readVillageAuthority();
+      let report: LoreInspection | undefined;
+      await readVillageLore(
+        state.selectedLorebookIds,
+        [state.setting, state.worldName, ...currentVillageCircumstances(state)].join("\n"),
+        undefined,
+        state.loreTokenBudget,
+        {
+          current: query,
+          purpose: "Key test",
+          inspect: (inspection) => {
+            report = inspection;
+          },
+        },
+      );
+      await readLoreInspections(); // The creator may have switched inspection off while Engine was being read.
+      return { report };
+    } catch (error) {
+      return fail(reply, error, "testing lorebook keys");
+    }
+  });
   app.get("/debug/runtime", async (_request, reply) => {
     try {
       return await readRuntimeDebug();

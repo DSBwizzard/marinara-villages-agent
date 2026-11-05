@@ -10,6 +10,8 @@ import {
   readLoreInspections,
   rememberLoreInspection,
   readLoreTrigger,
+  recordLoreUse,
+  readLoreActivity,
 } from "../packages/villages/src/server/adapters/observability/runtime-debug.js";
 import { selectVillageLore } from "../packages/villages/src/server/domain/rules/lore-selection.js";
 import { inspectedLoreUse } from "../packages/villages/src/server/domain/rules/lore-context.js";
@@ -142,24 +144,33 @@ async function main() {
         { setting: "Unshared private key context" },
         1600,
       ).inspection;
-      const inspectionId = rememberLoreInspection(selected)!;
+      const inspectionId = (await rememberLoreInspection(selected))!;
       const reference = { inspectionId, bookId: "private", entryId: "text" };
-      const targeted = await server.inject({ method: "POST", url: "/debug/lore", payload: reference });
-      assert.equal(targeted.statusCode, 200, "An explicit notice click works without verbose logging");
-      assert.equal(targeted.json().trigger.key, "private key");
-      assert.doesNotMatch(targeted.body, /Private body|Unshared|context|unmatched/);
-      assert.doesNotMatch(
-        JSON.stringify(inspectedLoreUse({ ...selected, inspectionId }, "Image")),
-        /private key|Private body|Unshared/,
+      assert.equal((await readLoreActivity()).records.length, 0, "Selection alone is not prompt inclusion");
+      const use = inspectedLoreUse({ ...selected, inspectionId }, "Image");
+      await recordLoreUse(use, "Map artwork");
+      const first = await readLoreActivity();
+      assert.equal(first.records.length, 1);
+      await recordLoreUse(use, "Map artwork");
+      assert.equal(
+        (await readLoreActivity()).revision,
+        first.revision,
+        "Recovery does not create another unread event",
       );
-      for (const patch of [{ bookId: "other" }, { entryId: "omitted" }]) {
-        const unavailable = await server.inject({
-          method: "POST",
-          url: "/debug/lore",
-          payload: { ...reference, ...patch },
-        });
-        assert.deepEqual(unavailable.json(), { trigger: null });
-      }
+      const summary = await server.inject({ method: "POST", url: "/debug/lore", payload: { action: "summary" } });
+      assert.equal(summary.statusCode, 200);
+      assert.doesNotMatch(summary.body, /private key|Unshared|Texting|Private body/);
+      const targeted = await server.inject({ method: "POST", url: "/debug/lore", payload: reference });
+      assert.equal(targeted.statusCode, 200, "Explicit creator inspection works without verbose logging");
+      assert.equal(targeted.json().trigger.key, "private key");
+      assert.match(targeted.json().trigger.context.text, /Unshared private key context/);
+      assert.doesNotMatch(targeted.body, /Private body|Private omitted body|unmatched/);
+      assert.doesNotMatch(JSON.stringify(use), /private key|Unshared|Private body/);
+      for (const patch of [{ bookId: "other" }, { entryId: "omitted" }])
+        assert.deepEqual(
+          (await server.inject({ method: "POST", url: "/debug/lore", payload: { ...reference, ...patch } })).json(),
+          { trigger: null },
+        );
       for (const payload of [
         { ...reference, inspectionId: "bad" },
         { ...reference, entryId: "x".repeat(161) },
@@ -167,25 +178,58 @@ async function main() {
         { inspectionId },
       ])
         assert.equal((await server.inject({ method: "POST", url: "/debug/lore", payload })).statusCode, 400);
-      await saveRuntimeDebug(false);
-      assert.equal(readLoreTrigger(inspectionId, "private", "text").trigger?.key, "private key");
-      const clone = readLoreTrigger(inspectionId, "private", "text");
+      const clone = await readLoreTrigger(inspectionId, "private", "text");
       clone.trigger!.key = "changed";
-      assert.equal(readLoreTrigger(inspectionId, "private", "text").trigger?.key, "private key");
-      for (let index = 0; index < 100; index++) rememberLoreInspection(selected);
-      assert.deepEqual(
-        readLoreTrigger(inspectionId, "private", "text"),
-        { trigger: null },
-        "Old references expire rather than resolving to a newer lookup",
-      );
-      const beforeReset = rememberLoreInspection(selected)!;
+      assert.equal((await readLoreTrigger(inspectionId, "private", "text")).trigger?.key, "private key");
+      await saveRuntimeDebug(false);
       release();
       release = configureVillagesRuntime(host as Parameters<typeof configureVillagesRuntime>[0]);
-      assert.deepEqual(
-        readLoreTrigger(beforeReset, "private", "text"),
-        { trigger: null },
-        "Trigger details stay inside the originating activation",
+      assert.equal(
+        (await readLoreTrigger(inspectionId, "private", "text")).trigger?.key,
+        "private key",
+        "Evidence survives runtime replacement",
       );
+      assert.equal((await readLoreActivity()).revision, first.revision);
+      for (let index = 0; index < 200; index++) await rememberLoreInspection(selected);
+      assert.deepEqual(
+        await readLoreTrigger(inspectionId, "private", "text"),
+        { trigger: null },
+        "Retained history has a bounded scope without fabricating old causes",
+      );
+      assert.equal(
+        (await readLoreActivity(true)).revision,
+        first.revision,
+        "Trimming evidence cannot rewind the unread cursor",
+      );
+      const previousWorld = records.get("villages-village");
+      records.set("villages-village", { data: { seed: "world-one" } });
+      const bound = await readLoreActivity(true);
+      const scopedId = (await rememberLoreInspection({ ...selected, scope: bound.scope }))!;
+      await recordLoreUse(inspectedLoreUse({ ...selected, inspectionId: scopedId }, "Image"), "Map artwork");
+      const worldOne = await readLoreActivity();
+      records.set("villages-village", { data: { seed: "world-two" } });
+      const worldTwo = await readLoreActivity();
+      assert.notEqual(worldTwo.scope, worldOne.scope);
+      assert.equal(worldTwo.records.length, 0);
+      assert.equal(worldTwo.revision, 0);
+      assert.deepEqual(
+        await readLoreTrigger(scopedId, "private", "text"),
+        { trigger: null },
+        "Another Village cannot inspect prior context",
+      );
+      assert.equal(
+        await rememberLoreInspection({ ...selected, scope: worldOne.scope }),
+        undefined,
+        "A lookup returning after a world change cannot enter the new scope",
+      );
+      records.set("villages-village", { data: { seed: "world-one" } });
+      assert.equal(
+        (await readLoreActivity()).records.length,
+        1,
+        "Returning to a retained Village restores its own history",
+      );
+      if (previousWorld) records.set("villages-village", previousWorld);
+      else records.delete("villages-village");
       await saveRuntimeDebug(true);
       for (let index = 0; index < 12; index++)
         runtimeDebug("lore inspection", {

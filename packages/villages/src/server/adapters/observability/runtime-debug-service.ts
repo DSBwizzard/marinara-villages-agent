@@ -1,6 +1,6 @@
 import { badRequest, VillagesRequestError } from "../../domain/rules/errors.js";
-import { randomUUID } from "node:crypto";
-import type { LoreDiagnostic, LoreInspection, LoreTrigger } from "../../../shared/contracts/lore.js";
+import { createLoreActivity } from "./lore-activity.js";
+import type { LoreDiagnostic, LoreInspection } from "../../../shared/contracts/lore.js";
 import { VILLAGES_PACKAGE_ID } from "../engine/runtime-host.js";
 import type { villagesDebugAgentsEnabled, villagesDocuments, villagesLogger } from "../engine/runtime-host.js";
 import type { venueDebugContext } from "../operations/operation-context.js";
@@ -27,13 +27,12 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
   let showUsageMeter = true;
   let loaded = false;
   let loreInspections: LoreDiagnostic[] = [];
-  const loreTriggers = new Map<string, { id: string; bookId: string; trigger: LoreTrigger }[]>();
+  const loreActivity = createLoreActivity(ports);
   function resetRuntimeDebug(): void {
     verbose = false;
     showUsageMeter = true;
     loaded = false;
     loreInspections = [];
-    loreTriggers.clear();
   }
   function engineEnabled(): boolean {
     try {
@@ -122,64 +121,13 @@ export function createRuntimeDebug(ports: RuntimeDebugPorts) {
     return { reports: structuredClone(loreInspections) };
   }
 
-  function rememberLoreInspection(report: LoreInspection): string | undefined {
-    const entries = report.entries
-      .filter((entry) => entry.status === "included" && entry.trigger)
-      .slice(0, 24)
-      .map((entry) => {
-        const reason = entry.trigger!;
-        return {
-          id: entry.id,
-          bookId: entry.bookId,
-          trigger: {
-            constant: reason.constant,
-            match: reason.match,
-            ...(reason.key ? { key: reason.key.slice(0, 160) } : {}),
-            caseSensitive: reason.caseSensitive,
-            matchWholeWords: reason.matchWholeWords,
-            ...(reason.secondary
-              ? {
-                  secondary: {
-                    logic: reason.secondary.logic,
-                    matched: reason.secondary.matched,
-                    total: reason.secondary.total,
-                  },
-                }
-              : {}),
-          },
-        };
-      });
-    if (!entries.length) return undefined;
-    const id = randomUUID();
-    loreTriggers.set(id, entries);
-    // shortcut: retain the latest 100 lookups in this activation; persist only if historical inspection is needed.
-    if (loreTriggers.size > 100) loreTriggers.delete(loreTriggers.keys().next().value!);
-    return id;
-  }
-  function readLoreTrigger(inspectionId: unknown, bookId: unknown, entryId: unknown) {
-    if (
-      typeof inspectionId !== "string" ||
-      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(inspectionId) ||
-      typeof bookId !== "string" ||
-      !bookId ||
-      bookId.length > 160 ||
-      typeof entryId !== "string" ||
-      !entryId ||
-      entryId.length > 160
-    )
-      throw badRequest("Choose a recorded Lorebook entry.");
-    const entry = loreTriggers.get(inspectionId)?.find((row) => row.bookId === bookId && row.id === entryId);
-    return { trigger: entry ? structuredClone(entry.trigger) : null };
-  }
-
   return {
     resetRuntimeDebug,
     readRuntimeDebug,
     saveRuntimeDebug,
     runtimeDebug,
     readLoreInspections,
-    rememberLoreInspection,
-    readLoreTrigger,
+    ...loreActivity,
   };
 }
 export type RuntimeDebug = ReturnType<typeof createRuntimeDebug>;

@@ -251,6 +251,7 @@ async function main() {
   assert.equal(ranked.selected[2], "mountain: Complete fact.");
   assert.equal(ranked.inspection.entries.find((entry) => entry.id === "constant")?.status, "budget");
   assert.deepEqual(ranked.inspection.entries.find((entry) => entry.id === "guild")?.trigger, {
+    context: { text: "guild", start: 0, end: 5, source: "Current request" },
     constant: false,
     match: "current",
     key: "guild",
@@ -266,6 +267,7 @@ async function main() {
     {
       constant: true,
       match: "setting",
+      context: { text: "texting", start: 0, end: 4, source: "Setting / generation context" },
       key: "text",
       caseSensitive: false,
       matchWholeWords: false,
@@ -289,6 +291,21 @@ async function main() {
     total: 1,
   });
   assert.equal(trigger({ caseSensitive: true, matchWholeWords: true }, "text")?.caseSensitive, true);
+  const wholeWord = trigger({ matchWholeWords: true }, "textile text")!.context!;
+  assert.equal(wholeWord.start, 8, "The excerpt uses the actual whole-word hit rather than an earlier substring");
+  const unicode = trigger({}, "İ𐐀TEXT")!.context!;
+  assert.equal(
+    unicode.text.slice(unicode.start, unicode.end),
+    "TEXT",
+    "Folded Unicode offsets highlight original text",
+  );
+  const recent = selectVillageLore(
+    [make("text")],
+    { setting: "", recent: ["Nothing here", "Text from a witnessed line"] },
+    1600,
+  ).inspection.entries[0]!.trigger!.context!;
+  assert.equal(recent.source, "Recent dialogue 2 of 2");
+  assert.match(recent.text, /witnessed line/);
   const match = (patch: Partial<LoreEntry>, text: string) =>
     selectVillageLore([make("harbor", patch)], { setting: text }, 1600).selected.length;
   assert.equal(match({}, "HARBORSIDE"), 1);

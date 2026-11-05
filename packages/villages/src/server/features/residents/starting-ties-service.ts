@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { rememberDomainFact } from "../../domain/rules/domain-memories.js";
 import { z } from "zod";
@@ -295,6 +296,7 @@ export function createStartingTies(ports: StartingTiesPorts) {
         (fitted.maxTokens ?? maxTokens) < 1024
       )
         throw new Error("Starting relationship evidence does not fit System context.");
+      await recordLoreUse(input.loreUse, "Starting relationships");
       const answer = await ports.completeWithRoom(model, messages, Math.min(maxTokens, fitted.maxTokens ?? maxTokens), {
         responseFormat: { type: "json_object" },
         retryEmpty: false,
