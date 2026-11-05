@@ -12,7 +12,6 @@ import {
   defaultRelationshipState,
 } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import {
-  RESIDENT_ACTION_SHAPE,
   assertResidentActionWitnesses,
   readResidentActions,
   reconcileResidentActions,
@@ -2041,16 +2040,19 @@ async function main() {
     systemPrompt.indexOf("Return exactly one JSON object."),
   );
   assert(
-    rootExchangeExample.includes("residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}"),
+    rootExchangeExample.includes(
+      "residentActionReview:{version:2,reviewed:[],additionalActions:[],decisions:[],coverage:[]}",
+    ),
     "The required V2 review belongs in the complete root response example even with no proposed access actions",
   );
-  assert(systemPrompt.includes("residentActionReview is required even when residentActions is empty"));
+  assert(systemPrompt.includes("List each exactly once in reviewed, even when residentActions is empty"));
   assert(
     systemPrompt.includes("Return {sourceHash,intent:{"),
     "The combined response example must contain required intent inside the single exchange object",
   );
   assert(
-    systemPrompt.includes(RESIDENT_ACTION_SHAPE),
+    systemPrompt.includes('additionalActions:[{id:"unique action ID"') &&
+      systemPrompt.includes("source:{segment:zero-based current segment index}"),
     "System needs the full additional-action schema even when Narration proposes []",
   );
   assert.throws(
@@ -2328,6 +2330,33 @@ async function main() {
   assert(
     rejected.some((row) => row.detail?.reason === "semantic-exchange"),
     "Failed review uses the existing retained-response journal",
+  );
+  actionReview = () => ({
+    version: 2,
+    reviewed: [0],
+    additionalActions: [{ ...makeAction(accessLine.content), source: { segment: 0 } }],
+    decisions: [{ id: "invitation", status: "accepted", reason: "Current visit." }],
+    coverage: [{ segment: 0, status: "actions", actionIds: ["invitation"], reason: "Explicit invitation." }],
+  });
+  const compactScene = { ...accessScene, liveSceneVersion: 1 as const };
+  const compactResult = await service.exchange(compactScene, "Compact live invitation", [accessLine], null, [], true);
+  assert.equal(compactResult.access!.checks.length, 1, "Indexed additional actions reach the existing authority check");
+  assert.match(systemPrompt, /return liveAfter only/);
+  assert.doesNotMatch(systemPrompt, /expectedRevision,sceneAfter|lineIds:\[\],sceneItems:/);
+  const compactSnapshot = checkpoints.get(compactResult.checkpointKey + ":input") as any;
+  assert.equal(compactSnapshot.outputContractVersion, 1);
+  assert.equal(Object.hasOwn(compactSnapshot.input, "outputContractVersion"), false);
+  assert.equal(compactResult.sourceHash, semanticHash(compactSnapshot.input));
+  assert.deepEqual((compactResult.effects.residentActionReceipt as any).review.additionalActions[0].source, {
+    speakerId: accessLine.speakerId,
+    quote: accessLine.content,
+  });
+  delete compactSnapshot.outputContractVersion;
+  checkpoints.delete(compactResult.checkpointKey);
+  await assert.rejects(
+    service.exchange(compactScene, "Compact live invitation", [accessLine], null, [], true),
+    /review is incomplete/,
+    "The current Scene cannot silently upgrade an unmarked frozen decoder",
   );
   actionReview = (p) => reviewFor(p.input.evidence, p.input.residentActions);
   state.villagers = [{ characterId: "host", cardSnapshot: { name: "Host" } }] as any;

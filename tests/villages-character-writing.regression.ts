@@ -26,6 +26,7 @@ import {
 import { prepareVenueTurnMessages } from "../packages/villages/src/server/features/scenes/writing.js";
 import { buildResidentPlanningMessages } from "./fixtures/resident-planning.fixture.js";
 import { captureSceneContinuity } from "../packages/villages/src/server/domain/rules/scene-continuity.js";
+import { RESIDENT_CONTINUITY_RULE } from "../packages/villages/src/shared/helpers/resident-admission.js";
 
 const stamp = new Date().toISOString();
 const source = {
@@ -134,6 +135,15 @@ async function run() {
     };
     const prepared = await prepareVenueTurnMessages(session, "What is your vision for our future?", "chat", "", null);
     const prompt = prepared.fitted.messages.map((entry) => entry.content).join("\n");
+    assert.equal(
+      prompt.split(RESIDENT_CONTINUITY_RULE).length - 1,
+      1,
+      "Scene policy occurs once while authored admission stays complete",
+    );
+    assert(
+      venueCardProfile(card).includes(RESIDENT_CONTINUITY_RULE) === Boolean(card.admission),
+      "Other profile callers retain their admission policy",
+    );
     assert.ok(
       prompt.includes("Return wishChanges: is a phrase in this authored card."),
       "Authored text cannot trigger block deletion",

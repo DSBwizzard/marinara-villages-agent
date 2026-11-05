@@ -70,6 +70,17 @@ export const RESIDENT_ACTION_REVIEW_V1 = RESIDENT_ACTION_REVIEW_BASE.replace(
   "Each action must be referenced by coverage of its exact source segment.",
 );
 
+export const RESIDENT_ACTION_COMPACT_REVIEW =
+  'Return residentActionReview:{version:2,reviewed:[current segment indexes],additionalActions:[],decisions:[{id,status:"accepted|rejected|unresolved",reason}],coverage:[{segment,status:"actions|unresolved",actionIds:[],reason}]}. ' +
+  "Independently review EVERY player-heard non-player segment, including narration, for all expressed player-access actions. List each exactly once in reviewed, even when residentActions is empty. coverage contains only segments with actions or unresolved meaning; a reviewed index omitted from coverage explicitly means no player-access action. Never omit an action because Narration omitted its proposal. Each coverage segment occurs once and belongs to reviewed. " +
+  RESIDENT_ACTION_SHAPE.replace("residentActions:", "additionalActions:").replace(
+    'source:{speakerId,quote:"exact full current segment text"}',
+    "source:{segment:zero-based current segment index}",
+  ) +
+  ". Indexed sources bind to the entire exact saved segment and speaker, never an excerpt or invented words. Adjudicate every proposed and additional action exactly once in decisions. Never silently change a proposal: reject mismatches. Each action, including rejected/unresolved ones, needs coverage at its exact primary source. Corroborating dialogue by that actor may also cite its ID. " +
+  "Check issuer intent and authority, player as visitor, destination, conditions, timing and visit versus standing scope. Unclear scope or unsupported conditions remain unresolved, never broadened. Standing grants require explicit unconditional controller speech, never gestures or a one-time welcome. revoke-standing withdraws standing permission; dismiss ends current access. Invitations enable player choice, never movement. All rejected/unresolved dispositions hold the draft. Return access:[] and relationshipChanges.permissions:[]; code constructs these from accepted actions. Set authority flags for the resulting accepted actions. " +
+  'Only visitorId:"player" belongs in this ledger. Resident-only invitations/refusals/permission do not grant player access or change resident movement rules. Keep each visitor\'s conditions separate. ';
+
 const outcomes = new Set([
   "invite-now",
   "invite-later",

@@ -11,6 +11,7 @@ export function venueCardProfile(
   card: Partial<Omit<VillagerCard, "tags">> & Pick<VillagerCard, "id" | "name">,
   playerName = "the player",
   includePostHistory = true,
+  includeAdmissionPolicy = true,
 ): string {
   const fields = [
     ["System prompt", card.systemPrompt],
@@ -29,7 +30,7 @@ export function venueCardProfile(
       .filter(([, value]) => value?.trim())
       .map(([label, value]) => `${label}:\n${expand(value!)}`)
       .join("\n\n") +
-    (card.admission ? "\n\n" + renderResidentAdmission(card.name, card.admission) : "")
+    (card.admission ? "\n\n" + renderResidentAdmission(card.name, card.admission, includeAdmissionPolicy) : "")
   );
 }
 

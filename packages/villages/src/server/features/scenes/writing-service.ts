@@ -320,8 +320,8 @@ export function createSceneWriting({
             (person.doing || "unspecified").slice(0, 120),
         );
         return session.contactGeneration?.zoneEvents
-          ? venueCardProfile(card, player.name, false)
-          : venueCardProfile(card, player.name, false).slice(0, 600);
+          ? venueCardProfile(card, player.name, false, false)
+          : venueCardProfile(card, player.name, false, false).slice(0, 600);
       }
       const sceneOccupant = session.sceneAttendance?.occupants.find(
         (entry) => entry.characterId === person.characterId,
@@ -343,7 +343,7 @@ export function createSceneWriting({
           .filter(Boolean)
           .join("\n"),
       );
-      return venueCardProfile(card, player.name, false);
+      return venueCardProfile(card, player.name, false, false);
     });
     const audience = active.map((person) => person.characterId);
     const storedPlace = findLocation(village, session.placeId);
@@ -629,7 +629,7 @@ export function createSceneWriting({
           const resident = village.villagers.find((entry) => entry.characterId === person.characterId);
           const card = resident ? readEffectiveVillagerCard(resident) : null;
           return card?.postHistoryInstructions
-            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${"\n" + renderResidentAdmission(card.name, card.admission)}`
+            ? `Authored post-history instructions for ${card.name}:\n${card.postHistoryInstructions.replace(/\{\{char\}\}/gi, card.name).replace(/\{\{user\}\}/gi, player.name)}${"\n" + renderResidentAdmission(card.name, card.admission, false)}`
             : "";
         }),
       ]),

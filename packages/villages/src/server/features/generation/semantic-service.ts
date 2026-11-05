@@ -32,12 +32,14 @@ import { readContactMoves } from "../../domain/rules/venue-contact.js";
 import { routeZoneEvents, zoneHearingContract } from "../../domain/rules/zone-events.js";
 import {
   reconcileResidentActions,
+  RESIDENT_ACTION_COMPACT_REVIEW,
   RESIDENT_ACTION_PUBLIC_SOCIAL,
   RESIDENT_ACTION_REVIEW,
   RESIDENT_ACTION_REVIEW_V1,
   RESIDENT_ACTION_SHAPE,
   type ResidentAccessAction,
 } from "../../domain/rules/resident-actions.js";
+import { expandSceneActionReview } from "../../domain/rules/scene-semantic-wire.js";
 import {
   assertSceneMovementCapacity,
   residentLocalIdsAt,
@@ -49,6 +51,7 @@ import {
   readSceneBoundary,
   readSceneHalt,
   SCENE_BOUNDARY_INSTRUCTION,
+  SCENE_BOUNDARY_REVIEW,
   SCENE_HALT_INSTRUCTION,
 } from "../../domain/rules/scene-halt.js";
 import {
@@ -186,6 +189,7 @@ function exchangeInstruction(
     narrativeGrant?: NarrativeAdmission | null;
     residentActions?: ResidentAccessAction[];
   },
+  compact = false,
 ): string {
   return (
     (scene.operation?.input.hearingTimelineVersion === 1
@@ -201,7 +205,9 @@ function exchangeInstruction(
       : "") +
     (residentActions
       ? (actionContractV2
-          ? RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW + " " + RESIDENT_ACTION_PUBLIC_SOCIAL
+          ? (compact ? RESIDENT_ACTION_COMPACT_REVIEW : RESIDENT_ACTION_SHAPE + ". " + RESIDENT_ACTION_REVIEW) +
+            " " +
+            RESIDENT_ACTION_PUBLIC_SOCIAL
           : RESIDENT_ACTION_REVIEW_V1) + " "
       : "") +
     (combined
@@ -220,10 +226,14 @@ function exchangeInstruction(
       : "") +
     (context.preservation ? 'halt:{reason:"none",quote:"",appointments:[]},' : "") +
     "consistent:true,reason,playerAgencyViolation:null,presentation:[],authority:{physical:false,access:false,projects:false,standing:false,social:false},action:null,memoryChanges:[],relationshipChanges:{changes:[],permissions:[],disclosures:[],intentions:[]},wishChanges:[],projectSpeech:[],access:[],events:{moves:[],departures:[],contactEnd:[]}" +
-    (actionContractV2 ? ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}" : "") +
+    (actionContractV2
+      ? compact
+        ? ",residentActionReview:{version:2,reviewed:[],additionalActions:[],decisions:[],coverage:[]}"
+        : ",residentActionReview:{version:1,additionalActions:[],decisions:[],coverage:[]}"
+      : "") +
     "}. Return exactly one JSON object. " +
     'Use input.presentation to interpret visible acting in the completed draft, in this same response: presentation:[{segment:zero-based draft index,staging:[{characterId,expression?,look?:{target:"player"}|{target:"villager",characterId}|{target:"direction",direction:"left|right"}}]}]. Choose only listed expression IDs matching the visible emotion; preserve prior expression when unchanged or use the listed default when uncertain. Interpret attention from the actual addressee or narrated look; screen placement is handled by code. Omit uncertain cues. Artwork labels select images only and establish no story events, action, knowledge, attendance, consent or effects. An action pose such as eating or waving fits only when already occurring in the draft. Cues are visual only: never alter speech targets, hearing or physical positions. ' +
-    (actionContractV2
+    (actionContractV2 && !compact
       ? 'residentActionReview is required even when residentActions is empty: independently review every player-heard non-player segment. Populate coverage for each such segment; no access action means status:"none" with actionIds:[], not an omitted review or empty coverage. '
       : "") +
     (combined ? "intent belongs inside that same root object, never appended after its closing brace. " : "") +
@@ -242,10 +252,7 @@ function exchangeInstruction(
     (context.projects
       ? 'projectSpeech rows use {projectId,revision,kind:"approval|builder|withdrawal",speakerId,citations:[{segment,quote}]}. Cite exact dialogue by this speaker for only supplied Project IDs and revisions. Approval and volunteering are independent and can share the same witnessed exchange. Approval requires unconditional consent to the specific physical design; builder means personal willingness to lead that design, not mere capability or the player assigning work. Withdrawal requires an explicit present withdrawal of approval or willingness. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. projects authority is true exactly when projectSpeech is nonempty. '
       : "No relevant Project IDs are supplied: return projectSpeech:[] and projects authority false. New venue and residence requests still use events. No speech starts, resumes, accelerates or completes work. Gifts and objects have no mechanical Project effects. ") +
-    (actionContractV2
-      ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
-      : LIVE_MEMORY_INSTRUCTION
-    )
+    relationshipInstruction(compact && scene.liveSceneVersion === 1, actionContractV2)
       .replaceAll('evidence:["player",0]', "evidence:[0]")
       .replaceAll('lineIds:["player",0]', "lineIds:[0]")
       .replace(
@@ -255,16 +262,39 @@ function exchangeInstruction(
       .replace('"player" means the latest player line.', "Captured player speech uses its numeric segment index.")
       .replace('"player" for the current player line, or ', "") +
     " " +
-    " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire is valid. " +
+    (compact
+      ? " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire means wishChanges:[]. "
+      : " Consider only the owner’s captured wishes and grounded new social desires. No relevant desire is valid. ") +
     WISH_PROPOSAL_INSTRUCTION.replace('evidence:["player",0]', "evidence:[0]") +
     ' Cite captured player speech by its numeric evidence index; never cite the complete private input as "player".' +
     " Use numeric indexes matching evidence draft:N for Wish evidence. Existing goals keep exact IDs; genuinely new social desires use new:local-key. Memory learners must witness all supporting context. " +
     (actionContractV2 ? "" : " Relationship permissions describe standing grants/revocations only.") +
     " Disclosures require actual speech heard by the player. Wish conditions/corrections reflect semantic meaning without requiring particular words. " +
     (context.preservation
-      ? SCENE_HALT_INSTRUCTION + (context.preservation.sceneBoundaryVersion === 1 ? SCENE_BOUNDARY_INSTRUCTION : "")
+      ? compact && context.preservation.sceneBoundaryVersion === 1
+        ? SCENE_BOUNDARY_REVIEW
+        : SCENE_HALT_INSTRUCTION + (context.preservation.sceneBoundaryVersion === 1 ? SCENE_BOUNDARY_INSTRUCTION : "")
       : "")
   );
+}
+
+function relationshipInstruction(liveTimeline: boolean, actionContractV2: boolean) {
+  const instruction = actionContractV2
+    ? LIVE_MEMORY_INSTRUCTION.replace(RELATIONSHIP_PERMISSION_INSTRUCTION, "")
+    : LIVE_MEMORY_INSTRUCTION;
+  return liveTimeline
+    ? instruction
+        .replace("expectedRevision,sceneAfter,liveAfter,reason", "expectedRevision,liveAfter,reason")
+        .replace(
+          "sceneAfter continues the captured Scene plus its settled events ONLY. liveAfter interprets this SAME event against the supplied current live revision;",
+          "This is one living timeline: return liveAfter only, with the exact current live revision;",
+        )
+        .replace("lineIds:[],sceneItems:[],items:", "lineIds:[],items:")
+        .replace(
+          "sceneItems continues the captured Scene; items settles the same event against current live intentions.",
+          "Return items only, settling this event against current live intentions.",
+        )
+    : instruction;
 }
 
 export function createSemanticService(ports: SemanticPorts) {
@@ -320,7 +350,7 @@ export function createSemanticService(ports: SemanticPorts) {
     // Future draft evidence is checked again after generation; known authority already has to fit now.
     const messages = systemMessages(
       input,
-      SYSTEM_BASE + SYSTEM_CURRENT_SCENE + exchangeInstruction(scene, context, policy) + SYSTEM_PROMPT_LAYOUT,
+      SYSTEM_BASE + SYSTEM_CURRENT_SCENE + exchangeInstruction(scene, context, policy, combined) + SYSTEM_PROMPT_LAYOUT,
       "0".repeat(semanticHash(null).length),
       2,
     );
@@ -336,9 +366,10 @@ export function createSemanticService(ports: SemanticPorts) {
     stage: string,
     input: Input,
     instruction: string,
-    validate: (raw: Record<string, unknown>, hash: string, savedInput: Input) => Result,
+    validate: (raw: Record<string, unknown>, hash: string, savedInput: Input, outputContractVersion?: 1) => Result,
     currentEvidenceOnly = false,
     _scene?: VenueScene,
+    outputContractVersion?: 1,
   ): Promise<Result> {
     // Context is frozen once per operation/source, even when world state changes during recovery.
     const taskOutput = asRecord(input).pipelineVersion === 3 ? 4096 : 8192;
@@ -405,6 +436,7 @@ export function createSemanticService(ports: SemanticPorts) {
           output: Math.min(initial.maxOutputTokens ?? taskOutput, taskOutput),
           outputPolicy: 3,
           promptVersion: 2,
+          ...(outputContractVersion ? { outputContractVersion } : {}),
           instruction,
           currentEvidenceOnly,
           systemPrompt:
@@ -544,7 +576,7 @@ export function createSemanticService(ports: SemanticPorts) {
           throw badGateway(
             "Historical context is unresolved. The saved draft is retained; no expansion call is available.",
           );
-        const result = validate(raw, effectiveHash, effectiveInput);
+        const result = validate(raw, effectiveHash, effectiveInput, snapshot.outputContractVersion);
         const receipt = asRecord(asRecord(result).effects).residentActionReceipt;
         if (receipt) asRecord(receipt).systemResponse = answer.content;
         return { ...result, lore: inspectedLoreUse(packet.loreInspection, "System") };
@@ -737,15 +769,13 @@ export function createSemanticService(ports: SemanticPorts) {
         ...(combined ? { pipelineVersion: 3 } : {}),
         ...(residentActions ? { residentActions } : {}),
       },
-      exchangeInstruction(scene, context, {
-        combined,
-        movementReview,
-        actionContractV2,
-        residentActionsOmitted,
-        narrativeGrant,
-        residentActions,
-      }),
-      (raw, hash, savedInput): SemanticExchange => {
+      exchangeInstruction(
+        scene,
+        context,
+        { combined, movementReview, actionContractV2, residentActionsOmitted, narrativeGrant, residentActions },
+        combined && actionContractV2,
+      ),
+      (raw, hash, savedInput, outputContractVersion): SemanticExchange => {
         if (savedInput.context.preservation) {
           const finding =
             savedInput.context.preservation.sceneBoundaryVersion === 1
@@ -871,8 +901,9 @@ export function createSemanticService(ports: SemanticPorts) {
           { ...scene, semanticIntent: interpretedIntent ?? prepared ?? undefined },
           lines,
         );
+        const reviewed = outputContractVersion === 1 ? expandSceneActionReview(raw, evidence) : raw;
         const reconciliation = savedInput.residentActions
-          ? reconcileResidentActions(savedInput.residentActions, raw.residentActionReview, evidence)
+          ? reconcileResidentActions(savedInput.residentActions, reviewed.residentActionReview, evidence)
           : undefined;
         if (reconciliation) {
           if (
@@ -1153,6 +1184,7 @@ export function createSemanticService(ports: SemanticPorts) {
       },
       actionContractV2,
       scene,
+      combined && actionContractV2 ? 1 : undefined,
     );
   }
   async function rejectExchange(result: SemanticExchange) {

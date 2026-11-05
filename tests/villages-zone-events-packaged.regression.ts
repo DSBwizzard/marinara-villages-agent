@@ -300,6 +300,7 @@ const model = {
           (line.delivery === "shout" && contactNeighborIds(saved.sceneAttendance.layout, origin).includes(saved.zoneId))
         );
       };
+      const compactReview = !accessActions.length && messages[0].content.includes("residentActionReview:{version:2");
       return {
         content: JSON.stringify({
           ...response,
@@ -317,7 +318,14 @@ const model = {
             ? {
                 access: [],
                 residentActionReview: {
-                  version: 1,
+                  version: compactReview ? 2 : 1,
+                  ...(compactReview
+                    ? {
+                        reviewed: packet.input.evidence.flatMap((line: any, segment: number) =>
+                          playerHears(line, segment) && line.speakerId !== "player" ? [segment] : [],
+                        ),
+                      }
+                    : {}),
                   additionalActions: accessActions,
                   decisions: accessActions.map((a: any) => ({
                     id: a.id,
@@ -325,7 +333,7 @@ const model = {
                     reason: "Fixture supplies this resident action",
                   })),
                   coverage: packet.input.evidence.flatMap((line: any, segment: number) =>
-                    playerHears(line, segment) && line.speakerId !== "player"
+                    !compactReview && playerHears(line, segment) && line.speakerId !== "player"
                       ? [
                           {
                             segment,
