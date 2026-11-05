@@ -121,6 +121,8 @@ await withBrowser(browser, async () => {
     const previous = page.getByRole("button", { name: "Previous paragraph", exact: true });
     while (await previous.isEnabled()) await previous.click();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("I am inside");
+    await expect(page.getByText("Nearby", { exact: true })).toBeVisible();
+    await page.screenshot({ path: `.build-tmp/doorway-continuity/nearby-${width}.png` });
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(0);
     await next.click();
     await expect(page.getByRole("region", { name: "Current paragraph" })).toContainText("steps into the Exterior");
@@ -129,6 +131,7 @@ await withBrowser(browser, async () => {
     const current = page.getByRole("region", { name: "Current paragraph" });
     await expect(current).toContainText("Good to meet you out here");
     await expect(current).not.toContainText("Through the doorway");
+    await expect(page.getByText("Nearby", { exact: true })).toHaveCount(0);
     await expect(page.locator('[class$="-chat-cast-person"]')).toHaveCount(1);
     await page.screenshot({ path: `.build-tmp/doorway-continuity/arrival-${width}.png` });
     await next.click();

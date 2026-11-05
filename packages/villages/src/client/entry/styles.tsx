@@ -455,6 +455,7 @@ ${LORE_ACTIVITY_STYLES}
 }
 .${ELEMENT_TAG}-chat-vn-portrait > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .${ELEMENT_TAG}-chat-vn-column { display: flex; flex-direction: column; gap: .5rem; min-width: 0; min-height: 0; align-self: stretch; flex: 1 1 auto; }
+.${ELEMENT_TAG}-speech-location { display:inline-block; margin-left:.6rem; padding:.1rem .45rem; border:1px solid currentColor; border-radius:1rem; font:500 .7rem/1.3 system-ui,sans-serif; opacity:.75; vertical-align:middle; }
 .${ELEMENT_TAG}-chat-vn-name {
   margin: 0; min-width: 0;
   font-size: .875rem; font-weight: 600; line-height: 1.3;
