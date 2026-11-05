@@ -1,3 +1,4 @@
+import { captureZoneObservation } from "../packages/villages/src/server/domain/rules/zone-observation.js";
 import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
@@ -539,7 +540,7 @@ async function privateInteriorLifecycle() {
         assert.match(input.prompt, /garden-facing window/);
       } else assert.match(input.prompt, /Large established physical detail/);
       assert.match(input.prompt, /Shared architecture/);
-      assert.match(input.prompt, /no people, no animals, no text/);
+      assert.match(input.negativePrompt, /people.*animals.*text/);
       throw new Error("Synthetic image failure");
     },
     villagesLogger: () => ({ warn() {} }),
@@ -559,6 +560,7 @@ async function privateInteriorLifecycle() {
     bedroom.initialImageAttemptedAt,
   );
   bedroom.description += "\n" + "Large established physical detail. ".repeat(70);
+  bedroom.observed = captureZoneObservation(home, bedroom);
   await assert.rejects(
     () => images.generateVillageLocationImage("bungalow", undefined, undefined, "", false, "bedroom"),
     /Synthetic image failure/,

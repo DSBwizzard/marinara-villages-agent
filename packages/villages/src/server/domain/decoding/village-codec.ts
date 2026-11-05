@@ -705,7 +705,7 @@ function coerceVenue(value: unknown): VillageVenue | null {
           }
         : undefined,
       seen: row.seen === true,
-      observed: readZoneObservation(row.observed),
+      observed: readZoneObservation(row.observed, row.image, row.picture),
       dayNight: row.dayNightManual === false ? row.dayNight !== false : true,
       dayNightManual: false,
       freezePicture: row.freezePicture === true,
@@ -1493,7 +1493,11 @@ function decodeReturnCatchup(value: unknown): VillageState["returnCatchup"] {
   if (capture) result.capture = cloneReturnCapture(capture as import("../models/world.js").ReturnCatchupCapture);
   return result;
 }
-function readZoneObservation(value: unknown): import("../models/world.js").ZoneObservation | undefined {
+function readZoneObservation(
+  value: unknown,
+  sourceImage?: unknown,
+  picture?: unknown,
+): import("../models/world.js").ZoneObservation | undefined {
   const row = asRecord(value);
   if (typeof row.context !== "string" || typeof row.description !== "string") return undefined;
   const night = asRecord(row.night),
@@ -1510,6 +1514,11 @@ function readZoneObservation(value: unknown): import("../models/world.js").ZoneO
     image: coerceVenueImage(row.image),
     dayNight: row.dayNight !== false,
     daylight: row.daylight === true,
+    pictureContext:
+      boundText(row.pictureContext, 24000) ||
+      (coerceVenueImage(row.image)?.id && coerceVenueImage(row.image)?.id === coerceVenueImage(sourceImage)?.id
+        ? zonePictureBaseline(boundText(asRecord(picture).context || asRecord(picture).baseline, 24000)) || undefined
+        : undefined),
     night: image && typeof night.sourceId === "string" ? { sourceId: night.sourceId, image } : undefined,
   };
 }

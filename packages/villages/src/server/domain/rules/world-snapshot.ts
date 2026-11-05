@@ -255,7 +255,7 @@ export function villageSettings(
           referencePending:
             !!originalZone.picture?.reference &&
             originalZone.picture.referenceAppliedId !== originalZone.picture.reference.id,
-          pictureGenerateAvailable: authoring || present,
+          pictureGenerateAvailable: authoring || (!!originalZone.seen && !!originalZone.observed),
           daylightReady: visible.picture?.daylight === true,
           nightImage:
             visible.dayNight && visible.image && visible.picture?.night?.sourceId === visible.image.id
@@ -265,7 +265,10 @@ export function villageSettings(
             visible.dayNight === true &&
             (!visible.picture?.daylight || !visible.image || visible.picture?.night?.sourceId !== visible.image.id),
           pictureRevision: undefined,
-          pictureRetryAvailable: present && originalZone.picture?.failed === true,
+          pictureRetryAvailable:
+            !!originalZone.observed &&
+            originalZone.observed.image?.id === originalZone.image?.id &&
+            originalZone.picture?.failed === true,
           pictureProblem: present ? originalZone.picture?.problem : undefined,
           pictureUpdating: present && !!originalZone.picture?.claim && originalZone.picture?.failed !== true,
           preparation: visible.preparation

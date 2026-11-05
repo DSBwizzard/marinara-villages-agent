@@ -568,6 +568,7 @@ export type ZoneObservation = {
   dayNight?: boolean;
   daylight?: boolean;
   night?: ZonePicture["night"];
+  pictureContext?: string;
 };
 export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   VillageVenueZone,

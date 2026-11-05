@@ -76,6 +76,7 @@ await withBrowser(browser, async () => {
         venueClass: "residence",
         connectedTo: ["exterior", "alcove", "workshop"],
         seen: true,
+        pictureGenerateAvailable: true,
         description: "An open living area.",
         image: null,
         state,
@@ -88,6 +89,7 @@ await withBrowser(browser, async () => {
         venueClass: "residence",
         connectedTo: ["bay"],
         seen: false,
+        pictureGenerateAvailable: false,
         description: "A private sleeping alcove with a blue blanket.",
         image: { id: "alcove-art", ref: "global-gallery:alcove-art", url: mapImage },
         state,
@@ -299,7 +301,7 @@ await withBrowser(browser, async () => {
     await expect(detail.getByText("Permission needed", { exact: true })).toBeVisible();
     await expect(detail.getByText("Private details have not been shared with you.")).toHaveCount(0);
     await detail.getByRole("button", { name: "Picture", exact: true }).click();
-    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeVisible();
+    await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeDisabled();
     await expect(detail.getByRole("img", { name: "Sleeping Alcove at " + place.name })).toHaveAttribute(
       "src",
       mapImage,

@@ -77,8 +77,14 @@ export function createLiveScenes({
     venueId: string,
     zoneId: string,
     guard?: (state: import("../../domain/models/world.js").VillageState) => boolean,
+    fromObservation = false,
   ): Promise<boolean> {
     if ((await observeVillageClock())?.paused) return false;
+    if (fromObservation) {
+      const state = await readVillageState();
+      const zone = state.venues.find((row) => row.id === venueId)?.zones?.find((row) => row.id === zoneId);
+      return !!zone?.seen && !!zone.observed && (!guard || guard(state));
+    }
     const pointer = await readActive();
     if (!pointer.sessionId) return false;
     const scene = await readSession(pointer.sessionId),

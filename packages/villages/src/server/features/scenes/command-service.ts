@@ -948,7 +948,13 @@ export function createSceneCommands({
       // Saved artwork follows its observed physical account, even while an old Scene owns captured facts.
       zone.observed =
         zonePictureBaseline(zone.picture?.context ?? zone.picture?.baseline ?? "") === account.context
-          ? { ...account, image: zone.image, daylight: zone.picture?.daylight, night: zone.picture?.night }
+          ? {
+              ...account,
+              image: zone.image,
+              daylight: zone.picture?.daylight,
+              night: zone.picture?.night,
+              pictureContext: zone.picture?.context ?? zone.picture?.baseline,
+            }
           : account;
       admitted = true;
     });

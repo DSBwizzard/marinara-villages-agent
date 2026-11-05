@@ -1030,7 +1030,7 @@ async function main() {
   const request = named.call.body;
   assert.equal(named.call.method, "POST");
   assert.equal(request.purpose, "avatar");
-  assert.equal(request.name, "the mill pond");
+  assert.equal(request.name, "Entrance");
   assert.equal(request.width, 1216);
   assert.equal(request.height, 832);
   assert.deepEqual(
@@ -1041,7 +1041,7 @@ async function main() {
   assert.equal(request.promptOverrides.length, 1, "exactly one override, so the Engine has exactly one key to match");
   assert.equal(
     request.promptOverrides[0].id,
-    avatarPromptId("the mill pond", "avatar"),
+    avatarPromptId("Entrance", "avatar"),
     "the override id is built by the one function that knows the Engine's arithmetic",
   );
   assert.equal(
@@ -1049,14 +1049,17 @@ async function main() {
     request.appearance,
     "the override carries the scene the body also carries, so what is drawn is what was asked for",
   );
-  assert.ok(
-    request.appearance.includes(
-      "A wide, empty exterior view of the mill pond and its approach in Ashcroft. Show its described entrance and approach, not its enterable interior. For a room within a larger place, the approach can be a corridor; do not invent a detached building or outdoor surroundings.",
-    ),
-    "the picture is of the place, with its own note",
+  assert.match(
+    request.appearance,
+    /A stone mill beside shallow water/,
+    "manual generation uses the saved physical observation",
   );
-  assert.ok(request.appearance.includes("Physical form: where the grain is ground."));
-  assert.ok(request.appearance.includes(settingText), "and it knows which village it stands in");
+  assert.match(request.appearance, /Remembered physical form: where the grain is ground/);
+  assert.doesNotMatch(
+    request.appearance,
+    new RegExp(settingText),
+    "manual generation does not expand live Village context",
+  );
   assert.match(request.appearance, /stable daytime lighting/, "artwork lighting is independent of generation time");
   assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
   assert.match(request.promptOverrides[0].negativePrompt, /people/);
@@ -1068,7 +1071,7 @@ async function main() {
   const drawnUpload = galleryCalls(UPLOAD_PATH).at(-1)!;
   assert.equal(drawnUpload.form?.width, "1216");
   assert.equal(drawnUpload.form?.height, "832");
-  assert.ok(String(drawnUpload.form?.prompt).includes("the mill pond"), "the gallery entry keeps what was asked for");
+  assert.equal(drawnUpload.form?.prompt, request.appearance, "the gallery entry keeps what was asked for");
   assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 4, "the folder is not looked for again once it is known");
 
   const stored = kept.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
@@ -1348,7 +1351,6 @@ async function mediaConnectionOwnership() {
     ["store", "read"],
     ["store", "upload"],
     ["store", "write"],
-    ["location", "lore"],
     ["location", "provider"],
     ["location", "upload"],
     ["private", "write"],
