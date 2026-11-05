@@ -373,6 +373,10 @@ await withBrowser(browser, async () => {
       "aria-checked",
       "true",
     );
+    if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
+      await detail.getByRole("switch", { name: "Day & night", exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `picture-menu-${width}.png`) });
+    }
     const beforePreview = writes.length;
     await detail.getByRole("button", { name: "View night image", exact: true }).click();
     await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#night");
