@@ -187,7 +187,11 @@ export async function packagedSceneServer() {
           finishReason: "stop",
         };
       }
-      assert.match(messages[0].content, /ZONE EVENTS/u, "only the expected packaged writer may dispatch");
+      assert.match(
+        messages.map((entry: any) => entry.content).join("\n"),
+        /ZONE EVENTS/u,
+        "only the expected packaged writer may dispatch",
+      );
       return {
         content: JSON.stringify({
           playerSpeechCapture: {

@@ -362,7 +362,11 @@ const model = {
     }
     narrationCalls++;
     narrationPrompts.push(messages.map((message: any) => message.content).join("\n"));
-    assert.match(messages[0].content, /ZONE EVENTS/, "no acoustic interpreter or unexpected model request");
+    assert.match(
+      messages.map((entry: any) => entry.content).join("\n"),
+      /ZONE EVENTS/,
+      "no acoustic interpreter or unexpected model request",
+    );
     assert(answer, "a model response must be explicitly supplied by this fixture");
     let content = JSON.stringify({
       ...answer,

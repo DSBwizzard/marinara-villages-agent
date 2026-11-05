@@ -18,7 +18,7 @@ export function fixtureLocalAttention(messages: { content?: string }[]) {
 
 /** Explicit synthetic hearing for consumer fixtures, never a real-provider fallback. */
 export function fixtureAcousticReply(messages: { content?: string }[], result: any, records: Map<string, any>) {
-  const system = messages[0]?.content ?? "";
+  const system = messages.map((entry) => entry.content ?? "").join("\n");
   if (!system.includes("ACTION-BASED SOUND")) return result;
   const scene = [...records.values()].find(
     (row) => row.id?.startsWith("villages-venue-visit-") && row.data?.status === "active",
@@ -70,7 +70,7 @@ export function fixtureAcousticReply(messages: { content?: string }[], result: a
 }
 
 export function fixtureAcousticContent(messages: { content?: string }[], content: string, records: Map<string, any>) {
-  if (!messages[0]?.content?.includes("ACTION-BASED SOUND")) return content;
+  if (!messages.some((entry) => entry.content?.includes("ACTION-BASED SOUND"))) return content;
   try {
     const start = content.indexOf("{"),
       end = content.lastIndexOf("}");
