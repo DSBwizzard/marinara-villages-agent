@@ -1,4 +1,5 @@
 import type { readVillageLore } from "../../adapters/engine/lorebooks.js";
+import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
 import { encounterPhysicalId } from "../../domain/rules/social-encounter.js";
 import { projectRelationshipProfiles } from "../../domain/rules/relationship-knowledge.js";
 import type { RelationshipInspectView, RelationshipView } from "../../../shared/contracts/relationships.js";
@@ -21,7 +22,7 @@ export function createRelationships(ports: RelationshipPorts) {
     return {
       profiles: current ? projectRelationshipProfiles(current, village) : [],
       starting: {
-        pending: village.villagers.some((person) => !current?.reviewedActorIds.includes(person.characterId)),
+        pending: !startingRelationshipsReady(village),
       },
     };
   }
@@ -48,6 +49,7 @@ export function createRelationships(ports: RelationshipPorts) {
         .filter((row) => ["starting-ties", "resident-planning", "personal-mail", "social-recovery"].includes(row.kind))
         .map((row) => ({
           id: row.id,
+          kind: row.kind,
           instanceId: row.instanceId,
           attempt: row.attempt,
           label: row.label,

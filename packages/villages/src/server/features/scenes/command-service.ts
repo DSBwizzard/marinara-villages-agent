@@ -36,7 +36,7 @@ import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/reject
 import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 import { parseRelationshipProposals, RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
-import { relationshipZoneController } from "../../domain/rules/relationship-rules.js";
+import { startingRelationshipsReady, relationshipZoneController } from "../../domain/rules/relationship-rules.js";
 import { assertSceneMovementCapacity, UnavailableResidentMovement } from "../../domain/rules/resident-movement.js";
 import { responseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { captureSceneAttendance, sceneZoneOccupants } from "../../domain/rules/scene-attendance.js";
@@ -992,10 +992,7 @@ export function createSceneCommands({
     const discovery = live.worldPlaces.places[placeId];
     if (discovery && (!discovery.knownBy.includes("player") || !discovery.prepared))
       throw conflict("Prepare this known Place before visiting.");
-    if (
-      !existing &&
-      village.villagers.some((person) => !village.relationshipContext?.reviewedActorIds.includes(person.characterId))
-    )
+    if (!existing && !startingRelationshipsReady(village))
       throw conflict(
         "Starting relationship history is not ready. Open Inspect → Relationships to check preparation, retry failed work, or clarify history before opening a Scene.",
       );

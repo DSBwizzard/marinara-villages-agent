@@ -158,6 +158,32 @@ assert.throws(
   () => recover({ ties: [], conflicts: [{ actorIds: ["player"], question: "Invalid", sourceIds: ["x", "y"] }] }),
   /Invalid authored relationship conflict/,
 );
+const socialConflict = {
+  actorIds: ["a"],
+  question: "Are these two people spouses or siblings?",
+  sourceIds: ["card:a:description", "card:b:description"],
+};
+assert.deepEqual(
+  (
+    recover({
+      ties: [],
+      conflicts: [{ ...socialConflict, kind: "background", question: "Is this world Korant or Koront?" }],
+    }) as any
+  ).conflicts,
+  [],
+  "A background discrepancy cannot block starting relationships",
+);
+assert.deepEqual(
+  (recover({ ties: [], conflicts: [{ ...socialConflict, kind: "social" }] }) as any).conflicts,
+  [socialConflict],
+  "Contradictory social facts still require clarification",
+);
+assert.deepEqual(
+  (recover({ ties: [], conflicts: [socialConflict] }) as any).conflicts,
+  [socialConflict],
+  "Saved unclassified conflicts remain held until explicitly resolved",
+);
+assert.throws(() => recover({ ties: [], conflicts: [{ ...socialConflict, kind: "invented" }] }), /invalid conflicts/);
 const originalBackground = state.playerBackground;
 state.playerBackground = "Changed starting relationship";
 assert.equal(
@@ -196,6 +222,33 @@ state.villagers[0]!.cardSnapshot.description = "Changed source";
 assert.equal(service.handler.valid(state, queued.input), false, "A changed source cannot receive the old preparation");
 await service.applySaved();
 assert.equal(calls, 1);
+
+const retryState = structuredClone(state);
+retryState.semanticStartingTies!.conflicts = [socialConflict];
+const revisions: string[] = [];
+const clarificationService = createStartingTies({
+  readVillageState: async () => retryState,
+  mutateVillageState: async (update: any) => {
+    update(retryState);
+    return retryState;
+  },
+  queueBackgroundJob: async (input: any) => {
+    revisions.push(input.revision);
+  },
+} as any);
+const clarification = {
+  sourceHash: retryState.semanticStartingTies!.sourceHash,
+  actorIds: ["a"],
+  text: "They are siblings.",
+};
+await clarificationService.clarify(clarification);
+await clarificationService.clarify(clarification);
+assert.equal(retryState.socialClarifications?.length, 1, "Repeated submission retains one authored clarification");
+assert.equal(
+  revisions[0],
+  revisions[1],
+  "Repeated submission reuses the same finite job revision instead of admitting another paid request",
+);
 
 const profile: RoutineProfile = {
   version: 1,

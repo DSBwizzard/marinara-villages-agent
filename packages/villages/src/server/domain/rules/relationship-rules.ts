@@ -12,6 +12,10 @@ import { asRecord } from "./coerce.js";
 import { immutableMemoryValue } from "./memory-integrity.js";
 import { canInviteToZone, canRevokeZonePermission, resolveVenueZone, zoneClosed } from "./venue-zones.js";
 
+export function startingRelationshipsReady(state: Pick<VillageState, "villagers" | "relationshipContext">): boolean {
+  return state.villagers.every((person) => state.relationshipContext?.reviewedActorIds.includes(person.characterId));
+}
+
 export class SocialRevisionConflict extends Error {}
 export const relationshipKey = (fromId: string, toId: string): string => JSON.stringify([fromId, toId]);
 

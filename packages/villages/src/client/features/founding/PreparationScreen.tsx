@@ -1,3 +1,5 @@
+import { request } from "../../shared/api.js";
+import { StartingHistoryPreparation } from "./StartingHistoryPreparation.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import type { PreparationScreenController } from "./screen-contracts.js";
 import { AgentConnections } from "../settings/AgentConnections.js";
@@ -76,6 +78,17 @@ export function PreparationScreen({ controller }: { controller: PreparationScree
                 value={preparation.privateSpacesReady ?? 0}
               />
             </>
+          ) : null}
+          {preparation?.startingHistoryReady !== undefined ? (
+            <StartingHistoryPreparation
+              ready={preparation.startingHistoryReady}
+              work={
+                snapshot?.backgroundWork
+                  ?.filter((row) => row.kind === "starting-ties")
+                  .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+              }
+              onChange={async () => controller.setSnapshot(await request("/setup/preparation"))}
+            />
           ) : null}
           <ul className="villages-forging-preparation-list">
             {residents.map((villager) => (

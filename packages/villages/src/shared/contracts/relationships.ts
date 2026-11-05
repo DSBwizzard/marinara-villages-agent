@@ -21,6 +21,7 @@ export type RelationshipInspectView = {
   recovery?: { id: string; message: string; reinterpretRequired: boolean; canSkip?: boolean }[];
   processing: {
     id: string;
+    kind: string;
     instanceId: string;
     attempt: number;
     label: string;
