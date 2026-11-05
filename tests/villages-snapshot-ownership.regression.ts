@@ -13,6 +13,7 @@ import {
   coerceVillageState,
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import type { VenueScene } from "../packages/villages/src/server/domain/models/scene-model.js";
 import {
   createVillageSnapshot,
@@ -151,6 +152,24 @@ function fixture(label: string, missingColors = false) {
 
 async function main() {
   await assert.rejects(buildVillageSnapshot(now), /not configured/);
+  const history = fixture("history");
+  history.world.foundingPreparation = { status: "ready", completedIds: ["resident"], currentId: "", error: "" };
+  history.world.relationshipContext = defaultRelationshipState(history.world.seed);
+  let admission = await history.service.buildVillageSnapshot(now);
+  assert.equal(admission.foundingPreparation?.startingHistoryReady, false);
+  assert.equal(
+    admission.foundingPreparation?.canPlay,
+    false,
+    "Optional founding completion cannot hide an unprepared starting history",
+  );
+  assert(
+    !JSON.stringify(admission).includes("initializationConflicts"),
+    "Ordinary snapshots do not disclose Inspect history",
+  );
+  history.world.relationshipContext.reviewedActorIds.push("resident");
+  admission = await history.service.buildVillageSnapshot(now);
+  assert.equal(admission.foundingPreparation?.startingHistoryReady, true);
+  assert.equal(admission.foundingPreparation?.canPlay, true);
   const marker = fixture("marker");
   const scene = coerceSession({
     version: 3,
@@ -166,6 +185,12 @@ async function main() {
   });
   scene.submissions.push({ id: "late", changeSequence: 1, semanticReady: false } as any);
   marker.setScene(scene);
+  marker.world.foundingPreparation = { status: "ready", completedIds: [], currentId: "", error: "" };
+  assert.equal(
+    (await marker.service.buildVillageSnapshot(now)).foundingPreparation?.canPlay,
+    true,
+    "An existing Scene retains its saved contract while live starting history is pending",
+  );
   const revision = (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision;
   assert.equal(
     (await marker.service.buildVillageSnapshot(now)).sceneChanges!.revision,

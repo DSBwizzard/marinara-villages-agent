@@ -6,6 +6,7 @@ import { observeVillageClock, villageNow } from "../../adapters/time/clock-gate.
 import type { VillageSnapshot } from "../../domain/models/world.js";
 import { foundingCompletedIds, foundingReadyForPlay } from "../../domain/rules/founding-tasks.js";
 import { villageWorldScope } from "../../domain/rules/village-identity.js";
+import { startingRelationshipsReady } from "../../domain/rules/relationship-rules.js";
 import { openingView } from "../../domain/rules/opening-project.js";
 import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import { sceneAccessContext } from "../../domain/rules/venue-contact.js";
@@ -168,7 +169,8 @@ export function createVillageSnapshot({
       foundingPreparation: village.foundingPreparation
         ? {
             ...village.foundingPreparation,
-            canPlay: foundingReadyForPlay(village),
+            canPlay: foundingReadyForPlay(village) && (!!residenceAccess || startingRelationshipsReady(village)),
+            startingHistoryReady: startingRelationshipsReady(village),
             completedIds: foundingCompletedIds(village),
             privateSpacesTotal: privatePreparationRooms(village).length,
             privateSpacesReady: privatePreparationRooms(village).filter(

@@ -231,6 +231,74 @@ await withBrowser(browser, async () => {
     await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
     await expect(root).toHaveCount(0);
     assert.equal(retries, 2, "Reload preserves optional work without retrying it");
+    snapshot.foundingPreparation = {
+      status: "ready",
+      canPlay: false,
+      startingHistoryReady: false,
+      completedIds: ["aqua", "feddy", "sneak"],
+      currentId: "",
+      error: "",
+    };
+    snapshot.backgroundWork = [
+      {
+        id: "history-job",
+        instanceId: "history-instance",
+        kind: "starting-ties",
+        label: "Starting history",
+        status: "completed",
+        attempt: 1,
+        requests: 1,
+        tokens: 50,
+      },
+    ];
+    const conflict = {
+      sourceHash: "history-source",
+      actorIds: ["aqua"],
+      residents: ["Aqua"],
+      sourceIds: ["card:aqua:description", "card:feddy:backstory"],
+      question: "Are Aqua and Feddy spouses or siblings?",
+    };
+    let inspected = 0,
+      clarified = 0;
+    let inspection = { residents: [], processing: [], conflicts: [conflict] };
+    await page.route("**/api/villages/relationships/inspect", (route) => {
+      inspected++;
+      return fulfill(route, { json: inspection });
+    });
+    await page.route("**/api/villages/relationships/clarifications", (route) => {
+      clarified++;
+      assert.deepEqual(route.request().postDataJSON(), {
+        sourceHash: conflict.sourceHash,
+        actorIds: conflict.actorIds,
+        text: "They are siblings.",
+      });
+      snapshot.backgroundWork[0].status = "running";
+      return fulfill(route, { json: inspection });
+    });
+    await page.reload();
+    await page.addScriptTag({ path: resolve("packages/villages/client.js") });
+    await expect(root).toBeVisible();
+    await expect(root.getByRole("heading", { name: "Starting history · Needs review" })).toBeVisible();
+    assert.equal(inspected, 0, "Private history is read only after explicit Inspect");
+    await root.getByText("Inspect starting history", { exact: true }).click();
+    await expect(root.getByText(conflict.question, { exact: true })).toBeVisible();
+    await root.getByRole("textbox", { name: "Clarification", exact: true }).fill("They are siblings.");
+    assert.ok(
+      await root.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+      "History clarification fits the viewport",
+    );
+    if (screenshotDir) await page.screenshot({ path: resolve(screenshotDir, `starting-history-${width}.png`) });
+    await root.getByRole("button", { name: "Use this history", exact: true }).click();
+    await expect(root.getByRole("button", { name: "Use this history", exact: true })).toBeDisabled();
+    assert.equal(clarified, 1, "Queued history cannot be resubmitted while the old conflict remains published");
+    inspection = { ...inspection, conflicts: [] };
+    snapshot.backgroundWork[0].status = "completed";
+    snapshot.foundingPreparation.startingHistoryReady = true;
+    snapshot.foundingPreparation.canPlay = true;
+    await expect(root).toHaveCount(0);
+    assert.equal(clarified, 1, "One explicit clarification uses the existing source-bound route");
+    assert.equal(retries, 2, "Clarifying history never retries unrelated optional preparation");
+    assert.deepEqual(errors, []);
     await page.close();
   }
   console.log(

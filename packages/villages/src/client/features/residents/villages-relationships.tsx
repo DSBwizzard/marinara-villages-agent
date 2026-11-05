@@ -1,3 +1,4 @@
+import { HistoryClarifications } from "../../shared/HistoryClarifications.js";
 import { useVillageActivity } from "../../shared/activity.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useEffect, useRef, useState } from "react";
@@ -25,7 +26,6 @@ export function VillagesRelationships({
   const [localView, setLocalView] = useState<RelationshipView | null>(null);
   const [debug, setDebug] = useState<RelationshipInspectView | null>(null);
   const [error, setError] = useState("");
-  const [clarifications, setClarifications] = useState<Record<number, string>>({});
   const recoveryIdentity = useRef<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   useEffect(() => {
@@ -187,56 +187,23 @@ export function VillagesRelationships({
                   </details>
                 </article>
               ))}
-              {debug.conflicts.map((conflict, index) => (
-                <article key={index}>
-                  <h4>History needs clarification</h4>
-                  <p>{conflict.question}</p>
-                  <p>{conflict.residents.join(", ")}</p>
-                  <form
-                    autoComplete="off"
-                    onSubmit={async (event) => {
-                      event.preventDefault();
-                      setSaving(true);
-                      setError("");
-                      try {
-                        setDebug(
-                          await request<RelationshipInspectView>("/relationships/clarifications", {
-                            method: "POST",
-                            body: JSON.stringify({
-                              sourceHash: conflict.sourceHash,
-                              actorIds: conflict.actorIds,
-                              text: clarifications[index] ?? "",
-                            }),
-                          }),
-                        );
-                      } catch (cause) {
-                        setError(cause instanceof Error ? cause.message : "History clarification could not be saved.");
-                      } finally {
-                        setSaving(false);
-                      }
-                    }}
-                  >
-                    <label>
-                      Clarification
-                      <textarea
-                        autoComplete="off"
-                        maxLength={4000}
-                        value={clarifications[index] ?? ""}
-                        onChange={(event) =>
-                          setClarifications((current) => ({ ...current, [index]: event.target.value }))
-                        }
-                      />
-                    </label>
-                    <button type="submit" disabled={saving || !clarifications[index]?.trim()}>
-                      Use this history
-                    </button>
-                  </form>
-                  <details>
-                    <summary>Source details</summary>
-                    <pre>{conflict.sourceIds.join("\n")}</pre>
-                  </details>
-                </article>
-              ))}
+              <HistoryClarifications
+                conflicts={debug.conflicts}
+                disabled={
+                  saving ||
+                  debug.processing.some(
+                    (work) => work.kind === "starting-ties" && ["queued", "running"].includes(work.status),
+                  )
+                }
+                onSubmit={async (conflict, text) => {
+                  setDebug(
+                    await request<RelationshipInspectView>("/relationships/clarifications", {
+                      method: "POST",
+                      body: JSON.stringify({ sourceHash: conflict.sourceHash, actorIds: conflict.actorIds, text }),
+                    }),
+                  );
+                }}
+              />
               {debug.residents
                 .filter((person) => !characterId || person.characterId === characterId)
                 .map((person) => (

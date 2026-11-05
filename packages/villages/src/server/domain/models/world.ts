@@ -1420,7 +1420,8 @@ export type VillageSnapshot = ClientVisibleSnapshot<{
   backgroundWork: import("./background-model.js").BackgroundSummary[];
   status: "ready";
   progressEngineVersion: 1;
-  foundingPreparation: (NonNullable<VillageState["foundingPreparation"]> & { canPlay: boolean }) | null;
+  foundingPreparation:
+    (NonNullable<VillageState["foundingPreparation"]> & { canPlay: boolean; startingHistoryReady: boolean }) | null;
   village: VillageMomentView;
   venueRequests: VillagePendingDecision[];
   projects: import("../../../shared/contracts/village.js").BuildProject[];
