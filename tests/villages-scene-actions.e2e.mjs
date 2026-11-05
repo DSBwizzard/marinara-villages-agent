@@ -212,7 +212,6 @@ await withBrowser(browser, async () => {
       await page.screenshot({ path: resolve(process.env.VILLAGES_VISUAL_OUTPUT, "chat-move-" + width + ".png") });
     await page.getByLabel("Move to Zone").selectOption("exterior");
     await page.getByRole("button", { name: /^1 Scene error$/ }).click();
-    await page.getByRole("region", { name: "Scene errors" }).locator("summary").first().click();
     await expect(page.getByText(/Scene changed/).last()).toBeVisible();
     await page.getByRole("button", { name: "Close Scene errors" }).click();
     assert.equal(moves, 0);

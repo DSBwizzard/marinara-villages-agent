@@ -110,10 +110,9 @@ await withBrowser(browser, async () => {
     await expect(chip).toBeVisible();
     await expect(page.getByText("not witnessed by everyone", { exact: false })).toHaveCount(0);
     let status = await openSceneErrors(page);
-    await expect(status).toContainText("World change not saved · memories");
-    await expect(status).toContainText("Not saved");
-    await expect(status).toContainText("residents saw or heard");
-    await expect(status).toContainText("conversation is still in the transcript");
+    await expect(status.getByRole("group", { name: "World change not saved · memories", exact: true })).toBeVisible();
+    await expect(status).toContainText("The AI based a memory on words a resident didn’t hear.");
+    await expect(status).not.toContainText(/transcript|Scene ID/);
     await expect(status.getByRole("button", { name: /Retry|Replay/ })).toHaveCount(0);
     await page.screenshot({ path: `.build-tmp/doorway-continuity/errors-${width}.png` });
     await closeSceneErrors(page);
@@ -157,8 +156,8 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
     status = await openSceneErrors(page);
-    await expect(status).toContainText("World change failed · relationships");
-    await expect(status).not.toContainText("World change failed · wishes");
+    await expect(status.getByRole("group", { name: "World change failed · relationships", exact: true })).toBeVisible();
+    await expect(status.getByRole("group", { name: "World change failed · wishes", exact: true })).toHaveCount(0);
     await expect(status.getByRole("button", { name: /Retry relationships/ })).toBeVisible();
     await expect(status.getByRole("button", { name: /Retry memories/ })).toHaveCount(0);
     await expect(status.getByRole("button", { name: /Retry wishes/ })).toHaveCount(0);
@@ -167,7 +166,7 @@ await withBrowser(browser, async () => {
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await closeSceneErrors(page);
     status = await openSceneErrors(page);
-    await expect(status).toContainText("World change diagnostics for details");
+    await expect(status).toContainText("The game couldn’t apply some updates.");
     assert.equal(mutatingRequests, 0, "reading feedback never retries interpretation or replays saved work");
     assert.deepEqual(errors, []);
     await page.close();

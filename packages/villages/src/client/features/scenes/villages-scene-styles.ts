@@ -108,19 +108,12 @@ ${tag}[data-scene-keyboard] .${tag}-chat-vn { padding-bottom: 0; }
 .${tag}-scene-error-head h2 { margin: 0; font-size: .875rem; }
 .${tag}-scene-error-head button { min-width: 44px; min-height: 44px; background: transparent; color: inherit; border: 0; font: inherit; cursor: pointer; }
 .${tag}-scene-error-item + .${tag}-scene-error-item { border-top: 1px solid var(--border); }
-.${tag}-scene-error-item summary { display: flex; align-items: center; gap: .5rem; padding: .75rem; min-height: 44px; box-sizing: border-box; list-style: none; cursor: pointer; }
-.${tag}-scene-error-item summary::-webkit-details-marker { display: none; }
-.${tag}-scene-error-item summary::after { content: "›"; margin-left: auto; }
-.${tag}-scene-error-item[open] summary::after { transform: rotate(90deg); }
+.${tag}-scene-error-message { display: flex; align-items: flex-start; gap: .5rem; padding: .75rem; min-height: 44px; box-sizing: border-box; overflow-wrap: anywhere; }
 .${tag}-scene-error-detail { padding: 0 .75rem .75rem; overflow-wrap: anywhere; }
 .${tag}-scene-error-detail p { margin: 0 0 .75rem; white-space: pre-wrap; }
-.${tag}-scene-error-detail dl { margin: .75rem 0; font-size: .75rem; }
-.${tag}-scene-error-detail dl > div { display: grid; grid-template-columns: 5rem minmax(0,1fr); gap: .5rem; margin: .35rem 0; }
-.${tag}-scene-error-detail dt { color: var(--muted-foreground); }
-.${tag}-scene-error-detail dd { margin: 0; white-space: pre-wrap; }
 .${tag}-scene-error-detail button { min-height: 44px; max-width: 100%; padding: .35rem .5rem; margin-top: .35rem; background: var(--secondary); border: 1px solid var(--border); border-radius: .5rem; color: inherit; font: inherit; cursor: pointer; white-space: normal; overflow-wrap: anywhere; }
 .${tag}-scene-error-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
-.${tag}-scene-error-trigger:focus-visible, .${tag}-scene-error-item summary:focus-visible, .${tag}-scene-error-panel button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.${tag}-scene-error-trigger:focus-visible, .${tag}-scene-error-panel button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .${tag}-scene-modal-errors { position: relative; margin-bottom: .5rem; }
 .${tag}-scene-modal-errors .${tag}-scene-error-panel { z-index: 40; }
 @media (min-width: 768px) {

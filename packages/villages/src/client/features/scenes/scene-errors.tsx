@@ -1,12 +1,9 @@
-import { type ReactNode, useEffect, useId, useRef } from "react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { sceneErrorMessage } from "./scene-error-message.js";
+import { sceneErrorReport, type SceneErrorDiagnostic, type SceneErrorReportItem } from "./scene-error-report.js";
 import { ELEMENT_TAG as tag } from "../../shared/constants.js";
 
-export type SceneErrorItem = {
-  id: string;
-  title: string;
-  message: string;
-  fields?: { label: string; value: string }[];
+export type SceneErrorItem = SceneErrorReportItem & {
   actions?: ReactNode;
 };
 
@@ -16,16 +13,25 @@ function SceneMessageChip({
   open,
   onOpen,
   information = false,
+  loadDetails,
 }: {
   items: SceneErrorItem[];
   open: boolean;
   onOpen: (open: boolean) => void;
   information?: boolean;
+  loadDetails?: () => Promise<{ errors: SceneErrorDiagnostic[]; omittedErrors?: number }>;
 }) {
   const label = information ? "Information" : "Scene errors";
   const id = useId();
   const anchor = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
+  const copyOwner = useRef(0);
+  const errorKey = items.map((item) => `${item.id}:${item.diagnosticId ?? ""}:${item.message}`).join("\n");
+  useEffect(() => {
+    copyOwner.current++;
+    setCopyState("idle");
+  }, [errorKey]);
   useEffect(() => {
     if (!items.length) {
       if (open) onOpen(false);
@@ -106,55 +112,88 @@ function SceneMessageChip({
                 </div>
               ))
             : items.map((item) => (
-                <details key={item.id} className={`${tag}-scene-error-item`}>
-                  <summary>
+                <div key={item.id} className={`${tag}-scene-error-item`} role="group" aria-label={item.title}>
+                  <div className={`${tag}-scene-error-message`}>
                     <span className={`${tag}-scene-error-icon`} aria-hidden="true">
                       !
                     </span>
-                    <span>{item.title}</span>
-                  </summary>
-                  <div className={`${tag}-scene-error-detail`}>
-                    <p>{sceneErrorMessage(item.message)}</p>
-                    {item.fields?.length ? (
-                      <dl>
-                        {item.fields.map((field) => (
-                          <div key={field.label}>
-                            <dt>{field.label}</dt>
-                            <dd>{field.value}</dd>
-                          </div>
-                        ))}
-                      </dl>
-                    ) : null}
-                    {item.actions ? <div className={`${tag}-scene-error-actions`}>{item.actions}</div> : null}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void navigator.clipboard
-                          ?.writeText(
-                            [
-                              item.title,
-                              sceneErrorMessage(item.message),
-                              ...(sceneErrorMessage(item.message) !== item.message
-                                ? [`Original error: ${item.message}`]
-                                : []),
-                              ...(item.fields ?? []).map((field) => `${field.label}: ${field.value}`),
-                            ].join("\n"),
-                          )
-                          .catch(() => {});
-                      }}
-                    >
-                      Copy details
-                    </button>
+                    <span>{sceneErrorMessage(item.message, item.domain)}</span>
                   </div>
-                </details>
+                  {item.actions ? (
+                    <div className={`${tag}-scene-error-detail ${tag}-scene-error-actions`}>{item.actions}</div>
+                  ) : null}
+                </div>
               ))}
+          {!information ? (
+            <div className={`${tag}-scene-error-detail`}>
+              <button
+                type="button"
+                disabled={copyState === "copying"}
+                onClick={() => {
+                  setCopyState("copying");
+                  const captured = items;
+                  const owner = ++copyOwner.current;
+                  const report = (async () => {
+                    let diagnostics: SceneErrorDiagnostic[] = [],
+                      unavailable = "",
+                      omittedErrors = 0;
+                    if (loadDetails && captured.some((item) => item.diagnosticId)) {
+                      try {
+                        const details = await loadDetails();
+                        diagnostics = details.errors;
+                        omittedErrors = details.omittedErrors ?? 0;
+                      } catch (cause) {
+                        unavailable = cause instanceof Error ? cause.message : String(cause);
+                      }
+                    }
+                    return (
+                      sceneErrorReport(captured, diagnostics, unavailable) +
+                      (omittedErrors
+                        ? `\nSaved diagnostic limit: ${omittedErrors} additional update errors exist beyond the 50-error window.`
+                        : "")
+                    );
+                  })();
+                  try {
+                    const clipboard = navigator.clipboard;
+                    if (!clipboard) throw new Error("Clipboard unavailable");
+                    // Safari requires the clipboard call itself to stay inside the click gesture.
+                    const copied =
+                      clipboard.write && typeof ClipboardItem !== "undefined"
+                        ? clipboard.write([
+                            new ClipboardItem({
+                              "text/plain": report.then((text) => new Blob([text], { type: "text/plain" })),
+                            }),
+                          ])
+                        : report.then((text) => clipboard.writeText(text));
+                    void copied
+                      .then(() => {
+                        if (copyOwner.current === owner) setCopyState("copied");
+                      })
+                      .catch(() => {
+                        if (copyOwner.current === owner) setCopyState("failed");
+                      });
+                  } catch {
+                    if (copyOwner.current === owner) setCopyState("failed");
+                  }
+                }}
+              >
+                {copyState === "copying" ? "Copying…" : copyState === "copied" ? "Copied" : "Copy details"}
+              </button>
+              {copyState === "failed" ? <p role="status">The browser couldn’t copy the details.</p> : null}
+            </div>
+          ) : null}
         </section>
       ) : null}
     </div>
   );
 }
 
-type SceneChipProps = { items: SceneErrorItem[]; open: boolean; onOpen: (open: boolean) => void };
+type SceneChipProps = {
+  items: SceneErrorItem[];
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  loadDetails?: () => Promise<{ errors: SceneErrorDiagnostic[]; omittedErrors?: number }>;
+};
 export function SceneErrorChip(props: SceneChipProps) {
   return <SceneMessageChip {...props} />;
 }

@@ -583,7 +583,7 @@ assert.deepEqual(separateSound.lines[1].heardBy, ["local"]);
 assert.deepEqual(separateSound.lines[1].soundOnly?.characterIds, ["near"]);
 assert.throws(
   () => routed(response([{ kind: "narration", text: "", sound: { sourceId: "local", text: "A motor rattles." } }])),
-  /unreadable speaker or line/,
+  /segments\[0\]\.text must be a nonempty string/,
   "a routing cue cannot silently replace missing narration text",
 );
 assert.throws(

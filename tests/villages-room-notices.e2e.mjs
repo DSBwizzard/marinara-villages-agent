@@ -296,10 +296,7 @@ await withBrowser(browser, async () => {
   const chip = page.getByRole("button", { name: /^\d+ Scene errors?$/ });
   await chip.click();
   const status = page.getByRole("region", { name: "Scene errors" });
-  await status.locator("summary").filter({ hasText: "World change failed · memories" }).click();
-  await expect(status).toContainText(
-    "The game could not confirm this world change from what the residents saw or heard.",
-  );
+  await expect(status).toContainText("The AI based a memory on words a resident didn’t hear.");
   await expect(status.getByRole("button", { name: "Retry memories" })).toBeVisible();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/memory-cause-phone.png" });
@@ -315,7 +312,6 @@ await withBrowser(browser, async () => {
   await refresh();
   await expect(chip).toBeVisible();
   if ((await chip.getAttribute("aria-expanded")) !== "true") await chip.click();
-  await status.locator("summary").filter({ hasText: "World change failed · projects" }).click();
   await page.setViewportSize({ width: 375, height: 740 });
   await page.screenshot({ path: "artifacts/project-recovery-phone.png" });
   await page.setViewportSize({ width: 1280, height: 900 });
