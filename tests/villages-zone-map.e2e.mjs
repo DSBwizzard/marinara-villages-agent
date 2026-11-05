@@ -97,12 +97,12 @@ await withBrowser(browser, async () => {
         nodes.map((node) => ({
           width: node.getBoundingClientRect().width,
           height: node.getBoundingClientRect().height,
-          limit: parseFloat(getComputedStyle(document.documentElement).fontSize) * 12,
+          reservedWidth: node.parentElement.clientWidth * 0.32,
         })),
       );
       assert.ok(
-        metrics.every((tile) => tile.width <= tile.limit + 1 && tile.height >= 44),
-        "Nodes stay compact with full-height touch targets",
+        metrics.every((tile) => Math.abs(tile.width - tile.reservedWidth) < 1 && tile.height >= 44),
+        "Visible nodes match their collision areas and retain full-height touch targets",
       );
       assert.equal(f.requests.length, 1, "Resizing visual nodes never rewrites saved coordinates");
     }

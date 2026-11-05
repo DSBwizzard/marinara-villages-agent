@@ -120,7 +120,6 @@ export function FoundingConnections({
         </>
       ) : (
         <ZoneMap
-          compact
           zones={zones}
           positions={venue.zoneLayout}
           selectedId={selectedZoneId}
