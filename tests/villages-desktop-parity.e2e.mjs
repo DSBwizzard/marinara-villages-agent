@@ -365,7 +365,7 @@ await withBrowser(browser, async () => {
     assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= width, "venue profile stays on screen");
     const sections = doors.getByRole("navigation", { name: "Venue sections" });
     await sections.getByRole("button", { name: "Zones", exact: true }).click();
-    await expect(doors.getByRole("checkbox", { name: "Freeze picture" })).toBeVisible();
+    await expect(doors.getByRole("checkbox", { name: "Prevent dynamic image updates for this Zone" })).toBeVisible();
     await sections.getByRole("button", { name: "Manage", exact: true }).click();
     await expect(doors.getByRole("button", { name: "Plan a renovation →" })).toBeVisible();
     await sections.getByRole("button", { name: "About", exact: true }).click();

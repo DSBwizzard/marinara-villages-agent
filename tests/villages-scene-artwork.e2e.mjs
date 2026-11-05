@@ -139,6 +139,7 @@ await withBrowser(browser, async () => {
       await page.getByRole("menuitem", { name: "View Venue", exact: true }).click();
       await page.getByRole("button", { name: "Zones", exact: true }).click();
       await page.locator(`[data-layout-zone="${targetId}"]`).click();
+      await page.getByRole("button", { name: "Picture", exact: true }).click();
     };
     const returnToScene = () => page.getByRole("button", { name: "Back to Scene", exact: true }).click();
     await openSettings();
@@ -154,9 +155,9 @@ await withBrowser(browser, async () => {
       await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `founding-day-${width}.png`) });
     await page.evaluate(() => window.setBackdropFounded(true));
     await expect(header).toHaveAttribute("src", night);
-    await page.getByRole("button", { name: "Regenerate artwork", exact: true }).click();
+    await page.getByRole("button", { name: "Generate new picture", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(1);
-    await expect(page.getByRole("button", { name: "Regenerate artwork", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Picture", exact: true })).toBeVisible();
     await returnToScene();
     await expect(backdrop).toHaveAttribute("src", generated);
     await expect(composer).toHaveValue("Keep this unsent Scene draft.");
@@ -174,7 +175,7 @@ await withBrowser(browser, async () => {
     await returnToScene();
     await expect(backdrop).toHaveAttribute("src", uploaded);
     await openSettings();
-    await page.getByRole("button", { name: "Update artwork", exact: true }).click();
+    await page.getByRole("button", { name: "Refresh picture", exact: true }).click();
     await expect.poll(() => mutations.length).toBe(3);
     assert.ok(mutations.at(-1).path.endsWith("/image/update"));
     await returnToScene();
