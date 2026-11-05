@@ -798,6 +798,21 @@ console.log(
     },
   } as LiveScenePorts);
   assert.equal(await live.canGenerateZonePicture("home", "living"), true);
+  scene.operation = { status: "running" } as typeof scene.operation;
+  assert.equal(
+    await live.canGenerateZonePicture("home", "living"),
+    false,
+    "running Scene work cannot purchase artwork",
+  );
+  scene.operation = { status: "complete" } as typeof scene.operation;
+  assert.equal(await live.canGenerateZonePicture("home", "living"), true);
+  scene.operation = { status: "interrupted" } as typeof scene.operation;
+  assert.equal(
+    await live.canGenerateZonePicture("home", "living"),
+    false,
+    "cancelled/held work cannot purchase artwork",
+  );
+  scene.operation = undefined;
   assert.equal(await live.canGenerateZonePicture("home", "exterior"), false);
   moveDuringRead = true;
   assert.equal(await live.canGenerateZonePicture("home", "living"), false, "movement in the same Scene is rechecked");

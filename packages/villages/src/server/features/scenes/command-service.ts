@@ -955,6 +955,7 @@ export function createSceneCommands({
     if (!admitted) return;
     if (
       !generateImage ||
+      hasVenueOperation(session.id) ||
       !findLocation(await readVillageState(), session.placeId) ||
       !(await readVillageState()).venues.some((venue) => venue.id === session.placeId)
     )
