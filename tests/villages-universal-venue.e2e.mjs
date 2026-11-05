@@ -584,6 +584,7 @@ await withBrowser(browser, async () => {
       .click();
     if (width <= 700) await page.getByRole("combobox", { name: "Section" }).selectOption("village");
     else await page.getByRole("button", { name: "World Configuration", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "World Configuration", level: 1, exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village navigation" })
