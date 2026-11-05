@@ -23,6 +23,15 @@ export class UnsupportedPlayerAgency extends VillagesRequestError {
   }
 }
 
+export class UnsupportedScenePerception extends VillagesRequestError {
+  constructor() {
+    super(
+      502,
+      "The Scene reply contradicts its hearing or positions. Retry to replace the reply; your input is saved.",
+    );
+  }
+}
+
 export function badRequest(message: string): VillagesRequestError {
   return new VillagesRequestError(400, message);
 }
