@@ -1,3 +1,5 @@
+import { relationshipDocumentId } from "../packages/villages/src/server/adapters/storage/relationship-payload-store.js";
+import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -114,6 +116,8 @@ function fixture(seeded = true) {
   });
   for (const resident of state.villagers)
     resident.agenda = unwrittenVillageAgenda(state.venues, resident.cardSnapshot.name);
+  state.relationshipContext = defaultRelationshipState(state.seed);
+  state.relationshipContext.reviewedActorIds = state.villagers.map((row) => row.characterId);
   return state;
 }
 function install(seeded = true) {
@@ -124,7 +128,10 @@ function install(seeded = true) {
   feddyWishCalls = 0;
   wishStarted = undefined;
   releaseWish = undefined;
-  rows.set("villages-village", { id: "villages-village", packageId: "villages", data: fixture(seeded), revision: 1 });
+  const state = fixture(seeded);
+  rows.set("villages-village", { id: "villages-village", packageId: "villages", data: state, revision: 1 });
+  const id = relationshipDocumentId(state.seed);
+  rows.set(id, { id, packageId: "villages", kind: "relationships", data: state.relationshipContext, revision: 1 });
 }
 const originalFetch = globalThis.fetch;
 globalThis.fetch = async () => new Response("[]", { headers: { "content-type": "application/json" } });
