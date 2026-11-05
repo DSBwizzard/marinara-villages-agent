@@ -144,7 +144,6 @@ await withBrowser(browser, async () => {
     await refreshed;
     await expect(page.getByRole("status").filter({ hasText: "Passage unavailable." })).toBeVisible();
     await page.getByRole("button", { name: "1 Scene error", exact: true }).click();
-    await page.locator("summary").filter({ hasText: "Scene reading" }).click();
     await page.getByRole("button", { name: "Latest", exact: true }).click();
     await expect(page.getByText("The Scene refreshed.", { exact: true })).toBeVisible();
     await expect(composer).toHaveValue("");

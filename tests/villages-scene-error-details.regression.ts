@@ -126,9 +126,28 @@ assert.notEqual(
 turn.effectFailures = {
   memories: { kind: "metadata", message: "Exact missing field", proposal: { text: "large context ".repeat(3000) } },
 };
+turn.processing!.domains.memories.status = "failed";
+turn.processing!.domains.memories.rejectedProposals = [];
+turn.processing!.domains.memories.failure = {
+  cause: "missing_result",
+  stage: "metadata",
+  message: "Exact missing field",
+};
 const bounded = sceneErrorDetails(scene);
 assert.match(bounded.errors[0]!.details, /omittedCharacters/);
 assert.ok(JSON.stringify(bounded).length < 16_000, "bound context without hiding validation reasons");
+turn.processing!.domains.memories.failure.message =
+  "Error: Malformed memory proposal: memories[15].text must be a nonempty string";
+turn.effectFailures.memories!.proposal = {
+  memoryChanges: [
+    ...Array.from({ length: 15 }, () => ({ text: "UNRELATED VALID MEMORY ".repeat(100) })),
+    { text: null, evidence: [], marker: "EXACT LATE FAILURE" },
+  ],
+};
+const lateFailure = sceneErrorDetails(scene).errors[0]!.details;
+assert.match(lateFailure, /EXACT LATE FAILURE/);
+assert.match(lateFailure, /"text": null/);
+assert.doesNotMatch(lateFailure, /UNRELATED/);
 
 scene.operation = {
   id: "request",

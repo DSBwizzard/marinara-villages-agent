@@ -88,7 +88,7 @@ export function sceneErrorDetails(scene: VenueScene) {
     );
   for (const { turn, domain, result } of changes.slice(0, 50)) {
     const rejected = result.rejectedProposals ?? [];
-    const proposals =
+    const savedProposals =
       domain === "memories"
         ? turn.liveProposals?.memoryChanges
         : domain === "relationships"
@@ -96,8 +96,26 @@ export function sceneErrorDetails(scene: VenueScene) {
           : domain === "wishes"
             ? turn.wishProposals
             : turn.projectSpeech;
-    const selected = rejected.length
-      ? rejected.map((row) => {
+    const failed = turn.effectFailures?.[domain]?.proposal;
+    const key = {
+      memories: "memoryChanges",
+      relationships: "relationshipChanges",
+      wishes: "wishChanges",
+      projects: "projectSpeech",
+    }[domain];
+    const proposals =
+      failed === undefined
+        ? savedProposals
+        : key && Object.hasOwn(asRecord(failed), key)
+          ? asRecord(failed)[key]
+          : failed;
+    const field =
+      result.failure?.stage === "metadata"
+        ? /(memories|wishes|proposals|changes|permissions|disclosures)\[(\d{1,2})\]/u.exec(result.failure.message)
+        : null;
+    const rows = rejected.length ? rejected : field ? [{ kind: field[1]!, index: Number(field[2]) }] : [];
+    const selected = rows.length
+      ? rows.map((row) => {
           const collection = Array.isArray(proposals) ? proposals : asRecord(proposals)[row.kind];
           return {
             kind: row.kind,
@@ -126,10 +144,10 @@ export function sceneErrorDetails(scene: VenueScene) {
           else citations(field);
         }
     };
-    const selectedProposal = turn.effectFailures?.[domain]?.proposal ?? selected;
+    const selectedProposal = selected;
     citations(selectedProposal);
-    if (!sources.size) result.evidenceIds.forEach(cite);
-    if (!sources.size) (turn.processing?.lineIds ?? []).forEach(cite);
+    if (!sources.size && !field) result.evidenceIds.forEach(cite);
+    if (!sources.size && !field) (turn.processing?.lineIds ?? []).forEach(cite);
     add(sceneChangeDiagnosticId(turn.id, domain, result), {
       submissionId: turn.id,
       domain,

@@ -5,8 +5,6 @@ export async function openSceneErrors(page) {
   if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
   const panel = page.getByRole("region", { name: "Scene errors", exact: true });
   await expect(panel).toBeVisible();
-  while (await panel.locator("details:not([open]) > summary").count())
-    await panel.locator("details:not([open]) > summary").first().click();
   return panel;
 }
 export async function closeSceneErrors(page) {
