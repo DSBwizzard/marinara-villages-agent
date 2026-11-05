@@ -1529,7 +1529,7 @@ await withBrowser(browser, async () => {
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await expect(directory.getByRole("button", { name: "Open Mara profile" })).toBeVisible();
     await page.getByRole("button", { name: "Close ×", exact: true }).click();
-    await page.getByRole("navigation", { name: "Village navigation" }).getByRole("button", { name: "People" }).click();
+    await page.getByRole("button", { name: "People", exact: true }).click();
     await expect(page.locator(`.${P}-notebook-session`)).toHaveAttribute("data-phase", "open");
     await page.emulateMedia({ reducedMotion: "reduce" });
     assert.equal(
