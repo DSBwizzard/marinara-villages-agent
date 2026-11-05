@@ -88,15 +88,19 @@ await withBrowser(browser, async () => {
 
     await older.click();
     await finish(await pending(), payload(0, { version: "3".repeat(64) }));
-    await expect(page.getByRole("alert")).toContainText("Scene history changed");
+    await expect(page.getByRole("region", { name: "Scene errors", exact: true })).toContainText(
+      "Scene history changed",
+    );
     await expect(rows.first()).toContainText("Exact paragraph 81");
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await finish(await pending(), { error: "History temporarily unavailable" }, 503);
-    await expect(page.getByRole("alert")).toContainText("History temporarily unavailable");
+    await expect(page.getByRole("region", { name: "Scene errors", exact: true })).toContainText(
+      "History temporarily unavailable",
+    );
     await page.getByRole("button", { name: "Refresh", exact: true }).click();
     await finish(await pending(), payload(120, { version: "2".repeat(64), olderCursor: "older-120" }));
     await expect(rows.first()).toContainText("Exact paragraph 120");
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.getByRole("region", { name: "Scene errors", exact: true })).toHaveCount(0);
 
     await older.click();
     const staleScene = await pending();

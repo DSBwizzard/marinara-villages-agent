@@ -124,6 +124,21 @@ await withBrowser(browser, async () => {
           value = { session: staleRecovery };
           staleRecovery = null;
         }
+      } else if (path.endsWith("/error-details")) {
+        value = {
+          errors: [
+            {
+              id: `operation:${session.operation.id}:${session.operation.attemptId}`,
+              details: JSON.stringify({
+                failure: {
+                  cause: "missing_result",
+                  stage: "sound-witnesses",
+                  detail: "Exact sound validation field: attentionWitnesses.segment",
+                },
+              }),
+            },
+          ],
+        };
       } else if (path.endsWith("/changes")) {
         value = {
           changes: [],
@@ -415,7 +430,7 @@ await withBrowser(browser, async () => {
     const legacyErrors = await openSceneErrors(page);
     await legacyErrors.getByRole("button", { name: "Retry original message", exact: true }).click();
     await closeSceneErrors(page);
-    await expectSceneError(page, "saved request changed");
+    await expectSceneError(page, "The Scene changed during the request.");
     assert.equal(turns.length, beforeConflict, "a newer attempt is never retried silently");
     let releaseReview;
     holdReview = new Promise((resolve) => {
@@ -433,7 +448,7 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue("My newer unsent draft");
     session.operation = { ...session.operation, attemptId: "attempt-three" };
     await page.getByRole("button", { name: "Replace with Say / Do", exact: true }).click();
-    await expectSceneError(page, "saved action changed");
+    await expectSceneError(page, "The Scene changed during the request.");
     assert.equal(turns.length, beforeConflict, "replacement never adopts a newer attempt");
     session.operation = null;
     await page.getByRole("button", { name: "Review latest saved action", exact: true }).click();
@@ -472,27 +487,23 @@ await withBrowser(browser, async () => {
     await expect(composer).toHaveValue("Original draft");
     const failurePanel = await openSceneErrors(page);
     await expect(page.getByRole("button", { name: "2 Scene errors", exact: true })).toBeVisible();
-    await expect(failurePanel.locator("details")).toHaveCount(2);
+    await expect(failurePanel.getByRole("group")).toHaveCount(2);
     await expect(
-      failurePanel.getByText(
-        "The reply described a sound that the game could not place in the Scene. Your draft is still here.",
-        { exact: true },
-      ),
+      failurePanel.getByText("The AI described a sound the game couldn’t place in the Scene.", { exact: true }),
     ).toHaveCount(2);
-    const failedMessage = failurePanel.locator("details").filter({ hasText: "Message failed" });
+    const failedMessage = failurePanel.getByRole("group", { name: "Message failed", exact: true });
     await expect(failedMessage.getByRole("button", { name: "Retry original message", exact: true })).toHaveCount(1);
-    await expect(failedMessage).toContainText(
-      "The reply described a sound that the game could not place in the Scene. Your draft is still here.",
-    );
+    await expect(failedMessage).toContainText("The AI described a sound the game couldn’t place in the Scene.");
     await expect(failedMessage).not.toContainText("invalid narrated sound");
-    await failedMessage.getByRole("button", { name: "Copy details", exact: true }).click();
+    await expect(failurePanel).not.toContainText("send-recovery");
+    await failurePanel.getByRole("button", { name: "Copy details", exact: true }).click();
+    await expect(failurePanel.getByRole("button", { name: "Copied", exact: true })).toBeVisible();
     const copied = await page.evaluate(() => window.copiedSceneError);
     assert.match(copied, /Original error: The reply used an invalid narrated sound/u);
     assert.ok(copied.includes("Request: " + turns[0].submissionId));
-    assert.match(
-      copied,
-      /Scene ID: send-recovery\nRequest: [^\n]+\nAttempt: failed-attempt\nStage: turn-reply\nStatus: interrupted/u,
-    );
+    assert.match(copied, /Scene ID: send-recovery/u);
+    assert.match(copied, /Attempt: failed-attempt\nStage: turn-reply\nStatus: interrupted/u);
+    assert.match(copied, /Exact sound validation field: attentionWitnesses.segment/u);
     await page.screenshot({ path: `.build-tmp/scene-status/friendly-error-${mobile ? "mobile" : "desktop"}.png` });
     await closeSceneErrors(page);
     changeFailureReason = "The suggested memory had no witnessed evidence.";
@@ -578,10 +589,8 @@ await withBrowser(browser, async () => {
         await expect(chip).toBeVisible();
         await expect(page.getByRole("button", { name: "Check saved reply", exact: true })).toHaveCount(0);
         const panel = await openSceneErrors(page);
-        await expect(panel).toContainText("Reply connection interrupted");
-        await expect(panel).toContainText(
-          "The game could not confirm this world change from what the residents saw or heard.",
-        );
+        await expect(panel.getByRole("group", { name: "Reply connection interrupted", exact: true })).toBeVisible();
+        await expect(panel).toContainText("The AI based a memory on words a resident didn’t hear.");
         const canvas = page.locator(`.${tag}-chat`);
         const screen = page.locator(`.${tag}-room-screen`);
         const canvasBox = await canvas.boundingBox();
@@ -616,11 +625,11 @@ await withBrowser(browser, async () => {
     });
     const info = page.getByRole("button", { name: "Scene information", exact: true });
     const infoPanel = page.getByRole("region", { name: "Information", exact: true });
-    const occupancyMessage = "The requested change in Zone occupancy could not be completed.";
+    const occupancyMessage = "The game couldn’t change who occupies this space.";
     failure = "sound";
     await composer.fill("Saved request that resolves as unavailable");
     await send.click();
-    await expectSceneError(page, "Message failed");
+    await expectSceneError(page, "The AI described a sound the game couldn’t place in the Scene.");
     occupancyUnavailable = true;
     const retryPanel = await openSceneErrors(page);
     await retryPanel.getByRole("button", { name: "Retry original message", exact: true }).click();
@@ -679,10 +688,10 @@ await withBrowser(browser, async () => {
     await expect(info).toHaveCount(0);
     delayUnavailableResponse = false;
     for (const [outcome, notice] of [
-      ["halt-time", "HALT: This turn would skip or change Village time."],
-      ["halt-appointment", "HALT: That appointment's time has passed in the Village."],
-      ["halt-state", "HALT: This turn requires an activity or condition Villages cannot support."],
-      ["halt-world", "HALT: This change conflicts with the current Village."],
+      ["halt-time", "The game can’t skip or change Village time."],
+      ["halt-appointment", "That appointment’s time has passed in the Village."],
+      ["halt-state", "The game doesn’t support that activity or condition."],
+      ["halt-world", "That change conflicts with the current Village."],
     ]) {
       heldOutcome = outcome;
       await page.getByRole("button", { name: /Mode: .*Choose mode/ }).click();

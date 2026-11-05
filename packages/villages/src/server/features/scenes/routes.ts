@@ -27,7 +27,13 @@ import {
   retrySceneChangeInterpretation,
   sendVenueTurn,
 } from "./venue-session.js";
-import { continueSceneChange, dismissSceneNotice, readSceneChanges, replaySceneChanges } from "./changes.js";
+import {
+  continueSceneChange,
+  dismissSceneNotice,
+  readSceneChanges,
+  readSceneErrorDetails,
+  replaySceneChanges,
+} from "./changes.js";
 import { activeVenueSession, touchVenueSession } from "./live-session.js";
 import { readVenueVisit } from "./archive.js";
 import { sceneQueries } from "./services.js";
@@ -137,6 +143,13 @@ export function registerSceneEntryRoutes(engine: FastifyInstance) {
 }
 export function registerSceneOperationRoutes(engine: FastifyInstance) {
   const app = engine;
+  app.get<{ Params: { id: string } }>("/rooms/:id/error-details", async (request, reply) => {
+    try {
+      return await readSceneErrorDetails(readChatId(request.params.id));
+    } catch (error) {
+      return fail(reply, error, "reading Scene error details");
+    }
+  });
   app.post<{ Body: { sessionId?: unknown; retryOfAttemptId?: string; recovery?: boolean } }>(
     "/rooms/greet",
     async (request, reply) => {

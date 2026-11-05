@@ -421,9 +421,13 @@ export function RoomPanel({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [closeMemory, openMemory]);
 
-  const requestFields = [
+  const sceneFields = [
     { label: "Scene", value: room.placeName },
     { label: "Scene ID", value: room.id },
+    { label: "Scene revision", value: String(room.sceneRevision ?? "unknown") },
+  ];
+  const requestFields = [
+    ...sceneFields,
     ...(room.operation
       ? [
           { label: "Request", value: room.operation.id },
@@ -451,10 +455,14 @@ export function RoomPanel({
     ) : undefined;
   const errorItems: SceneErrorItem[] = sceneErrors.map((item) => ({
     ...item,
+    diagnosticId:
+      room.operation && (item.id === "operation" || item.message === room.operation.error)
+        ? `operation:${room.operation.id}:${room.operation.attemptId}`
+        : undefined,
     fields:
-      item.id === "sprite-setting" || item.id === "decisions" || item.id === "diagnostics"
-        ? [{ label: "Scene", value: room.placeName }, ...(item.fields ?? [])]
-        : [...requestFields, ...(item.fields ?? [])],
+      item.id === "operation" || item.message === room.operation?.error
+        ? [...requestFields, ...(item.fields ?? [])]
+        : [...sceneFields, ...(item.fields ?? [])],
     actions: item.actions ?? (["room", "greeting", "operation"].includes(item.id) ? openingActions : undefined),
   }));
   if (error && !sceneErrors.length)
@@ -462,7 +470,7 @@ export function RoomPanel({
       id: "request",
       title: room.status === "opening" ? "Scene opening failed" : "Scene request failed",
       message: error,
-      fields: requestFields,
+      fields: sceneFields,
       actions: openingActions,
     });
   if (turnRecovery)
@@ -470,7 +478,7 @@ export function RoomPanel({
       id: "reply-recovery",
       title: "Reply connection interrupted",
       message: turnRecovery,
-      fields: requestFields,
+      fields: sceneFields,
       actions: (
         <button type="button" onClick={onCheckSavedReply}>
           Check saved reply
@@ -482,13 +490,14 @@ export function RoomPanel({
       id: "opening-notice",
       title: "Scene opening notice",
       message: greetingNotice,
-      fields: requestFields,
+      fields: sceneFields,
     });
   if (playback.error)
     errorItems.push({
       id: "reading",
       title: "Scene reading",
       message: playback.error,
+      fields: sceneFields,
       actions: (
         <>
           <button type="button" onClick={() => void playback.retry()}>
@@ -504,6 +513,8 @@ export function RoomPanel({
     if (change.status === "pending") continue;
     errorItems.push({
       id: change.submissionId + ":" + change.domain,
+      diagnosticId: change.diagnosticId,
+      domain: change.domain,
       title: "World change" + (change.status === "rejected" ? " not saved" : " failed") + " · " + change.domain,
       message: change.reason ?? "World change could not be saved.",
       fields: [
@@ -558,8 +569,7 @@ export function RoomPanel({
     errorItems.push({
       id: "other-world-updates",
       title: "Other World changes need attention",
-      message:
-        "Some proposed world changes weren’t saved or could not be processed. See World change diagnostics for details.",
+      message: "The game couldn’t apply some updates.",
       fields: [
         { label: "Failed", value: String(changeStatus.failed) },
         { label: "Not saved", value: String(changeStatus.rejected) },
@@ -1029,7 +1039,12 @@ export function RoomPanel({
               </button>
             </div>
             <div className={`${ELEMENT_TAG}-scene-modal-errors`}>
-              <SceneErrorChip items={errorItems} open={errorsOpen} onOpen={setErrorsOpen} />
+              <SceneErrorChip
+                items={errorItems}
+                open={errorsOpen}
+                onOpen={setErrorsOpen}
+                loadDetails={() => request(`/rooms/${encodeURIComponent(room.id)}/error-details`)}
+              />
             </div>
             {sceneSettings}
           </div>
@@ -1057,6 +1072,7 @@ export function RoomPanel({
         {!settingsOpen ? (
           <SceneErrorChip
             items={errorItems}
+            loadDetails={() => request(`/rooms/${encodeURIComponent(room.id)}/error-details`)}
             open={errorsOpen}
             onOpen={(value) => {
               setErrorsOpen(value);

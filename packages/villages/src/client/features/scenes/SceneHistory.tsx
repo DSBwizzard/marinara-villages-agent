@@ -4,6 +4,7 @@ import { isSceneAside, speechDelivery } from "../../../shared/helpers/scene-spee
 import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { renderVillagesMarkdown } from "../../shared/presentation.js";
+import { SceneErrorChip } from "./scene-errors.js";
 
 export function SceneHistory({
   sceneId,
@@ -21,7 +22,8 @@ export function SceneHistory({
   const [page, setPage] = useState<SceneHistoryPage | null>(null),
     [busy, setBusy] = useState(true),
     [error, setError] = useState("");
-  const lane = useRef({ generation: 0, pending: null as AbortController | null });
+  const [errorsOpen, setErrorsOpen] = useState(true);
+  const lane = useRef({ generation: 0, pending: null as AbortController | null, path: "" });
   const load = useCallback(
     async (cursor?: string, expectedVersion?: string) => {
       const currentLane = lane.current;
@@ -32,10 +34,8 @@ export function SceneHistory({
       setBusy(true);
       setError("");
       try {
-        const result = await request<SceneHistoryPage>(
-          `/rooms/${encodeURIComponent(sceneId)}/history?scope=${encodeURIComponent(scope)}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`,
-          { signal: controller.signal },
-        );
+        currentLane.path = `/rooms/${encodeURIComponent(sceneId)}/history?scope=${encodeURIComponent(scope)}${cursor ? "&cursor=" + encodeURIComponent(cursor) : ""}`;
+        const result = await request<SceneHistoryPage>(currentLane.path, { signal: controller.signal });
         if (controller.signal.aborted || currentLane.generation !== claim) return;
         if (
           result.scope !== scope ||
@@ -45,8 +45,10 @@ export function SceneHistory({
           throw Error("Scene history changed. Refresh it to continue.");
         setPage(result);
       } catch (cause) {
-        if (!controller.signal.aborted && currentLane.generation === claim)
+        if (!controller.signal.aborted && currentLane.generation === claim) {
           setError(messageFrom(cause, "Could not load Scene history."));
+          setErrorsOpen(true);
+        }
       } finally {
         if (currentLane.generation === claim) {
           currentLane.pending = null;
@@ -90,7 +92,23 @@ export function SceneHistory({
         </button>
         {busy ? <span role="status">Loading…</span> : null}
       </nav>
-      {error ? <p role="alert">{error}</p> : null}
+      {error ? (
+        <SceneErrorChip
+          items={[
+            {
+              id: "history",
+              title: "Scene history",
+              message: error,
+              fields: [
+                { label: "Scene ID", value: sceneId },
+                { label: "Request", value: lane.current.path },
+              ],
+            },
+          ]}
+          open={errorsOpen}
+          onOpen={setErrorsOpen}
+        />
+      ) : null}
       {current?.lines.map((line, index) =>
         line.presenceChange ? (
           <p key={line.id ?? index} className={ELEMENT_TAG + "-room-star"}>

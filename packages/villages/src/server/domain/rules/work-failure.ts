@@ -3,6 +3,10 @@ import { coerceResponseDiagnostics, type ResponseDiagnostics } from "./response-
 
 /** Technical failures are distinct from a valid negative or uncertain interpretation. */
 export type WorkFailure = {
+  /** Exact bounded parser cause, available only in explicit owner diagnostics. */
+  detail?: string;
+  model?: string;
+  connectionId?: string;
   cause:
     | "empty_output"
     | "output_limit"
@@ -31,6 +35,17 @@ export class WorkFailureError extends Error {
 
 /** Public summaries contain fixed validation vocabulary, never model/provider text or evidence. */
 export function workFailureSummary(failure: WorkFailure): string {
+  if (failure.stage === "scene-response") {
+    const detail = failure.detail ?? "";
+    if (/^segments must be an array/u.test(detail)) return "The AI left out the Scene’s lines.";
+    if (/^segments must contain at least/u.test(detail)) return "The AI returned no Scene text.";
+    if (/^segments must contain at most/u.test(detail)) return "The AI wrote more than 24 Scene lines.";
+    if (/^heardPlayerBy must be an array/u.test(detail)) return "The AI didn’t identify who heard your character.";
+    if (/\.kind must be/u.test(detail)) return "The AI used an unknown kind of Scene text.";
+    if (/\.speakerId does not identify/u.test(detail)) return "The AI gave a line to someone outside this Scene.";
+    if (/\.text must be a nonempty/u.test(detail)) return "The AI left a line blank.";
+    if (/\.text exceeds 2000/u.test(detail)) return "The AI wrote a line longer than 2,000 characters.";
+  }
   const stages: Record<string, string> = {
     "proposal-witnesses": "The proposal has missing or invalid resident witnesses.",
     "proposal-evidence": "A citation is unavailable or was not witnessed by every affected resident.",
@@ -120,6 +135,9 @@ export function coerceWorkFailure(value: unknown): WorkFailure | undefined {
       : {}),
     stage: asTrimmedString(raw.stage).slice(0, 80),
     message: asTrimmedString(raw.message).slice(0, 500),
+    ...(typeof raw.detail === "string" ? { detail: raw.detail.slice(0, 2000) } : {}),
+    ...(typeof raw.model === "string" ? { model: raw.model.slice(0, 160) } : {}),
+    ...(typeof raw.connectionId === "string" ? { connectionId: raw.connectionId.slice(0, 160) } : {}),
     ...(typeof raw.finishReason === "string" ? { finishReason: raw.finishReason.slice(0, 80) } : {}),
     ...(Number.isFinite(raw.requestedOutputTokens) ? { requestedOutputTokens: Number(raw.requestedOutputTokens) } : {}),
     ...(Array.isArray(raw.checkIds)

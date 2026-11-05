@@ -800,6 +800,7 @@ export type RoomOperation = {
 };
 
 export type SceneChangeIssue = {
+  diagnosticId?: string;
   canContinue?: boolean;
   continued?: boolean;
   submissionId: string;
