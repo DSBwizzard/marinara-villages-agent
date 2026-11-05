@@ -5,6 +5,10 @@ export function sceneErrorMessage(original: string, domain?: string): string {
     .replace(/^(?:Error|VillagesRequestError|VillageApiError):\s*/u, "")
     .replace(/\s*\(HTTP \d+; [^)]+\)/gu, "");
   const rules: [RegExp, string][] = [
+    [
+      /Required response metadata is missing or invalid/iu,
+      "The AI returned incomplete or invalid information for the update.",
+    ],
     [/line could not be accepted/iu, "The game couldn’t accept your message."],
     [/^Invalid request details/iu, "The request contains invalid details."],
     [/History temporarily unavailable|Could not load Scene history/iu, "The game couldn’t load the Scene history."],

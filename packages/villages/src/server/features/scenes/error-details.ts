@@ -123,7 +123,9 @@ export function sceneErrorDetails(scene: VenueScene) {
             value: Array.isArray(collection) ? collection[row.index] : undefined,
           };
         })
-      : proposals;
+      : failed === undefined
+        ? proposals
+        : failed;
     const sources = new Set<string>();
     const cite = (ref: unknown) => {
       const id =

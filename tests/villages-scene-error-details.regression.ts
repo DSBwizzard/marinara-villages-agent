@@ -148,6 +148,22 @@ const lateFailure = sceneErrorDetails(scene).errors[0]!.details;
 assert.match(lateFailure, /EXACT LATE FAILURE/);
 assert.match(lateFailure, /"text": null/);
 assert.doesNotMatch(lateFailure, /UNRELATED/);
+turn.effectFailures.projects = {
+  kind: "metadata",
+  message: "Malformed Project metadata",
+  proposal: { projectSpeech: [], interpretationRouting: { reason: "EXACT INVALID ROUTING" } },
+};
+turn.processing!.domains.projects.status = "failed";
+turn.processing!.domains.projects.failure = {
+  cause: "missing_result",
+  stage: "metadata",
+  message: "Malformed Project metadata",
+};
+const routingFailure = sceneErrorDetails(scene).errors.find(
+  (row) => row.id === sceneChangeDiagnosticId(turn.id, "projects", turn.processing!.domains.projects),
+)!;
+assert.match(routingFailure.details, /EXACT INVALID ROUTING/);
+assert.match(routingFailure.details, /interpretationRouting/);
 
 scene.operation = {
   id: "request",

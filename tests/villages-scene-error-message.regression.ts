@@ -3,6 +3,10 @@ import { sceneErrorMessage } from "../packages/villages/src/client/features/scen
 import { sceneErrorReport } from "../packages/villages/src/client/features/scenes/scene-error-report.js";
 
 const cases = [
+  [
+    "Required response metadata is missing or invalid.",
+    "The AI returned incomplete or invalid information for the update.",
+  ],
   ["This line could not be accepted.", "The game couldn’t accept your message."],
   ["Invalid request details", "The request contains invalid details."],
   ["History temporarily unavailable", "The game couldn’t load the Scene history."],
