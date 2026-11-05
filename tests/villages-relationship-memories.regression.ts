@@ -30,6 +30,122 @@ function fixture() {
   return state;
 }
 const state = fixture();
+// A complete longer speech can use both native evidence slots without losing any source text.
+for (const content of ["A".repeat(374), "界".repeat(120)]) {
+  const world = fixture();
+  const source = { kind: "scene" as const, id: "long-disclosure", revision: 1, fingerprint: memoryHash(content) };
+  const disclosure = {
+    id: "long-bond",
+    fromId: "a",
+    toId: "player",
+    kind: "connection" as const,
+    text: "Ada wants to get to know you.",
+    lineIds: ["long-speech"],
+    bond: { connection: "New acquaintances" },
+  };
+  const lines = [
+    {
+      id: "long-speech",
+      speakerId: "a",
+      role: "assistant" as const,
+      kind: "dialogue",
+      content,
+      heardBy: ["player", "a"],
+      playerHeard: true,
+    },
+  ];
+  const receiptId = "social-disclosure:" + memoryHash(disclosure.id);
+  world.memoryReceipts[receiptId] = {
+    id: receiptId,
+    sceneId: "",
+    submissionId: source.id,
+    domain: "memories",
+    status: "rejected",
+    at,
+    committedAt: readAt,
+    evidenceIds: disclosure.lineIds,
+    reason: "Disclosure needs one or two bounded exact supporting quotes",
+  };
+  publishRelationshipDisclosures(world, [disclosure], source, lines, at, readAt);
+  const memory = world.memories.records[0];
+  assert.ok(memory, "Saved source replays recover a bounded-support rejection");
+  assert.equal(
+    memory.knowers.player!.support.map((row) => row.excerpt).join(""),
+    content,
+    "Every source character is retained",
+  );
+  assert.equal(memory.knowers.player!.support.length, 2);
+  assert.ok(memory.knowers.player!.support.every((row) => Buffer.byteLength(row.excerpt) <= 320));
+  assert.equal(world.memoryReceipts[receiptId]!.status, "applied");
+  assert.deepEqual(projectRelationshipProfiles(world.relationshipContext!, world)[0]!.bond, {
+    connection: "New acquaintances",
+  });
+  for (const change of [
+    { submissionId: "another-source" },
+    { evidenceIds: ["another-line"] },
+    { reason: "Player Memory correction or Forget protects this disclosure" },
+  ]) {
+    const other = fixture();
+    other.memoryReceipts[receiptId] = {
+      ...world.memoryReceipts[receiptId]!,
+      status: "rejected",
+      reason: "Disclosure needs one or two bounded exact supporting quotes",
+      ...change,
+    };
+    publishRelationshipDisclosures(other, [disclosure], source, lines, at, readAt);
+    assert.equal(other.memories.records.length, 0, "Other sources, evidence and protected rejections remain terminal");
+  }
+  const oversized = fixture();
+  publishRelationshipDisclosures(
+    oversized,
+    [disclosure],
+    source,
+    [{ ...lines[0]!, content: "x".repeat(641) }],
+    at,
+    readAt,
+  );
+  assert.equal(oversized.memories.records.length, 0, "Oversized support is never truncated to fit");
+  for (const text of ["a".repeat(318) + "😀" + "b".repeat(318), "x".repeat(641)]) {
+    const ambiguous = fixture();
+    publishRelationshipDisclosures(
+      ambiguous,
+      [{ ...disclosure, lineIds: ["long-speech", "short-speech"] }],
+      source,
+      [
+        { ...lines[0]!, content: text },
+        { ...lines[0]!, id: "short-speech", content: "A short statement." },
+      ],
+      at,
+      readAt,
+    );
+    assert.equal(
+      ambiguous.memories.records.length,
+      0,
+      "A long citation cannot disappear while another citation survives",
+    );
+  }
+  const equalTime = fixture();
+  publishRelationshipDisclosures(
+    equalTime,
+    [{ ...disclosure, id: "other-bond", bond: { connection: "Friends" } }],
+    { ...source, id: "other-source" },
+    lines,
+    at,
+    readAt,
+  );
+  equalTime.memoryReceipts[receiptId] = {
+    ...world.memoryReceipts[receiptId]!,
+    status: "rejected",
+    reason: "Disclosure needs one or two bounded exact supporting quotes",
+  };
+  publishRelationshipDisclosures(equalTime, [disclosure], source, lines, at, readAt);
+  assert.deepEqual(
+    projectRelationshipProfiles(equalTime.relationshipContext!, equalTime)[0]!.bond,
+    { connection: "Friends" },
+    "Ambiguous equal-time recovery cannot replace a different known source",
+  );
+  assert.equal(equalTime.memoryReceipts[receiptId]!.status, "rejected");
+}
 // Compact display is saved player knowledge, independent of private attitudes.
 {
   const world = fixture();
@@ -53,6 +169,8 @@ const state = fixture();
   const parse = (row: unknown, lines = [speech]) =>
     parseRelationshipReview({ ...emptyRelationshipReview(), disclosures: [row] }, source.id, lines, world).disclosures;
   const parsed = parse(disclosure);
+  for (const excerpts of [null, "bad", [], ["valid", 1]])
+    assert.throws(() => parse({ ...disclosure, excerpts }), "Invalid explicit excerpts cannot become fallback speech");
   publishRelationshipDisclosures(world, parsed, source, [speech], at, readAt);
   const profile = () => projectRelationshipProfiles(world.relationshipContext!, world)[0]!;
   assert.deepEqual(profile().bond, { connection: "Close friends", condition: "At ease", tone: "steady" });

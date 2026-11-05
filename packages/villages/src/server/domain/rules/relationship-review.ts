@@ -230,8 +230,21 @@ export function parseRelationshipReview(
       text: text(240).parse(row.text),
       lineIds,
       ...(row.bond !== undefined ? { bond: relationshipBondSchema.parse(row.bond) } : {}),
-      ...(Array.isArray(row.excerpts)
-        ? { excerpts: row.excerpts.filter((quote): quote is string => typeof quote === "string") }
+      ...(row.excerpts !== undefined
+        ? {
+            excerpts: z
+              .array(
+                z
+                  .string()
+                  .refine(
+                    (quote) => !!quote.trim() && Buffer.byteLength(quote) <= 320,
+                    "Disclosure excerpts require bounded exact quotes.",
+                  ),
+              )
+              .min(1)
+              .max(2)
+              .parse(row.excerpts),
+          }
         : {}),
     });
   }

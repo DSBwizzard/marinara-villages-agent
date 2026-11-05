@@ -33,7 +33,10 @@ import { applyLiveMemories } from "../../domain/rules/live-memory-application.js
 import { bindProjectSpeech, validateProjectSpeech } from "../../domain/rules/project-interpretation.js";
 import { structuralShape as projectZoneShape } from "../../domain/rules/project-structure.js";
 import { rejectedInputHash, rejectedSubmission } from "../../domain/rules/rejected-submissions.js";
-import { publishRelationshipDisclosures } from "../../domain/rules/relationship-memories.js";
+import {
+  DISCLOSURE_SUPPORT_FAILURE,
+  publishRelationshipDisclosures,
+} from "../../domain/rules/relationship-memories.js";
 import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
 import { parseRelationshipProposals, RELATIONSHIP_REVIEW_INSTRUCTION } from "../../domain/rules/relationship-review.js";
 import { startingRelationshipsReady, relationshipZoneController } from "../../domain/rules/relationship-rules.js";
@@ -3261,12 +3264,27 @@ export function createSceneCommands({
   }
 
   /** Only saved local results can finish a deferred natural conclusion. */
-  async function finishSemanticScene(id: string): Promise<void> {
+  async function finishSemanticScene(id: string, replayDisclosures = false): Promise<void> {
     let scene = await readSession(id);
     const semanticTurns = scene.submissions.filter((row) => row.semanticProvenance?.version === 2);
     const authority = semanticTurns.length ? await readVillageState() : undefined;
+    const rejectedDisclosures = new Set(
+      replayDisclosures
+        ? Object.values(authority?.memoryReceipts ?? {})
+            .filter(
+              (receipt) =>
+                receipt.sceneId === id &&
+                receipt.status === "rejected" &&
+                receipt.reason === DISCLOSURE_SUPPORT_FAILURE,
+            )
+            .map((receipt) => receipt.submissionId)
+        : [],
+    );
     for (const turn of semanticTurns.filter(
-      (row) => !row.semanticReady || !authority?.socialPublications?.[scene.id + ":" + row.id],
+      (row) =>
+        !row.semanticReady ||
+        !authority?.socialPublications?.[scene.id + ":" + row.id] ||
+        rejectedDisclosures.has(scene.id + ":" + row.id),
     )) {
       try {
         await settleSemanticAuthority(scene, turn, false);
