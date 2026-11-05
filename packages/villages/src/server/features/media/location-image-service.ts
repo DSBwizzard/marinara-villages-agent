@@ -38,6 +38,7 @@ import type { generateVillageImage } from "./image-generation.js";
 import type { decodeImageDataUrl } from "./location-image-codec.js";
 export type LocationImagePorts = {
   pictureNow?: () => Date;
+  canGenerateZonePicture(venueId: string, zoneId: string, guard?: (state: VillageState) => boolean): Promise<boolean>;
   resolveVillageImageConnectionId?: typeof resolveVillageImageConnectionId;
   resolveVillageImageEditing?: typeof resolveVillageImageEditing;
   readZonePictureReference?: typeof readZonePictureReference;
@@ -117,6 +118,13 @@ export function createLocationImages(ports: LocationImagePorts) {
           privateOwnerId,
         ),
     );
+    if (!(await ports.canGenerateZonePicture(venueId, targetZone.id)))
+      throw conflict("Visit this Zone before generating its artwork.");
+    const reference = targetZone.picture?.reference;
+    const support = reference ? await ports.resolveVillageImageEditing?.() : undefined;
+    if (reference && (!support || !ports.readZonePictureReference))
+      throw conflict("Choose an image connection that supports references before generating artwork.");
+    const referenceImages = reference ? [(await ports.readZonePictureReference!(reference)).dataUrl] : undefined;
     const exterior = targetZone.kind === "exterior";
     let inspection: LoreInspection | undefined;
     const lore = await readVillageImageLore(
@@ -184,6 +192,11 @@ export function createLocationImages(ports: LocationImagePorts) {
         ),
         `Current physical account: ${venue.description}`,
         DAYTIME_IMAGE_INSTRUCTION,
+        ...(reference
+          ? [
+              "The uploaded image is an artistic reference only. Borrow its palette, mood and rendering style where compatible. The complete physical account above controls architecture, furniture, possessions and surroundings. Never copy unrelated subjects, objects, rides, buildings, text or people from the reference. The reference does not establish game facts.",
+            ]
+          : []),
         ...(onlyIfEmpty && !(targetZone && isPrivateInterior(targetZone))
           ? sceneryAdmissionContext(village, found.venue)
           : []),
@@ -223,11 +236,16 @@ export function createLocationImages(ports: LocationImagePorts) {
           (onlyIfEmpty && (latest.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed))
         )
           throw conflict("The scenery changed before its image request. Generate again.");
+        if (reference && (await ports.resolveVillageImageEditing!())?.signature !== support?.signature)
+          throw conflict("The image connection changed. Retry artwork deliberately.");
         await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
         await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${targetZone?.name ?? "Entrance"}`);
+        if (!(await ports.canGenerateZonePicture(venueId, zoneId!, guard)))
+          throw conflict("Visit this Zone before generating its artwork.");
       },
       sceneryStyleProfileId: village.sceneryStyleProfileId,
-      connectionId,
+      connectionId: support?.connectionId ?? connectionId,
+      referenceImages,
       name: venue.name,
       prompt,
       negativePrompt: LOCATION_NEGATIVE_PROMPT,
@@ -256,6 +274,7 @@ export function createLocationImages(ports: LocationImagePorts) {
       zoneId,
       expectedContext,
       true,
+      guard,
     );
     return image.id;
   }
@@ -289,7 +308,7 @@ export function createLocationImages(ports: LocationImagePorts) {
     privateOwnerId = "",
     zoneId?: string,
   ): Promise<VillageSnapshot> {
-    const { venue } = await requireVenue(venueId);
+    const { village, venue } = await requireVenue(venueId);
     if (spaceClass && !venueClasses(venue).includes(spaceClass)) throw notFound("That Venue space no longer exists.");
     await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
     const decoded = decodeImageDataUrl(dataUrl);
@@ -299,7 +318,33 @@ export function createLocationImages(ports: LocationImagePorts) {
       name: venue.name,
       prompt: "",
     });
-    return setVillageVenueImage(venueId, image, spaceClass, privateOwnerId, false, zoneId);
+    const targetId =
+      zoneId ??
+      legacyZoneId(
+        venue,
+        privateOwnerId ? "private" : spaceClass === "residence" ? "shared" : spaceClass ? "public" : "outside",
+        spaceClass,
+        privateOwnerId,
+      );
+    await mutateVillageState((state) => {
+      if (state.seed !== village.seed || state.foundedAt !== village.foundedAt)
+        throw conflict("That Village changed. Upload the reference again.");
+      const current = state.venues.find((row) => row.id === venueId);
+      const zone = current && resolveVenueZone(current, targetId);
+      if (!zone) throw notFound("That Zone is no longer here.");
+      zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
+      zone.picture = {
+        ...zone.picture,
+        base: zone.picture?.base ?? zone.image,
+        reference: image,
+        dirty: true,
+        claim: undefined,
+        failed: false,
+        problem: undefined,
+        removed: false,
+      };
+    });
+    return ports.buildVillageSnapshot!();
   }
 
   async function setZonePictureFrozen(venueId: string, zoneId: string, frozen: boolean): Promise<VillageSnapshot> {
@@ -308,21 +353,6 @@ export function createLocationImages(ports: LocationImagePorts) {
       const zone = venue && resolveVenueZone(venue, zoneId);
       if (!zone) throw notFound("That Zone is no longer here.");
       zone.freezePicture = frozen;
-      zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
-      if (zone.picture) zone.picture.claim = undefined;
-    });
-    return ports.buildVillageSnapshot!();
-  }
-
-  async function setZoneDayNight(venueId: string, zoneId: string, enabled: boolean): Promise<VillageSnapshot> {
-    await ports.assertVenueImageAccess(venueId, undefined, "", zoneId);
-    await mutateVillageState((state) => {
-      const venue = state.venues.find((entry) => entry.id === venueId);
-      const zone = venue && resolveVenueZone(venue, zoneId);
-      if (!zone) throw notFound("That Zone is no longer here.");
-      zone.dayNightManual = true;
-      if ((zone.dayNight === true) === enabled) return;
-      zone.dayNight = enabled;
       zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
       if (zone.picture) zone.picture.claim = undefined;
     });
@@ -342,7 +372,6 @@ export function createLocationImages(ports: LocationImagePorts) {
     generateFirstZoneImage,
     storeVillageVenueImage,
     setZonePictureFrozen,
-    setZoneDayNight,
     requestZonePicture,
     updateZonePicture,
     retryZonePicture,

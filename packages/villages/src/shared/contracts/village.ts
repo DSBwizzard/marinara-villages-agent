@@ -385,6 +385,10 @@ export type VillageVenueImage = {
  * somewhere somebody lives.
  */
 export type VillageVenue = {
+  pictureReference?: VillageVenueImage;
+  referenceAppliedId?: string;
+  pictureContext?: string;
+  daylightReady?: boolean;
   dayNight?: boolean;
   dayNightManual?: boolean;
   zoneLayout?: import("../helpers/zone-layout.js").ZoneLayout;
@@ -434,7 +438,10 @@ export type VillageVenue = {
     nightPending?: boolean;
     freezePicture?: boolean;
     pictureRetryAvailable?: boolean;
-    pictureUpdateAvailable?: boolean;
+    pictureGenerateAvailable?: boolean;
+    pictureReference?: VillageVenueImage;
+    referenceAppliedId?: string;
+    referencePending?: boolean;
     pictureProblem?: string;
     pictureUpdating?: boolean;
     image: VillageVenueImage | null;

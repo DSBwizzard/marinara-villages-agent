@@ -183,8 +183,8 @@ try {
   assert.equal(projected.accessView?.canManage, false);
   const publicZone = projected.zones!.find((zone) => zone.id === "public")!;
   assert.equal(publicZone.description, "A visible room");
-  assert.equal(publicZone.pictureRetryAvailable, true);
-  assert.deepEqual(publicZone.preparation, { status: "ready" }, "Undefined optional error is omitted");
+  assert.equal(publicZone.pictureRetryAvailable, false);
+  assert.deepEqual(publicZone.preparation, { status: "ready" }, "authoring retains preparation status");
   for (const field of ["lastObserved", "picture", "pictureRevision", "imageInteriorKey", "access", "controllerIds"])
     assert.equal(Object.hasOwn(publicZone, field), false, field);
   const privateZone = projected.zones!.find((zone) => zone.id === "private")!;

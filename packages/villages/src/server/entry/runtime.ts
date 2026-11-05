@@ -154,6 +154,7 @@ import {
   resolveVillageImageEditing,
 } from "../features/media/image-generation.js";
 import { decodeImageDataUrl } from "../features/media/location-image-codec.js";
+import { canGenerateZonePicture } from "../features/scenes/live-session.js";
 import { createLocationImages } from "../features/media/location-image-service.js";
 import { configureLocationImages } from "../features/media/location-image.js";
 import { createSpriteImageDecoder } from "../features/media/sprite-image-codec.js";
@@ -536,6 +537,8 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseFoundingDrafts = configureFoundingDrafts(
     createFoundingDrafts({
+      resolveVillageImageEditing,
+      readZonePictureReference,
       artworkSources: createFoundingArtworkSources(villagesDocuments, createDocumentMutator(villagesDocuments)),
       findVillagerCard,
       readLinkedPersona,
@@ -1004,6 +1007,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
   );
   const releaseLocationImages = configureLocationImages(
     createLocationImages({
+      canGenerateZonePicture,
       resolveVillageImageEditing,
       resolveVillageImageConnectionId,
       readZonePictureReference,

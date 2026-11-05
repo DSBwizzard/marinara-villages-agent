@@ -1,3 +1,4 @@
+import { rememberZoneArtwork } from "../../domain/rules/zone-observation.js";
 import { sceneActorIds } from "../../domain/rules/places.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import type { VenueScene } from "../../domain/models/scene-model.js";
@@ -88,11 +89,13 @@ export function createVenueCommands({
     zoneId?: string,
     expectedContext?: string,
     daylight = false,
+    guard?: (state: VillageState) => boolean,
   ): Promise<VillageSnapshot> {
     await assertVenueImageAccess(venueId, spaceClass, privateOwnerId, zoneId);
     await mutateVillageState((state) => {
       const venue = state.venues.find((entry) => entry.id === venueId);
       if (!venue) throw notFound("That place is no longer in the village.");
+      if (guard && !guard(state)) throw conflict("The scenery changed while its image was generated. Generate again.");
       if (
         expectedContext &&
         expectedContext !==
@@ -122,12 +125,10 @@ export function createVenueCommands({
       if (onlyIfEmpty && (state.automaticZonePictures === false || zone.freezePicture || zone.picture?.removed)) return;
       if (onlyIfEmpty && zone.image) return;
       zone.image = image;
-      if (!daylight) {
-        zone.dayNight = false;
-        zone.dayNightManual = true;
-      }
       zone.pictureRevision = (zone.pictureRevision ?? 0) + 1;
       zone.picture = {
+        reference: image ? zone.picture?.reference : undefined,
+        referenceAppliedId: image ? zone.picture?.reference?.id : undefined,
         base: image,
         daylight: !!image && daylight,
         removed: !image,
@@ -136,6 +137,7 @@ export function createVenueCommands({
         lastAutomaticAt: zone.picture?.lastAutomaticAt,
         dirty: false,
       };
+      rememberZoneArtwork(zone);
       if (!image) zone.initialImageAttemptedAt = new Date().toISOString();
       if (zone.kind === "exterior") venue.presentation.image = image;
     });

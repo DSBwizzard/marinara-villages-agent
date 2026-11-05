@@ -87,36 +87,16 @@ export function useVenueScreenCommands(ports: {
       if (global.finish(claim)) setBusy(false);
     }
   };
-  const setZoneDayNight = async (place: VillageVenue, zoneId: string, enabled: boolean) => {
+  const retryZonePicture = async (place: VillageVenue, zoneId: string) => {
     if (!isCurrentVenue(place.id)) return;
     const claim = beginGlobal();
     if (!claim) return;
     setBusy(true);
     try {
-      const next = await request<VillageSnapshot>("/locations/venue/image/day-night", {
-        method: "PATCH",
-        body: JSON.stringify({ venueId: place.id, zoneId, enabled }),
+      const next = await request<VillageSnapshot>("/locations/venue/image/retry", {
+        method: "POST",
+        body: JSON.stringify({ venueId: place.id, zoneId }),
       });
-      if (global.owns(claim)) setSnapshot(next);
-    } catch (cause) {
-      if (global.owns(claim)) setSettingsError(messageFrom(cause, "Day/night preference could not be saved."));
-    } finally {
-      if (global.finish(claim)) setBusy(false);
-    }
-  };
-  const updateZonePicture = async (place: VillageVenue, zoneId: string, retry = false) => {
-    if (!isCurrentVenue(place.id)) return;
-    const claim = beginGlobal();
-    if (!claim) return;
-    setBusy(true);
-    try {
-      const next = await request<VillageSnapshot>(
-        retry ? "/locations/venue/image/retry" : "/locations/venue/image/update",
-        {
-          method: "POST",
-          body: JSON.stringify({ venueId: place.id, zoneId }),
-        },
-      );
       if (global.owns(claim)) setSnapshot(next);
     } catch (cause) {
       if (global.owns(claim)) {
@@ -129,7 +109,6 @@ export function useVenueScreenCommands(ports: {
       if (global.finish(claim)) setBusy(false);
     }
   };
-  const retryZonePicture = (place: VillageVenue, zoneId: string) => updateZonePicture(place, zoneId, true);
   const saveVenueImageContext = async (
     place: VillageVenue,
     imageContext: NonNullable<VillageVenue["imageContext"]>,
@@ -305,9 +284,7 @@ export function useVenueScreenCommands(ports: {
     saveVenueName,
     saveVenueImageContext,
     setZonePictureFrozen,
-    setZoneDayNight,
     retryZonePicture,
-    updateZonePicture,
     requestPlayerMove,
     changeVenueAccess,
     retryPrivateSpacePreparation,

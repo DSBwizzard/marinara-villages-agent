@@ -1,3 +1,4 @@
+import { observedZone } from "./zone-observation.js";
 import { zoneDayNightDefault, ZONE_DAY_NIGHT_INSTRUCTION } from "../../../shared/helpers/zone-day-night.js";
 import { z } from "zod";
 import type { VillageState, VillageVenue, VillageVenueZone } from "../models/world.js";
@@ -164,21 +165,30 @@ export function establishPlace(
 /** Player projections never expose the authoritative policy or undiscovered room contents. */
 export function projectPlace(state: VillageState, place: WorldPlace): VillageVenue {
   const location = place.location;
-  const zones = location.zones!.map((zone) => ({
-    id: zone.id,
-    name: zone.name,
-    kind: zone.kind,
-    venueClass: zone.venueClass,
-    purpose: zone.seen ? zone.purpose : "",
-    connectedTo: zone.connectedTo,
-    seen: zone.seen,
-    description: zone.seen ? zone.description : "",
-    image: zone.seen ? zone.image : null,
-    state: zone.seen ? zone.state : defaultVenueSpace("other").state,
-    accessView: projectZoneAccess(location, zone, "player", { at: new Date(), accepting: true }),
-  }));
+  const zones = location.zones!.map((original) => {
+    const zone = observedZone(original, false);
+    return {
+      id: zone.id,
+      name: zone.name,
+      kind: zone.kind,
+      venueClass: zone.venueClass,
+      purpose: zone.seen ? zone.purpose : "",
+      connectedTo: zone.connectedTo,
+      seen: zone.seen,
+      description: zone.seen ? zone.description : "",
+      image: zone.seen ? zone.image : null,
+      state: zone.seen ? zone.state : defaultVenueSpace("other").state,
+      accessView: projectZoneAccess(location, zone, "player", { at: new Date(), accepting: true }),
+    };
+  });
+  const entrance = zones.find((zone) => zone.kind === "exterior");
   return {
     ...location,
+    description: entrance?.description ?? "",
+    form: location.zones?.find((zone) => zone.kind === "exterior")?.observed?.form,
+    presentation: { ...location.presentation, image: entrance?.image ?? null },
+    exteriorState: entrance?.state,
+    state: zones.find((zone) => zone.kind === "public")?.state ?? defaultVenueSpace("other").state,
     access: undefined,
     accessView: projectVenueAccess(location, "player"),
     zones,

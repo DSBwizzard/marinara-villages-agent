@@ -185,8 +185,8 @@ const settings = villageSettings(
   null,
 );
 assert.ok(
-  settings.venues[0].privateSpaces?.every((zone) => zone.description === "A hammock" && zone.state.recent === null),
-  "private interior details are visible before a visit",
+  settings.venues[0].privateSpaces?.every((zone) => zone.description === "" && zone.state.recent === null),
+  "unvisited private interior details remain undisclosed during play",
 );
 console.log(
   "Founding template: optional Zones, inclusion retention, neutral access, contract validation, purpose round-trip and server privacy passed.",

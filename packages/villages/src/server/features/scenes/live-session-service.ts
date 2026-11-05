@@ -1,3 +1,5 @@
+import { captureZoneObservation } from "../../domain/rules/zone-observation.js";
+import { zonePictureContext } from "../../domain/rules/zone-picture.js";
 import { findLocation } from "../../domain/rules/places.js";
 import { findNpc } from "../../domain/rules/places.js";
 import { randomUUID } from "node:crypto";
@@ -71,6 +73,57 @@ export function createLiveScenes({
         state.opening.stage = "complete";
     });
   }
+  async function canGenerateZonePicture(
+    venueId: string,
+    zoneId: string,
+    guard?: (state: import("../../domain/models/world.js").VillageState) => boolean,
+  ): Promise<boolean> {
+    if ((await observeVillageClock())?.paused) return false;
+    const pointer = await readActive();
+    if (!pointer.sessionId) return false;
+    const scene = await readSession(pointer.sessionId),
+      state = await readVillageState();
+    const venue = state.venues.find((row) => row.id === venueId);
+    const zone = venue && resolveVenueZone(venue, zoneId);
+    if (
+      !venue ||
+      !zone ||
+      (guard && !guard(state)) ||
+      scene.status !== "active" ||
+      scene.placeId !== venueId ||
+      (scene.zoneId ?? legacyZoneId(venue, scene.area, scene.spaceClass, scene.privateOwnerId)) !== zoneId ||
+      scene.villageSeed !== state.seed ||
+      (scene.continuity && scene.continuity.setupAt !== state.setupAt) ||
+      semanticBlocker(scene) ||
+      (scene.operation && (scene.operation.status !== "complete" || scene.operation.error)) ||
+      zoneClosed(state, venue, zone) ||
+      zone.observed?.context !== zonePictureContext(state, venue, zone)
+    )
+      return false;
+    const captured = findLocation(scene.continuity?.facts, venueId);
+    const capturedZone = captured && resolveVenueZone(captured, zoneId);
+    if (captured && (!capturedZone || zonePictureContext(state, captured, capturedZone) !== zone.observed.context))
+      return false;
+    if (
+      venue.access &&
+      !evaluateZoneAccess(venue, zone, "player", {
+        ...sceneAccessContext(scene, state),
+        unavailable: zoneClosed(state, venue, zone),
+        environment: state.narrative,
+      }).allowed
+    )
+      return false;
+    if ((await readActive()).sessionId !== scene.id) return false;
+    const latest = await readSession(scene.id);
+    return (
+      latest.placeId === scene.placeId &&
+      latest.zoneId === scene.zoneId &&
+      latest.status === "active" &&
+      !semanticBlocker(latest) &&
+      (!latest.operation || (latest.operation.status === "complete" && !latest.operation.error))
+    );
+  }
+
   async function activeVenueSession(): Promise<VenueScene | null> {
     const active = await readActive();
     if (!active.sessionId) return null;
@@ -112,6 +165,7 @@ export function createLiveScenes({
       if (session.operation && (session.operation.status !== "complete" || session.operation.error)) return session;
       if (semanticBlocker(session)) return session;
       session = await refreshLiveScene(session);
+      await rememberCurrentZone(session);
       if (hasVenueOperation(session.id)) return session;
     }
     const village = sceneContinuityView(await readVillageState(), session),
@@ -338,6 +392,45 @@ export function createLiveScenes({
       state.activeIds = activeIds;
     });
   }
+  async function rememberCurrentZone(session: VenueScene): Promise<void> {
+    if (session.status !== "active" || semanticBlocker(session) || hasVenueOperation(session.id)) return;
+    const captured = findLocation(session.continuity?.facts, session.placeId);
+    const source = captured && resolveVenueZone(captured, session.zoneId ?? "exterior");
+    if (!source || !captured || (await readActive()).sessionId !== session.id) return;
+    const latest = await readSession(session.id);
+    if (
+      latest.sceneRevision !== session.sceneRevision ||
+      latest.zoneId !== session.zoneId ||
+      latest.status !== "active"
+    )
+      return;
+    const observed = captureZoneObservation(captured, source);
+    const village = await readVillageState(),
+      venue = findLocation(village, session.placeId);
+    const zone = venue && resolveVenueZone(venue, source.id);
+    if (
+      !zone ||
+      !venue ||
+      zoneClosed(village, venue, zone) ||
+      zonePictureContext(village, venue, zone) !== observed.context ||
+      JSON.stringify(zone.observed) === JSON.stringify(observed)
+    )
+      return;
+    await mutateVillageState((state) => {
+      const current = findLocation(state, session.placeId),
+        target = current && resolveVenueZone(current, source.id);
+      if (
+        state.seed === session.villageSeed &&
+        current &&
+        target &&
+        zonePictureContext(state, current, target) === observed.context
+      ) {
+        target.seen = true;
+        target.observed = observed;
+      }
+    });
+  }
+
   async function refreshLiveScene(session: VenueScene): Promise<VenueScene> {
     if (session.status === "closed") return session;
     const village = await readVillageState({ wishes: true });
@@ -457,6 +550,12 @@ export function createLiveScenes({
       }
     });
   }
-  return { activeVenueSession, requireLiveVenueSession, touchVenueSession, refreshZoneParticipants };
+  return {
+    canGenerateZonePicture,
+    activeVenueSession,
+    requireLiveVenueSession,
+    touchVenueSession,
+    refreshZoneParticipants,
+  };
 }
 export type LiveScenes = ReturnType<typeof createLiveScenes>;

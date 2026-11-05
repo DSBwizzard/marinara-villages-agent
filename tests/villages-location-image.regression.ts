@@ -1,3 +1,5 @@
+import { configureLiveScenes } from "../packages/villages/src/server/features/scenes/live-session.js";
+import type { LiveScenes } from "../packages/villages/src/server/features/scenes/live-session-service.js";
 import { venueFixture } from "./helpers/venues.fixture.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../packages/villages/src/server/domain/rules/image-limits.js";
@@ -65,6 +67,12 @@ import { generateVillageTownMap } from "../packages/villages/src/server/features
  * out: it is a compatibility surface with another codebase, so a rename should
  * fail this test rather than be followed by it.
  */
+// Transport ownership is independent of the real presence gate, covered by Zone artwork regressions.
+const allowMediaFixtureVisit = () =>
+  configureLiveScenes({
+    canGenerateZonePicture: async () => true,
+    activeVenueSession: async () => null,
+  } as unknown as LiveScenes);
 const AVATAR_PATH = "/api/characters/avatar-generation";
 
 /** The Engine's own gallery endpoints, on the same terms. */
@@ -706,6 +714,7 @@ async function main() {
 
   const { activate } = await import(moduleUrl(`${services}/entry/index.ts`));
   await activate(context);
+  allowMediaFixtureVisit();
 
   // ── Founding a village costs nothing ──────────────────────────────────────
   // The whole point of the button. A village that draws art while it is being
@@ -908,7 +917,7 @@ async function main() {
     kept
       .json()
       .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
-      .map((venue: any) => venue.presentation.image),
+      .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").pictureReference ?? null),
     [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
     "the picture is kept as a reference and no other place is touched",
   );
@@ -928,7 +937,10 @@ async function main() {
   const second = await put("/api/villages/locations/venue/image", { venueId: "ridge", image: TINY_PNG });
   assert.equal(second.statusCode, 200, second.body);
   assert.equal(
-    second.json().settings.venues.find((venue: any) => venue.id === "ridge").presentation.image.ref,
+    second
+      .json()
+      .settings.venues.find((venue: any) => venue.id === "ridge")
+      .zones.find((zone: any) => zone.id === "exterior").pictureReference.ref,
     "global-gallery:gallery-3",
   );
   assert.deepEqual(
@@ -941,6 +953,14 @@ async function main() {
   assert.equal(galleryCalls(FOLDERS_PATH)[3]!.body?.name, "Villages");
   assert.equal(galleryCalls(UPLOAD_PATH)[2]!.search, "?folderId=folder-villages", "and then everything is filed in it");
 
+  await mutateVillageState((state) => {
+    for (const venue of state.venues)
+      for (const zone of venue.zones ?? []) {
+        zone.dayNight = false;
+        zone.dayNightManual = false;
+        if (venue.id === "mill" && zone.picture) zone.picture.reference = undefined;
+      }
+  });
   // ── Drawing one ───────────────────────────────────────────────────────────
   // Which connection is used is a three-step chain the connections regression
   // proves for talk. Pictures read a DIFFERENT agent field, and that is the bug
@@ -1074,7 +1094,10 @@ async function main() {
     "the place goes back to having no picture",
   );
   assert.ok(
-    removed.json().settings.venues.find((venue: any) => venue.id === "ridge").presentation.image,
+    removed
+      .json()
+      .settings.venues.find((venue: any) => venue.id === "ridge")
+      .zones.find((zone: any) => zone.id === "exterior").pictureReference,
     "and the other place keeps its own",
   );
   assert.equal(
@@ -1475,7 +1498,27 @@ async function mediaConnectionOwnership() {
           }),
         ),
       );
-      return { scope, entered, gate, release, pause, records, world, requests, label };
+      const releasePresence = scope.run(allowMediaFixtureVisit);
+      for (const venue of state.venues)
+        for (const zone of venue.zones ?? []) {
+          zone.dayNight = false;
+          zone.dayNightManual = false;
+        }
+      records.get("villages-village")!.data = structuredClone(state);
+      return {
+        scope,
+        entered,
+        gate,
+        release: () => {
+          releasePresence();
+          release();
+        },
+        pause,
+        records,
+        world,
+        requests,
+        label,
+      };
     };
     const a = fixture("A", true),
       b = fixture("B", false);
@@ -1621,7 +1664,11 @@ async function mediaConnectionOwnership() {
       if (operation === "location" && variant === "ordinary")
         assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image");
       if (operation === "store" && !["failure", "disposed"].includes(variant)) {
-        assert.equal(a.world().venues[0]!.presentation.image?.id, "A-image");
+        assert.equal(
+          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.picture?.reference?.id,
+          "A-image",
+        );
+        assert.equal(a.world().venues[0]!.presentation.image, null);
       }
       if (variant === "cas")
         assert.equal(a.world().spriteCardFlipEnabled, false, "losing save preserves authoritative concurrent fields");

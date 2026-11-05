@@ -1,3 +1,4 @@
+import { createFoundingWithSetupImage } from "../packages/villages/src/client/features/founding/image-controller.js";
 import assert from "node:assert/strict";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { createDocumentMutator } from "../packages/villages/src/server/adapters/storage/document-store.js";
@@ -88,8 +89,8 @@ manual.dayNightManual = true;
 manual.spaces![0].dayNight = false;
 manual.spaces![0].dayNightManual = true;
 const held = applyFoundingVenueDraft(manual, plan);
-assert.equal(held.dayNight, false);
-assert.equal(held.spaces![0].dayNight, false);
+assert.equal(held.dayNight, true);
+assert.equal(held.spaces![0].dayNight, true);
 const same = applyFoundingVenueDraft(drafted, {
   ...plan,
   dayNight: false,
@@ -488,3 +489,17 @@ try {
 console.log(
   "Complete Venue drafts: stable Zones, privacy and sleep routes, optional Entrance artwork, durable text and no paid-stage replay passed.",
 );
+
+{
+  const keep = createFoundingWithSetupImage();
+  const generated = keep(drafted, "exterior", { id: "day", ref: "global-gallery:day", url: "/day.png" });
+  const saved = readFoundingVenueDraftSource(generated).zones!.find((zone) => zone.id === "exterior")!;
+  assert.equal(saved.picture?.daylight, true, "Founding-generated daytime artwork retains its provenance");
+  assert.equal(saved.picture?.context, JSON.stringify({ description: drafted.description, form: drafted.form }));
+  const edited = readFoundingVenueDraftSource({
+    ...generated,
+    description: generated.description + " A new doorway.",
+  }).zones!.find((zone) => zone.id === "exterior")!;
+  assert.equal(edited.picture?.context, saved.picture?.context, "later Founding edits do not relabel existing pixels");
+  assert.equal(edited.picture?.dirty, true);
+}

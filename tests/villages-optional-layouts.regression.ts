@@ -409,7 +409,8 @@ async function main() {
       villageSettings(proposalState, { name: "Player", personaAvailable: false } as never, null).venues.find(
         (venue) => venue.id === target.id,
       )!.zones![1]!.description,
-      "An established resident room",
+      "",
+      "an unvisited physical description is not exposed by proposal inspection",
     );
     await createRenovationProject(outside.id, {
       title: "Base sleeping nook",

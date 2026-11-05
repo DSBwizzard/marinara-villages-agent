@@ -15,9 +15,7 @@ import {
   generateVillageLocationImage,
   storeVillageVenueImage,
   setZonePictureFrozen,
-  setZoneDayNight,
   retryZonePicture,
-  updateZonePicture,
 } from "./location-image.js";
 import {
   adoptSpriteArtwork,
@@ -135,34 +133,12 @@ export function registerTownMapRoutes(engine: FastifyInstance) {
 }
 export function registerVenueImageRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.patch<{ Body: { venueId: string; zoneId: string; enabled: boolean } }>(
-    "/locations/venue/image/day-night",
-    async (request, reply) => {
-      try {
-        if (typeof request.body?.zoneId !== "string" || typeof request.body?.enabled !== "boolean")
-          return reply.code(400).send({ error: "Choose a Zone and day/night state." });
-        return await setZoneDayNight(readVenueId(request.body.venueId), request.body.zoneId, request.body.enabled);
-      } catch (error) {
-        return fail(reply, error, "saving day/night preference");
-      }
-    },
-  );
   app.post<{ Body: { venueId: string; zoneId: string } }>("/locations/venue/image/retry", async (request, reply) => {
     try {
       if (typeof request.body?.zoneId !== "string") return reply.code(400).send({ error: "Choose a Zone." });
       return await retryZonePicture(readVenueId(request.body.venueId), request.body.zoneId);
     } catch (error) {
       return fail(reply, error, "retrying artwork");
-    }
-  });
-  app.post<{ Body: { venueId: string; zoneId: string } }>("/locations/venue/image/update", async (request, reply) => {
-    try {
-      if (typeof request.body?.zoneId !== "string") return reply.code(400).send({ error: "Choose a Zone." });
-      const target = await imageTarget(request.body);
-      if (!target) return reply.code(400).send({ error: "Choose a Zone." });
-      return await updateZonePicture(readVenueId(request.body.venueId), target);
-    } catch (error) {
-      return fail(reply, error, "updating artwork");
     }
   });
   app.patch<{ Body: { venueId: string; zoneId: string; frozen: boolean } }>(

@@ -1,3 +1,6 @@
+import type { readZonePictureReference } from "../../adapters/engine/zone-picture-reference.js";
+import type { resolveVillageImageEditing } from "../media/image-generation.js";
+import { foundingImage } from "../../domain/rules/founding-record.js";
 import { ZONE_DAY_NIGHT_INSTRUCTION } from "../../../shared/helpers/zone-day-night.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import {
@@ -51,6 +54,8 @@ import {
 } from "../../domain/rules/founding-draft-rules.js";
 
 export type FoundingDraftsServicePorts = {
+  readZonePictureReference?: typeof readZonePictureReference;
+  resolveVillageImageEditing?: typeof resolveVillageImageEditing;
   artworkSources?: ReturnType<typeof createFoundingArtworkSources>;
   findVillagerCard: typeof findVillagerCard;
   readLinkedPersona: typeof readLinkedPersona;
@@ -334,6 +339,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
   async function generateFoundingVenueImage(value: unknown): Promise<VillageVenueImage> {
     const input = record(value);
     const context = readFoundingDraftContext(input.context);
+    const reference = foundingImage(input.reference);
+    const support = reference ? await ports.resolveVillageImageEditing?.() : undefined;
+    if (reference && (!support || !ports.readZonePictureReference))
+      throw badRequest("Choose an image connection that supports references before generating artwork.");
+    const referenceImages = reference ? [(await ports.readZonePictureReference!(reference)).dataUrl] : undefined;
     const row = rowsOf([input.venue])[0]! as DraftRow & { venueType?: string };
     const area = input.area === "private" ? "private" : input.area === "interior" ? "interior" : "exterior";
     const owner = asTrimmedString(input.privateOwnerId);
@@ -437,6 +447,11 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       input.sceneryArtStyle === undefined ? "" : readSceneryStyle(input.sceneryArtStyle),
       [
         DAYTIME_IMAGE_INSTRUCTION,
+        ...(reference
+          ? [
+              "The upload is an artistic reference only: borrow its palette and rendering style where compatible. The authored physical description controls all architecture, furniture, objects and surroundings. Never copy unrelated subjects, structures, rides, people or text from the reference; it establishes no game facts.",
+            ]
+          : []),
         "Place: " + setting,
         ...(personality
           ? cards
@@ -448,11 +463,16 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
     const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(imageInspection, "Image") : [];
     const decoded = await generateVillageImage({
       loreImages: inspectedLoreImages(imageInspection, usedLore),
-      beforeDispatch: () =>
-        recordLoreUse(
+      beforeDispatch: async () => {
+        if (reference && (await ports.resolveVillageImageEditing!())?.signature !== support?.signature)
+          throw badRequest("The image connection changed. Generate artwork again.");
+        await recordLoreUse(
           usedLore,
           `Zone artwork · ${row.name || "Founding venue"} · ${asTrimmedString(input.zoneName) || area}`,
-        ),
+        );
+      },
+      connectionId: support?.connectionId,
+      referenceImages,
       sceneryStyleProfileId: input.sceneryStyleProfileId,
       name: row.name || "Founding venue",
       prompt,

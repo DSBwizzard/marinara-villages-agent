@@ -499,6 +499,8 @@ export type VillageVenueClass = "residence" | "workplace" | "community" | "other
 /** One class contributes one enterable scene. The venue remains one map place. */
 export type ZonePicture = {
   base: VillageVenueImage | null;
+  reference?: VillageVenueImage;
+  referenceAppliedId?: string;
   baseline?: string;
   context?: string;
   attempted?: string;
@@ -551,7 +553,21 @@ export type VillageVenueZone = VillageVenueSpace & {
   kind: VillageZoneKind;
   ownerId?: string;
   seen?: boolean;
+  observed?: ZoneObservation;
   initialImageAttemptedAt?: string;
+};
+export type ZoneObservation = {
+  context: string;
+  name: string;
+  description: string;
+  purpose?: string;
+  roomSpecification?: string;
+  form?: string;
+  state: VillageVenueSpace["state"];
+  image: VillageVenueImage | null;
+  dayNight?: boolean;
+  daylight?: boolean;
+  night?: ZonePicture["night"];
 };
 export type VillageZoneDraft = { preserveDescription?: boolean } & Pick<
   VillageVenueZone,

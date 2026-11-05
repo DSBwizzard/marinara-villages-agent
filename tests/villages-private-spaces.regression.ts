@@ -310,10 +310,10 @@ async function main() {
     );
     const view = villageSettings(saved, { name: "Player", description: "", personaId: "" } as any);
     const hidden = view.venues.find((v) => v.id === "bank")!.zones!.find((z) => z.id === "staff")!;
-    assert.equal(hidden.description, "Secret shell collection in a canvas corner");
+    assert.equal(hidden.description, "");
     assert.equal(hidden.state.recent, null);
     assert.equal(hidden.image, null);
-    assert.equal(hidden.preparation!.status, "ready");
+    assert.equal(hidden.preparation, undefined);
     await mutateVillageState((current) => {
       const place = current.venues[4]!;
       applyAccessCommand(
@@ -507,18 +507,14 @@ async function privateInteriorLifecycle() {
   assert.equal(bedroom.roomSpecification, "A small room with a garden-facing window");
   const player = { name: "Player", description: "", personaId: "" } as any;
   let view = villageSettings(village, player);
-  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, bedroom.description);
+  assert.equal(view.venues[0].zones!.find((zone) => zone.id === "bedroom")!.description, "");
   assert.equal(bedroom.seen, false, "viewing details does not record a gameplay visit");
   bedroom.image = { ref: "global-gallery:before", id: "before", url: "https://example.test/before.png" };
   bedroom.description = "A personalized interior with a keepsake.";
   view = villageSettings(village, player);
   const shown = view.venues[0].zones!.find((zone) => zone.id === "bedroom")!;
-  assert.equal(
-    shown.description,
-    bedroom.description,
-    "private details use the same current projection as other Zones",
-  );
-  assert.equal(shown.image?.id, "before", "saved artwork is visible before a visit");
+  assert.equal(shown.description, "", "unvisited private details remain undisclosed");
+  assert.equal(shown.image, null, "unvisited artwork is not exposed through settings");
   assert.equal(bedroom.seen, false);
   const reloaded = coerceVillageState(structuredClone(village));
   assert.equal(resolveVenueZone(reloaded.venues[0], "bedroom")!.description, bedroom.description);
@@ -526,6 +522,7 @@ async function privateInteriorLifecycle() {
   bedroom.image = null;
   let draws = 0;
   const images = createLocationImages({
+    canGenerateZonePicture: async () => bedroom.seen,
     readVillageState: async () => structuredClone(village),
     mutateVillageState: async (update: any) => {
       update(village);

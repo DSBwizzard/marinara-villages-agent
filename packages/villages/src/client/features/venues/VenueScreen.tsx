@@ -238,23 +238,17 @@ function ZoneArtwork({
 }) {
   const { busy, placeBusyId, drawPlaceImage, keepPlaceImage, dropPlaceImage } = controller;
   const upload = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<"day" | "night" | null>(null);
-  const appearance =
-    zone.dayNight && zone.nightImage && (preview ?? (night ? "night" : "day")) === "night" ? "night" : "day";
-  const artwork = appearance === "night" ? zone.nightImage : zone.image;
+  const artwork = zone.dayNight && zone.nightImage && night ? zone.nightImage : zone.image;
   const disabled = busy || !!placeBusyId;
   const spaceClass = zone.kind === "exterior" ? undefined : zone.venueClass;
   return (
     <>
       <div className={`${ELEMENT_TAG}-zone-artwork-frame`}>
-        {zone.dayNight && zone.daylightReady ? (
-          <span className={`${ELEMENT_TAG}-artwork-appearance`}>{appearance === "night" ? "Night" : "Day"}</span>
-        ) : null}
         {artwork ? (
           <img
             className={`${ELEMENT_TAG}-venue-profile-image`}
             src={artwork.url}
-            alt={`${zone.name} at ${place.name}${zone.dayNight && zone.daylightReady ? ` · ${appearance === "night" && zone.nightImage ? "Night" : "Day"}` : ""}`}
+            alt={`${zone.name} at ${place.name}`}
           />
         ) : (
           <div className={`${ELEMENT_TAG}-venue-image-empty`}>No artwork yet</div>
@@ -293,58 +287,21 @@ function ZoneArtwork({
           <div>
             <button
               type="button"
-              role="switch"
-              aria-label="Day & night"
-              aria-checked={zone.dayNight === true}
-              className={`${ELEMENT_TAG}-button ${ELEMENT_TAG}-picture-toggle`}
-              disabled={disabled}
-              onClick={() => {
-                setPreview(null);
-                void controller.setZoneDayNight(place, zone.id, zone.dayNight !== true);
-              }}
-            >
-              <span>Day & night</span>
-              <span className={`${ELEMENT_TAG}-switch-state`} aria-hidden="true">
-                {zone.dayNight ? "On" : "Off"}
-              </span>
-            </button>
-            {zone.dayNight && zone.daylightReady && zone.nightImage ? (
-              <button
-                type="button"
-                className={`${ELEMENT_TAG}-button`}
-                onClick={() => setPreview(appearance === "day" ? "night" : "day")}
-              >
-                {appearance === "day" ? "View night image" : "View day image"}
-              </button>
-            ) : null}
-            {zone.image && zone.pictureUpdateAvailable !== false ? (
-              <button
-                type="button"
-                aria-label="Refresh picture"
-                className={`${ELEMENT_TAG}-button`}
-                disabled={disabled}
-                onClick={() => void controller.updateZonePicture(place, zone.id)}
-              >
-                Refresh
-              </button>
-            ) : null}
-            <button
-              type="button"
               aria-label="Generate new picture"
               className={`${ELEMENT_TAG}-button`}
-              disabled={disabled}
+              disabled={disabled || zone.pictureGenerateAvailable === false}
               onClick={() => void drawPlaceImage(place.id, spaceClass, zone.ownerId ?? "", zone.id)}
             >
               {zone.image ? "Generate new" : "Generate"}
             </button>
             <button
               type="button"
-              aria-label="Upload artwork"
+              aria-label="Upload image reference"
               className={`${ELEMENT_TAG}-button`}
               disabled={disabled}
               onClick={() => upload.current?.click()}
             >
-              Upload
+              Upload reference
             </button>
             <input
               autoComplete="off"
@@ -352,7 +309,7 @@ function ZoneArtwork({
               hidden
               type="file"
               accept="image/*"
-              aria-label={`Upload ${zone.name} artwork`}
+              aria-label={`Upload ${zone.name} reference`}
               disabled={disabled}
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -360,7 +317,7 @@ function ZoneArtwork({
                 void keepPlaceImage(place.id, file, spaceClass, zone.ownerId ?? "", zone.id);
               }}
             />
-            {zone.image ? (
+            {zone.image || zone.pictureReference ? (
               <button
                 type="button"
                 aria-label="Remove artwork"
@@ -375,9 +332,14 @@ function ZoneArtwork({
           </div>
         </details>
       </div>
-      {zone.pictureProblem || zone.pictureUpdating || zone.nightPending ? (
+      {zone.pictureProblem || zone.pictureUpdating || zone.nightPending || zone.referencePending ? (
         <p role="status">
-          {zone.pictureProblem || (zone.nightPending ? "Day/night artwork pending" : "Artwork pending")}
+          {zone.pictureProblem ||
+            (zone.pictureUpdating
+              ? "Artwork pending"
+              : zone.referencePending
+                ? "Reference saved for your next visit."
+                : "Artwork pending")}
         </p>
       ) : null}
     </>

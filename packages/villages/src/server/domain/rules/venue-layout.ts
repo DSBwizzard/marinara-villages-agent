@@ -1,3 +1,4 @@
+import { zonePictureBaseline } from "./zone-picture.js";
 import {
   applyConnectionEdits,
   connectionProblem,
@@ -104,10 +105,31 @@ export function readBaseVenueLayout(
     if (value.dayNightManual !== undefined && typeof value.dayNightManual !== "boolean")
       throw badRequest("Check the artwork preference.");
     return {
-      dayNight: value.dayNight === true,
-      dayNightManual:
-        typeof value.dayNightManual === "boolean" ? value.dayNightManual : typeof value.dayNight === "boolean",
+      dayNight: value.dayNight !== false,
+      dayNightManual: false,
     };
+  };
+  const picture = (area: Record<string, unknown>, existing: VillageVenueImage | null) => {
+    const reference = image(area.pictureReference) ?? undefined;
+    const context = typeof area.pictureContext === "string" ? zonePictureBaseline(area.pictureContext) : "";
+    return reference || (existing && area.daylightReady === true && context)
+      ? {
+          base: existing,
+          daylight: !!existing && area.daylightReady === true && !!context,
+          context: context || undefined,
+          baseline: context || undefined,
+          reference,
+          referenceAppliedId: reference && area.referenceAppliedId === reference.id ? reference.id : undefined,
+          dirty:
+            (!!reference && area.referenceAppliedId !== reference.id) ||
+            (!!context &&
+              context !==
+                JSON.stringify({
+                  description: asTrimmedString(area.description),
+                  ...(asTrimmedString(row.form) ? { form: asTrimmedString(row.form) } : {}),
+                })),
+        }
+      : undefined;
   };
   const result: VillageVenueZone[] = [
     {
@@ -119,6 +141,7 @@ export function readBaseVenueLayout(
       purpose: "Arrival and approach",
       description: asTrimmedString(row.description),
       image: image(asRecord(row.presentation).image),
+      picture: picture(row, image(asRecord(row.presentation).image)),
       seen: true,
     },
   ];
@@ -167,6 +190,7 @@ export function readBaseVenueLayout(
       ownerId,
       controllerIds: controllers,
       image: image(area.image),
+      picture: picture(area, image(area.image)),
       seen: ownerId === "player",
       preparation: prepareInterior ? { status: "pending" } : undefined,
     });

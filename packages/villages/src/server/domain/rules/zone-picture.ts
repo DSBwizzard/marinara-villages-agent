@@ -16,7 +16,11 @@ export function zonePicturePhysicalRecord(zone: VillageVenueZone) {
     description: zone.description,
   };
 }
-export function zonePictureContext(_state: VillageState, venue: VillageVenue, zone: VillageVenueZone): string {
+export function zonePictureContext(
+  _state: Pick<VillageState, never>,
+  venue: VillageVenue,
+  zone: VillageVenueZone,
+): string {
   return JSON.stringify({ ...zonePicturePhysicalRecord(zone), ...(venue.form ? { form: venue.form } : {}) });
 }
 

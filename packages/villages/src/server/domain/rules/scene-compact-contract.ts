@@ -1,4 +1,3 @@
-import { ZONE_DAY_NIGHT_INSTRUCTION } from "../../../shared/helpers/zone-day-night.js";
 import { findLocation } from "./places.js";
 import type { VenueScene } from "../models/scene-model.js";
 import { PLACE_UPDATE_INSTRUCTION } from "./zone-continuity.js";
@@ -131,7 +130,7 @@ export function reliableSceneContract(c: VenueResponseContext, capabilities: Sce
       : "",
     c.conversational
       ? 'placeUpdate:{happened:true,segment,actorIds:[],consent:[{actorId,segment?,lineId?,quote?}],narration,expectedRevision,appearanceChanged:boolean,dayNight?:boolean,edits:[{before,after}],append?,recent?:{text,renew?}} nominates a completed local deed with real actors/supplies. Cite current action narration; consent cites controller dialogue or accepted earlier Scene lineId perceived by actors. Player consent:segment:"player",quote:exact current input. Access permits temporary use; enduring changes need controller authority. Preserve unrelated description with unique exact edits/additions(max4000); promises belong in Memories. Recent:one complete paragraph(max600),empty clears. Unrelated activity keeps its 24h deadline; renew only deliberate maintenance/reestablishment of the WHOLE arrangement,never viewing/mentioning. appearanceChanged:true only for a meaningful visible enduring alteration; false for rewording, incidental or recent-only details. System independently reviews; never narrate unsupported results.' +
-        ZONE_DAY_NIGHT_INSTRUCTION
+        "dayNight:false for fixed light/dark,else true. Respect rules; ignore clock; invent no windows."
       : "",
     c.conversational
       ? 'Spontaneous proposals:venueRequest:{source:0,name,classes:["workplace|community|other"]} for NEW public Venue,1–2 classes. Approval starts planning,never construction; accepted commitments bind until withdrawn.'

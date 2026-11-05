@@ -1,3 +1,4 @@
+import { rememberZoneArtwork } from "../../domain/rules/zone-observation.js";
 import { DAYTIME_IMAGE_INSTRUCTION } from "../../domain/rules/location-image-rules.js";
 import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createHash } from "node:crypto";
@@ -85,21 +86,28 @@ export function createZonePictures(
             !current.picture?.removed &&
             current.seen);
         if (!eligible(village, zone)) return;
+        if (!(await ports.canGenerateZonePicture(venueId, zone.id))) {
+          if (!automatic && !canonical) throw conflict("Visit this Zone before generating its artwork.");
+          return;
+        }
+        const referencePending =
+          !!zone.picture?.reference && zone.picture.referenceAppliedId !== zone.picture.reference.id;
+        const regenerate = !!replacement || referencePending;
         const source = zone.image,
           base = zone.picture?.base ?? source;
         const target = zonePictureContext(village, venue, zone);
         const prior = zone.picture?.context ?? zone.picture?.baseline;
         const same = !!prior && zonePictureBaseline(prior) === target;
-        const needsDaylight = zone.dayNight && !zone.picture?.daylight;
+        const needsDaylight = zone.dayNight !== false && !zone.picture?.daylight;
         const night = !!(
           source &&
           same &&
           zone.dayNight &&
           zone.picture?.daylight &&
           zone.picture.night?.sourceId !== source.id &&
-          !replacement
+          !regenerate
         );
-        const freshContext = !source || replacement ? sceneryImageKey(village, venue, zone.id) : undefined;
+        const freshContext = !source || regenerate ? sceneryImageKey(village, venue, zone.id) : undefined;
         const epoch = village.zonePictureEpoch ?? 0,
           revision = zone.pictureRevision ?? 0;
         if (
@@ -119,6 +127,8 @@ export function createZonePictures(
             (state.zonePictureEpoch ?? 0) === epoch &&
             (current.pictureRevision ?? 0) === revision &&
             current.dayNight === zone.dayNight &&
+            current.observed?.context === zone.observed?.context &&
+            current.picture?.reference?.id === zone.picture?.reference?.id &&
             current.image?.id === source?.id &&
             found.venue &&
             zonePictureContext(state, found.venue, current) === target &&
@@ -127,7 +137,7 @@ export function createZonePictures(
             ? current
             : undefined;
         };
-        if (source && same && !replacement && !needsDaylight && !night) {
+        if (source && same && !regenerate && !needsDaylight && !night) {
           if (zone.picture?.dirty || zone.picture?.problem || zone.picture?.failed || zone.picture?.claim)
             await ports.mutateVillageState((state) => {
               const current = valid(state);
@@ -140,7 +150,7 @@ export function createZonePictures(
             });
           return;
         }
-        if (automatic && source && !zone.picture?.dirty && !needsDaylight && !night) return;
+        if (automatic && source && !zone.picture?.dirty && !referencePending && !needsDaylight && !night) return;
         if (automatic && (zone.picture?.failed || zone.picture?.claim || (!source && zone.initialImageAttemptedAt))) {
           await ports.mutateVillageState((state) => {
             const current = valid(state);
@@ -158,13 +168,13 @@ export function createZonePictures(
         let support: Awaited<ReturnType<NonNullable<LocationImagePorts["resolveVillageImageEditing"]>>> = null;
         let problem = "";
         try {
-          if (source && !replacement) {
+          if (source && !regenerate) {
             support = (await ports.resolveVillageImageEditing?.()) ?? null;
             if (!support || !ports.readZonePictureReference)
-              problem = "This connection cannot refresh artwork. Choose a compatible image connection or Generate new.";
+              problem = "This connection cannot update artwork. Choose a compatible image connection or Generate new.";
           } else if (!replacement) await ports.resolveVillageImageConnectionId?.();
         } catch {
-          problem = "Choose an enabled image connection to refresh artwork.";
+          problem = "Choose an enabled image connection to update artwork.";
         }
         // Preserve the complete before/after accounts; never truncate a physical change.
         const prompt = night
@@ -192,10 +202,10 @@ export function createZonePictures(
             ]
               .filter(Boolean)
               .join("\n");
-        if (!replacement && source && prior && !zonePictureBaseline(prior))
+        if (!regenerate && source && prior && !zonePictureBaseline(prior))
           problem = "Artwork baseline is unavailable. Generate a replacement.";
         let editPrompt = prompt;
-        if (!replacement && source && editPrompt.length > MAX_IMAGE_PROMPT_LENGTH)
+        if (!regenerate && source && editPrompt.length > MAX_IMAGE_PROMPT_LENGTH)
           problem =
             "The complete artwork instructions are too long. Shorten Long-term details or Generate a replacement.";
         const claim = createHash("sha256")
@@ -219,13 +229,14 @@ export function createZonePictures(
             const used = sameWindow ? budget.used : 0;
             if (
               used >= AUTOMATIC_PICTURES_PER_HOUR ||
-              (current.picture?.lastAutomaticAt &&
+              (!canonical &&
+                current.picture?.lastAutomaticAt &&
                 stamp - Date.parse(current.picture.lastAutomaticAt) < AUTOMATIC_ZONE_PAUSE_MS)
             ) {
               current.picture = {
                 ...current.picture,
                 base,
-                problem: "Automatic limit reached. Refresh the picture manually or wait for a later visit or action.",
+                problem: "Automatic limit reached. Artwork will wait for a later visit or action.",
               };
               return;
             }
@@ -239,7 +250,7 @@ export function createZonePictures(
             base,
             claim,
             attempted: claim,
-            operation: replacement ? "replace" : night ? "night" : "update",
+            operation: regenerate ? "replace" : night ? "night" : "update",
             failed: false,
             problem: undefined,
             lastAutomaticAt: automatic ? new Date(now()).toISOString() : current.picture?.lastAutomaticAt,
@@ -254,10 +265,10 @@ export function createZonePictures(
         }
         activeClaims.add(claim);
         try {
-          if (!source || replacement) {
+          if (!source || regenerate) {
             const imageId = await (replacement
               ? replacement((state) => valid(state)?.picture?.claim === claim)
-              : draw(venueId, zone.id, automatic, (state) => valid(state)?.picture?.claim === claim));
+              : draw(venueId, zone.id, automatic && !source, (state) => valid(state)?.picture?.claim === claim));
             return imageId ? { identity, epoch, revision: revision + 1, imageId, context: target } : undefined;
           }
           const reference = await ports.readZonePictureReference!(source);
@@ -297,6 +308,14 @@ export function createZonePictures(
                 throw conflict("The scenery or image connection changed. Retry artwork deliberately.");
               await ports.assertVenueImageAccess(venueId, undefined, undefined, zone.id);
               await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${zone.name}`);
+              if (
+                !(await ports.canGenerateZonePicture(
+                  venueId,
+                  zone.id,
+                  (state) => valid(state)?.picture?.claim === claim,
+                ))
+              )
+                throw conflict("Visit this Zone before generating its artwork.");
             },
             connectionId: support!.connectionId,
             referenceImages: references,
@@ -326,10 +345,13 @@ export function createZonePictures(
                 failed: false,
                 problem: undefined,
               };
+              rememberZoneArtwork(current);
               return;
             }
             current.image = image;
             current.picture = {
+              reference: current.picture?.reference,
+              referenceAppliedId: current.picture?.referenceAppliedId,
               base,
               daylight: true,
               baseline: zone.picture?.baseline ?? target,
@@ -338,6 +360,7 @@ export function createZonePictures(
               dirty: false,
               lastAutomaticAt: current.picture.lastAutomaticAt,
             };
+            rememberZoneArtwork(current);
             committed = true;
           });
           if (committed) return { identity, epoch, revision, imageId: image.id, context: target };
@@ -366,7 +389,7 @@ export function createZonePictures(
       },
     );
   }
-  async function completeNight(venueId: string, zoneId: string, canonical?: CanonicalPicture) {
+  async function completeNight(venueId: string, zoneId: string, canonical?: CanonicalPicture, automatic = false) {
     if (!canonical) return;
     const village = await ports.readVillageState();
     const { venue, zone } = find(village, venueId, zoneId);
@@ -385,7 +408,7 @@ export function createZonePictures(
       zonePictureBaseline(zone.picture.context ?? zone.picture.baseline ?? "") ===
         zonePictureContext(village, venue, zone)
     )
-      await queue(venueId, zoneId, false, undefined, canonical);
+      await queue(venueId, zoneId, automatic, undefined, canonical);
   }
   async function updateZonePicture(venueId: string, zoneId: string) {
     await ports.assertVenueImageAccess(venueId, undefined, "", zoneId);
@@ -404,7 +427,10 @@ export function createZonePictures(
       await completeNight(venueId, zoneId, canonical);
       return ports.buildVillageSnapshot!();
     },
-    requestZonePicture: (venueId: string, zoneId: string) => queue(venueId, zoneId, true),
+    requestZonePicture: async (venueId: string, zoneId: string) => {
+      const canonical = await queue(venueId, zoneId, true);
+      await completeNight(venueId, zoneId, canonical, true);
+    },
     updateZonePicture,
   };
 }

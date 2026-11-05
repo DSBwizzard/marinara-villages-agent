@@ -1029,9 +1029,6 @@ export function useVillageController({ element }: { element: HTMLElement }) {
     setupBeginningSourceKeyRef,
     setupVenuesRef,
     snapshot,
-    get withSetupImage() {
-      return withSetupImage;
-    },
   });
 
   const withSetupImage = createFoundingWithSetupImage();

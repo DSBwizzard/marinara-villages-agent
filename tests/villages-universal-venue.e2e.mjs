@@ -156,24 +156,19 @@ await withBrowser(browser, async () => {
       else if (path.endsWith("/locations/venue/image/freeze")) {
         const body = request.postDataJSON();
         place.zones.find((zone) => zone.id === body.zoneId).freezePicture = body.frozen;
-      } else if (path.endsWith("/locations/venue/image/day-night")) {
-        const body = request.postDataJSON();
-        const zone = place.zones.find((zone) => zone.id === body.zoneId);
-        zone.dayNight = body.enabled;
-        zone.daylightReady = true;
-        zone.nightImage = body.enabled ? { id: "night", url: mapImage + "#night" } : undefined;
-      } else if (path.endsWith("/locations/venue/image/update")) {
-        const zone = place.zones.find((zone) => zone.id === request.postDataJSON().zoneId);
-        zone.image = { ref: "zone:updated-day", url: mapImage + "#updated-day" };
-        zone.nightImage = undefined;
-        zone.pictureRetryAvailable = true;
-        zone.pictureProblem = "Night artwork failed.";
-        return fulfill(route, { status: 500, json: { error: "Night artwork failed." } });
       } else if (path.endsWith("/locations/venue/image")) {
         const body = request.postDataJSON();
         const zone = place.zones.find((zone) => zone.id === body.zoneId);
-        if (zone)
-          zone.image = request.method() === "DELETE" ? null : { ref: "zone:" + zone.id, url: body.image || mapImage };
+        if (zone) {
+          if (request.method() === "PUT") {
+            zone.pictureReference = { id: "uploaded-reference", url: mapImage + "#reference" };
+            zone.referencePending = true;
+          } else {
+            zone.image = request.method() === "DELETE" ? null : { ref: "zone:" + zone.id, url: mapImage };
+            zone.dayNight = true;
+            zone.nightImage = request.method() === "DELETE" ? undefined : { id: "night", url: mapImage + "#night" };
+          }
+        }
         if (zone) {
           zone.pictureRetryAvailable = false;
           zone.pictureProblem = undefined;
@@ -316,8 +311,8 @@ await withBrowser(browser, async () => {
     await layout.locator('[data-layout-zone="bay"]').click();
     await detail.getByRole("button", { name: "Picture", exact: true }).click();
     await expect(detail.getByRole("button", { name: "Generate new picture" })).toBeVisible();
-    await expect(detail.getByLabel("Upload Main Bay artwork")).toHaveCount(1);
-    await expect(detail.getByRole("button", { name: "Upload artwork", exact: true })).toBeVisible();
+    await expect(detail.getByLabel("Upload Main Bay reference")).toHaveCount(1);
+    await expect(detail.getByRole("button", { name: "Upload image reference", exact: true })).toBeVisible();
     await detail.getByRole("button", { name: "Lore activity", exact: true }).click();
     const lore = page.getByRole("dialog", { name: "Lore activity", exact: true });
     await expect(lore.getByRole("searchbox", { name: "Search Lore entries" })).toHaveValue(
@@ -367,36 +362,14 @@ await withBrowser(browser, async () => {
         await detail.getByRole("button", { name: "Picture", exact: true }).click();
     };
     await openPicture();
-    await detail.getByRole("switch", { name: "Day & night", exact: true }).click();
-    await openPicture();
-    await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveAttribute(
-      "aria-checked",
-      "true",
-    );
+    await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveCount(0);
+    await expect(detail.getByRole("button", { name: "View night image", exact: true })).toHaveCount(0);
+    await expect(detail.getByRole("button", { name: "Refresh picture", exact: true })).toHaveCount(0);
     if (process.env.VILLAGES_FEEDBACK_SCREENSHOTS) {
-      await detail.getByRole("switch", { name: "Day & night", exact: true }).scrollIntoViewIfNeeded();
+      await detail.getByRole("button", { name: "Upload image reference", exact: true }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(process.env.VILLAGES_FEEDBACK_SCREENSHOTS, `picture-menu-${width}.png`) });
     }
-    const beforePreview = writes.length;
-    await detail.getByRole("button", { name: "View night image", exact: true }).click();
-    await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#night");
-    await openPicture();
-    await detail.getByRole("button", { name: "View day image", exact: true }).click();
-    await expect(detail.locator("img")).toHaveAttribute("src", mapImage);
-    assert.equal(writes.length, beforePreview, "appearance viewing never generates or saves");
-    await openPicture();
-    await detail.getByRole("button", { name: "Refresh picture", exact: true }).click();
-    await expect(detail.locator("img")).toHaveAttribute("src", mapImage + "#updated-day");
-    await expect(detail.getByRole("button", { name: "Retry artwork", exact: true })).toBeVisible();
-    await expect(detail.getByRole("status")).toHaveText("Night artwork failed.");
-    await openPicture();
-    await detail.getByRole("switch", { name: "Day & night", exact: true }).click();
-    await openPicture();
-    await expect(detail.getByRole("switch", { name: "Day & night", exact: true })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-    await detail.getByLabel("Upload Main Bay artwork").setInputFiles({
+    await detail.getByLabel("Upload Main Bay reference").setInputFiles({
       name: "zone.png",
       mimeType: "image/png",
       buffer: Buffer.from(
@@ -406,10 +379,12 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
+    await expect(detail.locator("img")).toHaveAttribute("src", mapImage);
+    await expect(detail.getByRole("status")).toHaveText("Reference saved for your next visit.");
     await openPicture();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
     const actionBoxes = await Promise.all(
-      ["Refresh picture", "Generate new picture", "Upload artwork", "Remove artwork"].map((name) =>
+      ["Generate new picture", "Upload image reference", "Remove artwork"].map((name) =>
         detail.getByRole("button", { name, exact: true }).boundingBox(),
       ),
     );
