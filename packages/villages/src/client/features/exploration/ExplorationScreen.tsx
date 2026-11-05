@@ -6,7 +6,7 @@ import { messageFrom, request } from "../../shared/api.js";
 import { ELEMENT_TAG } from "../../shared/constants.js";
 import { HomeDateWeather, placeSpot } from "../../shared/presentation.js";
 import type { ExplorationScreenController } from "./screen-contracts.js";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PlacesDirectory } from "./PlacesDirectory.js";
 import type { PlaceDetail, PlaceDirectory, PlaceSummary } from "../../../shared/contracts/places.js";
 
@@ -58,6 +58,14 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
     venueExplorationActions,
   } = controller;
   const [focusSearch, setFocusSearch] = useState(false);
+  const mapChoice = useRef<HTMLButtonElement>(null);
+  const mapHeading = useRef<HTMLHeadingElement>(null);
+  const choosingMap = useRef(showAllMaps);
+  useEffect(() => {
+    if (showAllMaps) mapHeading.current?.focus({ preventScroll: true });
+    else if (choosingMap.current) mapChoice.current?.focus({ preventScroll: true });
+    choosingMap.current = showAllMaps;
+  }, [showAllMaps]);
   const [discoveryOpen, setDiscoveryOpen] = useState(false),
     [discoveryId, setDiscoveryId] = useState("");
   const [showPlaces, setShowPlaces] = useState(false),
@@ -368,7 +376,9 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
         {showAllMaps ? (
           <div className={ELEMENT_TAG + "-maps-overview"}>
             <div className={ELEMENT_TAG + "-maps-heading"}>
-              <h2>Maps</h2>
+              <h2 tabIndex={-1} ref={mapHeading}>
+                Maps
+              </h2>
               <button type="button" onClick={() => openMenu("village")}>
                 Manage maps
               </button>
@@ -411,7 +421,13 @@ export function ExplorationScreen({ controller }: { controller: ExplorationScree
             <div className={`${ELEMENT_TAG}-home-map-viewport`}>
               {!placingProjectId && !markerDraft ? (
                 <div className={`${ELEMENT_TAG}-map-tools`}>
-                  <button type="button" aria-label="Choose map" disabled={busy} onClick={() => setShowAllMaps(true)}>
+                  <button
+                    type="button"
+                    aria-label="Choose map"
+                    ref={mapChoice}
+                    disabled={busy}
+                    onClick={() => setShowAllMaps(true)}
+                  >
                     <MapIcon name="map" />
                     <span>{selectedMap?.name ?? "Maps"}</span>
                     <span aria-hidden="true">▾</span>

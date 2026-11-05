@@ -1125,6 +1125,18 @@ await withBrowser(browser, async () => {
                 message: `Page count after resizing to ${size.width}×${size.height}`,
               })
               .toBe(singlePage);
+          const paginationStates = await mail.evaluate(async (node) => {
+            const states = [];
+            for (let frame = 0; frame < 12; frame++) {
+              await new Promise(requestAnimationFrame);
+              const paper = node.querySelector(".villages-letter-pages");
+              const navigation = node.querySelector(".villages-letter-pagination");
+              if (frame >= 6)
+                states.push(`${paper.clientHeight}:${navigation.style.display}:${navigation.textContent}`);
+            }
+            return states;
+          });
+          assert.equal(new Set(paginationStates).size, 1, "Pagination stays stable after resizing");
           while (await nextPage.isEnabled()) await nextPage.click();
           assert(await lastCharacterVisible(), "Resizing retains text on the signature's page");
         }

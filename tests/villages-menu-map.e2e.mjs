@@ -202,9 +202,11 @@ await withBrowser(browser, async () => {
     assert.equal(state.settings.venues[0].presentation.y, 0.5);
     writes.length = 0;
     await page.getByRole("button", { name: "Choose map", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Maps", exact: true })).toBeFocused();
     await expect(page.locator("." + P + "-maps-grid button")).toHaveCount(2);
     await page.getByRole("button", { name: "Maple Street 1 Venues", exact: true }).click();
     await expect(mapImage("Maple Street")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Choose map", exact: true })).toBeFocused();
     await expect(places).toHaveCount(0);
     await page
       .getByRole("navigation", { name: "Village exploration" })

@@ -44,9 +44,11 @@ function LetterPages({
     const measure = () => {
       const width = node.getBoundingClientRect().width;
       if (!width || !node.clientHeight) return;
+      // Pagination changes the paper height without resizing its container.
+      const height = node.parentElement?.clientHeight ?? node.clientHeight;
       const previousSize = dimensions.current;
-      dimensions.current = { width, height: node.clientHeight };
-      if (keepEnding && previousSize && (previousSize.width !== width || previousSize.height !== node.clientHeight)) {
+      dimensions.current = { width, height };
+      if (keepEnding && previousSize && (previousSize.width !== width || previousSize.height !== height)) {
         setKeepEnding(false);
         return;
       }
