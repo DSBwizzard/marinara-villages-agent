@@ -20,6 +20,15 @@ await withBrowser(browser, async () => {
       console.error(error.message);
     });
     const snapshot = structuredClone(fixture);
+    const night = width === 850;
+    Object.assign(snapshot.village, {
+      instant: night ? "2026-11-05T20:00:00Z" : "2026-11-05T12:00:00Z",
+      timeZone: "UTC",
+      hour: night ? 20 : 12,
+      minute: 0,
+      minuteOfDay: night ? 1200 : 720,
+      localTime: night ? "20:00" : "12:00",
+    });
     snapshot.isFounded = true;
     snapshot.projects = [];
     const place = snapshot.settings.venues[0];
@@ -379,7 +388,7 @@ await withBrowser(browser, async () => {
     });
     await expect.poll(() => writes.at(-1)?.body.image?.startsWith("data:image/png")).toBe(true);
     assert.equal(writes.at(-1).body.zoneId, "bay");
-    await expect(detail.locator("img")).toHaveAttribute("src", mapImage);
+    await expect(detail.locator("img")).toHaveAttribute("src", mapImage + (night ? "#night" : ""));
     await expect(detail.getByRole("status")).toHaveText("Reference saved for your next visit.");
     await openPicture();
     await expect(detail.getByRole("button", { name: "Remove artwork", exact: true })).toBeEnabled();
