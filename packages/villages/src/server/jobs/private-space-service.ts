@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../adapters/observability/runtime-debug.js";
 import { currentVillageCircumstances } from "../domain/rules/prompt-preset.js";
 import { backgroundRevision } from "../domain/rules/background-revision.js";
 import type { mutateDocument } from "../adapters/storage/document-store.js";
@@ -274,6 +275,12 @@ export function createPrivateSpacePreparation(ports: PrivateSpacePreparationPort
         });
         if (!claimed) return;
         await progress("model");
+        await recordLoreUse(
+          JSON.stringify(fitted.messages) === JSON.stringify(messages)
+            ? inspectedLoreUse(inspection, "Private space")
+            : [],
+          `Private space · ${venue.name} · ${zone.name}`,
+        );
         const result = await completeWithRoom(model, fitted.messages, outputLimit, {
           savedRequest: {
             key: JSON.stringify([seed, venue.id, zone.id, key]),

@@ -1631,7 +1631,7 @@ async function mediaConnectionOwnership() {
       if (operation === "resolve") assert.equal(result.value, "A-brush");
       if (operation === "map")
         assert.deepEqual(
-          result.value,
+          { ...result.value, lore: result.value.lore?.map(({ inspections: _inspections, ...entry }: any) => entry) },
           {
             image: TINY_PNG,
             width: 1,

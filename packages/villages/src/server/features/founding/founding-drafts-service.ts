@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import {
   readFoundingVenueDraftSource,
   readFoundingZoneIds,
@@ -11,7 +12,7 @@ import type { uploadVillageGalleryImage } from "../../adapters/engine/global-gal
 import type { decodeVillageImageDataUrl } from "../../adapters/engine/image-files.js";
 import type { readVillageLore, readVillageImageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
-import { inspectedLoreUse, loreText } from "../../domain/rules/lore-context.js";
+import { inspectedLoreUse, inspectedLoreImages, loreText } from "../../domain/rules/lore-context.js";
 import type { createFoundingArtworkSources } from "./founding-artwork.js";
 import type { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import type { VillageVenueImage } from "../../domain/models/world.js";
@@ -278,6 +279,7 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       Math.min(model.maxOutputTokens ?? 4000, 4000),
       "System",
     );
+    await recordLoreUse(fitted.lore, targetId ? `Venue draft · ${draftSource?.name ?? "Venue"}` : "Starting venues");
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 4000, {
       responseFormat: { type: "json_object" },
       temperature: 0.7,
@@ -434,7 +436,14 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
           : []),
       ],
     );
+    const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(imageInspection, "Image") : [];
     const decoded = await generateVillageImage({
+      loreImages: inspectedLoreImages(imageInspection, usedLore),
+      beforeDispatch: () =>
+        recordLoreUse(
+          usedLore,
+          `Zone artwork · ${row.name || "Founding venue"} · ${asTrimmedString(input.zoneName) || area}`,
+        ),
       sceneryStyleProfileId: input.sceneryStyleProfileId,
       name: row.name || "Founding venue",
       prompt,
@@ -451,7 +460,6 @@ export function createFoundingDrafts(ports: FoundingDraftsServicePorts) {
       width: LOCATION_IMAGE_WIDTH,
       height: LOCATION_IMAGE_HEIGHT,
     });
-    const usedLore = lorePart && prompt.includes(lorePart) ? inspectedLoreUse(imageInspection, "Image") : [];
     const attributed = {
       ...image,
       ...(usedLore.length ? { lore: usedLore } : {}),

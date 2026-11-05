@@ -32,6 +32,7 @@ import { configureGlobalGallery, uploadVillageGalleryImage } from "../adapters/e
 import { decodeVillageImageDataUrl, inspectVillageImage } from "../adapters/engine/image-files.js";
 import { loadEngineImageStyleSupport } from "../adapters/engine/image-style-profiles.js";
 import { readVillageLore, readVillageImageLore, readVillageImageLoreEntries } from "../adapters/engine/lorebooks.js";
+import { readLoreImageReferences } from "../adapters/engine/lore-image-references.js";
 import { createNativeSchedules } from "../adapters/engine/native-schedules-service.js";
 import { configureNativeSchedules, readNativeScheduleSnapshot } from "../adapters/engine/native-schedules.js";
 import {
@@ -511,6 +512,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
       loadEngineImageStyleSupport,
       villagesImageConnectionChoice,
       decodeVillageImageDataUrl,
+      readLoreImageReferences,
     }),
   );
   const releaseMapImages = configureTownMapImage(

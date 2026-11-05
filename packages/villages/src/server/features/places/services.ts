@@ -4,7 +4,9 @@ import { z } from "zod";
 import { readVillageState, mutateVillageState } from "../world/village-store.js";
 import { villagesLanguageModels } from "../../adapters/models/language-models.js";
 import { readVillageLore } from "../../adapters/engine/lorebooks.js";
-import { villageLoreContext } from "../../domain/rules/lore-context.js";
+import { villageLoreContext, inspectedLoreUse } from "../../domain/rules/lore-context.js";
+import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { villageNow } from "../../adapters/time/clock-gate.js";
 import { villagesConnectionIdFor } from "../settings/connections.js";
 import { completeWithRoom } from "../generation/model-requests.js";
@@ -151,11 +153,17 @@ export async function generatePlace(value: unknown, placeId?: string) {
   if (operation && operation.fingerprint !== fingerprint) throw conflict("This request ID was already used.");
   if (operation && operation.status !== "started") return publicOperation(operation);
   if (!operation) {
+    let inspection: LoreInspection | undefined;
     const lore = await readVillageLore(
       world.selectedLorebookIds,
       `${villageLoreContext(world)}\n${input.intent}\n${priorPlace?.location.name ?? ""}`,
       undefined,
       world.loreTokenBudget,
+      {
+        inspect: (report) => {
+          inspection = report;
+        },
+      },
     );
     const messages = [
       { role: "system" as const, content: PLACE_GENERATION_INSTRUCTION },
@@ -182,6 +190,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
       },
     ];
     operation = {
+      lore: inspectedLoreUse(inspection, "Place draft"),
       id: input.requestId,
       attempt: 1,
       fingerprint,
@@ -252,6 +261,7 @@ export async function generatePlace(value: unknown, placeId?: string) {
     const fitted = model.fitContext(admitted.messages, { maxTokens: 4096 });
     if (fitted.trimmed || JSON.stringify(fitted.messages) !== JSON.stringify(admitted.messages))
       throw badRequest("The Place request does not fit the System context. No request was made.");
+    await recordLoreUse(admitted.lore, kind === "prepare" ? "Place preparation" : "Place discovery");
     let completion;
     for (;;) {
       try {

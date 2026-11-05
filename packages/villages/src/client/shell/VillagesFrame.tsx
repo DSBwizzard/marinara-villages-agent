@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { VillageActivity } from "../shared/activity.js";
 import type { useVillageController } from "./useVillageController.js";
 import { ReturnCatchup } from "../features/background/ReturnCatchup.js";
+import { LoreActivity } from "../shared/LoreActivity.js";
 type FrameProps = { controller: ReturnType<typeof useVillageController>; children: ReactNode };
 export function VillagesFrame({ controller, children }: FrameProps) {
   return (
@@ -20,7 +21,9 @@ export function VillagesFrame({ controller, children }: FrameProps) {
       }}
     >
       <div style={{ position: "relative", height: "100%" }}>
-        <VillageContent controller={controller}>{children}</VillageContent>
+        <LoreActivity>
+          <VillageContent controller={controller}>{children}</VillageContent>
+        </LoreActivity>
         <ReturnCatchup
           enabled={controller.visible && !!controller.snapshot?.isFounded}
           onSettled={controller.loadSnapshot}

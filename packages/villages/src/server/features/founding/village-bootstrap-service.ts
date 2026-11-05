@@ -1,4 +1,6 @@
 import type { CapabilityLanguageModelMessage } from "@marinara-engine/shared";
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
+import type { LoreUse } from "../../../shared/contracts/lore.js";
 import { createHash } from "node:crypto";
 import { PLACE_UPDATE_INSTRUCTION } from "../../domain/rules/zone-continuity.js";
 import { asRecord } from "../../domain/rules/coerce.js";
@@ -25,6 +27,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     setting: string,
     venues: readonly { id: string; name: string; classes: readonly string[]; homeKind?: string | null }[],
     lore: readonly string[] = [],
+    loreUse: readonly LoreUse[] = [],
   ): Promise<Record<string, string>> {
     if (!setting.trim() || venues.length === 0 || venues.length > 12)
       throw badRequest("Choose places and a setting first.");
@@ -53,6 +56,7 @@ export function createVillageBootstrap(ports: VillageBootstrapServicePorts) {
     const fitted = model.fitContext(messages, { maxTokens: Math.min(model.maxOutputTokens ?? 2_500, 2_500) });
     if (JSON.stringify(fitted.messages) !== JSON.stringify(messages))
       throw badRequest("The complete place description does not fit the System connection. No request was sent.");
+    await recordLoreUse(loreUse, "Venue descriptions");
     const completion = await completeWithRoom(model, fitted.messages, fitted.maxTokens ?? 2_500, {
       responseFormat: { type: "json_object" },
       retryEmpty: false,

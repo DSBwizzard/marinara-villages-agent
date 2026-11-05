@@ -1,3 +1,4 @@
+import { recordLoreUse } from "../../adapters/observability/runtime-debug.js";
 import { createHash } from "node:crypto";
 import type { VillageState, VillageVenueZone } from "../../domain/models/world.js";
 import { MAX_LOCATION_IMAGE_BASE64_LENGTH } from "../../domain/rules/image-limits.js";
@@ -8,7 +9,12 @@ import { zonePictureContext, zonePictureBaseline } from "../../domain/rules/zone
 import { resolveVenueZone, legacyZoneId, zoneClosed } from "../../domain/rules/venue-zones.js";
 import type { LocationImagePorts } from "./location-image-service.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
-import { inspectedLoreUse, loreText, villageLoreContext } from "../../domain/rules/lore-context.js";
+import {
+  inspectedLoreUse,
+  inspectedLoreImages,
+  loreText,
+  villageLoreContext,
+} from "../../domain/rules/lore-context.js";
 
 export const AUTOMATIC_PICTURES_PER_HOUR = 6;
 export const AUTOMATIC_ZONE_PAUSE_MS = 5 * 60_000;
@@ -247,7 +253,19 @@ export function createZonePictures(
           if (currentSupport?.signature !== support!.signature)
             throw conflict("The image connection changed. Retry artwork deliberately.");
           if (valid(await ports.readVillageState())?.picture?.claim !== claim) return;
+          const usedLore = included ? inspectedLoreUse(inspection, "Image") : [];
           const decoded = await ports.generateVillageImage({
+            loreImages: inspectedLoreImages(inspection, usedLore),
+            beforeDispatch: async () => {
+              const current = await ports.resolveVillageImageEditing!();
+              if (
+                current?.signature !== support!.signature ||
+                valid(await ports.readVillageState())?.picture?.claim !== claim
+              )
+                throw conflict("The scenery or image connection changed. Retry artwork deliberately.");
+              await ports.assertVenueImageAccess(venueId, undefined, undefined, zone.id);
+              await recordLoreUse(usedLore, `Zone artwork · ${venue.name} · ${zone.name}`);
+            },
             connectionId: support!.connectionId,
             referenceImages: references,
             name: venue.name + " · " + zone.name,
@@ -263,7 +281,6 @@ export function createZonePictures(
             name: venue.name + " · " + zone.name,
             prompt: editPrompt,
           });
-          const usedLore = included ? inspectedLoreUse(inspection, "Image") : [];
           if (usedLore.length) image.lore = usedLore;
           await ports.mutateVillageState((state) => {
             const current = valid(state);

@@ -16,6 +16,19 @@ export function readLoreUse(value: unknown): LoreUse[] {
               .slice(0, 8)
               .map((target) => target.slice(0, 80))
           : [],
+        ...(Array.isArray(row.inspections)
+          ? {
+              inspections: row.inspections.slice(0, 8).flatMap((inspection: unknown) => {
+                if (!inspection || typeof inspection !== "object") return [];
+                const item = inspection as Record<string, unknown>;
+                return typeof item.target === "string" &&
+                  typeof item.id === "string" &&
+                  /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(item.id)
+                  ? [{ target: item.target.slice(0, 80), id: item.id }]
+                  : [];
+              }),
+            }
+          : {}),
       },
     ];
   });
@@ -26,7 +39,19 @@ export function mergeLoreUse(...groups: (readonly LoreUse[] | undefined)[]): Lor
   for (const entry of readLoreUse(groups.flatMap((group) => group ?? []))) {
     const key = JSON.stringify([entry.bookId, entry.id]);
     const prior = result.get(key);
-    result.set(key, { ...entry, targets: [...new Set([...(prior?.targets ?? []), ...entry.targets])] });
+    const inspections = [
+      ...new Map(
+        [...(prior?.inspections ?? []), ...(entry.inspections ?? [])].map((item) => [
+          JSON.stringify([item.target, item.id]),
+          item,
+        ]),
+      ).values(),
+    ].slice(0, 8);
+    result.set(key, {
+      ...entry,
+      targets: [...new Set([...(prior?.targets ?? []), ...entry.targets])],
+      ...(inspections.length ? { inspections } : {}),
+    });
   }
   return [...result.values()];
 }

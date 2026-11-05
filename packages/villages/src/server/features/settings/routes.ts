@@ -4,7 +4,13 @@ import { decisionAdapterStatus } from "../../adapters/engine/decisions-adapter.j
 import { listVillageLorebooks, readVillageLore } from "../../adapters/engine/lorebooks.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
 import { fail, readCharacterId, SETTINGS_BODY_LIMIT } from "../../adapters/http/route-support.js";
-import { readRuntimeDebug, saveRuntimeDebug, readLoreInspections } from "../../adapters/observability/runtime-debug.js";
+import {
+  readRuntimeDebug,
+  saveRuntimeDebug,
+  readLoreInspections,
+  readLoreTrigger,
+  readLoreActivity,
+} from "../../adapters/observability/runtime-debug.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { readInterpretationDiagnostics } from "../generation/interpretation-diagnostics.js";
 import { readVillageAuthority } from "../world/village-store.js";
@@ -142,15 +148,40 @@ export function registerUsageRoutes(engine: FastifyInstance) {
 }
 export function registerRuntimeDiagnosticsRoutes(engine: FastifyInstance) {
   const app = engine;
-  app.get("/debug/lore", async (_request, reply) => {
+  app.get<{ Querystring: { activity?: unknown } }>("/debug/lore", async (request, reply) => {
     try {
+      if (request.query?.activity === "summary") return await readLoreActivity(true);
+      if (request.query?.activity !== undefined) throw badRequest("Choose a Lore activity query.");
       return await readLoreInspections();
     } catch (error) {
       return fail(reply, error, "inspecting lorebooks");
     }
   });
-  app.post<{ Body: { query?: unknown } }>("/debug/lore", { bodyLimit: 12000 }, async (request, reply) => {
+  app.post<{
+    Body: {
+      action?: unknown;
+      query?: unknown;
+      inspectionId?: unknown;
+      bookId?: unknown;
+      entryId?: unknown;
+      target?: unknown;
+    };
+  }>("/debug/lore", { bodyLimit: 12000 }, async (request, reply) => {
     try {
+      if (request.body?.action === "summary" || request.body?.action === "activity")
+        return await readLoreActivity(request.body.action === "summary");
+      if (request.body?.action !== undefined) throw badRequest("Choose a Lore activity action.");
+      if (
+        request.body &&
+        typeof request.body === "object" &&
+        ["inspectionId", "bookId", "entryId"].some((key) => key in request.body)
+      )
+        return await readLoreTrigger(
+          request.body.inspectionId,
+          request.body.bookId,
+          request.body.entryId,
+          request.body.target,
+        );
       await readLoreInspections(); // Explicit creator switch; no ordinary Scene endpoint exposes these records.
       const query = request.body?.query;
       if (typeof query !== "string" || query.length > 2000) throw badRequest("Use a query within 2,000 characters.");

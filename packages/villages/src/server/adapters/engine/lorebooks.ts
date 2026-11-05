@@ -1,9 +1,10 @@
 import { coerceLoreTokenBudget, DEFAULT_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 import { villageEngineJson } from "./engine-transport.js";
-import { runtimeDebug } from "../observability/runtime-debug.js";
+import { runtimeDebug, rememberLoreInspection, readLoreScope } from "../observability/runtime-debug.js";
 import { badGateway } from "../../domain/rules/errors.js";
 import { selectVillageLore, type LoreEntry } from "../../domain/rules/lore-selection.js";
 import type { LoreInspection } from "../../../shared/contracts/lore.js";
+import { readLoreEntryImages } from "./lore-image-references.js";
 
 export { MIN_LORE_TOKEN_BUDGET, MAX_LORE_TOKEN_BUDGET } from "../../domain/rules/lore-policy.js";
 
@@ -35,6 +36,7 @@ type EngineEntry = {
   caseSensitive: boolean;
   useRegex: boolean;
   order: number;
+  images?: unknown;
 };
 
 export async function listVillageLorebooks(signal?: AbortSignal): Promise<EngineBook[]> {
@@ -79,6 +81,7 @@ export async function readVillageLore(
     recent?: readonly string[];
     purpose?: string;
     inspect?: (report: LoreInspection) => void;
+    images?: boolean;
   },
 ): Promise<string[]> {
   if (!ids.length || coerceLoreTokenBudget(tokenBudget) === 0) {
@@ -94,9 +97,11 @@ export async function readVillageLore(
     return [];
   }
   try {
+    const scope = await readLoreScope();
     const books = await listVillageLorebooks(signal);
     const byId = new Map(books.map((book) => [book.id, book]));
     const candidates: LoreEntry[] = [];
+    const imagesByEntry = new Map<string, { path: string; caption: string }[]>();
     for (const id of ids) {
       if (!byId.has(id)) throw new Error("Missing selected book.");
       if (!byId.get(id)?.enabled) continue;
@@ -122,8 +127,19 @@ export async function readVillageLore(
             )
           )
             throw new Error("Invalid entry.");
+          const images =
+            options?.images && entry.enabled && folderEnabled(entry.folderId, folderMap)
+              ? readLoreEntryImages(entry.images)
+              : [];
+          if (images.length) imagesByEntry.set(JSON.stringify([id, entry.id]), images);
+          const visual = images
+            .map(({ caption }) =>
+              caption ? `Attached image: ${JSON.stringify(caption)}` : "Attached visual reference.",
+            )
+            .join("\n");
           return {
             ...entry,
+            content: visual ? [entry.content.trim(), visual].filter(Boolean).join("\n") : entry.content,
             bookId: id,
             bookName: byId.get(id)!.name,
             folderEnabled: folderEnabled(entry.folderId, folderMap),
@@ -136,9 +152,21 @@ export async function readVillageLore(
       { setting: context, current: options?.current, recent: options?.recent },
       tokenBudget,
     );
-    result.inspection.purpose = options?.purpose ?? "Lore lookup";
-    options?.inspect?.(result.inspection);
-    runtimeDebug("lore inspection", result.inspection);
+    for (const entry of result.inspection.entries) {
+      const images = imagesByEntry.get(JSON.stringify([entry.bookId, entry.id]));
+      if (images?.length && entry.status === "included") entry.images = images;
+    }
+    const requestContext = [options?.current, ...(options?.recent ?? []), context].filter(Boolean).join("\n");
+    const inspection: LoreInspection = {
+      ...result.inspection,
+      scope,
+      purpose: options?.purpose ?? "Lore lookup",
+      at: new Date().toISOString(),
+      requestContext: requestContext.length > 1200 ? requestContext.slice(0, 1199) + "…" : requestContext,
+    };
+    inspection.inspectionId = await rememberLoreInspection(inspection);
+    options?.inspect?.(inspection);
+    runtimeDebug("lore inspection", inspection);
     return result.selected;
   } catch (_error) {
     signal?.throwIfAborted();
@@ -170,6 +198,7 @@ export async function readVillageImageLoreEntries(
 ): Promise<string[]> {
   let report: LoreInspection | undefined;
   const entries = await readVillageLore(ids, context, undefined, tokenBudget, {
+    images: true,
     inspect: (value) => {
       report = value;
     },
