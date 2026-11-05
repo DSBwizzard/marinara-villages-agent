@@ -3,7 +3,9 @@ import { villageLighting, type VillageLighting } from "../../shared/helpers/vill
 import type { VillageSnapshot } from "../../shared/contracts/village.js";
 
 export function useVillageLighting(village?: VillageSnapshot["village"], paused = false): VillageLighting {
-  const [lighting, setLighting] = useState<VillageLighting>("day");
+  const [lighting, setLighting] = useState<VillageLighting>(() =>
+    village?.timeZone ? villageLighting(village.instant ?? "", village.timeZone) : "day",
+  );
   useEffect(() => {
     const base = Date.parse(village?.instant ?? "");
     if (!Number.isFinite(base) || !village?.timeZone) return;
