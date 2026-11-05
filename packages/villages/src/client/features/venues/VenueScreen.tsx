@@ -250,7 +250,6 @@ function ZoneArtwork({
           <div className={`${ELEMENT_TAG}-venue-image-empty`}>No artwork yet</div>
         )}
       </div>
-      <LoreActivityButton query={`Zone artwork · ${place.name} · ${zone.name}`} />
       <div className={`${ELEMENT_TAG}-zone-artwork-actions`}>
         {zone.pictureRetryAvailable ? (
           <button
@@ -336,6 +335,7 @@ function ZoneArtwork({
                 Remove
               </button>
             ) : null}
+            <LoreActivityButton query={`Zone artwork · ${place.name} · ${zone.name}`} />
           </div>
         </details>
       </div>
