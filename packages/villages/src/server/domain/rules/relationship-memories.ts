@@ -82,7 +82,17 @@ export function publishRelationshipDisclosures(
               basis: "report",
               attributedTo: row.fromId,
               support: evidence,
-              disclosed: { kind: row.kind, toId: row.toId },
+              disclosed: {
+                kind: row.kind,
+                toId: row.toId,
+                ...(row.bond
+                  ? {
+                      ...(row.bond.connection ? { connectionLabel: row.bond.connection } : {}),
+                      ...(row.bond.condition ? { conditionLabel: row.bond.condition } : {}),
+                      ...(row.bond.tone ? { bondTone: row.bond.tone } : {}),
+                    }
+                  : {}),
+              },
             },
           },
           domainRef,

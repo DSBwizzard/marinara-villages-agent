@@ -438,6 +438,7 @@ export function VillagerDossier({
                     prefix={P}
                     onVenue={onVenue}
                     characterId={navigation.actorId}
+                    portrait={portrait}
                     inspect={inspect}
                     view={relationships}
                     onView={setRelationships}

@@ -27,6 +27,7 @@ Changes use {fromId,toId,expectedRevision,sceneAfter,liveAfter,reason,lineIds:[]
 Keep authored history distinct from beliefs, unilateral declarations/boundaries, mutual agreements and concrete commitments. History has status stated and never a deadline. Acceptance requires explicit assent by all participants; an existing authored partnership is history, not invented consent. Either resident may refuse, withdraw or end a bond. Reconciliation is possible, never automatic. Claims/promises are not fulfilled physical deeds. Silence, elapsed time or an unaccepted invitation creates no obligation.
 Preserve meaningful changes in a resident's trust, expectations or concerns from what they witnessed, including when they ask for clarification or defer a decision about the bond. Uncertainty about someone's motive does not by itself mean the resident's private perspective stayed unchanged. Keep that uncertainty in the perspective; do not force a bond ending or reconciliation.
 sceneAfter continues the captured Scene plus its settled events ONLY. liveAfter interprets this SAME event against the supplied current live revision; preserve later history, endings, boundaries and active terms. Do not replay intervening time, resurrect an ended partnership or introduce a retroactive appointment. Leave incompatible terms unresolved and request clarification in dialogue. No arithmetic rebasing.
+For a connection disclosure to the player, include bond:{connection?:"short expressed bond, <=60 characters",condition?:"short expressed condition, <=60 characters",tone?:"steady|strained|tentative"} when supported by the speaker's actual player-heard words. Supply at least one of connection and condition. This is their last expressed view, not a private assessment. When only the condition is communicated (for example asking for space), use a connection disclosure with condition and omit connection; code retains only an already player-known label. A condition and its visual tone require an explicitly communicated condition; omit both when only the connection is expressed. Never derive them from private stance, intentions, counts or silence. Keep connection and condition separate: close friends may be strained, former partners may be cordial. These are descriptions, not progression levels. Do not repeat old information merely to add visual fields.
 Disclosures use {fromId,toId,text,kind:"explanation|preference|boundary|routine|history|connection|home|work",lineIds:[]}. Only explicitly communicated information heard by the player belongs in their notebook; attribute claims. No private stance or intention leaks. A connection disclosure is the speaker's expressed relationship, not the player's feelings. Independently record newly heard relationship information even when no perspective changes and that fact already exists in private history. fromId is the speaker; toId is the person they describe, not automatically the listener. Use home or work only for an explicit current claim by the speaker about their own home or workplace, with toId equal to fromId. Attribute the claim; never infer it from private context, a visit, schedule, intention, access permission, hypothetical or past location. Keep text at most 240 characters. For long cited lines, additionally supply excerpts:["one or two exact supporting quotes, each <=320 UTF-8 bytes"] for native Memory evidence. Do not duplicate already learned information or emit this same disclosure in memoryChanges; disclosures are published into native Memories by code.
 Intentions use {actorId,expectedRevision,lineIds:[],sceneItems:[],items:[{id:"existing ID or empty",targetIds:[],text:"max400",reason:"max400",status:"active|retired|attempted"}]}. sceneItems continues the captured Scene; items settles the same event against current live intentions. Replace only that resident's intentions, at most three active; preserve meaningful unattempted intentions, retire or revise as appropriate. They may seek contact, offer opportunities, repair or refuse. Do not create a quest system. ${RELATIONSHIP_PERMISSION_INSTRUCTION}`;
 
@@ -34,6 +35,14 @@ export function socialReceiptId(sourceId: string, parts: unknown[]): string {
   return sourceId + ":relationship:" + createHash("sha256").update(JSON.stringify(parts)).digest("hex").slice(0, 24);
 }
 const text = (max: number) => z.string().trim().min(1).max(max);
+export const relationshipBondSchema = z
+  .object({
+    connection: text(60).optional(),
+    condition: text(60).optional(),
+    tone: z.enum(["steady", "strained", "tentative"]).optional(),
+  })
+  .refine((bond) => !!bond.connection || !!bond.condition, "A bond requires an expressed connection or condition.")
+  .refine((bond) => !bond.tone || !!bond.condition, "A bond tone requires an expressed condition.");
 const updateSchema = z.object({
   connection: z.string().max(400),
   stance: z.string().max(600),
@@ -211,6 +220,8 @@ export function parseRelationshipReview(
     if ((kind === "home" || kind === "work") && fromId !== toId)
       throw new Error("Home and work disclosures must describe the speaker.");
     const lineIds = evidence.map((line) => line.id).sort();
+    if (row.bond !== undefined && (kind !== "connection" || toId !== "player"))
+      throw new Error("A bond describes only the resident's expressed connection to the player.");
     result.disclosures.push({
       id: socialReceiptId(sourceId, ["disclosure", fromId, toId, kind, lineIds]),
       fromId,
@@ -218,6 +229,7 @@ export function parseRelationshipReview(
       kind,
       text: text(240).parse(row.text),
       lineIds,
+      ...(row.bond !== undefined ? { bond: relationshipBondSchema.parse(row.bond) } : {}),
       ...(Array.isArray(row.excerpts)
         ? { excerpts: row.excerpts.filter((quote): quote is string => typeof quote === "string") }
         : {}),

@@ -1,8 +1,14 @@
+export type RelationshipBond = {
+  connection?: string;
+  condition?: string;
+  tone?: "steady" | "strained" | "tentative";
+};
 /** Ordinary notebook data contains only information available to the player. */
 export type RelationshipProfile = {
   characterId: string;
   name: string;
   summary: string;
+  bond?: RelationshipBond;
   knownAt: string;
   routine: string[];
   knownPlaces?: { kind: "home" | "work"; text: string; at: string }[];

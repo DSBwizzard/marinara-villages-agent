@@ -30,6 +30,127 @@ function fixture() {
   return state;
 }
 const state = fixture();
+// Compact display is saved player knowledge, independent of private attitudes.
+{
+  const world = fixture();
+  const source = { kind: "scene" as const, id: "bond-source", revision: 1, fingerprint: memoryHash("bond") };
+  const speech = {
+    id: "bond-line",
+    speakerId: "a",
+    role: "assistant" as const,
+    content: "You're a close friend. I'm comfortable with you.",
+    heardBy: ["a", "player"],
+    playerHeard: true,
+  };
+  const disclosure = {
+    fromId: "a",
+    toId: "player",
+    text: speech.content,
+    kind: "connection",
+    lineIds: [speech.id],
+    bond: { connection: "Close friends", condition: "At ease", tone: "steady" },
+  };
+  const parse = (row: unknown, lines = [speech]) =>
+    parseRelationshipReview({ ...emptyRelationshipReview(), disclosures: [row] }, source.id, lines, world).disclosures;
+  const parsed = parse(disclosure);
+  publishRelationshipDisclosures(world, parsed, source, [speech], at, readAt);
+  const profile = () => projectRelationshipProfiles(world.relationshipContext!, world)[0]!;
+  assert.deepEqual(profile().bond, { connection: "Close friends", condition: "At ease", tone: "steady" });
+  assert.throws(() => parse({ ...disclosure, toId: "b" }), /only the resident/);
+  assert.throws(() => parse({ ...disclosure, kind: "boundary" }), /only the resident/);
+  assert.throws(() => parse({ ...disclosure, bond: { connection: "Friends", tone: "steady" } }), /expressed condition/);
+  assert.throws(() => parse({ ...disclosure, bond: { connection: "x".repeat(61) } }), /60/);
+  assert.throws(() => parse(disclosure, [{ ...speech, playerHeard: false }]), /heard by the player/);
+
+  const later = { ...speech, id: "space", content: "I need some space." };
+  const laterSource = { ...source, id: "space-source" };
+  const space = parseRelationshipReview(
+    {
+      ...emptyRelationshipReview(),
+      disclosures: [
+        {
+          ...disclosure,
+          lineIds: [later.id],
+          text: later.content,
+          bond: { condition: "Needs space", tone: "strained" },
+        },
+      ],
+    },
+    laterSource.id,
+    [later],
+    world,
+  ).disclosures;
+  const laterAt = "2026-10-26T12:01:00.000Z";
+  publishRelationshipDisclosures(world, space, laterSource, [later], laterAt, readAt);
+  assert.deepEqual(
+    profile().bond,
+    { connection: "Close friends", condition: "Needs space", tone: "strained" },
+    "Condition-only speech preserves only an already known label",
+  );
+
+  const latest = world.memories.records.at(-1)!;
+  correctVillageMemory(
+    world,
+    {
+      operationId: "correct-bond",
+      action: "repair",
+      expectedCollectionRevision: world.memories.revision,
+      target: { id: latest.id, revision: latest.revision, rootRevision: latest.revision },
+      knowers: ["player"],
+      text: "Ada was talking about needing more room at the table.",
+    },
+    readAt,
+  );
+  assert.equal(profile().bond, undefined, "Correcting a later source never revives an older visual condition");
+  assert.equal(profile().summary, "");
+  assert.ok(profile().learned.some((row) => row.text.includes("room at the table")));
+
+  const legacy = { ...speech, id: "legacy", content: "I don't know where we stand." };
+  const legacySource = { ...source, id: "legacy-source" };
+  const withoutBond = parseRelationshipReview(
+    {
+      ...emptyRelationshipReview(),
+      disclosures: [{ ...disclosure, bond: undefined, lineIds: [legacy.id], text: legacy.content }],
+    },
+    legacySource.id,
+    [legacy],
+    world,
+  ).disclosures;
+  publishRelationshipDisclosures(world, withoutBond, legacySource, [legacy], "2026-10-26T12:02:00.000Z", readAt);
+  assert.equal(profile().bond, undefined, "A newer legacy disclosure clears compact prior knowledge");
+  assert.equal(profile().summary, legacy.content);
+
+  const forgotten = fixture();
+  publishRelationshipDisclosures(forgotten, parsed, source, [speech], at, readAt);
+  const target = forgotten.memories.records[0]!;
+  forgetVillageMemory(
+    forgotten,
+    {
+      operationId: "forget-bond",
+      action: "forget",
+      expectedCollectionRevision: forgotten.memories.revision,
+      target: { id: target.id, revision: target.revision, rootRevision: target.revision },
+      knowers: ["player"],
+    },
+    readAt,
+  );
+  assert.equal(projectRelationshipProfiles(forgotten.relationshipContext!, forgotten)[0]!.bond, undefined);
+  publishRelationshipDisclosures(forgotten, parsed, source, [speech], at, readAt);
+  assert.equal(
+    projectRelationshipProfiles(forgotten.relationshipContext!, forgotten)[0]!.bond,
+    undefined,
+    "Replay cannot restore forgotten display metadata",
+  );
+
+  const spoofed = fixture();
+  publishRelationshipDisclosures(spoofed, parsed, source, [speech], at, readAt);
+  spoofed.memories.records[0]!.knowers.player!.attributedTo = "b";
+  assert.equal(
+    projectRelationshipProfiles(spoofed.relationshipContext!, spoofed)[0]!.bond,
+    undefined,
+    "Another speaker's report cannot become the resident's expressed bond",
+  );
+}
 reserveMemoryScene(state, "source-scene", at);
 reserveMemoryScene(state, "other-scene", at);
 const source = {
