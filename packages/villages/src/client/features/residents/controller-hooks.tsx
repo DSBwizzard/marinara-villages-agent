@@ -1,22 +1,26 @@
-import { useVisibleInterval } from "../../shared/activity.js";
+import { useFocusRevision, useVisibleInterval } from "../../shared/activity.js";
 import type { VillageVillagerView } from "../../../shared/contracts/village.js";
 import { useCallback, useEffect } from "react";
 
 export function useResidentInspection(ports: {
+  visible: boolean;
   loadAgendas: (signal?: AbortSignal) => Promise<void>;
   personProfile: import("./villages-dossier.js").DossierNavigation;
   profileInspection: import("./villages-dossier.js").DossierSection;
   screen: "home" | "menu" | "setup" | "resume" | "preparing" | "venue" | "room" | "person";
 }) {
-  const { loadAgendas, personProfile, profileInspection, screen } = ports;
+  const { loadAgendas, personProfile, profileInspection, screen, visible } = ports;
+  const focusRevision = useFocusRevision(
+    visible && screen === "person" && ["agenda", "venues"].includes(profileInspection),
+  );
   useEffect(() => {
-    if (screen !== "person" || !personProfile || !profileInspection) return;
+    if (!visible || screen !== "person" || !personProfile || !profileInspection) return;
     const controller = new AbortController();
     if (["agenda", "venues"].includes(profileInspection)) {
       void loadAgendas(controller.signal);
     }
     return () => controller.abort();
-  }, [screen, personProfile, profileInspection, loadAgendas]);
+  }, [screen, personProfile, profileInspection, loadAgendas, visible, focusRevision]);
 }
 
 export function useResidentAgendaPolling(ports: {

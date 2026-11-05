@@ -174,6 +174,7 @@ await withBrowser(browser, async () => {
     let failMailRead = false;
     let failMailResponse = false;
     let heldPage = null;
+    let reopenProfileAfterMail = false;
     let heldSend = null;
     const hold = (matches) => {
       let release;
@@ -1323,6 +1324,17 @@ await withBrowser(browser, async () => {
       await expect(paperPages.locator("span")).toHaveText(position);
       await expect(mail.locator(".villages-letter-text").first()).toContainText("A page of words from Mara");
 
+      await mail.getByRole("button", { name: "Close Mailbox", exact: true }).click();
+      await page.getByRole("button", { name: "Close ×", exact: true }).click();
+      await expect(profile).not.toBeVisible();
+      const mapButton = page
+        .getByRole("navigation", { name: "Village navigation" })
+        .getByRole("button", { name: "Map", exact: true });
+      if (await mapButton.isVisible()) await mapButton.click();
+      await page.getByRole("button", { name: "Mailbox", exact: true }).click();
+      await expect(paperPages.locator("span")).toHaveText(position);
+      reopenProfileAfterMail = true;
+
       await mail.getByRole("button", { name: "Write a letter", exact: true }).click();
       await mail.getByLabel("Recipient").selectOption("mara");
       await draft.fill("A send whose acknowledgement arrives after page navigation.");
@@ -1348,6 +1360,11 @@ await withBrowser(browser, async () => {
     }
 
     await mail.getByRole("button", { name: "Close Mailbox" }).click();
+    if (reopenProfileAfterMail) {
+      await people.click();
+      await directory.getByRole("button", { name: "Open Mara profile", exact: true }).click();
+      await tabs.getByRole("button", { name: "Inspect", exact: true }).click();
+    }
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     await expect(profile.getByText("PRIVATE MARA MEMORY", { exact: true })).toBeVisible();
     await expect(profile.getByText("PRIVATE ELI MEMORY", { exact: true })).toHaveCount(0);

@@ -5,7 +5,7 @@ import { chromium, expect, fulfill, withBrowser } from "./fixtures/browser-diagn
 const bundle = await build({
   stdin: {
     contents: `
-import React,{useState,useRef,useCallback} from 'react';
+import React,{useState,useRef,useCallback,useMemo} from 'react';
 import {createRoot} from 'react-dom/client';
 import {VillageActivity,useCapabilityVisibility} from './packages/villages/src/client/shared/activity.js';
 import {RetainedView} from './packages/villages/src/client/shared/RetainedView.js';
@@ -15,9 +15,11 @@ import {VillagerWishJournal} from './packages/villages/src/client/features/resid
 import {VillagerMemoriesPanel} from './packages/villages/src/client/features/residents/MemoriesPanel.js';
 import {useLoadMemoryLibrary,useLoadAgendas,useSetAgendaScheduleIngestion} from './packages/villages/src/client/features/residents/actions.js';
 import {useSceneSelectionReset} from './packages/villages/src/client/features/scenes/controller-hooks.js';
+import {useResidentInspection} from './packages/villages/src/client/features/residents/controller-hooks.js';
 function Harness(){
  const [scope,setScope]=useState('world-a'),[actor,setActor]=useState('mara'),[revision,setRevision]=useState('0');
  const [navigation,setNavigation]=useState({actorId:'mara',returnTo:'home'});
+ const [inspection,setInspection]=useState(null);
  const [active,setActive]=useState(true),[hidden,setHidden]=useState(false),[sprites,setSprites]=useState(false);
  const [library,setLibrary]=useState(null),[agendas,writeAgendas]=useState(null),[error,setError]=useState('');
  const agendaRevision=useRef(0),currentSnapshotRef=useRef(null);currentSnapshotRef.current={worldScope:scope};
@@ -25,15 +27,17 @@ function Harness(){
  const visible=useCapabilityVisibility(document.getElementById('root'))&&!hidden;
  const loadMemory=useLoadMemoryLibrary({worldScope:scope,setMemoryLibrary:setLibrary,setError});
  const loadAgendas=useLoadAgendas({worldScope:scope,setAgendas,setError,agendaRevision});
+ const personProfile=useMemo(()=>navigation.actorId===actor?navigation:{actorId:actor,returnTo:'home'},[navigation,actor]);
+ useResidentInspection({loadAgendas,personProfile,profileInspection:inspection,screen:active?'person':'home',visible});
  const influence=useSetAgendaScheduleIngestion({currentSnapshotRef,setAgendas,setError,setBusy:()=>{}});
  const [validating,setValidating]=useState(false),observed=useRef(''),completion=useRef({roomId:'',submissionId:''}),movement=useRef(''),seen=useRef(new Set());
  const noChange=useCallback(()=>{},[]);
  useSceneSelectionReset({snapshot:{village:{instant:'same'}},loadSnapshot:noChange,observedRoomIdRef:observed,room:validating?{id:'saved-scene',status:'active',liveSceneVersion:1}:null,roomCompletionRef:completion,roomMoveOperationIdRef:movement,screen:'room',seenRoomEventIdsRef:seen,setLastSceneEnding:noChange,setRoom:noChange,setRoomContactBoundary:noChange,setRoomMoveZoneId:noChange,setRoomNotices:noChange,setRoomOpen:noChange,setRoomTargetId:noChange,setScreen:noChange});
  window.h={scope:setScope,actor:setActor,refresh:()=>setRevision(value=>String(Number(value)+1)),active:setActive,hidden:setHidden,visible,sprites:setSprites,loadAgendas,influence,agendas,validate:setValidating,navigateWish:()=>setNavigation({actorId:actor,returnTo:'home',wishId:actor+'-wish'})};
  return <VillageActivity value={{visible,backgroundRevision:revision,worldScope:scope}}>
- <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={navigation.actorId===actor?navigation:{actorId:actor,returnTo:'home'}} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
+ <RetainedView active={active}><VillagerDossier key={scope+actor} navigation={personProfile} villager={{characterId:actor,name:actor,summary:'A villager',missing:false}}
  portrait={null} request={request} venues={[]} links={[]} controls={<input aria-label='Identity draft'/>} spriteManager={sprites?<button onClick={()=>setSprites(false)}>Back to profile</button>:undefined}
- onInspectSection={()=>{}} onBack={()=>setActive(false)} onVenue={()=>{}} inspectors={{
+ onInspectSection={setInspection} onBack={()=>setActive(false)} onVenue={()=>{}} inspectors={{
  wishes:<VillagerWishJournal request={request} characterId={actor} prefix='v' inspect/>,
  memories:<VillagerMemoriesPanel characterId={actor} library={library} busy={false} onQuery={(query,signal)=>loadMemory(signal,query)} onForget={()=>{}}/>,
  agenda:<pre>{JSON.stringify(agendas)}</pre>
@@ -269,6 +273,21 @@ await withBrowser(browser, async () => {
     assert.equal(await privateNode.evaluate((element) => element.isConnected), true);
     privateRead.gate.resolve();
     hold = null;
+    await tabs.getByRole("button", { name: "Agenda", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Current agenda");
+    agendaName = "Returned agenda";
+    const resumedAgenda = pause("/api/villages/agendas");
+    await page.evaluate(() => window.h.hidden(true));
+    await expect.poll(() => page.evaluate(() => window.h.visible)).toBe(false);
+    await page.evaluate(() => window.h.hidden(false));
+    await expect.poll(() => resumedAgenda.started).toBeGreaterThan(0);
+    assert.equal(await page.evaluate(() => window.h.agendas[0].name), "Current agenda");
+    resumedAgenda.gate.resolve();
+    hold = null;
+    await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Returned agenda");
+    agendaName = "Focused agenda";
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => page.evaluate(() => window.h.agendas?.[0]?.name)).toBe("Focused agenda");
     await tabs.getByRole("button", { name: "Memories", exact: true }).click();
     await expect(page.getByText("Saved memory")).toBeVisible();
     await page.getByRole("searchbox", { name: "Search memories" }).fill("unfinished query");

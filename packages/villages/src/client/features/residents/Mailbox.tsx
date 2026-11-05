@@ -18,6 +18,8 @@ function LetterPages({
   sender,
   portrait,
   portraitName,
+  page,
+  setPage,
 }: {
   text: string;
   fontId?: string;
@@ -26,11 +28,12 @@ function LetterPages({
   sender?: VillageSnapshot["villagers"][number];
   portrait?: PortraitMap[string];
   portraitName?: string;
+  page: number;
+  setPage: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const paper = useRef<HTMLDivElement>(null);
   const navigation = useRef<HTMLDivElement>(null);
   const dimensions = useRef<{ width: number; height: number } | null>(null);
-  const [page, setPage] = useState(0);
   const [pages, setPages] = useState(1);
   const [keepEnding, setKeepEnding] = useState(false);
   const [imageRevision, setImageRevision] = useState(0);
@@ -95,7 +98,7 @@ function LetterPages({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [text, simpleText, fontId, fontRevision, imageRevision, page, keepEnding, sender, ending]);
+  }, [text, simpleText, fontId, fontRevision, imageRevision, page, keepEnding, sender, ending, setPage]);
   const hand = !simpleText ? sender?.signatureFallback : undefined;
   const style = {
     fontFamily: fontId ? letterFontFamily(fontId) : simpleText ? "system-ui, sans-serif" : undefined,
@@ -184,7 +187,10 @@ export function Mailbox({
   const [loadedView, setView] = useState<(MailboxView & { queryKey: string }) | null>(null);
   const [folder, setFolder] = useState<"inbox" | "sent">("inbox");
   const [selection, setSelection] = useState<Selection>(null);
+  const currentSelection = useRef(selection);
+  currentSelection.current = selection;
   const [loadedLetter, setLoadedLetter] = useState<PersonalLetter | null>(null);
+  const [letterPage, setLetterPage] = useState(0);
   const [cursors, setCursors] = useState<string[]>([]);
   const [recoveryCursors, setRecoveryCursors] = useState<string[]>([]);
   const [composing, setComposing] = useState(false);
@@ -215,6 +221,7 @@ export function Mailbox({
       detailLane.current++;
       setView(null);
       setLoadedLetter(null);
+      setLetterPage(0);
       setSelection(null);
       setBusy(false);
       setLoadError(event instanceof CustomEvent && typeof event.detail === "string" ? event.detail : "Access denied.");
@@ -243,6 +250,7 @@ export function Mailbox({
     navigationEpoch.current++;
     setView(null);
     setLoadedLetter(null);
+    setLetterPage(0);
     setSelection(null);
     setCursors([]);
     setRecoveryCursors([]);
@@ -259,11 +267,18 @@ export function Mailbox({
     setRecipient(initialResidentId);
     setComposing(true);
   }, [open, initialResidentId]);
-  const choose = (next: Selection) => {
+  const choose = useCallback((next: Selection) => {
+    const selection = currentSelection.current;
+    if (
+      next?.threadId !== selection?.threadId ||
+      next?.messageId !== selection?.messageId ||
+      next?.token !== selection?.token
+    )
+      setLetterPage(0);
     navigationEpoch.current++;
     setSelection(next);
     setLoadedLetter(null);
-  };
+  }, []);
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       if (currentQuery.current !== queryKey) return;
@@ -398,7 +413,7 @@ export function Mailbox({
         }
       });
     return () => controller.abort();
-  }, [open, selectedThreadId, unreadId, selectedToken, readAttempt, scope]);
+  }, [open, selectedThreadId, unreadId, selectedToken, readAttempt, scope, choose]);
   const action = async (path: string, token: string) => {
     const epoch = uiEpoch.current,
       key = scope + ":" + path + ":" + token;
@@ -772,6 +787,8 @@ export function Mailbox({
               <>
                 <LetterPages
                   key={selected.thread.id + ":" + selected.message.id}
+                  page={letterPage}
+                  setPage={setLetterPage}
                   text={selected.message.text}
                   fontId={fontId}
                   simpleText={simpleText}

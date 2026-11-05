@@ -590,6 +590,7 @@ export function useVillageController({ element }: { element: HTMLElement }) {
   const loadAgendas = useLoadAgendas({ setAgendas, setError, worldScope: snapshot?.worldScope ?? "", agendaRevision });
 
   useResidentInspection({
+    visible,
     loadAgendas,
     personProfile,
     profileInspection,
