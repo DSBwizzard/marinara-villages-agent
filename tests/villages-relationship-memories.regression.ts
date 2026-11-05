@@ -80,7 +80,7 @@ const state = fixture();
     [later],
     world,
   ).disclosures;
-  const laterAt = "2026-10-26T12:01:00.000Z";
+  const laterAt = at;
   publishRelationshipDisclosures(world, space, laterSource, [later], laterAt, readAt);
   assert.deepEqual(
     profile().bond,
@@ -149,6 +149,43 @@ const state = fixture();
     projectRelationshipProfiles(spoofed.relationshipContext!, spoofed)[0]!.bond,
     undefined,
     "Another speaker's report cannot become the resident's expressed bond",
+  );
+  assert.equal(
+    projectRelationshipProfiles(spoofed.relationshipContext!, spoofed)[0]!.summary,
+    "",
+    "Fallback prose also requires the resident's own report",
+  );
+  const unrelated = fixture();
+  publishRelationshipDisclosures(unrelated, parsed, source, [speech], at, readAt);
+  const otherLine = { ...speech, id: "other-pair", content: "Ben is an old friend." };
+  const otherSource = { ...source, id: "other-pair-source" };
+  const otherDisclosure = parseRelationshipReview(
+    {
+      ...emptyRelationshipReview(),
+      disclosures: [{ ...disclosure, toId: "b", bond: undefined, text: otherLine.content, lineIds: [otherLine.id] }],
+    },
+    otherSource.id,
+    [otherLine],
+    unrelated,
+  ).disclosures;
+  publishRelationshipDisclosures(unrelated, otherDisclosure, otherSource, [otherLine], at, readAt);
+  const otherMemory = unrelated.memories.records.at(-1)!;
+  correctVillageMemory(
+    unrelated,
+    {
+      operationId: "correct-other-pair",
+      action: "repair",
+      expectedCollectionRevision: unrelated.memories.revision,
+      target: { id: otherMemory.id, revision: otherMemory.revision, rootRevision: otherMemory.revision },
+      knowers: ["player"],
+      text: "Ben is a recent acquaintance.",
+    },
+    readAt,
+  );
+  assert.deepEqual(
+    projectRelationshipProfiles(unrelated.relationshipContext!, unrelated)[0]!.bond,
+    { connection: "Close friends", condition: "At ease", tone: "steady" },
+    "Correcting a different pair does not erase the known player bond",
   );
 }
 reserveMemoryScene(state, "source-scene", at);

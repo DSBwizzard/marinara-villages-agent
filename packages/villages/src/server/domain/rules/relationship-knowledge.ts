@@ -13,12 +13,19 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
       ? "You"
       : (village.villagers.find((p) => p.characterId === id)?.cardSnapshot.name ?? "Former resident");
   const memories = projectMemories(village.memories, ["player"]);
+  const sourceRecords = new Map(village.memories.records.map((row) => [row.id, row]));
   return village.villagers.map((resident) => {
     const learned = memories
       .filter((row) => row.domainRef?.kind === "relationship" && row.domainRef.characterId === resident.characterId)
-      .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id))
+      .sort(
+        (a, b) =>
+          a.occurredAt.localeCompare(b.occurredAt) ||
+          sourceRecords.get(a.id)!.createdRevision - sourceRecords.get(b.id)!.createdRevision ||
+          a.id.localeCompare(b.id),
+      )
       .map((row) => {
         const knowledge = row.knowers.player!;
+        const originalDisclosure = sourceRecords.get(row.id)?.knowers.player?.disclosed;
         const bond =
           knowledge.basis === "report" && knowledge.attributedTo === resident.characterId
             ? relationshipBondSchema.safeParse({
@@ -32,12 +39,15 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
           kind: String(row.knowers.player!.disclosed?.kind ?? "information"),
           toId: String(row.knowers.player!.disclosed?.toId ?? "player"),
           at: row.occurredAt,
-          invalidatesBond: !!knowledge.repair,
+          // Original metadata only identifies the repaired statement; it never restores its labels.
+          invalidatesBond:
+            !!knowledge.repair && originalDisclosure?.kind === "connection" && originalDisclosure.toId === "player",
+          spokenByResident: knowledge.basis === "report" && knowledge.attributedTo === resident.characterId,
           ...(bond?.success ? { bond: bond.data } : {}),
         };
       });
     const statements = learned.filter(
-      (row) => (row.kind === "connection" && row.toId === "player") || row.invalidatesBond,
+      (row) => (row.kind === "connection" && row.toId === "player" && row.spokenByResident) || row.invalidatesBond,
     );
     const expressed = statements.at(-1);
     let bond: RelationshipBond | undefined;
@@ -87,10 +97,12 @@ export function projectRelationshipProfiles(state: RelationshipState, village: V
         .join("; "),
       wishes: knownWishes(village, resident.characterId).map((row) => row.text),
       knownWishes: knownWishes(village, resident.characterId),
-      learned: learned.map(({ toId, bond: _bond, invalidatesBond: _invalidatesBond, ...row }) => ({
-        ...row,
-        aboutName: name(toId),
-      })),
+      learned: learned.map(
+        ({ toId, bond: _bond, invalidatesBond: _invalidatesBond, spokenByResident: _spokenByResident, ...row }) => ({
+          ...row,
+          aboutName: name(toId),
+        }),
+      ),
       access: Object.values(state.grants)
         .filter(
           (grant) => grant.controllerId === resident.characterId && grant.visitorId === "player" && !grant.revoked,

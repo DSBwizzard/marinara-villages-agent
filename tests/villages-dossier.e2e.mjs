@@ -1429,6 +1429,14 @@ await withBrowser(browser, async () => {
       "Long-name profile fits viewport",
     );
     if (width <= 390) await page.screenshot({ path: resolve(output, `long-name-${width}.png`) });
+    await tabs.getByRole("button", { name: "Relationships", exact: true }).click();
+    const unknownBond = profile.locator(".villages-relationship-bond");
+    await expect(unknownBond.getByText("Not yet known", { exact: true })).toBeVisible();
+    await expect(unknownBond.locator("[data-tone=unknown]")).toBeVisible();
+    await expect(unknownBond.locator(".villages-relationship-condition")).toHaveCount(0);
+    await unknownBond.getByRole("button", { name: "History", exact: true }).click();
+    await expect(unknownBond.getByText("No relationship history learned yet.", { exact: true })).toBeVisible();
+    await tabs.getByRole("button", { name: "Overview", exact: true }).click();
     await page.getByRole("button", { name: "← Back to Villagers", exact: true }).click();
     await directory.getByRole("button", { name: "Open Mara profile" }).click();
     await expect(profile.getByRole("img", { name: "Mara's signature", exact: true }).locator("img")).toHaveAttribute(
