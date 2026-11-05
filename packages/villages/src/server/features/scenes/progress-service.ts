@@ -146,10 +146,16 @@ export function createSceneProgress({
   }
 
   /** Replay only saved interpretations. Effects and duplicate receipts remain in their owning documents. */
-  async function processSavedExchange(sessionId: string, submissionId: string): Promise<void> {
-    const work = () => processSavedExchangeOnce(sessionId, submissionId);
-    await (withSceneWork ? withSceneWork(sessionId, work) : work());
-    onSettled?.(sessionId);
+  async function processSavedExchange(sessionId: string, submissionId: string, startup = false): Promise<void> {
+    const work = async () => {
+      if (startup) {
+        const turn = (await readSession(sessionId)).submissions.find((entry) => entry.id === submissionId);
+        if (Object.values(turn?.processing?.domains ?? {}).some((domain) => domain.status === "failed")) return false;
+      }
+      await processSavedExchangeOnce(sessionId, submissionId);
+      return true;
+    };
+    if (await (withSceneWork ? withSceneWork(sessionId, work) : work())) onSettled?.(sessionId);
   }
   async function processSavedExchangeOnce(sessionId: string, submissionId: string): Promise<void> {
     await measurePipeline("saved exchange", { sceneId: sessionId, submissionId }, () =>
@@ -292,7 +298,7 @@ export function createSceneProgress({
           for (const turn of queue.splice(0, 8)) {
             if (stopped) return;
             try {
-              await processSavedExchange(turn.sessionId, turn.submissionId);
+              await processSavedExchange(turn.sessionId, turn.submissionId, true);
             } catch (error) {
               if (!stopped)
                 villagesLogger().warn("[villages] progress replay failed for %s: %s", turn.submissionId, String(error));

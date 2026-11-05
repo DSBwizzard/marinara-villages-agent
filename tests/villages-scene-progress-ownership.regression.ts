@@ -55,6 +55,7 @@ function fixture(name: string) {
     receiptHook: (() => void) | undefined,
     speechHook: (() => void) | undefined,
     completedHook: (() => void) | undefined;
+  const recovered = deferred();
   const entered = deferred(),
     gate = deferred(),
     queue: { sessionId: string; submissionId: string }[] = [];
@@ -119,6 +120,7 @@ function fixture(name: string) {
   const saved = add(),
     turn = () => scenes.get("same")!.submissions[0]!;
   const service = createSceneProgress({
+    onRecoveryFinished: () => recovered.resolve(),
     async readVillageState() {
       note("world");
       await wait("world");
@@ -234,6 +236,7 @@ function fixture(name: string) {
     warnings,
     service,
     queue,
+    recovered,
     add,
     entered,
     gate,
@@ -297,6 +300,38 @@ function automaticTask(f: ReturnType<typeof fixture>) {
   );
 }
 async function main() {
+  const held = fixture("held-startup-failure");
+  held.queue.push({ sessionId: "same", submissionId: "turn" });
+  held.add("pending");
+  held.queue.push({ sessionId: "pending", submissionId: "turn" });
+  const stopHeld = held.service.startProgressRecovery();
+  // Failure can be recorded after the backlog was read; the locked replay checks the current turn.
+  held.turn().processing!.domains.relationships = {
+    ...held.turn().processing!.domains.relationships,
+    status: "failed",
+    attempts: 4,
+    reason: "The saved disclosure was not heard.",
+  };
+  const beforeHeld = structuredClone(held.scenes.get("same"));
+  await bounded(held.recovered.promise);
+  stopHeld();
+  assert.deepEqual(
+    held.scenes.get("same"),
+    beforeHeld,
+    "Startup preserves failed and mixed failed/pending turns exactly",
+  );
+  assert.equal(
+    held.scenes.get("pending")!.submissions[0].processing!.domains.relationships.status,
+    "applied",
+    "Pending-only interrupted work still resumes",
+  );
+  await held.service.processSavedExchange("same", "turn");
+  assert.equal(
+    held.turn().processing!.domains.relationships.status,
+    "applied",
+    "Explicit replay still retries held failures",
+  );
+  assert.equal(held.turn().processing!.domains.relationships.attempts, 5);
   const replay = fixture("replay");
   assert.deepEqual(replay.calls, [], "construction is inert");
   await replay.service.processSavedExchange("same", "turn");
