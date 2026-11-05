@@ -1636,6 +1636,12 @@ async function main() {
         });
         await new Promise<void>((resolve) => setImmediate(resolve));
         assert.equal(pictures, 1, "closed Scenes cannot initiate artwork");
+        seed("artwork-rejected");
+        await coordinateVenue("artwork-rejected", "visit", "turn", {}, 0, undefined, async () => ({
+          turnOutcome: "occupancy-unavailable",
+        }));
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(pictures, 1, "an expected rejected turn cannot initiate artwork or mutate observed state");
       } finally {
         clearTimeout(timer);
         releasePictures();

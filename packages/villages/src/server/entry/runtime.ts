@@ -419,7 +419,12 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     scheduleRetirement(id);
     void readSession(id)
       .then((scene) => {
-        if (scene.status === "active" && scene.operation?.status === "complete" && !scene.operation.error)
+        if (
+          scene.status === "active" &&
+          scene.operation?.status === "complete" &&
+          !scene.operation.error &&
+          !scene.operation.turnOutcome
+        )
           return requestZonePicture(scene.placeId, scene.zoneId ?? "exterior");
       })
       .catch(() => {});
