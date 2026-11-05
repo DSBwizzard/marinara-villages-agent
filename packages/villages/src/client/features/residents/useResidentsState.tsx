@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type {
   CatalogEntry,
   MemoryLibrary,
@@ -30,7 +30,12 @@ export function useResidentsState() {
    * motivation into an objective, which is the one shape the whole slice exists
    * to avoid.
    */
-  const [agendas, setAgendas] = useState<VillagerAgendaView[] | null>(null);
+  const [agendas, writeAgendas] = useState<VillagerAgendaView[] | null>(null);
+  const agendaRevision = useRef(0);
+  const setAgendas = useCallback<React.Dispatch<React.SetStateAction<VillagerAgendaView[]>>>((next) => {
+    agendaRevision.current++;
+    writeAgendas(next);
+  }, []);
 
   /**
    * Which pin on the map is showing its doors.
@@ -114,6 +119,7 @@ export function useResidentsState() {
     memoryLibrary,
     setMemoryLibrary,
     agendas,
+    agendaRevision,
     setAgendas,
     personProfile,
     setPersonProfile,

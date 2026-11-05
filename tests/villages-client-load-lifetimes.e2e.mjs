@@ -42,7 +42,7 @@ const seed = {
   backgroundWork: [{ kind: "resident-planning", attempt: 3 }],
 };
 const browser = await chromium.launch({ headless: true });
-async function mount({ strict = false, width = 1280, presence = false, wanted = "" } = {}) {
+async function mount({ strict = false, width = 1280, presence = false, wanted = "", initial = seed } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 844 }, hasTouch: width === 390 });
   await mockEngineLookups(page);
   const requests = [],
@@ -68,7 +68,7 @@ async function mount({ strict = false, width = 1280, presence = false, wanted = 
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   });
   await page.goto("http://client-loads.test/");
-  await page.evaluate((options) => Object.assign(window, options), { seed, strict, presence, wanted });
+  await page.evaluate((options) => Object.assign(window, options), { seed: initial, strict, presence, wanted });
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
   await expect(page.locator("#state")).toBeVisible();
   const state = async () => JSON.parse(await page.locator("#state").textContent());
@@ -96,6 +96,21 @@ async function mount({ strict = false, width = 1280, presence = false, wanted = 
 }
 await withBrowser(browser, async () => {
   for (const strict of [false, true]) {
+    for (const [initial, status, quiet] of [
+      [seed, 503, false],
+      [null, 503, false],
+      [seed, 503, true],
+      [seed, 403, false],
+    ]) {
+      const f = await mount({ strict, initial });
+      const read = await f.launch("load", { quiet });
+      await expect.poll(() => f.requests.length).toBe(1);
+      await f.reply(f.requests[0], { error: "Snapshot read unavailable" }, status);
+      await f.settle(read);
+      assert.deepEqual((await f.state()).snapshot, status === 403 ? null : initial);
+      assert.equal((await f.state()).error, quiet ? "" : "Snapshot read unavailable");
+      await f.finish();
+    }
     for (const boundary of ["newer-read", "save", "reset", "stale-error", "dispose"]) {
       const f = await mount({ strict });
       const old = await f.launch("load");

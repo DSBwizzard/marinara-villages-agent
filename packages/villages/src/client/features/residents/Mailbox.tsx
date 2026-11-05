@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MailboxMutation, MailboxView, PersonalLetter } from "../../../shared/contracts/mailbox.js";
 import type { VillageSnapshot } from "../../../shared/contracts/village.js";
-import { request, VillageApiError } from "../../shared/api.js";
+import { invalidatesRead, request, VillageApiError, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
 import { createVillagesClientId } from "../../shared/request-id.js";
 import { useLetterFont, letterFontFamily } from "../../shared/letter-font-css.js";
 import type { PortraitMap } from "../../shared/types.js";
@@ -18,6 +18,8 @@ function LetterPages({
   sender,
   portrait,
   portraitName,
+  page,
+  setPage,
 }: {
   text: string;
   fontId?: string;
@@ -26,11 +28,12 @@ function LetterPages({
   sender?: VillageSnapshot["villagers"][number];
   portrait?: PortraitMap[string];
   portraitName?: string;
+  page: number;
+  setPage: React.Dispatch<React.SetStateAction<number>>;
 }) {
   const paper = useRef<HTMLDivElement>(null);
   const navigation = useRef<HTMLDivElement>(null);
   const dimensions = useRef<{ width: number; height: number } | null>(null);
-  const [page, setPage] = useState(0);
   const [pages, setPages] = useState(1);
   const [keepEnding, setKeepEnding] = useState(false);
   const [imageRevision, setImageRevision] = useState(0);
@@ -95,7 +98,7 @@ function LetterPages({
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     return () => observer.disconnect();
-  }, [text, simpleText, fontId, fontRevision, imageRevision, page, keepEnding, sender, ending]);
+  }, [text, simpleText, fontId, fontRevision, imageRevision, page, keepEnding, sender, ending, setPage]);
   const hand = !simpleText ? sender?.signatureFallback : undefined;
   const style = {
     fontFamily: fontId ? letterFontFamily(fontId) : simpleText ? "system-ui, sans-serif" : undefined,
@@ -184,7 +187,10 @@ export function Mailbox({
   const [loadedView, setView] = useState<(MailboxView & { queryKey: string }) | null>(null);
   const [folder, setFolder] = useState<"inbox" | "sent">("inbox");
   const [selection, setSelection] = useState<Selection>(null);
+  const currentSelection = useRef(selection);
+  currentSelection.current = selection;
   const [loadedLetter, setLoadedLetter] = useState<PersonalLetter | null>(null);
+  const [letterPage, setLetterPage] = useState(0);
   const [cursors, setCursors] = useState<string[]>([]);
   const [recoveryCursors, setRecoveryCursors] = useState<string[]>([]);
   const [composing, setComposing] = useState(false);
@@ -207,6 +213,22 @@ export function Mailbox({
   const cursor = cursors.at(-1) ?? "";
   const recoveryCursor = recoveryCursors.at(-1) ?? "";
   const queryKey = JSON.stringify([scope, folder, cursor, recoveryCursor]);
+  useLayoutEffect(() => {
+    const denied = (event: Event) => {
+      uiEpoch.current++;
+      navigationEpoch.current++;
+      indexLane.current++;
+      detailLane.current++;
+      setView(null);
+      setLoadedLetter(null);
+      setLetterPage(0);
+      setSelection(null);
+      setBusy(false);
+      setLoadError(event instanceof CustomEvent && typeof event.detail === "string" ? event.detail : "Access denied.");
+    };
+    window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
+    return () => window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
+  }, []);
   const currentQuery = useRef(queryKey);
   currentQuery.current = queryKey;
   useEffect(() => {
@@ -221,25 +243,42 @@ export function Mailbox({
   useLayoutEffect(() => {
     uiEpoch.current++;
     navigationEpoch.current++;
+    setBusy(false);
+  }, [open]);
+  useLayoutEffect(() => {
+    uiEpoch.current++;
+    navigationEpoch.current++;
     setView(null);
     setLoadedLetter(null);
+    setLetterPage(0);
     setSelection(null);
     setCursors([]);
     setRecoveryCursors([]);
     setBusy(false);
     setError("");
     setReadError("");
-    if (open) {
-      setFolder("inbox");
-      setRecipient(initialResidentId);
-      setComposing(!!initialResidentId);
-    }
-  }, [open, initialResidentId, scope]);
-  const choose = (next: Selection) => {
+    setFolder("inbox");
+    setRecipient("");
+    setComposing(false);
+  }, [scope]);
+  useLayoutEffect(() => {
+    if (!open || !initialResidentId) return;
+    navigationEpoch.current++;
+    setRecipient(initialResidentId);
+    setComposing(true);
+  }, [open, initialResidentId]);
+  const choose = useCallback((next: Selection) => {
+    const selection = currentSelection.current;
+    if (
+      next?.threadId !== selection?.threadId ||
+      next?.messageId !== selection?.messageId ||
+      next?.token !== selection?.token
+    )
+      setLetterPage(0);
     navigationEpoch.current++;
     setSelection(next);
     setLoadedLetter(null);
-  };
+  }, []);
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
       if (currentQuery.current !== queryKey) return;
@@ -270,6 +309,11 @@ export function Mailbox({
     void refresh(controller.signal).catch((cause) => {
       if (!controller.signal.aborted) {
         setLoadError(cause instanceof Error ? cause.message : "Mailbox unavailable.");
+        if (invalidatesRead(cause)) {
+          setView(null);
+          setLoadedLetter(null);
+          setSelection(null);
+        }
         if (cause instanceof VillageApiError && cause.status === 409) {
           navigationEpoch.current++;
           setCursors([]);
@@ -306,8 +350,10 @@ export function Mailbox({
       })
       .catch((cause) => {
         if (!controller.signal.aborted && epoch === uiEpoch.current && lane === detailLane.current) {
-          setLoadedLetter(null);
-          setSelection(null);
+          if (invalidatesRead(cause) || (cause instanceof VillageApiError && cause.status === 409)) {
+            setLoadedLetter(null);
+            setSelection(null);
+          }
           setError(cause instanceof Error ? cause.message : "Letter unavailable.");
         }
       });
@@ -367,7 +413,7 @@ export function Mailbox({
         }
       });
     return () => controller.abort();
-  }, [open, selectedThreadId, unreadId, selectedToken, readAttempt, scope]);
+  }, [open, selectedThreadId, unreadId, selectedToken, readAttempt, scope, choose]);
   const action = async (path: string, token: string) => {
     const epoch = uiEpoch.current,
       key = scope + ":" + path + ":" + token;
@@ -741,6 +787,8 @@ export function Mailbox({
               <>
                 <LetterPages
                   key={selected.thread.id + ":" + selected.message.id}
+                  page={letterPage}
+                  setPage={setLetterPage}
                   text={selected.message.text}
                   fontId={fontId}
                   simpleText={simpleText}

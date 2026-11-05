@@ -362,7 +362,7 @@ export function ResidentsScreen({
     return (
       <>
         <VillagerDossier
-          key={personProfile.actorId}
+          key={`${snapshot?.worldScope}:${personProfile.actorId}`}
           navigation={personProfile}
           villager={person}
           portrait={

@@ -1,6 +1,14 @@
 import { createContext, useContext, useEffect, useEffectEvent, useState } from "react";
 
-export const VillageActivity = createContext({ visible: true, backgroundRevision: "" });
+export const VillageActivity = createContext<{
+  visible: boolean;
+  backgroundRevision: string;
+  worldScope?: string;
+  viewing?: boolean;
+}>({
+  visible: true,
+  backgroundRevision: "",
+});
 export const useVillageActivity = () => useContext(VillageActivity);
 
 /** Returning focus retries a missed read without keeping an idle timer alive. */

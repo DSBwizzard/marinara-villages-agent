@@ -758,7 +758,7 @@ export function MapStage({
       event.stopPropagation();
       if (suppressPinClick.current) {
         suppressPinClick.current = false;
-        return;
+        if (event.detail !== 0) return;
       }
       pin.onSelect?.();
     },
@@ -805,6 +805,7 @@ export function MapStage({
       onClickCapture={(event) => {
         if (!suppressTouchClickRef.current) return;
         suppressTouchClickRef.current = false;
+        if (event.detail === 0) return;
         event.preventDefault();
         event.stopPropagation();
       }}

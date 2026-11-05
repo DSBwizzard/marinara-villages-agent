@@ -168,6 +168,7 @@ export function useSceneSelectionReset(ports: {
       roomMoveOperationIdRef.current = null;
     }
     let disposed = false;
+    let reading = false;
     const interrupted = (reason: "inactivity" | "elsewhere") => {
       if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
       setRoom(null);
@@ -181,7 +182,8 @@ export function useSceneSelectionReset(ports: {
       void loadSnapshot();
     };
     const validate = () => {
-      if (isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
+      if (reading || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
+      reading = true;
       void request<{ session: SceneView | null }>("/rooms/active")
         .then(async ({ session }) => {
           if (disposed || isLocalRoomCompletion(room.id, roomCompletionRef.current)) return;
@@ -198,6 +200,9 @@ export function useSceneSelectionReset(ports: {
         .catch((cause) => {
           const reason = staleVenueReason(cause);
           if (reason) interrupted(reason);
+        })
+        .finally(() => {
+          reading = false;
         });
     };
     const onFocus = () => {

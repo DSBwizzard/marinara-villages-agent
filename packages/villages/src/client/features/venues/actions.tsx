@@ -78,16 +78,7 @@ export function useLeaveVenue(ports: {
 }) {
   const { screen, element, explorationReturnTab, venueId, explorationOrigin, venueReturnTo } = ports;
 
-  const {
-    setExploreSheet,
-    setOpenPlaceId,
-    setScreen,
-    setVenueEditDraft,
-    setVenueId,
-    setVenuePage,
-    setVenueProposalDraft,
-    setVenueZoneKey,
-  } = ports;
+  const { setExploreSheet, setOpenPlaceId, setScreen, setVenueEditDraft, setVenuePage, setVenueProposalDraft } = ports;
   const focusSelector = useRef("");
   useLayoutEffect(() => {
     if (screen !== "home" || !focusSelector.current) return;
@@ -112,9 +103,7 @@ export function useLeaveVenue(ports: {
     const pinId =
       explorationReturnTab?.current === "map" ? venueId : explorationOrigin?.current?.getAttribute("data-pin-id");
     setExploreSheet(null);
-    setVenueId(null);
     setVenuePage("view");
-    setVenueZoneKey("exterior");
     setVenueEditDraft(null);
     setVenueProposalDraft(null);
     setOpenPlaceId(null);
@@ -128,9 +117,7 @@ export function useLeaveVenue(ports: {
     venueId,
     explorationOrigin,
     setExploreSheet,
-    setVenueId,
     setVenuePage,
-    setVenueZoneKey,
     setVenueEditDraft,
     setVenueProposalDraft,
     setOpenPlaceId,

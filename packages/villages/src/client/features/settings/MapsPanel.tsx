@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { LoreActivityButton } from "../../shared/LoreActivity.js";
+import { useVillageActivity } from "../../shared/activity.js";
 import type { TownMapView, VillageMap, VillageSnapshot } from "../../../shared/contracts/village.js";
 import { townMapImageProblem } from "../../../shared/helpers/town-map-upload.js";
 import { messageFrom, request, VillageApiError } from "../../shared/api.js";
@@ -133,6 +134,7 @@ function MapEditor({
         ]),
     ]),
   });
+  const { visible } = useVillageActivity();
   const [draft, setDraft] = useState<Draft>(initial);
   const original = useRef(draft);
   const [ready, setReady] = useState(false),
@@ -223,7 +225,7 @@ function MapEditor({
     }
   };
   useEffect(() => {
-    if (!ready || busy || (draft.phase !== "starting" && draft.phase !== "waiting")) return;
+    if (!visible || !ready || busy || (draft.phase !== "starting" && draft.phase !== "waiting")) return;
     const timer = window.setTimeout(() => void check(draft), 1500);
     return () => window.clearTimeout(timer);
   });

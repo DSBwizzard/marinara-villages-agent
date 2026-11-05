@@ -10,6 +10,7 @@ export function VillagesFrame({ controller, children }: FrameProps) {
     <VillageActivity
       value={{
         visible: controller.visible,
+        worldScope: controller.snapshot?.worldScope,
         backgroundRevision: JSON.stringify(
           controller.snapshot?.backgroundWork?.map(({ id, status, attempt, updatedAt }) => [
             id,
@@ -22,7 +23,9 @@ export function VillagesFrame({ controller, children }: FrameProps) {
     >
       <div style={{ position: "relative", height: "100%" }}>
         <LoreActivity>
-          <VillageContent controller={controller}>{children}</VillageContent>
+          <VillageContent key={controller.snapshot?.worldScope ?? ""} controller={controller}>
+            {children}
+          </VillageContent>
         </LoreActivity>
         <ReturnCatchup
           enabled={controller.visible && !!controller.snapshot?.isFounded}

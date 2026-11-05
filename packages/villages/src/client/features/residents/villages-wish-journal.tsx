@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { KnownWish, SocialWish } from "../../../shared/contracts/wishes.js";
 import { useVillageActivity } from "../../shared/activity.js";
+import { invalidatesRead, VILLAGE_ACCESS_DENIED } from "../../shared/api.js";
 import { WISH_JOURNAL_STYLES } from "./wish-journal-styles.js";
 import { WishPages } from "./wish-pages.js";
 export type { KnownWish } from "../../../shared/contracts/wishes.js";
@@ -229,6 +230,7 @@ export function VillagerWishJournal({
   focusWishId = "",
   wishes: suppliedWishes,
   onWishes,
+  onFollowing,
   inspect = false,
 }: {
   request: Request;
@@ -237,19 +239,35 @@ export function VillagerWishJournal({
   focusWishId?: string;
   wishes?: KnownWish[] | null;
   onWishes?: (wishes: KnownWish[]) => void;
+  onFollowing?: () => void;
   inspect?: boolean;
 }) {
-  const { visible, backgroundRevision } = useVillageActivity();
-  const [localWishes, setWishes] = useState<KnownWish[] | null>(null);
-  const wishes = suppliedWishes === undefined ? localWishes : suppliedWishes;
-  const [privateResult, setPrivate] = useState<{ characterId: string; wishes: SocialWish[] } | null>(null);
-  const privateWishes = privateResult?.characterId === characterId ? privateResult.wishes : null;
+  const { visible, backgroundRevision, worldScope } = useVillageActivity();
+  const identity = JSON.stringify([worldScope, characterId]);
+  const [localResult, setWishes] = useState<{ identity: string; wishes: KnownWish[] } | null>(null);
+  const wishes =
+    suppliedWishes === undefined ? (localResult?.identity === identity ? localResult.wishes : null) : suppliedWishes;
+  const [privateResult, setPrivate] = useState<{ identity: string; wishes: SocialWish[] } | null>(null);
+  const privateWishes = privateResult?.identity === identity ? privateResult.wishes : null;
   const [selection, setSelection] = useState({ characterId, inspect, id: focusWishId });
   const selectedId = selection.characterId === characterId && selection.inspect === inspect ? selection.id : "";
   const backFocus = useRef("");
   const focusedSelection = useRef("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
+  const readEpoch = useRef(0);
+  const currentIdentity = useRef(identity);
+  currentIdentity.current = identity;
+  useEffect(() => {
+    const denied = (event: Event) => {
+      readEpoch.current++;
+      setWishes(null);
+      setPrivate(null);
+      setError(event instanceof CustomEvent && typeof event.detail === "string" ? event.detail : "Access denied.");
+    };
+    window.addEventListener(VILLAGE_ACCESS_DENIED, denied);
+    return () => window.removeEventListener(VILLAGE_ACCESS_DENIED, denied);
+  }, []);
   const root = useRef<HTMLElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const [listHeight, setListHeight] = useState(0);
@@ -265,38 +283,45 @@ export function VillagerWishJournal({
   useEffect(() => {
     if (!visible || inspect || suppliedWishes !== undefined) return;
     const controller = new AbortController();
-    setWishes(null);
+    const epoch = readEpoch.current;
     setError("");
     void request<View>("/relationships", { signal: controller.signal })
       .then((view) => {
-        if (!controller.signal.aborted)
-          setWishes(view.profiles.find((p) => p.characterId === characterId)?.knownWishes ?? []);
+        if (!controller.signal.aborted && epoch === readEpoch.current)
+          setWishes({ identity, wishes: view.profiles.find((p) => p.characterId === characterId)?.knownWishes ?? [] });
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(String(cause));
+        if (!controller.signal.aborted && epoch === readEpoch.current) {
+          if (invalidatesRead(cause)) setWishes(null);
+          setError(String(cause));
+        }
       });
     return () => controller.abort();
-  }, [request, characterId, suppliedWishes, visible, backgroundRevision, inspect]);
+  }, [request, characterId, suppliedWishes, visible, backgroundRevision, inspect, identity]);
   useEffect(() => {
-    if (!inspect || !visible) {
+    if (!inspect) {
       setPrivate(null);
       return;
     }
-    setPrivate(null);
+    if (!visible) return;
     setError("");
     const controller = new AbortController();
+    const epoch = readEpoch.current;
     void request<{ wishes: SocialWish[] }>(`/villagers/${encodeURIComponent(characterId)}/wishes/inspect`, {
       signal: controller.signal,
     })
       .then((view) => {
         if (!Array.isArray(view.wishes)) throw new Error("Wishes could not be read.");
-        if (!controller.signal.aborted) setPrivate({ characterId, wishes: view.wishes });
+        if (!controller.signal.aborted && epoch === readEpoch.current) setPrivate({ identity, wishes: view.wishes });
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(String(cause));
+        if (!controller.signal.aborted) {
+          if (invalidatesRead(cause)) setPrivate(null);
+          setError(String(cause));
+        }
       });
     return () => controller.abort();
-  }, [inspect, visible, characterId, request, backgroundRevision]);
+  }, [inspect, visible, characterId, request, backgroundRevision, identity]);
   useEffect(() => {
     setSelection({ characterId, inspect, id: inspect ? "" : focusWishId });
   }, [characterId, inspect, focusWishId]);
@@ -326,6 +351,8 @@ export function VillagerWishJournal({
     backFocus.current = "";
   }, [selectedId]);
   const follow = async (wish: KnownWish) => {
+    const epoch = ++readEpoch.current;
+    onFollowing?.();
     setBusy(wish.wishId);
     setError("");
     try {
@@ -337,8 +364,10 @@ export function VillagerWishJournal({
           body: JSON.stringify({ followed: !wish.followed }),
         },
       );
+      if (currentIdentity.current !== identity || epoch !== readEpoch.current) return;
       const next = view.profiles.find((p) => p.characterId === characterId)?.knownWishes ?? [];
-      setWishes(next);
+      readEpoch.current++;
+      setWishes({ identity, wishes: next });
       onWishes?.(next);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Wish could not be followed.");

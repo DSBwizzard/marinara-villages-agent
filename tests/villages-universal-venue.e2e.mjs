@@ -552,7 +552,8 @@ await withBrowser(browser, async () => {
       .getByRole("button", { name: "Places", exact: true })
       .click();
     await expect(profile).toBeVisible();
-    await expect(tabs.getByRole("button", { name: "About", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(tabs.getByRole("button", { name: "Manage", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await tabs.getByRole("button", { name: "About", exact: true }).click();
     await profile.getByRole("button", { name: "Visit venue", exact: true }).click();
     const composer = page.getByRole("textbox", { name: "Message at Renamed warehouse", exact: true });
     await expect(composer).toBeVisible();

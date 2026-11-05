@@ -22,6 +22,7 @@ export const isolatedTests = new Set([
   "tests/villages-browser-diagnostics.e2e.mjs",
   // Mounted hooks, intercepted HTTP, in-memory bundles and per-test browser contexts.
   "tests/villages-client-load-lifetimes.e2e.mjs",
+  "tests/villages-ui-continuity.e2e.mjs",
   "tests/villages-build-reproducibility.regression.mjs",
   "tests/villages-sprite-entry.e2e.mjs",
   // Reviewed: child-process-local mocks, read-only bundles and distinct suite outputs.
