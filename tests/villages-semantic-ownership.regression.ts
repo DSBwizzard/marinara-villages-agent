@@ -718,7 +718,8 @@ async function main() {
   // An old input snapshot may have committed just before a crash, without a prompt packet.
   delete inputSnapshot.promptVersion;
   inputSnapshot.systemPrompt = "You interpret Villages gameplay. Frozen legacy instructions.";
-  inputSnapshot.input.context._memoryWrite = { private: "never send this write guard" };
+  assert.equal(typeof inputSnapshot.input.context._memoryWrite.protection.fingerprint, "string");
+  inputSnapshot.input.context._memoryWrite.private = "never send this write guard";
   inputSnapshot.input.zoneEventSource = { private: "never send this routing source" };
   inputSnapshot.input._presentation = {
     state: {},
