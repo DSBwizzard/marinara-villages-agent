@@ -752,7 +752,10 @@ export function createSceneWriting({
         captureSources = playerSpeechCapture(materializedRaw, message, mode === "greet");
       } catch (error) {
         if (error instanceof VillagesRequestError && error.statusCode === 502)
-          await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+          await rejectVenueCompletion(
+            { model: model.model, connectionId: model.connectionId, reason: "invalid-gm-response" },
+            { stages: ["writing-completion:" + requestKey] },
+          );
         throw error;
       }
     }
@@ -1433,7 +1436,10 @@ export function createSceneWriting({
       };
     } catch (error) {
       if (error instanceof VillagesRequestError && error.statusCode === 502)
-        await rejectVenueCompletion(undefined, { stages: ["writing-completion:" + requestKey] });
+        await rejectVenueCompletion(
+          { model: model.model, connectionId: model.connectionId, reason: "invalid-gm-effects" },
+          { stages: ["writing-completion:" + requestKey] },
+        );
       throw error;
     }
   }

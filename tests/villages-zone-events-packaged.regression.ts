@@ -168,6 +168,7 @@ const records = new Map<string, any>([
 ]);
 let failedSaveId = "";
 let saveFault: "before" | "after" | "" = "";
+let failContinueSave = false;
 const documents = {
   getById: async (_package: string, id: string) => clone(records.get(id) ?? null),
   list: async (_package: string, kind: string) => [...records.values()].filter((row) => row.kind === kind).map(clone),
@@ -181,6 +182,17 @@ const documents = {
     const prior = records.get(input.id);
     if (prior?.revision !== input.expectedRevision) return null;
     const row = { ...prior, data: clone(input.data), revision: prior.revision + 1 };
+    if (
+      failContinueSave &&
+      input.id === "villages-venue-visit-" + scene.id &&
+      fixtureSceneState(row.data, records).submissions.some((turn: any) =>
+        turn.semanticContinuedDomains?.includes("relationships"),
+      )
+    ) {
+      failContinueSave = false;
+      throw Error("Injected after durable Continue tombstone, before Scene save");
+    }
+
     const fault =
       failedSaveId &&
       saveFault &&
@@ -201,6 +213,8 @@ const documents = {
 
 let modelCalls = 0;
 let answer: Record<string, unknown>;
+let answerContent: string | undefined;
+let answerFinishReason = "stop";
 let domainRecoveryAnswer: Record<string, unknown> | undefined;
 let debugEnabled = false;
 const prompts: string[] = [];
@@ -231,7 +245,11 @@ const model = {
     );
     prompts.push(messages.map((row) => row.content).join("\n"));
     assert(answer, "Every GM response must be explicitly supplied");
-    return { content: JSON.stringify(answer), finishReason: "stop", usage: { inputTokens: 10, outputTokens: 10 } };
+    return {
+      content: answerContent ?? JSON.stringify(answer),
+      finishReason: answerFinishReason,
+      usage: { inputTokens: 10, outputTokens: 10 },
+    };
   },
 };
 const runtime = {
@@ -488,12 +506,32 @@ try {
   );
   restore();
 
-  for (const failure of ["sound", "input", "agency", "disclosure"] as const) {
+  for (const failure of [
+    "sound",
+    "input",
+    "capture",
+    "json",
+    "truncated",
+    "project",
+    "agency",
+    "disclosure",
+  ] as const) {
     const request = payload("invalid-" + failure);
+    answerContent = undefined;
+    answerFinishReason = "stop";
     answer = { input: [{ kind: "action", text: request.message }], segments: [{ text: "Aqua sets her cup down." }] };
     if (failure === "sound")
       answer.segments = [{ text: "Aqua sets her cup down.", sound: { sourceId: "aqua", text: "x".repeat(301) } }];
     if (failure === "input") answer.input = [{ kind: "action", text: "*waits" }];
+    if (failure === "capture") answer.input = [{ kind: "action", text: "NOT IN THE ORIGINAL" }];
+    if (failure === "json" || failure === "truncated") answerContent = '{"input":';
+    if (failure === "truncated") answerFinishReason = "length";
+    if (failure === "project") {
+      answer.segments = [{ speakerId: "aqua", text: "I approve the unknown project." }];
+      answer.projectSpeech = [
+        { projectId: "unknown-project", revision: 0, kind: "approval", speakerId: "aqua", citations: [{ segment: 0 }] },
+      ];
+    }
     if (failure === "agency")
       Object.assign(answer, {
         consistent: false,
@@ -533,6 +571,8 @@ try {
       assert.equal(blocked.statusCode, 409, blocked.body);
     }
     assert.equal(modelCalls, calls + 1);
+    answerContent = undefined;
+    answerFinishReason = "stop";
     answer = { input: [{ kind: "action", text: request.message }], segments: [{ text: "The terrace is quiet." }] };
     const acceptedRequest = { ...request, retryOfAttemptId: state().operation.attemptId };
     const accepted = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: acceptedRequest });
@@ -601,6 +641,103 @@ try {
     assert.equal(modelCalls, calls + 1, "Only the explicit effect repair purchases a request");
     assert.deepEqual(state().lines, lines);
     assert.equal(held().processing.domains[domain].status, "applied");
+    restore();
+  }
+
+  for (const failSceneSave of [false, true]) {
+    const id = "continued-social-" + failSceneSave,
+      discardedText = "Aqua prefers red notebooks.";
+    await turn(id, [{ speakerId: "aqua", text: "I prefer red notebooks." }], {
+      relationshipChanges: {
+        changes: "discarded malformed metadata",
+        permissions: [],
+        disclosures: [{ fromId: "aqua", toId: "aqua", kind: "preference", text: discardedText, lineIds: [0] }],
+      },
+    });
+    const held = () => state().submissions.find((entry: any) => entry.id === id);
+    const failedEvidence = clone(held().effectFailures.relationships);
+    assert(JSON.stringify(failedEvidence).includes(discardedText));
+    const request = {
+      method: "POST" as const,
+      url: "/api/villages/rooms/" + scene.id + "/changes/" + id + "/continue",
+      payload: { domain: "relationships" },
+    };
+    const calls = modelCalls;
+    failContinueSave = failSceneSave;
+    const continued = await app.inject(request);
+    assert.equal(continued.statusCode, failSceneSave ? 500 : 200, continued.body);
+    const world = () => fixtureVillageState(records.get("villages-village").data, records);
+    assert(
+      world().semanticContinuations?.["semantic-continue:" + JSON.stringify([scene.id, id])]?.includes("relationships"),
+    );
+    await restart();
+    assert.equal((await app.inject({ method: "GET", url: "/api/villages/rooms/active" })).statusCode, 200);
+    const completed = await app.inject(request);
+    assert.equal(completed.statusCode, 200, completed.body);
+    assert.equal(held().processing.domains.relationships.status, "rejected");
+    assert(held().semanticContinuedDomains.includes("relationships"));
+    const repeated = await app.inject(request);
+    assert.equal(repeated.statusCode, 200, repeated.body);
+    const replay = await app.inject({ method: "POST", url: "/api/villages/rooms/turn", payload: payload(id) });
+    assert.equal(replay.statusCode, 200, replay.body);
+    assert.equal(modelCalls, calls, "Continue, restart and replay cannot buy an optional repair");
+    assert.deepEqual(
+      held().effectFailures.relationships,
+      failedEvidence,
+      "The rejected payload remains exact audit evidence",
+    );
+    assert(
+      !world().memories.records.some((row: any) => row.text.includes(discardedText)),
+      "Continued metadata cannot publish later",
+    );
+    restore();
+  }
+
+  for (const [reason, mode, expected] of [
+    ["time", "chat", "halt-time"],
+    ["condition", "leave", "halt-state"],
+  ] as const) {
+    editFixtureScene((saved) => {
+      saved.liveSceneVersion = 1;
+      saved.accompanying = saved.sceneAttendance.occupants.map(({ characterId, zoneId }: any) => ({
+        characterId,
+        zoneId,
+      }));
+    });
+    await app.inject({ method: "GET", url: "/api/villages/rooms/active" });
+    const message = "Hello. *I sleep for two months*";
+    answer = {
+      input: [
+        { kind: "speech", text: "Hello." },
+        { kind: "action", text: "*I sleep for two months*" },
+      ],
+      segments: [{ speakerId: "aqua", text: "A generated farewell must never replace the held input." }],
+      halt: { reason, source: "player", quote: "two months", appointments: [] },
+    };
+    const request = { ...payload("halt-" + mode, message), mode },
+      before = clone(state()),
+      worldBefore = clone(records.get("villages-village").data),
+      calls = modelCalls;
+    const url = mode === "leave" ? "/api/villages/rooms/leave" : "/api/villages/rooms/turn";
+    const halted = await app.inject({ method: "POST", url, payload: request });
+    assert.equal(halted.statusCode, 200, halted.body);
+    assert.equal(halted.json().turnOutcome, expected);
+    for (const key of ["lines", "submissions", "sceneAttendance", "activeIds", "sceneRevision", "status"])
+      assert.deepEqual(state()[key], before[key], key);
+    assert.equal(state().status, "active", "An unsupported Conclude must preserve the Scene");
+    assert.deepEqual(records.get("villages-village").data, worldBefore);
+    assert.equal(state().operation.input.message, message);
+    assert.equal(modelCalls, calls + 1);
+    await restart();
+    const retained = await app.inject({
+      method: "GET",
+      url: "/api/villages/rooms/" + scene.id + "/operations/" + request.submissionId,
+    });
+    assert.equal(retained.json().operation.turnOutcome, expected);
+    assert.equal(retained.json().operation.input.message, message);
+    const replay = await app.inject({ method: "POST", url, payload: request });
+    assert.equal(replay.json().turnOutcome, expected);
+    assert.equal(modelCalls, calls + 1, "Held player input replays without replacement");
     restore();
   }
 

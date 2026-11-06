@@ -1,4 +1,9 @@
 import assert from "node:assert/strict";
+import { createExchangeProcessing } from "../packages/villages/src/server/domain/decoding/exchange-codec.js";
+import {
+  continueSemanticDomain,
+  semanticBlocker,
+} from "../packages/villages/src/server/domain/rules/semantic-continuity.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { defaultRelationshipState } from "../packages/villages/src/server/domain/rules/relationship-rules.js";
@@ -766,6 +771,67 @@ async function main() {
     first.sourceHash,
   );
   assert.equal(checkpoints.size, 1, "Replay reuses the exact captured validation input");
+
+  for (const [domain, authority, proposals, action, allowed] of [
+    ["memories", {}, {}, undefined, true],
+    ["relationships", {}, {}, undefined, true],
+    ["relationships", { standing: true }, {}, undefined, false],
+    ["relationships", { social: true }, {}, undefined, false],
+    ["relationships", {}, { permissions: [{ action: "grant" }] }, undefined, false],
+    ["relationships", {}, { changes: [{ liveAfter: { records: [{ kind: "agreement" }] } }] }, undefined, false],
+    ["projects", { projects: true }, {}, undefined, false],
+    ["projects", {}, {}, { happened: true }, false],
+  ] as const) {
+    const processing = createExchangeProcessing({
+      seed: state.seed,
+      sceneId: scene.id,
+      submissionId: "continued",
+      order: 0,
+      lineIds: [],
+      actionReceiptIds: [],
+    });
+    for (const row of Object.values(processing.domains)) row.status = "applied";
+    processing.domains[domain].status = "failed";
+    const turn = {
+      id: "continued",
+      semanticProvenance: { ...plain, pipelineVersion: 3, authority },
+      semanticReady: true,
+      processing,
+      liveProposals: { relationshipChanges: proposals },
+      action,
+    } as any;
+    if (allowed) {
+      assert.equal(semanticBlocker({ submissions: [turn] }), null, "Optional failed metadata cannot block new play");
+      continueSemanticDomain(turn, domain);
+      assert.equal(processing.domains[domain].status, "rejected");
+      const once = structuredClone(turn);
+      continueSemanticDomain(turn, domain);
+      assert.deepEqual(turn, once, "Repeated Continue is idempotent");
+    } else {
+      const before = structuredClone(turn);
+      assert.match(semanticBlocker({ submissions: [turn] })!, /Retry the failed immediate update/);
+      assert.throws(() => continueSemanticDomain(turn, domain), /Only a failed semantic update/);
+      assert.deepEqual(turn, before, "Continue cannot discard consequential authority");
+    }
+  }
+  const pending = {
+    id: "pending",
+    semanticProvenance: { ...plain, pipelineVersion: 3 },
+    semanticReady: true,
+    processing: createExchangeProcessing({
+      seed: state.seed,
+      sceneId: scene.id,
+      submissionId: "pending",
+      order: 0,
+      lineIds: [],
+      actionReceiptIds: [],
+    }),
+  } as any;
+  assert.equal(semanticBlocker({ submissions: [pending] }), "Updates pending.");
+  for (const domain of ["memories", "relationships", "wishes", "projects"] as const)
+    assert.throws(() => continueSemanticDomain(pending, domain), /Only a failed semantic update/);
+  pending.semanticReady = false;
+  assert.match(semanticBlocker({ submissions: [pending] })!, /needs recovery/);
 
   console.log(
     "Current GM local validation preserves full source coverage, authority, private evidence and checkpoint identity without a System purchase.",
