@@ -37,6 +37,8 @@ assert.equal(
 for (const scenario of [
   "npc",
   "project",
+  "project-conclude",
+  "project-greet",
   "wish",
   "relationship",
   "occupancy",
@@ -64,7 +66,7 @@ for (const scenario of [
           characterId,
           cardSnapshot: { ...world.villagers[0].cardSnapshot, id: characterId, name: characterId },
         }));
-      if (scenario === "project") {
+      if (scenario === "project" || scenario === "project-conclude" || scenario === "project-greet") {
         initializeVenueAccess(world.venues[0]);
         world.venues[0].access!.managerIds = ["mara"];
         draftRenovationProject(
@@ -84,6 +86,7 @@ for (const scenario of [
         ];
     },
     configureScene(scene) {
+      if (scenario === "project-greet") scene.status = "opening";
       if (scenario !== "occupancy") return;
       scene.accompanying = ["mara", "bryn", "cora", "dev", "eli"].map((characterId, index) => ({
         characterId,
@@ -103,7 +106,11 @@ for (const scenario of [
   host.model.chatComplete = async () => {
     calls++;
     const message =
-      scenario === "empty-conclude" ? "" : scenario === "occupancy" ? "Mara and Bryn, come outside now." : "Hello.";
+      scenario === "empty-conclude" || scenario === "project-conclude" || scenario === "project-greet"
+        ? ""
+        : scenario === "occupancy"
+          ? "Mara and Bryn, come outside now."
+          : "Hello.";
     const common = { input: message ? [{ kind: "speech", text: message }] : [] };
     const content =
       scenario === "npc"
@@ -166,7 +173,7 @@ for (const scenario of [
                   ],
                 },
               }
-            : scenario === "project"
+            : scenario === "project" || scenario === "project-conclude" || scenario === "project-greet"
               ? {
                   ...common,
                   segments: [
@@ -225,13 +232,23 @@ for (const scenario of [
       sessionId: "browser",
       submissionId: "b1111111-1111-4111-8111-111111111111",
       message:
-        scenario === "empty-conclude" ? "" : scenario === "occupancy" ? "Mara and Bryn, come outside now." : "Hello.",
-      mode: scenario === "empty-conclude" ? "leave" : "chat",
+        scenario === "empty-conclude" || scenario === "project-conclude"
+          ? ""
+          : scenario === "occupancy"
+            ? "Mara and Bryn, come outside now."
+            : "Hello.",
+      mode: scenario === "empty-conclude" || scenario === "project-conclude" ? "leave" : "chat",
       targetId: "",
       expectedSceneRevision: host.scene().sceneRevision,
     };
-    const url = scenario === "empty-conclude" ? "/api/villages/rooms/leave" : "/api/villages/rooms/turn";
-    const response = await host.app.inject({ method: "POST", url, payload });
+    const url =
+      scenario === "project-greet"
+        ? "/api/villages/rooms/greet"
+        : scenario === "empty-conclude" || scenario === "project-conclude"
+          ? "/api/villages/rooms/leave"
+          : "/api/villages/rooms/turn";
+    const requestPayload = scenario === "project-greet" ? { sessionId: "browser" } : payload;
+    const response = await host.app.inject({ method: "POST", url, payload: requestPayload });
     assert.equal(response.statusCode, 200, scenario + ": " + response.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, scenario);
     const world = fixtureVillageState(host.records.get("villages-village").data, host.records);
@@ -256,11 +273,18 @@ for (const scenario of [
       assert(JSON.stringify(world.memories).includes("pressed leaves"), "Bound NPC Memory commits");
       assert(!JSON.stringify(world.memories).includes("new:nell"));
     }
-    if (scenario === "project") {
+    if (scenario === "project" || scenario === "project-conclude" || scenario === "project-greet") {
       const project = world.projects.find((row) => row.id === "project:common")!;
       assert.equal(project.status, "planning", "Speech never starts work");
       assert(project.lifecycle!.approvals.some((row) => row.residentId === "mara"));
       assert(project.lifecycle!.candidates.some((row) => row.residentId === "mara"));
+      const turn = host.scene().submissions.at(-1)!;
+      assert(
+        turn.projectSpeech!.every((proposal) =>
+          proposal.citations.every((citation) => turn.replyLineIds!.includes(citation.lineId)),
+        ),
+        "Project citations bind to saved transcript identities",
+      );
     }
     if (scenario === "wish") assert.equal(world.villagers[0].wishes[0].status, "fulfilled");
     if (scenario === "draft-appointment")
@@ -268,7 +292,7 @@ for (const scenario of [
         !host.scene().lines.some((line) => line.content.includes("19:30")),
         "Unsupported purchased draft is replaced before display",
       );
-    const replay = await host.app.inject({ method: "POST", url, payload });
+    const replay = await host.app.inject({ method: "POST", url, payload: requestPayload });
     assert.equal(replay.statusCode, 200, replay.body);
     assert.equal(calls, scenario === "draft-appointment" ? 2 : 1, "Recovery reuses purchased responses");
   } finally {
