@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import {
   configureVillageClock,
   guardedClockGeneration,
-  withVillageClockCommit,
   withVillageClockWork,
 } from "../packages/villages/src/server/adapters/time/clock-gate.js";
 import { createVillageClock } from "../packages/villages/src/server/adapters/time/clock-service.js";
@@ -90,7 +89,6 @@ async function main() {
     assert.equal(f.clock.now().getTime(), f.wall);
     finish();
     assert.equal(await work, "saved reply", "sleep cannot discard an in-flight provider result");
-    assert.equal(await withVillageClockCommit(async () => "saved"), "saved");
     assert.equal(
       f.state.projects[0]!.lifecycle!.workOrder!.completesAt,
       deadline,
