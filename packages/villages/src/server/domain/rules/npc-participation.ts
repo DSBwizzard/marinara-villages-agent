@@ -162,22 +162,6 @@ export function prepareNpcIntroductions(
   return { scene: projected, admissions };
 }
 
-export function validateNpcAdmissions(value: unknown, proposals: readonly NpcAdmission[]): NpcAdmission[] {
-  if (!proposals.length) return [];
-  if (
-    !Array.isArray(value) ||
-    value.length !== proposals.length ||
-    proposals.some(
-      (proposal) =>
-        !value.some(
-          (row) => row && row.id === proposal.npc.id && row.segment === proposal.segment && row.approved === true,
-        ),
-    )
-  )
-    throw badGateway("System could not validate the supporting character's identity, presence or availability.");
-  return [...proposals];
-}
-
 export function fenceIntroductionWitnesses(
   lines: VenueReplyLine[],
   heardPlayerBy: string[],

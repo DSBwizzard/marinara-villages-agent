@@ -12,7 +12,6 @@ export {
   venueRequestMetrics,
   assertVenueOwnership,
   venueOperationSnapshot,
-  venueOperationInput,
   venueDebugContext,
 } from "../adapters/operations/operation-context.js";
 const coordinatorBinding = createActivationBinding<VenueCoordinatorService>(

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVenue } from "../packages/villages/src/server/domain/models/world.js";
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
+import { applyAccessCommand } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { normalizeVillageMutation } from "../packages/villages/src/server/domain/rules/world-mutation.js";
 
 // Domain-only aggregate rules with deterministic clocks/IDs; no Engine, storage or providers.
@@ -100,4 +101,73 @@ assert.throws(
 assert.deepEqual(events, [], "rejected capacity growth never stamps notices or generates identities");
 console.log(
   "Village mutation domain passed: deterministic stamp/ID admission, notice order/replay, and existing-save capacity compatibility; no Engine or providers.",
+);
+
+// A fresh Place gets native policy; an existing damaged ledger is never reconstructed.
+const native = defaultVillageState();
+const newVenue = venue(0);
+delete newVenue.access;
+normalizeVillageMutation(
+  native,
+  native.seed,
+  (state) => {
+    state.venues.push(newVenue);
+  },
+  sources,
+);
+assert(native.venues[0].access);
+const missing = structuredClone(native);
+delete missing.venues[0].access;
+assert.throws(() => normalizeVillageMutation(missing, missing.seed, () => {}, sources), /native access ledger/);
+assert.equal(missing.venues[0].access, undefined);
+const ledger = structuredClone(native.venues[0].access);
+normalizeVillageMutation(
+  native,
+  native.seed,
+  (state) => {
+    state.name = "Renamed native Village";
+  },
+  sources,
+);
+assert.deepEqual(native.venues[0].access, ledger, "Unrelated changes preserve native permissions and receipts");
+
+const unhydrated = structuredClone(native),
+  npc = "npc:private-host";
+delete unhydrated.worldPlaces;
+const privateVenue = unhydrated.venues[0],
+  privateZone = privateVenue.zones!.find((zone) => zone.kind !== "exterior")!;
+privateVenue.access!.managerIds.push(npc);
+privateZone.access!.managerIds = [npc];
+privateZone.access!.memberIds = [npc];
+privateZone.access!.inviterIds = [npc];
+applyAccessCommand(
+  privateVenue,
+  {
+    action: "invite",
+    operationId: "native-npc-permission",
+    expectedRevision: privateVenue.access!.revision,
+    zoneId: privateZone.id,
+    visitorId: "player",
+    duration: "standing",
+    accompanied: false,
+    outsideHours: false,
+  },
+  npc,
+  "2026-11-06T12:00:00.000Z",
+  ["player", npc],
+  ["witnessed-line"],
+);
+const unloadedAuthority = structuredClone({ ledger: privateVenue.access, policy: privateZone.access });
+normalizeVillageMutation(
+  unhydrated,
+  unhydrated.seed,
+  (state) => {
+    state.name = "Renamed without registry hydration";
+  },
+  sources,
+);
+assert.deepEqual(
+  { ledger: privateVenue.access, policy: privateZone.access },
+  unloadedAuthority,
+  "An unloaded Place registry preserves native NPC rights, permission evidence and receipts",
 );

@@ -1,3 +1,4 @@
+import { savedAccessEvents } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { SEMANTIC_OPERATION_BUDGET } from "../packages/villages/src/server/domain/rules/semantic-contract.js";
 import assert from "node:assert/strict";
 import {
@@ -1021,32 +1022,82 @@ console.log(
       residentId: "ada",
       venueId: pending.scene.placeId,
       zoneId: "residence",
-      scope: "shared" as const,
+      zoneLabel: "Common Space",
       timing: "later" as const,
-      ownerId: "",
       quote: "Visit tomorrow.",
-      sourceLineId: "invite-line",
     };
-    await effects.recordSpokenInvitation(pending.scene, invitation);
+    const before = JSON.stringify([pending.scene, pending.world]);
+    await assert.rejects(effects.recordSpokenInvitation(pending.scene, invitation as any), /needs recovery/);
     assert.equal(worldWrites, 0);
-    assert(pending.scene.pendingRoomQuestions?.some((question) => question.includes("lacks validated")));
-    assert.equal(pending.world.venues[0].playerInvitations?.length ?? 0, 0);
-    await effects.recordSpokenInvitation(pending.scene, { ...invitation, interpretationVersion: 1, accessRevision: 0 });
-    assert.equal(pending.world.venues[0].access!.permissions.length, 1, "validated saved invitations still replay");
-    const before = worldWrites;
-    await effects.applySavedAccessEvents(pending.scene, {
+    assert.equal(
+      JSON.stringify([pending.scene, pending.world]),
+      before,
+      "Retired invitation metadata cannot write authority",
+    );
+    const current = {
       ...pending.scene.submissions[0],
       replyLineIds: ["invite-line"],
       accessEvents: [
         {
-          id: "old-access",
-          facts: { actorId: "ada", venueId: pending.scene.placeId, zoneId: "residence", accessRevision: 0 },
-          outcome: "invite-outside-hours",
+          id: "current-access",
+          interpretationVersion: 1 as const,
+          facts: {
+            actorId: "ada",
+            venueId: pending.scene.placeId,
+            zoneId: "residence",
+            accessRevision: 0,
+            semanticVersion: 2 as const,
+            accessCommand: {
+              action: "invite" as const,
+              operationId: "current-access",
+              expectedRevision: 0,
+              zoneId: "residence",
+              visitorId: "player",
+              duration: "visit" as const,
+              accompanied: false,
+              outsideHours: false,
+            },
+          },
+          outcome: "invite-later",
           evidenceIds: ["draft:0"],
         },
       ],
-    });
-    assert.equal(worldWrites, before, "unversioned access effects do not enter mutation");
+    };
+    const obsolete = structuredClone(current);
+    delete (obsolete.accessEvents[0] as any).interpretationVersion;
+    await assert.rejects(effects.applySavedAccessEvents(pending.scene, obsolete), /needs current evidence/);
+    assert.equal(worldWrites, 0, "An unsupported batch is rejected before mutation");
+    assert.equal(JSON.stringify([pending.scene, pending.world]), before);
+    for (const version of [undefined, 1]) {
+      const unsupported = structuredClone(current.accessEvents[0]);
+      (unsupported.facts as any).semanticVersion = version;
+      const mixed = {
+        checks: [current.accessEvents[0], unsupported],
+        results: [current.accessEvents[0], unsupported],
+      } as any;
+      assert.throws(() => savedAccessEvents(mixed), /needs current evidence/);
+      await assert.rejects(
+        effects.applySavedAccessEvents(pending.scene, {
+          ...current,
+          accessEvents: [current.accessEvents[0], unsupported],
+        }),
+        /needs current evidence/,
+      );
+      await assert.rejects(
+        pending.owner.run(() => pending.service.recordRoomAccessEvents(pending.scene, mixed)),
+        /needs current evidence/,
+      );
+      assert.equal(worldWrites, 0, "No valid prefix is applied from an unsupported access batch");
+      assert.equal(JSON.stringify([pending.scene, pending.world]), before);
+    }
+    pending.scene.submissions[0] = current;
+    await effects.applySavedAccessEvents(pending.scene, current);
+    const native = { ...invitation, accessOperationId: "current-access" };
+    await effects.recordSpokenInvitation(pending.scene, native);
+    await effects.applySavedAccessEvents(pending.scene, current);
+    await effects.recordSpokenInvitation(pending.scene, native);
+    assert.equal(pending.world.venues[0].access!.permissions.length, 1, "Native replay settles one permission");
+    assert(pending.world.venues[0].access!.receipts["current-access"]);
     assert.equal(pending.modelAccess, 0);
     assert.deepEqual(pending.unexpected, []);
   } finally {

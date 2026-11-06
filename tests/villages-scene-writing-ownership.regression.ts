@@ -129,13 +129,6 @@ function fixture(label: string, checkpointed = false) {
       calls.push("debug");
     },
     venueOperationId: () => label + " operation",
-    venueOperationInput: () => ({
-      interactionScopeVersion: 6,
-      writingContractVersion: 4,
-      gmVersion: 1,
-      semanticPipelineVersion: 3,
-      residentActionsVersion: 2,
-    }),
     venueCheckpoint: async <T>(stage: string, work: () => Promise<T>): Promise<T> => {
       if (!checkpointed) return work();
       if (checkpoints.has(stage)) return structuredClone(checkpoints.get(stage)) as T;

@@ -1,3 +1,5 @@
+import { venueFixture } from "./helpers/venues.fixture.js";
+import { applyAccessCommand, projectZoneAccess } from "../packages/villages/src/server/domain/rules/venue-access.js";
 import { scenePlaybackFixtures } from "./fixtures/scene-browser.fixture.mjs";
 const { authorSceneResponse } = await scenePlaybackFixtures();
 import { mockEngineLookups, fulfill } from "./fixtures/browser-diagnostics.mjs";
@@ -22,6 +24,19 @@ await withBrowser(browser, async () => {
       { id: "common", kind: "shared-residence", venueClass: "residence", name: "Common Space", seen: false },
       { id: "private:mara", kind: "private-residence", venueClass: "residence", name: "Secret bedroom", seen: false },
     ];
+    const nativeVenue = venueFixture({ ...snapshot.settings.venues[0], access: undefined, residentIds: ["mara"] });
+    const projectAccess = () => {
+      snapshot.settings.venues[0].zones = snapshot.settings.venues[0].zones.map((zone) => ({
+        ...zone,
+        accessView: projectZoneAccess(
+          nativeVenue,
+          nativeVenue.zones.find((target) => target.id === zone.id),
+          "player",
+          { sceneId: "contact-browser" },
+        ),
+      }));
+    };
+    projectAccess();
     let session = {
       version: 2,
       id: "contact-browser",
@@ -58,6 +73,28 @@ await withBrowser(browser, async () => {
         submitted = route.request().postDataJSON();
         submissions.push(submitted);
         if (submitted.message !== "I look around.") contactTurns++;
+        if (contactTurns === 1) {
+          applyAccessCommand(
+            nativeVenue,
+            {
+              action: "invite",
+              operationId: "doorway-invite",
+              expectedRevision: nativeVenue.access.revision,
+              zoneId: "common",
+              visitorId: "player",
+              duration: "visit",
+              accompanied: false,
+              outsideHours: false,
+              sceneId: session.id,
+            },
+            "mara",
+            now,
+            ["player", "mara"],
+            ["answer:" + submitted.submissionId],
+          );
+          projectAccess();
+        }
+
         session = {
           ...session,
           sceneRevision: submissions.length,

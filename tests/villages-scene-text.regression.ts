@@ -75,3 +75,9 @@ assert.throws(() =>
   ),
 );
 console.log("Scene text: speech/action order, quoted speech, private witnesses and unrepaired malformed JSON passed.");
+
+assert.throws(
+  () =>
+    parseVenueReply({ heardPlayerBy: [], lines: [{ speakerId: "reserved", text: "Retired response" }] }, ["reserved"]),
+  /segments must be an array/,
+);

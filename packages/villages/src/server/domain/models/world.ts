@@ -3,7 +3,7 @@ import type { VillageSettings } from "../../../shared/contracts/village.js";
 import type { VillageNarrationStyle } from "../rules/narration-style.js";
 import type { ProgressTask } from "../rules/progress-engine.js";
 import type { HomeBuildingKind } from "../rules/prompt-preset.js";
-import type { VillagesTurnBeat } from "../rules/turn-beats.js";
+import type { VillagesWalkBeat as VillagesTurnBeat } from "../../../shared/contracts/scene-beat.js";
 
 // Villages — the shapes the server half of the package trades in.
 //
@@ -272,7 +272,6 @@ export type PrivateSpacePreparation = {
 export type VillageVenueZone = VillageVenueSpace & {
   access?: import("../../../shared/helpers/venue-access.js").ZoneAccessPolicy;
   accessView?: import("../../../shared/helpers/venue-access.js").ZoneAccessView;
-  relationshipAccess?: boolean;
   purpose?: string;
   controllerIds?: string[];
   preparation?: PrivateSpacePreparation;
@@ -347,18 +346,6 @@ export type VillageVenue = {
   residenceCapacity?: number;
   /** The complete resident roster. The older occupancy field remains a read projection. */
   residentIds?: string[];
-  /** One-use invitations backed by resident speech; older manual entries remain shared invitations. */
-  usedInvitationIds?: string[];
-  playerInvitations?: {
-    residentId: string;
-    privateSpaceId?: string;
-    zoneId?: string;
-    recordedAt: string;
-    scope?: "shared" | "private";
-    ownerId?: string;
-    sourceLineId?: string;
-    quote?: string;
-  }[];
   /** The approach is distinct from both shared and private Residence state. */
   exteriorState?: VillageVenueSpace["state"];
   privateSpaces?: VillagePrivateSpace[];
@@ -390,13 +377,6 @@ export type VillageVenue = {
   state: import("../../../shared/contracts/place-continuity.js").PlaceContinuity;
 };
 
-/** A compact reference used anywhere a current literal location is required. */
-export type VillageVenueReference = {
-  venueId: string;
-  zoneId?: string;
-  detail: string;
-};
-
 /** A committed physical change and its evidence, attached to a Venue. */
 export type VillageVenueEvent = {
   id: string;
@@ -418,17 +398,6 @@ export type VillageVenueEvent = {
 export type VillageVenuePosition = {
   x: number | null;
   y: number | null;
-};
-
-/** Read-only view used by the conversation drawer and map pins. */
-export type VillageVenueView = {
-  id: string;
-  name: string;
-  image: VillageVenueImage | null;
-  position: VillageVenuePosition;
-  residentCharacterId: string | null;
-  playerHome: boolean;
-  homeKind: HomeBuildingKind | null;
 };
 
 /**
@@ -462,11 +431,6 @@ export type VillageResidence = {
   approvedAt?: string;
   completesAt?: string;
 };
-
-/** The only legal way to resolve a current literal location. */
-export function isCurrentVenueId(venues: readonly VillageVenue[], venueId: unknown): venueId is string {
-  return typeof venueId === "string" && venues.some((venue) => venue.id === venueId);
-}
 
 /**
  * Someone the village's memory is about.

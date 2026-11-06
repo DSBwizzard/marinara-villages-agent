@@ -1,4 +1,3 @@
-import { sceneContinuityView } from "../../domain/rules/scene-continuity.js";
 import type { CapabilityDocumentStore } from "@marinara-engine/shared";
 import { VILLAGES_PACKAGE_ID } from "../../adapters/engine/runtime-host.js";
 
@@ -17,7 +16,7 @@ import { asRecord } from "../../domain/rules/coerce.js";
 import { badRequest, conflict, notFound } from "../../domain/rules/errors.js";
 import { coerceResponseDiagnostics } from "../../domain/rules/response-diagnostics.js";
 import { scenePresenceNotices, sceneProcessingSummary } from "../../domain/rules/scene-public.js";
-import { filterRelationshipNotices, relationshipChangeNotices } from "../../domain/rules/relationship-presentation.js";
+import { filterRelationshipNotices } from "../../domain/rules/relationship-presentation.js";
 import { sceneChangeDiagnosticId, sceneChangeError, sceneErrorDetails } from "./error-details.js";
 export interface SceneChangesPorts {
   withSceneWork?<T>(id: string, work: () => Promise<T>): Promise<T>;
@@ -59,7 +58,6 @@ export function createSceneChanges({
   async function readSceneChanges(id: string, cursor = "", limit = 20) {
     const scene = await readSession(id);
     const village = await readVillageSnapshot();
-    const presentation = sceneContinuityView(village, scene);
     if (scene.villageSeed && scene.villageSeed !== village.seed)
       throw conflict("This Scene belongs to a previous village.");
     const parts = (cursor || "0:0").split(":").map(Number);
@@ -103,13 +101,6 @@ export function createSceneChanges({
       )
       .sort((a, b) => a.noticeSequence! - b.noticeSequence!);
     const relationshipPage = relationshipReceipts.slice(0, size);
-    const relationshipNotices = relationshipState
-      ? relationshipChangeNotices(
-          relationshipPage,
-          presentation.relationshipContext ?? relationshipState,
-          presentation,
-        ).filter((event) => !village.dismissedNoticeIds.includes(event.id))
-      : [];
     const relationshipCursor =
       relationshipReceipts.length > relationshipPage.length
         ? relationshipPage.at(-1)!.noticeSequence!
@@ -178,7 +169,7 @@ export function createSceneChanges({
         requests: turn.requestMetrics ?? null,
         responseDiagnostics: coerceResponseDiagnostics(turn.liveProposals?.responseDiagnostics) ?? null,
         interpretationHistory: turn.interpretationHistory ?? [],
-        notices: filterRelationshipNotices(turn.recordEvents ?? [], presentation.relationshipContext).filter(
+        notices: filterRelationshipNotices(turn.recordEvents ?? []).filter(
           (event) => !village.dismissedNoticeIds.includes(event.id),
         ),
         evidence: scene.lines.filter(
@@ -193,14 +184,10 @@ export function createSceneChanges({
           memoryContexts: turn.liveProposals?.memoryContexts,
         },
       })),
-      notices: filterRelationshipNotices(
-        [
-          ...scenePresenceNotices(scene).filter((event) => !village.dismissedNoticeIds.includes(event.id)),
-          ...page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])),
-          ...relationshipNotices,
-        ],
-        presentation.relationshipContext,
-      ),
+      notices: filterRelationshipNotices([
+        ...scenePresenceNotices(scene).filter((event) => !village.dismissedNoticeIds.includes(event.id)),
+        ...page.flatMap((receipt) => (receipt.notice ? [receipt.notice] : [])),
+      ]),
       dismissedNoticeIds: village.dismissedNoticeIds,
       unresolved: scene.submissions
         .flatMap((turn) =>
@@ -252,15 +239,7 @@ export function createSceneChanges({
         ? scene.recordEvents.some((event) => event.id === noticeId)
         : scenePresenceNotices(scene).some((event) => event.id === noticeId) ||
           scene.submissions.some((turn) => turn.recordEvents?.some((event) => event.id === noticeId))) ||
-      !!village.exchangeReceipts[noticeId]?.notice ||
-      !!(
-        village.relationshipContext &&
-        relationshipChangeNotices(
-          Object.values(village.relationshipContext.receipts).filter((receipt) => receipt.id === noticeId),
-          village.relationshipContext,
-          village,
-        ).length
-      );
+      !!village.exchangeReceipts[noticeId]?.notice;
     if (!known) throw notFound("That saved notice is unavailable.");
     await mutateVillageState((state) => {
       if (state.seed !== village.seed) throw conflict("Village identity changed.");

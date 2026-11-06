@@ -12,8 +12,7 @@ export function parseVenueReply(
   lines: VenueReplyLine[];
   heardPlayerBy: string[];
 } {
-  const structured = Array.isArray(raw?.segments);
-  const segments = structured ? raw!.segments : raw?.lines;
+  const segments = raw?.segments;
   if (!raw) throw new Error("Scene reply must be an object.");
   if (!Array.isArray(segments)) throw new Error("segments must be an array.");
   if (!Array.isArray(raw.heardPlayerBy)) throw new Error("heardPlayerBy must be an array.");
@@ -28,13 +27,7 @@ export function parseVenueReply(
   if (segments.length > 24) throw new Error("segments must contain at most 24 lines.");
   const lines: VenueReplyLine[] = segments.map((value, index): VenueReplyLine => {
     const row = asRecord(value);
-    if (
-      structured &&
-      row.kind !== "narration" &&
-      row.kind !== "dialogue" &&
-      row.kind !== "side" &&
-      row.kind !== "whisper"
-    )
+    if (row.kind !== "narration" && row.kind !== "dialogue" && row.kind !== "side" && row.kind !== "whisper")
       throw new Error(`segments[${index}].kind must be narration, dialogue, side or whisper.`);
     let kind: VenueReplyLine["kind"] =
       row.kind === "narration" || row.kind === "side" || row.kind === "whisper" ? row.kind : "dialogue";
@@ -106,46 +99,9 @@ export function parseVenueReply(
     heardPlayerBy: ids(raw.heardPlayerBy),
   };
 }
-export function quietContactReply(text: string, localIds: string[]) {
-  return {
-    npcAdmissions: [] as import("./npc-participation.js").NpcAdmission[],
-    placeDiscoveries: [] as unknown[],
-    establishmentProgress: [] as unknown[],
-    semanticAccess: undefined as InterpretationBatch | null | undefined,
-    semanticProvenance: undefined as import("../models/semantic-model.js").SemanticProvenance | undefined,
-    semanticPlayerMoves: [] as import("./semantic-timeline.js").SemanticPlayerMove[],
-    physicalContext: undefined as import("../models/scene-model.js").VenueSubmission["physicalContext"],
-    lines: [{ kind: "narration", speakerId: "__venue_scene__", content: text, heardBy: localIds }] as ReturnType<
-      typeof parseVenueReply
-    >["lines"],
-    heardPlayerBy: localIds,
-    speechCapture: undefined as import("../models/scene-model.js").VenueSubmission["speechCapture"],
-    evidenceFingerprints: {} as Record<string, string>,
-    effectFailures: {} as NonNullable<import("../models/scene-model.js").VenueSubmission["effectFailures"]>,
-    interpretationRouting: undefined,
-    roomEvents: undefined,
-    projectContexts: [],
-    projectSpeech: [],
-    placeUpdate: null,
-    residenceSignal: null,
-    venueRequestSignal: null,
-    invitationSignal: null,
-    recap: "",
-    departures: [],
-    sceneEnded: false,
-    wishChanges: [],
-    wishContexts: [],
-    responseDiagnostics: undefined,
-    memoryChanges: [],
-    relationshipChanges: { changes: [], permissions: [], disclosures: [] },
-    earlierLineIds: [],
-    contactIntent: null,
-    contactMoves: [],
-    contactRelay: null,
-    contactEndIds: [],
-  };
-}
 export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAccessEvent[] {
+  if (batch?.checks.some((check) => asRecord(check.facts).semanticVersion !== 2))
+    throw new Error("This access effect needs current evidence.");
   return batch
     ? batch.checks.flatMap((check, index) => {
         const facts = asRecord(check.facts),
@@ -165,8 +121,8 @@ export function savedAccessEvents(batch?: InterpretationBatch | null): SavedAcce
               venueId: String(facts.venueId),
               zoneId: typeof facts.zoneId === "string" ? facts.zoneId : null,
               accessRevision: Number(facts.accessRevision),
-              ...(facts.semanticVersion === 2 ? { semanticVersion: 2 as const } : {}),
-              ...(facts.semanticVersion === 2 ? { accompanies: facts.accompanies === true } : {}),
+              semanticVersion: 2,
+              accompanies: facts.accompanies === true,
               ...(facts.accessCommand
                 ? { accessCommand: structuredClone(facts.accessCommand) as SavedAccessEvent["facts"]["accessCommand"] }
                 : {}),

@@ -278,7 +278,7 @@ export function createLiveScenes({
         state.continuity ??= continuity;
       });
     }
-    const people = sceneZoneOccupants(session, village, venue, zoneId);
+    const people = sceneZoneOccupants(session, venue, zoneId);
     if (people.filter((person) => !person.characterId.startsWith("npc:")).length > 4)
       throw conflict("Five residents occupy this Zone in the Scene. Choose another Zone.");
     const activeIds = people.map((person) => person.characterId);
@@ -406,7 +406,7 @@ export function createLiveScenes({
       );
       state.doorwayContacts = (state.doorwayContacts ?? []).filter((row) => sameRoutine(row.characterId));
       state.entryOffers = (state.entryOffers ?? []).filter((row) => sameRoutine(row.controllerId));
-      const people = sceneZoneOccupants(state, village, venue, state.zoneId ?? "exterior");
+      const people = sceneZoneOccupants(state, venue, state.zoneId ?? "exterior");
       if (
         people.filter((person) => village.villagers.some((resident) => resident.characterId === person.characterId))
           .length > 4

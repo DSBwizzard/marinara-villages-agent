@@ -6,10 +6,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import { fixtureVillageState, villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import {
-  relationshipPrompt,
-  relationshipWritingPrompt,
-} from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
+import { relationshipWritingPrompt } from "../packages/villages/src/server/domain/rules/relationship-presentation.js";
 import { RELATIONSHIP_REVIEW_INSTRUCTION } from "../packages/villages/src/server/domain/rules/relationship-review.js";
 import {
   defaultRelationshipState,
@@ -137,7 +134,7 @@ assert.ok(
   "Historical receipts cannot bypass Memory recall or player repair",
 );
 assert.ok(relationshipWritingPrompt(state, "reserved").includes("Distrustful after a broken promise"));
-assert.ok(relationshipPrompt(state, "outgoing").includes("Values the player's reliability"));
+assert.ok(relationshipWritingPrompt(state, "outgoing").includes("Values the player's reliability"));
 
 let paidCalls = 0;
 let shrink = false;

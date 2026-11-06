@@ -3,7 +3,7 @@ import { materializeConnections } from "../../../shared/helpers/zone-contact.js"
 import { resolveZoneLayout, zoneLayoutKey, type ZoneLayoutChange } from "../../../shared/helpers/zone-layout.js";
 import { ZoneMap } from "../../shared/ZoneMap.js";
 import type { VenueScreenController } from "./screen-contracts.js";
-import { ZoneAccessLabels } from "./VenueLayout.js";
+import { ZoneAccessLabels } from "./ZoneAccessLabels.js";
 import type { VenueDisplayZone } from "./venue-view.js";
 
 export function VenueLayoutEditor({

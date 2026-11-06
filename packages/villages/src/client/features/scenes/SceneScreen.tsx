@@ -298,19 +298,7 @@ export function SceneScreen({ controller }: { controller: SceneScreenController 
               .filter((zone) => {
                 if (zone.id === room.zoneId) return true;
                 if (zone.closed) return false;
-                if (zone.accessView) return zone.accessView.decision.allowed;
-                return (
-                  zone.kind === "exterior" ||
-                  zone.kind === "public" ||
-                  zone.relationshipAccess ||
-                  room.entryOffers?.some((offer) => offer.zoneId === zone.id) ||
-                  room.grantedZoneIds?.includes(zone.id) ||
-                  venue?.playerInvitations?.some((offer) => offer.zoneId === zone.id) ||
-                  (venue?.occupancy.playerHome &&
-                    (zone.kind === "shared-residence" ||
-                      (zone.kind === "private-residence" && zone.ownerId === "player"))) ||
-                  (zone.kind === "restricted" && zone.controllerIds?.includes("player"))
-                );
+                return zone.accessView?.decision.allowed ?? false;
               })
               .map((zone) => ({ id: zone.id, label: sceneZoneLabel(zone), closed: zone.closed }));
           })()}

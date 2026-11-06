@@ -1,3 +1,5 @@
+import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
+import { createWorldCoordination } from "../packages/villages/src/server/features/world/village-service.js";
 // Test cases: memories/history-1000, memories/history-10000, memories/history-25000, memories/shared-budget
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
@@ -11,14 +13,12 @@ import {
 import { recallMemories } from "../packages/villages/src/server/domain/rules/memory-recall.js";
 import {
   captureMemoryScene,
-  pagePlayerMemories,
-  playerMemoryEvidence,
   sceneMemoryCollection,
 } from "../packages/villages/src/server/domain/rules/memory-views.js";
 import { memoryRepair, memoryTime, realisticMemoryHistory } from "./helpers/memories-fixture.js";
 
 for (const count of [1000, 10000, 25000])
-  await runCase("memories/history-" + count, () => {
+  await runCase("memories/history-" + count, async () => {
     const baselineHeap = process.memoryUsage().heapUsed;
     const generated = realisticMemoryHistory(count);
     const serialized = JSON.stringify(generated);
@@ -92,20 +92,34 @@ for (const count of [1000, 10000, 25000])
     });
     assert.match(stillFrozen.candidates[0].text, /telescope/u);
     assert.equal(sceneMemoryCollection(repaired.collection, repaired.snapshots[1]).records.length, count);
+    const authority = { ...defaultVillageState(), seed: "scale-world", memories: collection };
+    const api = createWorldCoordination({
+      readVillageAuthority: async () => authority,
+      readVillageState: async () => {
+        throw Error("Memory queries must not run background work");
+      },
+      readScene: async () => {
+        throw Error("Source Scene is unavailable");
+      },
+      mutateMemoryAuthority: async () => {
+        throw Error("Memory queries must not write or teach");
+      },
+    } as any);
     const pageStart = performance.now();
-    const firstPage = pagePlayerMemories(collection);
-    const secondPage = pagePlayerMemories(collection, { cursor: firstPage.next! });
-    const search = pagePlayerMemories(collection, { query: "brass telescope" });
-    const evidence = playerMemoryEvidence(collection, "history-memory-0");
+    const firstPage = await api.buildVillageMemories();
+    const secondPage = await api.buildVillageMemories({ cursor: firstPage.next! });
+    const search = await api.buildVillageMemories({ query: "brass telescope" });
+    const evidence = await api.readVillageMemoryEvidence("history-memory-0");
     const pageSearchEvidenceMs = performance.now() - pageStart;
-    assert.equal(firstPage.rows.length, 50);
-    assert.equal(secondPage.rows.length, 50);
-    assert.equal(new Set([...firstPage.rows, ...secondPage.rows].map((row) => row.id)).size, 100);
-    assert.ok(!JSON.stringify(firstPage.rows).includes("support"), "Evidence loads on demand.");
-    assert.equal(search.rows[0].id, "history-memory-0");
-    assert.match(evidence!.support[0].excerpt, /star chart/u);
-    assert.equal(playerMemoryEvidence(collection, "history-memory-1"), null);
-    assert.throws(() => pagePlayerMemories(repaired.collection, { cursor: firstPage.next! }), /stale page/u);
+    assert.equal(firstPage.entries.length, 50);
+    assert.equal(secondPage.entries.length, 50);
+    assert.equal(new Set([...firstPage.entries, ...secondPage.entries].map((row) => row.id)).size, 100);
+    assert.ok(!JSON.stringify(firstPage.entries).includes("support"), "Evidence loads on demand");
+    assert.equal(search.entries[0].id, "history-memory-0");
+    assert.match(evidence.knowers[0].support[0].excerpt, /star chart/u);
+    await assert.rejects(api.readVillageMemoryEvidence("history-memory-1"), /unavailable/u);
+    authority.memories = repaired.collection;
+    await assert.rejects(api.buildVillageMemories({ cursor: firstPage.next! }), /changed/u);
     const protection = memoryProtectionContext(repaired.collection, { knowers: ["aqua"], query: "star chart" });
     const system = recallMemories(repaired.collection, {
       query: "star chart",

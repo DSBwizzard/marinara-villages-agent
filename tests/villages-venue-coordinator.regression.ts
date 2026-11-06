@@ -3,7 +3,6 @@ import { mock } from "node:test";
 import { withProviderDeadline } from "../packages/villages/src/server/adapters/models/provider-deadline.js";
 import { readPrivateDiagnostics } from "../packages/villages/src/server/adapters/observability/private-diagnostics.js";
 import {
-  venueOperationInput,
   venueOperationSignal,
   venueRequestMetrics,
   venueSavedCheckpoint,
@@ -15,7 +14,6 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import { safeFailureMessage } from "../packages/villages/src/server/domain/rules/errors.js";
 import { captureSceneLayout } from "../packages/villages/src/server/domain/rules/scene-layout.js";
-import { quietContactReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
 import { bindWishProposals } from "../packages/villages/src/server/domain/rules/wish-progress-rules.js";
 import { zoneEventScene } from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { createModelCompletions } from "../packages/villages/src/server/features/generation/completion-service.js";
@@ -460,7 +458,6 @@ async function main() {
       coordinateVenue,
       venueCheckpoint,
       venueOperationSignal,
-      venueOperationInput,
       venueRequestMetrics,
       cancelVenueOperation,
       hasVenueOperation: () => true,
@@ -489,7 +486,14 @@ async function main() {
             { inputTokens: 1, outputTokens: 1 },
           );
         }
-        return quietContactReply("Saved slow greeting.", []);
+        return {
+          lines: [{ kind: "narration", speakerId: "__venue_scene__", content: "Saved slow greeting.", heardBy: [] }],
+          heardPlayerBy: [],
+          departures: [],
+          contactMoves: [],
+          contactEndIds: [],
+          roomInterpretation: null,
+        };
       },
     } as any);
     mock.timers.enable({ apis: ["setTimeout"] });
@@ -1483,7 +1487,6 @@ async function main() {
         venueSavedCheckpoint,
         venueOperationSignal,
         rejectVenueCompletion,
-        venueOperationInput: () => typedInput,
         venueOperationId: () => "typed",
         readVillageLore: async () => [],
         readEffectiveVillagerCard: () => assert.fail("No actors"),

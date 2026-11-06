@@ -64,8 +64,6 @@ export function completeResidenceMove(state: VillageState, characterId: string, 
       if (old.layoutVersion === 1) {
         for (const zone of old.zones?.filter((zone) => zone.ownerId === characterId) ?? [])
           changeRoomOwner(old, zone, undefined);
-        const ownedIds = new Set(allOwned.map((space) => space.id));
-        old.playerInvitations = old.playerInvitations?.filter((invitation) => !ownedIds.has(invitation.zoneId ?? ""));
       }
     }
     old.residentIds = venueResidentIds(old).filter((id) => id !== characterId);
@@ -128,5 +126,4 @@ function changeRoomOwner(
   };
   for (const permission of venue.access?.permissions ?? [])
     if (permission.zoneId === zone.id) permission.revoked = true;
-  venue.playerInvitations = venue.playerInvitations?.filter((invite) => invite.zoneId !== zone.id);
 }

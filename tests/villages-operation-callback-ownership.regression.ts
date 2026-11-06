@@ -14,7 +14,6 @@ import {
   venueOperationId,
   venueOperationSignal,
   venueSavedCheckpoint,
-  venueOperationInput,
   venueOperationSnapshot,
   assertVenueOwnership,
   outsideVenueOperation,
@@ -68,7 +67,6 @@ async function runCapturesOwner() {
     assert.equal(context.getStore(), storeA);
     assert.equal(venueOperationSignal(), storeA.controller.signal);
     assert.equal(venueSavedCheckpoint("checkpoint"), "A");
-    assert.deepEqual(venueOperationInput(), { owner: "A" });
     assert.deepEqual(venueOperationSnapshot(), { owner: "A" });
     assert.throws(() => assertVenueOwnership({ operation: { token: "B-token" } }), /no longer owns/);
     await b.run(() =>

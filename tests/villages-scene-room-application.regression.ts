@@ -38,7 +38,6 @@ const scene = freshScene(),
 applyInterpretedRoomEvents(scene, batch, village);
 assert.equal(scene.id, "same-scene");
 assert.equal(scene.zoneId, "exterior", "An entry offer does not move the player");
-assert.deepEqual(scene.grantedZoneIds, ["bedroom"]);
 assert.deepEqual(scene.entryOffers, [{ zoneId: "bedroom", label: "Bedroom", controllerId: "aqua", accompanies: true }]);
 assert.deepEqual(venue.access, ledger, "The native access receipt is settled separately");
 for (const kind of ["actor", "noncurrent", "uncited"] as const) {
@@ -49,5 +48,4 @@ for (const kind of ["actor", "noncurrent", "uncited"] as const) {
   if (kind === "uncited") invalid.results[0].evidenceIds = [];
   applyInterpretedRoomEvents(rejected, invalid, village);
   assert.equal(rejected.entryOffers?.length ?? 0, 0, kind);
-  assert.equal(rejected.grantedZoneIds?.length ?? 0, 0, kind);
 }
