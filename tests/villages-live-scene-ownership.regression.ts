@@ -5,8 +5,7 @@ import { venueFixture } from "./helpers/venues.fixture.js";
 import assert from "node:assert/strict";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
@@ -99,8 +98,8 @@ function fixture(name: string) {
     gate = deferred();
   function note(call: string) {
     calls.push(call);
-    owners.push(scopedActivation());
-    if (scopedActivation()?.active === false) throw Error("Original live Scene connection unavailable.");
+    owners.push(activationScope());
+    if (activationScope()?.active === false) throw Error("Original live Scene connection unavailable.");
     if (call === failureAt) throw failure;
   }
   async function wait(call: string) {
@@ -515,36 +514,40 @@ async function main() {
       first = fixture("A"),
       second = fixture("B");
     if (command === "touch") first.saved.lastActivityAt = new Date(Date.now() - 20_000).toISOString();
-    const releaseA = a.run(() => configureLiveScenes(first.service)),
-      clearA = installDefaultActivation(a, () => {});
+    const releaseA = a.run(() => configureLiveScenes(first.service));
     first.pause(command === "active" ? "active" : "world");
-    const pending = command === "active" ? activeVenueSession() : touchVenueSession("same");
+    const pending = a.run(() => (command === "active" ? activeVenueSession() : touchVenueSession("same")));
     await first.entered.promise;
-    const releaseB = b.run(() => configureLiveScenes(second.service)),
-      clearB = installDefaultActivation(b, () => {});
+    const releaseB = a.run(() => b.run(() => configureLiveScenes(second.service)));
     first.gate.resolve();
     const result = await pending;
     assert.equal(result?.placeName, "A");
     assert.deepEqual(second.calls, []);
     assert(first.owners.every((owner) => owner === a));
-    a.run(releaseA);
+    b.run(() => a.run(releaseA));
     a.dispose();
-    clearA();
-    assert.equal((await activeVenueSession())?.placeName, "B", "older cleanup leaves B registration intact");
+
+    await b.run(async () =>
+      assert.equal((await activeVenueSession())?.placeName, "B", "older cleanup leaves B registration intact"),
+    );
     assert(second.owners.every((owner) => owner === b));
-    await assert.rejects(
-      a.run(() => activeVenueSession()),
-      /not configured/,
+    await b.run(() =>
+      assert.rejects(
+        a.run(() => activeVenueSession()),
+        /not configured/,
+      ),
     );
     const missing = createActivationScope();
-    await assert.rejects(
-      missing.run(() => activeVenueSession()),
-      /not configured/,
+    await b.run(() =>
+      assert.rejects(
+        missing.run(() => activeVenueSession()),
+        /not configured/,
+      ),
     );
     missing.dispose();
-    b.run(releaseB);
+    b.run(() => b.run(releaseB));
     b.dispose();
-    clearB();
+
     await assert.rejects(activeVenueSession(), /not configured/);
   }
   const retired = createActivationScope(),
@@ -552,25 +555,24 @@ async function main() {
     current = createActivationScope(),
     replacement = fixture("replacement");
   retired.run(() => configureLiveScenes(old.service));
-  const clearRetired = installDefaultActivation(retired, () => {});
+
   old.pause("active");
-  const pending = activeVenueSession();
+  const pending = retired.run(() => activeVenueSession());
   await old.entered.promise;
   retired.dispose();
-  const releaseCurrent = current.run(() => configureLiveScenes(replacement.service)),
-    clearCurrent = installDefaultActivation(current, () => {});
+  const releaseCurrent = retired.run(() => current.run(() => configureLiveScenes(replacement.service)));
   old.gate.resolve();
   await assert.rejects(pending, /Original live Scene connection unavailable/);
   assert.deepEqual(replacement.calls, [], "retired in-flight work cannot borrow replacement connections");
-  clearRetired();
-  current.run(releaseCurrent);
+
+  current.run(() => current.run(releaseCurrent));
   current.dispose();
-  clearCurrent();
+
   console.log(
     "PASS live Scene ownership, persistent absence, activity compatibility, captured attendance and access ordering",
   );
 }
-main()
+await main()
   .finally(releaseClock)
   .catch((error) => {
     console.error(error);

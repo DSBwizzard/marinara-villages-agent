@@ -192,7 +192,7 @@ async function main() {
     "Villages room occupancy: current Venue capture, Zone privacy, frozen attendance, reload, movement and departure passed",
   );
 }
-void main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

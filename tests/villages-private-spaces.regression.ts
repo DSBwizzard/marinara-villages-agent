@@ -19,7 +19,6 @@ import {
   canInviteToZone,
   zoneControllerIds,
   resolveVenueZone,
-  privateTarget,
   zoneClosed,
 } from "../packages/villages/src/server/domain/rules/venue-zones.js";
 
@@ -165,8 +164,6 @@ assert.equal(canInviteToZone(migrated.venues[2]!, staff, "b"), false);
 assert.deepEqual(zoneControllerIds(migrated.venues[2]!, staff), []);
 migrated.venues[2]!.workerIds = ["a", "b"];
 migrated.venues[2]!.access!.managerIds = ["a", "b"];
-assert.equal(privateTarget(migrated.venues[0]!, undefined, "private:a", "a"), "private:a");
-assert.throws(() => privateTarget(migrated.venues[2]!, "staff", "private:a"), /Conflicting/);
 assert.throws(() => readSceneryStyle("x".repeat(601)), /600/);
 const prompt = sceneryPrompt(
   ["Area " + "D".repeat(1000)],
@@ -285,10 +282,7 @@ async function main() {
     await mutateVillageState((current) => {
       current.sceneryArtStyle = "Pixel art";
     });
-    await assert.rejects(
-      () => setVillageVenueImage("own", null, undefined, "", false, undefined, key),
-      /scenery changed/,
-    );
+    await assert.rejects(() => setVillageVenueImage("own", "exterior", null, false, key), /scenery changed/);
     assert.equal((await readVillageState({ memories: true })).venues[1]!.privateSpaces![0]!.image!.id, "art");
     await Promise.all([preparePrivateSpaces(), preparePrivateSpaces()]);
     assert.equal(calls, 5, "concurrent preparation coalesces; one request per private space");
@@ -417,7 +411,7 @@ async function main() {
         "exterior",
         "live access follows current worker authority while preserving safe egress",
       );
-      await assertVenueImageAccess("bank", undefined, "", "staff");
+      await assertVenueImageAccess("bank", "staff");
       assert.equal(
         resolveVenueZone((await readVillageState({ memories: true })).venues[2], "staff").seen,
         true,
@@ -563,7 +557,7 @@ async function privateInteriorLifecycle() {
   bedroom.description += "\n" + "Large established physical detail. ".repeat(70);
   bedroom.observed = captureZoneObservation(home, bedroom);
   await assert.rejects(
-    () => images.generateVillageLocationImage("bungalow", undefined, undefined, "", false, "bedroom"),
+    () => images.generateVillageLocationImage("bungalow", "bedroom", undefined),
     /Synthetic image failure/,
     "a long bounded physical account fits completely before requesting an image",
   );
@@ -585,7 +579,7 @@ async function privateInteriorLifecycle() {
   prepareRenovatedPrivateInterior(ownRoom);
   assert.equal(ownRoom.description, "My authored interior", "player-owned Renovation keeps its authored appearance");
 }
-void (async () => {
+await (async () => {
   await privateInteriorLifecycle();
   await main();
 })();

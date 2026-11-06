@@ -44,7 +44,6 @@ import { PNG } from "pngjs";
 import {
   activationScope,
   createActivationScope,
-  installDefaultActivation,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { Ledger } from "../packages/villages/src/server/domain/models/usage-model.js";
@@ -657,6 +656,7 @@ async function main() {
     },
   };
 
+  let applicationOwner: ReturnType<typeof activationScope>;
   const app = Fastify();
   const context = {
     api: {
@@ -691,6 +691,7 @@ async function main() {
         },
       },
       async registerPrivilegedRoutes(routes: any, options: { prefix: string }) {
+        applicationOwner = activationScope();
         await app.register(routes, { prefix: options.prefix });
         await app.ready();
         return () => {};
@@ -713,612 +714,669 @@ async function main() {
 
   const { activate } = await import(moduleUrl(`${services}/entry/index.ts`));
   await activate(context);
-  allowMediaFixtureVisit();
+  assert(applicationOwner);
+  await applicationOwner.run(async () => {
+    allowMediaFixtureVisit();
 
-  // ── Founding a village costs nothing ──────────────────────────────────────
-  // The whole point of the button. A village that draws art while it is being
-  // set up would bill the player for a picture of a place they have not seen
-  // yet, and the setup flow is exactly where that would be easiest to hide.
-  const settingText = "A mill town at the foot of a ridge, where the river floods each spring.";
-  await put("/api/villages/connections", {
-    systemConnectionId: "connection-system",
-    narrationConnectionId: "connection-narration",
-  });
-  const founded = await post("/api/villages/setup", {
-    worldName: "different-worlds",
-    foundingResidentAdmissions: Object.fromEntries(
-      ["character-millie"].map((id) => [id, { homeworld: "Othiras", startingSituation: "Already living here." }]),
-    ),
-    name: "Ashcroft",
-    townMapImage: "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
-    setting: settingText,
-    communityVenueId: "village-square",
-    circumstances: [],
-    worldRules: "",
-    playerPersonaId: "persona-robin",
-    venues: [
-      venueFixture({
-        residentIds: [null].filter((id) => typeof id === "string" && !!id),
-        id: "player-home",
-        layoutVersion: 1,
-        layout: "both",
-        privateSpaces: [
-          {
-            id: "private:player",
-            venueClass: "residence",
-            description: "A personal sleeping nook",
-            name: "Your Private Space",
-            purpose: "Personal space",
-            ownerId: "player",
-          },
-        ],
-        name: "Robin's Diner",
-        form: "A converted diner",
-        classes: ["residence"],
-        description: "A modest home for the player.",
-        spaces: [
-          {
-            venueClass: "residence",
-            name: "Hearth room",
-            purpose: "Meals",
-            description: "A warm room with tables and a small hearth.",
-          },
-        ],
-        presentation: { x: 0.2, y: 0.3 },
-        occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
-      }),
-      venueFixture({
-        residentIds: ["character-millie"].filter((id) => typeof id === "string" && !!id),
-        id: "millie-home",
-        layoutVersion: 1,
-        layout: "both",
-        privateSpaces: [
-          {
-            id: "private:character-millie",
-            venueClass: "residence",
-            name: "Private Space",
-            purpose: "Personal space",
-            description: "An existing sleeping nook",
-            ownerId: "character-millie",
-          },
-        ],
-        name: "Millie's Pod",
-        form: "A sleeping pod",
-        classes: ["residence"],
-        description: "Millie's small home.",
-        spaces: [
-          {
-            venueClass: "residence",
-            name: "Common room",
-            purpose: "Rest",
-            description: "A compact room with a woven mat.",
-          },
-        ],
-        presentation: { x: 0.4, y: 0.5 },
-        occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
-      }),
-      venueFixture({
-        residentIds: [null].filter((id) => typeof id === "string" && !!id),
-        id: "village-square",
-        layoutVersion: 1,
-        layout: "common",
-        name: "Village square",
-        form: "An open square",
-        classes: ["community"],
-        description: "A public square where neighbours meet.",
-        spaces: [
-          {
-            venueClass: "community",
-            name: "Square",
-            purpose: "Conversation",
-            description: "An open central yard with benches.",
-          },
-        ],
-        category: "public-center",
-        access: {
-          version: 1,
-          revision: 0,
-          managerIds: [],
-          visitorHours: null,
-          permissions: [],
-          bans: [],
-          exceptions: [],
-          changes: [],
-          visitDenials: [],
-          receipts: {},
-        },
-        presentation: { x: 0.6, y: 0.7 },
-        occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
-      }),
-    ],
-  });
-  assert.equal(founded.statusCode, 200, founded.body);
-  assert.equal(
-    (await readVillageState()).venues[0]?.state.recent,
-    null,
-    "Founding preserves reviewed physical details",
-  );
-  assert.equal(
-    founded.json().settings.venues.filter((venue: any) => venue.classes.includes("community")).length,
-    1,
-    "founding creates exactly one public venue",
-  );
-  assert.equal(draws().length, 0, "founding a village does not spend the player's money on a picture");
-  assert.equal(galleryCalls(UPLOAD_PATH).length, 1, "founding stores the uploaded first map in the gallery");
-  const editedHome = await put("/api/villages/locations/venue/player-home", {
-    description: "A snug home overlooking the square.",
-  });
-  assert.equal(editedHome.statusCode, 400, "direct physical edits are retired");
-  assert.match(editedHome.json().error, /Project/);
-  const movedOccupiedHome = await put("/api/villages/locations/venue/millie-home", {
-    presentation: { x: 0.9, y: 0.9 },
-  });
-  assert.equal(movedOccupiedHome.statusCode, 400, "an occupied home cannot be moved on the map");
-
-  // ── A place can be added without a picture ────────────────────────────────
-  const added = await patch("/api/villages/settings", {
-    venues: [
-      ...founded.json().settings.venues,
-      venueFixture({
-        residentIds: [null].filter((id) => typeof id === "string" && !!id),
-        classes: false || null ? ["residence"] : ["other"],
-        id: "mill",
-        name: "the mill pond",
-        form: "where the grain is ground",
-        description: "A stone mill beside shallow water.",
-      }),
-      venueFixture({
-        residentIds: [null].filter((id) => typeof id === "string" && !!id),
-        classes: false || null ? ["residence"] : ["other"],
-        id: "ridge",
-        name: "the ridge path",
-        form: "A path along the ridge",
-        description: "A narrow path over the ridge.",
-      }),
-    ],
-  });
-  assert.equal(added.statusCode, 400, "finished buildings must use Projects");
-  await mutateVillageState((state) => {
-    state.venues.push(
-      ...placesOf([
+    // ── Founding a village costs nothing ──────────────────────────────────────
+    // The whole point of the button. A village that draws art while it is being
+    // set up would bill the player for a picture of a place they have not seen
+    // yet, and the setup flow is exactly where that would be easiest to hide.
+    const settingText = "A mill town at the foot of a ridge, where the river floods each spring.";
+    await put("/api/villages/connections", {
+      systemConnectionId: "connection-system",
+      narrationConnectionId: "connection-narration",
+    });
+    const founded = await post("/api/villages/setup", {
+      worldName: "different-worlds",
+      foundingResidentAdmissions: Object.fromEntries(
+        ["character-millie"].map((id) => [id, { homeworld: "Othiras", startingSituation: "Already living here." }]),
+      ),
+      name: "Ashcroft",
+      townMapImage:
+        "data:image/png;base64," + PNG.sync.write(new PNG({ width: 1536, height: 1024 })).toString("base64"),
+      setting: settingText,
+      communityVenueId: "village-square",
+      circumstances: [],
+      worldRules: "",
+      playerPersonaId: "persona-robin",
+      venues: [
         venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          id: "player-home",
+          layoutVersion: 1,
+          layout: "both",
+          privateSpaces: [
+            {
+              id: "private:player",
+              venueClass: "residence",
+              description: "A personal sleeping nook",
+              name: "Your Private Space",
+              purpose: "Personal space",
+              ownerId: "player",
+            },
+          ],
+          name: "Robin's Diner",
+          form: "A converted diner",
+          classes: ["residence"],
+          description: "A modest home for the player.",
+          spaces: [
+            {
+              venueClass: "residence",
+              name: "Hearth room",
+              purpose: "Meals",
+              description: "A warm room with tables and a small hearth.",
+            },
+          ],
+          presentation: { x: 0.2, y: 0.3 },
+          occupancy: { playerHome: true, residentCharacterId: null, homeKind: null },
+        }),
+        venueFixture({
+          residentIds: ["character-millie"].filter((id) => typeof id === "string" && !!id),
+          id: "millie-home",
+          layoutVersion: 1,
+          layout: "both",
+          privateSpaces: [
+            {
+              id: "private:character-millie",
+              venueClass: "residence",
+              name: "Private Space",
+              purpose: "Personal space",
+              description: "An existing sleeping nook",
+              ownerId: "character-millie",
+            },
+          ],
+          name: "Millie's Pod",
+          form: "A sleeping pod",
+          classes: ["residence"],
+          description: "Millie's small home.",
+          spaces: [
+            {
+              venueClass: "residence",
+              name: "Common room",
+              purpose: "Rest",
+              description: "A compact room with a woven mat.",
+            },
+          ],
+          presentation: { x: 0.4, y: 0.5 },
+          occupancy: { playerHome: false, residentCharacterId: "character-millie", homeKind: null },
+        }),
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          id: "village-square",
+          layoutVersion: 1,
+          layout: "common",
+          name: "Village square",
+          form: "An open square",
+          classes: ["community"],
+          description: "A public square where neighbours meet.",
+          spaces: [
+            {
+              venueClass: "community",
+              name: "Square",
+              purpose: "Conversation",
+              description: "An open central yard with benches.",
+            },
+          ],
+          category: "public-center",
+          access: {
+            version: 1,
+            revision: 0,
+            managerIds: [],
+            visitorHours: null,
+            permissions: [],
+            bans: [],
+            exceptions: [],
+            changes: [],
+            visitDenials: [],
+            receipts: {},
+          },
+          presentation: { x: 0.6, y: 0.7 },
+          occupancy: { playerHome: false, residentCharacterId: null, homeKind: null },
+        }),
+      ],
+    });
+    assert.equal(founded.statusCode, 200, founded.body);
+    assert.equal(
+      (await readVillageState()).venues[0]?.state.recent,
+      null,
+      "Founding preserves reviewed physical details",
+    );
+    assert.equal(
+      founded.json().settings.venues.filter((venue: any) => venue.classes.includes("community")).length,
+      1,
+      "founding creates exactly one public venue",
+    );
+    assert.equal(draws().length, 0, "founding a village does not spend the player's money on a picture");
+    assert.equal(galleryCalls(UPLOAD_PATH).length, 1, "founding stores the uploaded first map in the gallery");
+    const editedHome = await put("/api/villages/locations/venue/player-home", {
+      description: "A snug home overlooking the square.",
+    });
+    assert.equal(editedHome.statusCode, 400, "direct physical edits are retired");
+    assert.match(editedHome.json().error, /Project/);
+    const movedOccupiedHome = await put("/api/villages/locations/venue/millie-home", {
+      presentation: { x: 0.9, y: 0.9 },
+    });
+    assert.equal(movedOccupiedHome.statusCode, 400, "an occupied home cannot be moved on the map");
+
+    // ── A place can be added without a picture ────────────────────────────────
+    const added = await patch("/api/villages/settings", {
+      venues: [
+        ...founded.json().settings.venues,
+        venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
           id: "mill",
           name: "the mill pond",
           form: "where the grain is ground",
           description: "A stone mill beside shallow water.",
         }),
         venueFixture({
+          residentIds: [null].filter((id) => typeof id === "string" && !!id),
+          classes: false || null ? ["residence"] : ["other"],
           id: "ridge",
           name: "the ridge path",
           form: "A path along the ridge",
           description: "A narrow path over the ridge.",
         }),
-      ]),
-    );
-  });
-  const addedSnapshot = (await import(moduleUrl(`${services}/features/world/snapshot.ts`))).buildVillageSnapshot;
-  assert.deepEqual(
-    (await addedSnapshot()).settings.venues
-      .filter((venue: any) => ["mill", "ridge"].includes(venue.id))
-      .map((venue: any) => venue.presentation.image),
-    [null, null],
-    "a place starts with no picture, which is what makes drawing one a decision",
-  );
-  assert.equal(draws().length, 0, "and saving places draws nothing");
-
-  // ── A picture the player already has ──────────────────────────────────────
-  // The first upload is the interesting one: the gallery folder cannot be
-  // listed. A folder is an ornament, so the picture has to land anyway — at the
-  // root of the gallery, which draws exactly as well.
-  const kept = await put("/api/villages/locations/venue/image", { venueId: "mill", image: TINY_PNG });
-  assert.equal(kept.statusCode, 200, kept.body);
-  assert.deepEqual(
-    kept
-      .json()
-      .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
-      .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").pictureReference ?? null),
-    [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
-    "the picture is kept as a reference and no other place is touched",
-  );
-  assert.equal(draws().length, 0, "choosing a picture the player already has never asks the Engine to draw");
-
-  const firstUpload = galleryCalls(UPLOAD_PATH)[1]!;
-  assert.equal(firstUpload.method, "POST");
-  assert.equal(firstUpload.search, "", "a folder that cannot be found costs tidiness and nothing else");
-  assert.equal(firstUpload.form?.provider, "villages", "the gallery entry says who put the picture there");
-  assert.equal(firstUpload.form?.file?.name, "the-mill-pond.png", "the file carries the extension its type needs");
-  assert.equal(firstUpload.form?.file?.type, "image/png");
-  assert.equal(firstUpload.form?.width, undefined, "a picture nobody drew has no claimed size");
-
-  // The next one finds the folder missing and makes it, and every upload after
-  // that reuses it — which is what stops twenty places making twenty folders.
-  folderLookupFails = false;
-  const second = await put("/api/villages/locations/venue/image", { venueId: "ridge", image: TINY_PNG });
-  assert.equal(second.statusCode, 200, second.body);
-  assert.equal(
-    second
-      .json()
-      .settings.venues.find((venue: any) => venue.id === "ridge")
-      .zones.find((zone: any) => zone.id === "exterior").pictureReference.ref,
-    "global-gallery:gallery-3",
-  );
-  assert.deepEqual(
-    galleryCalls(FOLDERS_PATH)
-      .slice(1, 4)
-      .map((call) => call.method),
-    ["GET", "GET", "POST"],
-    "the folder is looked for, looked for again once the lookup heals, and then made",
-  );
-  assert.equal(galleryCalls(FOLDERS_PATH)[3]!.body?.name, "Villages");
-  assert.equal(galleryCalls(UPLOAD_PATH)[2]!.search, "?folderId=folder-villages", "and then everything is filed in it");
-
-  await mutateVillageState((state) => {
-    for (const venue of state.venues)
-      for (const zone of venue.zones ?? []) {
-        zone.dayNight = false;
-        zone.dayNightManual = false;
-        if (venue.id === "mill" && zone.picture) zone.picture.reference = undefined;
-      }
-  });
-  // ── Drawing one ───────────────────────────────────────────────────────────
-  // Which connection is used is a three-step chain the connections regression
-  // proves for talk. Pictures read a DIFFERENT agent field, and that is the bug
-  // worth catching here: an agent that talks with a hosted model and draws with
-  // a local endpoint is the ordinary arrangement.
-  const asksFor = async (payload: Record<string, unknown> = {}) => {
-    const before = engineCalls.length;
-    const answered = await post("/api/villages/locations/venue/image", { venueId: "mill", ...payload });
-    return { answered, call: engineCalls.slice(before).find((entry) => entry.path === AVATAR_PATH)! };
-  };
-
-  agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "connection-agent-brush" } };
-  await put("/api/villages/connections", { imageConnectionId: "connection-village-brush" });
-  const villageChoice = await asksFor();
-  assert.equal(villageChoice.answered.statusCode, 200, villageChoice.answered.body);
-  assert.equal(
-    villageChoice.call.body.connectionId,
-    "connection-village-brush",
-    "the village's own image picker wins over the agent's",
-  );
-
-  await put("/api/villages/connections", { imageConnectionId: "" });
-  const onTheAgent = await asksFor();
-  assert.equal(
-    onTheAgent.call.body.connectionId,
-    "connection-agent-brush",
-    "with the picker cleared, pictures fall back to the agent's IMAGE connection rather than the one it talks with",
-  );
-
-  agentConfig = { connectionId: "agent-talk" };
-  connectionRows = [{ id: "connection-listed", provider: "image_generation", isDefault: "true" }];
-  const onTheEngine = await asksFor();
-  assert.equal(
-    onTheEngine.call.body.connectionId,
-    "connection-listed",
-    "with the agent unconfigured too, the Engine's own list decides — and it is asked",
-  );
-  assert.ok(
-    engineCalls.some((call) => call.path === "/api/connections" && call.method === "GET"),
-    "the Engine's connection list is read over its own API rather than reached into",
-  );
-
-  agentConfig = null;
-  connectionRows = [];
-  assert.equal(
-    (await post("/api/villages/locations/venue/image", { venueId: "mill" })).statusCode,
-    400,
-    "with nothing able to draw, the player is told so instead of being handed a failure with no reason",
-  );
-  assert.match(
-    (await post("/api/villages/locations/venue/image", { venueId: "mill" })).json().error,
-    /image connection/i,
-    "and the message says which kind of connection is missing",
-  );
-
-  connectionRows = [{ id: "connection-listed", provider: "image_generation", isDefault: "true" }];
-  const named = await asksFor({ connectionId: "connection-named" });
-  assert.equal(
-    named.call.body.connectionId,
-    "connection-named",
-    "an explicit choice is passed through untouched — whether it draws images is the Engine's question",
-  );
-
-  // The request itself, which is the whole feature. The Engine draws a wide
-  // empty scene through a route named for faces, and it only does that because
-  // the override REPLACES the portrait prompt it would otherwise compile.
-  const request = named.call.body;
-  assert.equal(named.call.method, "POST");
-  assert.equal(request.purpose, "avatar");
-  assert.equal(request.name, "Entrance");
-  assert.equal(request.width, 1216);
-  assert.equal(request.height, 832);
-  assert.deepEqual(
-    { width: request.width, height: request.height },
-    { width: 1216, height: 832 },
-    "a wide landscape, because the picture is a room the conversation is held in",
-  );
-  assert.equal(request.promptOverrides.length, 1, "exactly one override, so the Engine has exactly one key to match");
-  assert.equal(
-    request.promptOverrides[0].id,
-    imagePromptId("Entrance", "avatar"),
-    "the override id is built by the one function that knows the Engine's arithmetic",
-  );
-  assert.equal(
-    request.promptOverrides[0].prompt,
-    request.appearance,
-    "the override carries the scene the body also carries, so what is drawn is what was asked for",
-  );
-  assert.match(
-    request.appearance,
-    /A stone mill beside shallow water/,
-    "manual generation uses the saved physical observation",
-  );
-  assert.match(request.appearance, /Remembered physical form: where the grain is ground/);
-  assert.doesNotMatch(
-    request.appearance,
-    new RegExp(settingText),
-    "manual generation does not expand live Village context",
-  );
-  assert.match(request.appearance, /stable daytime lighting/, "artwork lighting is independent of generation time");
-  assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
-  assert.match(request.promptOverrides[0].negativePrompt, /people/);
-  assert.match(request.promptOverrides[0].negativePrompt, /lettering/);
-
-  // What came back went to the gallery, was described with the size it was
-  // drawn at, and reached the village as a reference — the same road as a
-  // picture the player chose, which is the point of routing both through it.
-  const drawnUpload = galleryCalls(UPLOAD_PATH).at(-1)!;
-  assert.equal(drawnUpload.form?.width, "1216");
-  assert.equal(drawnUpload.form?.height, "832");
-  assert.equal(drawnUpload.form?.prompt, request.appearance, "the gallery entry keeps what was asked for");
-  assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 4, "the folder is not looked for again once it is known");
-
-  const stored = kept.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
-  const drawn = await get("/api/villages");
-  assert.equal(drawn.statusCode, 200);
-  const drawnImage = drawn.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
-  assert.deepEqual(
-    Object.keys(drawnImage).sort(),
-    ["id", "ref", "url"],
-    "and a village holds three short strings per place, however many times a picture is redrawn",
-  );
-  assert.equal(JSON.stringify(drawn.json()).includes("base64"), false, "the picture's bytes never reach the snapshot");
-  assert.ok(JSON.stringify(drawnImage).length < 400, "and a place's picture costs a village about a caption");
-  assert.notDeepEqual(drawnImage, stored, "redrawing replaces the reference rather than accumulating one");
-
-  // ── Taking one away ───────────────────────────────────────────────────────
-  const beforeRemoval = galleryCalls(UPLOAD_PATH).length;
-  const removed = await del("/api/villages/locations/venue/image", { venueId: "mill" });
-  assert.equal(removed.statusCode, 200);
-  assert.equal(
-    removed.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image,
-    null,
-    "the place goes back to having no picture",
-  );
-  assert.ok(
-    removed
-      .json()
-      .settings.venues.find((venue: any) => venue.id === "ridge")
-      .zones.find((zone: any) => zone.id === "exterior").pictureReference,
-    "and the other place keeps its own",
-  );
-  assert.equal(
-    galleryCalls(UPLOAD_PATH).length,
-    beforeRemoval,
-    "the gallery entry is left where it is: the gallery is the player's",
-  );
-
-  // ── A place that is gone ──────────────────────────────────────────────────
-  // A picture arrives twenty seconds after it was asked for, so the panel can
-  // have deleted the place in between. Doing nothing quietly would leave the
-  // player holding an image they never asked to keep, with no hint where it came
-  // from, so a missing place is refused.
-  assert.equal(
-    (await put("/api/villages/locations/venue/image", { venueId: "gone", image: TINY_PNG })).statusCode,
-    404,
-    "a picture for a place that is gone is refused rather than dropped",
-  );
-  assert.equal((await post("/api/villages/locations/venue/image", { venueId: "gone" })).statusCode, 404);
-  assert.equal((await del("/api/villages/locations/venue/image", { venueId: "gone" })).statusCode, 404);
-  assert.equal((await post("/api/villages/locations/venue/image", {})).statusCode, 400, "and a place has to be named");
-  assert.equal(
-    (await put("/api/villages/locations/venue/image", { venueId: "mill", image: "nonsense" })).statusCode,
-    400,
-    "and what arrives has to be a picture",
-  );
-
-  // ── Only player actions and first private entry draw ──────────────────────
-  // Count the files that can reach generation so founding, remapping, and the
-  // simulation clock cannot create additional charges.
-  const packageRoot = join(repoRoot, "packages/villages/src");
-  const sources = await collectSources(packageRoot);
-  const canDraw = sources
-    .filter(
-      (file) =>
-        file.source.includes("AVATAR_GENERATION_PATH") ||
-        file.source.includes(AVATAR_PATH) ||
-        file.source.includes("/api/sprites/generate-sheet") ||
-        file.source.includes("generateVillageLocationImage"),
-    )
-    .map((file) => relative(packageRoot, file.path).split(sep).join("/"))
-    .sort();
-  assert.deepEqual(
-    canDraw,
-    [
-      "server/features/media/routes.ts",
-      "server/adapters/engine/engine-loopback.ts",
-      "server/features/media/image-generation-service.ts",
-      "server/features/media/location-image.ts",
-      "server/features/media/location-image-service.ts",
-    ].sort(),
-    "only explicit scenery draws and their metered shared transport reach image providers",
-  );
-  for (const silent of [
-    "features/world/village.ts",
-    "features/world/village-service.ts",
-    "features/world/village-store.ts",
-    "features/founding/village-bootstrap.ts",
-    "features/founding/village-bootstrap-service.ts",
-    "domain/rules/village-clock.ts",
-    "jobs/village-refresh-scheduler.ts",
-    "adapters/engine/native-schedules.ts",
-    "features/scenes/writing-service.ts",
-    "features/residents/wishes/service.ts",
-    "adapters/engine/catalog.ts",
-  ]) {
-    const source = await readFile(join(repoRoot, services, silent), "utf8");
-    assert.equal(
-      source.includes(AVATAR_PATH),
-      false,
-      `${silent} must not be able to draw outside the single private-entry exception`,
-    );
-  }
-
-  // Manual image controls still draw only on a press. The separate private-entry
-  // path has a durable one-attempt marker and is not a UI redraw effect.
-  //
-  // The shared venue image control serves exterior, Class, and private spaces.
-  const client = await clientImplementation();
-  for (const handler of ["drawPlaceImage", "keepPlaceImage", "dropPlaceImage"]) {
-    assert.equal(
-      client.split(`${handler}(`).length - 1,
-      1,
-      `${handler} is invoked only by its manual control; forwarding it between components does not invoke it`,
-    );
-  }
-  assert.equal(
-    client.split('"/locations/venue/image"').length - 1,
-    3,
-    "the tab reaches the three picture routes and nothing else",
-  );
-  assert.ok(
-    /onClick=\{\(\) => void drawPlaceImage\(place\.id, spaceClass, (?:ownerId, zoneId|zone\.ownerId \?\? "", zone\.id)\)\}/.test(
-      client,
-    ),
-    "and wired to a click on the screen that stands in a place",
-  );
-
-  const foundingVenue = {
-    id: "founding-home",
-    name: "Cliff House",
-    form: "A stone cottage",
-    description: "Blue slate roof above the harbor.",
-    spaceDescription: "A copper stove beside a low table.",
-    venueClass: "residence",
-    residentCharacterId: "",
-  };
-  const foundingImageInput = {
-    villageName: "Ashcroft",
-    setting: "A cliffside village above the sea.",
-    selectedLorebookIds: [],
-  };
-  const beforeInvalidImage = draws().length;
-  assert.equal(
-    (
-      await post("/api/villages/setup/venue-image/generate", {
-        ...foundingImageInput,
-        area: "exterior",
-        venue: { ...foundingVenue, description: "" },
-      })
-    ).statusCode,
-    400,
-  );
-  assert.equal(draws().length, beforeInvalidImage, "a blank exterior description cannot spend image tokens");
-  assert.equal(
-    (
-      await post("/api/villages/setup/venue-image/generate", {
-        ...foundingImageInput,
-        area: "interior",
-        venue: { ...foundingVenue, spaceDescription: "" },
-      })
-    ).statusCode,
-    400,
-  );
-  assert.equal(draws().length, beforeInvalidImage, "a blank interior description cannot spend image tokens");
-  assert.equal(
-    (
-      await post("/api/villages/setup/venue-image/generate", {
-        ...foundingImageInput,
-        area: "exterior",
-        venue: foundingVenue,
-      })
-    ).statusCode,
-    200,
-  );
-  assert.match(draws().at(-1)?.body?.appearance ?? "", /Blue slate roof above the harbor/u);
-  assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
-  assert.equal(
-    (
-      await post("/api/villages/setup/venue-image/generate", {
-        ...foundingImageInput,
-        area: "interior",
-        venue: foundingVenue,
-      })
-    ).statusCode,
-    200,
-  );
-  assert.match(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
-  assert.match(
-    draws().at(-1)?.body?.appearance ?? "",
-    /Public exterior context for architectural continuity only: Blue slate roof/u,
-  );
-  assert.match(draws().at(-1)?.body?.appearance ?? "", /do not depict this exterior or infer hidden contents/u);
-  assert.match(draws().at(-1)?.body?.appearance ?? "", /Do not invent or show adjoining rooms/u);
-
-  const specificZone = await post("/api/villages/setup/venue-image/generate", {
-    ...foundingImageInput,
-    area: "interior",
-    venue: foundingVenue,
-    zoneAppearance: "A brass workbench below a frosted skylight.",
-  });
-  assert.equal(specificZone.statusCode, 200, specificZone.body);
-  assert.match(draws().at(-1)?.body?.appearance ?? "", /brass workbench/u);
-  assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
-
-  // One saved style applies to maps, founding areas and later venue areas.
-  await mutateVillageState((state) => {
-    state.sceneryArtStyle = "Pixel art with a restrained sea-green palette";
-  });
-  const styledVenue = await asksFor();
-  assert.equal(styledVenue.answered.statusCode, 200, styledVenue.answered.body);
-  assert.match(styledVenue.call.body.appearance, /Pixel art with a restrained sea-green palette/);
-  assert.doesNotMatch(styledVenue.call.body.appearance, /Painted background art/);
-  assert.ok(styledVenue.call.body.appearance.length <= 4000);
-  for (const area of ["exterior", "interior"]) {
-    const styledFounding = await post("/api/villages/setup/venue-image/generate", {
-      ...foundingImageInput,
-      sceneryArtStyle: "Pixel art with a restrained sea-green palette",
-      area,
-      venue: foundingVenue,
+      ],
     });
-    assert.equal(styledFounding.statusCode, 200, styledFounding.body);
+    assert.equal(added.statusCode, 400, "finished buildings must use Projects");
+    await mutateVillageState((state) => {
+      state.venues.push(
+        ...placesOf([
+          venueFixture({
+            id: "mill",
+            name: "the mill pond",
+            form: "where the grain is ground",
+            description: "A stone mill beside shallow water.",
+          }),
+          venueFixture({
+            id: "ridge",
+            name: "the ridge path",
+            form: "A path along the ridge",
+            description: "A narrow path over the ridge.",
+          }),
+        ]),
+      );
+    });
+    const addedSnapshot = (await import(moduleUrl(`${services}/features/world/snapshot.ts`))).buildVillageSnapshot;
+    assert.deepEqual(
+      (await addedSnapshot()).settings.venues
+        .filter((venue: any) => ["mill", "ridge"].includes(venue.id))
+        .map((venue: any) => venue.presentation.image),
+      [null, null],
+      "a place starts with no picture, which is what makes drawing one a decision",
+    );
+    assert.equal(draws().length, 0, "and saving places draws nothing");
+
+    // ── A picture the player already has ──────────────────────────────────────
+    // The first upload is the interesting one: the gallery folder cannot be
+    // listed. A folder is an ornament, so the picture has to land anyway — at the
+    // root of the gallery, which draws exactly as well.
+    const kept = await put("/api/villages/locations/venue/image", {
+      zoneId: "exterior",
+      venueId: "mill",
+      image: TINY_PNG,
+    });
+    assert.equal(kept.statusCode, 200, kept.body);
+    assert.deepEqual(
+      kept
+        .json()
+        .settings.venues.filter((venue: any) => ["mill", "ridge"].includes(venue.id))
+        .map((venue: any) => venue.zones.find((zone: any) => zone.id === "exterior").pictureReference ?? null),
+      [{ ref: "global-gallery:gallery-2", url: "/api/global-gallery/file/gallery-2.png", id: "gallery-2" }, null],
+      "the picture is kept as a reference and no other place is touched",
+    );
+    assert.equal(draws().length, 0, "choosing a picture the player already has never asks the Engine to draw");
+
+    const firstUpload = galleryCalls(UPLOAD_PATH)[1]!;
+    assert.equal(firstUpload.method, "POST");
+    assert.equal(firstUpload.search, "", "a folder that cannot be found costs tidiness and nothing else");
+    assert.equal(firstUpload.form?.provider, "villages", "the gallery entry says who put the picture there");
+    assert.equal(firstUpload.form?.file?.name, "the-mill-pond.png", "the file carries the extension its type needs");
+    assert.equal(firstUpload.form?.file?.type, "image/png");
+    assert.equal(firstUpload.form?.width, undefined, "a picture nobody drew has no claimed size");
+
+    // The next one finds the folder missing and makes it, and every upload after
+    // that reuses it — which is what stops twenty places making twenty folders.
+    folderLookupFails = false;
+    const second = await put("/api/villages/locations/venue/image", {
+      zoneId: "exterior",
+      venueId: "ridge",
+      image: TINY_PNG,
+    });
+    assert.equal(second.statusCode, 200, second.body);
+    assert.equal(
+      second
+        .json()
+        .settings.venues.find((venue: any) => venue.id === "ridge")
+        .zones.find((zone: any) => zone.id === "exterior").pictureReference.ref,
+      "global-gallery:gallery-3",
+    );
+    assert.deepEqual(
+      galleryCalls(FOLDERS_PATH)
+        .slice(1, 4)
+        .map((call) => call.method),
+      ["GET", "GET", "POST"],
+      "the folder is looked for, looked for again once the lookup heals, and then made",
+    );
+    assert.equal(galleryCalls(FOLDERS_PATH)[3]!.body?.name, "Villages");
+    assert.equal(
+      galleryCalls(UPLOAD_PATH)[2]!.search,
+      "?folderId=folder-villages",
+      "and then everything is filed in it",
+    );
+
+    await mutateVillageState((state) => {
+      for (const venue of state.venues)
+        for (const zone of venue.zones ?? []) {
+          zone.dayNight = false;
+          zone.dayNightManual = false;
+          if (venue.id === "mill" && zone.picture) zone.picture.reference = undefined;
+        }
+    });
+    // ── Drawing one ───────────────────────────────────────────────────────────
+    // Which connection is used is a three-step chain the connections regression
+    // proves for talk. Pictures read a DIFFERENT agent field, and that is the bug
+    // worth catching here: an agent that talks with a hosted model and draws with
+    // a local endpoint is the ordinary arrangement.
+    const asksFor = async (payload: Record<string, unknown> = {}) => {
+      const before = engineCalls.length;
+      const answered = await post("/api/villages/locations/venue/image", {
+        zoneId: "exterior",
+        venueId: "mill",
+        ...payload,
+      });
+      return { answered, call: engineCalls.slice(before).find((entry) => entry.path === AVATAR_PATH)! };
+    };
+
+    agentConfig = { connectionId: "agent-talk", settings: { imageConnectionId: "connection-agent-brush" } };
+    await put("/api/villages/connections", { imageConnectionId: "connection-village-brush" });
+    const villageChoice = await asksFor();
+    assert.equal(villageChoice.answered.statusCode, 200, villageChoice.answered.body);
+    assert.equal(
+      villageChoice.call.body.connectionId,
+      "connection-village-brush",
+      "the village's own image picker wins over the agent's",
+    );
+
+    await put("/api/villages/connections", { imageConnectionId: "" });
+    const onTheAgent = await asksFor();
+    assert.equal(
+      onTheAgent.call.body.connectionId,
+      "connection-agent-brush",
+      "with the picker cleared, pictures fall back to the agent's IMAGE connection rather than the one it talks with",
+    );
+
+    agentConfig = { connectionId: "agent-talk" };
+    connectionRows = [{ id: "connection-listed", provider: "image_generation", isDefault: "true" }];
+    const onTheEngine = await asksFor();
+    assert.equal(
+      onTheEngine.call.body.connectionId,
+      "connection-listed",
+      "with the agent unconfigured too, the Engine's own list decides — and it is asked",
+    );
+    assert.ok(
+      engineCalls.some((call) => call.path === "/api/connections" && call.method === "GET"),
+      "the Engine's connection list is read over its own API rather than reached into",
+    );
+
+    agentConfig = null;
+    connectionRows = [];
+    assert.equal(
+      (await post("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill" })).statusCode,
+      400,
+      "with nothing able to draw, the player is told so instead of being handed a failure with no reason",
+    );
+    assert.match(
+      (await post("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill" })).json().error,
+      /image connection/i,
+      "and the message says which kind of connection is missing",
+    );
+
+    connectionRows = [{ id: "connection-listed", provider: "image_generation", isDefault: "true" }];
+    const named = await asksFor({ connectionId: "connection-named" });
+    assert.equal(
+      named.call.body.connectionId,
+      "connection-named",
+      "an explicit choice is passed through untouched — whether it draws images is the Engine's question",
+    );
+
+    // The request itself, which is the whole feature. The Engine draws a wide
+    // empty scene through a route named for faces, and it only does that because
+    // the override REPLACES the portrait prompt it would otherwise compile.
+    const request = named.call.body;
+    assert.equal(named.call.method, "POST");
+    assert.equal(request.purpose, "avatar");
+    assert.equal(request.name, "Entrance");
+    assert.equal(request.width, 1216);
+    assert.equal(request.height, 832);
+    assert.deepEqual(
+      { width: request.width, height: request.height },
+      { width: 1216, height: 832 },
+      "a wide landscape, because the picture is a room the conversation is held in",
+    );
+    assert.equal(request.promptOverrides.length, 1, "exactly one override, so the Engine has exactly one key to match");
+    assert.equal(
+      request.promptOverrides[0].id,
+      imagePromptId("Entrance", "avatar"),
+      "the override id is built by the one function that knows the Engine's arithmetic",
+    );
+    assert.equal(
+      request.promptOverrides[0].prompt,
+      request.appearance,
+      "the override carries the scene the body also carries, so what is drawn is what was asked for",
+    );
+    assert.match(
+      request.appearance,
+      /A stone mill beside shallow water/,
+      "manual generation uses the saved physical observation",
+    );
+    assert.match(request.appearance, /Remembered physical form: where the grain is ground/);
+    assert.doesNotMatch(
+      request.appearance,
+      new RegExp(settingText),
+      "manual generation does not expand live Village context",
+    );
+    assert.match(request.appearance, /stable daytime lighting/, "artwork lighting is independent of generation time");
+    assert.match(request.appearance, /no people/i, "and that nobody is to be painted into it");
+    assert.match(request.promptOverrides[0].negativePrompt, /people/);
+    assert.match(request.promptOverrides[0].negativePrompt, /lettering/);
+
+    // What came back went to the gallery, was described with the size it was
+    // drawn at, and reached the village as a reference — the same road as a
+    // picture the player chose, which is the point of routing both through it.
+    const drawnUpload = galleryCalls(UPLOAD_PATH).at(-1)!;
+    assert.equal(drawnUpload.form?.width, "1216");
+    assert.equal(drawnUpload.form?.height, "832");
+    assert.equal(drawnUpload.form?.prompt, request.appearance, "the gallery entry keeps what was asked for");
+    assert.deepEqual(galleryCalls(FOLDERS_PATH).length, 4, "the folder is not looked for again once it is known");
+
+    const stored = kept.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
+    const drawn = await get("/api/villages");
+    assert.equal(drawn.statusCode, 200);
+    const drawnImage = drawn.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image;
+    assert.deepEqual(
+      Object.keys(drawnImage).sort(),
+      ["id", "ref", "url"],
+      "and a village holds three short strings per place, however many times a picture is redrawn",
+    );
+    assert.equal(
+      JSON.stringify(drawn.json()).includes("base64"),
+      false,
+      "the picture's bytes never reach the snapshot",
+    );
+    assert.ok(JSON.stringify(drawnImage).length < 400, "and a place's picture costs a village about a caption");
+    assert.notDeepEqual(drawnImage, stored, "redrawing replaces the reference rather than accumulating one");
+
+    const beforeAlias = { records: structuredClone([...documentsByKey.entries()]), calls: engineCalls.length };
+    for (const body of [
+      { venueId: "mill", privateOwnerId: "owner" },
+      { venueId: "mill", privateSpaceId: "exterior" },
+      { venueId: "mill", spaceClass: "community" },
+      { venueId: "mill", zoneId: 7 },
+    ]) {
+      for (const method of ["POST", "PUT", "DELETE"]) {
+        const response = await app.inject({ method, url: "/api/villages/locations/venue/image", payload: body });
+        assert.equal(response.statusCode, 400, response.body);
+      }
+    }
+    assert.deepEqual(
+      [...documentsByKey.entries()],
+      beforeAlias.records,
+      "malformed and alias-only artwork requests cannot write",
+    );
+    assert.equal(
+      engineCalls.length,
+      beforeAlias.calls,
+      "malformed and alias-only artwork requests cannot dispatch Engine work",
+    );
+
+    // ── Taking one away ───────────────────────────────────────────────────────
+    const beforeRemoval = galleryCalls(UPLOAD_PATH).length;
+    const removed = await del("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill" });
+    assert.equal(removed.statusCode, 200);
+    assert.equal(
+      removed.json().settings.venues.find((venue: any) => venue.id === "mill").presentation.image,
+      null,
+      "the place goes back to having no picture",
+    );
+    assert.ok(
+      removed
+        .json()
+        .settings.venues.find((venue: any) => venue.id === "ridge")
+        .zones.find((zone: any) => zone.id === "exterior").pictureReference,
+      "and the other place keeps its own",
+    );
+    assert.equal(
+      galleryCalls(UPLOAD_PATH).length,
+      beforeRemoval,
+      "the gallery entry is left where it is: the gallery is the player's",
+    );
+
+    // ── A place that is gone ──────────────────────────────────────────────────
+    // A picture arrives twenty seconds after it was asked for, so the panel can
+    // have deleted the place in between. Doing nothing quietly would leave the
+    // player holding an image they never asked to keep, with no hint where it came
+    // from, so a missing place is refused.
+    assert.equal(
+      (await put("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "gone", image: TINY_PNG }))
+        .statusCode,
+      404,
+      "a picture for a place that is gone is refused rather than dropped",
+    );
+    assert.equal(
+      (await post("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "gone" })).statusCode,
+      404,
+    );
+    assert.equal(
+      (await del("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "gone" })).statusCode,
+      404,
+    );
+    assert.equal(
+      (await post("/api/villages/locations/venue/image", {})).statusCode,
+      400,
+      "and a place has to be named",
+    );
+    assert.equal(
+      (await put("/api/villages/locations/venue/image", { zoneId: "exterior", venueId: "mill", image: "nonsense" }))
+        .statusCode,
+      400,
+      "and what arrives has to be a picture",
+    );
+
+    // ── Only player actions and first private entry draw ──────────────────────
+    // Count the files that can reach generation so founding, remapping, and the
+    // simulation clock cannot create additional charges.
+    const packageRoot = join(repoRoot, "packages/villages/src");
+    const sources = await collectSources(packageRoot);
+    const canDraw = sources
+      .filter(
+        (file) =>
+          file.source.includes("AVATAR_GENERATION_PATH") ||
+          file.source.includes(AVATAR_PATH) ||
+          file.source.includes("/api/sprites/generate-sheet") ||
+          file.source.includes("generateVillageLocationImage"),
+      )
+      .map((file) => relative(packageRoot, file.path).split(sep).join("/"))
+      .sort();
+    assert.deepEqual(
+      canDraw,
+      [
+        "server/features/media/routes.ts",
+        "server/adapters/engine/engine-loopback.ts",
+        "server/features/media/image-generation-service.ts",
+        "server/features/media/location-image.ts",
+        "server/features/media/location-image-service.ts",
+      ].sort(),
+      "only explicit scenery draws and their metered shared transport reach image providers",
+    );
+    for (const silent of [
+      "features/world/village.ts",
+      "features/world/village-service.ts",
+      "features/world/village-store.ts",
+      "features/founding/village-bootstrap.ts",
+      "features/founding/village-bootstrap-service.ts",
+      "domain/rules/village-clock.ts",
+      "jobs/village-refresh-scheduler.ts",
+      "adapters/engine/native-schedules.ts",
+      "features/scenes/writing-service.ts",
+      "features/residents/wishes/service.ts",
+      "adapters/engine/catalog.ts",
+    ]) {
+      const source = await readFile(join(repoRoot, services, silent), "utf8");
+      assert.equal(
+        source.includes(AVATAR_PATH),
+        false,
+        `${silent} must not be able to draw outside the single private-entry exception`,
+      );
+    }
+
+    // Manual image controls still draw only on a press. The separate private-entry
+    // path has a durable one-attempt marker and is not a UI redraw effect.
+    //
+    // The shared image control identifies each Zone directly.
+    const client = await clientImplementation();
+    for (const handler of ["drawPlaceImage", "keepPlaceImage", "dropPlaceImage"]) {
+      assert.equal(
+        client.split(`${handler}(`).length - 1,
+        1,
+        `${handler} is invoked only by its manual control; forwarding it between components does not invoke it`,
+      );
+    }
+    assert.equal(
+      client.split('"/locations/venue/image"').length - 1,
+      3,
+      "the tab reaches the three picture routes and nothing else",
+    );
+    assert.ok(
+      /onClick=\{\(\) => void drawPlaceImage\(place\.id, zone\.id\)\}/.test(client),
+      "and wired to a click on the screen that stands in a place",
+    );
+
+    const foundingVenue = {
+      id: "founding-home",
+      name: "Cliff House",
+      form: "A stone cottage",
+      description: "Blue slate roof above the harbor.",
+      spaceDescription: "A copper stove beside a low table.",
+      venueClass: "residence",
+      residentCharacterId: "",
+    };
+    const foundingImageInput = {
+      villageName: "Ashcroft",
+      setting: "A cliffside village above the sea.",
+      selectedLorebookIds: [],
+    };
+    const beforeInvalidImage = draws().length;
+    assert.equal(
+      (
+        await post("/api/villages/setup/venue-image/generate", {
+          ...foundingImageInput,
+          area: "exterior",
+          venue: { ...foundingVenue, description: "" },
+        })
+      ).statusCode,
+      400,
+    );
+    assert.equal(draws().length, beforeInvalidImage, "a blank exterior description cannot spend image tokens");
+    assert.equal(
+      (
+        await post("/api/villages/setup/venue-image/generate", {
+          ...foundingImageInput,
+          area: "interior",
+          venue: { ...foundingVenue, spaceDescription: "" },
+        })
+      ).statusCode,
+      400,
+    );
+    assert.equal(draws().length, beforeInvalidImage, "a blank interior description cannot spend image tokens");
+    assert.equal(
+      (
+        await post("/api/villages/setup/venue-image/generate", {
+          ...foundingImageInput,
+          area: "exterior",
+          venue: foundingVenue,
+        })
+      ).statusCode,
+      200,
+    );
+    assert.match(draws().at(-1)?.body?.appearance ?? "", /Blue slate roof above the harbor/u);
+    assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
+    assert.equal(
+      (
+        await post("/api/villages/setup/venue-image/generate", {
+          ...foundingImageInput,
+          area: "interior",
+          venue: foundingVenue,
+        })
+      ).statusCode,
+      200,
+    );
+    assert.match(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
+    assert.match(
+      draws().at(-1)?.body?.appearance ?? "",
+      /Public exterior context for architectural continuity only: Blue slate roof/u,
+    );
+    assert.match(draws().at(-1)?.body?.appearance ?? "", /do not depict this exterior or infer hidden contents/u);
+    assert.match(draws().at(-1)?.body?.appearance ?? "", /Do not invent or show adjoining rooms/u);
+
+    const specificZone = await post("/api/villages/setup/venue-image/generate", {
+      ...foundingImageInput,
+      area: "interior",
+      venue: foundingVenue,
+      zoneAppearance: "A brass workbench below a frosted skylight.",
+    });
+    assert.equal(specificZone.statusCode, 200, specificZone.body);
+    assert.match(draws().at(-1)?.body?.appearance ?? "", /brass workbench/u);
+    assert.doesNotMatch(draws().at(-1)?.body?.appearance ?? "", /copper stove/u);
+
+    // One saved style applies to maps, founding areas and later venue areas.
+    await mutateVillageState((state) => {
+      state.sceneryArtStyle = "Pixel art with a restrained sea-green palette";
+    });
+    const styledVenue = await asksFor();
+    assert.equal(styledVenue.answered.statusCode, 200, styledVenue.answered.body);
+    assert.match(styledVenue.call.body.appearance, /Pixel art with a restrained sea-green palette/);
+    assert.doesNotMatch(styledVenue.call.body.appearance, /Painted background art/);
+    assert.ok(styledVenue.call.body.appearance.length <= 4000);
+    for (const area of ["exterior", "interior"]) {
+      const styledFounding = await post("/api/villages/setup/venue-image/generate", {
+        ...foundingImageInput,
+        sceneryArtStyle: "Pixel art with a restrained sea-green palette",
+        area,
+        venue: foundingVenue,
+      });
+      assert.equal(styledFounding.statusCode, 200, styledFounding.body);
+      assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
+      assert.match(draws().at(-1).body.appearance, /stable daytime lighting/);
+      assert.match(draws().at(-1).body.appearance, /Ignore the current clock/);
+      assert.doesNotMatch(draws().at(-1).body.appearance, /Painted background art|watercolor illustration/i);
+    }
+    await generateVillageTownMap({
+      setting: "Misty cliffs",
+      sceneryArtStyle: "Pixel art with a restrained sea-green palette",
+      useVisualLore: false,
+    });
     assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
-    assert.match(draws().at(-1).body.appearance, /stable daytime lighting/);
-    assert.match(draws().at(-1).body.appearance, /Ignore the current clock/);
-    assert.doesNotMatch(draws().at(-1).body.appearance, /Painted background art|watercolor illustration/i);
-  }
-  await generateVillageTownMap({
-    setting: "Misty cliffs",
-    sceneryArtStyle: "Pixel art with a restrained sea-green palette",
-    useVisualLore: false,
+    assert.ok(draws().at(-1).body.appearance.length <= 4000);
+
+    // The package must not have grown a private Engine import to do any of this.
+    // The image connection, the gallery and the drawing are all the Engine's own
+    // API; reaching past it would be a second copy of each.
+    const boundary = JSON.parse(await readFile(join(repoRoot, "packages/villages/engine-boundary.json"), "utf8"));
+    assert.deepEqual(boundary.privateEngineImports, [], "the pictures add no private Engine import");
+    const transports = sources.filter((file) => file.path.endsWith("engine-transport.ts"));
+    assert.equal(transports.length, 1, "there is one authoritative Engine transport");
+    for (const bound of transports) {
+      assert.ok(bound.source.includes("127.0.0.1"), "and the Engine is reached over its own loopback address");
+    }
+
+    process.stdout.write(
+      "Villages location image regression: prompts, gallery, manual draw, one private-entry exception ok\n",
+    );
   });
-  assert.match(draws().at(-1).body.appearance, /Pixel art with a restrained sea-green palette/);
-  assert.ok(draws().at(-1).body.appearance.length <= 4000);
-
-  // The package must not have grown a private Engine import to do any of this.
-  // The image connection, the gallery and the drawing are all the Engine's own
-  // API; reaching past it would be a second copy of each.
-  const boundary = JSON.parse(await readFile(join(repoRoot, "packages/villages/engine-boundary.json"), "utf8"));
-  assert.deepEqual(boundary.privateEngineImports, [], "the pictures add no private Engine import");
-  const transports = sources.filter((file) => file.path.endsWith("engine-transport.ts"));
-  assert.equal(transports.length, 1, "there is one authoritative Engine transport");
-  for (const bound of transports) {
-    assert.ok(bound.source.includes("127.0.0.1"), "and the Engine is reached over its own loopback address");
-  }
-
-  process.stdout.write(
-    "Villages location image regression: prompts, gallery, manual draw, one private-entry exception ok\n",
-  );
 }
 
 /** Real activation graphs and document CAS, with synthetic Engine HTTP responses. */
@@ -1522,42 +1580,55 @@ async function mediaConnectionOwnership() {
     };
     const a = fixture("A", true),
       b = fixture("B", false);
-    const clearA = installDefaultActivation(a.scope, () => {}),
-      oldFetch = globalThis.fetch;
-    let clearB = () => {};
+    const oldFetch = globalThis.fetch;
+
     const calls: Array<{ owner: string; path: string; connectionId?: string }> = [];
-    globalThis.fetch = async (input, init: RequestInit = {}) => {
-      const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
-      assert(owner, "media transport has an originating activation");
-      const path = new URL(String(input)).pathname;
-      const body = typeof init.body === "string" ? (JSON.parse(init.body) as { connectionId?: string }) : {};
-      calls.push({ owner: owner.label, path, connectionId: body.connectionId });
-      if (path === "/api/connections") await owner.pause("connections");
-      if (path === AVATAR_PATH) await owner.pause("provider");
-      if (path === "/api/lorebooks") await owner.pause("lore");
-      if (path === "/api/image-metadata/inspect") await owner.pause("inspect");
-      if (path === UPLOAD_PATH) await owner.pause("upload");
-      const payload =
-        path === "/api/connections"
-          ? [{ id: `${owner.label}-brush`, provider: "image_generation", isDefault: true }]
-          : path === AVATAR_PATH
-            ? { image: TINY_PNG }
-            : path === "/api/lorebooks"
-              ? [{ id: "visual", name: "Visual", enabled: true }]
-              : path.endsWith("/entries")
-                ? [{ id: "paint", name: "Color", content: `${owner.label} blue doors`, enabled: true, constant: true }]
-                : path.endsWith("/folders")
-                  ? []
-                  : path === "/api/image-metadata/inspect"
-                    ? { width: 1, height: 1 }
-                    : path === UPLOAD_PATH
-                      ? { id: `${owner.label}-image`, url: `/api/global-gallery/file/${owner.label}.png` }
-                      : {};
-      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
-    };
+    a.scope.run(
+      () =>
+        (globalThis.fetch = async (input, init: RequestInit = {}) => {
+          const owner = activationScope() === a.scope ? a : activationScope() === b.scope ? b : undefined;
+          assert(owner, "media transport has an originating activation");
+          const path = new URL(String(input)).pathname;
+          const body = typeof init.body === "string" ? (JSON.parse(init.body) as { connectionId?: string }) : {};
+          calls.push({ owner: owner.label, path, connectionId: body.connectionId });
+          if (path === "/api/connections") await owner.pause("connections");
+          if (path === AVATAR_PATH) await owner.pause("provider");
+          if (path === "/api/lorebooks") await owner.pause("lore");
+          if (path === "/api/image-metadata/inspect") await owner.pause("inspect");
+          if (path === UPLOAD_PATH) await owner.pause("upload");
+          const payload =
+            path === "/api/connections"
+              ? [{ id: `${owner.label}-brush`, provider: "image_generation", isDefault: true }]
+              : path === AVATAR_PATH
+                ? { image: TINY_PNG }
+                : path === "/api/lorebooks"
+                  ? [{ id: "visual", name: "Visual", enabled: true }]
+                  : path.endsWith("/entries")
+                    ? [
+                        {
+                          id: "paint",
+                          name: "Color",
+                          content: `${owner.label} blue doors`,
+                          enabled: true,
+                          constant: true,
+                        },
+                      ]
+                    : path.endsWith("/folders")
+                      ? []
+                      : path === "/api/image-metadata/inspect"
+                        ? { width: 1, height: 1 }
+                        : path === UPLOAD_PATH
+                          ? { id: `${owner.label}-image`, url: `/api/global-gallery/file/${owner.label}.png` }
+                          : {};
+          return new Response(JSON.stringify(payload), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }),
+    );
     const imageInput = { name: "Equal image", prompt: "Empty room", width: 1, height: 1, maxBase64Length: 1000 };
     try {
-      const pending =
+      const pending = a.scope.run(() =>
         operation === "image"
           ? generateVillageImage(imageInput)
           : operation === "resolve"
@@ -1565,38 +1636,42 @@ async function mediaConnectionOwnership() {
             : operation === "map"
               ? generateVillageTownMap({ setting: "Quiet harbor", selectedLorebookIds: ["visual"] })
               : operation === "store"
-                ? storeVillageVenueImage("equal-venue", TINY_PNG)
+                ? storeVillageVenueImage("equal-venue", "exterior", TINY_PNG)
                 : operation === "private"
                   ? generateFirstZoneImage("equal-venue", "own-room")
-                  : generateVillageLocationImage(
-                      "equal-venue",
-                      undefined,
-                      undefined,
-                      "",
-                      variant === "only-empty",
-                      "exterior",
-                    );
-      const outcome = pending.then(
-        (value) => ({ value, error: undefined }),
-        (error) => ({ value: undefined, error: error as unknown }),
+                  : variant === "only-empty"
+                    ? generateFirstZoneImage("equal-venue", "exterior")
+                    : generateVillageLocationImage("equal-venue", "exterior"),
       );
-      await Promise.race([
-        a.entered.promise,
-        outcome.then((result) => assert.fail(`No ${operation}/${stage} pause: ${String(result.error)}`)),
-      ]);
-      clearB = installDefaultActivation(b.scope, () => {});
-      await generateVillageImage(imageInput);
-      assert.equal(b.requests().length, 1, "B independently generates and records its own request while A waits");
-      assert.equal(b.requests()[0]!.connectionId, "B-brush");
+      const outcome = a.scope.run(() =>
+        pending.then(
+          (value) => ({ value, error: undefined }),
+          (error) => ({ value: undefined, error: error as unknown }),
+        ),
+      );
+      await a.scope.run(() =>
+        Promise.race([
+          a.entered.promise,
+          outcome.then((result) => assert.fail(`No ${operation}/${stage} pause: ${String(result.error)}`)),
+        ]),
+      );
+
+      await b.scope.run(() => generateVillageImage(imageInput));
+      b.scope.run(() =>
+        assert.equal(b.requests().length, 1, "B independently generates and records its own request while A waits"),
+      );
+      b.scope.run(() => assert.equal(b.requests()[0]!.connectionId, "B-brush"));
       if (operation === "private" && stage === "provider") {
-        assert(
-          a.world().venues[0]!.zones!.find((zone) => zone.id === "own-room")!.initialImageAttemptedAt,
-          "the automatic claim is saved before dispatch waits for its response",
+        b.scope.run(() =>
+          assert(
+            a.world().venues[0]!.zones!.find((zone) => zone.id === "own-room")!.initialImageAttemptedAt,
+            "the automatic claim is saved before dispatch waits for its response",
+          ),
         );
       }
       if (["cas", "context", "only-empty", "claim-cas"].includes(variant)) {
         const row = a.records.get("villages-village")!,
-          state = structuredClone(a.world());
+          state = b.scope.run(() => structuredClone(a.world()));
         if (variant === "cas") state.spriteCardFlipEnabled = false;
         if (variant === "context") state.sceneryArtStyle = "Pixel art";
         if (variant === "only-empty")
@@ -1614,17 +1689,20 @@ async function mediaConnectionOwnership() {
       const result = await outcome;
       if (variant === "failure")
         assert.equal(result.error, controlledError, "native storage failures preserve exact identity");
-      else if (variant === "provider-failure") assert.match(String(result.error), new RegExp(controlledError.message));
+      else if (variant === "provider-failure")
+        b.scope.run(() => assert.match(String(result.error), new RegExp(controlledError.message)));
       else if (variant === "disposed")
         assert(result.error instanceof Error, "disposed work refuses further connections");
-      else if (variant === "context" || variant === "only-empty")
-        assert.match(String(result.error), /scenery changed/, `${operation}/${stage}/${variant}`);
+      else if (variant === "context")
+        b.scope.run(() => assert.match(String(result.error), /scenery changed/, `${operation}/${stage}/${variant}`));
       else assert.equal(result.error, undefined, `${operation}/${stage} succeeds`);
-      assert.equal(b.requests().length, 1, "A neither borrows nor duplicates B's receipt");
-      assert.equal(b.world().venues[0]!.presentation.image, null);
-      assert(
-        b.world().venues[0]!.zones!.every((zone) => !zone.image && !zone.initialImageAttemptedAt),
-        "B's Zones and private-entry allowance stay unchanged",
+      b.scope.run(() => assert.equal(b.requests().length, 1, "A neither borrows nor duplicates B's receipt"));
+      b.scope.run(() => assert.equal(b.world().venues[0]!.presentation.image, null));
+      b.scope.run(() =>
+        assert(
+          b.world().venues[0]!.zones!.every((zone) => !zone.image && !zone.initialImageAttemptedAt),
+          "B's Zones and private-entry allowance stay unchanged",
+        ),
       );
       const aCalls = calls.filter((call) => call.owner === "A"),
         draws = aCalls.filter((call) => call.path === AVATAR_PATH);
@@ -1634,13 +1712,15 @@ async function mediaConnectionOwnership() {
         variant !== "claim-cas" &&
         !(operation === "location" && stage === "write" && ["context", "only-empty"].includes(variant));
       assert.equal(draws.length, paid ? 1 : 0, "one Engine image dispatch, with no replay or failed-claim spending");
-      assert.equal(a.requests().length, paid ? 1 : 0, "the native image ledger belongs to A");
+      b.scope.run(() => assert.equal(a.requests().length, paid ? 1 : 0, "the native image ledger belongs to A"));
       if (paid) {
-        assert.equal(a.requests()[0]!.connectionId, "A-brush");
-        assert.equal(
-          a.requests()[0]!.status,
-          variant === "provider-failure" ? "unknown" : "complete",
-          "a transport failure retains uncertain spending instead of asserting no charge",
+        b.scope.run(() => assert.equal(a.requests()[0]!.connectionId, "A-brush"));
+        b.scope.run(() =>
+          assert.equal(
+            a.requests()[0]!.status,
+            variant === "provider-failure" ? "unknown" : "complete",
+            "a transport failure retains uncertain spending instead of asserting no charge",
+          ),
         );
         assert.equal(draws[0]!.connectionId, "A-brush");
       }
@@ -1662,33 +1742,43 @@ async function mediaConnectionOwnership() {
           "inspection returns A's generated image with actual dimensions",
         );
       if (operation === "location" && variant === "ordinary")
-        assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image");
-      if (operation === "store" && !["failure", "disposed"].includes(variant)) {
-        assert.equal(
-          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.picture?.reference?.id,
-          "A-image",
+        b.scope.run(() =>
+          assert.equal(a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id, "A-image"),
         );
-        assert.equal(a.world().venues[0]!.presentation.image, null);
+      if (operation === "store" && !["failure", "disposed"].includes(variant)) {
+        b.scope.run(() =>
+          assert.equal(
+            a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.picture?.reference?.id,
+            "A-image",
+          ),
+        );
+        b.scope.run(() => assert.equal(a.world().venues[0]!.presentation.image, null));
       }
       if (variant === "cas")
-        assert.equal(a.world().spriteCardFlipEnabled, false, "losing save preserves authoritative concurrent fields");
+        b.scope.run(() =>
+          assert.equal(a.world().spriteCardFlipEnabled, false, "losing save preserves authoritative concurrent fields"),
+        );
       if (variant === "context")
-        assert.equal(
-          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image,
-          null,
-          "stale generated context is refused after upload",
+        b.scope.run(() =>
+          assert.equal(
+            a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image,
+            null,
+            "stale generated context is refused after upload",
+          ),
         );
       if (variant === "only-empty")
-        assert.equal(
-          a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id,
-          "winning",
-          "a concurrent saved image wins only-if-empty",
+        b.scope.run(() =>
+          assert.equal(
+            a.world().venues[0]!.zones!.find((zone) => zone.kind === "exterior")!.image?.id,
+            "winning",
+            "a concurrent saved image wins only-if-empty",
+          ),
         );
       if (operation === "private") {
-        const zone = a.world().venues[0]!.zones!.find((entry) => entry.id === "own-room")!;
+        const zone = b.scope.run(() => a.world().venues[0]!.zones!.find((entry) => entry.id === "own-room")!);
         assert(zone.initialImageAttemptedAt, "private draw claims before provider dispatch");
         if (variant !== "claim-cas") assert.equal(zone.image?.id, "A-image");
-        await a.scope.run(() => generateFirstZoneImage("equal-venue", "own-room"));
+        await b.scope.run(() => a.scope.run(() => generateFirstZoneImage("equal-venue", "own-room")));
         assert.equal(
           calls.filter((call) => call.owner === "A" && call.path === AVATAR_PATH).length,
           draws.length,
@@ -1697,8 +1787,7 @@ async function mediaConnectionOwnership() {
       }
     } finally {
       a.gate.resolve();
-      clearA();
-      clearB();
+
       a.release();
       b.release();
       a.scope.dispose();

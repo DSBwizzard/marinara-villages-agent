@@ -166,4 +166,4 @@ async function main() {
     "Space JSON: explicit mode, classified rejection, private bounded redaction, failure isolation and deliberate retry passed",
   );
 }
-void main();
+await main();

@@ -18,8 +18,7 @@ import { createDocumentMutator } from "../packages/villages/src/server/adapters/
 import { coerceSession } from "../packages/villages/src/server/domain/decoding/scene-codec.js";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context.js";
 import { createVenueOperationContext } from "../packages/villages/src/server/adapters/operations/operation-context-service.js";
@@ -53,8 +52,8 @@ function fixture(name: string, rejectRetired = true) {
     gate = deferred();
   const note = (call: string) => {
     calls.push(call);
-    owners.push(scopedActivation());
-    if (rejectRetired && scopedActivation()?.active === false) throw Error("Original Scene storage unavailable.");
+    owners.push(activationScope());
+    if (rejectRetired && activationScope()?.active === false) throw Error("Original Scene storage unavailable.");
   };
   const put = (id: string, data: unknown, revision = 1) =>
     records.set(id, {
@@ -226,82 +225,92 @@ async function main() {
   second.put(SESSION_PREFIX + "same", scene("same", "B Venue"));
   const releaseOpsA = a.run(() => configureVenueOperationContext(createVenueOperationContext(() => logger))),
     releaseOpsB = b.run(() => configureVenueOperationContext(createVenueOperationContext(() => logger)));
-  const releaseA = a.run(() => configureSceneRepository(first.repository)),
-    clearA = installDefaultActivation(a, () => {});
+  const releaseA = a.run(() => configureSceneRepository(first.repository));
   first.pause();
-  const work = changeSession("same", (s) => (s.placeName = "A saved"));
+  const work = a.run(() => changeSession("same", (s) => (s.placeName = "A saved")));
   await first.entered.promise;
-  const releaseB = b.run(() => configureSceneRepository(second.repository)),
-    clearB = installDefaultActivation(b, () => {});
-  assert.equal((await readSession("same")).placeName, "B Venue");
+  const releaseB = a.run(() => b.run(() => configureSceneRepository(second.repository)));
+  await b.run(async () => assert.equal((await readSession("same")).placeName, "B Venue"));
   first.gate.resolve();
   assert.equal((await work).placeName, "A saved");
   assert(first.owners.every((owner) => owner === a));
-  assert.equal(
-    fixtureSceneState(second.records.get(SESSION_PREFIX + "same")!.data, second.records).placeName,
-    "B Venue",
+  b.run(() =>
+    assert.equal(
+      fixtureSceneState(second.records.get(SESSION_PREFIX + "same")!.data, second.records).placeName,
+      "B Venue",
+    ),
   );
-  a.run(releaseA);
-  a.run(releaseOpsA);
+  b.run(() => a.run(releaseA));
+  b.run(() => a.run(releaseOpsA));
   a.dispose();
-  clearA();
-  assert.equal((await readSession("same")).placeName, "B Venue", "older cleanup retains current dispatch");
-  await assert.rejects(
-    a.run(() => readSession("same")),
-    /not configured/,
+
+  await b.run(async () =>
+    assert.equal((await readSession("same")).placeName, "B Venue", "older cleanup retains current dispatch"),
+  );
+  await b.run(() =>
+    assert.rejects(
+      a.run(() => readSession("same")),
+      /not configured/,
+    ),
   );
   const missing = createActivationScope();
-  await assert.rejects(
-    missing.run(() => readActive()),
-    /not configured/,
+  await b.run(() =>
+    assert.rejects(
+      missing.run(() => readActive()),
+      /not configured/,
+    ),
   );
   missing.dispose();
-  second.put(ACTIVE_ID, { sessionId: "same", placeId: "venue" });
-  await clearActivePointer("same");
-  assert.deepEqual(await readActive(), { sessionId: "", placeId: "" });
-  b.run(releaseB);
-  b.run(releaseOpsB);
+  b.run(() => second.put(ACTIVE_ID, { sessionId: "same", placeId: "venue" }));
+  await b.run(() => clearActivePointer("same"));
+  await b.run(async () => assert.deepEqual(await readActive(), { sessionId: "", placeId: "" }));
+  b.run(() => b.run(releaseB));
+  b.run(() => b.run(releaseOpsB));
   b.dispose();
-  clearB();
+
   await assert.rejects(readSession("same"), /not configured/);
   const retired = createActivationScope(),
     old = fixture("retired");
   old.put(SESSION_PREFIX + "same", scene("same", "Old Venue"));
   retired.run(() => configureVenueOperationContext(createVenueOperationContext(() => logger)));
   retired.run(() => configureSceneRepository(old.repository));
-  const clearRetired = installDefaultActivation(retired, () => {});
+
   old.pause();
-  const pending = changeSession("same", (s) => (s.placeName = "Should not save"));
+  const pending = retired.run(() => changeSession("same", (s) => (s.placeName = "Should not save")));
   await old.entered.promise;
   retired.dispose();
   old.gate.resolve();
   await assert.rejects(pending, /Original Scene storage unavailable/);
-  assert.equal(fixtureSceneState(old.records.get(SESSION_PREFIX + "same")!.data, old.records).placeName, "Old Venue");
-  assert(!old.calls.some((c) => c.startsWith("update:")));
-  clearRetired();
+  retired.run(() =>
+    assert.equal(fixtureSceneState(old.records.get(SESSION_PREFIX + "same")!.data, old.records).placeName, "Old Venue"),
+  );
+  retired.run(() => assert(!old.calls.some((c) => c.startsWith("update:"))));
+
   const disposed = createActivationScope(),
     returning = fixture("returning", false);
   returning.put(SESSION_PREFIX + "same", scene("same", "Returning Venue"));
   disposed.run(() => configureVenueOperationContext(createVenueOperationContext(() => logger)));
   disposed.run(() => configureSceneRepository(returning.repository));
-  const clearDisposed = installDefaultActivation(disposed, () => {});
+
   returning.pause();
   let callbacks = 0;
-  const resumed = changeSession("same", () => {
-    callbacks += 1;
-  });
+  const resumed = disposed.run(() =>
+    changeSession("same", () => {
+      callbacks += 1;
+    }),
+  );
   await returning.entered.promise;
   disposed.dispose();
   returning.gate.resolve();
   await assert.rejects(resumed, /Scene operation context is not configured/);
   assert.equal(callbacks, 0, "the real operation fence rejects a returned read before the mutation callback");
-  assert(!returning.calls.some((call) => call.startsWith("update:") || call.startsWith("create:")));
-  clearDisposed();
+  disposed.run(() => assert(!returning.calls.some((call) => call.startsWith("update:") || call.startsWith("create:"))));
+
   console.log(
     "Scene repository inertness, authoritative mutation/CAS ordering, snapshot decoding and activation-bound independent storage passed with real document mutator and provider-free documents.",
   );
 }
-main().catch((error) => {
+await main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });

@@ -303,13 +303,12 @@ async function main() {
     () => resetUsagePeriod(),
     () => saveUsageRate("same-connection", "same-model", { input: 2, output: 8 }),
   ]) {
-    await withSettingsOwners(async (a, b, selectB) => {
+    await withSettingsOwners(async (a, b) => {
       const paused = a.pause("get", "villages-ai-usage");
-      const pending = command();
+      const pending = a.owner.run(command);
       await paused.wait(pending);
-      selectB();
       assert.deepEqual(
-        (await readUsageMeter()).bursts.map((row) => row.label),
+        (await b.owner.run(() => readUsageMeter())).bursts.map((row) => row.label),
         ["B job"],
       );
       const bCalls = b.calls.length;
@@ -324,21 +323,20 @@ async function main() {
       assert(!JSON.stringify(result.bursts).includes("privateScene"));
       a.owner.run(a.release);
       assert.deepEqual(
-        (await readUsageMeter()).bursts.map((row) => row.label),
+        (await b.owner.run(() => readUsageMeter())).bursts.map((row) => row.label),
         ["B job"],
         "old cleanup retains B",
       );
     });
   }
-  await withSettingsOwners(async (a, b, selectB) => {
-    const result = await readUsageMeter(false);
+  await withSettingsOwners(async (a, b) => {
+    const result = await a.owner.run(() => readUsageMeter(false));
     assert.equal(result.since, "A-ledger");
     assert.deepEqual(result.bursts, []);
     assert(!a.calls.some((call) => call.op === "list"));
     const paused = a.pause("list", "background-work");
-    const pending = readUsageMeter();
+    const pending = a.owner.run(() => readUsageMeter());
     await paused.wait(pending);
-    selectB();
     a.owner.run(a.release);
     a.owner.dispose();
     const bCalls = b.calls.length;
@@ -355,15 +353,14 @@ async function main() {
       /usage meter is not configured/,
     );
     assert.deepEqual(
-      (await readUsageMeter()).bursts.map((row) => row.label),
+      (await b.owner.run(() => readUsageMeter())).bursts.map((row) => row.label),
       ["B job"],
     );
   });
-  await withSettingsOwners(async (a, b, selectB) => {
+  await withSettingsOwners(async (a, b) => {
     const paused = a.pause("get", "villages-ai-usage");
-    const pending = readUsageMeter();
+    const pending = a.owner.run(() => readUsageMeter());
     await paused.wait(pending);
-    selectB();
     const failure = new Error("A background storage failure");
     a.failNext("list", "background-work", failure);
     const bCalls = b.calls.length;
@@ -371,9 +368,9 @@ async function main() {
     await assert.rejects(pending, (error) => error === failure);
     assert.equal(b.calls.length, bCalls);
     assert.deepEqual(
-      (await readUsageMeter()).bursts.map((row) => row.label),
+      (await b.owner.run(() => readUsageMeter())).bursts.map((row) => row.label),
       ["B job"],
     );
   });
 }
-void main();
+await main();

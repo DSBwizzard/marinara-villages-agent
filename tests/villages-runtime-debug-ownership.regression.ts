@@ -1,9 +1,6 @@
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 import assert from "node:assert/strict";
-import {
-  createActivationScope,
-  installDefaultActivation,
-} from "../packages/villages/src/server/adapters/engine/activation-scope.js";
+import { createActivationScope } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import {
   readRuntimeDebug,
@@ -144,41 +141,43 @@ async function assembledIsolation() {
     ownerB = createActivationScope();
   const releaseA = ownerA.run(() => configureVillagesRuntime(a.host));
   const releaseB = ownerB.run(() => configureVillagesRuntime(b.host));
-  const clearDefault = installDefaultActivation(ownerB, () => {});
-  a.pauseReads();
-  const pendingA = ownerA.run(() => readRuntimeDebug());
+
+  ownerB.run(() => a.pauseReads());
+  const pendingA = ownerB.run(() => ownerA.run(() => readRuntimeDebug()));
   await a.entered.promise;
   try {
-    await saveRuntimeDebug(true, true);
+    await ownerB.run(() => saveRuntimeDebug(true, true));
     a.gate.resolve();
     assert.equal((await pendingA).showUsageMeter, false);
-    assert.equal((await readRuntimeDebug()).showUsageMeter, true);
-    ownerA.run(() => runtimeDebug("A-route", { secret: "A-secret" }));
-    runtimeDebug("B-route", { secret: "B-secret" });
+    await ownerB.run(async () => assert.equal((await readRuntimeDebug()).showUsageMeter, true));
+    ownerB.run(() => ownerA.run(() => runtimeDebug("A-route", { secret: "A-secret" })));
+    ownerB.run(() => runtimeDebug("B-route", { secret: "B-secret" }));
     assert.match(a.logs.at(-1)!, /A-route/);
     assert.match(b.logs.at(-1)!, /B-route/);
     assert.doesNotMatch(a.logs.at(-1)!, /B-route|A-secret/);
-    ownerA.run(() => resetRuntimeDebug());
-    assert.equal((await readRuntimeDebug()).verbose, true);
-    releaseA();
-    releaseA();
-    assert.equal((await readRuntimeDebug()).verbose, true, "old cleanup retains current settings");
-    assert.throws(() => ownerA.run(() => readRuntimeDebug()), /not configured/);
-    assert.doesNotThrow(() => ownerA.run(() => runtimeDebug("released owner", {})));
+    ownerB.run(() => ownerA.run(() => resetRuntimeDebug()));
+    await ownerB.run(async () => assert.equal((await readRuntimeDebug()).verbose, true));
+    ownerB.run(() => releaseA());
+    ownerB.run(() => releaseA());
+    await ownerB.run(async () =>
+      assert.equal((await readRuntimeDebug()).verbose, true, "old cleanup retains current settings"),
+    );
+    ownerB.run(() => assert.throws(() => ownerA.run(() => readRuntimeDebug()), /not configured/));
+    ownerB.run(() => assert.doesNotThrow(() => ownerA.run(() => runtimeDebug("released owner", {}))));
     const missing = createActivationScope();
-    assert.throws(() => missing.run(() => saveRuntimeDebug(true)), /not configured/);
-    assert.doesNotThrow(() => missing.run(() => runtimeDebug("missing owner", {})));
+    ownerB.run(() => assert.throws(() => missing.run(() => saveRuntimeDebug(true)), /not configured/));
+    ownerB.run(() => assert.doesNotThrow(() => missing.run(() => runtimeDebug("missing owner", {}))));
     missing.dispose();
     const before = b.logs.length;
     ownerA.dispose();
-    assert.doesNotThrow(() => ownerA.run(() => runtimeDebug("disposed owner", {})));
+    ownerB.run(() => assert.doesNotThrow(() => ownerA.run(() => runtimeDebug("disposed owner", {}))));
     assert.equal(b.logs.length, before, "missing diagnostics cannot log into the default activation");
   } finally {
     a.gate.resolve();
     await pendingA;
-    releaseA();
-    releaseB();
-    clearDefault();
+    ownerB.run(() => releaseA());
+    ownerB.run(() => releaseB());
+
     ownerA.dispose();
     ownerB.dispose();
   }
@@ -204,4 +203,4 @@ async function main() {
     "Runtime diagnostics retain independent settings, document loads, logging and cleanup across activations.",
   );
 }
-void main();
+await main();

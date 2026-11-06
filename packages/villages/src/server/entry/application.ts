@@ -2,7 +2,6 @@ import { recoverFoundingPreparation } from "../features/founding/preparation.js"
 import {
   bindActivationService,
   createActivationScope,
-  installDefaultActivation,
   type ActivationScope,
 } from "../adapters/engine/activation-scope.js";
 import { villagesLogger } from "../adapters/engine/runtime-host.js";
@@ -99,7 +98,6 @@ export async function startVillagesApplication(
 
 async function assembleApplication({ api }: ActivationContext, services: ApplicationServices, scope?: ActivationScope) {
   const cleanups: Cleanup[] = [];
-  const defaultRegistration: { clear?: () => void } = {};
   let stopping: Promise<void> | undefined;
   const unwind = () => {
     // Memoize before calling any disposer, including a synchronous one.
@@ -116,7 +114,6 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
         }
       } finally {
         scope?.dispose();
-        defaultRegistration.clear?.();
       }
       if (failures.length) throw new AggregateError(failures, "Villages cleanup failed");
     });
@@ -158,8 +155,5 @@ async function assembleApplication({ api }: ActivationContext, services: Applica
     },
   };
   if (!scope) return application;
-  // Supported direct helpers select the latest successful assembly. Explicit
-  // production owners coexist; replacing this pointer does not stop an owner.
-  defaultRegistration.clear = installDefaultActivation(scope, () => {});
   return bindActivationService(application);
 }

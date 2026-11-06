@@ -4,8 +4,7 @@ import Fastify from "fastify";
 import { readPersona } from "../packages/villages/src/server/adapters/engine/catalog.js";
 import {
   createActivationScope,
-  installDefaultActivation,
-  scopedActivation,
+  activationScope,
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { defaultVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
@@ -41,7 +40,7 @@ function fixture(name: string) {
     retry: ((state: VillageState) => void) | undefined;
   const note = (operation: string) => {
     calls.push(operation);
-    owners.push(scopedActivation());
+    owners.push(activationScope());
   };
   const service = createPersonaCache({
     async readVillageState() {
@@ -54,7 +53,7 @@ function fixture(name: string) {
         pause = false;
         entered.resolve();
         await gate.promise;
-        owners.push(scopedActivation());
+        owners.push(activationScope());
       }
       if (failure) throw new Error("Library unavailable");
       return missing ? null : structuredClone(persona);
@@ -144,27 +143,29 @@ const first = fixture("First"),
   second = fixture("Second");
 const releaseFirst = one.run(() => configurePersonaCache(first.service));
 const releaseSecond = two.run(() => configurePersonaCache(second.service));
-const clearFirst = installDefaultActivation(one, () => {});
+
 first.pause();
-const pending = refreshPlayerPersona();
+const pending = one.run(() => refreshPlayerPersona());
 await first.entered.promise;
-const clearSecond = installDefaultActivation(two, () => {});
-await refreshPlayerPersona();
+
+await two.run(() => refreshPlayerPersona());
 first.gate.resolve();
 assert.equal(await pending, true);
 assert.equal(first.state.playerPersonaIdentity, "Identity First");
 assert.equal(second.state.playerPersonaIdentity, "Identity Second");
 assert(first.owners.every((owner) => owner === one));
 assert(second.owners.every((owner) => owner === two));
-one.run(releaseFirst);
+two.run(() => one.run(releaseFirst));
 one.dispose();
-clearFirst();
-assert.equal(await refreshPlayerPersona(), false, "Older cleanup cannot remove the newer default cache.");
+
+await two.run(async () =>
+  assert.equal(await refreshPlayerPersona(), false, "Older cleanup cannot remove the newer default cache."),
+);
 const missing = createActivationScope();
-await assert.rejects(missing.run(refreshPlayerPersona), /not configured/);
-two.run(releaseSecond);
+await two.run(() => assert.rejects(missing.run(refreshPlayerPersona), /not configured/));
+two.run(() => two.run(releaseSecond));
 two.dispose();
-clearSecond();
+
 await assert.rejects(two.run(refreshPlayerPersona), /not configured/);
 missing.dispose();
 await assert.rejects(refreshPlayerPersona(), /not configured/);

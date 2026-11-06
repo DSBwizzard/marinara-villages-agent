@@ -1,12 +1,10 @@
-import { activationScope, bindActivationService, createActivationBinding } from "./activation-scope.js";
-import { villagesLogger, villagesResources } from "./runtime-host.js";
-import { createNativeSchedules, type NativeSchedules } from "./native-schedules-service.js";
+import { bindActivationService, createActivationBinding } from "./activation-scope.js";
+import { type NativeSchedules } from "./native-schedules-service.js";
 import type { NativeScheduleSnapshot } from "./native-schedules-service.js";
 const binding = createActivationBinding<NativeSchedules>("Villages native-schedules is not configured.");
-const standalone = createNativeSchedules({ villagesResources, villagesLogger });
+
 function selected(): NativeSchedules {
-  if (activationScope()) return binding.get();
-  return binding.maybe() ?? standalone;
+  return binding.get();
 }
 export function configureNativeSchedules(service: NativeSchedules): () => void {
   return binding.configure(bindActivationService(service));
