@@ -216,7 +216,6 @@ export function useRemoveVenue(ports: {
           playerHome: boolean;
           workerCharacterIds: string[];
           pendingResidenceCharacterIds: string[];
-          remapCount: number;
           roomPresent: boolean;
           eventCount: number;
         }>(`/locations/venue/${encodeURIComponent(id)}/dependencies`);
@@ -231,8 +230,8 @@ export function useRemoveVenue(ports: {
         }
         const affected = dependencies.residentCharacterIds.length + dependencies.pendingResidenceCharacterIds.length;
         const note =
-          affected || dependencies.workerCharacterIds.length || dependencies.remapCount || dependencies.eventCount
-            ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, ${dependencies.remapCount} schedule moves, and ${dependencies.eventCount} World changes. Delete it?`
+          affected || dependencies.workerCharacterIds.length || dependencies.eventCount
+            ? `This place is referenced by ${affected} pending moves, ${dependencies.workerCharacterIds.length} workers, and ${dependencies.eventCount} World changes. Delete it?`
             : `Delete ${existing.name}?`;
         if (!(await confirmVillages(note)) || !lifetime.owns(claim)) return;
         const next = await request<VillageSnapshot>(`/locations/venue/${encodeURIComponent(id)}`, {

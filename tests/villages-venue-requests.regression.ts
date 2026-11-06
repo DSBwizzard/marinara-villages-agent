@@ -6,7 +6,7 @@ import {
   defaultVillageState,
 } from "../packages/villages/src/server/domain/decoding/village-codec.js";
 import type { VillageVenue, VillageVillager } from "../packages/villages/src/server/domain/models/world.js";
-import { remapVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
+import { routineVenues } from "../packages/villages/src/server/domain/rules/prompt-preset.js";
 import {
   readResidentPlanningProposal,
   type ResidentPlanningContext,
@@ -149,7 +149,7 @@ assert.deepEqual(
 queueVillageVenueRequest(state, core, "rosa", "background", "opportunity-1", at);
 assert.equal(state.pendingDecisions.length, 1);
 assert.equal(state.venues.length, 0, "a pending request must not create a map place");
-assert.equal(remapVenues(state.venues).length, 0, "a pending request must not enter location prompts");
+assert.equal(routineVenues(state.venues).length, 0, "a pending request must not enter location prompts");
 queueVillageVenueRequest(state, core, "rosa", "background", "opportunity-1", at);
 queueVillageVenueRequest(state, core, "rosa", "chat", "chat-1", at);
 assert.equal(state.pendingDecisions.length, 1, "retries and cross-source duplicates produce one review item");

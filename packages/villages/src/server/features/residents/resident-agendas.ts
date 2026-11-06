@@ -13,8 +13,8 @@ export async function queueVillagerAgenda(...args: Parameters<ResidentAgendas["q
 export async function backfillAgendas(...args: Parameters<ResidentAgendas["backfillAgendas"]>) {
   return binding.get().backfillAgendas(...args);
 }
-export async function refreshVillagerRemaps(...args: Parameters<ResidentAgendas["refreshVillagerRemaps"]>) {
-  return binding.get().refreshVillagerRemaps(...args);
+export async function refreshScheduleInfluence(...args: Parameters<ResidentAgendas["refreshScheduleInfluence"]>) {
+  return binding.get().refreshScheduleInfluence(...args);
 }
 export async function buildVillageAgendas(...args: Parameters<ResidentAgendas["buildVillageAgendas"]>) {
   return binding.get().buildVillageAgendas(...args);

@@ -4,7 +4,6 @@ import type { BackgroundInput } from "../packages/villages/src/server/domain/mod
 import { connectionFailureKind } from "../packages/villages/src/server/domain/rules/connection-failure.js";
 import { localDateKey } from "../packages/villages/src/server/domain/rules/resident-planning.js";
 import { villageNow } from "../packages/villages/src/server/adapters/time/clock-gate.js";
-import { proposeRemap } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import { deriveVillageMoment } from "../packages/villages/src/server/domain/rules/village-clock.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { completeWithRoom } from "../packages/villages/src/server/features/generation/model-requests.js";
@@ -112,9 +111,6 @@ let calls: string[] = [],
   maximum = 0;
 let failStep = "";
 let failure = "401 Invalid API key";
-let translationMode = false;
-let translationFail = false;
-let translationCalls = 0;
 let providerGate: (() => void) | null = null;
 let blockStep = "";
 const responsePlans = new Map<string, { content: string; finishReason: string; hold?: boolean }[]>();
@@ -130,16 +126,6 @@ const model = {
   },
   async chatComplete(messages: any[]) {
     const text = messages[0].content;
-    if (translationMode) {
-      translationCalls++;
-      if (translationFail && translationCalls === 2) return { content: "{}", finishReason: "stop" };
-      const ranges = [...String(messages[1]?.content).matchAll(/^- ([0-9:]+-[0-9:]+):/gm)].map((match) => match[1]);
-      calls.push("translation-" + ranges.length);
-      return {
-        content: JSON.stringify({ moves: ranges.map((time) => ({ day: "Monday", time, here: "Studying", place: 0 })) }),
-        finishReason: "stop",
-      };
-    }
     calls.push(text);
     active++;
     maximum = Math.max(maximum, active);
@@ -223,17 +209,6 @@ registerBackgroundHandler("agenda", {
   },
   async afterFailure(input) {
     failedEffects.push(input.subject);
-  },
-});
-registerBackgroundHandler("translation", {
-  async generate(input) {
-    const answer = await proposeRemap(input);
-    if (answer.failure) throw new Error(answer.failure);
-    return answer.remap;
-  },
-  valid: () => true,
-  apply(state, _input, result) {
-    state.setting = "translated-" + result.moves.length;
   },
 });
 registerBackgroundHandler("resident-planning", {
@@ -856,51 +831,6 @@ async function main() {
     assert.deepEqual(effects, ["saved"], "saved commit receipt repairs completion without generation or effects");
 
     await reset();
-    translationMode = true;
-    translationFail = true;
-    translationCalls = 0;
-    const translationContext = {
-      village: "Willowbrook",
-      setting: "",
-      lore: [],
-      loreKey: "",
-      wishes: [],
-      venues: [],
-      wishes: [],
-      name: "Rosa",
-      characterId: "rosa",
-      summary: "",
-      tags: [],
-      description: "",
-      weekStart: "2026-09-28",
-      blocks: Array.from({ length: 13 }, (_, index) => ({
-        day: "Monday",
-        time: String(index).padStart(2, "0") + ":00-" + String(index + 1).padStart(2, "0") + ":00",
-        activity: "Study " + index,
-        status: "online",
-      })),
-    };
-    const translationWork: BackgroundInput = {
-      kind: "translation",
-      subjectId: "rosa",
-      seed: "fixture",
-      revision: "schedule-pattern",
-      finite: true,
-      label: "Rosa's translation",
-      input: translationContext,
-    };
-    await queueBackgroundJob(translationWork);
-    await settleBackgroundWork();
-    const partialTranslation = await summary("rosa");
-    assert.equal(partialTranslation.status, "obsolete", "retired translation never dispatches");
-    assert.equal(partialTranslation.completedSteps, 0);
-    await queueBackgroundJob(translationWork);
-    await settleBackgroundWork();
-    assert.equal(translationCalls, 0);
-    assert.equal(model.maxOutputTokens, 4096);
-    translationMode = false;
-
-    await reset();
     rejectEffectReceipts = true;
     await queueBackgroundJob(work("unapplied", ["unapplied"]));
     await settleBackgroundWork();
@@ -941,8 +871,14 @@ async function main() {
     holdPendingTiming = true;
     providerGate!();
     await until(() => !!releasePendingTiming);
-    await queueBackgroundJob({ ...work("replace", ["replacement-after-reservation"]), revision: "new" });
+    const reservedReplacement = queueBackgroundJob({
+      ...work("replace", ["replacement-after-reservation"]),
+      revision: "new",
+    });
+    // Let replacement admission reach the blocked save before releasing the reservation.
+    await tick();
     releasePendingTiming!();
+    await reservedReplacement;
     await settleBackgroundWork();
     assert.deepEqual(calls, ["paid-first", "replacement-after-reservation"]);
     const retainedPaid = [...rows.values()].filter((row) => row.kind === "background-history");
@@ -1318,8 +1254,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(catchupWork("cancel-before-dispatch", "cancel-before-dispatch"));
     await until(() => releasePendingTiming !== null);
-    await cancelReturnCatchup("return-batch");
+    const cancelAdmission = cancelReturnCatchup("return-batch");
+    await tick();
     releasePendingTiming!();
+    await cancelAdmission;
     await settleBackgroundWork();
     assert.equal(
       calls.includes("cancel-before-dispatch"),
@@ -1354,8 +1292,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(catchupWork("hidden-before-dispatch", "hidden-before-dispatch"));
     await until(() => releasePendingTiming !== null);
-    await villageBackgroundPresence("hide-before-admission", false);
+    const hideAdmission = villageBackgroundPresence("hide-before-admission", false);
+    await tick();
     releasePendingTiming!();
+    await hideAdmission;
     await settleBackgroundWork();
     const hidden = await summary("hidden-before-dispatch");
     assert.equal(hidden.status, "paused", "No request began, so hiding is a pause rather than an interruption.");
@@ -1480,8 +1420,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(reinterpret("cancel-interpretation"));
     await until(() => releasePendingTiming !== null);
-    await cancelReturnCatchup("return-batch");
+    const cancelInterpretation = cancelReturnCatchup("return-batch");
+    await tick();
     releasePendingTiming!();
+    await cancelInterpretation;
     await settleBackgroundWork();
     assert.equal(calls.includes("cancel-interpretation"), false, "Cancelled interpretation does not dispatch.");
     await reset();
@@ -1493,8 +1435,10 @@ async function main() {
     holdPendingTiming = true;
     await queueBackgroundJob(reinterpret("hidden-interpretation"));
     await until(() => releasePendingTiming !== null);
-    await villageBackgroundPresence("interpretation-hidden", false);
+    const hideInterpretation = villageBackgroundPresence("interpretation-hidden", false);
+    await tick();
     releasePendingTiming!();
+    await hideInterpretation;
     await settleBackgroundWork();
     assert.equal(calls.includes("hidden-interpretation"), false, "Hidden interpretation does not dispatch.");
     await villageBackgroundPresence("interpretation-hidden", true);
@@ -1555,7 +1499,4 @@ async function main() {
     release();
   }
 }
-void main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+await main();

@@ -10,7 +10,6 @@ export type BackgroundKind =
   | "resident-planning"
   | "world-development"
   | "agenda"
-  | "translation"
   | "wish"
   | "personal-mail"
   | "social-recovery";

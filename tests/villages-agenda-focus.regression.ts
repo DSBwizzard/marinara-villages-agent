@@ -64,7 +64,7 @@ assert.equal(agendaAt(agenda, 900, now)?.commitmentId, id, "ordinary fixed work 
 assert.equal(agendaAt(agenda, 1200, now)?.commitmentId, "accepted-dinner");
 assert.equal(agendaAt(agenda, 60, now)?.activity, "Rest");
 assert.equal(
-  villagerPlaceView(f.state(), f.state().villagers[0], null, 900, at("2026-10-29T15:00:00Z"))?.id,
+  villagerPlaceView(f.state(), f.state().villagers[0], 900, at("2026-10-29T15:00:00Z"))?.id,
   f.get(id).venueId,
   "presence follows the same focus plan",
 );
@@ -256,7 +256,7 @@ for (const start of ["2026-03-08T08:00:00Z", "2026-11-01T07:00:00Z", "2026-11-01
     "effective Agenda retains work after the clock transition",
   );
   assert.equal(
-    villagerPlaceView(dst.state(), dst.state().villagers[0], null, minute, effectiveAt)?.id,
+    villagerPlaceView(dst.state(), dst.state().villagers[0], minute, effectiveAt)?.id,
     dst.get(dstId).venueId,
     "presence follows work after the clock transition",
   );

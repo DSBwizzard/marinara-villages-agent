@@ -176,7 +176,7 @@ async function main() {
   const hidden = world.villagers.find((entry) => entry.characterId === "hidden")!;
   hidden.agenda = null;
   assert.equal(
-    villagerPlaceView(world, hidden, null, 0, at)?.id,
+    villagerPlaceView(world, hidden, 0, at)?.id,
     "hub",
     "a resident without a destination falls back to their home",
   );
@@ -184,7 +184,6 @@ async function main() {
     villagerPlaceView(
       world,
       world.villagers.find((entry) => entry.characterId === "unplaced")!,
-      null,
       0,
       at,
     ),

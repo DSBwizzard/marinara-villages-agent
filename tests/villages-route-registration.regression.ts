@@ -20,7 +20,7 @@ async function agendaHttpAdmission() {
     async backfillAgendas(state) {
       return state;
     },
-    async refreshVillagerRemaps() {},
+    async refreshScheduleInfluence() {},
     async buildVillageAgendas() {
       return [];
     },

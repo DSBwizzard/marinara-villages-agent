@@ -1,9 +1,7 @@
-import type { VillageAgenda, VillageAgendaBlock, VillageRemap, VillageVenue } from "../models/world.js";
+import type { VillageAgenda, VillageAgendaBlock, VillageVenue } from "../models/world.js";
 import { flexibleAgendaBlock } from "./agenda-flexibility.js";
 import { composeAgenda } from "./agenda-composition.js";
-import { lookupRemap, remapBlockKey } from "./native-remap.js";
 import { routineDay } from "./owned-routine.js";
-import { type NativeWeekSchedule, parseBlockRange } from "./schedule-rules.js";
 import { VILLAGE_WEEKDAYS } from "./village-clock.js";
 
 /** A dated opportunity remains valid across unrelated edits and equivalent splits. */
@@ -106,7 +104,6 @@ export function completeAgendaWeek(
               ...(row.essential === true ? { essential: true } : {}),
               ...(typeof row.commitmentId === "string" ? { commitmentId: row.commitmentId } : {}),
               flexible: row.flexible === true,
-              ...(typeof row.sourceTime === "string" ? { sourceTime: row.sourceTime } : {}),
             },
           ];
         })
@@ -146,56 +143,6 @@ export function legacyAgendaWeek(
   }));
   if (!day.length) return fallback;
   return completeAgendaWeek(Object.fromEntries(VILLAGE_WEEKDAYS.map((weekday) => [weekday, day])), fallback);
-}
-
-/** Native slots may guide an agenda, but only the persisted village plan is read during play. */
-export function scheduleInformedWeek(
-  base: Record<string, VillageAgendaBlock[]>,
-  native: NativeWeekSchedule,
-  remap: VillageRemap | null,
-): Record<string, VillageAgendaBlock[]> {
-  const proposals: Record<string, VillageAgendaBlock[]> = Object.fromEntries(
-    VILLAGE_WEEKDAYS.map((weekday) => [weekday, []]),
-  );
-  for (const [index, weekday] of VILLAGE_WEEKDAYS.entries()) {
-    for (const entry of native.days[weekday] ?? []) {
-      const range = parseBlockRange(entry.time);
-      if (!range) continue;
-      const key = remapBlockKey(weekday, entry.time);
-      const move = remap?.moves.find((candidate) => remapBlockKey(candidate.day, candidate.time) === key);
-      const translated = lookupRemap(remap, key);
-      const add = (day: string, start: number, end: number) => {
-        if (start >= end) return;
-        const villageBlock = base[day]?.find(
-          (candidate) => candidate.startMinute <= start && candidate.endMinute > start,
-        );
-        proposals[day]!.push({
-          ...block(
-            start,
-            end,
-            move?.venueId ?? villageBlock?.venueId ?? "",
-            translated || villageBlock?.activity || "Taking care of ordinary things",
-          ),
-          sourceTime: entry.time,
-          flexible: move?.flexible === true,
-          zoneId:
-            move?.zoneId ??
-            (move?.venueId && move.venueId !== villageBlock?.venueId ? undefined : villageBlock?.zoneId),
-        });
-      };
-      if (range.end > range.start) {
-        add(weekday, range.start, range.end);
-      } else {
-        add(weekday, range.start, 1440);
-        add(VILLAGE_WEEKDAYS[(index + 1) % VILLAGE_WEEKDAYS.length]!, 0, range.end);
-      }
-    }
-  }
-  return Object.fromEntries(
-    VILLAGE_WEEKDAYS.map((weekday) => {
-      return [weekday, completeAgendaWeek({ [weekday]: proposals[weekday] }, base)[weekday]];
-    }),
-  ) as Record<string, VillageAgendaBlock[]>;
 }
 
 export function agendaBlocksFor(agenda: VillageAgenda, _ingestSchedule: boolean, at: Date): VillageAgendaBlock[] {

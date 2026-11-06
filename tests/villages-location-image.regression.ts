@@ -1162,7 +1162,6 @@ async function main() {
     "features/founding/village-bootstrap-service.ts",
     "domain/rules/village-clock.ts",
     "jobs/village-refresh-scheduler.ts",
-    "domain/rules/native-remap.ts",
     "adapters/engine/native-schedules.ts",
     "features/scenes/writing-service.ts",
     "features/residents/wishes/service.ts",

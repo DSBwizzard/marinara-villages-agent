@@ -33,8 +33,6 @@ function fixture(name: string) {
       cardSnapshot: { id: "same", name, capturedAt: "captured" },
       addedAt: "added",
       agenda: null,
-      remap: null,
-      remapFailure: null,
       wishes: [],
     } as any,
   ];

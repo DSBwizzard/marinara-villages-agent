@@ -209,7 +209,7 @@ import {
   configureResidentAgendas,
   queueVillagerAgenda,
   readFoundingResidentContext,
-  refreshVillagerRemaps,
+  refreshScheduleInfluence,
   rollActiveAgendas,
 } from "../features/residents/resident-agendas.js";
 import { createResidentCards } from "../features/residents/resident-card-service.js";
@@ -1117,7 +1117,7 @@ function connectVillagesRuntime(next: CapabilityRuntimeHost, backendIdentity?: o
     outsideVenueOperation: operations.outsideVenueOperation,
     completeVillageResidence,
     backfillAgendas,
-    refreshVillagerRemaps,
+    refreshScheduleInfluence,
     preparePrivateSpaces,
     reconcileProjectLifecycles,
     rollActiveAgendas,

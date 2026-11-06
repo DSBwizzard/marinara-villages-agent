@@ -6,9 +6,8 @@ import { backgroundRevision } from "../packages/villages/src/server/domain/rules
 import { fixtureWish } from "./helpers/social-wishes-fixture.js";
 import { villageFixtureDocuments } from "./helpers/village-storage.fixture.js";
 
-import { resetNativeScheduleCache } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { coerceVillageState } from "../packages/villages/src/server/domain/decoding/village-codec.js";
-import { proposeRemap, remapBlocks } from "../packages/villages/src/server/domain/rules/native-remap.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { proposeCompactFounding } from "../packages/villages/src/server/features/founding/founding-compact.js";
 import { readUsageMeter, saveUsageRate } from "../packages/villages/src/server/features/settings/usage-meter.js";
@@ -159,40 +158,18 @@ async function main() {
       allowInitialWish: false,
     };
     await proposeCompactFounding(context, async () => {});
-    await assert.rejects(proposeRemap({} as any), /retired/);
     assert.equal(calls, plan.requests, "forecast matches actual mocked generator dispatches");
-    const signature = "unused-retired-translation";
-    state.villagers[0].remap = {
-      signature,
-      moves: remapBlocks(schedule).map((block) => ({
-        day: block.day,
-        time: block.time,
-        here: "Studying",
-        venueId: "",
-      })),
-      attempts: 1,
-      generatedAt: new Date().toISOString(),
-      weekStart: schedule.weekStart,
-      routine: "",
-    } as any;
-    storeState();
-    assert.equal(
-      (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
-      1,
-      "retired translation data cannot add follow-on requests",
-    );
     assert.equal((await previewVillageBurst({ action: "change", settings: { setting: state.setting } })).requests, 0);
     assert.equal(
       (await previewVillageBurst({ action: "change", settings: { setting: "A different world" } })).requests,
       0,
     );
     state.villagers[0].wishes = [fixtureWish({ wish: "Talk about pottery" })];
-    state.villagers[0].remap!.signature = "unused-retired-translation-with-wish";
     storeState();
     assert.equal(
       (await previewVillageBurst({ action: "agenda", characterId: "a" })).requests,
       1,
-      "existing wishes cannot revive retired translation requests",
+      "Existing Wishes add no requests to Agenda regeneration",
     );
     const unchanged = structuredClone(records.get("villages-village"));
     await readUsageMeter(true);
@@ -244,11 +221,10 @@ async function main() {
     assert.equal(unknown.unknownCosts, 2);
     assert.equal(unknown.dollars, null);
     failCards = true;
-    resetNativeScheduleCache();
-    assert.equal(
-      (await previewVillageBurst({ action: "translation", characterId: "a" })).requests,
-      0,
-      "retired translation stays zero even when cards are unreadable",
+    assert.equal((await readNativeScheduleSnapshot(new Date(Date.now() + 31_000), ["a"])).cardsReadable, false);
+    await assert.rejects(
+      previewVillageBurst({ action: "translation", characterId: "a" }),
+      /supported generation preview/,
     );
     assert.equal(
       (await previewVillageBurst({ action: "retry", jobId: jobSlot })).requests,
@@ -261,7 +237,6 @@ async function main() {
   } finally {
     release();
     globalThis.fetch = originalFetch;
-    resetNativeScheduleCache();
   }
   for (const [op, id, at] of [
     ["get", "villages-village", 1],

@@ -34,8 +34,6 @@ export function socialWorldFixture() {
         characterId: id,
         addedAt: START,
         agenda: null,
-        remap: null,
-        remapFailure: null,
         wishes: [],
         cardSnapshot: {
           id,

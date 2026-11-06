@@ -27,7 +27,7 @@ import {
   influenceSettings,
   validateRoutineDay,
 } from "../../domain/rules/owned-routine.js";
-import { currentVillageCircumstances, remapVenues } from "../../domain/rules/prompt-preset.js";
+import { currentVillageCircumstances, routineVenues } from "../../domain/rules/prompt-preset.js";
 import { activateVillagerDay, planRoutineDays } from "../../domain/rules/resident-agenda.js";
 import { projectAgendaReservations } from "../../domain/rules/project-focus.js";
 import { applyInitialIdentityDescription } from "../../domain/rules/resident-description.js";
@@ -147,7 +147,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           effectiveCard.summary,
           effectiveCard.personality,
           effectiveCard.description,
-          ...remapVenues(village.venues).map((venue) => venue.name),
+          ...routineVenues(village.venues).map((venue) => venue.name),
         ].join("\n"),
         undefined,
         village.loreTokenBudget,
@@ -157,11 +157,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           },
         },
       ),
-      // The SENDABLE places: a wish is about something somebody does out in the
-      // village, and "they would like to spend more time at home" is not a wish a
-      // house can be named for. The houses are left out for the same reason the
-      // translation leaves them out — see `remapVenues`.
-      venues: remapVenues(village.venues),
+      venues: routineVenues(village.venues),
     };
     return { ...context, loreUse: inspectedLoreUse(loreInspection, "Routine") };
   }
@@ -328,7 +324,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
   }
 
   /** Normalize preferences locally without altering today's persisted plan. */
-  async function refreshVillagerRemaps(village: VillageState, now: Date, only?: string): Promise<void> {
+  async function refreshScheduleInfluence(village: VillageState, now: Date, only?: string): Promise<void> {
     const snapshot = await readNativeScheduleSnapshot(
       now,
       village.villagers.map((resident) => resident.characterId),
@@ -360,7 +356,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
   async function buildVillageAgendas(): Promise<VillageAgendaView[]> {
     const now = villageNow(),
       initial = await readVillageState();
-    await refreshVillagerRemaps(initial, now);
+    await refreshScheduleInfluence(initial, now);
     await rollActiveAgendas();
     const village = await readVillageState();
     const snapshot = await readNativeScheduleSnapshot(
@@ -395,19 +391,10 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
           ];
         }),
       ),
-      remap: null,
-      weekStart: "",
-      stale: false,
-      missingMoves: 0,
-      remapFailure: null,
-      fallback: "",
-      remapPrompt: null,
-      signature: "",
       days: Array.from({ length: 7 }, (_, offset) => ({
         weekday: VILLAGE_WEEKDAYS[(((now.getDay() + 6) % 7) + offset) % 7]!,
         dateLabel: villageDateLabel(village.foundedAt, moment.dayIndex + offset),
         isToday: offset === 0,
-        blocks: [],
       })),
     }));
   }
@@ -458,7 +445,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
       resident.ingestSchedule = resident.scheduleInfluence.enabled;
     });
     await ports.queueScheduleInfluence?.(characterId);
-    await refreshVillagerRemaps(await readVillageState(), villageNow(), characterId);
+    await refreshScheduleInfluence(await readVillageState(), villageNow(), characterId);
   }
   return {
     adoptFoundingRoutine: (state: VillageState, id: string, agenda: VillageAgenda, revision: string) => {
@@ -469,7 +456,7 @@ export function createResidentAgendas(ports: ResidentAgendaPorts) {
     rollActiveAgendas,
     queueVillagerAgenda,
     backfillAgendas,
-    refreshVillagerRemaps,
+    refreshScheduleInfluence,
     buildVillageAgendas,
     clearVillagerAgenda,
     setVillagerScheduleInfluence,

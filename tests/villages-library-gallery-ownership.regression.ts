@@ -6,10 +6,7 @@ import {
 } from "../packages/villages/src/server/adapters/engine/activation-scope.js";
 import { configureVillagesRuntime } from "../packages/villages/src/server/entry/runtime.js";
 import { createNativeSchedules } from "../packages/villages/src/server/adapters/engine/native-schedules-service.js";
-import {
-  readNativeScheduleSnapshot,
-  resetNativeScheduleCache,
-} from "../packages/villages/src/server/adapters/engine/native-schedules.js";
+import { readNativeScheduleSnapshot } from "../packages/villages/src/server/adapters/engine/native-schedules.js";
 import { createGlobalGallery } from "../packages/villages/src/server/adapters/engine/global-gallery-service.js";
 import {
   configureGlobalGallery,
@@ -131,26 +128,30 @@ async function cacheIsolation() {
     assert.equal((await b.service.readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "B");
     a.gate.resolve();
     assert.equal((await pending).schedules[0].routineSummary, "A");
-    assert.equal((await b.service.readNativeSchedules(now, ids)).get(ids[0])?.activity, "B activity");
+    assert.equal(
+      (await b.service.readNativeScheduleSnapshot(now, ids)).schedules[0].days.Monday[0].activity,
+      "B activity",
+    );
     assert.equal(b.reads(), 1);
-    a.service.resetNativeScheduleCache();
-    await b.service.readNativeWeekSchedules(now, ids);
-    assert.equal(b.reads(), 1, "another owner's reset leaves this cache intact");
+    await b.service.readNativeScheduleSnapshot(now, ids);
+    assert.equal(b.reads(), 1, "Another owner's reads leave this cache intact");
     a.fail(true);
-    assert.equal((await a.service.readNativeScheduleSnapshot(now, ids)).cardsReadable, false);
-    await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids);
+    assert.equal(
+      (await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids)).cardsReadable,
+      false,
+    );
+    await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 62_000), ids);
     assert.equal(a.warnings.length, 1, "a continuing failure is reported once by this owner");
     b.fail(true);
-    b.service.resetNativeScheduleCache();
-    await b.service.readNativeScheduleSnapshot(now, ids);
+    await b.service.readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids);
     assert.equal(b.warnings.length, 1, "another library reports its own failure");
     a.fail(false);
     assert.equal(
-      (await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 62_000), ids)).cardsReadable,
+      (await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 93_000), ids)).cardsReadable,
       true,
     );
     a.fail(true);
-    await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 93_000), ids);
+    await a.service.readNativeScheduleSnapshot(new Date(now.getTime() + 124_000), ids);
     assert.equal(a.warnings.length, 2, "recovery rearms only this owner's failure report");
   } finally {
     a.gate.resolve();
@@ -211,7 +212,7 @@ async function assembledDispatch() {
     assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B");
     a.gate.resolve();
     assert.equal((await pending).schedules[0].routineSummary, "scoped-A");
-    ownerA.run(() => resetNativeScheduleCache());
+    await ownerA.run(() => readNativeScheduleSnapshot(new Date(now.getTime() + 31_000), ids));
     assert.equal((await readNativeScheduleSnapshot(now, ids)).schedules[0].routineSummary, "scoped-B");
     assert.equal(b.reads(), 1);
     assert.equal(await ownerA.run(() => ensureVillagesGalleryFolder()), "scoped-A-folder");

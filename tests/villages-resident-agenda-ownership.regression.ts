@@ -37,8 +37,6 @@ function fixture(name: string) {
     cardSnapshot: snapshotFromCard(card, 2),
     addedAt: "2026-10-06T12:00:00Z",
     wishes: [],
-    remap: null,
-    remapFailure: null,
     ingestSchedule: false,
     agenda: unwrittenVillageAgenda(state.venues, name),
   };

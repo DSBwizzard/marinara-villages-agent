@@ -28,7 +28,6 @@ const kinds: Record<Job["kind"], true> = {
   "resident-planning": true,
   "world-development": true,
   agenda: true,
-  translation: true,
   wish: true,
   "personal-mail": true,
   "social-recovery": true,
