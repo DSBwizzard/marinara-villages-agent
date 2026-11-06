@@ -1420,7 +1420,15 @@ export function createSceneCommands({
           ...(state.semanticVersion === 2
             ? {
                 projectContexts: reply.projectContexts,
-                projectSpeech: reply.projectSpeech,
+                projectSpeech: reply.projectSpeech.map((proposal) => ({
+                  ...proposal,
+                  citations: proposal.citations.map((citation) => ({
+                    ...citation,
+                    lineId: /^\d+$/u.test(citation.lineId)
+                      ? (savedLineIds[Number(citation.lineId)] ?? "")
+                      : citation.lineId,
+                  })),
+                })),
                 projectInterpretationVersion: 1 as const,
                 invitationSignal: reply.invitationSignal ?? undefined,
                 residenceSignal: reply.residenceSignal ?? undefined,
