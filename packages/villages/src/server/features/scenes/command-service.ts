@@ -942,6 +942,7 @@ export function createSceneCommands({
     const village = existing ? sceneContinuityView(live, existing) : live;
     const place = findLocation(village, placeId);
     if (!place) throw notFound("That place is not in this village.");
+    if (!place.access) throw conflict("That Place has no native access record.");
     const discovery = live.worldPlaces.places[placeId];
     if (discovery && (!discovery.knownBy.includes("player") || !discovery.prepared))
       throw conflict("Prepare this known Place before visiting.");
@@ -1050,54 +1051,26 @@ export function createSceneCommands({
       grantedZoneIds.push(zone.id);
       zoneGrants.push({ zoneId: zone.id, controllerId: ongoingController, source: "relationship" });
     }
-    if (place.access) {
-      const decision = evaluateZoneAccess(place, zone, "player", {
-        ...entryAccessContext,
-        relationships: village.relationshipContext,
+    const decision = evaluateZoneAccess(place, zone, "player", {
+      ...entryAccessContext,
+      relationships: village.relationshipContext,
+    });
+    if (!decision.allowed) {
+      if (requestedZoneId || entryArea) throw conflict(decision.explanation);
+      zone = resolveVenueZone(place, "exterior")!;
+    } else
+      await mutateVillageState((state) => {
+        const current = findLocation(state, place.id)!;
+        const target = resolveVenueZone(current, zone!.id)!;
+        const checked = evaluateZoneAccess(current, target, "player", {
+          ...entryAccessContext,
+          relationships: state.relationshipContext,
+          unavailable: zoneClosed(state, current, target),
+          environment: state.narrative,
+        });
+        if (!checked.allowed) throw conflict(checked.explanation);
+        initialPermissionId = checked.permissionId;
       });
-      if (!decision.allowed) {
-        if (requestedZoneId || entryArea) throw conflict(decision.explanation);
-        zone = resolveVenueZone(place, "exterior")!;
-      } else
-        await mutateVillageState((state) => {
-          const current = findLocation(state, place.id)!;
-          const target = resolveVenueZone(current, zone!.id)!;
-          const checked = evaluateZoneAccess(current, target, "player", {
-            ...entryAccessContext,
-            relationships: state.relationshipContext,
-            unavailable: zoneClosed(state, current, target),
-            environment: state.narrative,
-          });
-          if (!checked.allowed) throw conflict(checked.explanation);
-          initialPermissionId = checked.permissionId;
-        });
-    } else if (!canOccupyZone(place, zone, "player") && !ongoingController) {
-      const target = zone;
-      const invitation = place.playerInvitations?.find(
-        (entry) => entry.zoneId === target.id && canInviteToZone(place, target, entry.residentId),
-      );
-      if (!invitation) {
-        if (requestedZoneId || entryArea) throw conflict("This zone needs its controller's invitation.");
-        zone = resolveVenueZone(place, "exterior")!;
-      } else {
-        await mutateVillageState((state) => {
-          const current = findLocation(state, placeId)!;
-          const index =
-            current.playerInvitations?.findIndex(
-              (entry) =>
-                entry.zoneId === target.id &&
-                entry.sourceLineId === invitation.sourceLineId &&
-                entry.residentId === invitation.residentId &&
-                canInviteToZone(current, resolveVenueZone(current, target.id)!, entry.residentId),
-            ) ?? -1;
-          if (index < 0) throw conflict("That invitation has already been used.");
-          const consumed = current.playerInvitations!.splice(index, 1)[0]!;
-          current.usedInvitationIds = [...new Set([...(current.usedInvitationIds ?? []), consumed.sourceLineId])];
-        });
-        grantedZoneIds.push(target.id);
-        zoneGrants.push({ zoneId: target.id, controllerId: invitation.residentId });
-      }
-    }
     const participants = sceneAttendance.occupants
       .filter((person) => person.zoneId === zone.id)
       .map(({ characterId, name, doing }) => ({ characterId, name, doing }));
