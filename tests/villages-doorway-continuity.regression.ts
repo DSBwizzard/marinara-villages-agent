@@ -8,7 +8,13 @@ import { coerceSession } from "../packages/villages/src/server/domain/decoding/s
 import { defaultVenueSpace } from "../packages/villages/src/server/domain/rules/venue-model.js";
 import { readContactMoves } from "../packages/villages/src/server/domain/rules/venue-contact.js";
 import { applyResidentMovementTimeline } from "../packages/villages/src/server/domain/rules/resident-movement.js";
-import { applyAttentionWitnesses } from "../packages/villages/src/server/domain/rules/attention-witnesses.js";
+import { materializeGmReply } from "../packages/villages/src/server/domain/rules/scene-gm.js";
+import { parseVenueReply } from "../packages/villages/src/server/domain/rules/scene-reply.js";
+import {
+  zoneEventScene,
+  zoneEventReply,
+  routeZoneEvents,
+} from "../packages/villages/src/server/domain/rules/zone-events.js";
 import { stagingTranscriptEvents } from "../packages/villages/src/shared/helpers/scene-staging.js";
 import { replayStaging } from "./helpers/scene-staging.fixture.js";
 import type { VenueReplyLine } from "../packages/villages/src/server/domain/models/scene-model.js";
@@ -72,7 +78,6 @@ scene.contactGeneration = {
   localIds: [],
   remoteIds: ["buster"],
   instruction: "",
-  replyAudiences: { buster: ["buster"] },
 };
 const lines: VenueReplyLine[] = [
   { kind: "dialogue", speakerId: "buster", content: "Hold on.", heardBy: ["buster"], viaDoorway: true },
@@ -88,7 +93,7 @@ const lines: VenueReplyLine[] = [
     content: "Nice to meet you.",
     heardBy: ["buster"],
     viaDoorway: true,
-    remoteDelivery: "loud",
+
     staging: [{ characterId: "buster", position: "center" }],
   },
 ];
@@ -96,17 +101,11 @@ const proposed = [{ characterId: "buster", zoneId: "exterior", segment: 1, quote
 const moves = readContactMoves(proposed, lines, village, venue, scene, ["buster"]);
 assert.equal(moves.length, 1, "narrated voluntary movement does not need ceremonial spoken consent");
 assert.equal(
-  readContactMoves(
-    [{ characterId: "buster", zoneId: "exterior", quote: "Hold on." }],
-    lines,
-    village,
-    venue,
-    scene,
-    ["buster"],
-    true,
-  ).length,
+  readContactMoves([{ characterId: "buster", zoneId: "exterior", quote: "Hold on." }], lines, village, venue, scene, [
+    "buster",
+  ]).length,
   0,
-  "new generations cannot bypass segment timing through the legacy movement shape",
+  "movement cannot bypass narration segment timing",
 );
 for (const invalid of [
   { ...proposed[0], segment: 0 },
@@ -126,11 +125,11 @@ noopScene.sceneAttendance!.occupants[0].zoneId = "exterior";
 const noopLines = [{ ...lines[1], content: savedNoopText }];
 const noop = { characterId: "buster", zoneId: "exterior", segment: 0, quote: savedNoopText };
 assert.equal(
-  readContactMoves([noop], noopLines, village, venue, noopScene, ["buster"], true, true).length,
+  readContactMoves([noop], noopLines, village, venue, noopScene, ["buster"], true).length,
   0,
-  "legacy qualifier behavior remains unchanged",
+  "hypothetical movement does not establish a crossing",
 );
-const redundant = readContactMoves([noop], noopLines, village, venue, noopScene, ["buster"], true, "redundant");
+const redundant = readContactMoves([noop], noopLines, village, venue, noopScene, ["buster"], "redundant");
 assert.equal(redundant.length, 1, "a v3 local annotation is validated before being discarded");
 assert.deepEqual(redundant[0].path, ["exterior"]);
 for (const invalid of [
@@ -140,10 +139,7 @@ for (const invalid of [
   { ...noop, zoneId: "missing" },
   { ...noop, zoneId: "private:other" },
 ])
-  assert.equal(
-    readContactMoves([invalid], noopLines, village, venue, noopScene, ["buster"], true, "redundant").length,
-    0,
-  );
+  assert.equal(readContactMoves([invalid], noopLines, village, venue, noopScene, ["buster"], "redundant").length, 0);
 for (const content of [
   "Buster intends to step out into the Entrance.",
   "Buster would step out into the Entrance.",
@@ -157,7 +153,6 @@ for (const content of [
       venue,
       scene,
       ["buster"],
-      true,
       "redundant",
     ).length,
     0,
@@ -165,7 +160,7 @@ for (const content of [
   );
 }
 assert.equal(
-  readContactMoves([proposed[0]], lines, village, venue, scene, ["buster"], true, "redundant").length,
+  readContactMoves([proposed[0]], lines, village, venue, scene, ["buster"], "redundant").length,
   1,
   "evidenced completed crossings remain available",
 );
@@ -174,7 +169,6 @@ assert.equal(lines[0].viaDoorway, true);
 assert.deepEqual(lines[1].physicalIdsAfter, ["buster"]);
 assert.deepEqual(lines[1].heardBy, ["buster"], "the actor witnesses his completed movement");
 assert.equal(lines[2].viaDoorway, undefined);
-assert.equal(lines[2].remoteDelivery, undefined);
 assert.equal(lines[2].staging?.length, 1);
 const stored = lines.map((line, index) => ({
   ...line,
@@ -248,7 +242,6 @@ const withBystander = {
     instruction: "",
     localIds: ["buster", "local"],
     remoteIds: [],
-    replyAudiences: { local: ["buster", "local"] },
   },
 };
 const staleAudience: VenueReplyLine[] = [
@@ -273,51 +266,45 @@ assert.deepEqual(
 const first = "City is looking to start some new growth, or at least some interesting new ideas to ramp up tourism.";
 const second = "Nice to meet you, I'm LBP.";
 const message = `"${first}" I offer my hand. "${second}"`;
-const fragments = [first, second].map((text, index) => ({
-  id: `attention:${index}`,
-  start: message.indexOf(text),
-  end: message.indexOf(text) + text.length,
-  kind: "speech" as const,
-  reach: "directed" as const,
-  zoneIds: ["common"],
-}));
-const plan = { status: "attention" as const, fragments };
-scene.contactGeneration.attention = plan;
-const parsed = {
-  heardPlayerBy: [],
-  lines: [
-    { kind: "dialogue", speakerId: "buster", content: "Buster. Good to meet you.", heardBy: ["buster"] },
-  ] as VenueReplyLine[],
-};
-const raw = {
-  attentionWitnesses: fragments.map((fragment) => ({ id: fragment.id, emitted: true, heardBy: ["buster"] })),
-  memoryChanges: [
-    {
-      learners: {
-        buster: {
-          support: [
-            { lineId: "attention:0", excerpt: first },
-            { lineId: "attention:1", excerpt: second },
-          ],
+const raw = materializeGmReply(
+  {
+    input: [
+      { kind: "speech", text: first, delivery: "shout" },
+      { kind: "action", text: "I offer my hand." },
+      { kind: "speech", text: second, delivery: "shout" },
+    ],
+    segments: [{ kind: "dialogue", speakerId: "buster", text: "Buster. Good to meet you.", delivery: "shout" }],
+    memoryChanges: [
+      {
+        learners: {
+          buster: {
+            support: [
+              { lineId: "utterance:0", excerpt: first },
+              { lineId: "utterance:1", excerpt: second },
+            ],
+          },
         },
       },
-    },
-  ],
-  wishChanges: [{ evidence: ["attention:0"] }],
-  relationshipChanges: { changes: [{ lineIds: ["attention:1", 0] }], permissions: [], disclosures: [] },
-};
-applyAttentionWitnesses(raw, scene, message, parsed);
+    ],
+    wishChanges: [{ evidence: ["utterance:0"] }],
+    relationshipChanges: { changes: [{ lineIds: ["utterance:1", 0] }], permissions: [], disclosures: [] },
+  },
+  message,
+) as any;
+const nativeScene = zoneEventScene(scene, venue);
+const parsed = parseVenueReply(zoneEventReply(raw, message), ["buster", "player"]);
+routeZoneEvents(raw, nativeScene, parsed, []);
 assert.deepEqual(
-  parsed.lines.slice(1).map((line) => line.content),
+  parsed.lines.slice(0, 2).map((line) => line.content),
   [first, second],
 );
-assert.ok(parsed.lines.slice(1).every((line) => line.heardBy.includes("buster")));
-assert.ok(!parsed.lines.slice(1).some((line) => line.content.includes("offer my hand")));
+assert.ok(parsed.lines.slice(0, 2).every((line) => line.heardBy.includes("buster")));
+assert.ok(!parsed.lines.some((line) => line.content.includes("offer my hand")));
 assert.deepEqual(
-  raw.memoryChanges[0].learners.buster.support.map((row) => row.lineId),
-  [1, 2],
+  raw.memoryChanges[0].learners.buster.support.map((row: any) => row.lineId),
+  [0, 1],
 );
-assert.deepEqual(raw.wishChanges[0].evidence, [1]);
-assert.deepEqual(raw.relationshipChanges.changes[0].lineIds, [2, 0]);
-assert.deepEqual(parsed.heardPlayerBy, [], "arrival or remote speech never grants the complete local input");
-console.log("Narrator continuity, witnessed speech, resident movement and paragraph staging passed.");
+assert.deepEqual(raw.wishChanges[0].evidence, [0]);
+assert.deepEqual(raw.relationshipChanges.changes[0].lineIds, [1, 2]);
+assert.deepEqual(parsed.heardPlayerBy, [], "remote speech never grants the complete local input");
+console.log("Native witnessed speech, resident movement and paragraph staging passed.");

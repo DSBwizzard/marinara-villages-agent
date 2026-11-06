@@ -312,7 +312,6 @@ export function createSemanticService(ports: SemanticPorts) {
             venue,
             scene,
             savedInput.context.actors.map((actor) => actor.id),
-            true,
             "redundant",
             true,
           );

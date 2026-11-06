@@ -49,7 +49,6 @@ export function scenePlaybackSteps(window: ScenePlaybackWindow, playerName: stri
         asides: last ? asides : [],
         ...(line.kind ? { register: line.kind === "narration" ? "narration" : "speech" } : {}),
         ...(line.viaDoorway ? { viaDoorway: true } : {}),
-        ...(line.remoteDelivery ? { remoteDelivery: line.remoteDelivery } : {}),
       });
     });
   };

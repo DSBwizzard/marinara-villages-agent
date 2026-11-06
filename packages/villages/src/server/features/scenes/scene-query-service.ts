@@ -361,7 +361,7 @@ export function createSceneQueryService({
       submissionId,
       mode: submission.mode,
       message: submission.message,
-      ...(submission.attention || submission.zoneEventsVersion === 1 ? { playerMessagesByActor } : {}),
+      ...(submission.zoneEventsVersion === 1 ? { playerMessagesByActor } : {}),
       at: submission.at ?? "",
       areaAtTurn: submission.areaAtTurn ?? session.area,
       activeIdsAtTurn: [

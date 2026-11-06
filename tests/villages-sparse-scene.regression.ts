@@ -195,7 +195,7 @@ const whisper = {
   heardBy: ["rosa"],
   contactHidden: true,
 };
-const history = sceneWritingHistory({ lines: [narration, whisper] } as any, [narration, whisper] as any);
+const history = sceneWritingHistory({ lines: [narration, whisper] } as any, [narration, whisper] as any, "", ["rosa"]);
 assert.equal(
   history.context.split("The door opened.").length - 1,
   1,
@@ -207,7 +207,7 @@ assert.deepEqual(
   history.evidence.map((row) => row.id),
   ["n", "w"],
 );
-const continuityOnly = sceneWritingHistory({ lines: [narration] } as any, []);
+const continuityOnly = sceneWritingHistory({ lines: [narration] } as any, [], "", ["rosa"]);
 assert.deepEqual(continuityOnly.evidence, [], "narrator visibility never becomes resident evidence");
 assert(continuityOnly.context.includes('"citable":false'));
 

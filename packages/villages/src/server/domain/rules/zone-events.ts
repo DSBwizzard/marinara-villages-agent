@@ -189,8 +189,7 @@ export function routeZoneEvents(
   const position = (id: string, index: number) =>
     id === "player"
       ? playerZoneAt(index)
-      : (moves.find((move) => move.characterId === id && move.segment !== undefined && move.segment <= index)?.zoneId ??
-        contactPosition(scene, id));
+      : (moves.find((move) => move.characterId === id && move.segment <= index)?.zoneId ?? contactPosition(scene, id));
   const inZones = (zones: string[], index: number) => ids.filter((id) => zones.includes(position(id, index)));
   parsed.heardPlayerBy = [];
   parsed.lines.forEach((line, index) => {
